@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
-  FileUp, Loader2, CheckCircle, AlertCircle, MapPin, ArrowRight, X, Ruler 
+  FileUp, Loader2, CheckCircle, AlertCircle, MapPin, ArrowRight, X, Ruler, Trash2, RefreshCw 
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface ParsedMeasurements {
@@ -47,6 +48,16 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
   const [importAnalyzing, setImportAnalyzing] = useState(false);
   const [importParsedData, setImportParsedData] = useState<ParsedMeasurements | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
+  const [blockingRecord, setBlockingRecord] = useState<{
+    id: string;
+    created_at: string;
+    lead_id: string;
+    lead_name?: string;
+    provider: string;
+    address?: string;
+    area?: number;
+  } | null>(null);
+  const [isDeletingBlocking, setIsDeletingBlocking] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -105,7 +116,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
         // Fetch the existing report's parsed data
         const { data: existingReport, error: fetchReportErr } = await supabase
           .from('roof_vendor_reports')
-          .select('id, parsed, provider, created_at, address')
+          .select('id, parsed, provider, created_at, address, lead_id')
           .eq('id', data.existing_report_id)
           .single();
 
@@ -119,15 +130,32 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
 
         // Check if the original has valid data (area > 500 sqft is reasonable minimum)
         if (!existingParsed || existingArea < 500) {
-          const importDate = new Date(existingReport.created_at).toLocaleDateString();
-          setImportError(
-            `This report was imported on ${importDate} but the data couldn't be extracted correctly. Please upload a different measurement report.`
-          );
-          toast({
-            title: 'Invalid Report Data',
-            description: 'The original import failed to extract measurements. Please use a different file.',
-            variant: 'destructive',
+          // Fetch the lead name for context
+          let leadName = 'Unknown Lead';
+          if (existingReport.lead_id) {
+            const { data: blockingLead } = await supabase
+              .from('pipeline_entries')
+              .select('id, metadata')
+              .eq('id', existingReport.lead_id)
+              .maybeSingle();
+
+            const leadMeta = blockingLead?.metadata as Record<string, any> | null;
+            leadName = leadMeta?.name || leadMeta?.contact_name || 'Unknown Lead';
+          }
+          
+          setBlockingRecord({
+            id: existingReport.id,
+            created_at: existingReport.created_at,
+            lead_id: existingReport.lead_id || '',
+            lead_name: leadName,
+            provider: existingReport.provider,
+            address: existingReport.address || undefined,
+            area: existingArea,
           });
+
+          setImportError(
+            `This PDF was previously imported with extraction errors. You can delete the old record and try again.`
+          );
           return;
         }
 
@@ -362,6 +390,43 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
     }
   }, [importFile, pipelineEntryId, queryClient, toast, onSuccess]);
 
+  // Handle deleting a blocking record and retrying the import
+  const handleDeleteBlockingRecord = useCallback(async () => {
+    if (!blockingRecord || !importFile) return;
+    
+    setIsDeletingBlocking(true);
+    try {
+      const { error: deleteError } = await supabase
+        .from('roof_vendor_reports')
+        .delete()
+        .eq('id', blockingRecord.id);
+
+      if (deleteError) {
+        throw new Error('Failed to delete the blocking record');
+      }
+
+      toast({
+        title: 'Record Deleted',
+        description: 'Re-analyzing the report...',
+      });
+
+      setBlockingRecord(null);
+      setImportError(null);
+
+      // Re-trigger the upload/analysis
+      await handleUploadAndAnalyze();
+    } catch (err) {
+      console.error('Delete blocking record error:', err);
+      toast({
+        title: 'Delete Failed',
+        description: err instanceof Error ? err.message : 'Could not delete the blocking record.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeletingBlocking(false);
+    }
+  }, [blockingRecord, importFile, toast, handleUploadAndAnalyze]);
+
   const handleApplyImportedMeasurements = useCallback(async () => {
     if (!importParsedData) return;
 
@@ -481,6 +546,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
     setImportFile(null);
     setImportParsedData(null);
     setImportError(null);
+    setBlockingRecord(null);
   };
 
   return (
@@ -521,6 +587,44 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
                 </div>
               )}
 
+              {blockingRecord && (
+                <Alert variant="destructive" className="mt-2">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>Blocking Record Found</AlertTitle>
+                  <AlertDescription className="space-y-2">
+                    <p className="text-xs">
+                      This PDF was imported on {new Date(blockingRecord.created_at).toLocaleDateString()} but failed to extract data correctly.
+                    </p>
+                    <div className="text-xs bg-destructive/10 p-2 rounded space-y-0.5">
+                      {blockingRecord.lead_name && (
+                        <div><strong>Lead:</strong> {blockingRecord.lead_name}</div>
+                      )}
+                      <div><strong>Provider:</strong> {blockingRecord.provider} (misparsed)</div>
+                      {blockingRecord.area !== undefined && (
+                        <div><strong>Extracted:</strong> {blockingRecord.area.toLocaleString()} sqft (invalid)</div>
+                      )}
+                      {blockingRecord.address && (
+                        <div><strong>Address:</strong> {blockingRecord.address}</div>
+                      )}
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      className="w-full mt-2"
+                      onClick={handleDeleteBlockingRecord}
+                      disabled={isDeletingBlocking}
+                    >
+                      {isDeletingBlocking ? (
+                        <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-4 w-4 mr-1" />
+                      )}
+                      Delete & Retry Analysis
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               {importFile && !importParsedData && (
                 <Button 
                   onClick={handleUploadAndAnalyze} 
@@ -535,7 +639,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
           ) : (
             <div className="space-y-4">
               <div className="flex items-center gap-2">
-                <CheckCircle className="h-5 w-5 text-green-600" />
+                <CheckCircle className="h-5 w-5 text-success" />
                 <span className="font-medium">Report Analyzed</span>
                 <Badge variant="outline" className="ml-auto capitalize">
                   {importParsedData.provider}
