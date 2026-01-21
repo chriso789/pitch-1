@@ -113,15 +113,19 @@ serve(async (req) => {
       console.error('[canvassiq-skip-trace] Update error:', updateError);
     }
 
-    // Log the enrichment for billing/tracking
-    await supabase.from('canvassiq_enrichment_logs').insert({
-      property_id,
-      tenant_id,
-      provider: searchBugApiKey ? 'searchbug' : 'demo',
-      cost_cents: searchBugApiKey ? 35 : 0, // $0.35 per lookup
-      success: true,
-      created_at: new Date().toISOString(),
-    }).catch(() => {}); // Ignore if table doesn't exist
+    // Log the enrichment for billing/tracking (ignore if table doesn't exist)
+    try {
+      await supabase.from('canvassiq_enrichment_logs').insert({
+        property_id,
+        tenant_id,
+        provider: searchBugApiKey ? 'searchbug' : 'demo',
+        cost_cents: searchBugApiKey ? 35 : 0, // $0.35 per lookup
+        success: true,
+        created_at: new Date().toISOString(),
+      });
+    } catch {
+      // Table may not exist yet
+    }
 
     return new Response(
       JSON.stringify({ 
