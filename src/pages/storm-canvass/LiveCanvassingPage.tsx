@@ -77,8 +77,16 @@ export default function LiveCanvassingPage() {
     polyline: string;
   } | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
-  const [isLoadingProperties, setIsLoadingProperties] = useState(false);
-  const [loadedPropertyCount, setLoadedPropertyCount] = useState<number | null>(null);
+  // Raw loading state from markers layer
+  const [rawIsLoading, setRawIsLoading] = useState(false);
+  const [rawLoadedCount, setRawLoadedCount] = useState<number | null>(null);
+  
+  // Debounced stable loading state for smooth UI
+  const [stableLoadingState, setStableLoadingState] = useState<'idle' | 'loading' | 'success'>('idle');
+  const [stableCount, setStableCount] = useState<number | null>(null);
+  const loadingTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const successTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   const previousLocation = useRef<{ lat: number; lng: number } | null>(null);
   const gpsTrailStarted = useRef(false);
 
@@ -90,6 +98,36 @@ export default function LiveCanvassingPage() {
     };
     loadDispositions();
   }, []);
+
+  // Debounce loading state to prevent rapid flickering
+  useEffect(() => {
+    // Clear any existing timers
+    if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+    if (successTimerRef.current) clearTimeout(successTimerRef.current);
+
+    if (rawIsLoading) {
+      // Only show loading after 150ms to ignore micro-loads
+      loadingTimerRef.current = setTimeout(() => {
+        setStableLoadingState('loading');
+      }, 150);
+    } else if (rawLoadedCount !== null && rawLoadedCount > 0) {
+      // Immediately show success when loading completes
+      setStableCount(rawLoadedCount);
+      setStableLoadingState('success');
+      
+      // Auto-hide after 1.5s
+      successTimerRef.current = setTimeout(() => {
+        setStableLoadingState('idle');
+      }, 1500);
+    } else {
+      setStableLoadingState('idle');
+    }
+
+    return () => {
+      if (loadingTimerRef.current) clearTimeout(loadingTimerRef.current);
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, [rawIsLoading, rawLoadedCount]);
 
   // Start GPS trail recording when user profile is available
   useEffect(() => {
@@ -354,15 +392,15 @@ export default function LiveCanvassingPage() {
           routeData={routeData}
           destination={destination}
           mapStyle={mapStyle}
-          onLoadingChange={setIsLoadingProperties}
-          onPropertiesLoaded={setLoadedPropertyCount}
+          onLoadingChange={setRawIsLoading}
+          onPropertiesLoaded={setRawLoadedCount}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         
         {/* Property Loading Indicator */}
         <PropertyLoadingIndicator
-          isLoading={isLoadingProperties}
-          loadedCount={loadedPropertyCount}
+          state={stableLoadingState}
+          loadedCount={stableCount}
         />
         
         {/* Camera Floating Action Button */}
