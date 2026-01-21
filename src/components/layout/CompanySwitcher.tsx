@@ -12,7 +12,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -84,7 +84,7 @@ export const CompanySwitcher = () => {
         <DropdownMenuSeparator />
         
         {/* Scrollable Company List */}
-        <ScrollArea className="h-[300px]">
+        <div className="max-h-[300px] overflow-y-auto overscroll-contain pr-1">
           {filteredCompanies.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">
               No companies found
@@ -129,7 +129,7 @@ export const CompanySwitcher = () => {
               );
             })
           )}
-        </ScrollArea>
+        </div>
         
         {user?.role === 'master' && (
           <>
