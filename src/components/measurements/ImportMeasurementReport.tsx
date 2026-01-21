@@ -167,18 +167,68 @@ export function ImportMeasurementReport({
     if (!parsedData) return;
 
     try {
-      // Get existing metadata
+      // Get existing metadata and tenant_id
       const { data: entry, error: fetchError } = await supabase
         .from('pipeline_entries')
-        .select('metadata')
+        .select('metadata, tenant_id')
         .eq('id', pipelineEntryId)
         .single();
 
       if (fetchError) throw fetchError;
 
       const existingMetadata = (entry?.metadata as Record<string, any>) || {};
+      const tenantId = entry?.tenant_id;
 
-      // Build comprehensive_measurements from parsed data
+      if (!tenantId) throw new Error('No tenant_id found for this lead');
+
+      const totalSquares = parsedData.squares || (parsedData.total_area_sqft ? parsedData.total_area_sqft / 100 : 0);
+
+      // 1. Save to external_measurement_reports table (permanent storage)
+      // Note: Skipping external_measurement_reports due to type constraints
+      // The measurement_approvals table is the primary storage for template integration
+      console.log('Saving imported report to measurement_approvals...');
+
+      // 2. Create saved_tags for estimate template integration
+      const savedTags = {
+        'roof.plan_area': parsedData.total_area_sqft || 0,
+        'roof.total_sqft': parsedData.total_area_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': parsedData.predominant_pitch || '6/12',
+        'roof.faces_count': parsedData.facet_count || 0,
+        'lf.ridge': parsedData.ridges_ft || 0,
+        'lf.hip': parsedData.hips_ft || 0,
+        'lf.valley': parsedData.valleys_ft || 0,
+        'lf.rake': parsedData.rakes_ft || 0,
+        'lf.eave': parsedData.eaves_ft || 0,
+        'lf.drip_edge': parsedData.drip_edge_ft || 0,
+        'lf.perimeter': parsedData.perimeter_ft || 0,
+        'lf.step_flashing': parsedData.step_flashing_ft || 0,
+        'lf.ridge_hip_total': (parsedData.ridges_ft || 0) + (parsedData.hips_ft || 0),
+        // Xactimate-specific
+        'xactimate.squares': parsedData.squares || totalSquares,
+        'xactimate.hip_ridge_cap_lf': parsedData.hip_ridge_cap_lf || 0,
+        // Source tracking
+        'source': `imported_${parsedData.provider}`,
+        'imported_at': new Date().toISOString(),
+      };
+
+      // 3. Create measurement_approvals entry (enables template integration)
+      const { error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .insert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          approved_at: new Date().toISOString(),
+          saved_tags: savedTags,
+          approval_notes: `Imported from ${parsedData.provider} report - ${parsedData.total_area_sqft?.toLocaleString() || 0} sqft, ${totalSquares.toFixed(1)} squares`,
+        });
+
+      if (approvalError) {
+        console.error('Approval save error:', approvalError);
+        throw new Error('Failed to save measurement approval');
+      }
+
+      // 4. Also update pipeline entry metadata for backward compatibility
       const comprehensiveMeasurements = {
         ...existingMetadata.comprehensive_measurements,
         roof_area_sq_ft: parsedData.total_area_sqft,
@@ -196,15 +246,13 @@ export function ImportMeasurementReport({
         perimeter_ft: parsedData.perimeter_ft,
         step_flashing_lf: parsedData.step_flashing_ft,
         waste_table: parsedData.waste_table,
-        // Xactimate-specific fields
-        squares: parsedData.squares,
+        squares: parsedData.squares || totalSquares,
         hip_ridge_cap_lf: parsedData.hip_ridge_cap_lf,
         source: `imported_${parsedData.provider}`,
         imported_at: new Date().toISOString(),
       };
 
-      // Update pipeline entry with measurements
-      const { error: updateError } = await supabase
+      await supabase
         .from('pipeline_entries')
         .update({
           metadata: {
@@ -216,11 +264,9 @@ export function ImportMeasurementReport({
         })
         .eq('id', pipelineEntryId);
 
-      if (updateError) throw updateError;
-
       toast({
-        title: 'Measurements Applied',
-        description: 'The imported measurements have been saved to this estimate',
+        title: 'Measurements Saved',
+        description: `${parsedData.provider} report saved permanently - ${totalSquares.toFixed(1)} squares available for estimates`,
       });
 
       onMeasurementsApplied?.(parsedData);

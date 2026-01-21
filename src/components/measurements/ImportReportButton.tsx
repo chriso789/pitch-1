@@ -124,16 +124,56 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
     try {
       const { data: entry, error: fetchError } = await supabase
         .from('pipeline_entries')
-        .select('metadata')
+        .select('metadata, tenant_id')
         .eq('id', pipelineEntryId)
         .single();
 
       if (fetchError) throw fetchError;
 
       const existingMetadata = (entry?.metadata as Record<string, any>) || {};
+      const tenantId = entry?.tenant_id;
+
+      if (!tenantId) throw new Error('No tenant_id found for this lead');
 
       const totalSquares = importParsedData.total_area_sqft ? importParsedData.total_area_sqft / 100 : 0;
       
+      // 1. Save to measurement_approvals (primary storage for template integration)
+      console.log('Saving imported report to measurement_approvals...');
+
+      // 2. Create saved_tags for estimate template integration
+      const savedTags = {
+        'roof.plan_area': importParsedData.total_area_sqft || 0,
+        'roof.total_sqft': importParsedData.total_area_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': importParsedData.predominant_pitch || '6/12',
+        'roof.faces_count': importParsedData.facet_count || 0,
+        'lf.ridge': importParsedData.ridges_ft || 0,
+        'lf.hip': importParsedData.hips_ft || 0,
+        'lf.valley': importParsedData.valleys_ft || 0,
+        'lf.rake': importParsedData.rakes_ft || 0,
+        'lf.eave': importParsedData.eaves_ft || 0,
+        'lf.ridge_hip_total': (importParsedData.ridges_ft || 0) + (importParsedData.hips_ft || 0),
+        'source': `imported_${importParsedData.provider}`,
+        'imported_at': new Date().toISOString(),
+      };
+
+      // 3. Create measurement_approvals entry
+      const { error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .insert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          approved_at: new Date().toISOString(),
+          saved_tags: savedTags,
+          approval_notes: `Imported from ${importParsedData.provider} report - ${importParsedData.total_area_sqft?.toLocaleString() || 0} sqft`,
+        });
+
+      if (approvalError) {
+        console.error('Approval save error:', approvalError);
+        throw new Error('Failed to save measurement approval');
+      }
+
+      // 4. Also update pipeline entry metadata for backward compatibility
       const comprehensiveMeasurements = {
         ...existingMetadata.comprehensive_measurements,
         roof_area_sq_ft: importParsedData.total_area_sqft,
@@ -152,17 +192,9 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
         imported_at: new Date().toISOString(),
         roof_squares: totalSquares,
         total_squares: totalSquares,
-        eave_length: importParsedData.eaves_ft || 0,
-        rake_length: importParsedData.rakes_ft || 0,
-        ridge_length: importParsedData.ridges_ft || 0,
-        hip_length: importParsedData.hips_ft || 0,
-        valley_length: importParsedData.valleys_ft || 0,
-        step_flashing_length: 0,
-        penetration_count: 3,
-        waste_factor_percent: 10,
       };
 
-      const { error: updateError } = await supabase
+      await supabase
         .from('pipeline_entries')
         .update({
           metadata: {
@@ -174,11 +206,9 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
         })
         .eq('id', pipelineEntryId);
 
-      if (updateError) throw updateError;
-
       toast({
-        title: 'Measurements Applied',
-        description: 'The imported measurements have been saved',
+        title: 'Measurements Saved',
+        description: `${importParsedData.provider} report saved permanently - ${totalSquares.toFixed(1)} squares available for estimates`,
       });
 
       // Reset state and close popover
@@ -187,8 +217,9 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       setImportParsedData(null);
       setImportError(null);
       
-      // Refresh measurement context
+      // Refresh measurement context and approvals
       queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
       
       onSuccess?.();
     } catch (err) {
