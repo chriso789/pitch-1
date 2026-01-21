@@ -435,6 +435,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       return;
     }
 
+    // Calculate max sort_order for items of the same type to add at bottom
+    const sameTypeItems = lineItems.filter(item => item.item_type === newItemType);
+    const maxSortOrder = sameTypeItems.reduce(
+      (max, item) => Math.max(max, item.sort_order || 0),
+      0
+    );
+
     const item: LineItem = {
       id: crypto.randomUUID(),
       item_name: newItem.item_name,
@@ -443,7 +450,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       unit_cost: newItem.unit_cost,
       line_total: newItem.qty * newItem.unit_cost,
       item_type: newItemType,
-      is_override: false
+      is_override: false,
+      sort_order: maxSortOrder + 1
     };
     
     setLineItems([...lineItems, item]);
