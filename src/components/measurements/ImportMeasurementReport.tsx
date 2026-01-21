@@ -143,6 +143,25 @@ export function ImportMeasurementReport({
         throw new Error(data?.message || 'Analysis failed');
       }
 
+      // Handle duplicate report - fetch original parsed data from database
+      if (data.duplicate && data.existing_report_id) {
+        const { data: existingReport } = await supabase
+          .from('roof_vendor_reports')
+          .select('parsed, provider, address')
+          .eq('id', data.existing_report_id)
+          .single();
+
+        if (existingReport?.parsed) {
+          const existingParsed = existingReport.parsed as unknown as ParsedMeasurements;
+          setParsedData(existingParsed);
+          toast({
+            title: 'Report Already Imported',
+            description: `This ${existingReport.provider || data.provider} report was previously imported with ${existingParsed.total_area_sqft?.toLocaleString() || 0} sqft. You can still apply these measurements.`,
+          });
+          return;
+        }
+      }
+
       setParsedData(data.parsed as ParsedMeasurements);
       
       toast({
