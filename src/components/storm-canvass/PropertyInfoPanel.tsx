@@ -128,23 +128,39 @@ export default function PropertyInfoPanel({
   const homeowner = typeof property.homeowner === 'string'
     ? JSON.parse(property.homeowner)
     : property.homeowner;
-  const phoneNumbers = typeof property.phone_numbers === 'string'
-    ? JSON.parse(property.phone_numbers)
-    : property.phone_numbers;
-  const emails = typeof property.emails === 'string'
-    ? JSON.parse(property.emails)
-    : property.emails;
+  
+  // Parse enriched data from searchbug_data
+  const searchbugData = typeof property.searchbug_data === 'string'
+    ? JSON.parse(property.searchbug_data || '{}')
+    : (property.searchbug_data || {});
+  
+  // Get phone numbers from either searchbug_data or direct column
+  const phoneNumbers = searchbugData.phones?.length > 0 
+    ? searchbugData.phones 
+    : (typeof property.phone_numbers === 'string'
+        ? JSON.parse(property.phone_numbers || '[]')
+        : (property.phone_numbers || []));
+  
+  // Get emails from either searchbug_data or direct column
+  const emails = searchbugData.emails?.length > 0
+    ? searchbugData.emails
+    : (typeof property.emails === 'string'
+        ? JSON.parse(property.emails || '[]')
+        : (property.emails || []));
 
-  // Use enriched data if available, otherwise show basic owner
-  const displayOwners = enrichedOwners.length > 0 ? enrichedOwners : [
-    { 
-      id: '1', 
-      name: property.owner_name || homeowner?.name || 'Primary Owner',
-      gender: 'Unknown',
-      credit_score: 'Unknown',
-      is_primary: true
-    },
-  ];
+  // Use enriched owners from API response, then searchbug_data, then fallback
+  const storedOwners = searchbugData.owners || [];
+  const displayOwners = enrichedOwners.length > 0 
+    ? enrichedOwners 
+    : storedOwners.length > 0 
+      ? storedOwners 
+      : [{ 
+          id: '1', 
+          name: property.owner_name || homeowner?.name || 'Primary Owner',
+          gender: 'Unknown',
+          credit_score: 'Unknown',
+          is_primary: true
+        }];
 
   const handleEnrich = async () => {
     if (!property?.id || !profile?.tenant_id) return;
@@ -548,24 +564,30 @@ export default function PropertyInfoPanel({
             Add Customer
           </Button>
 
-          {/* Contact Info */}
+          {/* Contact Info - Enhanced display for enriched data */}
           {(phoneNumbers?.length > 0 || emails?.length > 0) && (
             <div className="space-y-2 mb-4">
               {phoneNumbers && phoneNumbers.length > 0 && (
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <div className="flex flex-wrap gap-1.5">
-                    {phoneNumbers.slice(0, 2).map((phone: string, idx: number) => (
-                      <Button
-                        key={idx}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleCall(phone)}
-                        className="text-xs h-7"
-                      >
-                        {phone}
-                      </Button>
-                    ))}
+                    {phoneNumbers.slice(0, 3).map((phone: any, idx: number) => {
+                      // Handle both string format and object format from enrichment
+                      const phoneNumber = typeof phone === 'string' ? phone : phone.number;
+                      const phoneType = typeof phone === 'object' ? phone.type : null;
+                      return (
+                        <Button
+                          key={idx}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleCall(phoneNumber)}
+                          className="text-xs h-7"
+                        >
+                          {phoneNumber}
+                          {phoneType && <span className="text-muted-foreground ml-1">({phoneType})</span>}
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -573,17 +595,21 @@ export default function PropertyInfoPanel({
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <div className="flex flex-wrap gap-1.5">
-                    {emails.slice(0, 2).map((email: string, idx: number) => (
-                      <Button
-                        key={idx}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleEmail(email)}
-                        className="text-xs h-7 truncate max-w-[140px]"
-                      >
-                        {email}
-                      </Button>
-                    ))}
+                    {emails.slice(0, 2).map((email: any, idx: number) => {
+                      // Handle both string format and object format from enrichment
+                      const emailAddress = typeof email === 'string' ? email : email.address;
+                      return (
+                        <Button
+                          key={idx}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEmail(emailAddress)}
+                          className="text-xs h-7 truncate max-w-[160px]"
+                        >
+                          {emailAddress}
+                        </Button>
+                      );
+                    })}
                   </div>
                 </div>
               )}
