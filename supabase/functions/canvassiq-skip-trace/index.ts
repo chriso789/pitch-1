@@ -50,12 +50,12 @@ serve(async (req) => {
     // Check if already enriched
     const { data: existing } = await supabase
       .from('canvassiq_properties')
-      .select('enrichment_data, enriched_at')
+      .select('searchbug_data, enrichment_last_at')
       .eq('id', property_id)
       .single();
 
-    if (existing?.enrichment_data && existing.enriched_at) {
-      const enrichedAt = new Date(existing.enriched_at);
+    if (existing?.searchbug_data && existing.enrichment_last_at) {
+      const enrichedAt = new Date(existing.enrichment_last_at);
       const daysSinceEnrich = (Date.now() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
       
       // Return cached data if enriched within 30 days
@@ -64,7 +64,7 @@ serve(async (req) => {
         return new Response(
           JSON.stringify({ 
             success: true, 
-            data: existing.enrichment_data,
+            data: existing.searchbug_data,
             cached: true 
           }),
           { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -102,8 +102,9 @@ serve(async (req) => {
     const { error: updateError } = await supabase
       .from('canvassiq_properties')
       .update({
-        enrichment_data: enrichmentData,
-        enriched_at: new Date().toISOString(),
+        searchbug_data: enrichmentData,
+        enrichment_last_at: new Date().toISOString(),
+        enrichment_source: ['searchbug'],
         phone_numbers: enrichmentData.phones?.map((p: any) => p.number) || [],
         emails: enrichmentData.emails?.map((e: any) => e.address) || [],
       })
