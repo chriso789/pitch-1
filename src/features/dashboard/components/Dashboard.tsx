@@ -200,7 +200,8 @@ const Dashboard = () => {
       let query = supabase
         .from('pipeline_entries')
         .select('status')
-        .eq('tenant_id', tenantId);
+        .eq('tenant_id', tenantId)
+        .eq('is_deleted', false);
       
       // Filter by location if selected
       if (currentLocationId) {
