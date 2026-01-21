@@ -187,8 +187,27 @@ export default function PropertyInfoPanel({
 
       if (error) throw error;
 
-      if (data?.data?.owners) {
-        setEnrichedOwners(data.data.owners);
+      if (data?.data) {
+        // Update enriched owners from response
+        if (data.data.owners?.length > 0) {
+          setEnrichedOwners(data.data.owners);
+        }
+        
+        // Refetch property to get updated phone_numbers, emails, owner_name
+        const { data: updatedProperty } = await supabase
+          .from('canvassiq_properties')
+          .select('phone_numbers, emails, owner_name, searchbug_data')
+          .eq('id', property.id)
+          .single();
+        
+        if (updatedProperty) {
+          // Merge updated data into local property reference
+          property.phone_numbers = updatedProperty.phone_numbers;
+          property.emails = updatedProperty.emails;
+          property.owner_name = updatedProperty.owner_name;
+          property.searchbug_data = updatedProperty.searchbug_data;
+        }
+        
         toast.success(data.cached ? 'Using cached data' : 'Property enriched!');
       }
     } catch (err: any) {
