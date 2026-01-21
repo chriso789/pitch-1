@@ -14,6 +14,7 @@ import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleTog
 import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapture';
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
+import PropertyLoadingIndicator from '@/components/storm-canvass/PropertyLoadingIndicator';
 import { locationService } from '@/services/locationService';
 import { gpsTrailService } from '@/services/gpsTrailService';
 import { useToast } from '@/hooks/use-toast';
@@ -76,6 +77,8 @@ export default function LiveCanvassingPage() {
     polyline: string;
   } | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [isLoadingProperties, setIsLoadingProperties] = useState(false);
+  const [loadedPropertyCount, setLoadedPropertyCount] = useState<number | null>(null);
   const previousLocation = useRef<{ lat: number; lng: number } | null>(null);
   const gpsTrailStarted = useRef(false);
 
@@ -351,8 +354,16 @@ export default function LiveCanvassingPage() {
           routeData={routeData}
           destination={destination}
           mapStyle={mapStyle}
+          onLoadingChange={setIsLoadingProperties}
+          onPropertiesLoaded={setLoadedPropertyCount}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
+        
+        {/* Property Loading Indicator */}
+        <PropertyLoadingIndicator
+          isLoading={isLoadingProperties}
+          loadedCount={loadedPropertyCount}
+        />
         
         {/* Camera Floating Action Button */}
         <Button
