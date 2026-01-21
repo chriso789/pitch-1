@@ -1,6 +1,6 @@
 /**
  * canvassiq-skip-trace - Enriches property data with phone, email, credit scores
- * Uses SearchBug API for people search
+ * Uses SearchBug API for people search, with demo data fallback
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -19,8 +19,42 @@ interface RequestBody {
     city?: string;
     state?: string;
     zip?: string;
+    formatted?: string;
   };
   tenant_id: string;
+}
+
+/**
+ * Parse city/state/zip from formatted address when individual fields are missing
+ * Example: "461 NE 33rd St, Boca Raton, FL 33431, USA"
+ */
+function parseFormattedAddress(formatted: string | undefined): { city: string; state: string; zip: string } {
+  if (!formatted) return { city: '', state: '', zip: '' };
+  
+  // Split by comma: [street, city, state+zip, country]
+  const parts = formatted.split(',').map(p => p.trim());
+  
+  let city = '';
+  let state = '';
+  let zip = '';
+  
+  if (parts.length >= 3) {
+    city = parts[1] || '';
+    // State and zip are usually together like "FL 33431"
+    const stateZip = parts[2] || '';
+    const stateZipParts = stateZip.split(' ').filter(Boolean);
+    state = stateZipParts[0] || '';
+    zip = stateZipParts[1] || '';
+  } else if (parts.length === 2) {
+    city = parts[0] || '';
+    const stateZip = parts[1] || '';
+    const stateZipParts = stateZip.split(' ').filter(Boolean);
+    state = stateZipParts[0] || '';
+    zip = stateZipParts[1] || '';
+  }
+  
+  console.log(`[parseFormattedAddress] Parsed: city="${city}", state="${state}", zip="${zip}" from "${formatted}"`);
+  return { city, state, zip };
 }
 
 serve(async (req) => {
@@ -37,6 +71,8 @@ serve(async (req) => {
     const body: RequestBody = await req.json();
     
     console.log('[canvassiq-skip-trace] Enriching property:', body.property_id);
+    console.log('[canvassiq-skip-trace] Owner name:', body.owner_name);
+    console.log('[canvassiq-skip-trace] Address:', JSON.stringify(body.address));
     
     const { property_id, owner_name, address, tenant_id } = body;
     
@@ -47,14 +83,29 @@ serve(async (req) => {
       );
     }
 
-    // Check if already enriched
+    // Ensure we have city/state/zip - parse from formatted if missing
+    let enrichedAddress = { ...address };
+    if (!address?.city || !address?.state) {
+      const parsed = parseFormattedAddress(address?.formatted);
+      enrichedAddress = {
+        ...address,
+        city: address?.city || parsed.city,
+        state: address?.state || parsed.state,
+        zip: address?.zip || parsed.zip,
+      };
+      console.log('[canvassiq-skip-trace] Enriched address:', JSON.stringify(enrichedAddress));
+    }
+
+    // Check if already enriched (but only if owner is valid)
     const { data: existing } = await supabase
       .from('canvassiq_properties')
-      .select('searchbug_data, enrichment_last_at')
+      .select('searchbug_data, enrichment_last_at, owner_name')
       .eq('id', property_id)
       .single();
 
-    if (existing?.searchbug_data && existing.enrichment_last_at) {
+    // Use cache if enriched within 30 days AND has valid owner data
+    const hasValidOwner = existing?.owner_name && existing.owner_name !== 'Unknown' && existing.owner_name !== 'Unknown Owner';
+    if (existing?.searchbug_data && existing.enrichment_last_at && hasValidOwner) {
       const enrichedAt = new Date(existing.enrichment_last_at);
       const daysSinceEnrich = (Date.now() - enrichedAt.getTime()) / (1000 * 60 * 60 * 24);
       
@@ -79,11 +130,16 @@ serve(async (req) => {
       enriched_at: new Date().toISOString(),
     };
 
-    // If SearchBug API key is available, try to use it
-    if (searchBugApiKey) {
-      console.log('[canvassiq-skip-trace] Attempting SearchBug API lookup');
+    // Determine effective owner name for enrichment
+    const effectiveOwnerName = (owner_name && owner_name !== 'Unknown' && owner_name !== 'Unknown Owner') 
+      ? owner_name 
+      : null;
+
+    // If SearchBug API key is available AND we have valid owner name, try to use it
+    if (searchBugApiKey && effectiveOwnerName) {
+      console.log('[canvassiq-skip-trace] Attempting SearchBug API lookup for:', effectiveOwnerName);
       try {
-        const searchResult = await callSearchBugAPI(searchBugApiKey, owner_name, address);
+        const searchResult = await callSearchBugAPI(searchBugApiKey, effectiveOwnerName, enrichedAddress);
         if (searchResult && searchResult.owners?.length > 0) {
           console.log(`[canvassiq-skip-trace] SearchBug returned ${searchResult.owners.length} owners`);
           enrichmentData = {
@@ -93,17 +149,17 @@ serve(async (req) => {
         } else {
           // API returned no results, use demo data
           console.log('[canvassiq-skip-trace] SearchBug returned no results, using demo data');
-          enrichmentData = generateDemoEnrichment(owner_name);
+          enrichmentData = generateDemoEnrichment(effectiveOwnerName);
         }
       } catch (apiError) {
         console.error('[canvassiq-skip-trace] SearchBug API error, using demo data:', apiError);
         // Fall back to demo data on error
-        enrichmentData = generateDemoEnrichment(owner_name);
+        enrichmentData = generateDemoEnrichment(effectiveOwnerName);
       }
     } else {
-      // Generate demo data for testing
-      console.log('[canvassiq-skip-trace] No API key, generating demo data');
-      enrichmentData = generateDemoEnrichment(owner_name);
+      // Generate demo data - always provide data for the UI
+      console.log('[canvassiq-skip-trace] Generating demo data (no API key or no valid owner)');
+      enrichmentData = generateDemoEnrichment(effectiveOwnerName);
     }
 
     // Update the property with enrichment data
