@@ -605,7 +605,7 @@ const Dashboard = () => {
               title="Unassigned Leads"
               count={unassignedLeads}
               icon={UserCircle}
-              onClick={() => navigate('/pipeline')}
+              onClick={() => navigate('/client-list?rep=unassigned')}
             />
             <MetricCard
               title="Jobs for Approval"

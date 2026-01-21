@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
@@ -126,6 +126,7 @@ type ViewType = 'contacts' | 'jobs';
 
 export const EnhancedClientList = () => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { currentLocationId, locations } = useLocation();
   const { activeCompanyId } = useCompanySwitcher();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
@@ -258,10 +259,15 @@ export const EnhancedClientList = () => {
     fetchLocationReps();
   }, [currentLocationId, userProfile?.active_tenant_id, userProfile?.tenant_id]);
 
-  // Reset rep filter when location changes
+  // Reset rep filter when location changes, but preserve URL param
   useEffect(() => {
-    setSelectedReps([]);
-  }, [currentLocationId]);
+    const repParam = searchParams.get('rep');
+    if (repParam === 'unassigned') {
+      setSelectedReps(['unassigned']);
+    } else {
+      setSelectedReps([]);
+    }
+  }, [currentLocationId, searchParams]);
 
   const loadUserPreferences = async () => {
     try {
