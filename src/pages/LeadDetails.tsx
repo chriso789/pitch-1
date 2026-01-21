@@ -32,6 +32,7 @@ import { PullMeasurementsButton } from '@/components/measurements/PullMeasuremen
 import { ImportReportButton } from '@/components/measurements/ImportReportButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ApprovedMeasurementsList } from '@/components/measurements/ApprovedMeasurementsList';
+import { UnifiedMeasurementPanel } from '@/components/measurements/UnifiedMeasurementPanel';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
 import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
@@ -448,55 +449,17 @@ const LeadDetails = () => {
               }}
             />
 
-            {/* Measurement Tools Section */}
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Ruler className="h-5 w-5" />
-                      Roof Measurements
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      Choose how to measure the roof - manually draw or use AI automation
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <ManualMeasurementButton
-                      pipelineEntryId={id!}
-                      onSuccess={() => {
-                        refetchMeasurements();
-                        refetchRequirements();
-                      }}
-                    />
-                    <ImportReportButton 
-                      pipelineEntryId={id!}
-                      onSuccess={() => {
-                        refetchMeasurements();
-                        refetchRequirements();
-                      }}
-                    />
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <PullMeasurementsButton 
-                  propertyId={id!}
-                  lat={lead?.contact?.verified_address?.lat || lead?.contact?.latitude || 0}
-                  lng={lead?.contact?.verified_address?.lng || lead?.contact?.longitude || 0}
-                  address={lead?.verified_address?.formatted_address || ''}
-                  onSuccess={() => {
-                    refetchMeasurements();
-                    refetchRequirements();
-                  }}
-                />
-                
-                {/* Show approved measurements if any */}
-                <div className="mt-4">
-                  <ApprovedMeasurementsList pipelineEntryId={id!} />
-                </div>
-              </CardContent>
-            </Card>
+            {/* Unified Measurement Management Panel */}
+            <UnifiedMeasurementPanel 
+              pipelineEntryId={id!}
+              latitude={lead?.contact?.verified_address?.lat || lead?.contact?.latitude || 0}
+              longitude={lead?.contact?.verified_address?.lng || lead?.contact?.longitude || 0}
+              address={lead?.verified_address?.formatted_address || ''}
+              onMeasurementChange={() => {
+                refetchMeasurements();
+                refetchRequirements();
+              }}
+            />
 
             {/* Existing Template Selector */}
             <MultiTemplateSelector
