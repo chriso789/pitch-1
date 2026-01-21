@@ -15,6 +15,8 @@ interface GoogleLiveLocationMapProps {
   routeData?: { polyline: string; distance?: any; duration?: number } | null;
   destination?: { lat: number; lng: number; address: string } | null;
   mapStyle: MapStyle;
+  onLoadingChange?: (isLoading: boolean) => void;
+  onPropertiesLoaded?: (count: number) => void;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
@@ -30,6 +32,8 @@ export default function GoogleLiveLocationMap({
   routeData,
   destination,
   mapStyle,
+  onLoadingChange,
+  onPropertiesLoaded,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -169,6 +173,8 @@ export default function GoogleLiveLocationMap({
             map={map.current}
             userLocation={userLocation}
             onPropertyClick={onParcelSelect}
+            onLoadingChange={onLoadingChange}
+            onPropertiesLoaded={onPropertiesLoaded}
           />
           {routeData?.polyline && destination && (
             <GoogleRouteVisualization

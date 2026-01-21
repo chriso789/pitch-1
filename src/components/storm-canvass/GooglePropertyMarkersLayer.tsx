@@ -2,13 +2,13 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { toast } from 'sonner';
-import { useDebounce } from '@/hooks/useDebounce';
 
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
   userLocation: { lat: number; lng: number };
   onPropertyClick: (property: any) => void;
+  onLoadingChange?: (isLoading: boolean) => void;
+  onPropertiesLoaded?: (count: number) => void;
 }
 
 interface CanvassiqProperty {
@@ -156,6 +156,8 @@ export default function GooglePropertyMarkersLayer({
   map,
   userLocation,
   onPropertyClick,
+  onLoadingChange,
+  onPropertiesLoaded,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
   const markersRef = useRef<google.maps.Marker[]>([]);
@@ -179,6 +181,7 @@ export default function GooglePropertyMarkersLayer({
     // Mark all cells as being loaded
     gridCells.forEach(cell => loadedGridCellsRef.current.add(cell));
     setIsLoading(true);
+    onLoadingChange?.(true);
     
     try {
       console.log('[GooglePropertyMarkersLayer] Loading parcels for', gridCells.length, 'cells at', lat.toFixed(5), lng.toFixed(5));
@@ -196,7 +199,7 @@ export default function GooglePropertyMarkersLayer({
 
       if (data?.properties?.length > 0) {
         console.log('[GooglePropertyMarkersLayer] Loaded', data.properties.length, 'properties');
-        toast.success(`Loaded ${data.properties.length} properties`);
+        onPropertiesLoaded?.(data.properties.length);
         return true;
       }
       
@@ -207,8 +210,9 @@ export default function GooglePropertyMarkersLayer({
       return false;
     } finally {
       setIsLoading(false);
+      onLoadingChange?.(false);
     }
-  }, [profile?.tenant_id]);
+  }, [profile?.tenant_id, onLoadingChange, onPropertiesLoaded]);
 
   const getDispositionColor = (disposition: string | null): string => {
     if (!disposition) return DEFAULT_COLOR;
@@ -429,14 +433,10 @@ export default function GooglePropertyMarkersLayer({
     };
   }, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearMarkers]);
 
-  // Show loading indicator
+  // Notify parent of loading state changes
   useEffect(() => {
-    if (isLoading) {
-      toast.loading('Loading properties...', { id: 'property-loading' });
-    } else {
-      toast.dismiss('property-loading');
-    }
-  }, [isLoading]);
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   return null;
 }
