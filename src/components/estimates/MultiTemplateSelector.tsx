@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye, Edit, X, CheckCircle, AlertCircle, MapPin, ArrowRight } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye, Edit, X, CheckCircle, AlertCircle, MapPin, ArrowRight, Check, Plus } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
@@ -126,6 +126,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
+  
+  // Add line item state
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemType, setNewItemType] = useState<'material' | 'labor'>('material');
+  const [newItem, setNewItem] = useState({
+    item_name: '',
+    qty: 1,
+    unit: 'ea',
+    unit_cost: 0
+  });
   
   // Inline import state (replaces dialog)
   const [isImporting, setIsImporting] = useState(false);
@@ -405,6 +415,50 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       title: 'Item Removed',
       description: 'Line item deleted from estimate'
     });
+  };
+
+  // Handle adding a new line item
+  const handleAddLineItem = (type: 'material' | 'labor') => {
+    setNewItemType(type);
+    setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
+    setIsAddingItem(true);
+  };
+
+  // Save the new line item
+  const handleSaveNewItem = () => {
+    if (!newItem.item_name.trim()) {
+      toast({
+        title: 'Error',
+        description: 'Item name is required',
+        variant: 'destructive'
+      });
+      return;
+    }
+
+    const item: LineItem = {
+      id: crypto.randomUUID(),
+      item_name: newItem.item_name,
+      qty: newItem.qty,
+      unit: newItem.unit,
+      unit_cost: newItem.unit_cost,
+      line_total: newItem.qty * newItem.unit_cost,
+      item_type: newItemType,
+      is_override: false
+    };
+    
+    setLineItems([...lineItems, item]);
+    setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
+    setIsAddingItem(false);
+    toast({
+      title: 'Item Added',
+      description: `${newItem.item_name} added to ${newItemType}`
+    });
+  };
+
+  // Cancel adding a new item
+  const handleCancelAddItem = () => {
+    setIsAddingItem(false);
+    setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
   };
 
   // Fetch company info and estimate settings
@@ -1398,12 +1452,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </div>
       )}
 
-      {/* Sectioned Line Items Table */}
-      {!fetchingItems && lineItems.length > 0 && (
+      {/* Sectioned Line Items Table - Always show when not fetching to allow adding items */}
+      {!fetchingItems && (
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base">
-              {selectedTemplate?.name || 'Template'} Line Items
+              {selectedTemplate?.name || 'Estimate'} Line Items
             </CardTitle>
             {lineItems.some(item => item.is_override) && (
               <Button variant="ghost" size="sm" onClick={resetToOriginal}>
@@ -1421,18 +1475,78 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               onUpdateItem={updateLineItem}
               onDeleteItem={handleDeleteLineItem}
               onResetItem={handleResetItem}
+              onAddItem={handleAddLineItem}
               editable={true}
             />
           </CardContent>
         </Card>
       )}
 
-      {/* No Items State */}
-      {selectedTemplateId && !fetchingItems && lineItems.length === 0 && (
+      {/* Add Line Item Form */}
+      {isAddingItem && (
+        <Card className="border-primary/50">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              Add {newItemType === 'material' ? 'Material' : 'Labor'} Item
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-2 flex-wrap">
+              <div className="flex-1 min-w-[200px]">
+                <Label className="text-xs">Item Name</Label>
+                <Input
+                  value={newItem.item_name}
+                  onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
+                  placeholder="Item name"
+                  autoFocus
+                />
+              </div>
+              <div className="w-20">
+                <Label className="text-xs">Qty</Label>
+                <Input
+                  type="number"
+                  value={newItem.qty}
+                  onChange={(e) => setNewItem({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="w-20">
+                <Label className="text-xs">Unit</Label>
+                <Input
+                  value={newItem.unit}
+                  onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                  placeholder="ea"
+                />
+              </div>
+              <div className="w-24">
+                <Label className="text-xs">Unit Cost</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={newItem.unit_cost}
+                  onChange={(e) => setNewItem({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={handleSaveNewItem} size="sm">
+                  <Check className="h-4 w-4 mr-1" />
+                  Add
+                </Button>
+                <Button variant="ghost" size="sm" onClick={handleCancelAddItem}>
+                  <X className="h-4 w-4 mr-1" />
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* No Template Selected State */}
+      {selectedTemplateId && !fetchingItems && lineItems.length === 0 && !isAddingItem && (
         <Card>
           <CardContent className="py-6 text-center">
             <p className="text-sm text-muted-foreground mb-3">
-              This template has no line items configured.
+              This template has no line items configured, or add items manually.
             </p>
             <Button onClick={handleSeedTemplates} disabled={seeding} variant="outline" size="sm">
               {seeding ? (

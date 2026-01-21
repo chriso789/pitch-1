@@ -20,7 +20,8 @@ import {
   X, 
   RotateCcw,
   Trash2,
-  Receipt
+  Receipt,
+  Plus
 } from 'lucide-react';
 import type { LineItem } from '@/hooks/useEstimatePricing';
 
@@ -32,6 +33,7 @@ interface SectionedLineItemsTableProps {
   onUpdateItem: (id: string, updates: Partial<LineItem>) => void;
   onDeleteItem?: (id: string) => void;
   onResetItem?: (id: string) => void;
+  onAddItem?: (type: 'material' | 'labor') => void;
   editable?: boolean;
   taxEnabled?: boolean;
   taxRate?: number;
@@ -60,6 +62,7 @@ export function SectionedLineItemsTable({
   onUpdateItem,
   onDeleteItem,
   onResetItem,
+  onAddItem,
   editable = true,
   taxEnabled = false,
   taxRate = 7,
@@ -233,33 +236,55 @@ export function SectionedLineItemsTable({
         </TableHeader>
         <TableBody>
           {/* Materials Section */}
-          {materialItems.length > 0 && (
-            <>
-              {renderSectionHeader(
-                'MATERIALS',
-                <Package className="h-4 w-4" />,
-                materialItems.length
-              )}
-              {materialItems.map(renderItemRow)}
-              {renderSectionSubtotal('Materials Subtotal', materialsTotal)}
-            </>
+          {renderSectionHeader(
+            'MATERIALS',
+            <Package className="h-4 w-4" />,
+            materialItems.length
           )}
+          {materialItems.map(renderItemRow)}
+          {editable && onAddItem && (
+            <TableRow className="hover:bg-muted/30">
+              <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => onAddItem('material')}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Material Item
+                </Button>
+              </TableCell>
+            </TableRow>
+          )}
+          {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
 
           {/* Labor Section */}
-          {laborItems.length > 0 && (
-            <>
-              {renderSectionHeader(
-                'LABOR',
-                <Hammer className="h-4 w-4" />,
-                laborItems.length
-              )}
-              {laborItems.map(renderItemRow)}
-              {renderSectionSubtotal('Labor Subtotal', laborTotal)}
-            </>
+          {renderSectionHeader(
+            'LABOR',
+            <Hammer className="h-4 w-4" />,
+            laborItems.length
           )}
+          {laborItems.map(renderItemRow)}
+          {editable && onAddItem && (
+            <TableRow className="hover:bg-muted/30">
+              <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => onAddItem('labor')}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Labor Item
+                </Button>
+              </TableCell>
+            </TableRow>
+          )}
+          {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', laborTotal)}
 
-          {/* Empty State */}
-          {materialItems.length === 0 && laborItems.length === 0 && (
+          {/* Empty State - only show if no add buttons available */}
+          {materialItems.length === 0 && laborItems.length === 0 && !onAddItem && (
             <TableRow>
               <TableCell colSpan={editable ? 5 : 4} className="text-center py-8 text-muted-foreground">
                 No line items. Select a template to populate items.
