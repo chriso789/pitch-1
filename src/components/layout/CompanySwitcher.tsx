@@ -84,7 +84,7 @@ export const CompanySwitcher = () => {
         <DropdownMenuSeparator />
         
         {/* Scrollable Company List */}
-        <ScrollArea className="max-h-[300px]">
+        <ScrollArea className="h-[300px]">
           {filteredCompanies.length === 0 ? (
             <div className="py-6 text-center text-sm text-muted-foreground">
               No companies found
