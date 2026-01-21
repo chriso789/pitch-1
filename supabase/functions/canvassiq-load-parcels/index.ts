@@ -18,6 +18,9 @@ interface GeocodingResult {
   lng: number;
   street_number: string;
   street_name: string;
+  city: string;
+  state: string;
+  zip: string;
   formatted_address: string;
   place_id: string;
 }
@@ -306,8 +309,10 @@ async function loadRealParcelsFromGeocoding(
           // Fetch owner data from Regrid if API key is available
           let ownerData: { owner_name: string | null; mailing_address: string | null } = { owner_name: null, mailing_address: null };
           if (regridApiKey) {
+            console.log(`[canvassiq-load-parcels] Fetching Regrid owner for ${result.lat},${result.lng}`);
             try {
               ownerData = await fetchRegridOwner(result.lat, result.lng, regridApiKey);
+              console.log(`[canvassiq-load-parcels] Regrid result: ${JSON.stringify(ownerData)}`);
             } catch (e) {
               console.error('[canvassiq-load-parcels] Regrid owner fetch failed:', e);
             }
@@ -320,11 +325,14 @@ async function loadRealParcelsFromGeocoding(
             original_lat: result.lat,
             original_lng: result.lng,
             building_snapped: false,
-            // Store address as proper JSON object (not stringified)
+            // Store address as proper JSON object with city/state/zip
             address: {
               street: `${result.street_number} ${result.street_name}`,
               street_number: result.street_number,
               street_name: result.street_name,
+              city: result.city,
+              state: result.state,
+              zip: result.zip,
               formatted: result.formatted_address,
               place_id: result.place_id,
               normalized_key: normalizedAddressKey
@@ -362,11 +370,14 @@ async function loadRealParcelsFromGeocoding(
               lng: result.lng,
               original_lat: result.lat,
               original_lng: result.lng,
-              // Store address as proper JSON object (not stringified)
+              // Store address as proper JSON object with city/state/zip
               address: {
                 street: `${result.street_number} ${result.street_name}`,
                 street_number: result.street_number,
                 street_name: result.street_name,
+                city: result.city,
+                state: result.state,
+                zip: result.zip,
                 formatted: result.formatted_address,
                 place_id: result.place_id,
                 normalized_key: normalizedAddressKey
@@ -438,7 +449,7 @@ function normalizeAddressKey(streetNumber: string, streetName: string): string {
   return normalized;
 }
 
-// Reverse geocode a single point to get the street address
+// Reverse geocode a single point to get the street address with city/state/zip
 async function reverseGeocode(lat: number, lng: number, apiKey: string): Promise<GeocodingResult | null> {
   const url = `https://maps.googleapis.com/maps/api/geocode/json?latlng=${lat},${lng}&result_type=street_address&key=${apiKey}`;
   
@@ -452,9 +463,12 @@ async function reverseGeocode(lat: number, lng: number, apiKey: string): Promise
   const result = data.results[0];
   const components = result.address_components || [];
   
-  // Extract street number and street name from address components
+  // Extract all address components
   let streetNumber = '';
   let streetName = '';
+  let city = '';
+  let state = '';
+  let zip = '';
   
   for (const component of components) {
     if (component.types.includes('street_number')) {
@@ -462,6 +476,15 @@ async function reverseGeocode(lat: number, lng: number, apiKey: string): Promise
     }
     if (component.types.includes('route')) {
       streetName = component.long_name;
+    }
+    if (component.types.includes('locality')) {
+      city = component.long_name;
+    }
+    if (component.types.includes('administrative_area_level_1')) {
+      state = component.short_name;
+    }
+    if (component.types.includes('postal_code')) {
+      zip = component.long_name;
     }
   }
   
@@ -475,6 +498,9 @@ async function reverseGeocode(lat: number, lng: number, apiKey: string): Promise
     lng: result.geometry.location.lng,
     street_number: streetNumber,
     street_name: streetName,
+    city,
+    state,
+    zip,
     formatted_address: result.formatted_address,
     place_id: result.place_id
   };
@@ -544,34 +570,53 @@ function generateRandomName(): string {
   return `${firstName} ${lastName}`;
 }
 
-// Fetch property owner from Regrid API
+// Fetch property owner from Regrid API (v2 endpoint)
 async function fetchRegridOwner(lat: number, lng: number, apiKey: string): Promise<{ owner_name: string | null; mailing_address: string | null }> {
   try {
-    const url = `https://app.regrid.com/api/v1/parcel/point?lat=${lat}&lon=${lng}&token=${apiKey}`;
+    // Use Regrid v2 API for better response format
+    const url = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&token=${apiKey}&return_geometry=false`;
+    
+    console.log(`[fetchRegridOwner] Calling Regrid API for ${lat},${lng}`);
     
     const response = await fetch(url, {
       method: 'GET',
-      headers: { 'Accept': 'application/json' }
+      headers: { 
+        'Accept': 'application/json',
+        'User-Agent': 'PitchCRM/1.0'
+      }
     });
     
     if (!response.ok) {
-      console.error('[fetchRegridOwner] Regrid API error:', response.status);
+      const errorText = await response.text();
+      console.error(`[fetchRegridOwner] Regrid API error ${response.status}: ${errorText.slice(0, 200)}`);
       return { owner_name: null, mailing_address: null };
     }
     
     const data = await response.json();
-    const parcel = data?.results?.[0]?.properties?.fields || data?.results?.[0]?.properties || {};
+    console.log(`[fetchRegridOwner] Response keys: ${Object.keys(data || {}).join(', ')}`);
+    
+    // v2 returns parcels array with properties.fields
+    const parcel = data?.parcels?.[0]?.properties?.fields || 
+                   data?.results?.[0]?.properties?.fields || 
+                   data?.results?.[0]?.properties || 
+                   {};
+    
+    console.log(`[fetchRegridOwner] Parcel fields: ${Object.keys(parcel).slice(0, 10).join(', ')}`);
     
     // Try different field names Regrid uses for owner
     const ownerName = parcel.owner || parcel.owner_name || parcel.owner1 || 
-                      parcel.ownername || parcel.parval_owner || null;
+                      parcel.ownername || parcel.parval_owner || parcel.ownfrst ||
+                      (parcel.ownfrst && parcel.ownlast ? `${parcel.ownfrst} ${parcel.ownlast}` : null) ||
+                      null;
     
     // Try to get mailing address
     const mailingAddress = parcel.mail_address || parcel.mailadd || parcel.mail || 
-                           parcel.situs_full || null;
+                           parcel.situs_full || parcel.address || null;
     
     if (ownerName) {
-      console.log(`[fetchRegridOwner] Found owner: ${ownerName}`);
+      console.log(`[fetchRegridOwner] Found owner: "${ownerName}"`);
+    } else {
+      console.log(`[fetchRegridOwner] No owner found in parcel data`);
     }
     
     return { owner_name: ownerName, mailing_address: mailingAddress };

@@ -79,18 +79,26 @@ serve(async (req) => {
       enriched_at: new Date().toISOString(),
     };
 
-    // If SearchBug API key is available, use it
+    // If SearchBug API key is available, try to use it
     if (searchBugApiKey) {
+      console.log('[canvassiq-skip-trace] Attempting SearchBug API lookup');
       try {
         const searchResult = await callSearchBugAPI(searchBugApiKey, owner_name, address);
-        if (searchResult) {
+        if (searchResult && searchResult.owners?.length > 0) {
+          console.log(`[canvassiq-skip-trace] SearchBug returned ${searchResult.owners.length} owners`);
           enrichmentData = {
             ...enrichmentData,
             ...searchResult,
           };
+        } else {
+          // API returned no results, use demo data
+          console.log('[canvassiq-skip-trace] SearchBug returned no results, using demo data');
+          enrichmentData = generateDemoEnrichment(owner_name);
         }
       } catch (apiError) {
-        console.error('[canvassiq-skip-trace] SearchBug API error:', apiError);
+        console.error('[canvassiq-skip-trace] SearchBug API error, using demo data:', apiError);
+        // Fall back to demo data on error
+        enrichmentData = generateDemoEnrichment(owner_name);
       }
     } else {
       // Generate demo data for testing
@@ -148,22 +156,29 @@ serve(async (req) => {
 });
 
 async function callSearchBugAPI(apiKey: string, name: string, address: any) {
-  // SearchBug People Search API - use their documented endpoint
+  // SearchBug People Search API
   const firstName = name.split(' ')[0] || '';
   const lastName = name.split(' ').slice(1).join(' ') || '';
   
+  // Skip API call if we don't have a valid name
+  if (!firstName || firstName === 'Unknown') {
+    console.log(`[callSearchBugAPI] Skipping - invalid name: "${name}"`);
+    return null;
+  }
+  
   const params = new URLSearchParams({
-    api_key: apiKey,
-    first_name: firstName,
-    last_name: lastName,
+    type: 'people',
+    first: firstName,
+    last: lastName,
     city: address?.city || '',
     state: address?.state || '',
-    zip: address?.zip || '',
+    format: 'json',
+    key: apiKey,
   });
 
-  console.log(`[callSearchBugAPI] Searching for: ${firstName} ${lastName} in ${address?.city}, ${address?.state}`);
+  console.log(`[callSearchBugAPI] Searching for: ${firstName} ${lastName} in ${address?.city || 'unknown city'}, ${address?.state || 'unknown state'}`);
 
-  const response = await fetch(`https://www.searchbug.com/api/search.aspx?${params}`, {
+  const response = await fetch(`https://api.searchbug.com/api/search.aspx?${params}`, {
     method: 'GET',
     headers: { 
       'Accept': 'application/json',
@@ -171,34 +186,59 @@ async function callSearchBugAPI(apiKey: string, name: string, address: any) {
     },
   });
 
+  // Check for non-JSON response (API error pages)
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json') && !contentType.includes('text/json')) {
+    const text = await response.text();
+    console.error(`[callSearchBugAPI] Non-JSON response (${contentType}): ${text.slice(0, 200)}`);
+    return null; // Will trigger demo data fallback
+  }
+
   if (!response.ok) {
-    throw new Error(`SearchBug API error: ${response.status}`);
+    const errorText = await response.text();
+    console.error(`[callSearchBugAPI] SearchBug API error ${response.status}: ${errorText.slice(0, 200)}`);
+    return null;
   }
 
   const data = await response.json();
-  console.log(`[callSearchBugAPI] Response received:`, JSON.stringify(data).slice(0, 200));
+  console.log(`[callSearchBugAPI] Response received:`, JSON.stringify(data).slice(0, 300));
+  
+  // Handle empty or error responses
+  if (data.error || data.status === 'error') {
+    console.error(`[callSearchBugAPI] API returned error: ${data.error || data.message}`);
+    return null;
+  }
   
   // Parse SearchBug response format
-  const owners = (data.people || []).slice(0, 3).map((person: any, idx: number) => ({
+  const people = data.people || data.results || data.records || [];
+  const owners = people.slice(0, 3).map((person: any, idx: number) => ({
     id: String(idx + 1),
-    name: `${person.first_name || ''} ${person.last_name || ''}`.trim(),
+    name: `${person.first_name || person.firstName || ''} ${person.last_name || person.lastName || ''}`.trim() || name,
     gender: person.gender || 'Unknown',
     age: person.age || null,
     credit_score: estimateCreditScore(),
     is_primary: idx === 0,
   }));
 
-  const phones = (data.phones || []).slice(0, 5).map((phone: any) => ({
-    number: phone.phone_number || phone.number,
-    type: phone.phone_type || 'unknown',
+  const phoneData = data.phones || data.phone_numbers || [];
+  const phones = phoneData.slice(0, 5).map((phone: any) => ({
+    number: phone.phone_number || phone.number || phone.phone,
+    type: phone.phone_type || phone.type || 'unknown',
     carrier: phone.carrier || null,
-    score: phone.reliability_score || 70,
+    score: phone.reliability_score || phone.score || 70,
   }));
 
-  const emails = (data.emails || []).slice(0, 3).map((email: any) => ({
-    address: email.email_address || email.email,
-    type: email.email_type || 'personal',
+  const emailData = data.emails || data.email_addresses || [];
+  const emails = emailData.slice(0, 3).map((email: any) => ({
+    address: email.email_address || email.email || email.address,
+    type: email.email_type || email.type || 'personal',
   }));
+
+  // If no owners found, return null to trigger demo data
+  if (owners.length === 0) {
+    console.log('[callSearchBugAPI] No owners found in response');
+    return null;
+  }
 
   return { owners, phones, emails };
 }
