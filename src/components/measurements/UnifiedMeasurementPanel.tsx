@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/collapsible';
 import { 
   CheckCircle2, Trash2, Ruler, Star, Plus, ChevronDown,
-  Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator
+  Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator,
+  Clock, ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
@@ -148,7 +149,7 @@ export function UnifiedMeasurementPanel({
     fetchActiveApproval();
   }, [pipelineEntryId]);
 
-  // Fetch all measurement approvals
+  // Fetch all measurement approvals (saved/approved measurements)
   const { data: approvals, isLoading, refetch } = useQuery({
     queryKey: ['measurement-approvals', pipelineEntryId],
     queryFn: async () => {
@@ -160,6 +161,52 @@ export function UnifiedMeasurementPanel({
 
       if (error) throw error;
       return data as SavedMeasurement[];
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // Fetch raw vendor reports (roof_vendor_reports) for history
+  const { data: vendorReports } = useQuery({
+    queryKey: ['vendor-reports', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('roof_vendor_reports')
+        .select('id, provider, address, created_at, parsed')
+        .eq('lead_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching vendor reports:', error);
+        return [];
+      }
+      return (data || []).map(r => ({
+        id: r.id,
+        provider: r.provider,
+        address: r.address,
+        created_at: r.created_at,
+        parsed: (r.parsed && typeof r.parsed === 'object' && !Array.isArray(r.parsed)) 
+          ? r.parsed as Record<string, any>
+          : null
+      }));
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // Fetch AI-pulled measurements (roof_measurements) for history
+  const { data: aiMeasurements } = useQuery({
+    queryKey: ['ai-measurements', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('roof_measurements')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length')
+        .eq('customer_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching AI measurements:', error);
+        return [];
+      }
+      return data || [];
     },
     enabled: !!pipelineEntryId,
   });
@@ -377,6 +424,15 @@ export function UnifiedMeasurementPanel({
             </div>
           )}
 
+          {/* Measurement History Section */}
+          <MeasurementHistorySection
+            vendorReports={vendorReports || []}
+            aiMeasurements={aiMeasurements || []}
+            pipelineEntryId={pipelineEntryId}
+            onSaveToApprovals={handleMeasurementSuccess}
+            isPhone={layout.isPhone}
+          />
+
           {/* Add Measurement Options */}
           <Collapsible open={addOptionsOpen} onOpenChange={setAddOptionsOpen}>
             <CollapsibleTrigger asChild>
@@ -580,6 +636,262 @@ function MeasurementCard({
         </Button>
       </div>
     </div>
+  );
+}
+
+// Measurement History Section Component
+interface MeasurementHistorySectionProps {
+  vendorReports: Array<{
+    id: string;
+    provider: string | null;
+    address: string | null;
+    created_at: string;
+    parsed: Record<string, any> | null;
+  }>;
+  aiMeasurements: Array<{
+    id: string;
+    created_at: string;
+    customer_id: string;
+    total_area_adjusted_sqft: number | null;
+    total_squares: number | null;
+    predominant_pitch: string | null;
+    facet_count: number | null;
+    total_ridge_length: number | null;
+    total_hip_length: number | null;
+    total_valley_length: number | null;
+  }>;
+  pipelineEntryId: string;
+  onSaveToApprovals: () => void;
+  isPhone: boolean;
+}
+
+function MeasurementHistorySection({
+  vendorReports,
+  aiMeasurements,
+  pipelineEntryId,
+  onSaveToApprovals,
+  isPhone,
+}: MeasurementHistorySectionProps) {
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+
+  const totalHistoryCount = (vendorReports?.length || 0) + (aiMeasurements?.length || 0);
+
+  if (totalHistoryCount === 0) {
+    return null;
+  }
+
+  const handleSaveVendorReport = async (report: MeasurementHistorySectionProps['vendorReports'][0]) => {
+    setIsSaving(report.id);
+    try {
+      const { data: entry } = await supabase
+        .from('pipeline_entries')
+        .select('tenant_id, metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (!entry?.tenant_id) throw new Error('No tenant found');
+
+      const parsed = report.parsed || {};
+      const totalSquares = parsed.total_area_sqft ? parsed.total_area_sqft / 100 : 0;
+
+      const savedTags = {
+        'roof.plan_area': parsed.total_area_sqft || 0,
+        'roof.total_sqft': parsed.total_area_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': parsed.predominant_pitch || '6/12',
+        'roof.faces_count': parsed.facet_count || 0,
+        'lf.ridge': parsed.ridges_ft || 0,
+        'lf.hip': parsed.hips_ft || 0,
+        'lf.valley': parsed.valleys_ft || 0,
+        'lf.rake': parsed.rakes_ft || 0,
+        'lf.eave': parsed.eaves_ft || 0,
+        'source': `imported_${report.provider || 'unknown'}`,
+        'imported_at': report.created_at,
+      };
+
+      await supabase.from('measurement_approvals').insert({
+        tenant_id: entry.tenant_id,
+        pipeline_entry_id: pipelineEntryId,
+        approved_at: new Date().toISOString(),
+        saved_tags: savedTags,
+        approval_notes: `Saved from ${report.provider} history - ${parsed.total_area_sqft?.toLocaleString() || 0} sqft`,
+      });
+
+      toast({
+        title: 'Measurement Saved',
+        description: `${report.provider} measurement added to saved list`,
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      onSaveToApprovals();
+    } catch (error: any) {
+      console.error('Save error:', error);
+      toast({
+        title: 'Save Failed',
+        description: error.message || 'Failed to save measurement',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(null);
+    }
+  };
+
+  const handleSaveAiMeasurement = async (measurement: MeasurementHistorySectionProps['aiMeasurements'][0]) => {
+    setIsSaving(measurement.id);
+    try {
+      const { data: entry } = await supabase
+        .from('pipeline_entries')
+        .select('tenant_id, metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (!entry?.tenant_id) throw new Error('No tenant found');
+
+      const totalSquares = measurement.total_squares || (measurement.total_area_adjusted_sqft ? measurement.total_area_adjusted_sqft / 100 : 0);
+
+      const savedTags = {
+        'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+        'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
+        'roof.faces_count': measurement.facet_count || 0,
+        'lf.ridge': measurement.total_ridge_length || 0,
+        'lf.hip': measurement.total_hip_length || 0,
+        'lf.valley': measurement.total_valley_length || 0,
+        'source': 'ai_pulled',
+        'imported_at': measurement.created_at,
+      };
+
+      await supabase.from('measurement_approvals').insert({
+        tenant_id: entry.tenant_id,
+        pipeline_entry_id: pipelineEntryId,
+        approved_at: new Date().toISOString(),
+        saved_tags: savedTags,
+        approval_notes: `Saved from AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
+      });
+
+      toast({
+        title: 'Measurement Saved',
+        description: 'AI measurement added to saved list',
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      onSaveToApprovals();
+    } catch (error: any) {
+      console.error('Save error:', error);
+      toast({
+        title: 'Save Failed',
+        description: error.message || 'Failed to save measurement',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(null);
+    }
+  };
+
+  return (
+    <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
+      <CollapsibleTrigger asChild>
+        <Button 
+          variant="ghost" 
+          className="w-full justify-between text-muted-foreground hover:text-foreground"
+          style={{ minHeight: isPhone ? 44 : 36 }}
+        >
+          <span className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Measurement History ({totalHistoryCount})
+          </span>
+          <ChevronDown className={`h-4 w-4 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
+        </Button>
+      </CollapsibleTrigger>
+      <CollapsibleContent className="pt-2 space-y-2">
+        {/* Vendor Reports */}
+        {vendorReports.map((report) => {
+          const sqft = report.parsed?.total_area_sqft || 0;
+          return (
+            <div 
+              key={report.id}
+              className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 shrink-0">
+                  <FileText className="h-3 w-3 mr-1" />
+                  {report.provider || 'Report'}
+                </Badge>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {sqft.toLocaleString()} sqft
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(report.created_at), 'MMM d, yyyy')}
+                  </p>
+                </div>
+              </div>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => handleSaveVendorReport(report)}
+                disabled={isSaving === report.id}
+                className="shrink-0"
+              >
+                {isSaving === report.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <ArrowRight className="h-4 w-4 mr-1" />
+                    Save
+                  </>
+                )}
+              </Button>
+            </div>
+          );
+        })}
+
+        {/* AI Measurements */}
+        {aiMeasurements.map((measurement) => {
+          const sqft = measurement.total_area_adjusted_sqft || 0;
+          return (
+            <div 
+              key={measurement.id}
+              className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <Badge variant="outline" className="bg-info/10 text-info border-info/30 shrink-0">
+                  <Sparkles className="h-3 w-3 mr-1" />
+                  AI-Pulled
+                </Badge>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {sqft.toLocaleString()} sqft
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {format(new Date(measurement.created_at), 'MMM d, yyyy')}
+                  </p>
+                </div>
+              </div>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => handleSaveAiMeasurement(measurement)}
+                disabled={isSaving === measurement.id}
+                className="shrink-0"
+              >
+                {isSaving === measurement.id ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <ArrowRight className="h-4 w-4 mr-1" />
+                    Save
+                  </>
+                )}
+              </Button>
+            </div>
+          );
+        })}
+      </CollapsibleContent>
+    </Collapsible>
   );
 }
 

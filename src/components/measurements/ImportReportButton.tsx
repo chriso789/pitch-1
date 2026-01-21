@@ -98,12 +98,124 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       if (fnError) throw new Error(fnError.message || 'Failed to analyze report');
       if (!data?.ok) throw new Error(data?.message || 'Analysis failed');
 
-      setImportParsedData(data.parsed as ParsedMeasurements);
+      // Handle duplicate detection - show error and block
+      if (data.duplicate) {
+        const existingDate = data.message?.match(/on (.+)$/)?.[1] || 'a previous date';
+        setImportError(
+          `This report was already imported on ${existingDate}. Please upload a different measurement report.`
+        );
+        toast({
+          title: 'Duplicate Report Detected',
+          description: 'This PDF was previously imported. Please use a different report.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      const parsed = data.parsed as ParsedMeasurements;
       
+      if (!parsed) {
+        throw new Error('No measurement data extracted from report');
+      }
+
+      // AUTO-SAVE: Immediately save to measurement_approvals
+      const { data: entry, error: fetchError } = await supabase
+        .from('pipeline_entries')
+        .select('metadata, tenant_id')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const existingMetadata = (entry?.metadata as Record<string, any>) || {};
+      const tenantId = entry?.tenant_id;
+
+      if (!tenantId) throw new Error('No tenant_id found for this lead');
+
+      const totalSquares = parsed.total_area_sqft ? parsed.total_area_sqft / 100 : 0;
+      
+      // Create saved_tags for estimate template integration
+      const savedTags = {
+        'roof.plan_area': parsed.total_area_sqft || 0,
+        'roof.total_sqft': parsed.total_area_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': parsed.predominant_pitch || '6/12',
+        'roof.faces_count': parsed.facet_count || 0,
+        'lf.ridge': parsed.ridges_ft || 0,
+        'lf.hip': parsed.hips_ft || 0,
+        'lf.valley': parsed.valleys_ft || 0,
+        'lf.rake': parsed.rakes_ft || 0,
+        'lf.eave': parsed.eaves_ft || 0,
+        'lf.ridge_hip_total': (parsed.ridges_ft || 0) + (parsed.hips_ft || 0),
+        'source': `imported_${parsed.provider}`,
+        'imported_at': new Date().toISOString(),
+      };
+
+      // Create measurement_approvals entry
+      const { data: newApproval, error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .insert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          approved_at: new Date().toISOString(),
+          saved_tags: savedTags,
+          approval_notes: `Auto-saved from ${parsed.provider} - ${parsed.total_area_sqft?.toLocaleString() || 0} sqft`,
+        })
+        .select('id')
+        .single();
+
+      if (approvalError) {
+        console.error('Approval save error:', approvalError);
+        throw new Error('Failed to save measurement');
+      }
+
+      // Set as active measurement automatically
+      await supabase
+        .from('pipeline_entries')
+        .update({
+          metadata: {
+            ...existingMetadata,
+            selected_measurement_approval_id: newApproval.id,
+            comprehensive_measurements: {
+              ...existingMetadata.comprehensive_measurements,
+              roof_area_sq_ft: parsed.total_area_sqft,
+              total_area_sqft: parsed.total_area_sqft,
+              pitched_area_sqft: parsed.pitched_area_sqft,
+              predominant_pitch: parsed.predominant_pitch,
+              facet_count: parsed.facet_count,
+              ridges_lf: parsed.ridges_ft,
+              hips_lf: parsed.hips_ft,
+              valleys_lf: parsed.valleys_ft,
+              rakes_lf: parsed.rakes_ft,
+              eaves_lf: parsed.eaves_ft,
+              drip_edge_lf: parsed.drip_edge_ft,
+              waste_table: parsed.waste_table,
+              source: `imported_${parsed.provider}`,
+              imported_at: new Date().toISOString(),
+              roof_squares: totalSquares,
+              total_squares: totalSquares,
+            },
+            imported_report_provider: parsed.provider,
+            imported_report_address: parsed.address,
+          },
+        })
+        .eq('id', pipelineEntryId);
+
       toast({
-        title: 'Report Analyzed',
-        description: `Detected ${data.provider} report with ${data.parsed?.total_area_sqft?.toLocaleString() || 0} sqft`,
+        title: 'Measurement Saved',
+        description: `${parsed.provider} report saved - ${totalSquares.toFixed(1)} squares ready for estimates`,
       });
+
+      // Refresh and close
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      
+      setIsOpen(false);
+      setImportFile(null);
+      setImportParsedData(null);
+      setImportError(null);
+      
+      onSuccess?.();
     } catch (err) {
       console.error('Import error:', err);
       setImportError(err instanceof Error ? err.message : 'Failed to process report');
@@ -116,7 +228,7 @@ export const ImportReportButton: React.FC<ImportReportButtonProps> = ({
       setImportUploading(false);
       setImportAnalyzing(false);
     }
-  }, [importFile, pipelineEntryId, toast]);
+  }, [importFile, pipelineEntryId, queryClient, toast, onSuccess]);
 
   const handleApplyImportedMeasurements = useCallback(async () => {
     if (!importParsedData) return;
