@@ -21,6 +21,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/integrations/supabase/client';
+import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 
 // Default location (Tampa, FL) for instant map load before GPS acquires
 const DEFAULT_LOCATION = { lat: 27.9506, lng: -82.4572 };
@@ -54,6 +55,7 @@ export default function LiveCanvassingPage() {
   const { toast } = useToast();
   const { getDispositions } = useStormCanvass();
   const { profile } = useUserProfile();
+  const layout = useDeviceLayout();
   // Start with default location for instant map load
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(DEFAULT_LOCATION);
   const [hasGPS, setHasGPS] = useState(false);
@@ -403,13 +405,19 @@ export default function LiveCanvassingPage() {
           loadedCount={stableCount}
         />
         
-        {/* Camera Floating Action Button */}
+        {/* Camera Floating Action Button - Device adaptive positioning */}
         <Button
           size="lg"
-          className="fixed bottom-24 right-4 h-14 w-14 rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
+          className="fixed rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
+          style={{
+            bottom: layout.fabPosition.bottom,
+            right: layout.fabPosition.right,
+            width: layout.fabSize,
+            height: layout.fabSize,
+          }}
           onClick={() => setShowPhotoCapture(true)}
         >
-          <Camera className="h-6 w-6" />
+          <Camera className={layout.isTablet || layout.isDesktop ? 'h-7 w-7' : 'h-6 w-6'} />
         </Button>
         
         {/* GPS Acquiring Overlay - show while waiting for real GPS */}
