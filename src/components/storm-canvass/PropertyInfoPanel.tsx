@@ -62,7 +62,7 @@ export default function PropertyInfoPanel({
   const [showFastEstimate, setShowFastEstimate] = useState(false);
   const hasAutoEnrichedRef = useRef<string | null>(null);
 
-  // Auto-enrich when panel opens and no enrichment data exists
+  // Auto-enrich when panel opens and no enrichment data exists or owner is unknown
   useEffect(() => {
     if (!open || !property?.id || !profile?.tenant_id) return;
     
@@ -74,12 +74,20 @@ export default function PropertyInfoPanel({
       ? JSON.parse(property.searchbug_data || '{}')
       : (property.searchbug_data || {});
     
-    // Only auto-enrich once per property and if no data exists
+    // Check if owner is unknown or missing
+    const ownerIsUnknown = !property.owner_name || 
+      property.owner_name === 'Unknown' || 
+      property.owner_name === 'Unknown Owner';
+    
+    // Auto-enrich if: no data exists OR owner is unknown
     const hasEnrichmentData = existingPhones.length > 0 || 
-      (existingSearchbug && Object.keys(existingSearchbug).length > 0) ||
+      (existingSearchbug && Object.keys(existingSearchbug).length > 0 && !ownerIsUnknown) ||
       enrichedOwners.length > 0;
     
-    if (!hasEnrichmentData && hasAutoEnrichedRef.current !== property.id) {
+    // Force re-enrich if owner is unknown even if we already tried
+    const shouldEnrich = !hasEnrichmentData || ownerIsUnknown;
+    
+    if (shouldEnrich && hasAutoEnrichedRef.current !== property.id) {
       hasAutoEnrichedRef.current = property.id;
       handleEnrich();
     }
@@ -180,6 +188,7 @@ export default function PropertyInfoPanel({
             city: address?.city,
             state: address?.state,
             zip: address?.zip,
+            formatted: address?.formatted, // Include formatted for fallback parsing
           },
           tenant_id: profile.tenant_id,
         }
