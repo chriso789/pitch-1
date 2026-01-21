@@ -1,5 +1,6 @@
 import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, CheckCircle2, Home } from 'lucide-react';
+import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 
 interface PropertyLoadingIndicatorProps {
   state: 'idle' | 'loading' | 'success';
@@ -11,9 +12,13 @@ export default function PropertyLoadingIndicator({
   loadedCount,
 }: PropertyLoadingIndicatorProps) {
   const showIndicator = state !== 'idle';
+  const layout = useDeviceLayout();
 
   return (
-    <div className="absolute bottom-28 left-1/2 -translate-x-1/2 z-40 pointer-events-none">
+    <div 
+      className="absolute left-1/2 -translate-x-1/2 z-40 pointer-events-none"
+      style={{ bottom: layout.loadingIndicatorBottom }}
+    >
       <AnimatePresence>
         {showIndicator && (
           <motion.div

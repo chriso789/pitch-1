@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { DoorOpen, UserPlus, Camera, X, BarChart3 } from 'lucide-react';
+import { DoorOpen, UserPlus, Camera, X, BarChart3, Route } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
+import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 
 interface LiveStatsOverlayProps {
   distanceTraveled: number;
@@ -17,6 +18,8 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
     leadsCreated: 0,
     photosUploaded: 0,
   });
+  
+  const layout = useDeviceLayout();
 
   useEffect(() => {
     if (!user) return;
@@ -70,12 +73,32 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
     return () => clearInterval(interval);
   }, [user]);
 
+  // Dynamic positioning based on device
+  const overlayStyle = {
+    top: layout.statsPosition.top,
+    left: layout.statsPosition.left,
+  };
+
+  // Icon size based on device
+  const iconContainerClass = layout.isTablet || layout.isDesktop
+    ? 'h-10 w-10 rounded-lg'
+    : 'h-8 w-8 rounded-lg';
+  
+  const iconClass = layout.isTablet || layout.isDesktop
+    ? 'h-5 w-5'
+    : 'h-4 w-4';
+
+  const statValueClass = layout.isTablet || layout.isDesktop
+    ? 'font-bold text-lg leading-none'
+    : 'font-bold text-base leading-none';
+
   // Collapsed state - small floating badge
   if (!isExpanded) {
     return (
       <Button
         onClick={() => setIsExpanded(true)}
-        className="absolute top-4 left-4 z-10 h-10 px-3 rounded-full shadow-lg bg-background/90 backdrop-blur-sm border border-border hover:bg-background"
+        className="absolute z-10 h-10 px-3 rounded-full shadow-lg bg-background/90 backdrop-blur-sm border border-border hover:bg-background"
+        style={overlayStyle}
         variant="outline"
       >
         <BarChart3 className="h-4 w-4 text-primary mr-2" />
@@ -85,11 +108,19 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
     );
   }
 
-  // Expanded state - compact stats panel
+  // Expanded state - responsive stats panel
   return (
-    <div className="absolute top-4 left-4 z-10 bg-background/95 backdrop-blur-sm rounded-xl shadow-lg border border-border p-3 min-w-[180px]">
+    <div 
+      className="absolute z-10 bg-background/95 backdrop-blur-sm rounded-xl shadow-lg border border-border p-3"
+      style={{
+        ...overlayStyle,
+        minWidth: layout.isTablet || layout.isDesktop ? '280px' : '180px',
+      }}
+    >
       <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Today's Stats</span>
+        <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+          Today's Stats
+        </span>
         <Button
           variant="ghost"
           size="icon"
@@ -100,43 +131,52 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
         </Button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3">
+      <div 
+        className={cn(
+          'grid gap-3',
+          layout.statsGridCols === 4 ? 'grid-cols-4' : 'grid-cols-2'
+        )}
+      >
+        {/* Doors Knocked */}
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-            <DoorOpen className="h-4 w-4 text-primary" />
+          <div className={cn(iconContainerClass, 'bg-primary/10 flex items-center justify-center')}>
+            <DoorOpen className={cn(iconClass, 'text-primary')} />
           </div>
           <div>
-            <p className="font-bold text-base leading-none">{stats.doorsKnocked}</p>
+            <p className={statValueClass}>{stats.doorsKnocked}</p>
             <p className="text-[10px] text-muted-foreground">Doors</p>
           </div>
         </div>
 
+        {/* Leads Created */}
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-            <UserPlus className="h-4 w-4 text-green-500" />
+          <div className={cn(iconContainerClass, 'bg-green-500/10 flex items-center justify-center')}>
+            <UserPlus className={cn(iconClass, 'text-green-500')} />
           </div>
           <div>
-            <p className="font-bold text-base leading-none">{stats.leadsCreated}</p>
+            <p className={statValueClass}>{stats.leadsCreated}</p>
             <p className="text-[10px] text-muted-foreground">Leads</p>
           </div>
         </div>
 
+        {/* Photos Uploaded */}
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-            <Camera className="h-4 w-4 text-blue-500" />
+          <div className={cn(iconContainerClass, 'bg-blue-500/10 flex items-center justify-center')}>
+            <Camera className={cn(iconClass, 'text-blue-500')} />
           </div>
           <div>
-            <p className="font-bold text-base leading-none">{stats.photosUploaded}</p>
+            <p className={statValueClass}>{stats.photosUploaded}</p>
             <p className="text-[10px] text-muted-foreground">Photos</p>
           </div>
         </div>
 
+        {/* Distance Traveled */}
         <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-lg bg-orange-500/10 flex items-center justify-center">
-            <span className="text-orange-500 text-sm font-bold">↔</span>
+          <div className={cn(iconContainerClass, 'bg-orange-500/10 flex items-center justify-center')}>
+            <Route className={cn(iconClass, 'text-orange-500')} />
           </div>
           <div>
-            <p className="font-bold text-base leading-none">{distanceTraveled.toFixed(1)}</p>
+            <p className={statValueClass}>{distanceTraveled.toFixed(1)}</p>
             <p className="text-[10px] text-muted-foreground">Miles</p>
           </div>
         </div>
