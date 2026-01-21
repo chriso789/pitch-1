@@ -32,6 +32,7 @@ serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const googleMapsApiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
+    const regridApiKey = Deno.env.get('REGRID_API_KEY');
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: RequestBody = await req.json();
@@ -94,7 +95,7 @@ serve(async (req) => {
     
     if (googleMapsApiKey) {
       console.log('[canvassiq-load-parcels] Using Google Geocoding API for real addresses');
-      properties = await loadRealParcelsFromGeocoding(lat, lng, radius, tenant_id, googleMapsApiKey, existingAddressKeys);
+      properties = await loadRealParcelsFromGeocoding(lat, lng, radius, tenant_id, googleMapsApiKey, existingAddressKeys, regridApiKey);
     } else {
       console.log('[canvassiq-load-parcels] No Google API key, falling back to sample data');
       properties = generateSampleParcels(lat, lng, radius, tenant_id);
@@ -224,7 +225,8 @@ async function loadRealParcelsFromGeocoding(
   radius: number, 
   tenantId: string,
   apiKey: string,
-  existingAddressKeys: Set<string> = new Set()
+  existingAddressKeys: Set<string> = new Set(),
+  regridApiKey?: string
 ): Promise<any[]> {
   const properties: any[] = [];
   const seenPlaceIds = new Set<string>();
@@ -301,6 +303,16 @@ async function loadRealParcelsFromGeocoding(
             distance: distanceFromCenter
           });
           
+          // Fetch owner data from Regrid if API key is available
+          let ownerData: { owner_name: string | null; mailing_address: string | null } = { owner_name: null, mailing_address: null };
+          if (regridApiKey) {
+            try {
+              ownerData = await fetchRegridOwner(result.lat, result.lng, regridApiKey);
+            } catch (e) {
+              console.error('[canvassiq-load-parcels] Regrid owner fetch failed:', e);
+            }
+          }
+          
           candidateProperties.push({
             tenant_id: tenantId,
             lat: result.lat,
@@ -320,12 +332,14 @@ async function loadRealParcelsFromGeocoding(
             address_hash: result.place_id,
             normalized_address_key: normalizedAddressKey,
             disposition: null,
-            owner_name: null,
+            owner_name: ownerData.owner_name,
             property_data: {
               source: 'google_geocoding',
               geocoded_at: new Date().toISOString(),
               building_snapped: false,
-              deduplicated: false
+              deduplicated: false,
+              regrid_owner: ownerData.owner_name,
+              regrid_mailing: ownerData.mailing_address
             }
           });
         } else if (distanceFromCenter < existingEntry.distance) {
@@ -528,4 +542,41 @@ function generateRandomName(): string {
   const lastName = lastNames[Math.floor(Math.random() * lastNames.length)];
   
   return `${firstName} ${lastName}`;
+}
+
+// Fetch property owner from Regrid API
+async function fetchRegridOwner(lat: number, lng: number, apiKey: string): Promise<{ owner_name: string | null; mailing_address: string | null }> {
+  try {
+    const url = `https://app.regrid.com/api/v1/parcel/point?lat=${lat}&lon=${lng}&token=${apiKey}`;
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    if (!response.ok) {
+      console.error('[fetchRegridOwner] Regrid API error:', response.status);
+      return { owner_name: null, mailing_address: null };
+    }
+    
+    const data = await response.json();
+    const parcel = data?.results?.[0]?.properties?.fields || data?.results?.[0]?.properties || {};
+    
+    // Try different field names Regrid uses for owner
+    const ownerName = parcel.owner || parcel.owner_name || parcel.owner1 || 
+                      parcel.ownername || parcel.parval_owner || null;
+    
+    // Try to get mailing address
+    const mailingAddress = parcel.mail_address || parcel.mailadd || parcel.mail || 
+                           parcel.situs_full || null;
+    
+    if (ownerName) {
+      console.log(`[fetchRegridOwner] Found owner: ${ownerName}`);
+    }
+    
+    return { owner_name: ownerName, mailing_address: mailingAddress };
+  } catch (err) {
+    console.error('[fetchRegridOwner] Error:', err);
+    return { owner_name: null, mailing_address: null };
+  }
 }

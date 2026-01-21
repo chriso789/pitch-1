@@ -105,6 +105,7 @@ serve(async (req) => {
         searchbug_data: enrichmentData,
         enrichment_last_at: new Date().toISOString(),
         enrichment_source: ['searchbug'],
+        owner_name: enrichmentData.owners?.[0]?.name || null,
         phone_numbers: enrichmentData.phones?.map((p: any) => p.number) || [],
         emails: enrichmentData.emails?.map((e: any) => e.address) || [],
       })
@@ -147,19 +148,27 @@ serve(async (req) => {
 });
 
 async function callSearchBugAPI(apiKey: string, name: string, address: any) {
-  // SearchBug People Search API
+  // SearchBug People Search API - use their documented endpoint
+  const firstName = name.split(' ')[0] || '';
+  const lastName = name.split(' ').slice(1).join(' ') || '';
+  
   const params = new URLSearchParams({
     api_key: apiKey,
-    first_name: name.split(' ')[0] || '',
-    last_name: name.split(' ').slice(1).join(' ') || '',
+    first_name: firstName,
+    last_name: lastName,
     city: address?.city || '',
     state: address?.state || '',
     zip: address?.zip || '',
   });
 
-  const response = await fetch(`https://api.searchbug.com/api/people.aspx?${params}`, {
+  console.log(`[callSearchBugAPI] Searching for: ${firstName} ${lastName} in ${address?.city}, ${address?.state}`);
+
+  const response = await fetch(`https://www.searchbug.com/api/search.aspx?${params}`, {
     method: 'GET',
-    headers: { 'Accept': 'application/json' },
+    headers: { 
+      'Accept': 'application/json',
+      'User-Agent': 'PitchCRM/1.0'
+    },
   });
 
   if (!response.ok) {
@@ -167,6 +176,7 @@ async function callSearchBugAPI(apiKey: string, name: string, address: any) {
   }
 
   const data = await response.json();
+  console.log(`[callSearchBugAPI] Response received:`, JSON.stringify(data).slice(0, 200));
   
   // Parse SearchBug response format
   const owners = (data.people || []).slice(0, 3).map((person: any, idx: number) => ({
