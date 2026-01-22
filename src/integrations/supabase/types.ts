@@ -4423,7 +4423,7 @@ export type Database = {
           is_active: boolean | null
           name: string
           overhead_included: boolean | null
-          payment_method: string | null
+          payment_method: string
           plan_config: Json
           structure_type:
             | Database["public"]["Enums"]["commission_structure_type"]
@@ -4441,7 +4441,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           overhead_included?: boolean | null
-          payment_method?: string | null
+          payment_method?: string
           plan_config: Json
           structure_type?:
             | Database["public"]["Enums"]["commission_structure_type"]
@@ -4459,7 +4459,7 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           overhead_included?: boolean | null
-          payment_method?: string | null
+          payment_method?: string
           plan_config?: Json
           structure_type?:
             | Database["public"]["Enums"]["commission_structure_type"]

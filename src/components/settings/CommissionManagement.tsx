@@ -93,16 +93,22 @@ export const CommissionManagement = () => {
     }
   }, [newPlan.commission_type]);
 
+  // Normalize legacy payment_method values to modern ones
+  const normalizePaymentMethod = (value: string): string => {
+    const mapping: Record<string, string> = {
+      'percentage_selling_price': 'first_check',
+      'commission_after_costs': 'final_check',
+    };
+    return mapping[value] || value || 'first_check';
+  };
+
   const formatPayRelease = (value: string) => {
     const labels: Record<string, string> = {
       'first_check': '1st Check',
       'first_and_last_check': '1st Check & Last Check',
       'final_check': 'Final Check',
-      // Backward compatibility
-      'percentage_selling_price': '1st Check',
-      'commission_after_costs': 'Final Check'
     };
-    return labels[value] || value;
+    return labels[normalizePaymentMethod(value)] || value;
   };
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -498,7 +504,7 @@ export const CommissionManagement = () => {
                             commission_rate: config?.commission_rate || 5,
                             tier_rates: config?.tier_rates || [{ threshold: 0, rate: 5 }],
                             include_overhead: plan.include_overhead,
-                            payment_method: plan.payment_method,
+                            payment_method: normalizePaymentMethod(plan.payment_method),
                             description: config?.description || ''
                           });
                           setShowNewPlan(true);
