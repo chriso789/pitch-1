@@ -10164,6 +10164,7 @@ export type Database = {
           item_type: string
           manufacturer: string | null
           margin_override: number | null
+          material_id: string | null
           measurement_type: string | null
           qty_formula: string
           sku_pattern: string | null
@@ -10185,6 +10186,7 @@ export type Database = {
           item_type: string
           manufacturer?: string | null
           margin_override?: number | null
+          material_id?: string | null
           measurement_type?: string | null
           qty_formula?: string
           sku_pattern?: string | null
@@ -10206,6 +10208,7 @@ export type Database = {
           item_type?: string
           manufacturer?: string | null
           margin_override?: number | null
+          material_id?: string | null
           measurement_type?: string | null
           qty_formula?: string
           sku_pattern?: string | null
@@ -10228,6 +10231,13 @@ export type Database = {
             columns: ["group_id"]
             isOneToOne: false
             referencedRelation: "estimate_calc_template_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_calc_template_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "materials"
             referencedColumns: ["id"]
           },
         ]
@@ -33467,6 +33477,10 @@ export type Database = {
         }[]
       }
       api_sunniland_catalog_id: { Args: never; Returns: string }
+      api_sync_template_item_to_catalog: {
+        Args: { p_item_id: string; p_unit_cost: number }
+        Returns: string
+      }
       api_template_get_full: { Args: { p_template_id: string }; Returns: Json }
       api_template_items_get: {
         Args: { p_template_id: string }
