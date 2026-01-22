@@ -58,9 +58,24 @@ export const MaterialCalculator: React.FC<MaterialCalculatorProps> = ({
     ice_water: 'GAF',
     starter: 'GAF',
   });
+  const [selectedColors, setSelectedColors] = useState<Record<string, string>>({
+    shingles: '',
+    ridge_cap: '',
+    drip_edge: '',
+  });
   
   const [calculation, setCalculation] = useState<MaterialCalculationResult | null>(null);
   const [isCreatingOrder, setIsCreatingOrder] = useState(false);
+
+  // Color options by brand
+  const colorOptions: Record<string, string[]> = {
+    GAF: ['Charcoal', 'Pewter Gray', 'Weathered Wood', 'Shakewood', 'Onyx Black', 'Barkwood', 'Slate'],
+    'Owens Corning': ['Onyx Black', 'Estate Gray', 'Desert Tan', 'Brownwood', 'Driftwood', 'Sierra Gray'],
+    CertainTeed: ['Moire Black', 'Pewter', 'Weathered Wood', 'Heather Blend', 'Colonial Slate'],
+    Atlas: ['Obsidian', 'Castle Gray', 'Pristine', 'Coastal Granite', 'Weathered Wood'],
+    TAMKO: ['Weathered Wood', 'Rustic Black', 'Slate', 'Antique Slate', 'Harvest Brown'],
+    IKO: ['Dual Black', 'Granite Grey', 'Driftwood', 'Dual Brown', 'Charcoal Grey'],
+  };
 
   const availableBrands = getAvailableBrands();
   const wasteOptions = [0, 8, 10, 12, 15, 17, 20];
@@ -76,6 +91,18 @@ export const MaterialCalculator: React.FC<MaterialCalculatorProps> = ({
 
   const handleBrandChange = (category: keyof typeof selectedBrands, brand: string) => {
     setSelectedBrands(prev => ({ ...prev, [category]: brand }));
+    // Reset color when brand changes
+    if (category === 'shingles' || category === 'ridge_cap') {
+      setSelectedColors(prev => ({ ...prev, [category]: '' }));
+    }
+  };
+
+  const handleColorChange = (category: string, color: string) => {
+    setSelectedColors(prev => ({ ...prev, [category]: color }));
+  };
+
+  const getColorsForBrand = (brand: string): string[] => {
+    return colorOptions[brand] || colorOptions['GAF'];
   };
 
   const formatCurrency = (amount: number) => {
@@ -108,6 +135,7 @@ export const MaterialCalculator: React.FC<MaterialCalculatorProps> = ({
           category: item.category,
           brand: item.brand,
           unit: item.unit_of_measure,
+          color: selectedColors[item.category.toLowerCase().replace(/\s+/g, '_')] || undefined,
         },
       }));
 
@@ -210,6 +238,25 @@ export const MaterialCalculator: React.FC<MaterialCalculatorProps> = ({
             </div>
 
             <div className="space-y-2">
+              <label className="text-sm font-medium">Shingle Color</label>
+              <Select
+                value={selectedColors.shingles}
+                onValueChange={(value) => handleColorChange('shingles', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select color" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getColorsForBrand(selectedBrands.shingles).map((color) => (
+                    <SelectItem key={color} value={color}>
+                      {color}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
               <label className="text-sm font-medium">Underlayment</label>
               <Select
                 value={selectedBrands.underlayment}
@@ -241,6 +288,25 @@ export const MaterialCalculator: React.FC<MaterialCalculatorProps> = ({
                   {(availableBrands['Hip & Ridge'] || []).map((brand) => (
                     <SelectItem key={brand} value={brand}>
                       {brand}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Ridge Cap Color</label>
+              <Select
+                value={selectedColors.ridge_cap}
+                onValueChange={(value) => handleColorChange('ridge_cap', value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select color" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getColorsForBrand(selectedBrands.ridge_cap).map((color) => (
+                    <SelectItem key={color} value={color}>
+                      {color}
                     </SelectItem>
                   ))}
                 </SelectContent>
