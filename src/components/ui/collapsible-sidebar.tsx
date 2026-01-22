@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { ChevronLeft, ChevronRight, Menu, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,6 +15,16 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const isMobile = useIsMobile();
+  const location = useLocation();
+  
+  // Auto-collapse on settings page
+  const isSettingsRoute = location.pathname === '/settings' || location.pathname.startsWith('/settings/');
+  
+  useEffect(() => {
+    if (isSettingsRoute && !isCollapsed) {
+      setIsCollapsed(true);
+    }
+  }, [location.pathname, isSettingsRoute]);
 
   // Close mobile menu when navigating
   useEffect(() => {
