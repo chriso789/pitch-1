@@ -45,8 +45,8 @@ serve(async (req) => {
     // Use active tenant if set (company switching), otherwise fall back to home tenant
     const activeTenantId = profile.active_tenant_id || profile.tenant_id;
 
-    // Check if user has manager permissions (manager, admin, or master)
-    const isManager = ['manager', 'admin', 'master'].includes(profile.role);
+    // Check if user has manager permissions (manager, admin, master, owner, corporate, office_admin)
+    const isManager = ['manager', 'admin', 'master', 'owner', 'corporate', 'office_admin'].includes(profile.role);
     
     if (!isManager) {
       console.warn(`Delete attempt by non-manager: ${user.id} (role: ${profile.role})`);
