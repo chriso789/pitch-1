@@ -77,12 +77,23 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   });
 
   // First fetch the selected_estimate_id from pipeline_entries metadata
+  // Fetch pipeline data including address info for exports
   const { data: pipelineData, isLoading: pipelineDataLoading } = useQuery({
     queryKey: ['pipeline-selected-estimate', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
-        .select('metadata')
+        .select(`
+          metadata,
+          contact:contacts(
+            first_name,
+            last_name,
+            address_street,
+            address_city,
+            address_state,
+            address_zip
+          )
+        `)
         .eq('id', pipelineEntryId)
         .single();
       
@@ -575,20 +586,36 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           )}
           {/* Export buttons */}
-          {lineItems.length > 0 && sectionType === 'material' && existingEstimate?.id && (
-            <MaterialLineItemsExport
-              estimateId={existingEstimate.id}
-              materialItems={lineItems}
-              totalAmount={sectionTotal}
-            />
-          )}
-          {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
-            <LaborOrderExport
-              estimateId={existingEstimate.id}
-              laborItems={lineItems}
-              totalAmount={sectionTotal}
-            />
-          )}
+          {(() => {
+            const contact = pipelineData?.contact as any;
+            const customerName = contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : undefined;
+            const projectAddress = contact?.address_street 
+              ? [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(', ')
+              : undefined;
+            
+            return (
+              <>
+                {lineItems.length > 0 && sectionType === 'material' && existingEstimate?.id && (
+                  <MaterialLineItemsExport
+                    estimateId={existingEstimate.id}
+                    materialItems={lineItems}
+                    totalAmount={sectionTotal}
+                    customerName={customerName}
+                    projectAddress={projectAddress}
+                  />
+                )}
+                {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
+                  <LaborOrderExport
+                    estimateId={existingEstimate.id}
+                    laborItems={lineItems}
+                    totalAmount={sectionTotal}
+                    customerName={customerName}
+                    projectAddress={projectAddress}
+                  />
+                )}
+              </>
+            );
+          })()}
           <Badge variant="secondary" className="text-lg px-4 py-1">
             {formatCurrency(sectionTotal)}
           </Badge>
