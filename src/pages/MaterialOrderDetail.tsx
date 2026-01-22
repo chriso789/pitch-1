@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Separator } from '@/components/ui/separator';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { useMaterialOrders, MaterialOrder, MaterialOrderItem } from '@/hooks/useMaterialOrders';
+import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { ArrowLeft, Package, Calendar, DollarSign, Building2, FileText, MapPin, Send, XCircle, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -18,11 +19,13 @@ export default function MaterialOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { submitOrder, cancelOrder, updateOrderStatus, requestApproval } = useMaterialOrders();
+  const { data: companyInfo } = useCompanyInfo();
   const [order, setOrder] = useState<MaterialOrder | null>(null);
   const [items, setItems] = useState<MaterialOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
+  const [projectAddress, setProjectAddress] = useState<string | undefined>();
 
   useEffect(() => {
     if (id) {
@@ -44,6 +47,33 @@ export default function MaterialOrderDetail() {
 
       if (orderError) throw orderError;
       setOrder(orderData);
+      
+      // Try to get project address from related project
+      if (orderData.project_id) {
+        const { data: projectData } = await supabase
+          .from('projects')
+          .select('pipeline_entry_id')
+          .eq('id', orderData.project_id)
+          .single();
+        
+        if (projectData?.pipeline_entry_id) {
+          const { data: entryData } = await supabase
+            .from('pipeline_entries')
+            .select('contacts(address_street, address_city, address_state, address_zip)')
+            .eq('id', projectData.pipeline_entry_id)
+            .single();
+          
+          const contact = (entryData as any)?.contacts;
+          if (contact?.address_street) {
+            setProjectAddress([
+              contact.address_street,
+              contact.address_city,
+              contact.address_state,
+              contact.address_zip
+            ].filter(Boolean).join(', '));
+          }
+        }
+      }
 
       // Fetch items
       const { data: itemsData, error: itemsError } = await supabase
@@ -165,7 +195,7 @@ export default function MaterialOrderDetail() {
           </div>
         </div>
         <div className="flex gap-2">
-          <MaterialOrderExport order={order} items={items} />
+          <MaterialOrderExport order={order} items={items} projectAddress={projectAddress} companyInfo={companyInfo || undefined} />
           {canSubmit && (
             <>
               <Button onClick={() => setShowSubmitDialog(true)}>
