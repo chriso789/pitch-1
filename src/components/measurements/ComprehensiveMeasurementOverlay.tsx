@@ -3034,6 +3034,22 @@ export function ComprehensiveMeasurementOverlay({
            measurement?.total_area_sqft || 0;
   };
 
+  // Show fallback if no satellite image URL is provided
+  if (!satelliteImageUrl) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[500px] bg-muted/50 border rounded-lg">
+        <div className="text-center p-8">
+          <AlertTriangle className="h-12 w-12 text-warning mx-auto mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Satellite Image Available</h3>
+          <p className="text-muted-foreground mb-4">
+            The measurement data is missing a satellite image URL. 
+            Please return to the Draw tab to capture measurements.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}

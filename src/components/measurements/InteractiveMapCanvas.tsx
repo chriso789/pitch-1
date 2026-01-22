@@ -23,7 +23,8 @@ import {
   ArrowDownUp,
   Square,
   RefreshCw,
-  Download
+  Download,
+  Save
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter } from '@/utils/measurementGeometry';
@@ -56,6 +57,7 @@ interface InteractiveMapCanvasProps {
   centerLng: number;
   initialZoom?: number;
   address?: string;
+  pipelineEntryId?: string;
   onMeasurementsChange?: (measurements: any) => void;
 }
 
@@ -65,6 +67,7 @@ export function InteractiveMapCanvas({
   centerLng,
   initialZoom = 20,
   address,
+  pipelineEntryId,
   onMeasurementsChange,
 }: InteractiveMapCanvasProps) {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -95,6 +98,9 @@ export function InteractiveMapCanvas({
   
   // Regrid fetch state
   const [isFetchingRegrid, setIsFetchingRegrid] = useState(false);
+  
+  // Save to database state
+  const [isSaving, setIsSaving] = useState(false);
 
   // Calculate pixels per foot based on zoom and latitude
   const calculatePixelsPerFoot = useCallback((zoom: number, lat: number) => {
@@ -662,11 +668,10 @@ export function InteractiveMapCanvas({
       if (mode === 'footprint' && footprintPoints.length >= 3) {
         // Complete the footprint
         setIsFootprintComplete(true);
-        setMode('select');
-        if (mapRef.current) {
-          mapRef.current.dragPan.enable();
-        }
-        toast.success(`Building footprint complete: ${footprintPoints.length} vertices`);
+        // Auto-switch to Ridge mode to continue workflow
+        setMode('ridge');
+        // Keep map drag disabled for linear feature drawing
+        toast.success(`Footprint complete! Now trace ridge lines.`);
         setWorkflowStep('linear_features');
         // Trigger update after a short delay
         setTimeout(() => updateMeasurements(), 100);
@@ -864,6 +869,178 @@ export function InteractiveMapCanvas({
     }
   };
 
+  // Save measurements to database
+  const handleSaveToDatabase = async () => {
+    if (!pipelineEntryId) {
+      toast.error('No pipeline entry ID - cannot save');
+      return;
+    }
+
+    if (!isFootprintComplete || footprintPoints.length < 3) {
+      toast.error('Please complete the footprint before saving');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const map = mapRef.current;
+      const center = map?.getCenter();
+      const zoom = map?.getZoom() || initialZoom;
+
+      // Generate perimeter WKT
+      const geoPoints = footprintPoints.map(p => pixelToGeo(p.x, p.y));
+      geoPoints.push(geoPoints[0]); // Close polygon
+      const perimeterWkt = `POLYGON((${geoPoints.map(g => `${g.lng} ${g.lat}`).join(', ')}))`;
+
+      // Calculate area using shoelace formula
+      const calculateAreaSqft = (points: { x: number; y: number }[]) => {
+        let area = 0;
+        const n = points.length;
+        for (let i = 0; i < n; i++) {
+          const j = (i + 1) % n;
+          area += points[i].x * points[j].y;
+          area -= points[j].x * points[i].y;
+        }
+        area = Math.abs(area) / 2;
+        return area / (effectivePixelsPerFoot * effectivePixelsPerFoot);
+      };
+
+      // Calculate perimeter
+      const calculatePerimeterFt = (points: { x: number; y: number }[]) => {
+        let perimeter = 0;
+        for (let i = 0; i < points.length; i++) {
+          const j = (i + 1) % points.length;
+          const dx = points[j].x - points[i].x;
+          const dy = points[j].y - points[i].y;
+          perimeter += Math.sqrt(dx * dx + dy * dy);
+        }
+        return perimeter / effectivePixelsPerFoot;
+      };
+
+      const totalAreaFlat = calculateAreaSqft(footprintPoints);
+      const perimeterFt = calculatePerimeterFt(footprintPoints);
+      const ridgeLengthFt = tracedLines.filter(l => l.type === 'ridge').reduce((sum, l) => sum + l.lengthFt, 0);
+      const hipLengthFt = tracedLines.filter(l => l.type === 'hip').reduce((sum, l) => sum + l.lengthFt, 0);
+      const valleyLengthFt = tracedLines.filter(l => l.type === 'valley').reduce((sum, l) => sum + l.lengthFt, 0);
+      const eaveLengthFt = perimeterFt; // Approximation
+
+      // Generate linear features WKT
+      const linearFeaturesWkt = tracedLines.map(line => {
+        const geoLinePoints = line.points.map(p => pixelToGeo(p.x, p.y));
+        const coordString = geoLinePoints.map(g => `${g.lng} ${g.lat}`).join(', ');
+        return {
+          type: line.type,
+          wkt: `LINESTRING(${coordString})`,
+          length_ft: line.lengthFt,
+        };
+      });
+
+      // Build satellite URL
+      const satelliteUrl = center 
+        ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${center.lng},${center.lat},${zoom},0/${canvasSize.width}x${canvasSize.height}@2x?access_token=${mapboxToken}`
+        : '';
+
+      const measurementData = {
+        customer_id: pipelineEntryId,
+        target_lat: center?.lat || centerLat,
+        target_lng: center?.lng || centerLng,
+        footprint_source: 'manual_drawing' as const,
+        footprint_vertex_count: footprintPoints.length,
+        perimeter_wkt: perimeterWkt,
+        perimeter_length_ft: perimeterFt,
+        total_area_flat_sqft: totalAreaFlat,
+        total_area_adjusted_sqft: totalAreaFlat, // Will be adjusted by pitch later
+        ridge_length_ft: ridgeLengthFt,
+        hip_length_ft: hipLengthFt,
+        valley_length_ft: valleyLengthFt,
+        eave_length_ft: eaveLengthFt,
+        linear_features_wkt: JSON.stringify(linearFeaturesWkt),
+        satellite_image_url: satelliteUrl,
+        analysis_zoom: zoom,
+        footprint_confidence: 1.0, // Manual = high confidence
+        detection_method: 'manual_drawing',
+        gps_coordinates: JSON.stringify({ lat: center?.lat || centerLat, lng: center?.lng || centerLng }),
+        ai_detection_data: { source: 'manual_drawing', drawn_by: 'user' }, // Required field
+      };
+
+      const { data, error } = await supabase
+        .from('roof_measurements')
+        .insert(measurementData as any) // Use any to bypass strict typing
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Save error:', error);
+        toast.error('Failed to save measurements to database');
+        return;
+      }
+
+      toast.success('Measurements saved to lead!');
+      
+      // Also call onMeasurementsChange to update parent
+      onMeasurementsChange?.({
+        id: data.id,
+        faces: polygons.map((p, index) => ({
+          id: p.id,
+          label: p.label || `Facet ${index + 1}`,
+          boundary: p.points.map(pt => [pt.x / canvasSize.width, pt.y / canvasSize.height]),
+          wkt: generatePolygonWKT(p.points),
+          area_sqft: calculatePolygonArea(p.points, effectivePixelsPerFoot),
+          perimeter_ft: calculatePolygonPerimeter(p.points, effectivePixelsPerFoot),
+          pitch: '6/12',
+          color: p.color || POLYGON_COLORS[index % POLYGON_COLORS.length],
+        })),
+        perimeter_wkt: perimeterWkt,
+        perimeter_vertex_count: footprintPoints.length,
+        summary: {
+          total_area_sqft: totalAreaFlat,
+          total_squares: totalAreaFlat / 100,
+          facet_count: polygons.length,
+          ridge_length_ft: ridgeLengthFt,
+          hip_length_ft: hipLengthFt,
+          valley_length_ft: valleyLengthFt,
+        },
+        tags: {
+          ridge_lines: tracedLines.filter(l => l.type === 'ridge').map(l => ({
+            wkt: `LINESTRING(${l.points.map(p => {
+              const geo = pixelToGeo(p.x, p.y);
+              return `${geo.lng} ${geo.lat}`;
+            }).join(', ')})`,
+            length_ft: l.lengthFt,
+          })),
+          hip_lines: tracedLines.filter(l => l.type === 'hip').map(l => ({
+            wkt: `LINESTRING(${l.points.map(p => {
+              const geo = pixelToGeo(p.x, p.y);
+              return `${geo.lng} ${geo.lat}`;
+            }).join(', ')})`,
+            length_ft: l.lengthFt,
+          })),
+          valley_lines: tracedLines.filter(l => l.type === 'valley').map(l => ({
+            wkt: `LINESTRING(${l.points.map(p => {
+              const geo = pixelToGeo(p.x, p.y);
+              return `${geo.lng} ${geo.lat}`;
+            }).join(', ')})`,
+            length_ft: l.lengthFt,
+          })),
+        },
+        canvasWidth: canvasSize.width,
+        canvasHeight: canvasSize.height,
+        satelliteImageUrl: satelliteUrl,
+        gps_coordinates: {
+          lat: center?.lat || centerLat,
+          lng: center?.lng || centerLng,
+        },
+        analysis_zoom: zoom,
+        analysis_image_size: { width: canvasSize.width, height: canvasSize.height },
+      });
+    } catch (err) {
+      console.error('Save error:', err);
+      toast.error('Failed to save measurements');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (!mapboxToken || !centerLat || !centerLng) {
     return (
       <div className="flex items-center justify-center h-full bg-muted">
@@ -964,9 +1141,14 @@ export function InteractiveMapCanvas({
           </Button>
         </div>
         
-        {/* Linear Feature Tools */}
-        <div className="p-2 border-b flex flex-col gap-1">
-          <div className="text-xs text-muted-foreground px-2 py-1">Linear Features</div>
+        {/* Linear Feature Tools - Highlighted after footprint complete */}
+        <div className={`p-2 border-b flex flex-col gap-1 ${isFootprintComplete && tracedLines.length === 0 ? 'bg-primary/10 ring-2 ring-primary ring-inset' : ''}`}>
+          <div className="text-xs text-muted-foreground px-2 py-1">
+            Linear Features
+            {isFootprintComplete && tracedLines.length === 0 && (
+              <span className="ml-1 text-primary font-medium">← Draw these next!</span>
+            )}
+          </div>
           <Button
             variant={mode === 'ridge' ? 'default' : 'ghost'}
             size="sm"
@@ -1114,7 +1296,25 @@ export function InteractiveMapCanvas({
         </div>
       </div>
 
-      {/* Instructions */}
+      {/* Save Button - shown when footprint is complete */}
+      {isFootprintComplete && pipelineEntryId && (
+        <div className="absolute bottom-4 right-4 z-30">
+          <Button
+            onClick={handleSaveToDatabase}
+            disabled={isSaving}
+            size="lg"
+            className="gap-2 shadow-lg"
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            {isSaving ? 'Saving...' : 'Save to Lead'}
+          </Button>
+        </div>
+      )}
+
       {isMapLoaded && mode === 'draw' && !isDrawing && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-background/95 backdrop-blur rounded-lg px-4 py-2 shadow-lg border">
           <p className="text-sm text-muted-foreground">
