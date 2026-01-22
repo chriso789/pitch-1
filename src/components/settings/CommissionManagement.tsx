@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,6 +73,25 @@ export const CommissionManagement = () => {
   
   // Use effective tenant ID (respects company switcher)
   const effectiveTenantId = useEffectiveTenantId();
+
+  // Generate rate options based on commission type
+  // Profit split can go up to 100% (owners may take full profit)
+  const getRateOptions = (commissionType: string) => {
+    if (commissionType === 'net_percent') {
+      // Profit split: 5% increments up to 100%
+      return [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100];
+    }
+    // Percent of contract price: 1-15%
+    return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+  };
+
+  // Reset commission rate to valid value when changing commission type
+  useEffect(() => {
+    const validRates = getRateOptions(newPlan.commission_type);
+    if (!validRates.includes(newPlan.commission_rate)) {
+      setNewPlan(prev => ({ ...prev, commission_rate: validRates[0] }));
+    }
+  }, [newPlan.commission_type]);
 
   const formatPayRelease = (value: string) => {
     const labels: Record<string, string> = {
@@ -387,7 +406,7 @@ export const CommissionManagement = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(rate => (
+                    {getRateOptions(newPlan.commission_type).map(rate => (
                       <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
                     ))}
                   </SelectContent>
