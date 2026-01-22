@@ -146,10 +146,21 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
     const spaceIndex = afterMentionStart.indexOf(' ');
     const restOfText = spaceIndex >= 0 ? afterMentionStart.slice(spaceIndex) : '';
     
-    setNewNote(`${beforeMention}@${displayName} ${restOfText}`);
+    const newText = `${beforeMention}@${displayName} ${restOfText}`;
+    setNewNote(newText);
     setShowMentionDropdown(false);
     setMentionStartIndex(null);
-    setTimeout(() => textareaRef.current?.focus(), 0);
+    
+    // Calculate cursor position: right after "@Name "
+    const cursorPosition = mentionStartIndex + displayName.length + 2; // +1 for @, +1 for space
+    
+    setTimeout(() => {
+      if (textareaRef.current) {
+        textareaRef.current.focus();
+        textareaRef.current.selectionStart = cursorPosition;
+        textareaRef.current.selectionEnd = cursorPosition;
+      }
+    }, 0);
   };
 
   // Extract mentioned user IDs from content

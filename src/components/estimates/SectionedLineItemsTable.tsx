@@ -169,7 +169,7 @@ export function SectionedLineItemsTable({
         )}
       </TableCell>
       <TableCell className="text-right">
-        {renderEditableCell(item, 'qty', item.qty, `${item.qty} ${item.unit}`)}
+        {renderEditableCell(item, 'qty', item.qty, `${Number(item.qty.toFixed(2))} ${item.unit}`)}
       </TableCell>
       <TableCell className="text-right">
         {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
