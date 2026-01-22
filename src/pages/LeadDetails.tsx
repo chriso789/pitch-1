@@ -362,6 +362,7 @@ const LeadDetails = () => {
   }, [searchParams]);
 
   const handleStatusUpdate = async (newStatus: string) => {
+    setIsEditingStatus(false);
     try {
       const { error } = await supabase.functions.invoke('pipeline-status', {
         body: {
@@ -373,8 +374,7 @@ const LeadDetails = () => {
       if (error) throw error;
       
       toast({ title: "Status updated successfully" });
-      refetchLead();
-      setIsEditingStatus(false);
+      await refetchLead();
     } catch (error: any) {
       console.error('Error updating status:', error);
       toast({ 
@@ -382,6 +382,7 @@ const LeadDetails = () => {
         description: error.message || "Please try again",
         variant: "destructive" 
       });
+      setIsEditingStatus(true);
     }
   };
 
@@ -407,13 +408,19 @@ const LeadDetails = () => {
   };
 
   const getStatusColor = (status: string) => {
-    const colors = {
-      'lead': 'bg-status-lead text-white',
-      'legal': 'bg-warning text-warning-foreground',
-      'contingency_signed': 'bg-status-estimate text-white',
-      'project': 'bg-status-project text-white'
+    const colors: Record<string, string> = {
+      'lead': 'bg-blue-500 text-white',
+      'qualified': 'bg-green-500 text-white',
+      'contingency_signed': 'bg-yellow-500 text-white',
+      'legal_review': 'bg-purple-500 text-white',
+      'ready_for_approval': 'bg-orange-500 text-white',
+      'project': 'bg-emerald-600 text-white',
+      'completed': 'bg-teal-600 text-white',
+      'lost': 'bg-gray-500 text-white',
+      'canceled': 'bg-red-500 text-white',
+      'duplicate': 'bg-gray-400 text-white',
     };
-    return colors[status as keyof typeof colors] || 'bg-muted';
+    return colors[status] || 'bg-muted';
   };
 
   const getProgressPercentage = () => {
@@ -604,7 +611,6 @@ const LeadDetails = () => {
                 <Select 
                   value={lead.status} 
                   onValueChange={handleStatusUpdate}
-                  onOpenChange={(open) => !open && setIsEditingStatus(false)}
                 >
                   <SelectTrigger className="h-7 w-[180px]">
                     <SelectValue />
