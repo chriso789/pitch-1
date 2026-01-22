@@ -6,6 +6,8 @@ import jsPDF from "jspdf";
 interface MaterialItem {
   id: string;
   item_name: string;
+  notes?: string;        // Color/specs for supplier orders
+  color_specs?: string;  // Alternative field name for color
   qty: number;
   unit: string;
   unit_cost: number;
@@ -120,7 +122,7 @@ export function MaterialLineItemsExport({
       // Table rows
       doc.setFont('helvetica', 'normal');
       materialItems.forEach((item) => {
-        if (yPos > 270) {
+        if (yPos > 260) {
           doc.addPage();
           yPos = 20;
         }
@@ -129,11 +131,24 @@ export function MaterialLineItemsExport({
           ? item.item_name.substring(0, 40) + '...' 
           : item.item_name;
         
+        const colorSpec = item.notes || item.color_specs;
+        
         doc.text(itemName, margin + 2, yPos);
         doc.text(item.qty.toFixed(1), pageWidth - 100, yPos);
         doc.text(item.unit, pageWidth - 80, yPos);
         doc.text(`$${item.unit_cost.toFixed(2)}`, pageWidth - 55, yPos);
         doc.text(`$${item.line_total.toFixed(2)}`, pageWidth - 30, yPos);
+        
+        // Add color/specs on a second line if present
+        if (colorSpec) {
+          yPos += 5;
+          doc.setFontSize(9);
+          doc.setTextColor(180, 83, 9); // Amber color for visibility
+          doc.text(`Color/Specs: ${colorSpec}`, margin + 4, yPos);
+          doc.setTextColor(0, 0, 0);
+          doc.setFontSize(10);
+        }
+        
         yPos += 8;
       });
 

@@ -107,6 +107,7 @@ export const MaterialOrderDialog: React.FC<MaterialOrderDialogProps> = ({
       const items = (data || []).map(item => ({
         sku: item.srs_item_code,
         item_description: item.description,
+        color_specs: item.notes, // Include color/specs for supplier orders
         quantity: item.quantity,
         unit_price: item.unit_cost,
         last_price_updated: undefined // Will be fetched from pricing API

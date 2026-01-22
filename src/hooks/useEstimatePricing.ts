@@ -6,6 +6,7 @@ export interface LineItem {
   id: string;
   item_name: string;
   description?: string;           // Product description for consumer-facing PDFs
+  notes?: string;                 // Color/specs for supplier orders
   item_type: 'material' | 'labor';
   qty: number;
   qty_original?: number;

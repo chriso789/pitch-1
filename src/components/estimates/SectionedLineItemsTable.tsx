@@ -43,8 +43,8 @@ interface SectionedLineItemsTableProps {
   // Inline add item form props
   isAddingItem?: boolean;
   addingItemType?: 'material' | 'labor';
-  newItem?: { item_name: string; qty: number; unit: string; unit_cost: number };
-  onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number }) => void;
+  newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string };
+  onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string }) => void;
   onSaveNewItem?: () => void;
   onCancelAddItem?: () => void;
 }
@@ -163,10 +163,17 @@ export function SectionedLineItemsTable({
   const renderItemRow = (item: LineItem) => (
     <TableRow key={item.id} className="group">
       <TableCell className="font-medium">
-        {item.item_name}
-        {item.is_override && (
-          <Badge variant="outline" className="ml-2 text-xs">Modified</Badge>
-        )}
+        <div>
+          {item.item_name}
+          {item.is_override && (
+            <Badge variant="outline" className="ml-2 text-xs">Modified</Badge>
+          )}
+          {item.notes && (
+            <p className="text-xs text-muted-foreground mt-0.5">
+              <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
+            </p>
+          )}
+        </div>
       </TableCell>
       <TableCell className="text-right">
         {renderEditableCell(item, 'qty', item.qty, `${Number(item.qty.toFixed(2))} ${item.unit}`)}
@@ -276,13 +283,21 @@ export function SectionedLineItemsTable({
             <TableRow className="bg-primary/5 border-2 border-primary/30">
               <TableCell colSpan={editable ? 5 : 4} className="py-3">
                 <div className="flex items-end gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[200px]">
+                  <div className="flex-1 min-w-[180px]">
                     <Label className="text-xs">Item Name</Label>
                     <Input
                       value={newItem.item_name}
                       onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
                       placeholder="Item name"
                       autoFocus
+                    />
+                  </div>
+                  <div className="w-32">
+                    <Label className="text-xs">Color / Specs</Label>
+                    <Input
+                      value={newItem.notes || ''}
+                      onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                      placeholder="e.g. Charcoal"
                     />
                   </div>
                   <div className="w-20">
@@ -350,13 +365,21 @@ export function SectionedLineItemsTable({
             <TableRow className="bg-primary/5 border-2 border-primary/30">
               <TableCell colSpan={editable ? 5 : 4} className="py-3">
                 <div className="flex items-end gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[200px]">
+                  <div className="flex-1 min-w-[180px]">
                     <Label className="text-xs">Item Name</Label>
                     <Input
                       value={newItem.item_name}
                       onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
                       placeholder="Item name"
                       autoFocus
+                    />
+                  </div>
+                  <div className="w-32">
+                    <Label className="text-xs">Notes</Label>
+                    <Input
+                      value={newItem.notes || ''}
+                      onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                      placeholder="e.g. details"
                     />
                   </div>
                   <div className="w-20">
