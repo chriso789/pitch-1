@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { GripVertical, X, ArrowRight, MoreVertical, FileText, Mail } from "lucide-react";
+import { GripVertical, X, ArrowRight, MoreVertical, FileText, Mail, Phone, MessageSquare, MessageCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -61,6 +61,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
   const [generating, setGenerating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [initiatingCall, setInitiatingCall] = useState(false);
   const prefetchLeadDetails = usePrefetchLeadDetails();
   const prefetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -302,6 +303,71 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     }
   };
 
+  // Quick Call - Initiates recorded call via Telnyx + opens device dialer
+  const handleQuickCall = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!contact?.phone) {
+      toast.error('No phone number on file');
+      return;
+    }
+    
+    setInitiatingCall(true);
+    
+    try {
+      // Get user's tenant_id from profile
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+      
+      if (!profile?.tenant_id) throw new Error('No tenant found');
+      
+      // Initiate recorded call via Telnyx
+      const { data, error } = await supabase.functions.invoke('telnyx-dial', {
+        body: {
+          tenant_id: profile.tenant_id,
+          contact_id: contact.id,
+          to_e164: contact.phone,
+          record: true, // Enable call recording with consent message
+        }
+      });
+      
+      if (error) {
+        console.error('Telnyx dial error:', error);
+        // Still open device dialer as fallback
+      } else {
+        toast.success(`Calling ${contact.first_name}... Call will be recorded.`);
+      }
+      
+      // Open device dialer
+      window.location.href = `tel:${contact.phone}`;
+      
+    } catch (error) {
+      console.error('Call initiation error:', error);
+      // Fallback to simple tel: link
+      window.location.href = `tel:${contact.phone}`;
+    } finally {
+      setInitiatingCall(false);
+    }
+  };
+
+  // Quick SMS - Navigate to lead details with SMS composer open
+  const handleQuickSMS = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/lead/${entry.id}?action=sms`);
+  };
+
+  // Quick Email - Navigate to lead details with email composer open
+  const handleQuickEmail = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/lead/${entry.id}?action=email`);
+  };
+
   // Prefetch lead details on hover (with 150ms delay to avoid unnecessary prefetches)
   const handleMouseEnter = () => {
     prefetchTimeoutRef.current = setTimeout(() => {
@@ -365,14 +431,50 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               />
             </div>
 
-            {/* Communication Recency Badge */}
-            <Badge 
-              className="text-[8px] px-1 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-0.5 leading-none"
-              title={`Last contact ${daysSinceLastComm} days ago`}
-            >
-              <span role="img" aria-label="communication status" className="text-[7px]">{commEmoji}</span>
-              <span>{daysSinceLastComm > 99 ? '99+' : `${daysSinceLastComm}`}d</span>
-            </Badge>
+            {/* Quick Communications Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-5 px-1 py-0.5 text-[8px] bg-muted/10 text-muted-foreground border border-muted/20 flex items-center gap-0.5 hover:bg-primary/10 hover:text-primary"
+                  onClick={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  title="Quick contact options"
+                  disabled={initiatingCall}
+                >
+                  {initiatingCall ? (
+                    <Loader2 className="h-2.5 w-2.5 animate-spin" />
+                  ) : (
+                    <MessageCircle className="h-2.5 w-2.5" />
+                  )}
+                  <span>{daysSinceLastComm > 99 ? '99+' : daysSinceLastComm}d</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem 
+                  onClick={handleQuickCall}
+                  disabled={!contact?.phone || initiatingCall}
+                >
+                  <Phone className="h-3.5 w-3.5 mr-2" />
+                  Call {contact?.first_name || 'Contact'}
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={handleQuickSMS}
+                  disabled={!contact?.phone}
+                >
+                  <MessageSquare className="h-3.5 w-3.5 mr-2" />
+                  Send Text Message
+                </DropdownMenuItem>
+                <DropdownMenuItem 
+                  onClick={handleQuickEmail}
+                  disabled={!contact?.email}
+                >
+                  <Mail className="h-3.5 w-3.5 mr-2" />
+                  Send Email
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Row 2: Last Name */}

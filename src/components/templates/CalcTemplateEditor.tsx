@@ -165,7 +165,15 @@ const CalcTemplateEditor: React.FC = () => {
             <Plus className="mr-2 h-4 w-4" />
             Add Group
           </Button>
-          <Button onClick={() => saveTemplate(template)} disabled={saving}>
+          <Button 
+            onClick={async () => {
+              const success = await saveTemplate(template);
+              if (success) {
+                navigate('/settings');
+              }
+            }} 
+            disabled={saving}
+          >
             {saving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
