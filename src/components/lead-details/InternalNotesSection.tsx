@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
-import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search } from 'lucide-react';
+import { Send, Pin, PinOff, Trash2, Loader2, AtSign, MessageSquareText, History, Search, Plus } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
 
@@ -34,6 +34,9 @@ interface InternalNotesSectionProps {
   pipelineEntryId: string;
   tenantId: string;
 }
+
+// Roles that can delete notes (managers and above)
+const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
 
 // Helper to get full name from first/last
 const getFullName = (firstName: string | null, lastName: string | null): string => {
@@ -59,6 +62,24 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
   const [showAllNotes, setShowAllNotes] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAddingNote, setIsAddingNote] = useState(false);
+
+  // Fetch user's role for permission checks
+  const { data: userProfile } = useQuery({
+    queryKey: ['user-profile-role', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user?.id)
+        .maybeSingle();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
+  // Check if user can delete notes (managers and above)
+  const canDeleteNotes = userProfile?.role && MANAGER_ROLES.includes(userProfile.role);
 
   // Fetch internal notes for this lead
   const { data: notes = [], isLoading: notesLoading } = useQuery({
@@ -209,6 +230,7 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
       }
 
       setNewNote('');
+      setIsAddingNote(false);
       queryClient.invalidateQueries({ queryKey: ['internal-notes', pipelineEntryId] });
       toast({ title: 'Note added' });
     } catch (error) {
@@ -217,6 +239,12 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleCancelAdd = () => {
+    setNewNote('');
+    setIsAddingNote(false);
+    setShowMentionDropdown(false);
   };
 
   const handleTogglePin = async (noteId: string, currentlyPinned: boolean) => {
@@ -289,6 +317,66 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
           </div>
         </CardHeader>
         <CardContent className="p-4 pt-0 space-y-3">
+          {/* Add Note Button - Collapsed State */}
+          {!isAddingNote && (
+            <Button 
+              variant="outline" 
+              className="w-full justify-start gap-2 text-muted-foreground hover:text-foreground"
+              onClick={() => {
+                setIsAddingNote(true);
+                setTimeout(() => textareaRef.current?.focus(), 0);
+              }}
+            >
+              <Plus className="h-4 w-4" />
+              Add a note...
+            </Button>
+          )}
+
+          {/* Note Input Area - Expanded State */}
+          {isAddingNote && (
+            <div className="space-y-2 p-3 border rounded-lg bg-background">
+              <div className="relative">
+                <Textarea
+                  ref={textareaRef}
+                  value={newNote}
+                  onChange={handleInputChange}
+                  placeholder="Add a note... Use @name to mention team members"
+                  className="min-h-[80px] resize-none text-sm pr-8"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmit(); }
+                    if (e.key === 'Escape') { handleCancelAdd(); }
+                  }}
+                />
+                <AtSign className="absolute right-2 top-2 h-4 w-4 text-muted-foreground/50" />
+                {showMentionDropdown && filteredMembers.length > 0 && (
+                  <div className="absolute bottom-full left-0 mb-1 w-64 bg-popover border rounded-md shadow-lg z-50 max-h-[150px] overflow-y-auto">
+                    {filteredMembers.slice(0, 5).map((member) => (
+                      <button key={member.id} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent text-left text-sm" onClick={() => handleSelectMention(member)}>
+                        <Avatar className="h-5 w-5"><AvatarFallback className="text-[8px]">{getInitials(member.first_name, member.last_name)}</AvatarFallback></Avatar>
+                        <span className="truncate">{getFullName(member.first_name, member.last_name)}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="flex justify-between items-center">
+                <p className="text-[10px] text-muted-foreground">
+                  Press ⌘+Enter to send • @mention to notify
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={handleCancelAdd}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" className="h-7 text-xs" onClick={handleSubmit} disabled={!newNote.trim() || isSubmitting}>
+                    {isSubmitting ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Send className="h-3 w-3 mr-1" />}
+                    Send
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Notes List - Below the input */}
           {notesLoading ? (
             <div className="flex items-center justify-center py-4">
               <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -309,6 +397,16 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
                       </div>
                       <p className="text-xs mt-1 whitespace-pre-wrap break-words line-clamp-2">{renderNoteContent(note.content)}</p>
                     </div>
+                    <div className="flex gap-1 shrink-0">
+                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => handleTogglePin(note.id, note.is_pinned)}>
+                        {note.is_pinned ? <PinOff className="h-3 w-3 text-muted-foreground" /> : <Pin className="h-3 w-3 text-muted-foreground" />}
+                      </Button>
+                      {canDeleteNotes && (
+                        <Button size="icon" variant="ghost" className="h-6 w-6 text-destructive hover:text-destructive" onClick={() => setDeleteNoteId(note.id)}>
+                          <Trash2 className="h-3 w-3" />
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -321,42 +419,9 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
                 </button>
               )}
             </div>
-          ) : (
+          ) : !isAddingNote && (
             <p className="text-xs text-muted-foreground text-center py-2">No team notes yet. Add a note to communicate with your team.</p>
           )}
-
-          <div className="relative">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
-                <Textarea
-                  ref={textareaRef}
-                  value={newNote}
-                  onChange={handleInputChange}
-                  placeholder="Add a note... Use @name to mention team members"
-                  className="min-h-[60px] resize-none text-sm pr-8"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleSubmit(); }
-                    if (e.key === 'Escape') setShowMentionDropdown(false);
-                  }}
-                />
-                <AtSign className="absolute right-2 top-2 h-4 w-4 text-muted-foreground/50" />
-                {showMentionDropdown && filteredMembers.length > 0 && (
-                  <div className="absolute bottom-full left-0 mb-1 w-64 bg-popover border rounded-md shadow-lg z-50 max-h-[150px] overflow-y-auto">
-                    {filteredMembers.slice(0, 5).map((member) => (
-                      <button key={member.id} className="w-full flex items-center gap-2 px-3 py-2 hover:bg-accent text-left text-sm" onClick={() => handleSelectMention(member)}>
-                        <Avatar className="h-5 w-5"><AvatarFallback className="text-[8px]">{getInitials(member.first_name, member.last_name)}</AvatarFallback></Avatar>
-                        <span className="truncate">{getFullName(member.first_name, member.last_name)}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <Button size="sm" onClick={handleSubmit} disabled={!newNote.trim() || isSubmitting} className="h-auto self-end">
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-              </Button>
-            </div>
-            <p className="text-[10px] text-muted-foreground mt-1">Press ⌘+Enter to send • @mention to notify team members</p>
-          </div>
         </CardContent>
       </Card>
 
@@ -408,9 +473,11 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
                         <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleTogglePin(note.id, note.is_pinned)}>
                           {note.is_pinned ? <PinOff className="h-4 w-4 text-muted-foreground" /> : <Pin className="h-4 w-4 text-muted-foreground" />}
                         </Button>
-                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteNoteId(note.id)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        {canDeleteNotes && (
+                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive hover:text-destructive" onClick={() => setDeleteNoteId(note.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
