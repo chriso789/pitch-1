@@ -13316,6 +13316,60 @@ export type Database = {
           },
         ]
       }
+      inspection_requirements: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          id: string
+          inspection_type: string
+          inspector_notes: string | null
+          passed: boolean | null
+          project_id: string
+          required_before_stage: string | null
+          scheduled_date: string | null
+          tenant_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          inspection_type: string
+          inspector_notes?: string | null
+          passed?: boolean | null
+          project_id: string
+          required_before_stage?: string | null
+          scheduled_date?: string | null
+          tenant_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          inspection_type?: string
+          inspector_notes?: string | null
+          passed?: boolean | null
+          project_id?: string
+          required_before_stage?: string | null
+          scheduled_date?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_requirements_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspection_requirements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insurance_claims: {
         Row: {
           acv_amount: number | null
@@ -16935,6 +16989,63 @@ export type Database = {
           },
         ]
       }
+      payment_milestones: {
+        Row: {
+          amount: number
+          created_at: string | null
+          due_trigger: string | null
+          id: string
+          milestone_name: string
+          paid_at: string | null
+          payment_link_url: string | null
+          percentage: number | null
+          project_id: string | null
+          sort_order: number | null
+          tenant_id: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          due_trigger?: string | null
+          id?: string
+          milestone_name: string
+          paid_at?: string | null
+          payment_link_url?: string | null
+          percentage?: number | null
+          project_id?: string | null
+          sort_order?: number | null
+          tenant_id: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          due_trigger?: string | null
+          id?: string
+          milestone_name?: string
+          paid_at?: string | null
+          payment_link_url?: string | null
+          percentage?: number | null
+          project_id?: string | null
+          sort_order?: number | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_milestones_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_milestones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payments: {
         Row: {
           amount: number
@@ -18064,6 +18175,7 @@ export type Database = {
       }
       pipeline_entries: {
         Row: {
+          approval_gate_status: string | null
           assigned_to: string | null
           calculation_template_id: string | null
           clj_formatted_number: string | null
@@ -18084,6 +18196,8 @@ export type Database = {
           lead_quality_score: number | null
           lead_temperature: string | null
           location_id: string | null
+          locked_at: string | null
+          locked_by: string | null
           manager_approval_status: string | null
           marketing_campaign: string | null
           metadata: Json | null
@@ -18103,6 +18217,7 @@ export type Database = {
           workflow_metadata: Json | null
         }
         Insert: {
+          approval_gate_status?: string | null
           assigned_to?: string | null
           calculation_template_id?: string | null
           clj_formatted_number?: string | null
@@ -18123,6 +18238,8 @@ export type Database = {
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
           manager_approval_status?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
@@ -18142,6 +18259,7 @@ export type Database = {
           workflow_metadata?: Json | null
         }
         Update: {
+          approval_gate_status?: string | null
           assigned_to?: string | null
           calculation_template_id?: string | null
           clj_formatted_number?: string | null
@@ -18162,6 +18280,8 @@ export type Database = {
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
+          locked_at?: string | null
+          locked_by?: string | null
           manager_approval_status?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
@@ -18226,6 +18346,20 @@ export type Database = {
           {
             foreignKeyName: "pipeline_entries_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "pipeline_entries_locked_by_fkey"
+            columns: ["locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_entries_locked_by_fkey"
+            columns: ["locked_by"]
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
@@ -21955,6 +22089,57 @@ export type Database = {
         }
         Relationships: []
       }
+      qbo_expenses: {
+        Row: {
+          amount: number
+          created_at: string | null
+          expense_date: string | null
+          id: string
+          project_id: string | null
+          qbo_expense_id: string
+          sync_status: string | null
+          tenant_id: string
+          vendor_name: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string | null
+          expense_date?: string | null
+          id?: string
+          project_id?: string | null
+          qbo_expense_id: string
+          sync_status?: string | null
+          tenant_id: string
+          vendor_name?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string | null
+          expense_date?: string | null
+          id?: string
+          project_id?: string | null
+          qbo_expense_id?: string
+          sync_status?: string | null
+          tenant_id?: string
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_expenses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "qbo_expenses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       qbo_location_map: {
         Row: {
           created_at: string
@@ -25456,6 +25641,54 @@ export type Database = {
           },
           {
             foreignKeyName: "satisfaction_surveys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      scheduled_work_days: {
+        Row: {
+          auto_paused: boolean | null
+          created_at: string | null
+          id: string
+          pause_reason: string | null
+          project_id: string
+          scheduled_date: string
+          tenant_id: string
+          weather_status: string | null
+        }
+        Insert: {
+          auto_paused?: boolean | null
+          created_at?: string | null
+          id?: string
+          pause_reason?: string | null
+          project_id: string
+          scheduled_date: string
+          tenant_id: string
+          weather_status?: string | null
+        }
+        Update: {
+          auto_paused?: boolean | null
+          created_at?: string | null
+          id?: string
+          pause_reason?: string | null
+          project_id?: string
+          scheduled_date?: string
+          tenant_id?: string
+          weather_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scheduled_work_days_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scheduled_work_days_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -30939,6 +31172,76 @@ export type Database = {
         }
         Relationships: []
       }
+      validated_addresses: {
+        Row: {
+          address_line1: string
+          city: string
+          contact_id: string | null
+          county: string | null
+          created_at: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          permit_authority_name: string | null
+          state: string
+          tenant_id: string
+          validation_status: string | null
+          zip_code: string
+        }
+        Insert: {
+          address_line1: string
+          city: string
+          contact_id?: string | null
+          county?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          permit_authority_name?: string | null
+          state: string
+          tenant_id: string
+          validation_status?: string | null
+          zip_code: string
+        }
+        Update: {
+          address_line1?: string
+          city?: string
+          contact_id?: string | null
+          county?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          permit_authority_name?: string | null
+          state?: string
+          tenant_id?: string
+          validation_status?: string | null
+          zip_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "validated_addresses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "validated_addresses_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "validated_addresses_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       vendor_order_items: {
         Row: {
           created_at: string | null
@@ -34026,6 +34329,14 @@ export type Database = {
           _tenant_id: string
         }
         Returns: string
+      }
+      search_by_clj: {
+        Args: { p_clj: string; p_tenant_id: string }
+        Returns: {
+          display_name: string
+          entity_id: string
+          entity_type: string
+        }[]
       }
       search_contacts_and_jobs: {
         Args: {
