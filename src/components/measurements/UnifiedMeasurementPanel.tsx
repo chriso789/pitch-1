@@ -583,6 +583,10 @@ function MeasurementCard({
   const ridgeLf = tags['lf.ridge'] || tags['xactimate.ridge_lf'] || 0;
   const hipLf = tags['lf.hip'] || tags['xactimate.hip_lf'] || 0;
   const valleyLf = tags['lf.valley'] || tags['xactimate.valley_lf'] || 0;
+  
+  // Additional linear measurements from Xactimate
+  const perimeterLf = tags['lf.perimeter'] || tags['xactimate.perimeter_lf'] || 0;
+  const eaveLf = tags['lf.eave'] || tags['xactimate.eave_lf'] || 0;
 
   return (
     <div
@@ -616,8 +620,9 @@ function MeasurementCard({
         </span>
       </div>
 
-      {/* Measurements Grid */}
-      <div className={`grid gap-x-4 gap-y-2 text-sm ${isPhone ? 'grid-cols-2' : 'grid-cols-3 sm:grid-cols-6'}`}>
+      {/* Measurements Grid - Two Rows */}
+      <div className={`grid gap-x-4 gap-y-3 text-sm ${isPhone ? 'grid-cols-2' : 'grid-cols-4'}`}>
+        {/* Row 1: Area Measurements */}
         <div>
           <span className="text-muted-foreground text-xs">Squares</span>
           <p className="font-semibold">{formatValue(Number(squares))}</p>
@@ -631,6 +636,12 @@ function MeasurementCard({
           <p className="font-semibold">{pitch}</p>
         </div>
         <div>
+          <span className="text-muted-foreground text-xs">Perimeter</span>
+          <p className="font-semibold">{formatValue(perimeterLf)} ft</p>
+        </div>
+        
+        {/* Row 2: Linear Features */}
+        <div>
           <span className="text-muted-foreground text-xs">Ridge</span>
           <p className="font-semibold">{formatValue(ridgeLf)} ft</p>
         </div>
@@ -641,6 +652,10 @@ function MeasurementCard({
         <div>
           <span className="text-muted-foreground text-xs">Valley</span>
           <p className="font-semibold">{formatValue(valleyLf)} ft</p>
+        </div>
+        <div>
+          <span className="text-muted-foreground text-xs">Eave</span>
+          <p className="font-semibold">{formatValue(eaveLf)} ft</p>
         </div>
       </div>
 
