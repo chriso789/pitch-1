@@ -1,0 +1,1 @@
+UPDATE pipeline_entries SET is_deleted = false, updated_at = NOW() WHERE id = 'ccc338fe-7fbd-47b3-9f55-03e39ed0c7cc'
