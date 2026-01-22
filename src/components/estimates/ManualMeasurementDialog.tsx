@@ -174,14 +174,21 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
 
     setSaving(true);
     try {
-      // Get current pipeline metadata and contact info
+      // Get current pipeline metadata and contact info using correct column names
       const { data: pipelineData, error: fetchError } = await supabase
         .from('pipeline_entries')
-        .select('metadata, tenant_id, contacts(address, city, state, zip, lat, lng)')
+        .select('metadata, tenant_id, contacts(address_street, address_city, address_state, address_zip, latitude, longitude, verified_address)')
         .eq('id', pipelineEntryId)
         .single();
 
-      if (fetchError) throw fetchError;
+      if (fetchError) {
+        console.error('Failed to fetch pipeline entry:', fetchError);
+        throw new Error(`Failed to load lead data: ${fetchError.message}`);
+      }
+
+      if (!pipelineData?.tenant_id) {
+        throw new Error('Lead has no tenant_id; cannot create measurement history record');
+      }
 
       const currentMetadata = (pipelineData?.metadata as Record<string, any>) || {};
 
@@ -215,13 +222,21 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         .update({ metadata: updatedMetadata })
         .eq('id', pipelineEntryId);
 
-      if (updateError) throw updateError;
+      if (updateError) {
+        console.error('Failed to update pipeline metadata:', updateError);
+        throw new Error(`Failed to save measurements: ${updateError.message}`);
+      }
 
       // Also create a roof_measurements record so it appears in history
       const contact = pipelineData.contacts as any;
-      const propertyAddress = contact?.address || 'Manual Entry';
-      const lat = contact?.lat || 0;
-      const lng = contact?.lng || 0;
+      const verifiedAddr = contact?.verified_address as any;
+      
+      // Build property address from correct column names with fallbacks
+      const propertyAddress = contact?.address_street 
+        || verifiedAddr?.formatted_address 
+        || 'Manual Entry';
+      const lat = contact?.latitude ?? verifiedAddr?.lat ?? 0;
+      const lng = contact?.longitude ?? verifiedAddr?.lng ?? 0;
       
       // Get current user for measured_by field (required by RLS)
       const { data: { user } } = await supabase.auth.getUser();
@@ -237,9 +252,9 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         customer_id: pipelineEntryId,
         organization_id: pipelineData.tenant_id,
         property_address: propertyAddress,
-        property_city: contact?.city || null,
-        property_state: contact?.state || null,
-        property_zip: contact?.zip || null,
+        property_city: contact?.address_city || null,
+        property_state: contact?.address_state || null,
+        property_zip: contact?.address_zip || null,
         gps_coordinates: { lat, lng }, // Pass object directly for jsonb column
         footprint_source: 'manual_entry',
         detection_method: 'manual_entry',
@@ -292,11 +307,11 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
 
       onSuccess?.();
       onOpenChange(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving measurements:', error);
       toast({
         title: 'Error',
-        description: 'Failed to save measurements. Please try again.',
+        description: error?.message || 'Failed to save measurements. Please try again.',
         variant: 'destructive',
       });
     } finally {
