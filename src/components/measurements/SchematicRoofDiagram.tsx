@@ -299,7 +299,8 @@ export function SchematicRoofDiagram({
     eaveSegments, 
     rakeSegments,
     debugInfo,
-    solarSegmentPolygons
+    solarSegmentPolygons,
+    geometrySource: memoGeometrySource
   } = useMemo(() => {
     const padding = localShowOverlay ? 0 : 60; // No padding when using satellite overlay
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
@@ -374,7 +375,13 @@ export function SchematicRoofDiagram({
     }
     
     // FALLBACK: If no WKT features, use client-side reconstruction
-    if (linearFeaturesData.length === 0 && perimCoords.length >= 4) {
+    // BUT: Skip reconstruction if footprint is a bounding box fallback (4-point rectangle)
+    // Reconstructing from bbox creates fake triangular facets that don't match real roof
+    const isBboxFallback = measurement?.footprint_source === 'solar_bbox_fallback' || 
+                           measurement?.detection_method === 'solar_bbox_fallback' ||
+                           (perimCoords.length === 4 && measurement?.footprint_confidence && measurement.footprint_confidence < 0.5);
+    
+    if (linearFeaturesData.length === 0 && perimCoords.length >= 4 && !isBboxFallback) {
       console.log('🔄 No WKT features found, using client-side reconstruction');
       
       try {
@@ -412,6 +419,9 @@ export function SchematicRoofDiagram({
       } catch (err) {
         console.warn('Reconstruction failed:', err);
       }
+    } else if (isBboxFallback) {
+      console.log('⚠️ BBox fallback detected - skipping reconstruction to avoid fake geometry');
+      geometrySource = 'perimeter';
     }
     
     console.log(`📐 Loaded ${linearFeaturesData.length} linear features (source: ${geometrySource})`);
@@ -447,6 +457,7 @@ export function SchematicRoofDiagram({
         rakeSegments: [],
         debugInfo: null,
         solarSegmentPolygons: [],
+        geometrySource: 'perimeter' as const,
         qaData: {
           hasFacets: false,
           facetCount: 0,
@@ -664,8 +675,16 @@ export function SchematicRoofDiagram({
       debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata },
       solarSegmentPolygons: [], // No longer using Solar API for geometry
       qaData,
+      geometrySource, // Pass geometry source for conditional rendering
     };
   }, [measurement, width, height, facets, localShowOverlay, imageBounds]);
+  
+  // Update diagram source state when geometry source changes
+  useEffect(() => {
+    if (memoGeometrySource) {
+      setDiagramSource(memoGeometrySource);
+    }
+  }, [memoGeometrySource]);
 
   // Update geometry QA when data changes
   useEffect(() => {
@@ -861,7 +880,8 @@ export function SchematicRoofDiagram({
         )}
         
         {/* Facet polygons (rendered first so they're behind lines) */}
-        {showFacets && facetPaths.map((facet: any, i: number) => (
+        {/* Hide facets when source is bounding box fallback - they would be fake triangular subdivisions */}
+        {showFacets && diagramSource !== 'perimeter' && facetPaths.map((facet: any, i: number) => (
           <g key={`facet-${facet.facetNumber}`}>
             <path
               d={facet.path}
@@ -1322,14 +1342,19 @@ export function SchematicRoofDiagram({
       )}
       
       {/* Rectangular Approximation Warning - Compact badge by default, expands on click */}
-      {perimeterCoords.length > 0 && perimeterCoords.length <= 4 && (
+      {/* Show when perimeter has 4 or fewer vertices OR when diagram source is perimeter-only */}
+      {(perimeterCoords.length > 0 && perimeterCoords.length <= 4) || diagramSource === 'perimeter' ? (
         <>
           {showWarningBanner ? (
             <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2 z-10">
               <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
               <div className="text-xs text-amber-800">
-                <div className="font-semibold">Rectangular Estimate</div>
-                <div className="text-amber-600">{perimeterCoords.length} vertices - area may be overestimated</div>
+                <div className="font-semibold">Perimeter Outline Only</div>
+                <div className="text-amber-600">
+                  {perimeterCoords.length <= 4 
+                    ? 'Rectangular estimate - import report for accurate facets' 
+                    : 'Interior geometry unavailable'}
+                </div>
               </div>
               <button 
                 onClick={() => setShowWarningBanner(false)}
@@ -1343,16 +1368,16 @@ export function SchematicRoofDiagram({
             <button
               onClick={() => setShowWarningBanner(true)}
               className="absolute top-3 right-16 bg-amber-100 border border-amber-300 rounded-full p-1.5 shadow-sm hover:bg-amber-200 transition-colors z-10"
-              title="BBox Fallback - Click for details"
+              title="Perimeter only - Click for details"
             >
               <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
             </button>
           )}
         </>
-      )}
+      ) : null}
       
       {/* Perimeter Only Warning - Compact badge by default */}
-      {showPerimeterOnlyWarning && perimeterCoords.length > 4 && (
+      {showPerimeterOnlyWarning && perimeterCoords.length > 4 && diagramSource !== 'perimeter' && (
         <>
           {showWarningBanner ? (
             <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2 z-10">
