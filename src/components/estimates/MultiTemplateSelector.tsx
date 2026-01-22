@@ -720,9 +720,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       if (result.error) throw result.error;
 
-      const metadata = result.data?.metadata as any;
-      const selected = metadata?.selected_template_ids?.[0] || metadata?.selected_template_id || '';
-      setSelectedTemplateId(selected);
+      // NOTE: We intentionally do NOT auto-select on load.
+      // User must explicitly select a template to start working.
+      // The saved preference is available in metadata but we don't auto-populate.
+      // This keeps the template area blank until user action.
       
       // NOTE: We intentionally do NOT auto-enable editing mode here.
       // Editing mode should ONLY be activated by:
@@ -1416,7 +1417,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             templates={templates}
             value={selectedTemplateId}
             onValueChange={handleTemplateSelect}
-            placeholder="Search or select a template..."
+            placeholder="Select Template"
             disabled={isEditingLoadedEstimate}
           />
 
