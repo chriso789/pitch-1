@@ -172,10 +172,10 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
 
     setSaving(true);
     try {
-      // Get current pipeline metadata
+      // Get current pipeline metadata and contact info
       const { data: pipelineData, error: fetchError } = await supabase
         .from('pipeline_entries')
-        .select('metadata, tenant_id')
+        .select('metadata, tenant_id, contacts(address, city, state, zip, lat, lng)')
         .eq('id', pipelineEntryId)
         .single();
 
@@ -214,6 +214,52 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         .eq('id', pipelineEntryId);
 
       if (updateError) throw updateError;
+
+      // Also create a roof_measurements record so it appears in history
+      const contact = pipelineData.contacts as any;
+      const propertyAddress = contact?.address || 'Manual Entry';
+      const lat = contact?.lat || 0;
+      const lng = contact?.lng || 0;
+      
+      const measurementData = {
+        customer_id: pipelineEntryId,
+        organization_id: pipelineData.tenant_id,
+        property_address: propertyAddress,
+        property_city: contact?.city || null,
+        property_state: contact?.state || null,
+        property_zip: contact?.zip || null,
+        gps_coordinates: JSON.stringify({ lat, lng }),
+        footprint_source: 'manual_entry',
+        detection_method: 'manual_entry',
+        total_area_flat_sqft: flatArea,
+        total_area_adjusted_sqft: adjustedArea,
+        total_squares: adjustedArea / 100,
+        predominant_pitch: formData.pitch,
+        total_ridge_length: formData.ridges,
+        total_hip_length: formData.hips,
+        total_valley_length: formData.valleys,
+        total_eave_length: formData.eaves,
+        total_rake_length: formData.rakes,
+        facet_count: formData.facets,
+        footprint_confidence: 1.0, // Manual = high confidence
+        waste_factor_percent: formData.wastePercentage,
+        ai_detection_data: { 
+          source: 'manual_entry', 
+          entered_by: 'user',
+          waste_percentage: formData.wastePercentage,
+          step_flashing_lf: formData.stepFlashing,
+          wall_flashing_lf: formData.wallFlashing,
+        },
+      };
+      
+      const { error: measurementError } = await supabase
+        .from('roof_measurements')
+        .insert(measurementData as any); // Use any to bypass strict typing
+
+      if (measurementError) {
+        console.error('Failed to create roof_measurements record:', measurementError);
+        // Don't fail the whole operation, just log it
+      }
 
       toast({
         title: 'Measurements Saved',
