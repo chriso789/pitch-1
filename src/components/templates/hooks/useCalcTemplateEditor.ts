@@ -176,9 +176,9 @@ export const useCalcTemplateEditor = (templateId?: string) => {
     fetchTemplate();
   }, [fetchTemplate]);
 
-  // Save template
-  const saveTemplate = async (updates: Partial<CalcTemplate>) => {
-    if (!template) return;
+  // Save template - returns success boolean for navigation
+  const saveTemplate = async (updates: Partial<CalcTemplate>): Promise<boolean> => {
+    if (!template) return false;
 
     try {
       setSaving(true);
@@ -200,6 +200,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
 
       setTemplate({ ...template, ...updates });
       toast({ title: 'Template saved' });
+      return true;
     } catch (error: any) {
       console.error('Error saving template:', error);
       toast({
@@ -207,6 +208,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         description: 'Failed to save template',
         variant: 'destructive',
       });
+      return false;
     } finally {
       setSaving(false);
     }
