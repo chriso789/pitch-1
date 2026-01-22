@@ -37,11 +37,13 @@ serve(async (req: Request) => {
     // Get author info
     const { data: author } = await supabase
       .from('profiles')
-      .select('full_name, email')
+      .select('first_name, last_name, email')
       .eq('id', author_id)
       .single();
 
-    const authorName = author?.full_name || author?.email || 'A team member';
+    const authorName = author 
+      ? [author.first_name, author.last_name].filter(Boolean).join(' ') || author.email 
+      : 'A team member';
 
     // Get lead info for context
     const { data: lead } = await supabase
@@ -64,7 +66,7 @@ serve(async (req: Request) => {
     // Get mentioned users
     const { data: mentionedUsers } = await supabase
       .from('profiles')
-      .select('id, full_name, email, phone')
+      .select('id, first_name, last_name, email, phone')
       .in('id', mentioned_user_ids);
 
     if (!mentionedUsers?.length) {
