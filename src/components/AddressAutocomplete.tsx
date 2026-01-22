@@ -210,7 +210,10 @@ export function AddressAutocomplete({
               <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
             )}
             {selectedAddress && !loading && (
-              <Check className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-green-500" />
+              <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                <Check className="h-4 w-4 text-green-500" />
+                <span className="text-xs text-green-600 font-medium">Verified</span>
+              </div>
             )}
           </div>
         </PopoverTrigger>

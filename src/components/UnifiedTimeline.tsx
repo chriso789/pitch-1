@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { 
@@ -13,7 +13,11 @@ import {
   AlertCircle,
   ArrowUpRight,
   ArrowDownLeft,
-  Filter
+  Filter,
+  Reply,
+  PhoneCall,
+  ExternalLink,
+  Loader2
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -26,6 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 type ChannelType = "all" | "call" | "email" | "sms" | "note" | "event";
@@ -40,6 +50,7 @@ interface TimelineEvent {
   created_at: string;
   created_by_name?: string;
   metadata?: Record<string, unknown>;
+  delivery_status?: string;
 }
 
 interface UnifiedTimelineProps {
@@ -48,6 +59,9 @@ interface UnifiedTimelineProps {
   projectId?: string;
   maxHeight?: string;
   className?: string;
+  showActions?: boolean;
+  onReply?: (event: TimelineEvent) => void;
+  onScheduleCallback?: (event: TimelineEvent) => void;
 }
 
 const channelIcons: Record<string, typeof Phone> = {
@@ -66,22 +80,31 @@ const channelColors: Record<string, string> = {
   event: "text-pink-500 bg-pink-500/10",
 };
 
+const deliveryStatusConfig: Record<string, { label: string; className: string }> = {
+  delivered: { label: "Delivered", className: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" },
+  sent: { label: "Sent", className: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400" },
+  pending: { label: "Pending", className: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
+  failed: { label: "Failed", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  bounced: { label: "Bounced", className: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
+  opened: { label: "Opened", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  clicked: { label: "Clicked", className: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+};
+
 export function UnifiedTimeline({
   contactId,
   pipelineEntryId,
   projectId,
   maxHeight = "400px",
   className,
+  showActions = false,
+  onReply,
+  onScheduleCallback,
 }: UnifiedTimelineProps) {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<ChannelType>("all");
 
-  useEffect(() => {
-    fetchTimelineEvents();
-  }, [contactId, pipelineEntryId, projectId, filter]);
-
-  async function fetchTimelineEvents() {
+  const fetchTimelineEvents = useCallback(async () => {
     if (!contactId && !pipelineEntryId && !projectId) {
       setEvents([]);
       setLoading(false);
@@ -101,6 +124,7 @@ export function UnifiedTimeline({
           content,
           created_at,
           metadata,
+          delivery_status,
           profiles:created_by (
             full_name
           )
@@ -135,6 +159,7 @@ export function UnifiedTimeline({
         created_at: item.created_at,
         created_by_name: (item.profiles as { full_name?: string } | null)?.full_name,
         metadata: item.metadata as Record<string, unknown> | undefined,
+        delivery_status: item.delivery_status || undefined,
       }));
 
       setEvents(formattedEvents);
@@ -143,7 +168,40 @@ export function UnifiedTimeline({
     } finally {
       setLoading(false);
     }
-  }
+  }, [contactId, pipelineEntryId, projectId, filter]);
+
+  useEffect(() => {
+    fetchTimelineEvents();
+  }, [fetchTimelineEvents]);
+
+  // Set up realtime subscription
+  useEffect(() => {
+    if (!contactId && !pipelineEntryId && !projectId) return;
+
+    const channel = supabase
+      .channel(`timeline-${contactId || pipelineEntryId || projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'communication_history',
+          filter: contactId 
+            ? `contact_id=eq.${contactId}` 
+            : pipelineEntryId 
+              ? `pipeline_entry_id=eq.${pipelineEntryId}`
+              : `project_id=eq.${projectId}`
+        },
+        () => {
+          fetchTimelineEvents();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [contactId, pipelineEntryId, projectId, fetchTimelineEvents]);
 
   function getEventIcon(event: TimelineEvent) {
     const Icon = channelIcons[event.channel] || FileText;
@@ -164,6 +222,18 @@ export function UnifiedTimeline({
         {directionIcon}
         <span>{event.subject || `${channelLabel} ${event.direction || ""}`}</span>
       </div>
+    );
+  }
+
+  function getDeliveryStatusBadge(status?: string) {
+    if (!status) return null;
+    const config = deliveryStatusConfig[status.toLowerCase()];
+    if (!config) return null;
+    
+    return (
+      <Badge variant="secondary" className={cn("text-[10px] px-1.5 py-0", config.className)}>
+        {config.label}
+      </Badge>
     );
   }
 
@@ -216,12 +286,12 @@ export function UnifiedTimeline({
             <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
             
             <div className="space-y-4">
-              {events.map((event, index) => {
+              {events.map((event) => {
                 const Icon = getEventIcon(event);
                 const colorClass = channelColors[event.channel] || "text-muted-foreground bg-muted";
 
                 return (
-                  <div key={event.id} className="relative flex gap-3 pl-2">
+                  <div key={event.id} className="relative flex gap-3 pl-2 group">
                     {/* Icon */}
                     <div className={cn(
                       "relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
@@ -233,8 +303,11 @@ export function UnifiedTimeline({
                     {/* Content */}
                     <div className="flex-1 min-w-0 pb-4">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="font-medium text-sm truncate">
-                          {getEventTitle(event)}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-medium text-sm truncate">
+                            {getEventTitle(event)}
+                          </span>
+                          {getDeliveryStatusBadge(event.delivery_status)}
                         </div>
                         <time className="text-xs text-muted-foreground whitespace-nowrap">
                           {format(new Date(event.created_at), "MMM d, h:mm a")}
@@ -247,12 +320,53 @@ export function UnifiedTimeline({
                         </p>
                       )}
                       
-                      {event.created_by_name && (
-                        <div className="flex items-center gap-1 mt-1 text-xs text-muted-foreground">
-                          <User className="h-3 w-3" />
-                          {event.created_by_name}
-                        </div>
-                      )}
+                      <div className="flex items-center justify-between mt-1.5">
+                        {event.created_by_name && (
+                          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                            <User className="h-3 w-3" />
+                            {event.created_by_name}
+                          </div>
+                        )}
+                        
+                        {/* Action buttons */}
+                        {showActions && (
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <TooltipProvider>
+                              {(event.channel === "sms" || event.channel === "email") && onReply && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="h-6 w-6"
+                                      onClick={() => onReply(event)}
+                                    >
+                                      <Reply className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Quick Reply</TooltipContent>
+                                </Tooltip>
+                              )}
+                              
+                              {event.channel === "call" && event.direction === "inbound" && onScheduleCallback && (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button 
+                                      variant="ghost" 
+                                      size="icon" 
+                                      className="h-6 w-6"
+                                      onClick={() => onScheduleCallback(event)}
+                                    >
+                                      <PhoneCall className="h-3 w-3" />
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Schedule Callback</TooltipContent>
+                                </Tooltip>
+                              )}
+                            </TooltipProvider>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
