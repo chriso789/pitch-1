@@ -179,6 +179,24 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
       });
 
       if (error) throw error;
+
+      // Send notifications to mentioned users
+      if (mentionedUserIds.length > 0) {
+        try {
+          await supabase.functions.invoke('send-mention-notification', {
+            body: {
+              pipeline_entry_id: pipelineEntryId,
+              mentioned_user_ids: mentionedUserIds,
+              author_id: user.id,
+              note_content: newNote.trim(),
+            }
+          });
+        } catch (notifyError) {
+          console.error('Failed to send mention notifications:', notifyError);
+          // Don't block the note save - notifications are best-effort
+        }
+      }
+
       setNewNote('');
       queryClient.invalidateQueries({ queryKey: ['internal-notes', pipelineEntryId] });
       toast({ title: 'Note added' });
@@ -206,7 +224,24 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
   };
 
   const renderNoteContent = (content: string) => {
-    const parts = content.split(/(@[\w\s]+?)(?=\s|$)/g);
+    // Build a pattern that matches all known team member full names
+    const memberNames = teamMembers
+      .map(m => getFullName(m.first_name, m.last_name))
+      .filter(name => name && name !== 'Unknown');
+    
+    if (memberNames.length === 0) {
+      return <span>{content}</span>;
+    }
+    
+    // Sort by length descending so "Chris Margarite" matches before "Chris"
+    memberNames.sort((a, b) => b.length - a.length);
+    
+    // Create pattern like: @Chris Margarite|@Chris O'Brien
+    const escapedNames = memberNames.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    const pattern = new RegExp(`(@(?:${escapedNames.join('|')}))`, 'gi');
+    
+    const parts = content.split(pattern);
+    
     return parts.map((part, index) => 
       part.startsWith('@') ? (
         <span key={index} className="text-primary font-medium bg-primary/10 px-1 rounded">{part}</span>
