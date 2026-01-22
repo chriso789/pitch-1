@@ -47,6 +47,7 @@ import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
 import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
 import { LeadNotesSection } from '@/components/lead-details/LeadNotesSection';
+import { InternalNotesSection } from '@/components/lead-details/InternalNotesSection';
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -839,6 +840,14 @@ const LeadDetails = () => {
           </Card>
         )}
       </div>
+
+      {/* Internal Team Notes - Above Approval Requirements */}
+      {lead?.tenant_id && (
+        <InternalNotesSection 
+          pipelineEntryId={id!}
+          tenantId={lead.tenant_id}
+        />
+      )}
 
       {/* Approval Requirements Progress */}
       <Card className="border-primary/20">
