@@ -290,7 +290,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
   };
 
   // Add item
-  const addItem = async (groupId: string | null, item: Partial<CalcTemplateItem>) => {
+  const addItem = async (groupId: string | null, item: Partial<CalcTemplateItem> & { saveToCatalog?: boolean }) => {
     if (!template || !effectiveTenantId) return;
 
     try {
@@ -321,6 +321,20 @@ export const useCalcTemplateEditor = (templateId?: string) => {
 
       if (error) throw error;
 
+      // If saveToCatalog flag is true, also save to materials catalog
+      if (item.saveToCatalog && item.item_type === 'material') {
+        const materialCode = item.sku_pattern || `CUSTOM-${Date.now()}`;
+        
+        await supabase.rpc('api_upsert_material' as any, {
+          p_code: materialCode,
+          p_name: item.item_name,
+          p_tenant_id: effectiveTenantId,
+          p_uom: item.unit || 'EA',
+          p_base_cost: item.unit_cost || 0,
+          p_coverage_per_unit: item.coverage_per_unit || null,
+        });
+      }
+
       const newItem: CalcTemplateItem = {
         id: data.id,
         calc_template_id: data.calc_template_id,
@@ -346,7 +360,10 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         )
       );
 
-      toast({ title: 'Item added' });
+      const message = item.saveToCatalog 
+        ? 'Item added and saved to catalog' 
+        : 'Item added';
+      toast({ title: message });
       return newItem;
     } catch (error: any) {
       console.error('Error adding item:', error);
