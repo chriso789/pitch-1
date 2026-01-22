@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Package, Wrench, Search } from 'lucide-react';
+import { Package, Wrench, Search, Save } from 'lucide-react';
 import { MaterialBrowser } from './MaterialBrowser';
 
 interface AddItemDialogProps {
@@ -21,6 +21,7 @@ interface AddItemDialogProps {
     material_id?: string;
     coverage_per_unit?: number;
     sections?: string[];
+    saveToCatalog?: boolean;
   }) => void;
 }
 
@@ -42,6 +43,7 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
   const [unitCost, setUnitCost] = useState('');
   const [sku, setSku] = useState('');
   const [sections, setSections] = useState<string[]>(['roof']);
+  const [saveToCatalog, setSaveToCatalog] = useState(false);
 
   const handleMaterialSelect = (material: any) => {
     onAdd({
@@ -67,6 +69,7 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
       unit_cost: parseFloat(unitCost) || 0,
       sku: sku || undefined,
       sections: sections.length > 0 ? sections : undefined,
+      saveToCatalog: itemType === 'material' ? saveToCatalog : undefined,
     });
 
     resetForm();
@@ -80,6 +83,7 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
     setSku('');
     setItemType('material');
     setSections(['roof']);
+    setSaveToCatalog(false);
   };
 
   const handleSectionToggle = (sectionValue: string, checked: boolean) => {
@@ -195,6 +199,27 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
                 Select which sections this item should appear in
               </p>
             </div>
+
+            {/* Save to Catalog Option - Only for materials */}
+            {itemType === 'material' && (
+              <div className="flex items-start gap-3 p-3 border rounded-md bg-primary/5 border-primary/20">
+                <Checkbox
+                  id="save-to-catalog"
+                  checked={saveToCatalog}
+                  onCheckedChange={(checked) => setSaveToCatalog(!!checked)}
+                  className="mt-0.5"
+                />
+                <div className="flex-1">
+                  <label htmlFor="save-to-catalog" className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                    <Save className="h-4 w-4 text-primary" />
+                    Save to company catalog
+                  </label>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    This material will be available in the catalog for use in other estimate templates
+                  </p>
+                </div>
+              </div>
+            )}
 
             <DialogFooter>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

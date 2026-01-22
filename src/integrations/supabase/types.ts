@@ -33334,10 +33334,9 @@ export type Database = {
         Args: never
         Returns: {
           active: boolean
+          attributes: Json
           base_cost: number
-          category_code: string
           category_id: string
-          category_name: string
           code: string
           coverage_per_unit: number
           default_markup_pct: number
@@ -33347,6 +33346,7 @@ export type Database = {
           name: string
           supplier_sku: string
           tags: string[]
+          tenant_id: string
           uom: string
         }[]
       }

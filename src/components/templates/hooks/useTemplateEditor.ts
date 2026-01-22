@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 export interface TemplateGroup {
   id: string;
@@ -45,6 +46,7 @@ export interface Template {
 
 export const useTemplateEditor = (templateId?: string) => {
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [template, setTemplate] = useState<Template | null>(null);
@@ -290,7 +292,7 @@ export const useTemplateEditor = (templateId?: string) => {
   };
 
   // Add item
-  const addItem = async (groupId: string | null, item: Partial<TemplateItem>) => {
+  const addItem = async (groupId: string | null, item: Partial<TemplateItem> & { saveToCatalog?: boolean; sku?: string; coverage_per_unit?: number }) => {
     if (!template) return;
 
     try {
@@ -321,6 +323,20 @@ export const useTemplateEditor = (templateId?: string) => {
 
       if (error) throw error;
 
+      // If saveToCatalog flag is true, also save to materials catalog
+      if (item.saveToCatalog && item.item_type === 'material' && effectiveTenantId) {
+        const materialCode = item.sku || `CUSTOM-${Date.now()}`;
+        
+        await supabase.rpc('api_upsert_material' as any, {
+          p_code: materialCode,
+          p_name: item.name,
+          p_tenant_id: effectiveTenantId,
+          p_uom: item.unit || 'EA',
+          p_base_cost: item.unit_cost || 0,
+          p_coverage_per_unit: item.coverage_per_unit || null,
+        });
+      }
+
       const newItem: TemplateItem = {
         id: data.id,
         template_id: data.template_id,
@@ -345,7 +361,10 @@ export const useTemplateEditor = (templateId?: string) => {
         )
       );
 
-      toast({ title: 'Item added' });
+      const message = item.saveToCatalog 
+        ? 'Item added and saved to catalog' 
+        : 'Item added';
+      toast({ title: message });
       return newItem;
     } catch (error: any) {
       console.error('Error adding item:', error);

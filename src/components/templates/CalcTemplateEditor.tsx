@@ -277,6 +277,9 @@ const CalcTemplateEditor: React.FC = () => {
               item_type: item.item_type,
               unit: item.unit,
               unit_cost: item.unit_cost,
+              sku_pattern: item.sku,
+              coverage_per_unit: item.coverage_per_unit,
+              saveToCatalog: item.saveToCatalog,
             });
           }
           setShowAddItemDialog(false);

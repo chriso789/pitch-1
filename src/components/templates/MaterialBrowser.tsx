@@ -18,6 +18,7 @@ interface Material {
   category_name?: string;
   category_section?: string;
   attributes: Record<string, any>;
+  tenant_id?: string | null;
 }
 
 interface Category {
@@ -157,6 +158,11 @@ export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
                     <div className="flex items-center gap-2">
                       <Package className="h-4 w-4 text-muted-foreground shrink-0" />
                       <span className="font-medium truncate">{material.name}</span>
+                      {material.tenant_id && (
+                        <Badge variant="secondary" className="text-xs bg-primary/10 text-primary">
+                          Custom
+                        </Badge>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 mt-1 text-sm text-muted-foreground">
                       <span className="font-mono">{material.code}</span>
