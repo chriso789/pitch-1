@@ -181,6 +181,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     commissionStructure: repRates.commissionStructure,
   } : undefined);
 
+  // Determine if template content should be displayed
+  const shouldShowTemplateContent = useMemo(() => {
+    return selectedTemplateId || lineItems.length > 0 || isCreatingNewEstimate;
+  }, [selectedTemplateId, lineItems.length, isCreatingNewEstimate]);
+
   // Fetch assigned rep's rates from the pipeline entry
   useEffect(() => {
     const fetchAssignedRepRates = async () => {
@@ -1493,8 +1498,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </div>
       )}
 
-      {/* Sectioned Line Items Table - Always show when not fetching to allow adding items */}
-      {!fetchingItems && (
+      {/* Sectioned Line Items Table - Only show when template/estimate is selected */}
+      {!fetchingItems && shouldShowTemplateContent && (
         <Card>
           <CardHeader className="pb-2 flex flex-row items-center justify-between">
             <CardTitle className="text-base">
@@ -1594,19 +1599,21 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       {/* Action Buttons */}
       <div className="flex gap-3 pb-8 flex-wrap">
-        <Button
-          variant="outline"
-          onClick={handleSaveSelection}
-          disabled={!selectedTemplateId || saving}
-          className="flex-1 min-w-[140px]"
-        >
-          {saving ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <Save className="mr-2 h-4 w-4" />
-          )}
-          Save Selection
-        </Button>
+        {shouldShowTemplateContent && (
+          <Button
+            variant="outline"
+            onClick={handleSaveSelection}
+            disabled={!selectedTemplateId || saving}
+            className="flex-1 min-w-[140px]"
+          >
+            {saving ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            Save Selection
+          </Button>
+        )}
         
         {/* Preview and Export PDF buttons */}
         {lineItems.length > 0 && (
