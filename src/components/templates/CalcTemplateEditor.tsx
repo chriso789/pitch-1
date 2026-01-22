@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   DndContext,
   closestCenter,
@@ -30,6 +31,7 @@ const CalcTemplateEditor: React.FC = () => {
   const navigate = useNavigate();
   const { templateId } = useParams<{ templateId: string }>();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const {
     loading,
     saving,
@@ -169,6 +171,8 @@ const CalcTemplateEditor: React.FC = () => {
             onClick={async () => {
               const success = await saveTemplate(template);
               if (success) {
+                // Invalidate template list cache so changes appear immediately
+                await queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
                 navigate('/settings?tab=estimates');
               }
             }} 
