@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { EmailDomainSettings } from "./EmailDomainSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -126,17 +127,23 @@ export const Settings = () => {
   const { activeCompany, activeCompanyId } = useCompanySwitcher();
   const isMobile = useIsMobile();
   
+  // URL query param support for deep linking (e.g., /settings?tab=estimates)
+  const [searchParams] = useSearchParams();
+  
   // Check for navigation state (e.g., from Sidebar "Homeowner Portal" click)
   const locationState = window.history.state?.usr as { activeTab?: string } | undefined;
   
-  // Set active tab from navigation state on mount
+  // Set active tab from URL param or navigation state on mount
   useEffect(() => {
-    if (locationState?.activeTab) {
+    const tabFromUrl = searchParams.get('tab');
+    if (tabFromUrl) {
+      setActiveTab(tabFromUrl);
+    } else if (locationState?.activeTab) {
       setActiveTab(locationState.activeTab);
       // Clear the state so it doesn't persist on refresh
       window.history.replaceState({}, document.title);
     }
-  }, [locationState?.activeTab]);
+  }, [searchParams, locationState?.activeTab]);
 
   // Reset sub-tab when main tab changes
   useEffect(() => {

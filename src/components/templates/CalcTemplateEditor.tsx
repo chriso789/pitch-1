@@ -111,7 +111,7 @@ const CalcTemplateEditor: React.FC = () => {
     return (
       <div className="flex flex-col items-center justify-center h-screen gap-4">
         <p className="text-muted-foreground">Template not found</p>
-        <Button variant="outline" onClick={() => navigate('/settings')}>
+        <Button variant="outline" onClick={() => navigate('/settings?tab=estimates')}>
           <ArrowLeft className="mr-2 h-4 w-4" />
           Back to Settings
         </Button>
@@ -124,7 +124,7 @@ const CalcTemplateEditor: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b bg-card">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" onClick={() => navigate('/settings')}>
+          <Button variant="ghost" size="icon" onClick={() => navigate('/settings?tab=estimates')}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
@@ -169,7 +169,7 @@ const CalcTemplateEditor: React.FC = () => {
             onClick={async () => {
               const success = await saveTemplate(template);
               if (success) {
-                navigate('/settings');
+                navigate('/settings?tab=estimates');
               }
             }} 
             disabled={saving}
