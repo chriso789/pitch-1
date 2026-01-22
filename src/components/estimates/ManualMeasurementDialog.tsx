@@ -226,6 +226,13 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
       // Get current user for measured_by field (required by RLS)
       const { data: { user } } = await supabase.auth.getUser();
       
+      console.log('Inserting manual measurement:', {
+        customer_id: pipelineEntryId,
+        footprint_source: 'manual_entry',
+        measured_by: user?.id,
+        total_area_adjusted_sqft: adjustedArea,
+      });
+
       const measurementData = {
         customer_id: pipelineEntryId,
         organization_id: pipelineData.tenant_id,
@@ -233,7 +240,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         property_city: contact?.city || null,
         property_state: contact?.state || null,
         property_zip: contact?.zip || null,
-        gps_coordinates: JSON.stringify({ lat, lng }),
+        gps_coordinates: { lat, lng }, // Pass object directly for jsonb column
         footprint_source: 'manual_entry',
         detection_method: 'manual_entry',
         total_area_flat_sqft: flatArea,
@@ -258,18 +265,21 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         },
       };
       
-      const { error: measurementError } = await supabase
+      const { data: insertedMeasurement, error: measurementError } = await supabase
         .from('roof_measurements')
-        .insert(measurementData as any); // Use any to bypass strict typing
+        .insert(measurementData as any)
+        .select('id')
+        .single();
 
-      if (measurementError) {
-        console.error('Failed to create roof_measurements record:', measurementError);
+      if (measurementError || !insertedMeasurement) {
+        console.error('Failed to create roof_measurements record:', measurementError || 'No row returned');
         toast({
           title: 'Warning',
-          description: `History record failed: ${measurementError.message}`,
+          description: `History record failed: ${measurementError?.message || 'Record was not created'}`,
           variant: 'destructive',
         });
       } else {
+        console.log('Manual measurement inserted successfully:', insertedMeasurement.id);
         // Only invalidate cache if insert succeeded
         queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
         queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
