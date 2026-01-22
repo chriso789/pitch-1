@@ -125,6 +125,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
+  const [isCreatingNewEstimate, setIsCreatingNewEstimate] = useState(false);
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   
   // Add line item state
@@ -254,8 +255,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Auto-load line items when a selected estimate exists (view mode)
   useEffect(() => {
     const loadSelectedEstimateLineItems = async () => {
-      // Skip if already editing or line items exist
-      if (isEditingLoadedEstimate || existingEstimateId || lineItems.length > 0) return;
+      // Skip if already editing, line items exist, or user is creating a new estimate
+      if (isEditingLoadedEstimate || existingEstimateId || lineItems.length > 0 || isCreatingNewEstimate) return;
       
       try {
         // Check if pipeline entry has a selected estimate
@@ -1024,6 +1025,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       // Reset the form
       setSelectedTemplateId('');
+      setIsCreatingNewEstimate(false);
       resetToOriginal();
 
     } catch (error) {
@@ -1410,27 +1412,58 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             disabled={isEditingLoadedEstimate}
           />
 
-          {/* Show note when editing + option to recalculate */}
+          {/* Show note when editing + options to recalculate or create new */}
           {isEditingLoadedEstimate && selectedTemplateId && (
             <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
               <p className="text-sm text-muted-foreground">
-                Template locked while editing. Line items are from the saved estimate.
+                Viewing saved estimate. Select an action below.
               </p>
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => {
-                  setIsEditingLoadedEstimate(false);
-                  fetchLineItems(selectedTemplateId);
-                  toast({
-                    title: 'Recalculating',
-                    description: 'Line items recalculated from template measurements',
-                  });
-                }}
-              >
-                <RotateCcw className="h-4 w-4 mr-1" />
-                Recalculate
-              </Button>
+              <div className="flex gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm"
+                  onClick={() => {
+                    setIsEditingLoadedEstimate(false);
+                    fetchLineItems(selectedTemplateId);
+                    toast({
+                      title: 'Recalculating',
+                      description: 'Line items recalculated from template measurements',
+                    });
+                  }}
+                >
+                  <RotateCcw className="h-4 w-4 mr-1" />
+                  Recalculate
+                </Button>
+                <Button 
+                  variant="default" 
+                  size="sm"
+                  onClick={() => {
+                    // Clear everything and enable new estimate creation
+                    setIsCreatingNewEstimate(true);
+                    setIsEditingLoadedEstimate(false);
+                    setSelectedTemplateId('');
+                    setLineItems([]);
+                    setExistingEstimateId(null);
+                    setEditingEstimateNumber(null);
+                    toast({
+                      title: 'Ready for New Estimate',
+                      description: 'Select a template to create a new estimate',
+                    });
+                  }}
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Create New Estimate
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Hint when dropdown is unlocked and ready for new estimate */}
+          {!isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
+            <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+              <p className="text-sm text-primary">
+                Select a template above to create a new estimate option for this project.
+              </p>
             </div>
           )}
 
