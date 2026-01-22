@@ -27,15 +27,18 @@ serve(async (req) => {
       });
     }
 
-    // Define valid status transitions
+    // Define valid status transitions matching LEAD_STAGES from usePipelineData.ts
+    // Stages: lead -> qualified -> contingency_signed -> legal_review -> ready_for_approval -> project
     const validTransitions: Record<string, string[]> = {
-      'lead': ['legal_review', 'lost', 'canceled', 'duplicate'],
-      'legal_review': ['contingency_signed', 'lead', 'lost', 'canceled'],
-      'contingency_signed': ['project', 'legal_review', 'lost', 'canceled'],
-      'project': ['completed', 'contingency_signed', 'lost', 'canceled'],
+      'lead': ['qualified', 'lost', 'canceled', 'duplicate'],
+      'qualified': ['contingency_signed', 'lead', 'lost', 'canceled'],
+      'contingency_signed': ['legal_review', 'qualified', 'lost', 'canceled'],
+      'legal_review': ['ready_for_approval', 'contingency_signed', 'lost', 'canceled'],
+      'ready_for_approval': ['project', 'legal_review', 'lost', 'canceled'],
+      'project': ['completed', 'ready_for_approval', 'lost', 'canceled'],
       'completed': ['closed'],
-      'lost': [],
-      'canceled': [],
+      'lost': ['lead'], // Allow re-opening lost leads
+      'canceled': ['lead'], // Allow re-opening canceled leads
       'duplicate': [],
       'closed': []
     };
