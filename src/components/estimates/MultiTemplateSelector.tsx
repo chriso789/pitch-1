@@ -182,9 +182,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   } : undefined);
 
   // Determine if template content should be displayed
+  // Only show when actively editing/viewing a loaded estimate, or creating new with template selected
   const shouldShowTemplateContent = useMemo(() => {
-    return selectedTemplateId || lineItems.length > 0 || isCreatingNewEstimate;
-  }, [selectedTemplateId, lineItems.length, isCreatingNewEstimate]);
+    return isEditingLoadedEstimate || 
+           (isCreatingNewEstimate && !!selectedTemplateId) || 
+           existingEstimateId !== null;
+  }, [isEditingLoadedEstimate, isCreatingNewEstimate, selectedTemplateId, existingEstimateId]);
 
   // Fetch assigned rep's rates from the pipeline entry
   useEffect(() => {
