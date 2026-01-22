@@ -7,9 +7,10 @@ import jsPDF from "jspdf";
 interface MaterialOrderExportProps {
   order: any;
   items: any[];
+  projectAddress?: string;
 }
 
-export function MaterialOrderExport({ order, items }: MaterialOrderExportProps) {
+export function MaterialOrderExport({ order, items, projectAddress }: MaterialOrderExportProps) {
   const { toast } = useToast();
   const { sendOrderEmail, sending } = useMaterialOrderEmail();
 
@@ -81,6 +82,30 @@ export function MaterialOrderExport({ order, items }: MaterialOrderExportProps) 
       }
 
       yPos += 10;
+
+      // Job Site Address - PROMINENT SECTION
+      const jobSiteAddress = projectAddress || order.delivery_address || order.project_address;
+      if (jobSiteAddress) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Job Site / Delivery Address', margin, yPos);
+        yPos += 8;
+
+        doc.setFillColor(239, 246, 255); // Light blue background
+        doc.rect(margin, yPos - 4, pageWidth - 2 * margin, 16, 'F');
+        doc.setDrawColor(59, 130, 246); // Blue border
+        doc.rect(margin, yPos - 4, pageWidth - 2 * margin, 16, 'S');
+        
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(30, 64, 175); // Dark blue text
+        doc.text(jobSiteAddress, margin + 5, yPos + 5);
+        doc.setTextColor(0, 0, 0); // Reset text color
+        
+        yPos += 20;
+      }
+
+      yPos += 5;
 
       // Items Table
       doc.setFontSize(14);

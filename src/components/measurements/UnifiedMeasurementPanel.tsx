@@ -720,6 +720,9 @@ function MeasurementHistorySection({
 }: MeasurementHistorySectionProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [isSaving, setIsSaving] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+  const [deleteType, setDeleteType] = useState<'vendor' | 'ai' | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const queryClient = useQueryClient();
 
   const totalHistoryCount = (vendorReports?.length || 0) + (aiMeasurements?.length || 0);
@@ -837,6 +840,35 @@ function MeasurementHistorySection({
     }
   };
 
+
+  const handleDeleteVendorReport = async (reportId: string) => {
+    setIsDeleting(true);
+    try {
+      await supabase.from('roof_vendor_reports').delete().eq('id', reportId);
+      toast({ title: 'Report Deleted', description: 'Removed from history' });
+      queryClient.invalidateQueries({ queryKey: ['vendor-reports-history'] });
+    } catch (error) {
+      toast({ title: 'Delete Failed', variant: 'destructive' });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmId(null);
+    }
+  };
+
+  const handleDeleteAiMeasurement = async (measurementId: string) => {
+    setIsDeleting(true);
+    try {
+      await supabase.from('roof_measurements').delete().eq('id', measurementId);
+      toast({ title: 'Measurement Deleted', description: 'Removed from history' });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements'] });
+    } catch (error) {
+      toast({ title: 'Delete Failed', variant: 'destructive' });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmId(null);
+    }
+  };
+
   return (
     <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
       <CollapsibleTrigger asChild>
@@ -892,25 +924,38 @@ function MeasurementHistorySection({
                   )}
                 </div>
               </div>
-              <Button 
-                size="sm" 
-                variant={hasValidData ? "outline" : "ghost"}
-                onClick={() => handleSaveVendorReport(report)}
-                disabled={isSaving === report.id || !hasValidData}
-                className="shrink-0"
-                title={!hasValidData ? "Report has no valid measurement data" : "Save to this lead"}
-              >
-                {isSaving === report.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : hasValidData ? (
-                  <>
-                    <ArrowRight className="h-4 w-4 mr-1" />
-                    Save
-                  </>
-                ) : (
-                  <span className="text-xs text-muted-foreground">Invalid</span>
-                )}
-              </Button>
+              <div className="flex gap-1 shrink-0">
+                <Button 
+                  size="sm" 
+                  variant={hasValidData ? "outline" : "ghost"}
+                  onClick={() => handleSaveVendorReport(report)}
+                  disabled={isSaving === report.id || !hasValidData}
+                  title={!hasValidData ? "Report has no valid measurement data" : "Save to this lead"}
+                >
+                  {isSaving === report.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : hasValidData ? (
+                    <>
+                      <ArrowRight className="h-4 w-4 mr-1" />
+                      Save
+                    </>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Invalid</span>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setDeleteConfirmId(report.id);
+                    setDeleteType('vendor');
+                  }}
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  title="Delete from history"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           );
         })}
@@ -937,26 +982,69 @@ function MeasurementHistorySection({
                   </p>
                 </div>
               </div>
-              <Button 
-                size="sm" 
-                variant="outline" 
-                onClick={() => handleSaveAiMeasurement(measurement)}
-                disabled={isSaving === measurement.id}
-                className="shrink-0"
-              >
-                {isSaving === measurement.id ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <>
-                    <ArrowRight className="h-4 w-4 mr-1" />
-                    Save
-                  </>
-                )}
-              </Button>
+              <div className="flex gap-1 shrink-0">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  onClick={() => handleSaveAiMeasurement(measurement)}
+                  disabled={isSaving === measurement.id}
+                >
+                  {isSaving === measurement.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <>
+                      <ArrowRight className="h-4 w-4 mr-1" />
+                      Save
+                    </>
+                  )}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setDeleteConfirmId(measurement.id);
+                    setDeleteType('ai');
+                  }}
+                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                  title="Delete from history"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           );
         })}
       </CollapsibleContent>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete from History?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete this {deleteType === 'vendor' ? 'imported report' : 'AI measurement'} from history. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (deleteConfirmId) {
+                  if (deleteType === 'vendor') {
+                    handleDeleteVendorReport(deleteConfirmId);
+                  } else {
+                    handleDeleteAiMeasurement(deleteConfirmId);
+                  }
+                }
+              }}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Collapsible>
   );
 }
