@@ -181,11 +181,13 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching vendor reports by lead:', leadError);
       }
 
-      // Also get recent reports (last 60 days) that might be relevant
+      // Also get recent reports (last 60 days) - only show reports linked to this specific lead
+      // to avoid showing training data from other locations
       const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
       const { data: recentAll, error: recentError } = await supabase
         .from('roof_vendor_reports')
         .select('id, provider, address, created_at, parsed, lead_id')
+        .eq('lead_id', pipelineEntryId)
         .gte('created_at', sixtyDaysAgo)
         .order('created_at', { ascending: false })
         .limit(20);
