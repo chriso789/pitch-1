@@ -5925,8 +5925,12 @@ export type Database = {
           additional_emails: string[] | null
           additional_phones: string[] | null
           address_city: string | null
+          address_components: Json | null
           address_state: string | null
           address_street: string | null
+          address_validated: boolean | null
+          address_validated_at: string | null
+          address_validation_score: number | null
           address_verification_data: Json | null
           address_zip: string | null
           assigned_to: string | null
@@ -5944,6 +5948,7 @@ export type Database = {
           email: string | null
           email_engagement_score: number | null
           first_name: string | null
+          google_place_id: string | null
           id: string
           is_deleted: boolean | null
           last_name: string | null
@@ -5982,8 +5987,12 @@ export type Database = {
           additional_emails?: string[] | null
           additional_phones?: string[] | null
           address_city?: string | null
+          address_components?: Json | null
           address_state?: string | null
           address_street?: string | null
+          address_validated?: boolean | null
+          address_validated_at?: string | null
+          address_validation_score?: number | null
           address_verification_data?: Json | null
           address_zip?: string | null
           assigned_to?: string | null
@@ -6001,6 +6010,7 @@ export type Database = {
           email?: string | null
           email_engagement_score?: number | null
           first_name?: string | null
+          google_place_id?: string | null
           id?: string
           is_deleted?: boolean | null
           last_name?: string | null
@@ -6039,8 +6049,12 @@ export type Database = {
           additional_emails?: string[] | null
           additional_phones?: string[] | null
           address_city?: string | null
+          address_components?: Json | null
           address_state?: string | null
           address_street?: string | null
+          address_validated?: boolean | null
+          address_validated_at?: string | null
+          address_validation_score?: number | null
           address_verification_data?: Json | null
           address_zip?: string | null
           assigned_to?: string | null
@@ -6058,6 +6072,7 @@ export type Database = {
           email?: string | null
           email_engagement_score?: number | null
           first_name?: string | null
+          google_place_id?: string | null
           id?: string
           is_deleted?: boolean | null
           last_name?: string | null

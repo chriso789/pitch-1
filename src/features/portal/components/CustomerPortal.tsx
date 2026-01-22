@@ -18,6 +18,8 @@ import {
   Clock
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { ProjectTimeline } from './ProjectTimeline';
+import { CustomerMessages } from './CustomerMessages';
 
 interface Project {
   id: string;
@@ -276,12 +278,7 @@ export const CustomerPortal: React.FC = () => {
                   </TabsContent>
 
                   <TabsContent value="timeline">
-                    <Card className="p-6">
-                      <h3 className="text-lg font-semibold mb-4">Project Timeline</h3>
-                      <p className="text-muted-foreground text-center py-8">
-                        Timeline feature coming soon
-                      </p>
-                    </Card>
+                    <ProjectTimeline projectId={selectedProject.id} />
                   </TabsContent>
 
                   <TabsContent value="payments">
@@ -315,12 +312,7 @@ export const CustomerPortal: React.FC = () => {
                   </TabsContent>
 
                   <TabsContent value="messages">
-                    <Card className="p-6">
-                      <h3 className="text-lg font-semibold mb-4">Messages</h3>
-                      <p className="text-muted-foreground text-center py-8">
-                        Messaging feature coming soon
-                      </p>
-                    </Card>
+                    <CustomerMessages projectId={selectedProject.id} />
                   </TabsContent>
                 </Tabs>
               )}
