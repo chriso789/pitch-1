@@ -12,7 +12,7 @@ import {
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
   ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus, MessageSquare,
-  Pencil, Crosshair, Ruler, Calculator, Lock
+  Pencil, Crosshair, Ruler, Calculator, Lock, ChevronDown
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -627,13 +627,16 @@ const LeadDetails = () => {
                   </SelectContent>
                 </Select>
               ) : (
-                <Badge 
-                  className={`${getStatusColor(lead.status)} cursor-pointer hover:opacity-80`}
+                <div 
+                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors"
                   onClick={() => setIsEditingStatus(true)}
                 >
-                  {lead.status.replace('_', ' ')}
-                  <Edit2 className="h-3 w-3 ml-1" />
-                </Badge>
+                  <div className={`w-2 h-2 rounded-full ${LEAD_STAGES.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
+                  <span className="text-sm font-medium capitalize">
+                    {LEAD_STAGES.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
+                  </span>
+                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                </div>
               )}
               {lead.status === 'project' && productionStage && (
                 <Badge variant="outline" className="border-primary text-primary">

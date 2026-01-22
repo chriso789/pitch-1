@@ -223,6 +223,9 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
       const lat = contact?.lat || 0;
       const lng = contact?.lng || 0;
       
+      // Get current user for measured_by field (required by RLS)
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const measurementData = {
         customer_id: pipelineEntryId,
         organization_id: pipelineData.tenant_id,
@@ -245,6 +248,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         facet_count: formData.facets,
         footprint_confidence: 1.0, // Manual = high confidence
         waste_factor_percent: formData.wastePercentage,
+        measured_by: user?.id || null, // Required for RLS policy
         ai_detection_data: { 
           source: 'manual_entry', 
           entered_by: 'user',
@@ -262,13 +266,14 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         console.error('Failed to create roof_measurements record:', measurementError);
         toast({
           title: 'Warning',
-          description: 'Measurement saved to lead but history record failed. Try refreshing.',
+          description: `History record failed: ${measurementError.message}`,
+          variant: 'destructive',
         });
+      } else {
+        // Only invalidate cache if insert succeeded
+        queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
       }
-
-      // Invalidate measurement history queries so the new entry appears immediately
-      queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
-      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
 
       toast({
         title: 'Measurements Saved',
