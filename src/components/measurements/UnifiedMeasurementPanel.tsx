@@ -245,7 +245,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, footprint_source, detection_method')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -722,6 +722,8 @@ interface MeasurementHistorySectionProps {
     total_ridge_length: number | null;
     total_hip_length: number | null;
     total_valley_length: number | null;
+    footprint_source?: string | null;
+    detection_method?: string | null;
   }>;
   pipelineEntryId: string;
   onSaveToApprovals: () => void;
@@ -980,16 +982,24 @@ function MeasurementHistorySection({
         {/* AI Measurements */}
         {aiMeasurements.map((measurement) => {
           const sqft = measurement.total_area_adjusted_sqft || 0;
+          const isManualEntry = measurement.footprint_source === 'manual_entry' || measurement.detection_method === 'manual_entry';
           return (
             <div 
               key={measurement.id}
               className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
             >
               <div className="flex items-center gap-3 min-w-0">
-                <Badge variant="outline" className="bg-info/10 text-info border-info/30 shrink-0">
-                  <Sparkles className="h-3 w-3 mr-1" />
-                  AI-Pulled
-                </Badge>
+                {isManualEntry ? (
+                  <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/30 shrink-0">
+                    <Pencil className="h-3 w-3 mr-1" />
+                    Manual Entry
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="bg-info/10 text-info border-info/30 shrink-0">
+                    <Sparkles className="h-3 w-3 mr-1" />
+                    AI-Pulled
+                  </Badge>
+                )}
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">
                     {sqft.toLocaleString()} sqft
