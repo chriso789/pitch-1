@@ -9,6 +9,7 @@ import { Plus, Trash2, Loader2, Lock, CheckCircle, Download } from 'lucide-react
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useCompanyInfo } from '@/hooks/useCompanyInfo';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
@@ -54,6 +55,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 }) => {
   const queryClient = useQueryClient();
   const { profile } = useUserProfile();
+  const { data: companyInfo } = useCompanyInfo();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -602,6 +604,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                     totalAmount={sectionTotal}
                     customerName={customerName}
                     projectAddress={projectAddress}
+                    companyInfo={companyInfo || undefined}
                   />
                 )}
                 {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
@@ -611,6 +614,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                     totalAmount={sectionTotal}
                     customerName={customerName}
                     projectAddress={projectAddress}
+                    companyInfo={companyInfo || undefined}
                   />
                 )}
               </>

@@ -12,12 +12,21 @@ interface MaterialItem {
   line_total: number;
 }
 
+interface CompanyInfo {
+  name?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  license_number?: string;
+}
+
 interface MaterialLineItemsExportProps {
   estimateId: string;
   materialItems: MaterialItem[];
   totalAmount: number;
   customerName?: string;
   projectAddress?: string;
+  companyInfo?: CompanyInfo;
 }
 
 export function MaterialLineItemsExport({ 
@@ -25,7 +34,8 @@ export function MaterialLineItemsExport({
   materialItems, 
   totalAmount,
   customerName,
-  projectAddress 
+  projectAddress,
+  companyInfo
 }: MaterialLineItemsExportProps) {
   const { toast } = useToast();
 
