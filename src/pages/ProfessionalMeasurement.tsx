@@ -247,6 +247,7 @@ export default function ProfessionalMeasurement() {
                       centerLng={lng!}
                       initialZoom={20}
                       address={propertyAddress}
+                      pipelineEntryId={id}
                       onMeasurementsChange={handleMeasurementsComplete}
                     />
                   ) : !hasValidCoordinates ? (
