@@ -164,6 +164,16 @@ export const CommissionManagement = () => {
 
   const savePlan = async () => {
     try {
+      // Guard: Must have a valid tenant
+      if (!effectiveTenantId) {
+        toast({
+          title: "Error",
+          description: "No active company selected",
+          variant: "destructive",
+        });
+        return;
+      }
+
       const user = await supabase.auth.getUser();
       const planData = {
         name: newPlan.name,
@@ -175,7 +185,7 @@ export const CommissionManagement = () => {
         },
         include_overhead: newPlan.include_overhead,
         payment_method: newPlan.payment_method,
-        tenant_id: user.data.user?.user_metadata?.tenant_id,
+        tenant_id: effectiveTenantId,
         created_by: user.data.user?.id
       };
 
