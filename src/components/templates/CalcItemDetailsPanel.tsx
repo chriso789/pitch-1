@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Select,
   SelectContent,
@@ -10,10 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Package, Wrench } from 'lucide-react';
+import { ArrowLeft, Package, Wrench, AlertCircle } from 'lucide-react';
 import { CalcTemplateItem } from './hooks/useCalcTemplateEditor';
 import { usePricingCalculation } from './hooks/usePricingCalculation';
 import { FormulaBuilder } from './FormulaBuilder';
+
+// Keywords that suggest an item is labor, not material
+const LABOR_KEYWORDS = ['steep', 'charge', 'labor', 'tear', 'install', 'cleanup', 'haul', 'additional layer', 'remove', 'repair'];
+const MATERIAL_KEYWORDS = ['shingle', 'nail', 'boot', 'flashing', 'underlayment', 'ridge cap', 'drip edge', 'ice', 'water', 'vent'];
 
 interface CalcItemDetailsPanelProps {
   item: CalcTemplateItem;
@@ -53,6 +58,23 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
     ? localItem.margin_override 
     : profitMargin;
   const pricing = calculatePrice(localItem.unit_cost, effectiveMargin, 'profit_margin');
+
+  // Check for classification mismatch based on item name keywords
+  const classificationWarning = useMemo(() => {
+    const nameLower = localItem.item_name.toLowerCase();
+    const skuLower = (localItem.sku_pattern || '').toLowerCase();
+    
+    const suggestsLabor = LABOR_KEYWORDS.some(term => nameLower.includes(term)) || skuLower.startsWith('labor-');
+    const suggestsMaterial = MATERIAL_KEYWORDS.some(term => nameLower.includes(term));
+    
+    if (suggestsLabor && !suggestsMaterial && localItem.item_type === 'material') {
+      return 'This item name suggests it may be a labor item. Consider changing the type to "Labor".';
+    }
+    if (suggestsMaterial && !suggestsLabor && localItem.item_type === 'labor') {
+      return 'This item name suggests it may be a material item. Consider changing the type to "Material".';
+    }
+    return null;
+  }, [localItem.item_name, localItem.item_type, localItem.sku_pattern]);
 
   // Sync local state when switching items (different item id)
   useEffect(() => {
@@ -97,7 +119,7 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
             {item.item_type === 'material' ? (
               <Package className="h-5 w-5 text-primary" />
             ) : (
-              <Wrench className="h-5 w-5 text-orange-500" />
+              <Wrench className="h-5 w-5 text-warning" />
             )}
             <h2 className="text-lg font-semibold">Edit Item</h2>
           </div>
@@ -144,6 +166,16 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
               <SelectItem value="labor">Labor</SelectItem>
             </SelectContent>
           </Select>
+          
+          {/* Classification Warning */}
+          {classificationWarning && (
+            <Alert variant="default" className="border-warning bg-warning/10">
+              <AlertCircle className="h-4 w-4 text-warning" />
+              <AlertDescription className="text-sm">
+                {classificationWarning}
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         {/* Unit */}
@@ -252,7 +284,7 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
             <p className="font-semibold">
               {effectiveMargin}%
               {localItem.margin_override > 0 && (
-                <span className="text-xs text-orange-500 ml-1">(override)</span>
+                <span className="text-xs text-warning ml-1">(override)</span>
               )}
             </p>
           </div>
