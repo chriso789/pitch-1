@@ -1559,7 +1559,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       )}
 
       {/* Estimate Add-ons Panel - for fine print, photos, etc. */}
-      {lineItems.length > 0 && (
+      {shouldShowTemplateContent && lineItems.length > 0 && (
         <EstimateAddonsPanel
           pipelineEntryId={pipelineEntryId}
           pdfOptions={pdfOptions}
@@ -1569,7 +1569,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       )}
 
       {/* Estimate Breakdown Card */}
-      {lineItems.length > 0 && (
+      {shouldShowTemplateContent && lineItems.length > 0 && (
         <EstimateBreakdownCard
           breakdown={breakdown}
           config={config}
@@ -1582,7 +1582,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       )}
 
       {/* Estimate Name Input */}
-      {lineItems.length > 0 && (
+      {shouldShowTemplateContent && lineItems.length > 0 && (
         <div className="space-y-2">
           <Label htmlFor="estimate-display-name" className="text-sm font-medium">
             Estimate Name <span className="text-muted-foreground font-normal">(optional)</span>
@@ -1619,7 +1619,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         )}
         
         {/* Preview and Export PDF buttons */}
-        {lineItems.length > 0 && (
+        {shouldShowTemplateContent && lineItems.length > 0 && (
           <>
             <Button
               variant="outline"
