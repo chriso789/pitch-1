@@ -202,7 +202,10 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
       `return ${evalExpr};`
     );
     const result = safeEval(Math.ceil, Math.floor, Math.round, Math.min, Math.max, Math.abs);
-    return typeof result === 'number' && !isNaN(result) ? result : 0;
+    // Round to 2 decimal places to avoid floating-point precision issues
+    return typeof result === 'number' && !isNaN(result) 
+      ? Math.round(result * 100) / 100 
+      : 0;
   } catch (error) {
     console.warn(`Failed to evaluate formula: ${formula}`, error);
     return 0;
