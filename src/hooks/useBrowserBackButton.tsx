@@ -45,14 +45,14 @@ export const useBrowserBackButton = ({
       return;
     }
     
-    // Check if there's meaningful history (more than just the current page)
-    // window.history.length > 2 because: 1 = blank, 2 = current page
-    const hasHistory = window.history.length > 2;
+    // Check if we came from within the app using document.referrer
+    const isInternalReferrer = document.referrer && 
+      document.referrer.includes(window.location.host);
     
-    if (hasHistory) {
+    if (isInternalReferrer) {
       navigate(-1);
     } else {
-      // No reliable history - use fallback path
+      // No internal history - use fallback path
       navigate(fallbackPath);
     }
   }, [navigate, fallbackPath, location.state]);
