@@ -25,6 +25,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 interface CommissionPlan {
   id: string;
@@ -69,6 +70,9 @@ export const CommissionManagement = () => {
     payment_method: 'first_check',
     description: ''
   });
+  
+  // Use effective tenant ID (respects company switcher)
+  const effectiveTenantId = useEffectiveTenantId();
 
   const formatPayRelease = (value: string) => {
     const labels: Record<string, string> = {
@@ -84,57 +88,57 @@ export const CommissionManagement = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // React Query for commission plans with caching
+  // React Query for commission plans - filtered by effective tenant
   const { data: commissionPlans = [], isLoading: plansLoading } = useQuery({
-    queryKey: ['commission-plans'],
+    queryKey: ['commission-plans', effectiveTenantId],
     queryFn: async () => {
+      if (!effectiveTenantId) return [];
       const { data, error } = await supabase
         .from('commission_plans')
         .select('*')
+        .eq('tenant_id', effectiveTenantId)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    staleTime: 30 * 1000, // 30 seconds
+    enabled: !!effectiveTenantId,
+    staleTime: 30 * 1000,
   });
 
-  // React Query for sales reps with caching - filtered by current user's tenant
+  // React Query for sales reps - filtered by effective tenant (respects company switcher)
   const { data: salesReps = [], isLoading: repsLoading } = useQuery({
-    queryKey: ['sales-reps-commission'],
+    queryKey: ['sales-reps-commission', effectiveTenantId],
     queryFn: async () => {
-      // Get current user's tenant first
-      const { data: { user: authUser } } = await supabase.auth.getUser();
-      const { data: currentProfile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', authUser?.id)
-        .single();
-      
+      if (!effectiveTenantId) return [];
       const { data, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, email, role, personal_overhead_rate, photo_url')
-        .eq('tenant_id', currentProfile?.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .in('role', ['owner', 'corporate', 'regional_manager', 'sales_manager', 'project_manager'])
         .eq('is_active', true);
       if (error) throw error;
       return data || [];
     },
-    staleTime: 60 * 1000, // 1 minute
+    enabled: !!effectiveTenantId,
+    staleTime: 60 * 1000,
   });
 
-  // React Query for commission calculations with caching
+  // React Query for commission calculations - filtered by effective tenant
   const { data: commissionCalculations = [], isLoading: calcsLoading } = useQuery({
-    queryKey: ['commission-calculations'],
+    queryKey: ['commission-calculations', effectiveTenantId],
     queryFn: async () => {
+      if (!effectiveTenantId) return [];
       const { data, error } = await supabase
         .from('commission_calculations')
         .select('*')
+        .eq('tenant_id', effectiveTenantId)
         .order('calculated_at', { ascending: false })
         .limit(10);
       if (error) throw error;
       return data || [];
     },
-    staleTime: 30 * 1000, // 30 seconds
+    enabled: !!effectiveTenantId,
+    staleTime: 30 * 1000,
   });
 
   const loading = plansLoading || repsLoading || calcsLoading;
