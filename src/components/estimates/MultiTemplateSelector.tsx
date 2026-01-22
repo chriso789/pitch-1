@@ -698,6 +698,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplateId(templateId);
+    // Auto-enable creating mode when template is selected (unless already editing an existing estimate)
+    if (!isEditingLoadedEstimate && !existingEstimateId) {
+      setIsCreatingNewEstimate(true);
+    }
     resetToOriginal();
   };
 
