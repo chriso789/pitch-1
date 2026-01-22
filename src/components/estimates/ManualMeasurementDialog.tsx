@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogContent,
@@ -83,6 +84,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
   onSuccess,
 }) => {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [formData, setFormData] = useState<MeasurementFormData>({
     areaType: 'pitch_adjusted',
@@ -258,8 +260,15 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
 
       if (measurementError) {
         console.error('Failed to create roof_measurements record:', measurementError);
-        // Don't fail the whole operation, just log it
+        toast({
+          title: 'Warning',
+          description: 'Measurement saved to lead but history record failed. Try refreshing.',
+        });
       }
+
+      // Invalidate measurement history queries so the new entry appears immediately
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
 
       toast({
         title: 'Measurements Saved',
