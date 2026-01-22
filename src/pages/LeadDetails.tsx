@@ -27,6 +27,7 @@ import { MultiTemplateSelector } from '@/components/estimates/MultiTemplateSelec
 import { DocumentsTab } from '@/components/DocumentsTab';
 import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelector';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
+import { LEAD_STAGES } from '@/hooks/usePipelineData';
 import { LinearFeaturesPanel } from '@/components/measurements/LinearFeaturesPanel';
 import { PullMeasurementsButton } from '@/components/measurements/PullMeasurementsButton';
 import { ImportReportButton } from '@/components/measurements/ImportReportButton';
@@ -296,6 +297,7 @@ const LeadDetails = () => {
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
   const [isEditingSalesRep, setIsEditingSalesRep] = useState(false);
   const [isEditingSecondaryRep, setIsEditingSecondaryRep] = useState(false);
+  const [isEditingStatus, setIsEditingStatus] = useState(false);
   
   // Communication states
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -358,6 +360,30 @@ const LeadDetails = () => {
       setActiveTab(tab);
     }
   }, [searchParams]);
+
+  const handleStatusUpdate = async (newStatus: string) => {
+    try {
+      const { error } = await supabase.functions.invoke('pipeline-status', {
+        body: {
+          pipeline_id: id,
+          new_status: newStatus
+        }
+      });
+      
+      if (error) throw error;
+      
+      toast({ title: "Status updated successfully" });
+      refetchLead();
+      setIsEditingStatus(false);
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      toast({ 
+        title: "Error updating status", 
+        description: error.message || "Please try again",
+        variant: "destructive" 
+      });
+    }
+  };
 
   const handleSalesRepUpdate = async (repId: string) => {
     try {
@@ -574,9 +600,35 @@ const LeadDetails = () => {
               <h1 className="text-3xl font-bold">
                 {lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead'}
               </h1>
-              <Badge className={getStatusColor(lead.status)}>
-                {lead.status.replace('_', ' ')}
-              </Badge>
+              {isEditingStatus ? (
+                <Select 
+                  value={lead.status} 
+                  onValueChange={handleStatusUpdate}
+                  onOpenChange={(open) => !open && setIsEditingStatus(false)}
+                >
+                  <SelectTrigger className="h-7 w-[180px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LEAD_STAGES.map((stage) => (
+                      <SelectItem key={stage.key} value={stage.key}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${stage.color}`} />
+                          {stage.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Badge 
+                  className={`${getStatusColor(lead.status)} cursor-pointer hover:opacity-80`}
+                  onClick={() => setIsEditingStatus(true)}
+                >
+                  {lead.status.replace('_', ' ')}
+                  <Edit2 className="h-3 w-3 ml-1" />
+                </Badge>
+              )}
               {lead.status === 'project' && productionStage && (
                 <Badge variant="outline" className="border-primary text-primary">
                   Production: {productionStage.replace('_', ' ')}
