@@ -204,14 +204,20 @@ export const GeneralSettings = () => {
 
       const { error } = await supabase
         .from('app_settings')
-        .upsert({
-          setting_key: 'general_preferences',
-          setting_value: newSettings,
-          user_id: user?.id,
-          tenant_id: profile?.tenant_id
-        });
+        .upsert(
+          {
+            setting_key: 'general_preferences',
+            setting_value: newSettings,
+            user_id: user?.id,
+            tenant_id: profile?.tenant_id
+          },
+          { onConflict: 'user_id,tenant_id,setting_key' }
+        );
 
-      if (error) throw error;
+      if (error) {
+        console.error('Settings upsert error:', error);
+        throw error;
+      }
 
       toast({
         title: "Settings Updated",
