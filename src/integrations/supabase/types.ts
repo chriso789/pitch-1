@@ -33518,40 +33518,23 @@ export type Database = {
         }
         Returns: string
       }
-      api_upsert_material:
-        | {
-            Args: {
-              p_attributes?: Json
-              p_base_cost?: number
-              p_category_id?: string
-              p_code: string
-              p_coverage_per_unit?: number
-              p_default_markup_pct?: number
-              p_description?: string
-              p_name: string
-              p_supplier_sku?: string
-              p_tags?: string[]
-              p_uom?: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              p_attributes?: Json
-              p_base_cost?: number
-              p_category_id?: string
-              p_code: string
-              p_coverage_per_unit?: number
-              p_default_markup_pct?: number
-              p_description?: string
-              p_name: string
-              p_supplier_sku?: string
-              p_tags?: string[]
-              p_tenant_id?: string
-              p_uom?: string
-            }
-            Returns: string
-          }
+      api_upsert_material: {
+        Args: {
+          p_attributes?: Json
+          p_base_cost?: number
+          p_category_id?: string
+          p_code: string
+          p_coverage_per_unit?: number
+          p_default_markup_pct?: number
+          p_description?: string
+          p_name: string
+          p_supplier_sku?: string
+          p_tags?: string[]
+          p_tenant_id?: string
+          p_uom?: string
+        }
+        Returns: string
+      }
       calculate_enhanced_estimate: {
         Args: { estimate_id_param: string }
         Returns: Json
