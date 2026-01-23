@@ -1,5 +1,5 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { supabaseAuth } from '../_shared/supabase.ts';
+import { supabaseAuth, supabaseService, getAuthUser } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
@@ -9,20 +9,40 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = supabaseAuth(req);
+    // Verify user is authenticated
+    const authClient = supabaseAuth(req);
+    const authUser = await getAuthUser(authClient);
+    
+    if (!authUser) {
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     const { pipeline_id, new_status } = await req.json();
 
+    // Use service client to bypass RLS for the query
+    const serviceClient = supabaseService();
+
     // Validate status transition (PITCH rules: no skipping stages)
-    const { data: currentEntry, error: fetchError } = await supabaseClient
+    const { data: currentEntry, error: fetchError } = await serviceClient
       .from('pipeline_entries')
-      .select('status')
+      .select('status, tenant_id')
       .eq('id', pipeline_id)
       .single();
 
-    if (fetchError) {
+    if (fetchError || !currentEntry) {
       return new Response(JSON.stringify({ error: 'Pipeline entry not found' }), {
         status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Verify user belongs to same tenant
+    if (authUser.tenantId !== currentEntry.tenant_id) {
+      return new Response(JSON.stringify({ error: 'Access denied - tenant mismatch' }), {
+        status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -55,8 +75,8 @@ serve(async (req) => {
       });
     }
 
-    // Update the pipeline entry status
-    const { data, error } = await supabaseClient
+    // Update the pipeline entry status using service client
+    const { data, error } = await serviceClient
       .from('pipeline_entries')
       .update({ status: new_status, updated_at: new Date().toISOString() })
       .eq('id', pipeline_id)
