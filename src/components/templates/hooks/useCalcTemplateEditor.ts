@@ -322,10 +322,11 @@ export const useCalcTemplateEditor = (templateId?: string) => {
       if (error) throw error;
 
       // If saveToCatalog flag is true, also save to materials catalog
+      let catalogSaveSuccess = true;
       if (item.saveToCatalog && item.item_type === 'material') {
         const materialCode = item.sku_pattern || `CUSTOM-${Date.now()}`;
         
-        await supabase.rpc('api_upsert_material' as any, {
+        const { error: materialError } = await supabase.rpc('api_upsert_material' as any, {
           p_code: materialCode,
           p_name: item.item_name,
           p_tenant_id: effectiveTenantId,
@@ -333,6 +334,11 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           p_base_cost: item.unit_cost || 0,
           p_coverage_per_unit: item.coverage_per_unit || null,
         });
+
+        if (materialError) {
+          console.error('Failed to save to catalog:', materialError);
+          catalogSaveSuccess = false;
+        }
       }
 
       const newItem: CalcTemplateItem = {
@@ -361,9 +367,12 @@ export const useCalcTemplateEditor = (templateId?: string) => {
       );
 
       const message = item.saveToCatalog 
-        ? 'Item added and saved to catalog' 
+        ? (catalogSaveSuccess ? 'Item added and saved to catalog' : 'Item added, but catalog save failed')
         : 'Item added';
-      toast({ title: message });
+      toast({ 
+        title: message,
+        variant: item.saveToCatalog && !catalogSaveSuccess ? 'destructive' : 'default',
+      });
       return newItem;
     } catch (error: any) {
       console.error('Error adding item:', error);
