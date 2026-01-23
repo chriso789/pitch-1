@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Collapsible,
   CollapsibleContent,
@@ -770,7 +771,90 @@ function MeasurementHistorySection({
   const [isDeleting, setIsDeleting] = useState(false);
   const queryClient = useQueryClient();
 
+  // Multi-select state
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+  const [bulkDeleteDialogOpen, setBulkDeleteDialogOpen] = useState(false);
+
   const totalHistoryCount = (vendorReports?.length || 0) + (aiMeasurements?.length || 0);
+
+  // Reset selection when closing select mode
+  const handleToggleSelectMode = () => {
+    if (selectMode) {
+      setSelectedIds(new Set());
+    }
+    setSelectMode(!selectMode);
+  };
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    const allIds = [
+      ...vendorReports.map(r => r.id),
+      ...aiMeasurements.map(m => m.id)
+    ];
+    setSelectedIds(new Set(allIds));
+  };
+
+  const handleDeselectAll = () => {
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkDelete = async () => {
+    setIsBulkDeleting(true);
+    try {
+      const selectedArray = Array.from(selectedIds);
+      
+      // Separate vendor and AI IDs
+      const vendorIds = selectedArray.filter(id => 
+        vendorReports.some(r => r.id === id)
+      );
+      const aiIds = selectedArray.filter(id => 
+        aiMeasurements.some(m => m.id === id)
+      );
+
+      // Delete in parallel
+      if (vendorIds.length > 0) {
+        await supabase.from('roof_vendor_reports').delete().in('id', vendorIds);
+      }
+      
+      if (aiIds.length > 0) {
+        await supabase.from('roof_measurements').delete().in('id', aiIds);
+      }
+
+      toast({
+        title: 'Deleted Successfully',
+        description: `Removed ${selectedArray.length} measurement(s) from history`,
+      });
+
+      // Reset state and invalidate queries
+      setSelectedIds(new Set());
+      setSelectMode(false);
+      setBulkDeleteDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['vendor-reports-history'] });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements'] });
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      toast({
+        title: 'Delete Failed',
+        description: 'Some measurements could not be deleted',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
 
   if (totalHistoryCount === 0) {
     return null;
@@ -914,6 +998,8 @@ function MeasurementHistorySection({
     }
   };
 
+  const allSelected = selectedIds.size === totalHistoryCount && totalHistoryCount > 0;
+
   return (
     <Collapsible open={historyOpen} onOpenChange={setHistoryOpen}>
       <CollapsibleTrigger asChild>
@@ -930,20 +1016,64 @@ function MeasurementHistorySection({
         </Button>
       </CollapsibleTrigger>
       <CollapsibleContent className="pt-2 space-y-2">
+        {/* Bulk Actions Toolbar */}
+        <div className="flex items-center justify-between gap-2 pb-2 border-b">
+          <Button
+            size="sm"
+            variant={selectMode ? "secondary" : "ghost"}
+            onClick={handleToggleSelectMode}
+            className="text-xs"
+          >
+            {selectMode ? 'Cancel' : 'Select Multiple'}
+          </Button>
+          
+          {selectMode && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={allSelected ? handleDeselectAll : handleSelectAll}
+                className="text-xs"
+              >
+                {allSelected ? 'Deselect All' : 'Select All'}
+              </Button>
+              {selectedIds.size > 0 && (
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => setBulkDeleteDialogOpen(true)}
+                  className="text-xs"
+                >
+                  <Trash2 className="h-3 w-3 mr-1" />
+                  Delete ({selectedIds.size})
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* Vendor Reports */}
         {vendorReports.map((report) => {
           const sqft = report.parsed?.total_area_sqft || 0;
           const isLinked = report.linkedToLead;
           const hasValidData = sqft >= 500; // Minimum reasonable roof size
+          const isSelected = selectedIds.has(report.id);
           
           return (
             <div 
               key={report.id}
               className={`flex items-center justify-between p-3 border rounded-lg ${
                 isLinked ? 'bg-primary/5 border-primary/20' : 'bg-muted/30'
-              }`}
+              } ${isSelected ? 'ring-2 ring-primary' : ''}`}
             >
               <div className="flex items-center gap-3 min-w-0">
+                {selectMode && (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleSelection(report.id)}
+                    className="shrink-0"
+                  />
+                )}
                 <div className="flex flex-col gap-1">
                   <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 shrink-0">
                     <FileText className="h-3 w-3 mr-1" />
@@ -969,38 +1099,40 @@ function MeasurementHistorySection({
                   )}
                 </div>
               </div>
-              <div className="flex gap-1 shrink-0">
-                <Button 
-                  size="sm" 
-                  variant={hasValidData ? "outline" : "ghost"}
-                  onClick={() => handleSaveVendorReport(report)}
-                  disabled={isSaving === report.id || !hasValidData}
-                  title={!hasValidData ? "Report has no valid measurement data" : "Save to this lead"}
-                >
-                  {isSaving === report.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : hasValidData ? (
-                    <>
-                      <ArrowRight className="h-4 w-4 mr-1" />
-                      Save
-                    </>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">Invalid</span>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setDeleteConfirmId(report.id);
-                    setDeleteType('vendor');
-                  }}
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  title="Delete from history"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              {!selectMode && (
+                <div className="flex gap-1 shrink-0">
+                  <Button 
+                    size="sm" 
+                    variant={hasValidData ? "outline" : "ghost"}
+                    onClick={() => handleSaveVendorReport(report)}
+                    disabled={isSaving === report.id || !hasValidData}
+                    title={!hasValidData ? "Report has no valid measurement data" : "Save to this lead"}
+                  >
+                    {isSaving === report.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : hasValidData ? (
+                      <>
+                        <ArrowRight className="h-4 w-4 mr-1" />
+                        Save
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Invalid</span>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setDeleteConfirmId(report.id);
+                      setDeleteType('vendor');
+                    }}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    title="Delete from history"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           );
         })}
@@ -1009,12 +1141,23 @@ function MeasurementHistorySection({
         {aiMeasurements.map((measurement) => {
           const sqft = measurement.total_area_adjusted_sqft || 0;
           const isManualEntry = measurement.footprint_source === 'manual_entry' || measurement.detection_method === 'manual_entry';
+          const isSelected = selectedIds.has(measurement.id);
+          
           return (
             <div 
               key={measurement.id}
-              className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+              className={`flex items-center justify-between p-3 border rounded-lg bg-muted/30 ${
+                isSelected ? 'ring-2 ring-primary' : ''
+              }`}
             >
               <div className="flex items-center gap-3 min-w-0">
+                {selectMode && (
+                  <Checkbox
+                    checked={isSelected}
+                    onCheckedChange={() => toggleSelection(measurement.id)}
+                    className="shrink-0"
+                  />
+                )}
                 {isManualEntry ? (
                   <Badge variant="outline" className="bg-muted text-muted-foreground border-muted-foreground/30 shrink-0">
                     <Pencil className="h-3 w-3 mr-1" />
@@ -1035,41 +1178,43 @@ function MeasurementHistorySection({
                   </p>
                 </div>
               </div>
-              <div className="flex gap-1 shrink-0">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  onClick={() => handleSaveAiMeasurement(measurement)}
-                  disabled={isSaving === measurement.id}
-                >
-                  {isSaving === measurement.id ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <ArrowRight className="h-4 w-4 mr-1" />
-                      Save
-                    </>
-                  )}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  onClick={() => {
-                    setDeleteConfirmId(measurement.id);
-                    setDeleteType('ai');
-                  }}
-                  className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                  title="Delete from history"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              </div>
+              {!selectMode && (
+                <div className="flex gap-1 shrink-0">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    onClick={() => handleSaveAiMeasurement(measurement)}
+                    disabled={isSaving === measurement.id}
+                  >
+                    {isSaving === measurement.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <ArrowRight className="h-4 w-4 mr-1" />
+                        Save
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setDeleteConfirmId(measurement.id);
+                      setDeleteType('ai');
+                    }}
+                    className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                    title="Delete from history"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           );
         })}
       </CollapsibleContent>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Single Delete Confirmation Dialog */}
       <AlertDialog open={deleteConfirmId !== null} onOpenChange={(open) => !open && setDeleteConfirmId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -1094,6 +1239,35 @@ function MeasurementHistorySection({
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isDeleting ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={bulkDeleteDialogOpen} onOpenChange={setBulkDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedIds.size} Measurements?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the selected measurements from history. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isBulkDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleBulkDelete}
+              disabled={isBulkDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isBulkDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                `Delete ${selectedIds.size} Items`
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
