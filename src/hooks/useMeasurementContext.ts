@@ -1,8 +1,12 @@
 /**
  * Hook to fetch and build measurement context for smart tag evaluation
  * Priority: measurement_approvals.saved_tags > roof_measurements > pipeline_entries.metadata
+ * 
+ * REFACTORED: Now uses React Query for proper cache invalidation
+ * When measurements are updated (AI analysis, import, manual), invalidate:
+ * queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] })
  */
-import { useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 export interface MeasurementContext {
@@ -46,9 +50,10 @@ export interface MeasurementSummary {
 
 // Build context from saved_tags (measurement_approvals format)
 function buildContextFromTags(tags: Record<string, any>): MeasurementContext {
-  // Handle different tag naming conventions
-  const squares = Number(tags['roof.squares'] || tags['roof.plan_area'] ? (Number(tags['roof.plan_area']) / 100) : 0) || 0;
-  const sqft = Number(tags['roof.total_sqft'] || tags['roof.plan_area'] || squares * 100) || 0;
+  // Handle different tag naming conventions - fix operator precedence
+  const planArea = Number(tags['roof.plan_area']) || 0;
+  const squares = Number(tags['roof.squares']) || (planArea > 0 ? planArea / 100 : 0);
+  const sqft = Number(tags['roof.total_sqft']) || planArea || (squares * 100);
   const eave = Number(tags['lf.eave'] || tags['lf.eaves'] || 0);
   const rake = Number(tags['lf.rake'] || tags['lf.rakes'] || 0);
   const ridge = Number(tags['lf.ridge'] || tags['lf.ridges'] || 0);
@@ -212,113 +217,137 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
   }
 }
 
-export function useMeasurementContext(pipelineEntryId: string) {
-  const [context, setContext] = useState<MeasurementContext | null>(null);
-  const [summary, setSummary] = useState<MeasurementSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [activeApprovalId, setActiveApprovalId] = useState<string | null>(null);
+interface MeasurementContextResult {
+  context: MeasurementContext | null;
+  summary: MeasurementSummary | null;
+  activeApprovalId: string | null;
+}
 
-  useEffect(() => {
-    async function fetchMeasurements() {
-      if (!pipelineEntryId) {
-        setLoading(false);
-        return;
-      }
+async function fetchMeasurementContext(pipelineEntryId: string): Promise<MeasurementContextResult> {
+  if (!pipelineEntryId) {
+    return { context: null, summary: null, activeApprovalId: null };
+  }
 
-      try {
-        // PRIORITY 1: Check for selected or latest measurement_approval
-        const { data: pipelineEntry } = await supabase
-          .from('pipeline_entries')
-          .select('metadata')
-          .eq('id', pipelineEntryId)
-          .single();
+  // PRIORITY 1: Check for selected or latest measurement_approval
+  const { data: pipelineEntry } = await supabase
+    .from('pipeline_entries')
+    .select('metadata')
+    .eq('id', pipelineEntryId)
+    .single();
 
-        const metadata = pipelineEntry?.metadata as any;
-        const selectedApprovalId = metadata?.selected_measurement_approval_id;
+  const metadata = pipelineEntry?.metadata as any;
+  const selectedApprovalId = metadata?.selected_measurement_approval_id;
 
-        // Fetch approval - either selected or latest
-        let approvalQuery = supabase
-          .from('measurement_approvals')
-          .select('id, saved_tags, approved_at')
-          .eq('pipeline_entry_id', pipelineEntryId)
-          .order('approved_at', { ascending: false });
+  // Fetch approval - either selected or latest
+  let approvalQuery = supabase
+    .from('measurement_approvals')
+    .select('id, saved_tags, approved_at')
+    .eq('pipeline_entry_id', pipelineEntryId)
+    .order('approved_at', { ascending: false });
 
-        if (selectedApprovalId) {
-          approvalQuery = supabase
-            .from('measurement_approvals')
-            .select('id, saved_tags, approved_at')
-            .eq('id', selectedApprovalId);
-        }
+  if (selectedApprovalId) {
+    approvalQuery = supabase
+      .from('measurement_approvals')
+      .select('id, saved_tags, approved_at')
+      .eq('id', selectedApprovalId);
+  }
 
-        const { data: approvals, error: approvalError } = await approvalQuery.limit(1);
+  const { data: approvals, error: approvalError } = await approvalQuery.limit(1);
 
-        if (!approvalError && approvals && approvals.length > 0) {
-          const approval = approvals[0];
-          const savedTags = approval.saved_tags as Record<string, any>;
-          
-          if (savedTags && Object.keys(savedTags).length > 0) {
-            const ctx = buildContextFromTags(savedTags);
-            setContext(ctx);
-            setSummary(buildSummaryFromContext(ctx, 'approval', approval.id, approval.approved_at));
-            setActiveApprovalId(approval.id);
-            setLoading(false);
-            return;
-          }
-        }
-
-        // PRIORITY 2: Try roof_measurements table
-        const { data: roofData, error: roofError } = await supabase
-          .from('roof_measurements')
-          .select('*')
-          .eq('customer_id', pipelineEntryId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (!roofError && roofData) {
-          const ctx = buildContextFromRoofMeasurements(roofData);
-          setContext(ctx);
-          setSummary(buildSummaryFromContext(ctx, 'roof_measurements'));
-          setLoading(false);
-          return;
-        }
-
-        // PRIORITY 3: Fallback to pipeline entry metadata
-        if (metadata?.comprehensive_measurements) {
-          const cm = metadata.comprehensive_measurements;
-          const mockData = {
-            total_squares: cm.roof_squares || cm.total_squares || 0,
-            total_area_adjusted_sqft: cm.roof_area_sq_ft || cm.total_area_sqft || 0,
-            total_eave_length: cm.eave_length || 0,
-            total_rake_length: cm.rake_length || 0,
-            total_ridge_length: cm.ridge_length || 0,
-            total_hip_length: cm.hip_length || 0,
-            total_valley_length: cm.valley_length || 0,
-            total_step_flashing_length: cm.step_flashing_length || 0,
-            penetration_count: cm.penetration_count || 3,
-            waste_factor_percent: cm.waste_factor_percent || 10,
-          };
-          const ctx = buildContextFromRoofMeasurements(mockData);
-          setContext(ctx);
-          setSummary(buildSummaryFromContext(ctx, 'metadata'));
-          setLoading(false);
-          return;
-        }
-
-        // No measurements found
-        setContext(null);
-        setSummary(null);
-      } catch (err) {
-        console.error('Error in fetchMeasurements:', err);
-        setError('Failed to load measurements');
-      } finally {
-        setLoading(false);
-      }
+  if (!approvalError && approvals && approvals.length > 0) {
+    const approval = approvals[0];
+    const savedTags = approval.saved_tags as Record<string, any>;
+    
+    if (savedTags && Object.keys(savedTags).length > 0) {
+      const ctx = buildContextFromTags(savedTags);
+      console.log('🔧 MeasurementContext built from approval:', {
+        source: 'approval',
+        approvalId: approval.id,
+        squares: ctx.roof.squares,
+        hip: ctx.lf.hip,
+        eave: ctx.lf.eave,
+        ridge: ctx.lf.ridge,
+      });
+      return {
+        context: ctx,
+        summary: buildSummaryFromContext(ctx, 'approval', approval.id, approval.approved_at),
+        activeApprovalId: approval.id,
+      };
     }
+  }
 
-    fetchMeasurements();
-  }, [pipelineEntryId]);
+  // PRIORITY 2: Try roof_measurements table
+  const { data: roofData, error: roofError } = await supabase
+    .from('roof_measurements')
+    .select('*')
+    .eq('customer_id', pipelineEntryId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  return { context, summary, loading, error, evaluateFormula, activeApprovalId };
+  if (!roofError && roofData) {
+    const ctx = buildContextFromRoofMeasurements(roofData);
+    console.log('🔧 MeasurementContext built from roof_measurements:', {
+      source: 'roof_measurements',
+      squares: ctx.roof.squares,
+    });
+    return {
+      context: ctx,
+      summary: buildSummaryFromContext(ctx, 'roof_measurements'),
+      activeApprovalId: null,
+    };
+  }
+
+  // PRIORITY 3: Fallback to pipeline entry metadata
+  if (metadata?.comprehensive_measurements) {
+    const cm = metadata.comprehensive_measurements;
+    const mockData = {
+      total_squares: cm.roof_squares || cm.total_squares || 0,
+      total_area_adjusted_sqft: cm.roof_area_sq_ft || cm.total_area_sqft || 0,
+      total_eave_length: cm.eave_length || 0,
+      total_rake_length: cm.rake_length || 0,
+      total_ridge_length: cm.ridge_length || 0,
+      total_hip_length: cm.hip_length || 0,
+      total_valley_length: cm.valley_length || 0,
+      total_step_flashing_length: cm.step_flashing_length || 0,
+      penetration_count: cm.penetration_count || 3,
+      waste_factor_percent: cm.waste_factor_percent || 10,
+    };
+    const ctx = buildContextFromRoofMeasurements(mockData);
+    console.log('🔧 MeasurementContext built from metadata:', {
+      source: 'metadata',
+      squares: ctx.roof.squares,
+    });
+    return {
+      context: ctx,
+      summary: buildSummaryFromContext(ctx, 'metadata'),
+      activeApprovalId: null,
+    };
+  }
+
+  // No measurements found
+  console.log('🔧 MeasurementContext: No measurements found');
+  return { context: null, summary: null, activeApprovalId: null };
+}
+
+export function useMeasurementContext(pipelineEntryId: string) {
+  const queryClient = useQueryClient();
+
+  const { data, isLoading, error, refetch } = useQuery({
+    queryKey: ['measurement-context', pipelineEntryId],
+    queryFn: () => fetchMeasurementContext(pipelineEntryId),
+    enabled: !!pipelineEntryId,
+    staleTime: 1000 * 60, // 1 minute - keep fresh
+    gcTime: 1000 * 60 * 5, // 5 minutes in cache
+  });
+
+  return { 
+    context: data?.context ?? null, 
+    summary: data?.summary ?? null, 
+    loading: isLoading, 
+    error: error?.message ?? null, 
+    evaluateFormula, 
+    activeApprovalId: data?.activeApprovalId ?? null,
+    refetch, // Expose refetch for manual refresh
+  };
 }

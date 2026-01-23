@@ -155,7 +155,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   } | null>(null);
   
   const { toast } = useToast();
-  const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
+  const { context: measurementContext, summary: measurementSummary, loading: measurementLoading } = useMeasurementContext(pipelineEntryId);
   const { generateMultiPagePDF, downloadPDF: downloadMultiPagePDF, isGenerating: isGeneratingMultiPage } = useMultiPagePDFGeneration();
   const queryClient = useQueryClient();
   const pdfContainerRef = useRef<HTMLDivElement>(null);
@@ -515,6 +515,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
+  // Calculate line items when template or measurement context changes
   useEffect(() => {
     // IMPORTANT: Don't auto-recalculate when editing a loaded estimate
     // The loaded line items should be preserved as the source of truth
@@ -522,13 +523,21 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       return;
     }
     
+    // CRITICAL: Wait for measurement context to finish loading before calculating
+    // This prevents formulas from evaluating to 0 when context is still null
+    if (measurementLoading) {
+      console.log('📐 Waiting for measurement context to load...');
+      return;
+    }
+    
     if (selectedTemplateId) {
+      console.log('📐 Evaluating formulas with context:', measurementContext);
       fetchLineItems(selectedTemplateId);
     } else {
       setLineItems([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplateId, measurementContext, isEditingLoadedEstimate]);
+  }, [selectedTemplateId, measurementContext, isEditingLoadedEstimate, measurementLoading]);
 
   // Update parent with calculations when breakdown changes
   useEffect(() => {
