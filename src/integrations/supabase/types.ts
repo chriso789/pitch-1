@@ -15544,6 +15544,7 @@ export type Database = {
           name: string
           supplier_sku: string | null
           tags: string[] | null
+          tenant_id: string | null
           uom: string
           updated_at: string | null
         }
@@ -15562,6 +15563,7 @@ export type Database = {
           name: string
           supplier_sku?: string | null
           tags?: string[] | null
+          tenant_id?: string | null
           uom?: string
           updated_at?: string | null
         }
@@ -15580,6 +15582,7 @@ export type Database = {
           name?: string
           supplier_sku?: string | null
           tags?: string[] | null
+          tenant_id?: string | null
           uom?: string
           updated_at?: string | null
         }
@@ -15589,6 +15592,13 @@ export type Database = {
             columns: ["category_id"]
             isOneToOne: false
             referencedRelation: "material_categories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "materials_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -33508,22 +33518,40 @@ export type Database = {
         }
         Returns: string
       }
-      api_upsert_material: {
-        Args: {
-          p_attributes?: Json
-          p_base_cost?: number
-          p_category_id?: string
-          p_code: string
-          p_coverage_per_unit?: number
-          p_default_markup_pct?: number
-          p_description?: string
-          p_name: string
-          p_supplier_sku?: string
-          p_tags?: string[]
-          p_uom?: string
-        }
-        Returns: string
-      }
+      api_upsert_material:
+        | {
+            Args: {
+              p_attributes?: Json
+              p_base_cost?: number
+              p_category_id?: string
+              p_code: string
+              p_coverage_per_unit?: number
+              p_default_markup_pct?: number
+              p_description?: string
+              p_name: string
+              p_supplier_sku?: string
+              p_tags?: string[]
+              p_uom?: string
+            }
+            Returns: string
+          }
+        | {
+            Args: {
+              p_attributes?: Json
+              p_base_cost?: number
+              p_category_id?: string
+              p_code: string
+              p_coverage_per_unit?: number
+              p_default_markup_pct?: number
+              p_description?: string
+              p_name: string
+              p_supplier_sku?: string
+              p_tags?: string[]
+              p_tenant_id?: string
+              p_uom?: string
+            }
+            Returns: string
+          }
       calculate_enhanced_estimate: {
         Args: { estimate_id_param: string }
         Returns: Json
