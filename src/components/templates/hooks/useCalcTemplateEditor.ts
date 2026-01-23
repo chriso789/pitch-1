@@ -498,6 +498,52 @@ export const useCalcTemplateEditor = (templateId?: string) => {
     }
   };
 
+  // Save existing item to materials catalog
+  const saveItemToCatalog = async (item: CalcTemplateItem): Promise<boolean> => {
+    if (!effectiveTenantId || item.item_type !== 'material') {
+      toast({
+        title: 'Cannot save to catalog',
+        description: 'Only material items can be saved to the catalog',
+        variant: 'destructive',
+      });
+      return false;
+    }
+
+    try {
+      const materialCode = item.sku_pattern || `CUSTOM-${Date.now()}`;
+      
+      const { error: materialError } = await supabase.rpc('api_upsert_material' as any, {
+        p_code: materialCode,
+        p_name: item.item_name,
+        p_tenant_id: effectiveTenantId,
+        p_uom: item.unit || 'EA',
+        p_base_cost: item.unit_cost || 0,
+        p_coverage_per_unit: item.coverage_per_unit || null,
+      });
+
+      if (materialError) {
+        console.error('Failed to save to catalog:', materialError);
+        toast({
+          title: 'Failed to save to catalog',
+          description: materialError.message,
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      toast({ title: 'Material saved to company catalog' });
+      return true;
+    } catch (error: any) {
+      console.error('Error saving to catalog:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save material to catalog',
+        variant: 'destructive',
+      });
+      return false;
+    }
+  };
+
   return {
     loading,
     saving,
@@ -513,6 +559,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
     deleteItem,
     reorderGroups,
     reorderItems,
+    saveItemToCatalog,
     refetch: fetchTemplate,
   };
 };

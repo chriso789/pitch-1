@@ -11,7 +11,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { ArrowLeft, Package, Wrench, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Package, Wrench, AlertCircle, Save } from 'lucide-react';
 import { CalcTemplateItem } from './hooks/useCalcTemplateEditor';
 import { usePricingCalculation } from './hooks/usePricingCalculation';
 import { FormulaBuilder } from './FormulaBuilder';
@@ -25,6 +25,7 @@ interface CalcItemDetailsPanelProps {
   profitMargin: number;
   onUpdate: (updatedItem: CalcTemplateItem) => void;
   onDone: () => void;
+  onSaveToCatalog?: (item: CalcTemplateItem) => Promise<boolean>;
 }
 
 const UNITS = [
@@ -43,7 +44,9 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
   profitMargin,
   onUpdate,
   onDone,
+  onSaveToCatalog,
 }) => {
+  const [savingToCatalog, setSavingToCatalog] = useState(false);
   // Buffer changes locally - only save when Done is clicked
   const [localItem, setLocalItem] = useState<CalcTemplateItem>(item);
   
@@ -107,6 +110,13 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
     onDone();
   };
 
+  const handleSaveToCatalog = async () => {
+    if (!onSaveToCatalog) return;
+    setSavingToCatalog(true);
+    await onSaveToCatalog(localItem);
+    setSavingToCatalog(false);
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -124,6 +134,18 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
             <h2 className="text-lg font-semibold">Edit Item</h2>
           </div>
         </div>
+        {/* Save to Catalog button for materials */}
+        {localItem.item_type === 'material' && onSaveToCatalog && (
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={handleSaveToCatalog}
+            disabled={savingToCatalog}
+          >
+            <Save className="h-4 w-4 mr-2" />
+            {savingToCatalog ? 'Saving...' : 'Save to Catalog'}
+          </Button>
+        )}
       </div>
 
       {/* Form */}

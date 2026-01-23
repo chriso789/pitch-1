@@ -47,6 +47,7 @@ const CalcTemplateEditor: React.FC = () => {
     deleteItem,
     reorderGroups,
     reorderItems,
+    saveItemToCatalog,
   } = useCalcTemplateEditor(templateId);
 
   const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
@@ -240,6 +241,7 @@ const CalcTemplateEditor: React.FC = () => {
                 toast({ title: 'Item saved' });
               }}
               onDone={() => setSelectedItem(null)}
+              onSaveToCatalog={saveItemToCatalog}
             />
           ) : (
             <>
