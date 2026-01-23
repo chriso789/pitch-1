@@ -60,7 +60,7 @@ serve(async (req) => {
       .from('pipeline_entries')
       .update({ status: new_status, updated_at: new Date().toISOString() })
       .eq('id', pipeline_id)
-      .select()
+      .select('*, contacts(id)')
       .single();
 
     if (error) {
@@ -69,6 +69,22 @@ serve(async (req) => {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Also sync the status to the linked contact's qualification_status
+    if (data?.contact_id) {
+      const { error: contactError } = await supabaseClient
+        .from('contacts')
+        .update({ 
+          qualification_status: new_status, 
+          updated_at: new Date().toISOString() 
+        })
+        .eq('id', data.contact_id);
+
+      if (contactError) {
+        console.error('Contact sync error:', contactError);
+        // Non-fatal: pipeline was updated, just log contact sync failure
+      }
     }
 
     return new Response(JSON.stringify({ 
