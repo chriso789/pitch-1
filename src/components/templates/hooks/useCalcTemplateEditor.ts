@@ -326,10 +326,11 @@ export const useCalcTemplateEditor = (templateId?: string) => {
 
       // If saveToCatalog flag is true, also save to materials catalog
       let catalogSaveSuccess = true;
+      let savedMaterialId: string | null = null;
       if (item.saveToCatalog && item.item_type === 'material') {
         const materialCode = item.sku_pattern || `CUSTOM-${Date.now()}`;
         
-        const { error: materialError } = await supabase.rpc('api_upsert_material' as any, {
+        const { data: materialId, error: materialError } = await supabase.rpc('api_upsert_material' as any, {
           p_code: materialCode,
           p_name: item.item_name,
           p_tenant_id: effectiveTenantId,
@@ -341,6 +342,13 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         if (materialError) {
           console.error('Failed to save to catalog:', materialError);
           catalogSaveSuccess = false;
+        } else if (materialId) {
+          savedMaterialId = materialId;
+          // Link the template item to the catalog material
+          await supabase
+            .from('estimate_calc_template_items')
+            .update({ material_id: materialId })
+            .eq('id', data.id);
         }
       }
 
@@ -361,7 +369,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         sort_order: data.sort_order,
         active: data.active,
         margin_override: Number(data.margin_override) || 0,
-        material_id: data.material_id || null,
+        material_id: savedMaterialId || data.material_id || null,
       };
 
       setGroups(
@@ -516,7 +524,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
     try {
       const materialCode = item.sku_pattern || `CUSTOM-${Date.now()}`;
       
-      const { error: materialError } = await supabase.rpc('api_upsert_material' as any, {
+      const { data: materialId, error: materialError } = await supabase.rpc('api_upsert_material' as any, {
         p_code: materialCode,
         p_name: item.item_name,
         p_tenant_id: effectiveTenantId,
@@ -533,6 +541,22 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           variant: 'destructive',
         });
         return false;
+      }
+
+      // Link the template item to the catalog material
+      if (materialId) {
+        await supabase
+          .from('estimate_calc_template_items')
+          .update({ material_id: materialId })
+          .eq('id', item.id);
+
+        // Update local state to remove "Not in catalog" badge
+        setGroups(groups.map(g => ({
+          ...g,
+          items: g.items.map(i => 
+            i.id === item.id ? { ...i, material_id: materialId } : i
+          )
+        })));
       }
 
       toast({ title: 'Material saved to company catalog' });
