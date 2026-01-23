@@ -616,14 +616,35 @@ const LeadDetails = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {LEAD_STAGES.map((stage) => (
-                      <SelectItem key={stage.key} value={stage.key}>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${stage.color}`} />
-                          {stage.name}
-                        </div>
-                      </SelectItem>
-                    ))}
+                    {(() => {
+                      // Define valid transitions matching the edge function
+                      const validTransitions: Record<string, string[]> = {
+                        'lead': ['contingency_signed', 'lost', 'canceled', 'duplicate'],
+                        'contingency_signed': ['legal_review', 'lead', 'lost', 'canceled'],
+                        'legal_review': ['ready_for_approval', 'contingency_signed', 'lost', 'canceled'],
+                        'ready_for_approval': ['project', 'legal_review', 'lost', 'canceled'],
+                        'project': ['completed', 'ready_for_approval', 'lost', 'canceled'],
+                        'completed': ['closed'],
+                        'lost': ['lead'],
+                        'canceled': ['lead'],
+                        'duplicate': [],
+                        'closed': []
+                      };
+                      
+                      const allowedStatuses = validTransitions[lead.status] || [];
+                      const filteredStages = LEAD_STAGES.filter(stage => 
+                        allowedStatuses.includes(stage.key) || stage.key === lead.status
+                      );
+                      
+                      return filteredStages.map((stage) => (
+                        <SelectItem key={stage.key} value={stage.key}>
+                          <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${stage.color}`} />
+                            {stage.name}
+                          </div>
+                        </SelectItem>
+                      ));
+                    })()}
                   </SelectContent>
                 </Select>
               ) : (
