@@ -68,6 +68,26 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'contact name': 'full_name',
   'customer name': 'full_name',
   'client name': 'full_name',
+  // Owner/Homeowner name variations (for contact's name, NOT sales rep)
+  'owner name': 'full_name',
+  'owner_name': 'full_name',
+  'ownername': 'full_name',
+  'property owner name': 'full_name',
+  'property_owner_name': 'full_name',
+  'homeowner': 'full_name',
+  'homeowner name': 'full_name',
+  'homeowner_name': 'full_name',
+  'home owner': 'full_name',
+  'home owner name': 'full_name',
+  'customer': 'full_name',
+  'contact': 'full_name',
+  'person': 'full_name',
+  'person name': 'full_name',
+  'lead name': 'full_name',
+  'lead_name': 'full_name',
+  'leadname': 'full_name',
+  'resident': 'full_name',
+  'resident name': 'full_name',
   
   // Skiptrace name formats (nested dot notation)
   'skiptrace:name.first': 'first_name',
@@ -280,6 +300,8 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'categories': 'tags',
   
   // Sales Rep / Assigned To variations
+  // NOTE: "owner", "property owner" etc. are mapped to full_name above (contact's name)
+  // These are for the INTERNAL sales rep assignment only
   'assigned_to': 'sales_rep_name',
   'assigned to': 'sales_rep_name',
   'assignedto': 'sales_rep_name',
@@ -289,12 +311,8 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'salesman': 'sales_rep_name',
   'rep': 'sales_rep_name',
   'rep name': 'sales_rep_name',
-  'property owner': 'sales_rep_name',
-  'property_owner': 'sales_rep_name',
-  'propertyowner': 'sales_rep_name',
   'account owner': 'sales_rep_name',
   'account_owner': 'sales_rep_name',
-  'owner': 'sales_rep_name',
   'agent': 'sales_rep_name',
   'agent name': 'sales_rep_name',
   'created by': 'sales_rep_name',
