@@ -302,6 +302,9 @@ export function RoofrStyleReportPreview({
     };
   }, [measurement, roofMeasurementData]);
   
+  // Derive effective address - prioritize DB property_address over prop fallback
+  const effectiveAddress = roofMeasurementData?.property_address || address;
+  
   // Auto-scroll to top when page changes
   useEffect(() => {
     const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
@@ -434,8 +437,8 @@ export function RoofrStyleReportPreview({
       await new Promise(resolve => setTimeout(resolve, 500));
       
       const result = await downloadPDF('all-report-pages-container', totalPages, {
-        filename: `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
-        propertyAddress: address,
+        filename: `roof-report-${effectiveAddress.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
+        propertyAddress: effectiveAddress,
         measurementId,
         pipelineEntryId,
       });
@@ -443,7 +446,7 @@ export function RoofrStyleReportPreview({
       setShowHiddenPages(false);
       
       if (result.success && result.blob) {
-        const file = new File([result.blob], `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`, { type: 'application/pdf' });
+        const file = new File([result.blob], `roof-report-${effectiveAddress.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`, { type: 'application/pdf' });
         
         // Check if native file sharing is supported
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
@@ -858,7 +861,7 @@ export function RoofrStyleReportPreview({
                   </div>
                   
                   <div className="bg-muted/30 rounded-lg p-4 mb-6">
-                    <p className="text-lg font-medium">{address}</p>
+                    <p className="text-lg font-medium">{effectiveAddress}</p>
                   </div>
 
                   <div className="grid grid-cols-3 gap-3 mb-6">
