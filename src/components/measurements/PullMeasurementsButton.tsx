@@ -393,6 +393,16 @@ export function PullMeasurementsButton({
       setVerificationData({ measurement, tags, satelliteImageUrl, finalCoords });
       setShowReportPreview(true);
       
+      // CRITICAL: Reset loading state immediately when showing preview
+      // This prevents "stuck spinner" bug where loading persists
+      setLoading(false);
+      
+      // CRITICAL: Invalidate measurement cache immediately so UI refreshes
+      // This ensures "No Saved Measurements" updates to show new data
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+      
       // Show confidence-based toast with performance info
       const confidenceScore = data.data?.confidence?.score || 0;
       const confidenceRating = data.data?.confidence?.rating || 'unknown';
