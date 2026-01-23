@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { TrendingUp, DollarSign, Calculator, Info, Loader2 } from 'lucide-react';
+import { TrendingUp, DollarSign, Calculator, Info, Loader2, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -16,12 +16,20 @@ interface RepProfitBreakdownProps {
   className?: string;
 }
 
-interface SalesRepData {
+interface RepProfile {
   personal_overhead_rate: number | null;
   commission_rate: number | null;
   commission_structure: 'profit_split' | 'percentage_contract_price' | null;
   first_name: string | null;
   last_name: string | null;
+}
+
+interface PipelineRepData {
+  assigned_to: string | null;
+  secondary_assigned_to: string | null;
+  primary_rep_split_percent: number | null;
+  profiles: RepProfile | null;
+  secondary_rep: RepProfile | null;
 }
 
 const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
@@ -31,15 +39,24 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   laborCost,
   className
 }) => {
-  // Fetch sales rep's commission settings from profile
-  const { data: salesRepData, isLoading } = useQuery({
+  // Fetch both primary and secondary rep's commission settings
+  const { data: repData, isLoading } = useQuery({
     queryKey: ['sales-rep-commission', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
         .select(`
           assigned_to,
+          secondary_assigned_to,
+          primary_rep_split_percent,
           profiles!pipeline_entries_assigned_to_fkey(
+            first_name,
+            last_name,
+            personal_overhead_rate,
+            commission_rate,
+            commission_structure
+          ),
+          secondary_rep:profiles!pipeline_entries_secondary_assigned_to_fkey(
             first_name,
             last_name,
             personal_overhead_rate,
@@ -51,7 +68,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
         .single();
       
       if (error) throw error;
-      return data?.profiles as SalesRepData | null;
+      return data as unknown as PipelineRepData;
     },
     enabled: !!pipelineEntryId,
   });
@@ -67,41 +84,85 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
 
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
-  // Get rates from sales rep profile (with defaults)
-  const overheadRate = salesRepData?.personal_overhead_rate ?? 10;
-  const commissionRate = salesRepData?.commission_rate ?? 50;
-  const commissionStructure = salesRepData?.commission_structure || 'profit_split';
-  const repName = salesRepData 
-    ? `${salesRepData.first_name || ''} ${salesRepData.last_name || ''}`.trim() 
-    : 'Sales Rep';
+  // Primary rep data
+  const primaryRep = repData?.profiles;
+  const primaryOverheadRate = primaryRep?.personal_overhead_rate ?? 10;
+  const primaryCommissionRate = primaryRep?.commission_rate ?? 50;
+  const primaryCommissionStructure = primaryRep?.commission_structure || 'profit_split';
+  const primaryRepName = primaryRep 
+    ? `${primaryRep.first_name || ''} ${primaryRep.last_name || ''}`.trim() 
+    : 'Primary Rep';
 
-  // Use centralized commission calculator
-  const commissionResult = calculateCommission({
+  // Secondary rep data
+  const secondaryRep = repData?.secondary_rep;
+  const hasSecondaryRep = !!repData?.secondary_assigned_to && !!secondaryRep;
+  const secondaryOverheadRate = secondaryRep?.personal_overhead_rate ?? 10;
+  const secondaryCommissionRate = secondaryRep?.commission_rate ?? 50;
+  const secondaryCommissionStructure = secondaryRep?.commission_structure || 'profit_split';
+  const secondaryRepName = secondaryRep 
+    ? `${secondaryRep.first_name || ''} ${secondaryRep.last_name || ''}`.trim() 
+    : 'Secondary Rep';
+
+  // Split percentage (default 100% to primary if no secondary)
+  const primarySplitPercent = hasSecondaryRep 
+    ? (repData?.primary_rep_split_percent ?? 50) 
+    : 100;
+  const secondarySplitPercent = 100 - primarySplitPercent;
+
+  // Use the higher overhead rate for calculation (company takes the higher)
+  const overheadRate = hasSecondaryRep 
+    ? Math.max(primaryOverheadRate, secondaryOverheadRate)
+    : primaryOverheadRate;
+
+  // Calculate primary rep commission
+  const primaryCommissionResult = calculateCommission({
     contractValue: sellingPrice,
     actualMaterialCost: materialCost,
     actualLaborCost: laborCost,
     adjustments: 0,
     repOverheadRate: overheadRate,
-    commissionType: commissionStructure === 'percentage_contract_price' 
+    commissionType: primaryCommissionStructure === 'percentage_contract_price' 
       ? 'percentage_contract_price' 
       : 'profit_split',
-    commissionRate: commissionRate
+    commissionRate: primaryCommissionRate
   });
+
+  // Calculate secondary rep commission if applicable
+  const secondaryCommissionResult = hasSecondaryRep ? calculateCommission({
+    contractValue: sellingPrice,
+    actualMaterialCost: materialCost,
+    actualLaborCost: laborCost,
+    adjustments: 0,
+    repOverheadRate: overheadRate,
+    commissionType: secondaryCommissionStructure === 'percentage_contract_price' 
+      ? 'percentage_contract_price' 
+      : 'profit_split',
+    commissionRate: secondaryCommissionRate
+  }) : null;
 
   const totalCost = materialCost + laborCost;
   const overheadAmount = sellingPrice * (overheadRate / 100);
   const grossProfit = sellingPrice - totalCost;
-  const netProfit = commissionResult.netProfit;
-  const repCommission = commissionResult.commissionAmount;
-  const companyNet = netProfit - repCommission;
+  const netProfit = primaryCommissionResult.netProfit;
+
+  // Calculate actual commissions based on split
+  const primaryRepCommission = (primaryCommissionResult.commissionAmount * primarySplitPercent) / 100;
+  const secondaryRepCommission = hasSecondaryRep && secondaryCommissionResult
+    ? (secondaryCommissionResult.commissionAmount * secondarySplitPercent) / 100
+    : 0;
+  const totalRepCommission = primaryRepCommission + secondaryRepCommission;
+  const companyNet = netProfit - totalRepCommission;
   const profitMargin = sellingPrice > 0 ? (netProfit / sellingPrice) * 100 : 0;
 
   const hasValidData = sellingPrice > 0 && (materialCost > 0 || laborCost > 0);
 
-  // Determine commission type label
-  const commissionTypeLabel = commissionStructure === 'percentage_contract_price'
-    ? `${formatPercent(commissionRate)} of Contract`
-    : `${formatPercent(commissionRate)} of Profit`;
+  // Commission type labels
+  const primaryCommissionTypeLabel = primaryCommissionStructure === 'percentage_contract_price'
+    ? `${formatPercent(primaryCommissionRate)} of Contract`
+    : `${formatPercent(primaryCommissionRate)} of Profit`;
+  const secondaryCommissionTypeLabel = secondaryCommissionStructure === 'percentage_contract_price'
+    ? `${formatPercent(secondaryCommissionRate)} of Contract`
+    : `${formatPercent(secondaryCommissionRate)} of Profit`;
 
   if (isLoading) {
     return (
@@ -135,9 +196,14 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
             </Badge>
           )}
         </div>
-        {repName && (
+        {hasSecondaryRep ? (
+          <p className="text-sm text-muted-foreground flex items-center gap-1">
+            <Users className="h-3 w-3" />
+            Split: {primaryRepName} ({primarySplitPercent}%) / {secondaryRepName} ({secondarySplitPercent}%)
+          </p>
+        ) : primaryRepName && (
           <p className="text-sm text-muted-foreground">
-            Commission calculation for {repName}
+            Commission calculation for {primaryRepName}
           </p>
         )}
       </CardHeader>
@@ -197,20 +263,48 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
 
             {/* Commission Split */}
             <div className="space-y-2">
+              {/* Primary Rep Commission */}
               <div className="flex justify-between items-center py-2 bg-primary/10 rounded-md px-3 -mx-3">
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2">
                     <DollarSign className="h-4 w-4 text-primary" />
-                    <span className="font-medium">Rep Commission</span>
+                    <span className="font-medium">{primaryRepName}</span>
+                    {hasSecondaryRep && (
+                      <Badge variant="outline" className="text-xs">
+                        {primarySplitPercent}%
+                      </Badge>
+                    )}
                   </div>
                   <span className="text-xs text-muted-foreground">
-                    {commissionTypeLabel}
+                    {primaryCommissionTypeLabel}
                   </span>
                 </div>
                 <span className="font-bold text-xl text-primary">
-                  {formatCurrency(repCommission)}
+                  {formatCurrency(primaryRepCommission)}
                 </span>
               </div>
+
+              {/* Secondary Rep Commission */}
+              {hasSecondaryRep && (
+                <div className="flex justify-between items-center py-2 bg-secondary/50 rounded-md px-3 -mx-3">
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                      <DollarSign className="h-4 w-4 text-secondary-foreground" />
+                      <span className="font-medium">{secondaryRepName}</span>
+                      <Badge variant="outline" className="text-xs">
+                        {secondarySplitPercent}%
+                      </Badge>
+                    </div>
+                    <span className="text-xs text-muted-foreground">
+                      {secondaryCommissionTypeLabel}
+                    </span>
+                  </div>
+                  <span className="font-bold text-xl text-secondary-foreground">
+                    {formatCurrency(secondaryRepCommission)}
+                  </span>
+                </div>
+              )}
+
               <div className="flex justify-between items-center py-1 text-muted-foreground">
                 <span>Company Net</span>
                 <span className="font-medium">{formatCurrency(companyNet)}</span>
