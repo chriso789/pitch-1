@@ -89,6 +89,12 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'resident': 'full_name',
   'resident name': 'full_name',
   
+  // Job name variations (often contains homeowner name)
+  'job name': 'full_name',
+  'job_name': 'full_name',
+  'jobname': 'full_name',
+  'job': 'full_name',
+  
   // Skiptrace name formats (nested dot notation)
   'skiptrace:name.first': 'first_name',
   'skiptrace:name.last': 'last_name',
