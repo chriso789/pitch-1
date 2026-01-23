@@ -28,11 +28,11 @@ serve(async (req) => {
     }
 
     // Define valid status transitions matching LEAD_STAGES from usePipelineData.ts
-    // Stages: lead -> qualified -> contingency_signed -> legal_review -> ready_for_approval -> project
+    // Stages: lead -> contingency_signed -> legal_review -> ready_for_approval -> project
+    // Note: "qualified" is a CONTACT status, not a pipeline stage
     const validTransitions: Record<string, string[]> = {
-      'lead': ['qualified', 'lost', 'canceled', 'duplicate'],
-      'qualified': ['contingency_signed', 'lead', 'lost', 'canceled'],
-      'contingency_signed': ['legal_review', 'qualified', 'lost', 'canceled'],
+      'lead': ['contingency_signed', 'lost', 'canceled', 'duplicate'],
+      'contingency_signed': ['legal_review', 'lead', 'lost', 'canceled'],
       'legal_review': ['ready_for_approval', 'contingency_signed', 'lost', 'canceled'],
       'ready_for_approval': ['project', 'legal_review', 'lost', 'canceled'],
       'project': ['completed', 'ready_for_approval', 'lost', 'canceled'],
@@ -71,21 +71,10 @@ serve(async (req) => {
       });
     }
 
-    // Also sync the status to the linked contact's qualification_status
-    if (data?.contact_id) {
-      const { error: contactError } = await supabaseClient
-        .from('contacts')
-        .update({ 
-          qualification_status: new_status, 
-          updated_at: new Date().toISOString() 
-        })
-        .eq('id', data.contact_id);
-
-      if (contactError) {
-        console.error('Contact sync error:', contactError);
-        // Non-fatal: pipeline was updated, just log contact sync failure
-      }
-    }
+    // NOTE: We no longer sync pipeline status to contact's qualification_status
+    // Pipeline stages and contact qualification are now independent:
+    // - Pipeline: lead -> contingency_signed -> legal_review -> ready_for_approval -> project
+    // - Contact: qualified, interested, storm_damage, not_interested, etc.
 
     return new Response(JSON.stringify({ 
       success: true, 

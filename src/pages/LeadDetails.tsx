@@ -853,7 +853,7 @@ const LeadDetails = () => {
           </div>
         </div>
 
-        {/* Contact Card */}
+        {/* Contact Card with Qualification Status */}
         {lead.contact && (
           <Card className="w-80 shadow-soft border-primary/20">
             <CardContent className="p-4">
@@ -862,13 +862,46 @@ const LeadDetails = () => {
                   <User className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium text-primary">Contact</span>
                 </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => navigate(`/contact/${lead.contact?.id}`)}
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  {/* Contact Qualification Status Dropdown */}
+                  <Select 
+                    value={lead.contact.qualification_status || 'unqualified'}
+                    onValueChange={async (newStatus) => {
+                      if (!lead.contact?.id) return;
+                      try {
+                        const { error } = await supabase
+                          .from('contacts')
+                          .update({ qualification_status: newStatus, updated_at: new Date().toISOString() })
+                          .eq('id', lead.contact.id);
+                        if (error) throw error;
+                        toast({ title: "Contact status updated" });
+                        refetchLead();
+                      } catch (error: any) {
+                        toast({ title: "Error updating status", description: error.message, variant: "destructive" });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-6 w-[120px] text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="unqualified">Unqualified</SelectItem>
+                      <SelectItem value="qualified">Qualified</SelectItem>
+                      <SelectItem value="interested">Interested</SelectItem>
+                      <SelectItem value="storm_damage">Storm Damage</SelectItem>
+                      <SelectItem value="not_interested">Not Interested</SelectItem>
+                      <SelectItem value="not_home">Not Home</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    className="h-6 w-6 p-0"
+                    onClick={() => navigate(`/contact/${lead.contact?.id}`)}
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
               <div className="space-y-2">
                 <p className="font-semibold">
