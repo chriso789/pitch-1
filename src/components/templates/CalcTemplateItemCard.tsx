@@ -2,6 +2,7 @@ import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { GripVertical, Pencil, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CalcTemplateItem } from './hooks/useCalcTemplateEditor';
@@ -61,7 +62,14 @@ export const CalcTemplateItemCard: React.FC<CalcTemplateItemCardProps> = ({
       </button>
 
       <div className="flex-1 min-w-0" onClick={onSelect}>
-        <p className="font-medium truncate cursor-pointer">{item.item_name}</p>
+        <div className="flex items-center gap-2">
+          <p className="font-medium truncate cursor-pointer">{item.item_name}</p>
+          {item.item_type === 'material' && !item.material_id && (
+            <Badge variant="outline" className="text-xs text-warning border-warning/50 shrink-0">
+              Not in catalog
+            </Badge>
+          )}
+        </div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>{item.unit}</span>
           <span>•</span>
