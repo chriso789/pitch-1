@@ -31,7 +31,6 @@ export interface PipelineEntry {
 
 export const LEAD_STAGES = [
   { name: "New Lead", key: "lead", color: "bg-blue-500" },
-  { name: "Qualified", key: "qualified", color: "bg-green-500" },
   { name: "Contingency Signed", key: "contingency_signed", color: "bg-yellow-500" },
   { name: "Legal Review", key: "legal_review", color: "bg-purple-500" },
   { name: "Ready for Approval", key: "ready_for_approval", color: "bg-orange-500" },

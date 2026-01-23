@@ -31,6 +31,7 @@ export interface LeadDetailsData {
     address_zip?: string;
     latitude?: number;
     longitude?: number;
+    qualification_status?: string;
     verified_address?: {
       lat: number;
       lng: number;
