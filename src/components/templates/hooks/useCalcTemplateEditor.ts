@@ -29,6 +29,7 @@ export interface CalcTemplateItem {
   sort_order: number;
   active: boolean;
   margin_override: number;
+  material_id: string | null;
 }
 
 export interface CalcTemplate {
@@ -123,6 +124,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
             sort_order: item.sort_order,
             active: item.active,
             margin_override: Number(item.margin_override) || 0,
+            material_id: item.material_id || null,
           })),
       }));
 
@@ -146,6 +148,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           sort_order: item.sort_order,
           active: item.active,
           margin_override: Number(item.margin_override) || 0,
+          material_id: item.material_id || null,
         }));
 
       if (ungroupedItems.length > 0) {
@@ -358,6 +361,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         sort_order: data.sort_order,
         active: data.active,
         margin_override: Number(data.margin_override) || 0,
+        material_id: data.material_id || null,
       };
 
       setGroups(
