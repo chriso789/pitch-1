@@ -165,6 +165,29 @@ export function UnifiedMeasurementPanel({
     enabled: !!pipelineEntryId,
   });
 
+  // REALTIME: Auto-refresh when new measurements are saved
+  // This ensures UI updates immediately when AI analysis completes
+  useEffect(() => {
+    const channel = supabase
+      .channel(`measurement-updates-${pipelineEntryId}`)
+      .on('postgres_changes', {
+        event: 'INSERT',
+        schema: 'public',
+        table: 'measurement_approvals',
+        filter: `pipeline_entry_id=eq.${pipelineEntryId}`
+      }, (payload) => {
+        console.log('📊 New measurement detected via Realtime:', payload);
+        refetch();
+        queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      })
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [pipelineEntryId, refetch, queryClient]);
+
   // Fetch raw vendor reports (roof_vendor_reports) for history
   // Include reports linked to this lead AND recent reports from same tenant
   const { data: vendorReports } = useQuery({
@@ -370,9 +393,12 @@ export function UnifiedMeasurementPanel({
     }
   };
 
-  const handleMeasurementSuccess = () => {
-    refetch();
+  const handleMeasurementSuccess = async () => {
+    // Force immediate refetch and cache invalidation
+    await refetch();
     queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
     onMeasurementChange?.();
     setAddOptionsOpen(false);
   };
