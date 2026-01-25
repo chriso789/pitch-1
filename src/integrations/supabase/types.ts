@@ -14,6 +14,68 @@ export type Database = {
   }
   public: {
     Tables: {
+      accuracy_regression_log: {
+        Row: {
+          baseline_value: number | null
+          component_type: string | null
+          current_value: number | null
+          detected_at: string | null
+          id: string
+          investigation_status: string | null
+          metric_name: string
+          regression_pct: number | null
+          resolution: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          root_cause: string | null
+          sample_size: number | null
+          severity: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          baseline_value?: number | null
+          component_type?: string | null
+          current_value?: number | null
+          detected_at?: string | null
+          id?: string
+          investigation_status?: string | null
+          metric_name: string
+          regression_pct?: number | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          root_cause?: string | null
+          sample_size?: number | null
+          severity?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          baseline_value?: number | null
+          component_type?: string | null
+          current_value?: number | null
+          detected_at?: string | null
+          id?: string
+          investigation_status?: string | null
+          metric_name?: string
+          regression_pct?: number | null
+          resolution?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          root_cause?: string | null
+          sample_size?: number | null
+          severity?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "accuracy_regression_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       achievement_rewards: {
         Row: {
           achievement_id: string | null
@@ -877,6 +939,76 @@ export type Database = {
           },
           {
             foreignKeyName: "ai_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_detection_passes: {
+        Row: {
+          confidence_scores: Json | null
+          created_at: string | null
+          detected_facets: Json | null
+          detected_segments: Json | null
+          detected_vertices: Json | null
+          id: string
+          measurement_id: string | null
+          model_version: string | null
+          pass_number: number
+          processing_time_ms: number | null
+          prompt_variation: string | null
+          temperature: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          confidence_scores?: Json | null
+          created_at?: string | null
+          detected_facets?: Json | null
+          detected_segments?: Json | null
+          detected_vertices?: Json | null
+          id?: string
+          measurement_id?: string | null
+          model_version?: string | null
+          pass_number: number
+          processing_time_ms?: number | null
+          prompt_variation?: string | null
+          temperature?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          confidence_scores?: Json | null
+          created_at?: string | null
+          detected_facets?: Json | null
+          detected_segments?: Json | null
+          detected_vertices?: Json | null
+          id?: string
+          measurement_id?: string | null
+          model_version?: string | null
+          pass_number?: number
+          processing_time_ms?: number | null
+          prompt_variation?: string | null
+          temperature?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_detection_passes_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_detection_passes_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_detection_passes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -8159,6 +8291,70 @@ export type Database = {
           },
         ]
       }
+      detected_edge_cases: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          detection_confidence: number | null
+          edge_case_type: string
+          handling_strategy: string | null
+          id: string
+          measurement_id: string | null
+          resolution_notes: string | null
+          resolution_status: string | null
+          routed_to: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          detection_confidence?: number | null
+          edge_case_type: string
+          handling_strategy?: string | null
+          id?: string
+          measurement_id?: string | null
+          resolution_notes?: string | null
+          resolution_status?: string | null
+          routed_to?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          detection_confidence?: number | null
+          edge_case_type?: string
+          handling_strategy?: string | null
+          id?: string
+          measurement_id?: string | null
+          resolution_notes?: string | null
+          resolution_status?: string | null
+          routed_to?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "detected_edge_cases_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "detected_edge_cases_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "detected_edge_cases_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       developer_access_grants: {
         Row: {
           access_type: string | null
@@ -8492,6 +8688,91 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      diamond_certifications: {
+        Row: {
+          all_validations_passed: boolean
+          area_accuracy_pct: number
+          certificate_hash: string | null
+          certificate_pdf_url: string | null
+          certification_number: string
+          certified_at: string | null
+          expert_review_notes: string | null
+          expert_reviewer_id: string | null
+          ground_truth_source: string | null
+          id: string
+          linear_accuracy_pct: number
+          measurement_id: string | null
+          pitch_accuracy_score: number
+          revoked: boolean | null
+          revoked_reason: string | null
+          tenant_id: string | null
+          topology_score: number
+          valid_until: string | null
+        }
+        Insert: {
+          all_validations_passed?: boolean
+          area_accuracy_pct: number
+          certificate_hash?: string | null
+          certificate_pdf_url?: string | null
+          certification_number: string
+          certified_at?: string | null
+          expert_review_notes?: string | null
+          expert_reviewer_id?: string | null
+          ground_truth_source?: string | null
+          id?: string
+          linear_accuracy_pct: number
+          measurement_id?: string | null
+          pitch_accuracy_score: number
+          revoked?: boolean | null
+          revoked_reason?: string | null
+          tenant_id?: string | null
+          topology_score: number
+          valid_until?: string | null
+        }
+        Update: {
+          all_validations_passed?: boolean
+          area_accuracy_pct?: number
+          certificate_hash?: string | null
+          certificate_pdf_url?: string | null
+          certification_number?: string
+          certified_at?: string | null
+          expert_review_notes?: string | null
+          expert_reviewer_id?: string | null
+          ground_truth_source?: string | null
+          id?: string
+          linear_accuracy_pct?: number
+          measurement_id?: string | null
+          pitch_accuracy_score?: number
+          revoked?: boolean | null
+          revoked_reason?: string | null
+          tenant_id?: string | null
+          topology_score?: number
+          valid_until?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diamond_certifications_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: true
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diamond_certifications_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: true
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "diamond_certifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -11276,6 +11557,85 @@ export type Database = {
         }
         Relationships: []
       }
+      field_technician_corrections: {
+        Row: {
+          corrected_value: Json | null
+          correction_type: string
+          created_at: string | null
+          gps_lat: number | null
+          gps_lng: number | null
+          id: string
+          measurement_id: string | null
+          notes: string | null
+          original_value: Json | null
+          photo_urls: string[] | null
+          processed: boolean | null
+          processed_at: string | null
+          technician_accuracy_weight: number | null
+          technician_confidence: number | null
+          technician_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          corrected_value?: Json | null
+          correction_type: string
+          created_at?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          measurement_id?: string | null
+          notes?: string | null
+          original_value?: Json | null
+          photo_urls?: string[] | null
+          processed?: boolean | null
+          processed_at?: string | null
+          technician_accuracy_weight?: number | null
+          technician_confidence?: number | null
+          technician_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          corrected_value?: Json | null
+          correction_type?: string
+          created_at?: string | null
+          gps_lat?: number | null
+          gps_lng?: number | null
+          id?: string
+          measurement_id?: string | null
+          notes?: string | null
+          original_value?: Json | null
+          photo_urls?: string[] | null
+          processed?: boolean | null
+          processed_at?: string | null
+          technician_accuracy_weight?: number | null
+          technician_confidence?: number | null
+          technician_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_technician_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_technician_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "field_technician_corrections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       financial_forecasts: {
         Row: {
           actual_data: Json | null
@@ -13511,6 +13871,74 @@ export type Database = {
           },
         ]
       }
+      improvement_flywheel_metrics: {
+        Row: {
+          accuracy_improvement_pct: number | null
+          auto_approval_rate: number | null
+          average_accuracy: number | null
+          calibrations_updated: number | null
+          created_at: string | null
+          diamond_certification_rate: number | null
+          edge_cases_resolved: number | null
+          error_patterns_identified: number | null
+          ground_truth_ingested: number | null
+          human_review_rate: number | null
+          id: string
+          metric_date: string
+          metric_type: string
+          notes: string | null
+          tenant_id: string | null
+          total_measurements: number | null
+          training_examples_generated: number | null
+        }
+        Insert: {
+          accuracy_improvement_pct?: number | null
+          auto_approval_rate?: number | null
+          average_accuracy?: number | null
+          calibrations_updated?: number | null
+          created_at?: string | null
+          diamond_certification_rate?: number | null
+          edge_cases_resolved?: number | null
+          error_patterns_identified?: number | null
+          ground_truth_ingested?: number | null
+          human_review_rate?: number | null
+          id?: string
+          metric_date: string
+          metric_type: string
+          notes?: string | null
+          tenant_id?: string | null
+          total_measurements?: number | null
+          training_examples_generated?: number | null
+        }
+        Update: {
+          accuracy_improvement_pct?: number | null
+          auto_approval_rate?: number | null
+          average_accuracy?: number | null
+          calibrations_updated?: number | null
+          created_at?: string | null
+          diamond_certification_rate?: number | null
+          edge_cases_resolved?: number | null
+          error_patterns_identified?: number | null
+          ground_truth_ingested?: number | null
+          human_review_rate?: number | null
+          id?: string
+          metric_date?: string
+          metric_type?: string
+          notes?: string | null
+          tenant_id?: string | null
+          total_measurements?: number | null
+          training_examples_generated?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "improvement_flywheel_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inbound_messages: {
         Row: {
           body: string | null
@@ -13752,6 +14180,82 @@ export type Database = {
           },
           {
             foreignKeyName: "inspection_requirements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_claim_measurements: {
+        Row: {
+          accuracy_match_pct: number | null
+          adjuster_linear_totals: Json | null
+          adjuster_name: string | null
+          adjuster_pitch: string | null
+          adjuster_roof_area_sqft: number | null
+          carrier_name: string | null
+          claim_date: string | null
+          claim_number: string | null
+          created_at: string | null
+          damage_areas: Json | null
+          id: string
+          measurement_id: string | null
+          scope_items: Json | null
+          tenant_id: string | null
+          validation_status: string | null
+        }
+        Insert: {
+          accuracy_match_pct?: number | null
+          adjuster_linear_totals?: Json | null
+          adjuster_name?: string | null
+          adjuster_pitch?: string | null
+          adjuster_roof_area_sqft?: number | null
+          carrier_name?: string | null
+          claim_date?: string | null
+          claim_number?: string | null
+          created_at?: string | null
+          damage_areas?: Json | null
+          id?: string
+          measurement_id?: string | null
+          scope_items?: Json | null
+          tenant_id?: string | null
+          validation_status?: string | null
+        }
+        Update: {
+          accuracy_match_pct?: number | null
+          adjuster_linear_totals?: Json | null
+          adjuster_name?: string | null
+          adjuster_pitch?: string | null
+          adjuster_roof_area_sqft?: number | null
+          carrier_name?: string | null
+          claim_date?: string | null
+          claim_number?: string | null
+          created_at?: string | null
+          damage_areas?: Json | null
+          id?: string
+          measurement_id?: string | null
+          scope_items?: Json | null
+          tenant_id?: string | null
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_claim_measurements_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_claim_measurements_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_claim_measurements_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -16106,6 +16610,130 @@ export type Database = {
           },
         ]
       }
+      measurement_algorithm_versions: {
+        Row: {
+          accuracy_score: number | null
+          activated_at: string | null
+          calibration_params: Json | null
+          changelog: string[] | null
+          created_at: string | null
+          deactivated_at: string | null
+          description: string | null
+          id: string
+          is_current: boolean | null
+          measurements_count: number | null
+          prompt_templates: Json | null
+          rollback_available: boolean | null
+          version: string
+          version_major: number
+          version_minor: number
+          version_patch: number
+        }
+        Insert: {
+          accuracy_score?: number | null
+          activated_at?: string | null
+          calibration_params?: Json | null
+          changelog?: string[] | null
+          created_at?: string | null
+          deactivated_at?: string | null
+          description?: string | null
+          id?: string
+          is_current?: boolean | null
+          measurements_count?: number | null
+          prompt_templates?: Json | null
+          rollback_available?: boolean | null
+          version: string
+          version_major: number
+          version_minor: number
+          version_patch: number
+        }
+        Update: {
+          accuracy_score?: number | null
+          activated_at?: string | null
+          calibration_params?: Json | null
+          changelog?: string[] | null
+          created_at?: string | null
+          deactivated_at?: string | null
+          description?: string | null
+          id?: string
+          is_current?: boolean | null
+          measurements_count?: number | null
+          prompt_templates?: Json | null
+          rollback_available?: boolean | null
+          version?: string
+          version_major?: number
+          version_minor?: number
+          version_patch?: number
+        }
+        Relationships: []
+      }
+      measurement_annotations: {
+        Row: {
+          annotation_type: string
+          content: string
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_training_example: boolean | null
+          measurement_id: string | null
+          tags: string[] | null
+          target_coordinates: Json | null
+          target_id: string | null
+          target_type: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          annotation_type: string
+          content: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_training_example?: boolean | null
+          measurement_id?: string | null
+          tags?: string[] | null
+          target_coordinates?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          annotation_type?: string
+          content?: string
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_training_example?: boolean | null
+          measurement_id?: string | null
+          tags?: string[] | null
+          target_coordinates?: Json | null
+          target_id?: string | null
+          target_type?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_annotations_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_annotations_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_annotations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_approvals: {
         Row: {
           approval_notes: string | null
@@ -16807,6 +17435,79 @@ export type Database = {
           },
         ]
       }
+      measurement_elevation_data: {
+        Row: {
+          acquisition_date: string | null
+          calculated_ridge_height_ft: number | null
+          created_at: string | null
+          data_quality: string | null
+          data_source: string | null
+          eave_elevation_ft: number | null
+          elevation_derived_pitch: string | null
+          ground_elevation_ft: number | null
+          id: string
+          measurement_id: string | null
+          pitch_confidence: number | null
+          resolution_meters: number | null
+          ridge_elevation_ft: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          acquisition_date?: string | null
+          calculated_ridge_height_ft?: number | null
+          created_at?: string | null
+          data_quality?: string | null
+          data_source?: string | null
+          eave_elevation_ft?: number | null
+          elevation_derived_pitch?: string | null
+          ground_elevation_ft?: number | null
+          id?: string
+          measurement_id?: string | null
+          pitch_confidence?: number | null
+          resolution_meters?: number | null
+          ridge_elevation_ft?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          acquisition_date?: string | null
+          calculated_ridge_height_ft?: number | null
+          created_at?: string | null
+          data_quality?: string | null
+          data_source?: string | null
+          eave_elevation_ft?: number | null
+          elevation_derived_pitch?: string | null
+          ground_elevation_ft?: number | null
+          id?: string
+          measurement_id?: string | null
+          pitch_confidence?: number | null
+          resolution_meters?: number | null
+          ridge_elevation_ft?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_elevation_data_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_elevation_data_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_elevation_data_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_ground_truth: {
         Row: {
           address: string
@@ -17048,6 +17749,73 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      measurement_self_corrections: {
+        Row: {
+          auto_applied: boolean | null
+          confidence_after: number | null
+          confidence_before: number | null
+          corrected_geometry: Json | null
+          correction_reason: string | null
+          correction_type: string
+          created_at: string | null
+          human_reviewed: boolean | null
+          id: string
+          measurement_id: string | null
+          original_geometry: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          auto_applied?: boolean | null
+          confidence_after?: number | null
+          confidence_before?: number | null
+          corrected_geometry?: Json | null
+          correction_reason?: string | null
+          correction_type: string
+          created_at?: string | null
+          human_reviewed?: boolean | null
+          id?: string
+          measurement_id?: string | null
+          original_geometry?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          auto_applied?: boolean | null
+          confidence_after?: number | null
+          confidence_before?: number | null
+          corrected_geometry?: Json | null
+          correction_reason?: string | null
+          correction_type?: string
+          created_at?: string | null
+          human_reviewed?: boolean | null
+          id?: string
+          measurement_id?: string | null
+          original_geometry?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_self_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_self_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_self_corrections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -18102,6 +18870,79 @@ export type Database = {
           },
         ]
       }
+      parsed_vendor_reports: {
+        Row: {
+          created_at: string | null
+          extracted_data: Json
+          extraction_confidence: number | null
+          field_count_extracted: number | null
+          field_count_total: number | null
+          id: string
+          measurement_id: string | null
+          parsing_errors: Json | null
+          parsing_method: string | null
+          raw_pdf_url: string | null
+          report_version: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          vendor: string
+        }
+        Insert: {
+          created_at?: string | null
+          extracted_data?: Json
+          extraction_confidence?: number | null
+          field_count_extracted?: number | null
+          field_count_total?: number | null
+          id?: string
+          measurement_id?: string | null
+          parsing_errors?: Json | null
+          parsing_method?: string | null
+          raw_pdf_url?: string | null
+          report_version?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          vendor: string
+        }
+        Update: {
+          created_at?: string | null
+          extracted_data?: Json
+          extraction_confidence?: number | null
+          field_count_extracted?: number | null
+          field_count_total?: number | null
+          id?: string
+          measurement_id?: string | null
+          parsing_errors?: Json | null
+          parsing_method?: string | null
+          raw_pdf_url?: string | null
+          report_version?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          vendor?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "parsed_vendor_reports_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parsed_vendor_reports_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "parsed_vendor_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_milestones: {
         Row: {
           amount: number
@@ -18934,6 +19775,85 @@ export type Database = {
           },
           {
             foreignKeyName: "permit_job_measurements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permit_measurement_matches: {
+        Row: {
+          county_name: string | null
+          created_at: string | null
+          discrepancy_description: string | null
+          discrepancy_detected: boolean | null
+          id: string
+          measurement_id: string | null
+          modifications_noted: string[] | null
+          permit_date: string | null
+          permit_document_url: string | null
+          permit_number: string | null
+          permit_type: string | null
+          permitted_roof_area_sqft: number | null
+          permitted_stories: number | null
+          state_code: string | null
+          tenant_id: string | null
+          validation_status: string | null
+        }
+        Insert: {
+          county_name?: string | null
+          created_at?: string | null
+          discrepancy_description?: string | null
+          discrepancy_detected?: boolean | null
+          id?: string
+          measurement_id?: string | null
+          modifications_noted?: string[] | null
+          permit_date?: string | null
+          permit_document_url?: string | null
+          permit_number?: string | null
+          permit_type?: string | null
+          permitted_roof_area_sqft?: number | null
+          permitted_stories?: number | null
+          state_code?: string | null
+          tenant_id?: string | null
+          validation_status?: string | null
+        }
+        Update: {
+          county_name?: string | null
+          created_at?: string | null
+          discrepancy_description?: string | null
+          discrepancy_detected?: boolean | null
+          id?: string
+          measurement_id?: string | null
+          modifications_noted?: string[] | null
+          permit_date?: string | null
+          permit_document_url?: string | null
+          permit_number?: string | null
+          permit_type?: string | null
+          permitted_roof_area_sqft?: number | null
+          permitted_stories?: number | null
+          state_code?: string | null
+          tenant_id?: string | null
+          validation_status?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permit_measurement_matches_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_measurement_matches_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_measurement_matches_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -24660,6 +25580,71 @@ export type Database = {
           },
         ]
       }
+      reviewer_performance: {
+        Row: {
+          accuracy_score: number | null
+          average_review_time_seconds: number | null
+          calibration_test_date: string | null
+          calibration_test_score: number | null
+          complex_reviews_count: number | null
+          corrections_made: number | null
+          corrections_rejected: number | null
+          corrections_validated: number | null
+          created_at: string | null
+          id: string
+          measurements_reviewed: number | null
+          performance_tier: string | null
+          period_end: string
+          period_start: string
+          reviewer_id: string
+          tenant_id: string | null
+        }
+        Insert: {
+          accuracy_score?: number | null
+          average_review_time_seconds?: number | null
+          calibration_test_date?: string | null
+          calibration_test_score?: number | null
+          complex_reviews_count?: number | null
+          corrections_made?: number | null
+          corrections_rejected?: number | null
+          corrections_validated?: number | null
+          created_at?: string | null
+          id?: string
+          measurements_reviewed?: number | null
+          performance_tier?: string | null
+          period_end: string
+          period_start: string
+          reviewer_id: string
+          tenant_id?: string | null
+        }
+        Update: {
+          accuracy_score?: number | null
+          average_review_time_seconds?: number | null
+          calibration_test_date?: string | null
+          calibration_test_score?: number | null
+          complex_reviews_count?: number | null
+          corrections_made?: number | null
+          corrections_rejected?: number | null
+          corrections_validated?: number | null
+          created_at?: string | null
+          id?: string
+          measurements_reviewed?: number | null
+          performance_tier?: string | null
+          period_end?: string
+          period_start?: string
+          reviewer_id?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reviewer_performance_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reward_redemptions: {
         Row: {
           contact_id: string | null
@@ -27489,6 +28474,75 @@ export type Database = {
           },
         ]
       }
+      segment_ground_truth: {
+        Row: {
+          azimuth_degrees: number | null
+          confidence: number | null
+          connected_to_segments: number[] | null
+          created_at: string | null
+          end_lat: number | null
+          end_lng: number | null
+          ground_truth_id: string | null
+          id: string
+          length_ft: number
+          pitch_at_segment: string | null
+          segment_index: number
+          segment_type: string
+          start_lat: number | null
+          start_lng: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          azimuth_degrees?: number | null
+          confidence?: number | null
+          connected_to_segments?: number[] | null
+          created_at?: string | null
+          end_lat?: number | null
+          end_lng?: number | null
+          ground_truth_id?: string | null
+          id?: string
+          length_ft: number
+          pitch_at_segment?: string | null
+          segment_index: number
+          segment_type: string
+          start_lat?: number | null
+          start_lng?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          azimuth_degrees?: number | null
+          confidence?: number | null
+          connected_to_segments?: number[] | null
+          created_at?: string | null
+          end_lat?: number | null
+          end_lng?: number | null
+          ground_truth_id?: string | null
+          id?: string
+          length_ft?: number
+          pitch_at_segment?: string | null
+          segment_index?: number
+          segment_type?: string
+          start_lat?: number | null
+          start_lng?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "segment_ground_truth_ground_truth_id_fkey"
+            columns: ["ground_truth_id"]
+            isOneToOne: false
+            referencedRelation: "measurement_ground_truth"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "segment_ground_truth_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_quote_requests: {
         Row: {
           contact_id: string | null
@@ -29124,6 +30178,73 @@ export type Database = {
         }
         Relationships: []
       }
+      spectral_analysis_results: {
+        Row: {
+          color_profile: Json | null
+          condition_score: number | null
+          created_at: string | null
+          degradation_indicators: string[] | null
+          detected_material: string | null
+          edge_detection_adjustment: number | null
+          estimated_roof_age_years: number | null
+          id: string
+          material_confidence: number | null
+          measurement_id: string | null
+          spectral_signature: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          color_profile?: Json | null
+          condition_score?: number | null
+          created_at?: string | null
+          degradation_indicators?: string[] | null
+          detected_material?: string | null
+          edge_detection_adjustment?: number | null
+          estimated_roof_age_years?: number | null
+          id?: string
+          material_confidence?: number | null
+          measurement_id?: string | null
+          spectral_signature?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          color_profile?: Json | null
+          condition_score?: number | null
+          created_at?: string | null
+          degradation_indicators?: string[] | null
+          detected_material?: string | null
+          edge_detection_adjustment?: number | null
+          estimated_roof_age_years?: number | null
+          id?: string
+          material_confidence?: number | null
+          measurement_id?: string | null
+          spectral_signature?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "spectral_analysis_results_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "spectral_analysis_results_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "spectral_analysis_results_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_workload: {
         Row: {
           active_conversations: number | null
@@ -29313,6 +30434,79 @@ export type Database = {
           },
           {
             foreignKeyName: "step_flashing_segments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      street_view_pitch_analysis: {
+        Row: {
+          aerial_pitch: string | null
+          agrees_with_aerial: boolean | null
+          analysis_notes: string | null
+          average_street_view_pitch: string | null
+          created_at: string | null
+          detected_pitches: string[] | null
+          discrepancy_degrees: number | null
+          id: string
+          measurement_id: string | null
+          pitch_confidence: number | null
+          quality_score: number | null
+          street_view_urls: string[] | null
+          tenant_id: string | null
+          viewing_angles: number[] | null
+        }
+        Insert: {
+          aerial_pitch?: string | null
+          agrees_with_aerial?: boolean | null
+          analysis_notes?: string | null
+          average_street_view_pitch?: string | null
+          created_at?: string | null
+          detected_pitches?: string[] | null
+          discrepancy_degrees?: number | null
+          id?: string
+          measurement_id?: string | null
+          pitch_confidence?: number | null
+          quality_score?: number | null
+          street_view_urls?: string[] | null
+          tenant_id?: string | null
+          viewing_angles?: number[] | null
+        }
+        Update: {
+          aerial_pitch?: string | null
+          agrees_with_aerial?: boolean | null
+          analysis_notes?: string | null
+          average_street_view_pitch?: string | null
+          created_at?: string | null
+          detected_pitches?: string[] | null
+          discrepancy_degrees?: number | null
+          id?: string
+          measurement_id?: string | null
+          pitch_confidence?: number | null
+          quality_score?: number | null
+          street_view_urls?: string[] | null
+          tenant_id?: string | null
+          viewing_angles?: number[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "street_view_pitch_analysis_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "street_view_pitch_analysis_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "street_view_pitch_analysis_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -30716,6 +31910,57 @@ export type Database = {
           },
         ]
       }
+      synthetic_test_cases: {
+        Row: {
+          complexity_level: string | null
+          created_at: string | null
+          expected_measurements: Json
+          failure_count: number | null
+          id: string
+          is_active: boolean | null
+          last_run_accuracy: number | null
+          last_run_at: string | null
+          last_run_passed: boolean | null
+          roof_type: string
+          run_count: number | null
+          synthetic_geometry: Json
+          synthetic_image_url: string | null
+          test_name: string
+        }
+        Insert: {
+          complexity_level?: string | null
+          created_at?: string | null
+          expected_measurements: Json
+          failure_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_run_accuracy?: number | null
+          last_run_at?: string | null
+          last_run_passed?: boolean | null
+          roof_type: string
+          run_count?: number | null
+          synthetic_geometry: Json
+          synthetic_image_url?: string | null
+          test_name: string
+        }
+        Update: {
+          complexity_level?: string | null
+          created_at?: string | null
+          expected_measurements?: Json
+          failure_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_run_accuracy?: number | null
+          last_run_at?: string | null
+          last_run_passed?: boolean | null
+          roof_type?: string
+          run_count?: number | null
+          synthetic_geometry?: Json
+          synthetic_image_url?: string | null
+          test_name?: string
+        }
+        Relationships: []
+      }
       system_crashes: {
         Row: {
           auto_recovered: boolean | null
@@ -31193,6 +32438,82 @@ export type Database = {
           use_for?: string | null
         }
         Relationships: []
+      }
+      temporal_imagery_analysis: {
+        Row: {
+          anchor_vertices: Json | null
+          area_consistency_score: number | null
+          change_area_sqft: number | null
+          change_description: string | null
+          change_type: string | null
+          changes_detected: boolean | null
+          created_at: string | null
+          high_confidence_segments: Json | null
+          id: string
+          imagery_dates: string[]
+          imagery_sources: string[] | null
+          measurement_id: string | null
+          perimeter_consistency_score: number | null
+          tenant_id: string | null
+          vertex_consistency_score: number | null
+        }
+        Insert: {
+          anchor_vertices?: Json | null
+          area_consistency_score?: number | null
+          change_area_sqft?: number | null
+          change_description?: string | null
+          change_type?: string | null
+          changes_detected?: boolean | null
+          created_at?: string | null
+          high_confidence_segments?: Json | null
+          id?: string
+          imagery_dates: string[]
+          imagery_sources?: string[] | null
+          measurement_id?: string | null
+          perimeter_consistency_score?: number | null
+          tenant_id?: string | null
+          vertex_consistency_score?: number | null
+        }
+        Update: {
+          anchor_vertices?: Json | null
+          area_consistency_score?: number | null
+          change_area_sqft?: number | null
+          change_description?: string | null
+          change_type?: string | null
+          changes_detected?: boolean | null
+          created_at?: string | null
+          high_confidence_segments?: Json | null
+          id?: string
+          imagery_dates?: string[]
+          imagery_sources?: string[] | null
+          measurement_id?: string | null
+          perimeter_consistency_score?: number | null
+          tenant_id?: string | null
+          vertex_consistency_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "temporal_imagery_analysis_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "temporal_imagery_analysis_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "temporal_imagery_analysis_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       tenant_approval_requirements: {
         Row: {
@@ -33191,6 +34512,82 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      verification_routing_decisions: {
+        Row: {
+          assigned_reviewer_id: string | null
+          complexity_score: number | null
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          measurement_id: string | null
+          review_completed_at: string | null
+          review_deadline: string | null
+          review_outcome: string | null
+          review_started_at: string | null
+          risk_score: number | null
+          routing_decision: string
+          routing_factors: Json | null
+          tenant_id: string | null
+          value_score: number | null
+        }
+        Insert: {
+          assigned_reviewer_id?: string | null
+          complexity_score?: number | null
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          measurement_id?: string | null
+          review_completed_at?: string | null
+          review_deadline?: string | null
+          review_outcome?: string | null
+          review_started_at?: string | null
+          risk_score?: number | null
+          routing_decision: string
+          routing_factors?: Json | null
+          tenant_id?: string | null
+          value_score?: number | null
+        }
+        Update: {
+          assigned_reviewer_id?: string | null
+          complexity_score?: number | null
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          measurement_id?: string | null
+          review_completed_at?: string | null
+          review_deadline?: string | null
+          review_outcome?: string | null
+          review_started_at?: string | null
+          risk_score?: number | null
+          routing_decision?: string
+          routing_factors?: Json | null
+          tenant_id?: string | null
+          value_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verification_routing_decisions_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_routing_decisions_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "verification_routing_decisions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       verified_company_domains: {
         Row: {
