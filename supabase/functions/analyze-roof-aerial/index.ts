@@ -4899,6 +4899,82 @@ async function processSolarFastPath(
     return { success: false, reason: 'Could not build valid perimeter' }
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🏠 L-SHAPE CROSS-VALIDATION: Check if Solar segments suggest complex roof
+  // but footprint is simplified (4-5 vertices = rectangle)
+  // If mismatch detected, trigger AI Vision to capture true L-shape footprint
+  // ═══════════════════════════════════════════════════════════════════════════
+  const segmentCount = solarData.roofSegments.length
+  const directions = solarData.roofSegments.map((s: any) => {
+    const az = s.azimuthDegrees || 0
+    if (az >= 315 || az < 45) return 'N'
+    if (az >= 45 && az < 135) return 'E'
+    if (az >= 135 && az < 225) return 'S'
+    if (az >= 225 && az < 315) return 'W'
+    return 'N'
+  })
+  
+  const hasN = directions.includes('N')
+  const hasS = directions.includes('S')
+  const hasE = directions.includes('E')
+  const hasW = directions.includes('W')
+  const hasNSandEW = hasN && hasS && hasE && hasW
+  
+  // L-shape detection: 4+ segments with opposing N/S AND E/W pairs but only 4-5 vertex footprint
+  const isLikelyLShape = (segmentCount >= 4 && hasNSandEW && footprintVertexCount <= 5)
+  
+  if (isLikelyLShape) {
+    console.log(`⚠️ L-SHAPE MISMATCH DETECTED: ${segmentCount} Solar segments with N/S AND E/W azimuths, but footprint has only ${footprintVertexCount} vertices`)
+    console.log(`   Segments by direction: N=${hasN}, S=${hasS}, E=${hasE}, W=${hasW}`)
+    
+    // Try AI Vision detection to capture the actual L-shape
+    if (selectedImage?.url && footprintSource !== 'ai_vision_detected') {
+      console.log('🤖 Triggering AI Vision to detect L-shaped building footprint...')
+      
+      try {
+        const detectResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/detect-building-footprint`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+            },
+            body: JSON.stringify({
+              imageUrl: selectedImage.url,
+              coordinates: { lat: coordinates.lat, lng: coordinates.lng },
+              imageSize: 640,
+              zoom: 20,
+              detectLShape: true, // Signal to AI to look for L-shape
+              expectedSegments: segmentCount
+            })
+          }
+        )
+
+        if (detectResponse.ok) {
+          const detectResult = await detectResponse.json()
+          
+          // Only use AI Vision if it returned more vertices (actual L-shape)
+          if (detectResult.success && detectResult.footprint?.vertices?.length > footprintVertexCount) {
+            const aiVertices = detectResult.footprint.vertices
+            
+            perimeterXY = aiVertices.map((v: any) => [v.lng, v.lat])
+            footprintSource = 'ai_vision_detected' as any
+            footprintConfidence = (detectResult.footprint.confidence || 0.85) * 0.90 // Higher confidence for L-shape detection
+            footprintVertexCount = aiVertices.length
+            
+            console.log(`✅ AI Vision L-shape footprint: ${footprintVertexCount} vertices (was ${footprintVertexCount - aiVertices.length + footprintVertexCount}), confidence ${(footprintConfidence * 100).toFixed(0)}%`)
+          } else {
+            console.log(`⚠️ AI Vision did not improve L-shape detection: ${detectResult.footprint?.vertices?.length || 0} vertices`)
+          }
+        }
+      } catch (aiErr) {
+        console.warn('⚠️ L-shape AI Vision detection failed:', aiErr)
+      }
+    }
+  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // Determine predominant pitch from Solar segments
   let predominantPitch = '6/12'
   const segmentsWithPitch = solarData.roofSegments.filter((s: any) => s.pitchDegrees > 0)
@@ -4908,7 +4984,7 @@ async function processSolarFastPath(
     console.log(`📐 Pitch from Solar: ${avgPitchDegrees.toFixed(1)}° -> ${predominantPitch}`)
   }
   
-  // Use Solar Segment Assembler
+  // Use Solar Segment Assembler (will now detect L-shape from decomposed footprint)
   let assembledGeometry: any = null
   try {
     assembledGeometry = assembleFacetsFromSolarSegments(
