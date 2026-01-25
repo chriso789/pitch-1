@@ -10,6 +10,11 @@ export { MeasurementWorkflow } from './MeasurementWorkflow';
 export { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer';
 export { PostPerimeterDialog } from './PostPerimeterDialog';
 export { CleanRoofDiagram } from './CleanRoofDiagram';
+// Phase 41-70 exports
+export { DiamondCertificationBadge } from '../measurements/DiamondCertificationBadge';
+export { ExpertReviewQueue } from '../measurements/ExpertReviewQueue';
+export { AnnotationPanel } from '../measurements/AnnotationPanel';
+export { ReviewerDashboard } from '../measurements/ReviewerDashboard';
 // Legacy exports - keep for backward compatibility but not used in main flow
 export { RoofrStyleDiagram } from './RoofrStyleDiagram';
 export { MeasurementComparisonPanel } from './MeasurementComparisonPanel';
