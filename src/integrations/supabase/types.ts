@@ -11361,6 +11361,57 @@ export type Database = {
           },
         ]
       }
+      expert_review_assignments: {
+        Row: {
+          accuracy_score: number | null
+          assigned_at: string | null
+          completed_at: string | null
+          created_at: string | null
+          deadline: string | null
+          id: string
+          measurement_id: string | null
+          priority: number | null
+          review_notes: string | null
+          reviewer_id: string | null
+          status: string | null
+          tenant_id: string | null
+          time_spent_minutes: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          accuracy_score?: number | null
+          assigned_at?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          deadline?: string | null
+          id?: string
+          measurement_id?: string | null
+          priority?: number | null
+          review_notes?: string | null
+          reviewer_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          time_spent_minutes?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          accuracy_score?: number | null
+          assigned_at?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          deadline?: string | null
+          id?: string
+          measurement_id?: string | null
+          priority?: number | null
+          review_notes?: string | null
+          reviewer_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          time_spent_minutes?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       external_lead_submissions: {
         Row: {
           api_key_id: string | null
@@ -13870,6 +13921,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      improvement_actions: {
+        Row: {
+          action_type: string
+          actual_impact: number | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string
+          expected_impact: number | null
+          id: string
+          metadata: Json | null
+          priority: string | null
+          results: string | null
+          started_at: string | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          action_type: string
+          actual_impact?: number | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description: string
+          expected_impact?: number | null
+          id?: string
+          metadata?: Json | null
+          priority?: string | null
+          results?: string | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          action_type?: string
+          actual_impact?: number | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string
+          expected_impact?: number | null
+          id?: string
+          metadata?: Json | null
+          priority?: string | null
+          results?: string | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: []
       }
       improvement_flywheel_metrics: {
         Row: {
@@ -25579,6 +25684,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      reviewer_calibration_tests: {
+        Row: {
+          accuracy_score: number | null
+          completed_at: string | null
+          correct_values: Json | null
+          id: string
+          passed: boolean | null
+          reviewer_id: string | null
+          submitted_values: Json | null
+          tenant_id: string | null
+          test_measurement_id: string | null
+          time_to_complete_seconds: number | null
+        }
+        Insert: {
+          accuracy_score?: number | null
+          completed_at?: string | null
+          correct_values?: Json | null
+          id?: string
+          passed?: boolean | null
+          reviewer_id?: string | null
+          submitted_values?: Json | null
+          tenant_id?: string | null
+          test_measurement_id?: string | null
+          time_to_complete_seconds?: number | null
+        }
+        Update: {
+          accuracy_score?: number | null
+          completed_at?: string | null
+          correct_values?: Json | null
+          id?: string
+          passed?: boolean | null
+          reviewer_id?: string | null
+          submitted_values?: Json | null
+          tenant_id?: string | null
+          test_measurement_id?: string | null
+          time_to_complete_seconds?: number | null
+        }
+        Relationships: []
       }
       reviewer_performance: {
         Row: {
