@@ -670,6 +670,9 @@ verify_jwt = true
 [functions.external-lead-webhook]
 verify_jwt = false
 
+[functions.receive-lead]
+verify_jwt = false
+
 [functions.communication-inbox-manager]
 verify_jwt = true
 
