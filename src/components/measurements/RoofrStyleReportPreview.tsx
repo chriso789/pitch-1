@@ -913,7 +913,7 @@ export function RoofrStyleReportPreview({
                       measurementId={roofMeasurementData?.id || measurementId}
                       width={500}
                       height={500}
-                      showLengthLabels={false}
+                      showLengthLabels={true}
                       showLegend={true}
                       showCompass={true}
                       showTotals={true}

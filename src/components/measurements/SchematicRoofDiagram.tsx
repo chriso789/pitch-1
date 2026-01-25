@@ -318,16 +318,65 @@ export function SchematicRoofDiagram({
     // Extract perimeter from WKT or faces - this is the ONLY source of truth for building outline
     let perimCoords: { lat: number; lng: number }[] = [];
     
-    // Priority 1: perimeter_wkt from measurement
-    if (measurement?.perimeter_wkt) {
+    // PRIORITY: Derive accurate perimeter from eave/rake vertices when OSM footprint is low quality
+    // This produces the actual building outline instead of a simplified rectangle
+    const linearFeaturesRaw = measurement?.linear_features || measurement?.linear_features_wkt || [];
+    const footprintConfidence = measurement?.footprint_confidence || 0;
+    const isLowQualityFootprint = footprintConfidence < 0.85 || measurement?.footprint_source === 'osm_overpass';
+    
+    // Try to derive perimeter from eave/rake WKT vertices (most accurate)
+    if (isLowQualityFootprint && Array.isArray(linearFeaturesRaw) && linearFeaturesRaw.length > 0) {
+      const eaveRakeCoords: { lat: number; lng: number }[] = [];
+      
+      linearFeaturesRaw.forEach((f: LinearFeature) => {
+        if (f.wkt && (f.type?.toLowerCase() === 'eave' || f.type?.toLowerCase() === 'rake')) {
+          const coords = wktLineToLatLngs(f.wkt);
+          coords.forEach(coord => {
+            // Only add unique vertices (avoid duplicates)
+            const isDuplicate = eaveRakeCoords.some(
+              existing => Math.abs(existing.lat - coord.lat) < 0.00001 && Math.abs(existing.lng - coord.lng) < 0.00001
+            );
+            if (!isDuplicate) {
+              eaveRakeCoords.push(coord);
+            }
+          });
+        }
+      });
+      
+      // Order vertices clockwise around centroid to form proper polygon
+      if (eaveRakeCoords.length >= 4) {
+        const centroid = {
+          lat: eaveRakeCoords.reduce((sum, c) => sum + c.lat, 0) / eaveRakeCoords.length,
+          lng: eaveRakeCoords.reduce((sum, c) => sum + c.lng, 0) / eaveRakeCoords.length,
+        };
+        
+        // Sort by angle from centroid (clockwise)
+        eaveRakeCoords.sort((a, b) => {
+          const angleA = Math.atan2(a.lat - centroid.lat, a.lng - centroid.lng);
+          const angleB = Math.atan2(b.lat - centroid.lat, b.lng - centroid.lng);
+          return angleB - angleA; // Descending for clockwise
+        });
+        
+        // Close the polygon
+        if (eaveRakeCoords.length > 0) {
+          eaveRakeCoords.push({ ...eaveRakeCoords[0] });
+        }
+        
+        perimCoords = eaveRakeCoords;
+        console.log(`🏠 Derived accurate perimeter from ${eaveRakeCoords.length - 1} eave/rake vertices (was: ${measurement?.footprint_source})`);
+      }
+    }
+    
+    // Fallback priority 1: perimeter_wkt from measurement
+    if (perimCoords.length === 0 && measurement?.perimeter_wkt) {
       perimCoords = wktPolygonToLatLngs(measurement.perimeter_wkt);
     }
-    // Priority 2: First face WKT
-    else if (measurement?.faces?.[0]?.wkt) {
+    // Fallback priority 2: First face WKT
+    else if (perimCoords.length === 0 && measurement?.faces?.[0]?.wkt) {
       perimCoords = wktPolygonToLatLngs(measurement.faces[0].wkt);
     }
-    // Priority 3: building_outline_wkt
-    else if (measurement?.building_outline_wkt) {
+    // Fallback priority 3: building_outline_wkt
+    else if (perimCoords.length === 0 && measurement?.building_outline_wkt) {
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
