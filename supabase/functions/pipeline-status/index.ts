@@ -2,6 +2,9 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAuth, supabaseService, getAuthUser } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
+// Manager roles that can override transition rules
+const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -20,7 +23,7 @@ serve(async (req) => {
       });
     }
 
-    const { pipeline_id, new_status } = await req.json();
+    const { pipeline_id, new_status, transition_reason } = await req.json();
 
     // Use service client to bypass RLS for the query
     const serviceClient = supabaseService();
@@ -47,9 +50,16 @@ serve(async (req) => {
       });
     }
 
-    // Define valid status transitions matching LEAD_STAGES from usePipelineData.ts
-    // Stages: lead -> contingency_signed -> legal_review -> ready_for_approval -> project
-    // Note: "qualified" is a CONTACT status, not a pipeline stage
+    // Check if user has manager role
+    const { data: userProfile } = await serviceClient
+      .from('profiles')
+      .select('role')
+      .eq('id', authUser.id)
+      .single();
+
+    const isManager = userProfile?.role && MANAGER_ROLES.includes(userProfile.role);
+
+    // Define valid status transitions for regular users
     const validTransitions: Record<string, string[]> = {
       'lead': ['contingency_signed', 'lost', 'canceled', 'duplicate'],
       'contingency_signed': ['legal_review', 'lead', 'lost', 'canceled'],
@@ -57,22 +67,53 @@ serve(async (req) => {
       'ready_for_approval': ['project', 'legal_review', 'lost', 'canceled'],
       'project': ['completed', 'ready_for_approval', 'lost', 'canceled'],
       'completed': ['closed'],
-      'lost': ['lead'], // Allow re-opening lost leads
-      'canceled': ['lead'], // Allow re-opening canceled leads
+      'lost': ['lead'],
+      'canceled': ['lead'],
       'duplicate': [],
       'closed': []
     };
 
+    // All valid statuses for manager override
+    const allStatuses = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval', 'project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'];
+
     const currentStatus = currentEntry.status;
     const allowedStatuses = validTransitions[currentStatus] || [];
+    const isValidTransition = allowedStatuses.includes(new_status);
+    const isManagerOverride = !isValidTransition && isManager;
 
-    if (!allowedStatuses.includes(new_status)) {
-      return new Response(JSON.stringify({ 
-        error: `Invalid status transition from ${currentStatus} to ${new_status}. Allowed: ${allowedStatuses.join(', ')}` 
-      }), {
-        status: 422,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Check if this transition is allowed
+    if (!isValidTransition) {
+      if (!isManager) {
+        return new Response(JSON.stringify({ 
+          error: `Invalid status transition from ${currentStatus} to ${new_status}. Contact a manager to override.`,
+          allowed: allowedStatuses
+        }), {
+          status: 422,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Manager override: require reason for non-standard jumps (except to terminal statuses)
+      const terminalStatuses = ['lost', 'canceled', 'duplicate'];
+      if (!terminalStatuses.includes(new_status) && !transition_reason) {
+        return new Response(JSON.stringify({ 
+          error: 'Manager override requires a reason for this status change',
+          requires_reason: true
+        }), {
+          status: 422,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Validate the target status exists
+      if (!allStatuses.includes(new_status)) {
+        return new Response(JSON.stringify({ 
+          error: `Invalid target status: ${new_status}`
+        }), {
+          status: 422,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
     // Update the pipeline entry status using service client
@@ -91,15 +132,30 @@ serve(async (req) => {
       });
     }
 
-    // NOTE: We no longer sync pipeline status to contact's qualification_status
-    // Pipeline stages and contact qualification are now independent:
-    // - Pipeline: lead -> contingency_signed -> legal_review -> ready_for_approval -> project
-    // - Contact: qualified, interested, storm_damage, not_interested, etc.
+    // Log the status change to audit_log
+    try {
+      await serviceClient.from('audit_log').insert({
+        tenant_id: currentEntry.tenant_id,
+        changed_by: authUser.id,
+        action: 'UPDATE',
+        table_name: 'pipeline_entries',
+        record_id: pipeline_id,
+        old_values: { status: currentStatus },
+        new_values: { 
+          status: new_status,
+          is_manager_override: isManagerOverride,
+          transition_reason: transition_reason || null
+        }
+      });
+    } catch (auditError) {
+      console.error('Audit log error (non-fatal):', auditError);
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 
       pipeline_entry: data,
-      message: `Status updated from ${currentStatus} to ${new_status}`
+      message: `Status updated from ${currentStatus} to ${new_status}`,
+      is_manager_override: isManagerOverride
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
