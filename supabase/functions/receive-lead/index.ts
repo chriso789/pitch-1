@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { supabaseService } from '../_shared/supabase.ts';
+import { getEnv } from '../_shared/env.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -59,9 +60,9 @@ serve(async (req) => {
 
     // Validate API key
     const apiKey = req.headers.get('x-api-key');
-    const expectedApiKey = Deno.env.get('GROWTH_HUB_API_KEY');
+    const expectedApiKey = getEnv('GROWTH_HUB_API_KEY', '');
 
-    if (!apiKey || apiKey !== expectedApiKey) {
+    if (!apiKey || !expectedApiKey || apiKey !== expectedApiKey) {
       console.error('[receive-lead] Invalid or missing API key');
       return new Response(
         JSON.stringify({ success: false, error: 'Invalid API key' }),
@@ -87,9 +88,7 @@ serve(async (req) => {
     }
 
     // Create Supabase client with service role
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = supabaseService();
 
     // Get the default tenant (first tenant for simplicity)
     // In production, you'd want to configure this per-company
