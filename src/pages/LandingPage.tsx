@@ -22,10 +22,12 @@ import { ConsentBanner } from '@/components/ConsentBanner';
 import DashboardMockup from '@/components/landing/DashboardMockup';
 import { PowerDialerMockup, EstimateMockup, PipelineMockup, AnalyticsMockup } from '@/components/landing/FeatureMockups';
 import { supabase } from '@/integrations/supabase/client';
+import { DemoVideoModal } from '@/components/landing/DemoVideoModal';
 
 const LandingPage = () => {
   const navigate = useNavigate();
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [showDemo, setShowDemo] = useState(false);
   const { 
     trackNavLogin, 
     trackNavSignup, 
@@ -225,11 +227,20 @@ const LandingPage = () => {
               size="lg" 
               variant="outline" 
               className="text-lg px-8 py-6"
-              onClick={() => trackHeroBookDemo()}
+              onClick={() => { 
+                trackHeroBookDemo(); 
+                setShowDemo(true); 
+              }}
             >
               Watch Demo
             </Button>
           </div>
+
+          {/* Demo Video Modal */}
+          <DemoVideoModal 
+            isOpen={showDemo} 
+            onClose={() => setShowDemo(false)} 
+          />
 
           <div className="flex flex-wrap items-center justify-center gap-6 text-sm text-slate-500">
             <div className="flex items-center space-x-2">

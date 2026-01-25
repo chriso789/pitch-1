@@ -52,13 +52,18 @@ export function useMarketingTracking() {
   const { trackCTAClick, trackFormSubmit } = usePageTracking();
 
   // Pre-defined CTA tracking functions for common buttons
-  const trackHeroBookDemo = () => trackCTAClick('hero_book_demo', 'Book a Demo');
+  const trackHeroBookDemo = () => trackCTAClick('hero_book_demo', 'Watch Demo');
   const trackHeroStartTrial = () => trackCTAClick('hero_start_trial', 'Start Free Trial');
   const trackNavLogin = () => trackCTAClick('nav_login', 'Login');
   const trackNavSignup = () => trackCTAClick('nav_signup', 'Sign Up');
   const trackPricingCTA = (plan: string) => trackCTAClick(`pricing_${plan}`, `Get Started - ${plan}`);
   const trackFeatureCTA = (feature: string) => trackCTAClick(`feature_${feature}`, `Learn More - ${feature}`);
   const trackFooterCTA = (action: string) => trackCTAClick(`footer_${action}`, action);
+
+  // Demo engagement tracking
+  const trackDemoStarted = () => trackCTAClick('demo_started', 'Demo Started');
+  const trackDemoCompleted = () => trackCTAClick('demo_completed', 'Demo Completed');
+  const trackDemoSkipped = (step: string) => trackCTAClick(`demo_skipped_${step}`, `Demo Skipped at ${step}`);
 
   // Form tracking
   const trackDemoRequest = (metadata?: Record<string, any>) => trackFormSubmit('demo_request', metadata);
@@ -75,6 +80,9 @@ export function useMarketingTracking() {
     trackPricingCTA,
     trackFeatureCTA,
     trackFooterCTA,
+    trackDemoStarted,
+    trackDemoCompleted,
+    trackDemoSkipped,
     trackDemoRequest,
     trackNewsletterSignup,
     trackContactForm
