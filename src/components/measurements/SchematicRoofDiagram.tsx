@@ -949,132 +949,151 @@ export function SchematicRoofDiagram({
           />
         )}
         
-        {/* Eave segments - thick dark green straight lines with length labels and direction */}
-        {eaveSegments.map((seg, i) => {
-          const midX = (seg.start.x + seg.end.x) / 2;
-          const midY = (seg.start.y + seg.end.y) / 2;
-          const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
-          const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
-          const length = seg.length || 0;
+        {/* Eave segments - thick dark green straight lines with indexed labels */}
+        {(() => {
+          const needsIndex = eaveSegments.length > 1;
           
-          // Calculate cardinal direction from GPS coordinates if available
-          // SVG Y is inverted, so we need to adjust for compass
-          // North is -Y in SVG space, East is +X
-          const dx = seg.end.x - seg.start.x;
-          const dy = seg.end.y - seg.start.y;
-          // Convert SVG angle to compass bearing (0=North, 90=East)
-          const svgAngleRad = Math.atan2(-dy, dx); // Negate dy because SVG Y is inverted
-          const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
-          // Eave direction is perpendicular to the edge (outward facing)
-          const facingBearing = (compassBearing + 90) % 360;
-          const direction = getDirectionFromAzimuth(facingBearing);
-          const edgeLabel = `${direction} Eave`;
-          const labelWidth = edgeLabel.length * 5 + 30; // Dynamic width based on label length
-          
-          return (
-            <g key={`eave-${i}`}>
-              <line
-                x1={seg.start.x}
-                y1={seg.start.y}
-                x2={seg.end.x}
-                y2={seg.end.y}
-                stroke={FEATURE_COLORS.eave}
-                strokeWidth={5}
-                strokeLinecap="square"
-              />
-              {/* Eave length label with direction - show all segments >= 1ft */}
-              {showLengthLabels && length >= 1 && (
-                <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
-                  <rect
-                    x={-labelWidth / 2}
-                    y={-11}
-                    width={labelWidth}
-                    height={18}
-                    fill="white"
-                    stroke={FEATURE_COLORS.eave}
-                    strokeWidth={1.5}
-                    rx={3}
-                  />
-                  <text
-                    x={0}
-                    y={4}
-                    textAnchor="middle"
-                    fontSize={10}
-                    fontWeight="bold"
-                    fill={FEATURE_COLORS.eave}
-                  >
-                    {edgeLabel} {length.toFixed(1)}'
-                  </text>
-                </g>
-              )}
-            </g>
-          );
-        })}
+          return eaveSegments.map((seg, i) => {
+            const midX = (seg.start.x + seg.end.x) / 2;
+            const midY = (seg.start.y + seg.end.y) / 2;
+            const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
+            const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
+            const length = seg.length || 0;
+            
+            // Calculate cardinal direction from GPS coordinates
+            const dx = seg.end.x - seg.start.x;
+            const dy = seg.end.y - seg.start.y;
+            const svgAngleRad = Math.atan2(-dy, dx);
+            const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
+            const facingBearing = (compassBearing + 90) % 360;
+            const direction = getDirectionFromAzimuth(facingBearing);
+            
+            // Indexed label (e.g., "N Eave-1 32'" or "N Eave 32'" if only one)
+            const indexLabel = needsIndex ? `-${i + 1}` : '';
+            const edgeLabel = `${direction} Eave${indexLabel}`;
+            const labelWidth = edgeLabel.length * 5 + 35;
+            
+            return (
+              <g key={`eave-${i}`}>
+                <line
+                  x1={seg.start.x}
+                  y1={seg.start.y}
+                  x2={seg.end.x}
+                  y2={seg.end.y}
+                  stroke={FEATURE_COLORS.eave}
+                  strokeWidth={5}
+                  strokeLinecap="square"
+                />
+                {/* Eave length label - show all segments >= 1ft */}
+                {showLengthLabels && length >= 1 && (
+                  <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                    <rect
+                      x={-labelWidth / 2}
+                      y={-11}
+                      width={labelWidth}
+                      height={18}
+                      fill="white"
+                      stroke={FEATURE_COLORS.eave}
+                      strokeWidth={1.5}
+                      rx={3}
+                    />
+                    <text
+                      x={0}
+                      y={4}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fontWeight="bold"
+                      fill={FEATURE_COLORS.eave}
+                    >
+                      {edgeLabel} {length.toFixed(0)}'
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          });
+        })()}
         
-        {/* Rake segments - thick cyan straight lines with length labels and direction */}
-        {rakeSegments.map((seg, i) => {
-          const midX = (seg.start.x + seg.end.x) / 2;
-          const midY = (seg.start.y + seg.end.y) / 2;
-          const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
-          const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
-          const length = seg.length || 0;
+        {/* Rake segments - thick cyan straight lines with indexed labels */}
+        {(() => {
+          const needsIndex = rakeSegments.length > 1;
           
-          // Calculate cardinal direction from GPS coordinates if available
-          const dx = seg.end.x - seg.start.x;
-          const dy = seg.end.y - seg.start.y;
-          // Convert SVG angle to compass bearing (0=North, 90=East)
-          const svgAngleRad = Math.atan2(-dy, dx); // Negate dy because SVG Y is inverted
-          const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
-          // Rake direction is perpendicular to the edge (outward facing)
-          const facingBearing = (compassBearing + 90) % 360;
-          const direction = getDirectionFromAzimuth(facingBearing);
-          const edgeLabel = `${direction} Rake`;
-          const labelWidth = edgeLabel.length * 5 + 30; // Dynamic width based on label length
-          
-          return (
-            <g key={`rake-${i}`}>
-              <line
-                x1={seg.start.x}
-                y1={seg.start.y}
-                x2={seg.end.x}
-                y2={seg.end.y}
-                stroke={FEATURE_COLORS.rake}
-                strokeWidth={5}
-                strokeLinecap="square"
-              />
-              {/* Rake length label with direction - show all segments >= 1ft */}
-              {showLengthLabels && length >= 1 && (
-                <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
-                  <rect
-                    x={-labelWidth / 2}
-                    y={-11}
-                    width={labelWidth}
-                    height={18}
-                    fill="white"
-                    stroke={FEATURE_COLORS.rake}
-                    strokeWidth={1.5}
-                    rx={3}
-                  />
-                  <text
-                    x={0}
-                    y={4}
-                    textAnchor="middle"
-                    fontSize={10}
-                    fontWeight="bold"
-                    fill={FEATURE_COLORS.rake}
-                  >
-                    {edgeLabel} {length.toFixed(1)}'
-                  </text>
-                </g>
-              )}
-            </g>
-          );
-        })}
+          return rakeSegments.map((seg, i) => {
+            const midX = (seg.start.x + seg.end.x) / 2;
+            const midY = (seg.start.y + seg.end.y) / 2;
+            const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
+            const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
+            const length = seg.length || 0;
+            
+            // Calculate cardinal direction from GPS coordinates
+            const dx = seg.end.x - seg.start.x;
+            const dy = seg.end.y - seg.start.y;
+            const svgAngleRad = Math.atan2(-dy, dx);
+            const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
+            const facingBearing = (compassBearing + 90) % 360;
+            const direction = getDirectionFromAzimuth(facingBearing);
+            
+            // Indexed label (e.g., "SE Rake-1 28'" or "SE Rake 28'" if only one)
+            const indexLabel = needsIndex ? `-${i + 1}` : '';
+            const edgeLabel = `${direction} Rake${indexLabel}`;
+            const labelWidth = edgeLabel.length * 5 + 35;
+            
+            return (
+              <g key={`rake-${i}`}>
+                <line
+                  x1={seg.start.x}
+                  y1={seg.start.y}
+                  x2={seg.end.x}
+                  y2={seg.end.y}
+                  stroke={FEATURE_COLORS.rake}
+                  strokeWidth={5}
+                  strokeLinecap="square"
+                />
+                {/* Rake length label - show all segments >= 1ft */}
+                {showLengthLabels && length >= 1 && (
+                  <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                    <rect
+                      x={-labelWidth / 2}
+                      y={-11}
+                      width={labelWidth}
+                      height={18}
+                      fill="white"
+                      stroke={FEATURE_COLORS.rake}
+                      strokeWidth={1.5}
+                      rx={3}
+                    />
+                    <text
+                      x={0}
+                      y={4}
+                      textAnchor="middle"
+                      fontSize={10}
+                      fontWeight="bold"
+                      fill={FEATURE_COLORS.rake}
+                    >
+                      {edgeLabel} {length.toFixed(0)}'
+                    </text>
+                  </g>
+                )}
+              </g>
+            );
+          });
+        })()}
         
-        {/* Linear features - ridges, hips, valleys (skip eaves/rakes as they're rendered with thick lines above) */}
-        {linearFeatures
-          .filter(f => f.type !== 'eave' && f.type !== 'rake')
-          .map((feature, i) => {
+        {/* Linear features - ridges, hips, valleys with indexed labels (skip eaves/rakes) */}
+        {(() => {
+          // Build feature counters for indexing (e.g., Hip-A, Hip-B, Valley-1)
+          const featureCountsByType: Record<string, number> = {};
+          const interiorFeatures = linearFeatures.filter(f => f.type !== 'eave' && f.type !== 'rake');
+          
+          // Count features by type to determine if we need indexing
+          interiorFeatures.forEach(f => {
+            featureCountsByType[f.type] = (featureCountsByType[f.type] || 0) + 1;
+          });
+          
+          // Track current index for each type as we render
+          const currentIndex: Record<string, number> = {};
+          
+          return interiorFeatures.map((feature, i) => {
             if (feature.points.length < 2) return null;
             const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
             const isDashed = feature.type === 'step';
@@ -1082,10 +1101,18 @@ export function SchematicRoofDiagram({
             // Set stroke width based on feature type
             const strokeWidth = feature.type === 'hip' ? 4 : feature.type === 'valley' ? 4 : 4;
             
-            // Type label for clarity
+            // Track index for this feature type
+            currentIndex[feature.type] = (currentIndex[feature.type] || 0) + 1;
+            const idx = currentIndex[feature.type];
+            const needsIndex = featureCountsByType[feature.type] > 1;
+            
+            // Generate indexed label (e.g., "Hip-A 27'" or "Ridge 24'" if only one)
             const typeLabel = feature.type.charAt(0).toUpperCase() + feature.type.slice(1);
-            const labelText = `${typeLabel} ${Math.round(feature.length)}'`;
-            const labelWidth = labelText.length * 6 + 8;
+            const indexLabel = needsIndex ? String.fromCharCode(64 + idx) : ''; // A, B, C, D...
+            const labelText = needsIndex 
+              ? `${typeLabel}-${indexLabel} ${Math.round(feature.length)}'`
+              : `${typeLabel} ${Math.round(feature.length)}'`;
+            const labelWidth = labelText.length * 6 + 10;
             
             return (
               <g key={`${feature.type}-${i}`}>
@@ -1098,7 +1125,7 @@ export function SchematicRoofDiagram({
                   strokeDasharray={isDashed ? '10,5' : undefined}
                 />
                 
-                {/* Length label at midpoint with type */}
+                {/* Length label at midpoint with type and index */}
                 {showLengthLabels && feature.length > 0 && feature.points.length >= 2 && (
                   (() => {
                     const midIdx = Math.floor(feature.points.length / 2);
@@ -1119,7 +1146,7 @@ export function SchematicRoofDiagram({
                           height={16}
                           fill="white"
                           stroke={feature.color}
-                          strokeWidth={1}
+                          strokeWidth={1.5}
                           rx={3}
                         />
                         <text
@@ -1138,7 +1165,8 @@ export function SchematicRoofDiagram({
                 )}
               </g>
             );
-          })}
+          });
+        })()}
         
         {/* Debug: Numbered perimeter vertex markers */}
         {localShowMarkers && perimeterCoords && perimeterCoords.map((coord: any, i: number) => (
@@ -1472,151 +1500,95 @@ export function SchematicRoofDiagram({
         </div>
       )}
       
-      {/* Verification Overlay - Always visible showing calculated sums */}
-      {showTotals && (
-        <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur border rounded-lg p-2.5 shadow-sm text-[10px] min-w-[180px]">
-          <div className="font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
-            <CheckCircle className="h-3 w-3 text-green-600" />
-            Calculated Totals
-          </div>
-          <div className="space-y-1">
-            {/* Linear features from diagram segments */}
-            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.eave }} />
-                <span className="text-muted-foreground">Eaves:</span>
-                <span className="font-semibold">{Math.round(verificationMetrics.diagramEaveLength)}'</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.rake }} />
-                <span className="text-muted-foreground">Rakes:</span>
-                <span className="font-semibold">{Math.round(verificationMetrics.diagramRakeLength)}'</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.ridge }} />
-                <span className="text-muted-foreground">Ridge:</span>
-                <span className="font-semibold">{Math.round(totals.ridge)}'</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.hip }} />
-                <span className="text-muted-foreground">Hips:</span>
-                <span className="font-semibold">{Math.round(totals.hip)}'</span>
-              </div>
-            </div>
-            
-            {/* Perimeter and edge coverage */}
-            <div className="border-t pt-1 mt-1 space-y-0.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Perimeter:</span>
-                <span className="font-semibold">{Math.round(verificationMetrics.perimeterLength)}'</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Edge Sum (E+R):</span>
-                <span className="font-semibold">{Math.round(verificationMetrics.diagramEaveLength + verificationMetrics.diagramRakeLength)}'</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Coverage:</span>
-                <span className={`font-semibold ${verificationMetrics.edgeCoverage >= 85 ? 'text-green-600' : verificationMetrics.edgeCoverage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
-                  {verificationMetrics.edgeCoverage.toFixed(0)}%
-                </span>
-              </div>
-            </div>
-            
-            {/* Area comparison */}
-            <div className="border-t pt-1 mt-1 space-y-0.5">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Flat Area:</span>
-                <span className="font-semibold">{Math.round(verificationMetrics.flatArea).toLocaleString()} sqft</span>
-              </div>
-              {measurement?.solar_building_footprint_sqft && (
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Solar API:</span>
-                  <span className={`font-semibold ${Math.abs(verificationMetrics.flatArea - measurement.solar_building_footprint_sqft) / measurement.solar_building_footprint_sqft > 0.15 ? 'text-amber-600' : 'text-muted-foreground'}`}>
-                    {Math.round(measurement.solar_building_footprint_sqft).toLocaleString()} sqft
-                  </span>
-                </div>
-              )}
-              {verificationMetrics.adjustedArea > 0 && (
-                <div className="flex justify-between font-semibold">
-                  <span className="text-muted-foreground">Adjusted:</span>
-                  <span className="text-primary">{Math.round(verificationMetrics.adjustedArea).toLocaleString()} sqft</span>
-                </div>
-              )}
-            </div>
-            
-            {/* Warnings inline */}
-            {verificationMetrics.warnings.length > 0 && (
-              <div className="border-t pt-1 mt-1">
-                {verificationMetrics.warnings.map((w, i) => (
-                  <div key={i} className="text-amber-600 text-[9px] flex items-center gap-1">
-                    <AlertTriangle className="h-2.5 w-2.5" />
-                    {w}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-      
-      {/* Legend - moved to bottom-left */}
-      {showLegend && (
-        <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur border rounded-lg p-2.5 shadow-sm">
-          <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-            Linear Features
-          </div>
-          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-            {[
-              { label: 'Eaves', color: FEATURE_COLORS.eave, value: totals.eave },
-              { label: 'Ridges', color: FEATURE_COLORS.ridge, value: totals.ridge },
-              { label: 'Hips', color: FEATURE_COLORS.hip, value: totals.hip },
-              { label: 'Valleys', color: FEATURE_COLORS.valley, value: totals.valley },
-              { label: 'Rakes', color: FEATURE_COLORS.rake, value: totals.rake },
-              { label: 'Step Flash', color: FEATURE_COLORS.step, value: totals.step },
-            ].filter(item => item.value > 0).map(({ label, color, value }) => (
-              <div key={label} className="flex items-center gap-1.5">
-                <div className="w-4 h-1 rounded-full" style={{ backgroundColor: color }} />
-                <span className="text-muted-foreground">{label}:</span>
-                <span className="font-semibold">{Math.round(value)}'</span>
-              </div>
-            ))}
-          </div>
-          {facets.length > 0 && (
-            <div className="mt-2 pt-2 border-t text-[10px] text-muted-foreground">
-              {facets.length} Facets Detected
-            </div>
-          )}
-        </div>
-      )}
-      
-      {/* Total Area Badge - Shows FLAT × Pitch Multiplier = ADJUSTED */}
-      {showTotals && totals.total_area > 0 && (() => {
-        // Calculate pitch multiplier
+      {/* CONSOLIDATED ROOF MEASUREMENTS PANEL - Single unified info panel (bottom-left) */}
+      {showTotals && (() => {
+        // Calculate pitch multiplier for display
         const pitchStr = measurement?.predominant_pitch || tags?.['roof.pitch'] || '6/12';
         const pitchParts = pitchStr.split('/');
         const pitchNum = parseFloat(pitchParts[0]) || 6;
         const pitchMultiplier = Math.sqrt(1 + (pitchNum / 12) ** 2);
         
-        // Get flat area - either stored or calculate back from adjusted
-        const adjustedArea = totals.total_area;
-        const flatArea = measurement?.total_area_flat_sqft || measurement?.flat_area_sqft || (adjustedArea / pitchMultiplier);
+        // Get area values
+        const adjustedArea = verificationMetrics.adjustedArea || totals.total_area || 0;
+        const flatArea = verificationMetrics.flatArea || measurement?.total_area_flat_sqft || (adjustedArea / pitchMultiplier);
+        const facetCount = totals.facet_count || facets.length || 0;
         
         return (
-          <div className="absolute top-3 left-3 bg-white/95 backdrop-blur border rounded-lg px-3 py-2 shadow-sm">
-            <div className="text-[10px] text-muted-foreground uppercase mb-1">Total Area</div>
-            <div className="flex items-baseline gap-1.5">
-              <span className="text-sm font-semibold text-muted-foreground">{Math.round(flatArea).toLocaleString()}</span>
-              <span className="text-[10px] text-muted-foreground">FLAT</span>
+          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur border rounded-lg p-3 shadow-sm text-[10px] max-w-[210px] z-10">
+            {/* Area Section - Primary Info */}
+            <div className="mb-2">
+              <div className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-1">
+                Roof Measurements
+              </div>
+              <div className="text-xl font-bold text-primary">
+                {Math.round(adjustedArea).toLocaleString()} <span className="text-sm font-normal text-muted-foreground">sq ft</span>
+              </div>
+              <div className="text-muted-foreground text-[10px]">
+                {Math.round(flatArea).toLocaleString()} flat × {pitchMultiplier.toFixed(3)} ({pitchStr})
+              </div>
+              {facetCount > 0 && (
+                <div className="text-muted-foreground text-[10px]">{facetCount} Facets</div>
+              )}
             </div>
-            <div className="text-[10px] text-muted-foreground">
-              × {pitchMultiplier.toFixed(3)} ({pitchStr})
+            
+            {/* Linear Features Section */}
+            <div className="border-t pt-2">
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.eave }} />
+                  <span className="text-muted-foreground">Eaves:</span>
+                  <span className="font-semibold">{Math.round(verificationMetrics.diagramEaveLength || totals.eave)}'</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.rake }} />
+                  <span className="text-muted-foreground">Rakes:</span>
+                  <span className="font-semibold">{Math.round(verificationMetrics.diagramRakeLength || totals.rake)}'</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.ridge }} />
+                  <span className="text-muted-foreground">Ridge:</span>
+                  <span className="font-semibold">{Math.round(totals.ridge)}'</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.hip }} />
+                  <span className="text-muted-foreground">Hips:</span>
+                  <span className="font-semibold">{Math.round(totals.hip)}'</span>
+                </div>
+                {totals.valley > 0 && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.valley }} />
+                    <span className="text-muted-foreground">Valley:</span>
+                    <span className="font-semibold">{Math.round(totals.valley)}'</span>
+                  </div>
+                )}
+                {totals.step > 0 && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.step }} />
+                    <span className="text-muted-foreground">Step:</span>
+                    <span className="font-semibold">{Math.round(totals.step)}'</span>
+                  </div>
+                )}
+              </div>
             </div>
-            <div className="flex items-baseline gap-1.5 border-t mt-1 pt-1">
-              <span className="text-lg font-bold text-primary">{Math.round(adjustedArea).toLocaleString()}</span>
-              <span className="text-[10px] text-muted-foreground">sq ft</span>
+            
+            {/* Perimeter & Coverage */}
+            <div className="border-t pt-2 mt-2 flex justify-between text-[10px]">
+              <span className="text-muted-foreground">Perimeter: <span className="font-semibold text-foreground">{Math.round(verificationMetrics.perimeterLength)}'</span></span>
+              <span className={`font-semibold ${verificationMetrics.edgeCoverage >= 85 ? 'text-green-600' : verificationMetrics.edgeCoverage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                {verificationMetrics.edgeCoverage.toFixed(0)}% coverage
+              </span>
             </div>
-            {totals.facet_count > 0 && (
-              <div className="text-[10px] text-muted-foreground">{totals.facet_count} Facets</div>
+            
+            {/* Warnings (if any) */}
+            {verificationMetrics.warnings.length > 0 && (
+              <div className="border-t pt-2 mt-2">
+                {verificationMetrics.warnings.slice(0, 2).map((w, i) => (
+                  <div key={i} className="text-amber-600 text-[9px] flex items-center gap-1">
+                    <AlertTriangle className="h-2.5 w-2.5 flex-shrink-0" />
+                    <span className="truncate">{w}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         );
