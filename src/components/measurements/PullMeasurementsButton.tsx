@@ -397,11 +397,15 @@ export function PullMeasurementsButton({
       // This prevents "stuck spinner" bug where loading persists
       setLoading(false);
       
-      // CRITICAL: Invalidate measurement cache immediately so UI refreshes
-      // This ensures "No Saved Measurements" updates to show new data
+      // CRITICAL: Invalidate ALL measurement caches immediately so UI refreshes
+      // This ensures diagram, summary panel, and estimate builder all update
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['roof-measurement'] });
+      queryClient.invalidateQueries({ queryKey: ['roof-measurement-edges'] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-facets'] });
+      queryClient.invalidateQueries({ queryKey: ['active-measurement', propertyId] });
       
       // Show confidence-based toast with performance info
       const confidenceScore = data.data?.confidence?.score || 0;

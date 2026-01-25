@@ -6,6 +6,7 @@ import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } fro
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 import { Badge } from '@/components/ui/badge';
+import { useSegmentHover } from '@/contexts/SegmentHoverContext';
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
   eave: '#006400',    // Dark green - Eaves
@@ -228,7 +229,8 @@ export function SchematicRoofDiagram({
   // Default to minimized (badge) state - user can expand if needed
   const [showWarningBanner, setShowWarningBanner] = useState(false);
   
-  // Fetch facets from database if measurementId is provided
+  // Segment hover context for interactive highlighting
+  const { isSegmentHighlighted, setHoveredSegment, clearHover } = useSegmentHover();
   useEffect(() => {
     async function fetchFacets() {
       if (!measurementId) return;
@@ -874,6 +876,20 @@ export function SchematicRoofDiagram({
       )}
       
       <svg width={width} height={height} className="absolute inset-0">
+        {/* SVG Definitions - filters for hover glow effect */}
+        <defs>
+          <filter id="segment-glow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <filter id="label-shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.3" />
+          </filter>
+        </defs>
+        
         {/* White/transparent background */}
         {!localShowOverlay && (
           <rect x={0} y={0} width={width} height={height} fill={backgroundColor} />
@@ -973,6 +989,8 @@ export function SchematicRoofDiagram({
             const edgeLabel = `${direction} Eave${indexLabel}`;
             const labelWidth = edgeLabel.length * 5 + 35;
             
+            const isHighlighted = isSegmentHighlighted('eave', i);
+            
             return (
               <g key={`eave-${i}`}>
                 <line
@@ -981,27 +999,33 @@ export function SchematicRoofDiagram({
                   x2={seg.end.x}
                   y2={seg.end.y}
                   stroke={FEATURE_COLORS.eave}
-                  strokeWidth={5}
+                  strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  filter={isHighlighted ? 'url(#segment-glow)' : undefined}
+                  className={isHighlighted ? 'transition-all duration-150' : ''}
                 />
-                {/* Eave length label - show all segments >= 1ft */}
-                {showLengthLabels && length >= 1 && (
-                  <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                {/* Eave length label - show all segments > 0 */}
+                {showLengthLabels && length > 0 && (
+                  <g 
+                    transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}
+                    filter="url(#label-shadow)"
+                    style={{ zIndex: 100 }}
+                  >
                     <rect
                       x={-labelWidth / 2}
-                      y={-11}
+                      y={-12}
                       width={labelWidth}
-                      height={18}
+                      height={20}
                       fill="white"
-                      stroke={FEATURE_COLORS.eave}
-                      strokeWidth={1.5}
-                      rx={3}
+                      stroke={isHighlighted ? '#000' : FEATURE_COLORS.eave}
+                      strokeWidth={isHighlighted ? 2.5 : 1.5}
+                      rx={4}
                     />
                     <text
                       x={0}
-                      y={4}
+                      y={5}
                       textAnchor="middle"
-                      fontSize={10}
+                      fontSize={11}
                       fontWeight="bold"
                       fill={FEATURE_COLORS.eave}
                     >
@@ -1038,6 +1062,8 @@ export function SchematicRoofDiagram({
             const edgeLabel = `${direction} Rake${indexLabel}`;
             const labelWidth = edgeLabel.length * 5 + 35;
             
+            const isHighlighted = isSegmentHighlighted('rake', i);
+            
             return (
               <g key={`rake-${i}`}>
                 <line
@@ -1046,27 +1072,33 @@ export function SchematicRoofDiagram({
                   x2={seg.end.x}
                   y2={seg.end.y}
                   stroke={FEATURE_COLORS.rake}
-                  strokeWidth={5}
+                  strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  filter={isHighlighted ? 'url(#segment-glow)' : undefined}
+                  className={isHighlighted ? 'transition-all duration-150' : ''}
                 />
-                {/* Rake length label - show all segments >= 1ft */}
-                {showLengthLabels && length >= 1 && (
-                  <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                {/* Rake length label - show all segments > 0 */}
+                {showLengthLabels && length > 0 && (
+                  <g 
+                    transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}
+                    filter="url(#label-shadow)"
+                    style={{ zIndex: 100 }}
+                  >
                     <rect
                       x={-labelWidth / 2}
-                      y={-11}
+                      y={-12}
                       width={labelWidth}
-                      height={18}
+                      height={20}
                       fill="white"
-                      stroke={FEATURE_COLORS.rake}
-                      strokeWidth={1.5}
-                      rx={3}
+                      stroke={isHighlighted ? '#000' : FEATURE_COLORS.rake}
+                      strokeWidth={isHighlighted ? 2.5 : 1.5}
+                      rx={4}
                     />
                     <text
                       x={0}
-                      y={4}
+                      y={5}
                       textAnchor="middle"
-                      fontSize={10}
+                      fontSize={11}
                       fontWeight="bold"
                       fill={FEATURE_COLORS.rake}
                     >
@@ -1531,38 +1563,62 @@ export function SchematicRoofDiagram({
               )}
             </div>
             
-            {/* Linear Features Section */}
+            {/* Linear Features Section - with hover highlighting */}
             <div className="border-t pt-2">
               <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                <div className="flex items-center gap-1">
+                <div 
+                  className="flex items-center gap-1 cursor-pointer hover:bg-green-50 rounded px-1 -mx-1 transition-colors"
+                  onMouseEnter={() => setHoveredSegment('eave')}
+                  onMouseLeave={clearHover}
+                >
                   <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.eave }} />
                   <span className="text-muted-foreground">Eaves:</span>
                   <span className="font-semibold">{Math.round(verificationMetrics.diagramEaveLength || totals.eave)}'</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div 
+                  className="flex items-center gap-1 cursor-pointer hover:bg-cyan-50 rounded px-1 -mx-1 transition-colors"
+                  onMouseEnter={() => setHoveredSegment('rake')}
+                  onMouseLeave={clearHover}
+                >
                   <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.rake }} />
                   <span className="text-muted-foreground">Rakes:</span>
                   <span className="font-semibold">{Math.round(verificationMetrics.diagramRakeLength || totals.rake)}'</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div 
+                  className="flex items-center gap-1 cursor-pointer hover:bg-green-50 rounded px-1 -mx-1 transition-colors"
+                  onMouseEnter={() => setHoveredSegment('ridge')}
+                  onMouseLeave={clearHover}
+                >
                   <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.ridge }} />
                   <span className="text-muted-foreground">Ridge:</span>
                   <span className="font-semibold">{Math.round(totals.ridge)}'</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div 
+                  className="flex items-center gap-1 cursor-pointer hover:bg-purple-50 rounded px-1 -mx-1 transition-colors"
+                  onMouseEnter={() => setHoveredSegment('hip')}
+                  onMouseLeave={clearHover}
+                >
                   <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.hip }} />
                   <span className="text-muted-foreground">Hips:</span>
                   <span className="font-semibold">{Math.round(totals.hip)}'</span>
                 </div>
                 {totals.valley > 0 && (
-                  <div className="flex items-center gap-1">
+                  <div 
+                    className="flex items-center gap-1 cursor-pointer hover:bg-red-50 rounded px-1 -mx-1 transition-colors"
+                    onMouseEnter={() => setHoveredSegment('valley')}
+                    onMouseLeave={clearHover}
+                  >
                     <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.valley }} />
                     <span className="text-muted-foreground">Valley:</span>
                     <span className="font-semibold">{Math.round(totals.valley)}'</span>
                   </div>
                 )}
                 {totals.step > 0 && (
-                  <div className="flex items-center gap-1">
+                  <div 
+                    className="flex items-center gap-1 cursor-pointer hover:bg-gray-50 rounded px-1 -mx-1 transition-colors"
+                    onMouseEnter={() => setHoveredSegment('step')}
+                    onMouseLeave={clearHover}
+                  >
                     <div className="w-3 h-1 rounded-full" style={{ backgroundColor: FEATURE_COLORS.step }} />
                     <span className="text-muted-foreground">Step:</span>
                     <span className="font-semibold">{Math.round(totals.step)}'</span>
