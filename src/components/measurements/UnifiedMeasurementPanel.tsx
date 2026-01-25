@@ -22,6 +22,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
+import { QuickEstimateButton } from './QuickEstimateButton';
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
   AlertDialog,
@@ -437,11 +438,17 @@ export function UnifiedMeasurementPanel({
                 Select which measurement to use for estimates
               </p>
             </div>
-            {hasAnyMeasurements && (
-              <Badge variant="secondary" className="text-xs">
-                {approvals!.length} saved
-              </Badge>
-            )}
+            <div className="flex items-center gap-2">
+              {hasAnyMeasurements && (
+                <Badge variant="secondary" className="text-xs">
+                  {approvals!.length} saved
+                </Badge>
+              )}
+              <QuickEstimateButton
+                pipelineEntryId={pipelineEntryId}
+                hasMeasurement={!!activeMeasurement}
+              />
+            </div>
           </div>
         </CardHeader>
 

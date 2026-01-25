@@ -10,6 +10,7 @@ import { useImageCache } from '@/contexts/ImageCacheContext';
 import { StructureSelectionMap } from './StructureSelectionMap';
 import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
 import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
+import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -518,11 +519,34 @@ export function PullMeasurementsButton({
       description: `${squares?.toFixed(1)} squares ready for estimates`,
     });
 
+    // Trigger automation for measurement completion
+    try {
+      await triggerAutomation(AUTOMATION_EVENTS.MEASUREMENT_COMPLETED, {
+        measurement_id: finalMeasurement.id || null,
+        pipeline_entry_id: propertyId,
+        confidence_score: tags['confidence.score'] || finalMeasurement.measurementConfidence || 0,
+        accuracy_tier: getAccuracyTier(tags['confidence.score'] || finalMeasurement.measurementConfidence || 0),
+        source: tags['source'] || 'ai_analysis',
+        total_squares: squares,
+      });
+    } catch (automationErr) {
+      console.error('Automation trigger error (non-fatal):', automationErr);
+    }
+
     onSuccess?.(finalMeasurement, finalTags);
 
     // Reset success state after 3 seconds
     setTimeout(() => setSuccess(false), 3000);
   };
+
+  // Helper to determine accuracy tier
+  function getAccuracyTier(confidence: number): string {
+    if (confidence >= 98) return 'diamond';
+    if (confidence >= 95) return 'platinum';
+    if (confidence >= 90) return 'gold';
+    if (confidence >= 80) return 'silver';
+    return 'bronze';
+  }
 
   // Handle report generated - save to documents
   const handleReportGenerated = async (reportUrl: string) => {

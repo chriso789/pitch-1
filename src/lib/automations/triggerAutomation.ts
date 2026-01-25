@@ -72,6 +72,11 @@ export const AUTOMATION_EVENTS = {
   MATERIAL_ORDERED: 'material_ordered',
   MATERIAL_DELIVERED: 'material_delivered',
   
+  // Measurement Events
+  MEASUREMENT_COMPLETED: 'measurement_completed',
+  MEASUREMENT_APPROVED: 'measurement_approved',
+  MEASUREMENT_REJECTED: 'measurement_rejected',
+  
   // Permit Events
   PERMIT_SUBMITTED: 'permit_submitted',
   PERMIT_APPROVED: 'permit_approved',

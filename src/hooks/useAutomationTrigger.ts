@@ -93,6 +93,18 @@ export function useAutomationTrigger() {
     return trigger(AUTOMATION_EVENTS.JOB_MILESTONE_CHANGED, data);
   }, [trigger]);
 
+  const triggerMeasurementCompleted = useCallback(async (data: {
+    measurement_id: string;
+    pipeline_entry_id: string;
+    contact_id?: string;
+    confidence_score?: number;
+    accuracy_tier?: string;
+    source?: string;
+    [key: string]: any;
+  }) => {
+    return trigger(AUTOMATION_EVENTS.MEASUREMENT_COMPLETED, data);
+  }, [trigger]);
+
   return {
     trigger,
     triggerLeadCreated,
@@ -103,6 +115,7 @@ export function useAutomationTrigger() {
     triggerContractSigned,
     triggerPaymentReceived,
     triggerJobMilestoneChanged,
+    triggerMeasurementCompleted,
     AUTOMATION_EVENTS,
   };
 }
