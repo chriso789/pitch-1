@@ -171,57 +171,77 @@ export default function PropertyInfoPanel({
         }];
 
   const handleEnrich = async () => {
-    if (!property?.id || !profile?.tenant_id) return;
+    if (!property?.id || !profile?.tenant_id) {
+      console.warn('[handleEnrich] Missing property_id or tenant_id');
+      toast.error('Missing property data');
+      return;
+    }
     
     setEnriching(true);
     try {
-      const address = typeof property.address === 'string' 
-        ? JSON.parse(property.address) 
-        : property.address;
+      // Parse address if it's a string
+      let address: any = {};
+      try {
+        address = typeof property.address === 'string' 
+          ? JSON.parse(property.address) 
+          : (property.address || {});
+      } catch (parseErr) {
+        console.warn('[handleEnrich] Failed to parse address:', parseErr);
+        address = { formatted: property.address };
+      }
+      
+      console.log('[handleEnrich] Calling skip-trace for:', property.id, address);
       
       const { data, error } = await supabase.functions.invoke('canvassiq-skip-trace', {
         body: {
           property_id: property.id,
           owner_name: property.owner_name || 'Unknown',
           address: {
-            street: address?.street,
-            city: address?.city,
-            state: address?.state,
-            zip: address?.zip,
-            formatted: address?.formatted, // Include formatted for fallback parsing
+            street: address?.street || '',
+            city: address?.city || '',
+            state: address?.state || '',
+            zip: address?.zip || '',
+            formatted: address?.formatted || '', // Include formatted for fallback parsing
           },
           tenant_id: profile.tenant_id,
         }
       });
 
-      if (error) throw error;
-
-      if (data?.data) {
-        // Update enriched owners from response
-        if (data.data.owners?.length > 0) {
-          setEnrichedOwners(data.data.owners);
-        }
-        
-        // Refetch property to get updated phone_numbers, emails, owner_name
-        const { data: updatedProperty } = await supabase
-          .from('canvassiq_properties')
-          .select('phone_numbers, emails, owner_name, searchbug_data')
-          .eq('id', property.id)
-          .single();
-        
-        if (updatedProperty) {
-          // Merge updated data into local property reference
-          property.phone_numbers = updatedProperty.phone_numbers;
-          property.emails = updatedProperty.emails;
-          property.owner_name = updatedProperty.owner_name;
-          property.searchbug_data = updatedProperty.searchbug_data;
-        }
-        
-        toast.success(data.cached ? 'Using cached data' : 'Property enriched!');
+      if (error) {
+        console.error('[handleEnrich] Edge function error:', error);
+        throw error;
       }
+
+      console.log('[handleEnrich] Response:', JSON.stringify(data).slice(0, 500));
+
+      // Handle the response - check both data.data and direct data formats
+      const enrichmentData = data?.data || data;
+      
+      if (enrichmentData?.owners?.length > 0) {
+        setEnrichedOwners(enrichmentData.owners);
+      }
+      
+      // Refetch property to get updated phone_numbers, emails, owner_name
+      const { data: updatedProperty, error: fetchError } = await supabase
+        .from('canvassiq_properties')
+        .select('phone_numbers, emails, owner_name, searchbug_data')
+        .eq('id', property.id)
+        .single();
+      
+      if (fetchError) {
+        console.warn('[handleEnrich] Failed to refetch property:', fetchError);
+      } else if (updatedProperty) {
+        // Merge updated data into local property reference
+        property.phone_numbers = updatedProperty.phone_numbers;
+        property.emails = updatedProperty.emails;
+        property.owner_name = updatedProperty.owner_name;
+        property.searchbug_data = updatedProperty.searchbug_data;
+      }
+      
+      toast.success(data?.cached ? 'Using cached data' : 'Property enriched!');
     } catch (err: any) {
-      console.error('Enrichment error:', err);
-      toast.error('Failed to enrich property');
+      console.error('[handleEnrich] Error:', err?.message || err);
+      toast.error(err?.message || 'Failed to enrich property');
     } finally {
       setEnriching(false);
     }
@@ -480,8 +500,9 @@ export default function PropertyInfoPanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="bottom" className="h-auto max-h-[85vh] rounded-t-2xl p-0">
-        <div className="p-4 pb-2">
+      <SheetContent side="bottom" className="h-auto max-h-[85vh] rounded-t-2xl p-0 flex flex-col">
+        {/* Scrollable content wrapper for mobile */}
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 pb-safe-area-inset-bottom" style={{ WebkitOverflowScrolling: 'touch' }}>
           <SheetHeader className="pb-3">
             <div className="flex items-start justify-between">
               <div className="flex-1">
@@ -734,9 +755,10 @@ export default function PropertyInfoPanel({
               </div>
             </TabsContent>
           </Tabs>
+          
+          {/* Bottom safe area padding for iOS */}
+          <div className="h-6 flex-shrink-0" />
         </div>
-
-        {/* Fast Estimate Modal */}
         <FastEstimateModal 
           open={showFastEstimate}
           onOpenChange={setShowFastEstimate}
