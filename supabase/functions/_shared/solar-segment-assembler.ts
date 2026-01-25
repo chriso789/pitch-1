@@ -13,7 +13,18 @@
  * 
  * NEW: Supports structure analysis for proper L/T-shaped roof handling
  * and screen enclosure exclusion.
+ * 
+ * ENHANCED: Multi-ridge detection for L-shaped, T-shaped, and complex footprints
  */
+
+// Import complex footprint decomposer for multi-ridge detection
+import { 
+  decomposeComplexFootprint, 
+  generateMultiRidgeGeometry,
+  detectLShapeFromSegments,
+  type DecomposedFootprint,
+  type MultiRidgeGeometry 
+} from './complex-footprint-decomposer.ts'
 
 // StructureAnalysis type inlined to avoid import bundle issues
 interface StructureAnalysis {
@@ -386,6 +397,36 @@ function assembleFromAzimuths(
   
   console.log(`🧭 Azimuth clustering: ${groupedByDirection.size} direction groups`);
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW: Check for L-shaped/complex footprint that needs multi-ridge generation
+  // ═══════════════════════════════════════════════════════════════════════════
+  const segmentFacets = segments.map((s, i) => ({
+    azimuthDegrees: s.azimuthDegrees || 0,
+    areaSqft: (s.areaMeters2 || 0) * 10.764,
+    direction: getCardinalDirection(s.azimuthDegrees || 0)
+  }));
+  
+  const lShapeCheck = detectLShapeFromSegments(segmentFacets);
+  const decomposed = decomposeComplexFootprint(perimeter);
+  
+  // Use multi-ridge assembly for L-shaped footprints
+  if ((lShapeCheck.isLShape || decomposed.type !== 'rectangular') && decomposed.totalRidgeCount >= 2) {
+    console.log(`🏠 L-SHAPE DETECTED: ${decomposed.type}, generating ${decomposed.totalRidgeCount} ridges`);
+    console.log(`   Reason: ${lShapeCheck.reason}`);
+    warnings.push(`Complex footprint (${decomposed.type}) - using multi-ridge generation`);
+    
+    return assembleMultiRidgeGeometry(
+      perimeter, 
+      segments, 
+      pitch, 
+      decomposed, 
+      structureAnalysis, 
+      aiRidgeOverride,
+      warnings
+    );
+  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // Assign perimeter edges to facets based on edge orientation
   const facets: AssembledFacet[] = [];
   let facetIndex = 0;
@@ -405,16 +446,32 @@ function assembleFromAzimuths(
   let ridgeEnd: XY;
   let usingAIRidge = false;
   
+  // NEW: Use ALL AI ridges if multiple are detected
+  const allRidges: AssembledLine[] = [];
+  
   if (aiRidgeOverride && aiRidgeOverride.ridgeLines && aiRidgeOverride.ridgeLines.length > 0 && aiRidgeOverride.averageConfidence >= 55) {
-    // Use AI-detected ridge positions (convert from lat/lng to [lng, lat] XY format)
-    const aiRidge = aiRidgeOverride.ridgeLines[0]; // Use primary ridge
-    ridgeStart = [aiRidge.startLng, aiRidge.startLat];
-    ridgeEnd = [aiRidge.endLng, aiRidge.endLat];
+    // Process ALL AI-detected ridges, not just the first one
+    aiRidgeOverride.ridgeLines.forEach((aiRidge, i) => {
+      const rStart: XY = [aiRidge.startLng, aiRidge.startLat];
+      const rEnd: XY = [aiRidge.endLng, aiRidge.endLat];
+      const rLength = aiRidge.lengthFt || distanceFt(rStart, rEnd);
+      
+      allRidges.push({
+        id: `ridge_${i}`,
+        start: rStart,
+        end: rEnd,
+        lengthFt: rLength
+      });
+      
+      console.log(`🎯 AI ridge ${i}: (${aiRidge.startLng.toFixed(6)}, ${aiRidge.startLat.toFixed(6)}) to (${aiRidge.endLng.toFixed(6)}, ${aiRidge.endLat.toFixed(6)}), ${rLength.toFixed(1)}ft`);
+    });
+    
+    // Use first ridge as primary for facet generation
+    ridgeStart = allRidges[0].start;
+    ridgeEnd = allRidges[0].end;
     usingAIRidge = true;
-    console.log(`🎯 Using AI-detected ridge: (${aiRidge.startLng.toFixed(6)}, ${aiRidge.startLat.toFixed(6)}) to (${aiRidge.endLng.toFixed(6)}, ${aiRidge.endLat.toFixed(6)}), confidence=${aiRidgeOverride.averageConfidence.toFixed(0)}%`);
-    if (aiRidge.lengthFt) {
-      console.log(`🎯 AI ridge length: ${aiRidge.lengthFt.toFixed(1)} ft`);
-    }
+    
+    console.log(`🎯 Using ${allRidges.length} AI-detected ridge(s), confidence=${aiRidgeOverride.averageConfidence.toFixed(0)}%`);
   } else {
     // FALLBACK: Calculate ridge inset based on building proportions
     const shortSide = isWider ? (bounds.maxY - bounds.minY) : (bounds.maxX - bounds.minX);
@@ -523,6 +580,191 @@ function assembleFromAzimuths(
     warnings: [...warnings, 'Used azimuth clustering - positions may be approximate'],
     structureAnalysis
   };
+}
+
+/**
+ * Assemble geometry for L-shaped, T-shaped, and complex footprints
+ * Uses the decomposed footprint to generate multiple ridges and valleys
+ */
+function assembleMultiRidgeGeometry(
+  perimeter: XY[],
+  segments: SolarSegment[],
+  pitch: string,
+  decomposed: DecomposedFootprint,
+  structureAnalysis?: StructureAnalysis,
+  aiRidgeOverride?: AIRidgeOverride,
+  warnings: string[] = []
+): AssembledGeometry {
+  const centroid = getCentroid(perimeter);
+  const bounds = getBounds(perimeter);
+  
+  // Generate multi-ridge geometry from decomposed footprint
+  const aiRidges = aiRidgeOverride?.ridgeLines?.map(r => ({
+    start: [r.startLng, r.startLat] as XY,
+    end: [r.endLng, r.endLat] as XY,
+    confidence: r.confidence
+  }));
+  
+  const multiRidge = generateMultiRidgeGeometry(decomposed, aiRidges);
+  
+  console.log(`📐 Multi-ridge assembly: ${multiRidge.ridges.length} ridges, ${multiRidge.valleys.length} valleys, ${multiRidge.hips.length} hips`);
+  
+  // Convert to AssembledLine format
+  const ridges: AssembledLine[] = multiRidge.ridges.map(r => ({
+    id: r.id,
+    start: r.start,
+    end: r.end,
+    lengthFt: r.lengthFt
+  }));
+  
+  const valleys: AssembledLine[] = multiRidge.valleys.map(v => ({
+    id: v.id,
+    start: v.start,
+    end: v.end,
+    lengthFt: v.lengthFt
+  }));
+  
+  const hips: AssembledLine[] = multiRidge.hips.map(h => ({
+    id: h.id,
+    start: h.start,
+    end: h.end,
+    lengthFt: h.lengthFt
+  }));
+  
+  // Group segments by cardinal direction for facet generation
+  const groupedByDirection: Map<string, SolarSegment[]> = new Map();
+  segments.forEach(segment => {
+    const direction = getCardinalDirection(segment.azimuthDegrees || 0);
+    if (!groupedByDirection.has(direction)) {
+      groupedByDirection.set(direction, []);
+    }
+    groupedByDirection.get(direction)!.push(segment);
+  });
+  
+  // Create facets based on grouped segments
+  const facets: AssembledFacet[] = [];
+  let facetIndex = 0;
+  
+  groupedByDirection.forEach((dirSegments, direction) => {
+    const facingEdges = findPerimeterEdgesFacing(perimeter, direction, centroid);
+    
+    if (facingEdges.length > 0) {
+      const facetVertices: XY[] = [];
+      facingEdges.forEach(edge => {
+        facetVertices.push(edge.start);
+        facetVertices.push(edge.end);
+      });
+      
+      const uniqueVertices = removeDuplicateVertices(facetVertices);
+      
+      // Find nearest ridge endpoint for this facet
+      let nearestRidgePoint: XY = ridges.length > 0 ? ridges[0].start : centroid;
+      let minDist = Infinity;
+      
+      ridges.forEach(ridge => {
+        const distToStart = distanceXY(uniqueVertices[0], ridge.start);
+        const distToEnd = distanceXY(uniqueVertices[0], ridge.end);
+        if (distToStart < minDist) { minDist = distToStart; nearestRidgePoint = ridge.start; }
+        if (distToEnd < minDist) { minDist = distToEnd; nearestRidgePoint = ridge.end; }
+      });
+      
+      const polygon = [...uniqueVertices, nearestRidgePoint, uniqueVertices[0]];
+      
+      const totalArea = dirSegments.reduce((sum, s) => sum + (s.areaMeters2 || 0), 0) * 10.764;
+      const avgPitch = dirSegments.reduce((sum, s) => sum + (s.pitchDegrees || 0), 0) / dirSegments.length;
+      const avgAzimuth = dirSegments.reduce((sum, s) => sum + (s.azimuthDegrees || 0), 0) / dirSegments.length;
+      
+      facets.push({
+        id: `facet_${facetIndex}`,
+        index: facetIndex,
+        polygon,
+        areaSqft: totalArea,
+        pitch: degreesToPitch(avgPitch) || pitch,
+        azimuthDegrees: avgAzimuth,
+        direction,
+        color: FACET_COLORS[facetIndex % FACET_COLORS.length],
+        sourceSegmentIndex: facetIndex
+      });
+      
+      facetIndex++;
+    }
+  });
+  
+  // Classify perimeter edges as eaves or rakes based on ridge directions
+  const eaves: AssembledLine[] = [];
+  const rakes: AssembledLine[] = [];
+  
+  // For L-shaped roofs, classify based on each section's ridge direction
+  classifyPerimeterEdgesMultiRidge(perimeter, ridges, eaves, rakes);
+  
+  return {
+    facets,
+    ridges,
+    hips,
+    valleys,
+    eaves,
+    rakes,
+    quality: ridges.length >= 2 ? 'excellent' : 'good',
+    warnings: [...warnings, `Multi-ridge: ${ridges.length} ridges, ${valleys.length} valleys`],
+    structureAnalysis
+  };
+}
+
+/**
+ * Classify perimeter edges for multi-ridge roofs
+ * Each edge is compared against the nearest ridge direction
+ */
+function classifyPerimeterEdgesMultiRidge(
+  perimeter: XY[],
+  ridges: AssembledLine[],
+  eaves: AssembledLine[],
+  rakes: AssembledLine[]
+): void {
+  const n = perimeter.length;
+  
+  for (let i = 0; i < n; i++) {
+    const start = perimeter[i];
+    const end = perimeter[(i + 1) % n];
+    const edgeMidpoint: XY = [(start[0] + end[0]) / 2, (start[1] + end[1]) / 2];
+    
+    const length = distanceFt(start, end);
+    if (length < 2) continue;
+    
+    // Find nearest ridge to determine edge classification
+    let nearestRidge = ridges[0];
+    let minDist = Infinity;
+    
+    ridges.forEach(ridge => {
+      const ridgeMid: XY = [(ridge.start[0] + ridge.end[0]) / 2, (ridge.start[1] + ridge.end[1]) / 2];
+      const dist = distanceXY(edgeMidpoint, ridgeMid);
+      if (dist < minDist) {
+        minDist = dist;
+        nearestRidge = ridge;
+      }
+    });
+    
+    // Calculate edge and ridge directions
+    const edgeDx = end[0] - start[0];
+    const edgeDy = end[1] - start[1];
+    const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+    const edgeDir: XY = edgeLen > 0 ? [edgeDx / edgeLen, edgeDy / edgeLen] : [1, 0];
+    
+    const ridgeDx = nearestRidge.end[0] - nearestRidge.start[0];
+    const ridgeDy = nearestRidge.end[1] - nearestRidge.start[1];
+    const ridgeLen = Math.sqrt(ridgeDx * ridgeDx + ridgeDy * ridgeDy);
+    const ridgeDir: XY = ridgeLen > 0 ? [ridgeDx / ridgeLen, ridgeDy / ridgeLen] : [1, 0];
+    
+    // Dot product: |dot| > 0.5 means parallel (EAVE), < 0.5 means perpendicular (RAKE)
+    const dot = Math.abs(edgeDir[0] * ridgeDir[0] + edgeDir[1] * ridgeDir[1]);
+    
+    if (dot > 0.5) {
+      // Edge parallel to ridge = EAVE
+      eaves.push({ id: `eave_${i}`, start, end, lengthFt: length });
+    } else {
+      // Edge perpendicular to ridge = RAKE
+      rakes.push({ id: `rake_${i}`, start, end, lengthFt: length });
+    }
+  }
 }
 
 /**
