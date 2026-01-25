@@ -11773,6 +11773,45 @@ export type Database = {
           },
         ]
       }
+      footprint_fusion_sources: {
+        Row: {
+          area_sqft: number | null
+          confidence: number | null
+          created_at: string | null
+          id: string
+          included_in_fusion: boolean | null
+          measurement_id: string | null
+          polygon_wkt: string
+          source_name: string
+          vertex_count: number | null
+          weight_applied: number | null
+        }
+        Insert: {
+          area_sqft?: number | null
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          included_in_fusion?: boolean | null
+          measurement_id?: string | null
+          polygon_wkt: string
+          source_name: string
+          vertex_count?: number | null
+          weight_applied?: number | null
+        }
+        Update: {
+          area_sqft?: number | null
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          included_in_fusion?: boolean | null
+          measurement_id?: string | null
+          polygon_wkt?: string
+          source_name?: string
+          vertex_count?: number | null
+          weight_applied?: number | null
+        }
+        Relationships: []
+      }
       franchise_branches: {
         Row: {
           address_line1: string | null
@@ -15820,6 +15859,251 @@ export type Database = {
           },
         ]
       }
+      measurement_benchmark_cases: {
+        Row: {
+          address: string
+          building_shape: string
+          created_at: string | null
+          difficulty_level: string | null
+          expected_area_sqft: number
+          expected_eave_ft: number | null
+          expected_hip_ft: number | null
+          expected_pitch: string | null
+          expected_rake_ft: number | null
+          expected_ridge_ft: number | null
+          expected_valley_ft: number | null
+          ground_truth_id: string | null
+          id: string
+          is_active: boolean | null
+          lat: number
+          lng: number
+          roof_style: string
+          test_category: string | null
+        }
+        Insert: {
+          address: string
+          building_shape: string
+          created_at?: string | null
+          difficulty_level?: string | null
+          expected_area_sqft: number
+          expected_eave_ft?: number | null
+          expected_hip_ft?: number | null
+          expected_pitch?: string | null
+          expected_rake_ft?: number | null
+          expected_ridge_ft?: number | null
+          expected_valley_ft?: number | null
+          ground_truth_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          lat: number
+          lng: number
+          roof_style: string
+          test_category?: string | null
+        }
+        Update: {
+          address?: string
+          building_shape?: string
+          created_at?: string | null
+          difficulty_level?: string | null
+          expected_area_sqft?: number
+          expected_eave_ft?: number | null
+          expected_hip_ft?: number | null
+          expected_pitch?: string | null
+          expected_rake_ft?: number | null
+          expected_ridge_ft?: number | null
+          expected_valley_ft?: number | null
+          ground_truth_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          lat?: number
+          lng?: number
+          roof_style?: string
+          test_category?: string | null
+        }
+        Relationships: []
+      }
+      measurement_benchmark_results: {
+        Row: {
+          area_accuracy_pct: number | null
+          benchmark_run_id: string
+          case_id: string | null
+          eave_accuracy_pct: number | null
+          error_message: string | null
+          hip_accuracy_pct: number | null
+          id: string
+          measurement_id: string | null
+          overall_accuracy_pct: number | null
+          pitch_accuracy_pct: number | null
+          processing_time_ms: number | null
+          rake_accuracy_pct: number | null
+          ridge_accuracy_pct: number | null
+          run_at: string | null
+          topology_valid: boolean | null
+          valley_accuracy_pct: number | null
+        }
+        Insert: {
+          area_accuracy_pct?: number | null
+          benchmark_run_id: string
+          case_id?: string | null
+          eave_accuracy_pct?: number | null
+          error_message?: string | null
+          hip_accuracy_pct?: number | null
+          id?: string
+          measurement_id?: string | null
+          overall_accuracy_pct?: number | null
+          pitch_accuracy_pct?: number | null
+          processing_time_ms?: number | null
+          rake_accuracy_pct?: number | null
+          ridge_accuracy_pct?: number | null
+          run_at?: string | null
+          topology_valid?: boolean | null
+          valley_accuracy_pct?: number | null
+        }
+        Update: {
+          area_accuracy_pct?: number | null
+          benchmark_run_id?: string
+          case_id?: string | null
+          eave_accuracy_pct?: number | null
+          error_message?: string | null
+          hip_accuracy_pct?: number | null
+          id?: string
+          measurement_id?: string | null
+          overall_accuracy_pct?: number | null
+          pitch_accuracy_pct?: number | null
+          processing_time_ms?: number | null
+          rake_accuracy_pct?: number | null
+          ridge_accuracy_pct?: number | null
+          run_at?: string | null
+          topology_valid?: boolean | null
+          valley_accuracy_pct?: number | null
+        }
+        Relationships: []
+      }
+      measurement_benchmark_runs: {
+        Row: {
+          avg_area_accuracy: number | null
+          avg_hip_accuracy: number | null
+          avg_overall_accuracy: number | null
+          avg_ridge_accuracy: number | null
+          avg_valley_accuracy: number | null
+          completed_at: string | null
+          failed_cases: number | null
+          id: string
+          max_accuracy: number | null
+          min_accuracy: number | null
+          passed_cases: number | null
+          regression_details: Json | null
+          regression_detected: boolean | null
+          run_duration_ms: number | null
+          run_type: string | null
+          started_at: string | null
+          total_cases: number | null
+          triggered_by: string | null
+        }
+        Insert: {
+          avg_area_accuracy?: number | null
+          avg_hip_accuracy?: number | null
+          avg_overall_accuracy?: number | null
+          avg_ridge_accuracy?: number | null
+          avg_valley_accuracy?: number | null
+          completed_at?: string | null
+          failed_cases?: number | null
+          id?: string
+          max_accuracy?: number | null
+          min_accuracy?: number | null
+          passed_cases?: number | null
+          regression_details?: Json | null
+          regression_detected?: boolean | null
+          run_duration_ms?: number | null
+          run_type?: string | null
+          started_at?: string | null
+          total_cases?: number | null
+          triggered_by?: string | null
+        }
+        Update: {
+          avg_area_accuracy?: number | null
+          avg_hip_accuracy?: number | null
+          avg_overall_accuracy?: number | null
+          avg_ridge_accuracy?: number | null
+          avg_valley_accuracy?: number | null
+          completed_at?: string | null
+          failed_cases?: number | null
+          id?: string
+          max_accuracy?: number | null
+          min_accuracy?: number | null
+          passed_cases?: number | null
+          regression_details?: Json | null
+          regression_detected?: boolean | null
+          run_duration_ms?: number | null
+          run_type?: string | null
+          started_at?: string | null
+          total_cases?: number | null
+          triggered_by?: string | null
+        }
+        Relationships: []
+      }
+      measurement_calibration_factors: {
+        Row: {
+          calibration_source: string | null
+          created_at: string | null
+          elevation_ft: number | null
+          id: string
+          lat_max: number | null
+          lat_min: number | null
+          lng_max: number | null
+          lng_min: number | null
+          mercator_correction: number | null
+          pixel_to_ft_ratio: number | null
+          region: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          validated: boolean | null
+          zoom_level: number | null
+        }
+        Insert: {
+          calibration_source?: string | null
+          created_at?: string | null
+          elevation_ft?: number | null
+          id?: string
+          lat_max?: number | null
+          lat_min?: number | null
+          lng_max?: number | null
+          lng_min?: number | null
+          mercator_correction?: number | null
+          pixel_to_ft_ratio?: number | null
+          region?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          validated?: boolean | null
+          zoom_level?: number | null
+        }
+        Update: {
+          calibration_source?: string | null
+          created_at?: string | null
+          elevation_ft?: number | null
+          id?: string
+          lat_max?: number | null
+          lat_min?: number | null
+          lng_max?: number | null
+          lng_min?: number | null
+          mercator_correction?: number | null
+          pixel_to_ft_ratio?: number | null
+          region?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          validated?: boolean | null
+          zoom_level?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_calibration_factors_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_correction_factors: {
         Row: {
           avg_variance_pct: number | null
@@ -15863,6 +16147,77 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "measurement_correction_factors_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      measurement_correction_training: {
+        Row: {
+          building_area_sqft: number | null
+          building_shape: string | null
+          corrected_by: string | null
+          corrected_length_ft: number | null
+          corrected_wkt: string | null
+          correction_reason: string | null
+          correction_type: string | null
+          created_at: string | null
+          deviation_ft: number | null
+          deviation_pct: number | null
+          feature_type: string
+          id: string
+          measurement_id: string | null
+          original_length_ft: number | null
+          original_wkt: string | null
+          pitch: string | null
+          roof_style: string | null
+          tenant_id: string
+        }
+        Insert: {
+          building_area_sqft?: number | null
+          building_shape?: string | null
+          corrected_by?: string | null
+          corrected_length_ft?: number | null
+          corrected_wkt?: string | null
+          correction_reason?: string | null
+          correction_type?: string | null
+          created_at?: string | null
+          deviation_ft?: number | null
+          deviation_pct?: number | null
+          feature_type: string
+          id?: string
+          measurement_id?: string | null
+          original_length_ft?: number | null
+          original_wkt?: string | null
+          pitch?: string | null
+          roof_style?: string | null
+          tenant_id: string
+        }
+        Update: {
+          building_area_sqft?: number | null
+          building_shape?: string | null
+          corrected_by?: string | null
+          corrected_length_ft?: number | null
+          corrected_wkt?: string | null
+          correction_reason?: string | null
+          correction_type?: string | null
+          created_at?: string | null
+          deviation_ft?: number | null
+          deviation_pct?: number | null
+          feature_type?: string
+          id?: string
+          measurement_id?: string | null
+          original_length_ft?: number | null
+          original_wkt?: string | null
+          pitch?: string | null
+          roof_style?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_correction_training_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -15967,6 +16322,178 @@ export type Database = {
             columns: ["training_session_id"]
             isOneToOne: false
             referencedRelation: "roof_training_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      measurement_deviation_log: {
+        Row: {
+          actual_value: number | null
+          auto_resolved: boolean | null
+          created_at: string | null
+          description: string
+          deviation_ft: number | null
+          deviation_pct: number | null
+          deviation_type: string
+          expected_value: number | null
+          feature_id: string | null
+          id: string
+          measurement_id: string | null
+          resolution_notes: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          rule_name: string | null
+          severity: string
+          tenant_id: string
+        }
+        Insert: {
+          actual_value?: number | null
+          auto_resolved?: boolean | null
+          created_at?: string | null
+          description: string
+          deviation_ft?: number | null
+          deviation_pct?: number | null
+          deviation_type: string
+          expected_value?: number | null
+          feature_id?: string | null
+          id?: string
+          measurement_id?: string | null
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_name?: string | null
+          severity: string
+          tenant_id: string
+        }
+        Update: {
+          actual_value?: number | null
+          auto_resolved?: boolean | null
+          created_at?: string | null
+          description?: string
+          deviation_ft?: number | null
+          deviation_pct?: number | null
+          deviation_type?: string
+          expected_value?: number | null
+          feature_id?: string | null
+          id?: string
+          measurement_id?: string | null
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          rule_name?: string | null
+          severity?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_deviation_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      measurement_ground_truth: {
+        Row: {
+          address: string
+          building_shape: string | null
+          created_at: string | null
+          drip_edge_total_ft: number | null
+          eave_total_ft: number | null
+          facet_count: number | null
+          flashing_total_ft: number | null
+          hip_total_ft: number | null
+          id: string
+          lat: number | null
+          lng: number | null
+          notes: string | null
+          pitch: string | null
+          predominant_pitch_degrees: number | null
+          rake_total_ft: number | null
+          raw_report_data: Json | null
+          ridge_total_ft: number | null
+          roof_style: string | null
+          source: string
+          source_report_url: string | null
+          step_flashing_total_ft: number | null
+          stories: number | null
+          tenant_id: string
+          total_area_sqft: number | null
+          updated_at: string | null
+          valley_total_ft: number | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          address: string
+          building_shape?: string | null
+          created_at?: string | null
+          drip_edge_total_ft?: number | null
+          eave_total_ft?: number | null
+          facet_count?: number | null
+          flashing_total_ft?: number | null
+          hip_total_ft?: number | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          pitch?: string | null
+          predominant_pitch_degrees?: number | null
+          rake_total_ft?: number | null
+          raw_report_data?: Json | null
+          ridge_total_ft?: number | null
+          roof_style?: string | null
+          source: string
+          source_report_url?: string | null
+          step_flashing_total_ft?: number | null
+          stories?: number | null
+          tenant_id: string
+          total_area_sqft?: number | null
+          updated_at?: string | null
+          valley_total_ft?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          address?: string
+          building_shape?: string | null
+          created_at?: string | null
+          drip_edge_total_ft?: number | null
+          eave_total_ft?: number | null
+          facet_count?: number | null
+          flashing_total_ft?: number | null
+          hip_total_ft?: number | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          pitch?: string | null
+          predominant_pitch_degrees?: number | null
+          rake_total_ft?: number | null
+          raw_report_data?: Json | null
+          ridge_total_ft?: number | null
+          roof_style?: string | null
+          source?: string
+          source_report_url?: string | null
+          step_flashing_total_ft?: number | null
+          stories?: number | null
+          tenant_id?: string
+          total_area_sqft?: number | null
+          updated_at?: string | null
+          valley_total_ft?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_ground_truth_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -23934,6 +24461,83 @@ export type Database = {
         }
         Relationships: []
       }
+      roof_linear_features: {
+        Row: {
+          azimuth_degrees: number | null
+          confidence: number | null
+          created_at: string | null
+          detection_source: string | null
+          end_lat: number
+          end_lng: number
+          end_vertex_id: string | null
+          feature_type: string
+          id: string
+          is_validated: boolean | null
+          length_ft: number
+          measurement_id: string | null
+          slope_degrees: number | null
+          start_lat: number
+          start_lng: number
+          start_vertex_id: string | null
+          tenant_id: string
+          validated_at: string | null
+          validated_by: string | null
+          wkt_geometry: string | null
+        }
+        Insert: {
+          azimuth_degrees?: number | null
+          confidence?: number | null
+          created_at?: string | null
+          detection_source?: string | null
+          end_lat: number
+          end_lng: number
+          end_vertex_id?: string | null
+          feature_type: string
+          id?: string
+          is_validated?: boolean | null
+          length_ft: number
+          measurement_id?: string | null
+          slope_degrees?: number | null
+          start_lat: number
+          start_lng: number
+          start_vertex_id?: string | null
+          tenant_id: string
+          validated_at?: string | null
+          validated_by?: string | null
+          wkt_geometry?: string | null
+        }
+        Update: {
+          azimuth_degrees?: number | null
+          confidence?: number | null
+          created_at?: string | null
+          detection_source?: string | null
+          end_lat?: number
+          end_lng?: number
+          end_vertex_id?: string | null
+          feature_type?: string
+          id?: string
+          is_validated?: boolean | null
+          length_ft?: number
+          measurement_id?: string | null
+          slope_degrees?: number | null
+          start_lat?: number
+          start_lng?: number
+          start_vertex_id?: string | null
+          tenant_id?: string
+          validated_at?: string | null
+          validated_by?: string | null
+          wkt_geometry?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_linear_features_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_measurement_corrections: {
         Row: {
           corrected_by: string | null
@@ -24882,6 +25486,60 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      roof_shape_patterns: {
+        Row: {
+          building_shape: string
+          created_at: string | null
+          eave_to_rake_ratio: number | null
+          example_addresses: string[] | null
+          expected_hip_count: number | null
+          expected_ridge_count: number | null
+          expected_valley_count: number | null
+          hip_to_valley_ratio: number | null
+          id: string
+          pattern_name: string
+          pattern_rules: Json | null
+          ridge_to_hip_ratio: number | null
+          roof_style: string
+          typical_area_range_max: number | null
+          typical_area_range_min: number | null
+        }
+        Insert: {
+          building_shape: string
+          created_at?: string | null
+          eave_to_rake_ratio?: number | null
+          example_addresses?: string[] | null
+          expected_hip_count?: number | null
+          expected_ridge_count?: number | null
+          expected_valley_count?: number | null
+          hip_to_valley_ratio?: number | null
+          id?: string
+          pattern_name: string
+          pattern_rules?: Json | null
+          ridge_to_hip_ratio?: number | null
+          roof_style: string
+          typical_area_range_max?: number | null
+          typical_area_range_min?: number | null
+        }
+        Update: {
+          building_shape?: string
+          created_at?: string | null
+          eave_to_rake_ratio?: number | null
+          example_addresses?: string[] | null
+          expected_hip_count?: number | null
+          expected_ridge_count?: number | null
+          expected_valley_count?: number | null
+          hip_to_valley_ratio?: number | null
+          id?: string
+          pattern_name?: string
+          pattern_rules?: Json | null
+          ridge_to_hip_ratio?: number | null
+          roof_style?: string
+          typical_area_range_max?: number | null
+          typical_area_range_min?: number | null
+        }
+        Relationships: []
       }
       roof_training_annotations: {
         Row: {
