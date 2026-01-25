@@ -34,7 +34,12 @@ export const LEAD_STAGES = [
   { name: "Contingency Signed", key: "contingency_signed", color: "bg-yellow-500" },
   { name: "Legal Review", key: "legal_review", color: "bg-purple-500" },
   { name: "Ready for Approval", key: "ready_for_approval", color: "bg-orange-500" },
-  { name: "Approved/Project", key: "project", color: "bg-emerald-600" }
+  { name: "Approved/Project", key: "project", color: "bg-emerald-600" },
+  { name: "Lost", key: "lost", color: "bg-red-500" },
+  { name: "Canceled", key: "canceled", color: "bg-gray-500" },
+  { name: "Completed", key: "completed", color: "bg-green-600" },
+  { name: "Closed", key: "closed", color: "bg-slate-400" },
+  { name: "Duplicate", key: "duplicate", color: "bg-gray-400" },
 ] as const;
 
 async function fetchPipelineEntries(locationId: string | null): Promise<PipelineEntry[]> {

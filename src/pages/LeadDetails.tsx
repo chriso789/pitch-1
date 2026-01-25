@@ -43,6 +43,8 @@ import { useSendSMS } from '@/hooks/useSendSMS';
 import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/useLeadDetails';
 import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
 import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
+import { TransitionReasonDialog } from '@/components/pipeline/TransitionReasonDialog';
+import { useAuth } from '@/contexts/AuthContext';
 import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplateApplicator';
 import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
@@ -299,9 +301,35 @@ const LeadDetails = () => {
   const [isEditingSecondaryRep, setIsEditingSecondaryRep] = useState(false);
   const [isEditingStatus, setIsEditingStatus] = useState(false);
   
+  // Transition dialog states for manager override
+  const [showTransitionDialog, setShowTransitionDialog] = useState(false);
+  const [transitionFrom, setTransitionFrom] = useState('');
+  const [transitionTo, setTransitionTo] = useState('');
+  
   // Communication states
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showSMSDialog, setShowSMSDialog] = useState(false);
+  
+  // Auth context
+  const { user } = useAuth();
+  
+  // Check if user has manager role
+  const { data: userProfile } = useTanstackQuery({
+    queryKey: ['user-profile-role', user?.id],
+    queryFn: async () => {
+      if (!user?.id) return null;
+      const { data } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+  
+  const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
+  const isManager = userProfile?.role && MANAGER_ROLES.includes(userProfile.role);
   
   // SMS sending hook
   const { sendSMS } = useSendSMS();
@@ -361,13 +389,65 @@ const LeadDetails = () => {
     }
   }, [searchParams]);
 
-  const handleStatusUpdate = async (newStatus: string) => {
+  // Define valid transitions for status changes
+  const strictTransitions: Record<string, string[]> = {
+    'lead': ['contingency_signed'],
+    'contingency_signed': ['legal_review', 'lead'],
+    'legal_review': ['ready_for_approval', 'contingency_signed'],
+    'ready_for_approval': ['project', 'legal_review'],
+    'project': ['completed', 'ready_for_approval'],
+    'completed': ['closed'],
+    'lost': ['lead'],
+    'canceled': ['lead'],
+    'duplicate': [],
+    'closed': []
+  };
+
+  // Terminal statuses always available
+  const terminalStatuses = ['lost', 'canceled'];
+
+  // All possible stages for manager override
+  const allStages = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval', 'project', 'completed', 'closed'];
+
+  // Get available statuses based on user role and current status
+  const getAvailableStatuses = (currentStatus: string) => {
+    if (isManager) {
+      // Managers can go anywhere + terminal statuses
+      return [...allStages, ...terminalStatuses].filter(s => s !== currentStatus);
+    }
+    
+    // Regular reps: strict transitions + terminal statuses
+    const allowed = strictTransitions[currentStatus] || [];
+    return [...new Set([...allowed, ...terminalStatuses])];
+  };
+
+  const handleStatusUpdateWithCheck = (newStatus: string) => {
+    if (!lead) return;
+    
+    const strictNextSteps = strictTransitions[lead.status] || [];
+    const isStrictTransition = strictNextSteps.includes(newStatus) || terminalStatuses.includes(newStatus);
+    
+    // If manager override (non-strict jump to a non-terminal status), require reason
+    if (isManager && !isStrictTransition && !terminalStatuses.includes(newStatus)) {
+      setTransitionFrom(lead.status);
+      setTransitionTo(newStatus);
+      setShowTransitionDialog(true);
+      return;
+    }
+    
+    // Proceed with update
+    handleStatusUpdate(newStatus, null);
+  };
+
+  const handleStatusUpdate = async (newStatus: string, reason: string | null) => {
     setIsEditingStatus(false);
+    setShowTransitionDialog(false);
     try {
       const { error } = await supabase.functions.invoke('pipeline-status', {
         body: {
           pipeline_id: id,
-          new_status: newStatus
+          new_status: newStatus,
+          transition_reason: reason
         }
       });
       
@@ -610,30 +690,16 @@ const LeadDetails = () => {
               {isEditingStatus ? (
                 <Select 
                   value={lead.status} 
-                  onValueChange={handleStatusUpdate}
+                  onValueChange={handleStatusUpdateWithCheck}
                 >
                   <SelectTrigger className="h-7 w-[180px]">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     {(() => {
-                      // Define valid transitions matching the edge function
-                      const validTransitions: Record<string, string[]> = {
-                        'lead': ['contingency_signed', 'lost', 'canceled', 'duplicate'],
-                        'contingency_signed': ['legal_review', 'lead', 'lost', 'canceled'],
-                        'legal_review': ['ready_for_approval', 'contingency_signed', 'lost', 'canceled'],
-                        'ready_for_approval': ['project', 'legal_review', 'lost', 'canceled'],
-                        'project': ['completed', 'ready_for_approval', 'lost', 'canceled'],
-                        'completed': ['closed'],
-                        'lost': ['lead'],
-                        'canceled': ['lead'],
-                        'duplicate': [],
-                        'closed': []
-                      };
-                      
-                      const allowedStatuses = validTransitions[lead.status] || [];
+                      const availableStatuses = getAvailableStatuses(lead.status);
                       const filteredStages = LEAD_STAGES.filter(stage => 
-                        allowedStatuses.includes(stage.key) || stage.key === lead.status
+                        availableStatuses.includes(stage.key) || stage.key === lead.status
                       );
                       
                       return filteredStages.map((stage) => (
@@ -1249,6 +1315,16 @@ const LeadDetails = () => {
           }}
         />
       )}
+
+      {/* Transition Reason Dialog for Manager Override */}
+      <TransitionReasonDialog
+        open={showTransitionDialog}
+        onOpenChange={setShowTransitionDialog}
+        onConfirm={(reason) => handleStatusUpdate(transitionTo, reason)}
+        fromStatus={transitionFrom.replace(/_/g, ' ')}
+        toStatus={transitionTo.replace(/_/g, ' ')}
+        isBackward={false}
+      />
     </div>
   );
 };
