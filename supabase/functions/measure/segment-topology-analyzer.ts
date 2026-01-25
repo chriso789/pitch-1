@@ -410,14 +410,27 @@ export function analyzeSegmentTopology(
   // 6. Determine roof type
   let roofType: SegmentTopology['roofType'] = 'complex';
   
+  // NEW: Check for L-shape pattern from facet azimuths
+  const hasN = facets.some(f => f.direction === 'N');
+  const hasS = facets.some(f => f.direction === 'S');
+  const hasE = facets.some(f => f.direction === 'E');
+  const hasW = facets.some(f => f.direction === 'W');
+  
+  const hasNS = hasN && hasS;
+  const hasEW = hasE && hasW;
+  const isLShape = hasNS && hasEW && facets.length >= 6;
+  
   if (facets.length === 0 || facets.every(f => f.pitchDegrees < 5)) {
     roofType = 'flat';
   } else if (facets.length === 2 && ridges.length === 1) {
     roofType = 'gable';
   } else if (facets.length === 4 && ridges.length === 1 && hips.length >= 2) {
     roofType = 'hip';
-  } else if (ridges.length >= 2 || valleys.length >= 1) {
+  } else if (ridges.length >= 2 || valleys.length >= 1 || isLShape) {
     roofType = 'cross-gable';
+    if (isLShape) {
+      console.log(`   L-SHAPE PATTERN DETECTED: ${facets.length} facets with N/S AND E/W opposing pairs`);
+    }
   }
   
   console.log(`   Result: ${facets.length} facets, ${ridges.length} ridges, ${hips.length} hips, ${valleys.length} valleys → ${roofType}`);
