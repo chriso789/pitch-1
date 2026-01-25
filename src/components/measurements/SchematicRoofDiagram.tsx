@@ -657,6 +657,14 @@ export function SchematicRoofDiagram({
     
     console.log(`🏠 Linear features: ${classifiedEaves.length} eaves, ${classifiedRakes.length} rakes from measurement data`);
     
+    // DEBUG: Log segment lengths to verify data flow
+    if (classifiedEaves.length > 0) {
+      console.log(`📏 Eave segment lengths:`, classifiedEaves.map((e, i) => `E${i + 1}: ${e.length?.toFixed(1)}'`).join(', '));
+    }
+    if (classifiedRakes.length > 0) {
+      console.log(`📏 Rake segment lengths:`, classifiedRakes.map((r, i) => `R${i + 1}: ${r.length?.toFixed(1)}'`).join(', '));
+    }
+    
     // Build facet paths - ONLY use database facets (Solar API segments are bounding boxes, not real facets)
     let facetPathsData: any[] = [];
     
