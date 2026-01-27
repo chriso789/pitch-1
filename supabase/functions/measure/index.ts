@@ -22,6 +22,7 @@ import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
+const MAPBOX_PUBLIC_TOKEN = Deno.env.get("MAPBOX_PUBLIC_TOKEN") || "";
 const OSM_ENABLED = true;
 const OSM_OVERPASS_URL = Deno.env.get("OSM_OVERPASS_URL") || "https://overpass-api.de/api/interpreter";
 const OPENBUILDINGS_FGB_TEMPLATE = Deno.env.get("OPENBUILDINGS_FGB_TEMPLATE") || "";
@@ -1220,26 +1221,50 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     throw new Error("No building data from Google Solar");
   }
 
-  // TRY OSM FOOTPRINT FIRST for actual building shape
-  // Priority: 1) OSM (real shape) → 2) Google Solar bounding box (rectangle fallback)
+  // IMPROVED FOOTPRINT EXTRACTION PRIORITY:
+  // 1) Mapbox Vector Tiles (best accuracy for building shape)
+  // 2) OSM (real shape from community mapping)
+  // 3) Google Solar bounding box (rectangle fallback - least accurate)
   let coords: [number, number][];
   let footprintSource: string;
   let footprintConfidence: number;
 
-  const osmResult = await osmOverpassFootprint(lat, lng).catch(() => null);
-  
-  if (osmResult && osmResult.plan_sqft > 100) {
-    // Use actual OSM building footprint
-    coords = wktToCoords(osmResult.faceWKT);
-    footprintSource = 'osm';
-    footprintConfidence = 0.95;
-    console.log(`✓ Using OSM footprint: ${coords.length} vertices, ${Math.round(osmResult.plan_sqft)} sqft`);
+  // Try Mapbox footprint first (highest accuracy for actual building shape)
+  let mapboxResult: { footprint: { coordinates: [number, number][]; confidence: number } | null } = { footprint: null };
+  if (MAPBOX_PUBLIC_TOKEN) {
+    try {
+      mapboxResult = await fetchMapboxFootprint(lat, lng, MAPBOX_PUBLIC_TOKEN, { radius: 30 });
+      if (mapboxResult.footprint && mapboxResult.footprint.coordinates.length >= 4) {
+        coords = mapboxResult.footprint.coordinates;
+        footprintSource = 'mapbox_vector';
+        footprintConfidence = mapboxResult.footprint.confidence;
+        console.log(`✅ Using Mapbox footprint: ${coords.length} vertices, confidence ${(footprintConfidence * 100).toFixed(0)}%`);
+      }
+    } catch (mapboxError) {
+      console.warn('Mapbox footprint fetch failed:', mapboxError);
+    }
   } else {
-    // Fallback to Google's bounding box (rectangular)
+    console.log('⚠️ MAPBOX_PUBLIC_TOKEN not configured - skipping Mapbox footprint');
+  }
+
+  // If Mapbox didn't work, try OSM
+  if (!coords) {
+    const osmResult = await osmOverpassFootprint(lat, lng).catch(() => null);
+
+    if (osmResult && osmResult.plan_sqft > 100) {
+      coords = wktToCoords(osmResult.faceWKT);
+      footprintSource = 'osm';
+      footprintConfidence = 0.92;
+      console.log(`✅ Using OSM footprint: ${coords.length} vertices, ${Math.round(osmResult.plan_sqft)} sqft`);
+    }
+  }
+
+  // Final fallback to Google's bounding box (rectangular)
+  if (!coords) {
     coords = boundingBoxToPolygon(json.boundingBox);
     footprintSource = 'google_solar_bbox';
     footprintConfidence = 0.70;
-    console.log(`⚠️ Using Google Solar bounding box (rectangular approximation)`);
+    console.log(`⚠️ Using Google Solar bounding box (rectangular approximation) - this may cause inaccurate roof tracing`);
   }
 
   // Validate footprint geometry
