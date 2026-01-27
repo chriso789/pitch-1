@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { getIcon } from '@/lib/iconMap';
+import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
 import type { DynamicRequirement } from '@/hooks/useLeadDetails';
 
 interface ApprovalRequirements {
@@ -65,10 +66,14 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideAcknowledged, setOverrideAcknowledged] = useState(false);
   const [approvingJob, setApprovingJob] = useState(false);
+  
+  // Document Scanner state
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanningDocType, setScanningDocType] = useState<string | null>(null);
+  const [scanningDocLabel, setScanningDocLabel] = useState<string>('Document');
+  
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
   const genericFileInputRef = useRef<HTMLInputElement>(null);
-  const genericCameraInputRef = useRef<HTMLInputElement>(null);
 
   // Use dynamic requirements if available, otherwise fall back to defaults
   const bubbleSteps = dynamicRequirements.length > 0
@@ -513,7 +518,12 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                           <Button
                             variant="ghost"
                             className="w-full justify-start"
-                            onClick={() => cameraInputRef.current?.click()}
+                            onClick={() => {
+                              setScanningDocType('contract');
+                              setScanningDocLabel('Contract');
+                              setScannerOpen(true);
+                              setOpenPopover(false);
+                            }}
                             disabled={uploadingContract}
                           >
                             <Camera className="h-4 w-4 mr-2" />
@@ -604,7 +614,12 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                           <Button
                             variant="ghost"
                             className="w-full justify-start"
-                            onClick={() => genericCameraInputRef.current?.click()}
+                            onClick={() => {
+                              setScanningDocType(step.key);
+                              setScanningDocLabel(step.label);
+                              setScannerOpen(true);
+                              setOpenGenericPopover(null);
+                            }}
                             disabled={uploadingGeneric}
                           >
                             <Camera className="h-4 w-4 mr-2" />
@@ -758,15 +773,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         onChange={handleFileSelect}
         className="hidden"
       />
-      <input
-        ref={cameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={handleCameraCapture}
-        className="hidden"
-      />
-      {/* Generic file inputs for photos/documents bubbles */}
+      {/* Generic file input for photos/documents bubbles */}
       <input
         ref={genericFileInputRef}
         type="file"
@@ -780,20 +787,18 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         }}
         className="hidden"
       />
-      <input
-        ref={genericCameraInputRef}
-        type="file"
-        accept="image/*"
-        capture="environment"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          if (file && openGenericPopover) {
-            handleGenericUpload(file, openGenericPopover, 'camera');
-          }
-          e.target.value = '';
-        }}
-        className="hidden"
-      />
+      
+      {/* Document Scanner Dialog */}
+      {pipelineEntryId && (
+        <DocumentScannerDialog
+          open={scannerOpen}
+          onOpenChange={setScannerOpen}
+          documentType={scanningDocType || 'document'}
+          documentLabel={scanningDocLabel}
+          pipelineEntryId={pipelineEntryId}
+          onUploadComplete={onUploadComplete}
+        />
+      )}
     </div>
   );
 };

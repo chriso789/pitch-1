@@ -6,3 +6,4 @@ export { BulkDocumentUpload } from './components/BulkDocumentUpload';
 export { DocumentRenameDialog } from './components/DocumentRenameDialog';
 export { DocumentTagEditor } from './components/DocumentTagEditor';
 export { ApplyDocumentToLeadDialog } from './components/ApplyDocumentToLeadDialog';
+export { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
