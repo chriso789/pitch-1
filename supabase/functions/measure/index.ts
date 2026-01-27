@@ -19,6 +19,7 @@ import { evaluateOverlay, applyCorrections, type EvaluationResult } from "./over
 import { storeCorrection, getLearnedPatterns, applyLearnedAdjustments, type CorrectionRecord } from "./correction-tracker.ts";
 import { calibrateRidgePosition, type RidgeCalibrationResult } from "./ridge-calibrator.ts";
 import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts";
+import { fetchMicrosoftBuildingFootprint } from "../_shared/microsoft-footprint-extractor.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
@@ -1222,14 +1223,15 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   }
 
   // IMPROVED FOOTPRINT EXTRACTION PRIORITY:
-  // 1) Mapbox Vector Tiles (best accuracy for building shape)
-  // 2) OSM (real shape from community mapping)
-  // 3) Google Solar bounding box (rectangle fallback - least accurate)
+  // 1) Mapbox Vector Tiles (if available with polygon geometries)
+  // 2) Microsoft/Esri Buildings (free API, actual polygons, excellent US coverage)
+  // 3) OSM (real shape from community mapping)
+  // 4) Google Solar bounding box (rectangle fallback - least accurate)
   let coords: [number, number][];
   let footprintSource: string;
   let footprintConfidence: number;
 
-  // Try Mapbox footprint first (highest accuracy for actual building shape)
+  // Try Mapbox footprint first (highest accuracy if it returns polygons)
   let mapboxResult: { footprint: { coordinates: [number, number][]; confidence: number } | null } = { footprint: null };
   if (MAPBOX_PUBLIC_TOKEN) {
     try {
@@ -1247,7 +1249,25 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     console.log('⚠️ MAPBOX_PUBLIC_TOKEN not configured - skipping Mapbox footprint');
   }
 
-  // If Mapbox didn't work, try OSM
+  // If Mapbox didn't return polygons, try Microsoft/Esri Buildings (free, excellent US coverage)
+  if (!coords) {
+    console.log('🏢 Trying Microsoft/Esri Buildings footprint...');
+    try {
+      const msResult = await fetchMicrosoftBuildingFootprint(lat, lng, { searchRadius: 50 });
+      if (msResult.footprint && msResult.footprint.coordinates.length >= 4) {
+        coords = msResult.footprint.coordinates;
+        footprintSource = 'microsoft_buildings';
+        footprintConfidence = msResult.footprint.confidence;
+        console.log(`✅ Using Microsoft/Esri footprint: ${coords.length} vertices, ${Math.round(msResult.footprint.areaM2 || 0)}m², confidence ${(footprintConfidence * 100).toFixed(0)}%`);
+      } else {
+        console.log(`⚠️ Microsoft/Esri returned no usable footprint: ${msResult.fallbackReason || msResult.error || 'unknown'}`);
+      }
+    } catch (msError) {
+      console.warn('Microsoft/Esri footprint fetch failed:', msError);
+    }
+  }
+
+  // If Microsoft didn't work, try OSM
   if (!coords) {
     const osmResult = await osmOverpassFootprint(lat, lng).catch(() => null);
 
