@@ -1,52 +1,231 @@
 
-Goal
-- Restore “AI Measurements” so it successfully calls the `analyze-roof-aerial` Supabase Edge Function (no more “Failed to send a request to the Edge Function”).
+# Plan: Fix Document Scanner - Multi-Page Scanning for Mobile
 
-What’s actually broken (confirmed)
-- The `analyze-roof-aerial` edge function is not booting.
-- Supabase edge logs show: `worker boot error: Uncaught SyntaxError: Identifier 'segmentCount' has already been declared`.
-- In `supabase/functions/analyze-roof-aerial/index.ts`, inside `processSolarFastPath()`, `segmentCount` is declared twice with `const`:
-  - First declaration around line ~4907
-  - Second declaration around line ~5046
-- Because the worker fails to boot, the frontend can’t reach the function, and the UI surfaces it as a request failure.
+## Problem Summary
+The "Scan with Camera" button in the Approval Requirements section is **not working properly** on mobile. The current implementation:
+1. Uses a simple file input with `capture="environment"` which only captures ONE image at a time
+2. Immediately uploads after capture - no way to scan multiple pages of a document
+3. Users need to scan multi-page contracts, notices, etc. but can only do one page at a time
 
-Implementation approach (fix the root cause)
-1) Fix the duplicate variable declaration in the edge function
-- Edit: `supabase/functions/analyze-roof-aerial/index.ts`
-- In `processSolarFastPath()`:
-  - Keep a single `segmentCount` (or rename it to something clearer like `solarSegmentCount`)
-  - Remove the second `const segmentCount = solarData.roofSegments.length`
-  - Ensure all later uses (roof type, complexity, facet_count, hipLength, etc.) reference the single variable.
-- This is a “boot-blocking” syntax fix; no behavior changes beyond making the function runnable again.
+## Solution Overview
+Create a **Document Scanner Dialog** that:
+- Opens the camera for sequential multi-page document capture
+- Shows a live camera feed with capture button
+- Allows users to scan as many pages as needed
+- Shows thumbnails of scanned pages with ability to remove/reorder
+- Uploads all pages as a single batch when complete
 
-2) Re-deploy the edge function
-- Deploy `analyze-roof-aerial` to the Test environment.
-- Immediately re-check edge logs to confirm the worker boots cleanly (no “worker boot error”).
+---
 
-3) Verify end-to-end from the app UI
-- In the UI, click “AI Measurements” again.
-- Confirm:
-  - The function request returns a response (no toast saying request failed).
-  - The measurement pipeline completes (success toast or “requires review” toast).
-  - New measurement row appears in Saved Measurements and/or Measurement History.
-- If the function returns an application-level error (different from “failed to send request”), we’ll then debug that specific error message (but we must first get the function booting).
+## Part 1: Create DocumentScannerDialog Component
 
-4) Add lightweight guardrails (optional but recommended)
-- Improve the frontend error surface in `src/components/measurements/PullMeasurementsButton.tsx`:
-  - When `supabase.functions.invoke` returns an `error`, show a more descriptive toast including `error.message` and (when available) the function name so it’s obvious which service failed.
-  - This won’t fix the backend error, but it will prevent ambiguous “failed to send request” situations in the future.
+### New File: `src/components/documents/DocumentScannerDialog.tsx`
 
-Files involved
-- Backend (required):
-  - `supabase/functions/analyze-roof-aerial/index.ts` (remove/rename duplicate `segmentCount` declaration in `processSolarFastPath`)
-- Frontend (optional polish):
-  - `src/components/measurements/PullMeasurementsButton.tsx` (more informative toast/error reporting when invoke fails)
+A full-screen mobile-friendly dialog with:
+- Live camera preview using `navigator.mediaDevices.getUserMedia()`
+- "Capture" button to take a photo of each page
+- Thumbnails strip showing all captured pages
+- "Add Page" and "Done" buttons
+- Progress indicator during batch upload
 
-Validation checklist (definition of done)
-- Edge logs no longer show “worker boot error” for `analyze-roof-aerial`.
-- Clicking “AI Measurements” results in a successful function call (network request completes).
-- A new measurement is created or a clear application-level error is returned (not a request failure).
-- UI updates (Saved Measurements / Measurement History) reflect the new run.
+**Key Features:**
+- Uses WebRTC camera access like `CanvassPhotoCapture.tsx` does (proven pattern in codebase)
+- Maintains a `capturedPages: string[]` array for previews
+- Allows removal of individual pages before upload
+- Batch uploads all pages with sequential naming
+- Supports offline mode with IndexedDB fallback
 
-Risks / edge cases
-- After the worker boots, there may be additional runtime errors (e.g., missing secrets, upstream provider failure, RLS access). If that happens, we’ll address the next error shown in edge logs—right now the function can’t even start, so we can’t reach those layers yet.
+### Component Structure
+```text
++----------------------------------+
+|  📄 Scan Document               X|
+|  Contract • 3 pages              |
++----------------------------------+
+|                                  |
+|   [CAMERA LIVE PREVIEW]          |
+|                                  |
+|                                  |
+|                                  |
+|                                  |
++----------------------------------+
+| [📷 1] [📷 2] [📷 3] [+]         |  <- Thumbnails strip
++----------------------------------+
+|  [Cancel]         [Upload (3)]   |
++----------------------------------+
+```
+
+---
+
+## Part 2: Update ApprovalRequirementsBubbles
+
+### File: `src/components/ApprovalRequirementsBubbles.tsx`
+
+**Changes:**
+1. Add state for document scanner dialog: `const [scannerOpen, setScannerOpen] = useState(false)`
+2. Add state for current scanning document type: `const [scanningDocType, setScanningDocType] = useState<string | null>(null)`
+3. Replace `cameraInputRef.current?.click()` with dialog open:
+   ```typescript
+   onClick={() => {
+     setScanningDocType('contract');
+     setScannerOpen(true);
+   }}
+   ```
+4. Add the `DocumentScannerDialog` component with callbacks
+5. Handle upload completion to mark requirement as satisfied
+
+### Lines to Modify:
+- Line 516: Change camera button onClick to open scanner dialog
+- Line 607: Change generic camera button to open scanner dialog
+- Add dialog component at end of JSX (before hidden inputs)
+- Remove hidden camera inputs (lines 761-768, 783-796) - no longer needed
+
+---
+
+## Part 3: Multi-Page Upload Handler
+
+### New function in DocumentScannerDialog: `handleBatchUpload`
+
+```typescript
+async function handleBatchUpload(pages: Blob[], documentType: string) {
+  // 1. Get user profile and tenant
+  const { data: { user } } = await supabase.auth.getUser();
+  
+  // 2. For each page, upload to storage
+  for (let i = 0; i < pages.length; i++) {
+    const fileName = `${pipelineEntryId}/${Date.now()}_${documentType}_page${i + 1}.jpg`;
+    await supabase.storage.from('documents').upload(fileName, pages[i]);
+  }
+  
+  // 3. Create single document record with page count metadata
+  await supabase.from('documents').insert({
+    tenant_id,
+    pipeline_entry_id: pipelineEntryId,
+    document_type: documentType,
+    filename: `${documentType}_${pages.length}_pages.pdf`,
+    file_path: folderPath,
+    page_count: pages.length,
+    // ...
+  });
+  
+  // 4. Trigger requirement refresh
+  onUploadComplete?.();
+}
+```
+
+---
+
+## Part 4: Mobile-Optimized Camera UI
+
+### Camera Component Features:
+- Full viewport height on mobile
+- Large capture button (touch-friendly)
+- Flash toggle (if available)
+- Page counter badge
+- Swipe gestures on thumbnail strip
+- Safe area insets for notch/home indicator
+
+### CSS Considerations:
+```css
+/* Use existing mobile detection utils */
+.scanner-dialog {
+  /* Full screen on mobile */
+  height: 100vh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.capture-button {
+  /* Large touch target */
+  width: 72px;
+  height: 72px;
+}
+```
+
+---
+
+## Part 5: Offline Support (Optional Enhancement)
+
+Leverage existing patterns from `CanvassPhotoCapture.tsx` and `OfflinePhotoSyncManager.tsx`:
+- Store captured pages in IndexedDB when offline
+- Sync when connection restored
+- Show pending indicator
+
+---
+
+## Files to Create
+| File | Purpose |
+|------|---------|
+| `src/components/documents/DocumentScannerDialog.tsx` | Main scanner dialog component |
+
+## Files to Modify
+| File | Changes |
+|------|---------|
+| `src/components/ApprovalRequirementsBubbles.tsx` | Replace camera input clicks with dialog, add scanner dialog |
+| `src/components/documents/index.ts` | Export new component |
+
+---
+
+## Technical Implementation Details
+
+### Camera Access (proven pattern from CanvassPhotoCapture)
+```typescript
+const startCamera = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { 
+      facingMode: 'environment',  // Back camera
+      width: { ideal: 1920 },
+      height: { ideal: 1080 },
+    },
+    audio: false,
+  });
+  videoRef.current.srcObject = stream;
+};
+```
+
+### Capture to Canvas
+```typescript
+const capturePhoto = () => {
+  const canvas = canvasRef.current;
+  const video = videoRef.current;
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  
+  canvas.toBlob((blob) => {
+    setCapturedPages(prev => [...prev, blob]);
+  }, 'image/jpeg', 0.9);
+};
+```
+
+### State Management
+```typescript
+const [capturedPages, setCapturedPages] = useState<{
+  blob: Blob;
+  preview: string;
+}[]>([]);
+```
+
+---
+
+## User Flow After Implementation
+
+1. User taps Contract bubble → popover shows "Scan with Camera" and "Upload from Device"
+2. User taps "Scan with Camera" → **Document Scanner Dialog opens**
+3. Camera preview shows → User positions first page
+4. User taps capture button → Page 1 thumbnail appears at bottom
+5. User positions second page → taps capture → Page 2 thumbnail appears
+6. User repeats for all pages needed
+7. User taps "Upload (N)" → All pages upload
+8. Dialog closes → Requirement marked complete
+
+---
+
+## Expected Results
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Pages per capture | 1 | Unlimited |
+| Camera UX | Native file picker | Custom scanner UI |
+| Page review | None | Thumbnail strip |
+| Remove page | N/A | Tap X on thumbnail |
+| Upload feedback | Basic toast | Progress indicator |
+| Mobile experience | Basic | Optimized |
