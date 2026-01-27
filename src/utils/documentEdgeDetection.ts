@@ -104,8 +104,8 @@ function sobelEdgeDetection(input: Uint8Array, width: number, height: number): U
     }
   }
   
-  // Normalize and threshold
-  const threshold = maxMag * 0.15; // 15% of max as threshold
+  // Normalize and threshold (25% filters out more noise for cleaner detection)
+  const threshold = maxMag * 0.25;
   for (let i = 0; i < magnitudes.length; i++) {
     output[i] = magnitudes[i] > threshold ? 255 : 0;
   }
@@ -131,8 +131,8 @@ function findDocumentQuadrilateral(
     }
   }
   
-  if (edgePoints.length < 100) {
-    return null; // Not enough edge points
+  if (edgePoints.length < 200) {
+    return null; // Require more edge points for reliable detection
   }
   
   // Use convex hull to find outer boundary
@@ -155,8 +155,8 @@ function findDocumentQuadrilateral(
   // Calculate confidence based on aspect ratio and coverage
   const confidence = calculateConfidence(sorted, width, height);
   
-  if (confidence < 0.3) {
-    return null; // Too low confidence
+  if (confidence < 0.4) {
+    return null; // Require higher confidence for quality detection
   }
   
   return {
@@ -281,10 +281,15 @@ function calculateConfidence(corners: Point[], width: number, height: number): n
   const frameArea = width * height;
   const coverageRatio = area / frameArea;
   
-  // Ideal coverage is 50-90% of frame
+  // Ideal coverage is 30-75% of frame (document fills most of frame with margins)
   let coverageScore = 0;
-  if (coverageRatio > 0.2 && coverageRatio < 0.95) {
-    coverageScore = Math.min(1, coverageRatio / 0.5);
+  if (coverageRatio > 0.15 && coverageRatio < 0.85) {
+    // Prefer 30-75% coverage for optimal document framing
+    if (coverageRatio > 0.3 && coverageRatio < 0.75) {
+      coverageScore = 1.0;
+    } else {
+      coverageScore = 0.7;
+    }
   }
   
   // Check aspect ratio (should be roughly letter/A4: 1:1.3 to 1:1.5)
