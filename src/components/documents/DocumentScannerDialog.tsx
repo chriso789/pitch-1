@@ -7,6 +7,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { isMobileDevice, hasHomeIndicator } from '@/utils/mobileDetection';
+import jsPDF from 'jspdf';
 
 interface CapturedPage {
   blob: Blob;
@@ -143,6 +144,77 @@ export function DocumentScannerDialog({
     });
   };
 
+  // Helper: Convert Blob to Data URL
+  const blobToDataURL = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  // Helper: Load image to get dimensions
+  const loadImage = (src: string): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  };
+
+  // Generate combined PDF from captured pages
+  const generateCombinedPDF = async (pages: CapturedPage[]): Promise<Blob> => {
+    const pdf = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: 'letter', // 8.5" x 11" standard
+    });
+
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 10; // 10mm margins
+
+    for (let i = 0; i < pages.length; i++) {
+      // Add new page for subsequent pages
+      if (i > 0) {
+        pdf.addPage();
+      }
+
+      // Convert blob to data URL for jsPDF
+      const dataUrl = await blobToDataURL(pages[i].blob);
+      
+      // Create image element to get dimensions
+      const img = await loadImage(dataUrl);
+      
+      // Calculate dimensions to fit page with margins
+      const imgAspect = img.width / img.height;
+      const pageAspect = (pageWidth - 2 * margin) / (pageHeight - 2 * margin);
+      
+      let imgWidth: number;
+      let imgHeight: number;
+      
+      if (imgAspect > pageAspect) {
+        // Image is wider than page - fit to width
+        imgWidth = pageWidth - 2 * margin;
+        imgHeight = imgWidth / imgAspect;
+      } else {
+        // Image is taller than page - fit to height
+        imgHeight = pageHeight - 2 * margin;
+        imgWidth = imgHeight * imgAspect;
+      }
+
+      // Center on page
+      const xOffset = (pageWidth - imgWidth) / 2;
+      const yOffset = (pageHeight - imgHeight) / 2;
+
+      pdf.addImage(dataUrl, 'JPEG', xOffset, yOffset, imgWidth, imgHeight);
+    }
+
+    return pdf.output('blob');
+  };
+
   const handleBatchUpload = async () => {
     if (capturedPages.length === 0) {
       toast({
@@ -169,40 +241,44 @@ export function DocumentScannerDialog({
 
       if (!profile?.tenant_id) throw new Error('Tenant not found');
 
+      setUploadProgress(10);
+
+      // Generate combined PDF from captured pages
+      const pdfBlob = await generateCombinedPDF(capturedPages);
+      
+      setUploadProgress(50);
+
+      // Upload single PDF file
       const timestamp = Date.now();
-      const uploadedPaths: string[] = [];
+      const sanitizedLabel = documentLabel.replace(/\s+/g, '_');
+      const fileName = `${pipelineEntryId}/${timestamp}_${documentType}.pdf`;
 
-      // Upload each page
-      for (let i = 0; i < capturedPages.length; i++) {
-        const page = capturedPages[i];
-        const fileName = `${pipelineEntryId}/${timestamp}_${documentType}_page${i + 1}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, pdfBlob, {
+          contentType: 'application/pdf',
+        });
 
-        const { error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(fileName, page.blob);
+      if (uploadError) throw uploadError;
 
-        if (uploadError) throw uploadError;
+      setUploadProgress(80);
 
-        uploadedPaths.push(fileName);
-        setUploadProgress(((i + 1) / capturedPages.length) * 80); // Reserve 20% for DB insert
-      }
-
-      // Create document record
+      // Create document record with PDF info
       const { error: dbError } = await supabase
         .from('documents')
         .insert({
           tenant_id: profile.tenant_id,
           pipeline_entry_id: pipelineEntryId,
           document_type: documentType,
-          filename: `${documentLabel.replace(/\s+/g, '_')}_${capturedPages.length}_pages.pdf`,
-          file_path: uploadedPaths[0], // First page as primary path
-          file_size: capturedPages.reduce((sum, p) => sum + p.blob.size, 0),
-          mime_type: 'image/jpeg',
+          filename: `${sanitizedLabel}.pdf`,
+          file_path: fileName,
+          file_size: pdfBlob.size,
+          mime_type: 'application/pdf',
           uploaded_by: user.id,
           metadata: {
             page_count: capturedPages.length,
-            all_pages: uploadedPaths,
             scan_timestamp: timestamp,
+            generated_from: 'document_scanner',
           },
         });
 
@@ -211,8 +287,8 @@ export function DocumentScannerDialog({
       setUploadProgress(100);
 
       toast({
-        title: 'Upload Complete',
-        description: `${capturedPages.length} page${capturedPages.length > 1 ? 's' : ''} uploaded successfully.`,
+        title: 'PDF Created',
+        description: `${capturedPages.length}-page PDF uploaded successfully.`,
       });
 
       // Cleanup and close
@@ -221,10 +297,10 @@ export function DocumentScannerDialog({
       onOpenChange(false);
       onUploadComplete?.();
     } catch (error: any) {
-      console.error('Batch upload error:', error);
+      console.error('PDF generation error:', error);
       toast({
         title: 'Upload Failed',
-        description: error.message || 'Failed to upload document. Please try again.',
+        description: error.message || 'Failed to create PDF. Please try again.',
         variant: 'destructive',
       });
     } finally {
