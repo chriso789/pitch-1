@@ -1,291 +1,150 @@
 
-# Plan: Add Review/Delete Actions to Completed Requirement Bubbles
+# Plan: Fix Document Scanner Upload Error and Improve Edge Detection
 
-## Problem Summary
-Currently, when a requirement bubble (Contract, Estimate, Notice of Commencement, Required Photos) is marked as "Complete":
-- The bubble displays with a green checkmark but is **not clickable**
-- Users cannot view, review, or delete the associated document
-- If the wrong document was scanned, users must go to the Documents tab to find and delete it
+## Problems Identified
 
-The user needs to be able to:
-1. **Review** - View the uploaded document directly from the bubble
-2. **Delete** - Remove the document so a different one can be scanned
-3. **Re-upload** - After deletion, the bubble returns to "Pending" state for new upload
+### Problem 1: Upload Failure - Missing `metadata` Column
+**Error:** `"Could not find the 'metadata' column of 'documents' in the schema cache"`
 
----
+The `handleBatchUpload` function in `DocumentScannerDialog.tsx` (line 349-354) attempts to insert a `metadata` JSONB object:
+```typescript
+metadata: {
+  page_count: capturedPages.length,
+  scan_timestamp: timestamp,
+  generated_from: 'document_scanner',
+  enhancement_mode: processingMode,
+}
+```
 
-## Solution Overview
+However, the `documents` table does NOT have a `metadata` column. Looking at the schema in `types.ts` (lines 9168-9194), the available columns are: `agreement_instance_id`, `contact_id`, `created_at`, `description`, `document_type`, `file_path`, `file_size`, `filename`, `id`, `mime_type`, `pipeline_entry_id`, `tenant_id`, `uploaded_by`, etc. - but NO `metadata` column.
 
-Add a **Popover menu** to completed requirement bubbles with three actions:
-- **View Document** - Opens the document in preview modal
-- **Replace Document** - Opens scanner/upload options (like incomplete state)
-- **Delete Document** - Removes the document after confirmation
+**Solution:** Either add the `metadata` column to the database OR remove the `metadata` field from the insert and use the `description` column instead.
+
+### Problem 2: Edge Detection Not Working Reliably
+The current edge detection has issues:
+
+1. **High downsampling (4x)** - Processing at 1/4 resolution loses fine edge details
+2. **Threshold too low (15%)** - May miss faint document edges on light backgrounds  
+3. **Minimum edge points too low (100)** - Doesn't require enough edges for confidence
+4. **Confidence threshold too lenient (0.3)** - Returns corners even with low quality
+
+**Solution:** Tune the edge detection parameters for better document detection on mobile cameras.
 
 ---
 
 ## Technical Implementation
 
-### File to Modify: `src/components/ApprovalRequirementsBubbles.tsx`
+### Part 1: Fix Database Insert (Critical Fix)
 
-#### 1. Add New State Variables
+**File:** `src/components/documents/DocumentScannerDialog.tsx`
+
+Remove the invalid `metadata` field and use `description` instead to store scan info:
 
 ```typescript
-// State for managing completed bubble actions
-const [viewingDocument, setViewingDocument] = useState<{
-  id: string;
-  filename: string;
-  file_path: string;
-  mime_type: string | null;
-  document_type: string | null;
-} | null>(null);
-const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-const [deletingDocKey, setDeletingDocKey] = useState<string | null>(null);
-const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
-const [isDeleting, setIsDeleting] = useState(false);
+// Lines 338-355: Replace the insert statement
+
+const { error: dbError } = await supabase
+  .from('documents')
+  .insert({
+    tenant_id: profile.tenant_id,
+    pipeline_entry_id: pipelineEntryId,
+    document_type: documentType,
+    filename: `${sanitizedLabel}.pdf`,
+    file_path: fileName,
+    file_size: pdfBlob.size,
+    mime_type: 'application/pdf',
+    uploaded_by: user.id,
+    // Use description field instead of metadata (which doesn't exist)
+    description: `Scanned document: ${capturedPages.length} page(s), ${processingMode} mode`,
+  });
 ```
 
-#### 2. Add Query to Fetch Documents for This Lead
+### Part 2: Improve Edge Detection Accuracy
+
+**File:** `src/utils/documentEdgeDetection.ts`
+
+#### 2.1 Reduce Downsampling for Better Edge Detection
+The current 4x downsampling is too aggressive. Use 2x instead:
 
 ```typescript
-// Fetch documents for this pipeline entry to enable review/delete
-const { data: requirementDocuments, refetch: refetchDocuments } = useQuery({
-  queryKey: ['requirement-documents', pipelineEntryId],
-  queryFn: async () => {
-    if (!pipelineEntryId) return [];
-    const { data, error } = await supabase
-      .from('documents')
-      .select('id, filename, file_path, mime_type, document_type')
-      .eq('pipeline_entry_id', pipelineEntryId)
-      .in('document_type', ['contract', 'notice_of_commencement', 'required_photos', 'inspection_photo', 'photos']);
-    if (error) throw error;
-    return data || [];
-  },
-  enabled: !!pipelineEntryId,
-});
+// In DocumentScannerDialog.tsx, line 92:
+// Change from:
+const scale = 4;
+// Change to:
+const scale = 2;
 ```
 
-#### 3. Add Helper to Find Document for a Requirement
+#### 2.2 Increase Edge Threshold for Cleaner Detection
+In `sobelEdgeDetection` function (line 108):
 
 ```typescript
-const getDocumentForRequirement = (stepKey: string) => {
-  if (!requirementDocuments) return null;
-  
-  // Map step keys to document types
-  const typeMap: Record<string, string[]> = {
-    'contract': ['contract'],
-    'notice_of_commencement': ['notice_of_commencement'],
-    'required_photos': ['required_photos', 'inspection_photo', 'photos'],
-  };
-  
-  const docTypes = typeMap[stepKey] || [stepKey];
-  return requirementDocuments.find(doc => 
-    doc.document_type && docTypes.includes(doc.document_type)
-  );
-};
+// Change from:
+const threshold = maxMag * 0.15; // 15% of max
+// Change to:
+const threshold = maxMag * 0.25; // 25% of max - filters out more noise
 ```
 
-#### 4. Add Delete Handler
+#### 2.3 Require More Edge Points for Detection
+In `findDocumentQuadrilateral` function (line 134):
 
 ```typescript
-const handleDeleteRequirementDoc = async () => {
-  if (!deletingDocId) return;
-  
-  setIsDeleting(true);
-  try {
-    const { error } = await supabase.functions.invoke('delete-documents', {
-      body: { document_ids: [deletingDocId], mode: 'delete_only' }
-    });
-    
-    if (error) throw error;
-    
-    toast({
-      title: "Document Deleted",
-      description: "You can now upload a new document.",
-    });
-    
-    refetchDocuments();
-    onUploadComplete?.();
-  } catch (error: any) {
-    toast({
-      title: "Delete Failed",
-      description: error.message || "Could not delete document",
-      variant: "destructive",
-    });
-  } finally {
-    setIsDeleting(false);
-    setDeleteConfirmOpen(false);
-    setDeletingDocId(null);
-    setDeletingDocKey(null);
+// Change from:
+if (edgePoints.length < 100) {
+// Change to:
+if (edgePoints.length < 200) { // Require more edge points
+```
+
+#### 2.4 Increase Minimum Confidence Threshold
+In `findDocumentQuadrilateral` function (line 158):
+
+```typescript
+// Change from:
+if (confidence < 0.3) {
+// Change to:
+if (confidence < 0.4) { // Require higher confidence
+```
+
+#### 2.5 Improve Coverage Scoring
+In `calculateConfidence` function (lines 286-288):
+
+```typescript
+// Change from:
+if (coverageRatio > 0.2 && coverageRatio < 0.95) {
+  coverageScore = Math.min(1, coverageRatio / 0.5);
+}
+// Change to:
+if (coverageRatio > 0.15 && coverageRatio < 0.85) {
+  // Prefer 40-70% coverage (document fills most of frame but with margins)
+  if (coverageRatio > 0.3 && coverageRatio < 0.75) {
+    coverageScore = 1.0;
+  } else {
+    coverageScore = 0.7;
   }
-};
+}
 ```
 
-#### 5. Update Completed Bubble Rendering (Lines 640-664)
+### Part 3: Improve UI Detection Threshold
 
-Replace the non-interactive completed bubble with a Popover:
+**File:** `src/components/documents/DocumentScannerDialog.tsx`
+
+Update the UI to only apply perspective transform when confidence is good:
 
 ```typescript
-// BEFORE: Static completed bubble (lines 640-664)
-<div className={cn(
-  "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full ...",
-  isComplete ? `bg-gradient-to-br ${step.color} ...` : "..."
-)}>
-  ...
-</div>
-
-// AFTER: Interactive Popover for completed bubbles
-{isComplete ? (
-  <Popover>
-    <PopoverTrigger asChild>
-      <div className={cn(
-        "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-        "border-2 sm:border-4 cursor-pointer",
-        `bg-gradient-to-br ${step.color} border-white shadow-lg hover:scale-110 hover:-translate-y-1 hover:shadow-xl`
-      )}>
-        <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
-        {/* Checkmark Badge */}
-        <div className="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md">
-          <CheckCircle className="h-3 w-3 text-success-foreground" />
-        </div>
-      </div>
-    </PopoverTrigger>
-    <PopoverContent className="w-56 p-2">
-      <div className="space-y-1">
-        {/* View Document */}
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => {
-            const doc = getDocumentForRequirement(step.key);
-            if (doc) setViewingDocument(doc);
-          }}
-          disabled={!getDocumentForRequirement(step.key)}
-        >
-          <Eye className="h-4 w-4 mr-2" />
-          View Document
-        </Button>
-        
-        {/* Replace Document */}
-        <Button
-          variant="ghost"
-          className="w-full justify-start"
-          onClick={() => {
-            setScanningDocType(step.key);
-            setScanningDocLabel(step.label);
-            setScannerOpen(true);
-          }}
-        >
-          <Camera className="h-4 w-4 mr-2" />
-          Replace Document
-        </Button>
-        
-        {/* Delete Document */}
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-destructive hover:text-destructive"
-          onClick={() => {
-            const doc = getDocumentForRequirement(step.key);
-            if (doc) {
-              setDeletingDocId(doc.id);
-              setDeletingDocKey(step.label);
-              setDeleteConfirmOpen(true);
-            }
-          }}
-          disabled={!getDocumentForRequirement(step.key)}
-        >
-          <Trash2 className="h-4 w-4 mr-2" />
-          Delete Document
-        </Button>
-      </div>
-    </PopoverContent>
-  </Popover>
-) : (
-  // ... existing incomplete bubble rendering
-)}
+// Line 194: Increase confidence threshold for applying transform
+// Change from:
+if (detectedCorners && detectedCorners.confidence > 0.5) {
+// Change to:
+if (detectedCorners && detectedCorners.confidence > 0.6) {
 ```
 
-#### 6. Add DocumentPreviewModal for Viewing
+Update status indicator threshold (line 495-496):
 
 ```typescript
-// Add import at top
-import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
-
-// Add modal after AlertDialogs
-{viewingDocument && (
-  <DocumentPreviewModal
-    document={viewingDocument}
-    isOpen={!!viewingDocument}
-    onClose={() => setViewingDocument(null)}
-    onDownload={(doc) => {
-      // Simple download handler
-      const bucket = doc.document_type === 'contract' ? 'documents' : 'documents';
-      supabase.storage.from(bucket).download(doc.file_path).then(({ data }) => {
-        if (data) {
-          const url = URL.createObjectURL(data);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = doc.filename;
-          a.click();
-          URL.revokeObjectURL(url);
-        }
-      });
-    }}
-  />
-)}
+// Change from:
+detectedCorners && detectedCorners.confidence > 0.6
+// Change to:
+detectedCorners && detectedCorners.confidence > 0.65
 ```
-
-#### 7. Add Delete Confirmation Dialog
-
-```typescript
-// Delete confirmation AlertDialog (after Override dialog)
-<AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
-  <AlertDialogContent>
-    <AlertDialogHeader>
-      <AlertDialogTitle>Delete {deletingDocKey} Document?</AlertDialogTitle>
-      <AlertDialogDescription>
-        This will permanently delete the document. You will need to upload a new one to complete this requirement.
-      </AlertDialogDescription>
-    </AlertDialogHeader>
-    <AlertDialogFooter>
-      <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-      <AlertDialogAction
-        onClick={handleDeleteRequirementDoc}
-        disabled={isDeleting}
-        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-      >
-        {isDeleting ? 'Deleting...' : 'Delete Document'}
-      </AlertDialogAction>
-    </AlertDialogFooter>
-  </AlertDialogContent>
-</AlertDialog>
-```
-
-#### 8. Add New Imports
-
-```typescript
-import { Eye, Trash2 } from 'lucide-react';
-import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
-```
-
----
-
-## UI Changes
-
-### Completed Bubble Popover Menu
-
-```text
-+-------------------------+
-|  👁️  View Document      |
-|  📷  Replace Document   |
-|  🗑️  Delete Document    |  (red text)
-+-------------------------+
-```
-
-### User Flow
-
-1. **View**: Click completed bubble → "View Document" → Preview modal opens
-2. **Replace**: Click completed bubble → "Replace Document" → Scanner opens → New doc replaces old
-3. **Delete**: Click completed bubble → "Delete Document" → Confirm dialog → Document removed → Bubble returns to "Pending"
 
 ---
 
@@ -293,29 +152,40 @@ import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModa
 
 | File | Changes |
 |------|---------|
-| `src/components/ApprovalRequirementsBubbles.tsx` | Add imports, state, query, handlers, Popover for completed bubbles, preview modal, delete confirmation |
+| `src/components/documents/DocumentScannerDialog.tsx` | Remove `metadata` from insert, use `description` instead; reduce downsampling scale from 4 to 2; increase confidence thresholds |
+| `src/utils/documentEdgeDetection.ts` | Increase edge threshold, require more edge points, improve coverage scoring |
 
 ---
 
-## Special Handling
+## Database Change Option (Alternative)
 
-### Estimate Bubble
-The Estimate bubble is different - it doesn't upload a document but selects an existing estimate. For completed estimates:
-- **View Estimate** → Navigate to estimate detail or show estimate summary
-- **Change Estimate** → Re-open the estimate selector popover
-- **Clear Selection** → Remove the selected estimate
+If you prefer to keep the `metadata` field, we can add the column to the database:
 
-### Required Photos
-May have multiple photos. The popover will show:
-- **View Photos** → Opens photo gallery
-- **Add More Photos** → Opens camera
-- **Manage Photos** → Navigate to Documents tab filtered to photos
+```sql
+ALTER TABLE public.documents 
+ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+```
+
+However, using the existing `description` column is simpler and doesn't require a schema change.
 
 ---
 
-## Benefits
+## Summary of Parameter Changes
 
-1. **Quick Access** - Review documents without leaving the progress view
-2. **Easy Correction** - Delete and re-scan wrong documents immediately
-3. **Clear Feedback** - Confirmation before destructive actions
-4. **Consistent UX** - Same popover pattern for incomplete and complete states
+| Parameter | Before | After | Reason |
+|-----------|--------|-------|--------|
+| Downsample scale | 4x | 2x | Preserve more edge detail |
+| Sobel threshold | 15% | 25% | Filter out noise |
+| Min edge points | 100 | 200 | Require more evidence |
+| Min confidence | 0.3 | 0.4 | Higher quality detection |
+| Transform threshold | 0.5 | 0.6 | Better perspective correction |
+| UI indicator | 0.6 | 0.65 | Accurate feedback |
+
+---
+
+## Expected Results
+
+1. **Upload will succeed** - No more "metadata column not found" error
+2. **Better edge detection** - More accurate document boundary detection with clearer overlay
+3. **Improved perspective correction** - Only applied when detection is confident
+4. **Clearer user feedback** - Status indicator shows accurate detection state
