@@ -5042,8 +5042,8 @@ async function processSolarFastPath(
   
   console.log(`📐 Final: Flat=${authoritativeFlatArea.toFixed(0)} sqft × ${pitchMultiplier.toFixed(3)} = ${totalAdjustedArea.toFixed(0)} sqft adjusted (${totalSquares.toFixed(1)} squares)`)
   
-  // Get segment count for facet_count field (use Solar API data directly)
-  const segmentCount = solarData.roofSegments.length
+  // segmentCount already declared at line 4907 for L-shape validation
+  // Reuse existing variable for facet_count field
   
   // Estimate linear measurements from area/perimeter (heuristic approach until topology analysis is improved)
   const estimatedPerimeterFt = solarData.estimatedPerimeterFt || 4 * Math.sqrt(totalFlatArea)
