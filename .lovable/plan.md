@@ -1,396 +1,321 @@
 
-# Plan: Professional Document Scanner with Edge Detection & Enhancement
+# Plan: Add Review/Delete Actions to Completed Requirement Bubbles
 
-## Overview
-Transform the document scanner into a professional-grade scanning tool that:
-1. **Automatically detects document edges** and highlights them in real-time
-2. **Applies perspective correction** to flatten tilted documents
-3. **Removes shadows and enhances clarity** using adaptive thresholding
-4. **Produces print-quality PDFs** that look like the original document
+## Problem Summary
+Currently, when a requirement bubble (Contract, Estimate, Notice of Commencement, Required Photos) is marked as "Complete":
+- The bubble displays with a green checkmark but is **not clickable**
+- Users cannot view, review, or delete the associated document
+- If the wrong document was scanned, users must go to the Documents tab to find and delete it
 
----
-
-## Architecture
-
-```text
-+----------------------------------+
-|     CAPTURE PHASE               |
-|  Live camera with edge overlay   |
-|  [Auto-detect corners]           |
-+----------------------------------+
-            ↓
-+----------------------------------+
-|     PROCESSING PHASE             |
-|  1. Detect 4 corners             |
-|  2. Perspective warp to flat     |
-|  3. Adaptive shadow removal      |
-|  4. Contrast enhancement         |
-|  5. Brightness normalization     |
-+----------------------------------+
-            ↓
-+----------------------------------+
-|     OUTPUT PHASE                 |
-|  High-DPI PDF (300 DPI equiv)    |
-|  Ultra-clear, print-ready        |
-+----------------------------------+
-```
+The user needs to be able to:
+1. **Review** - View the uploaded document directly from the bubble
+2. **Delete** - Remove the document so a different one can be scanned
+3. **Re-upload** - After deletion, the bubble returns to "Pending" state for new upload
 
 ---
 
-## Part 1: Edge Detection Overlay (Real-Time)
+## Solution Overview
 
-### New File: `src/utils/documentEdgeDetection.ts`
-
-A client-side edge detection utility optimized for documents:
-
-```typescript
-interface DetectedCorners {
-  topLeft: { x: number; y: number };
-  topRight: { x: number; y: number };
-  bottomLeft: { x: number; y: number };
-  bottomRight: { x: number; y: number };
-  confidence: number;
-}
-
-export function detectDocumentEdges(
-  imageData: ImageData
-): DetectedCorners | null;
-```
-
-**Algorithm:**
-1. Convert to grayscale
-2. Apply Gaussian blur to reduce noise
-3. Use Canny-style edge detection (Sobel + thresholding)
-4. Find contours using connected component analysis
-5. Detect the largest quadrilateral contour
-6. Return 4 corners sorted (top-left, top-right, bottom-right, bottom-left)
-
-### Real-Time Overlay in Camera View
-- Run edge detection on every ~5th video frame (throttled)
-- Draw green polygon overlay showing detected document bounds
-- Show confidence indicator ("Good" / "Adjust Position")
-- Auto-capture when confidence > 80% for 1 second (optional)
+Add a **Popover menu** to completed requirement bubbles with three actions:
+- **View Document** - Opens the document in preview modal
+- **Replace Document** - Opens scanner/upload options (like incomplete state)
+- **Delete Document** - Removes the document after confirmation
 
 ---
 
-## Part 2: Perspective Correction
+## Technical Implementation
 
-### New Function: `applyPerspectiveTransform`
+### File to Modify: `src/components/ApprovalRequirementsBubbles.tsx`
+
+#### 1. Add New State Variables
 
 ```typescript
-export function applyPerspectiveTransform(
-  sourceCanvas: HTMLCanvasElement,
-  corners: DetectedCorners,
-  outputWidth: number,
-  outputHeight: number
-): HTMLCanvasElement;
+// State for managing completed bubble actions
+const [viewingDocument, setViewingDocument] = useState<{
+  id: string;
+  filename: string;
+  file_path: string;
+  mime_type: string | null;
+  document_type: string | null;
+} | null>(null);
+const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+const [deletingDocKey, setDeletingDocKey] = useState<string | null>(null);
+const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+const [isDeleting, setIsDeleting] = useState(false);
 ```
 
-**Algorithm:**
-1. Calculate perspective transform matrix from source corners to destination rectangle
-2. Apply bilinear interpolation for each destination pixel
-3. Output a perfectly rectangular document image
-
-**Implementation:**
-- Use homography matrix calculation (3x3 transform)
-- Apply inverse mapping for smooth output
-- Standard A4/Letter aspect ratio output (8.5:11)
-
----
-
-## Part 3: Shadow Removal & Enhancement
-
-### New File: `src/utils/documentEnhancement.ts`
-
-Professional document enhancement pipeline:
+#### 2. Add Query to Fetch Documents for This Lead
 
 ```typescript
-export interface EnhancementOptions {
-  mode: 'color' | 'grayscale' | 'bw';
-  shadowRemoval: boolean;
-  contrastBoost: number; // 1.0 = normal
-  brightnessNormalize: boolean;
-  sharpen: boolean;
-}
-
-export function enhanceDocument(
-  canvas: HTMLCanvasElement,
-  options: EnhancementOptions
-): HTMLCanvasElement;
+// Fetch documents for this pipeline entry to enable review/delete
+const { data: requirementDocuments, refetch: refetchDocuments } = useQuery({
+  queryKey: ['requirement-documents', pipelineEntryId],
+  queryFn: async () => {
+    if (!pipelineEntryId) return [];
+    const { data, error } = await supabase
+      .from('documents')
+      .select('id, filename, file_path, mime_type, document_type')
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .in('document_type', ['contract', 'notice_of_commencement', 'required_photos', 'inspection_photo', 'photos']);
+    if (error) throw error;
+    return data || [];
+  },
+  enabled: !!pipelineEntryId,
+});
 ```
 
-**Processing Pipeline:**
+#### 3. Add Helper to Find Document for a Requirement
 
-#### 3.1 Adaptive Shadow Removal
 ```typescript
-function adaptiveShadowRemoval(imageData: ImageData): ImageData {
-  // 1. Calculate local mean brightness in 15x15 blocks
-  // 2. Normalize each pixel relative to local background
-  // 3. This removes uneven lighting and shadows
-}
-```
-
-#### 3.2 Sauvola Binarization (for B&W mode)
-```typescript
-function sauvolaBinarization(imageData: ImageData, k: number = 0.2): ImageData {
-  // Adaptive thresholding that handles shadows
-  // T(x,y) = mean(x,y) * (1 + k * (std(x,y)/R - 1))
-  // Where R is dynamic range (128 for 8-bit)
-}
-```
-
-#### 3.3 Contrast Enhancement
-```typescript
-function enhanceContrast(imageData: ImageData, factor: number): ImageData {
-  // Stretch histogram to use full 0-255 range
-  // Apply S-curve for natural contrast boost
-}
-```
-
-#### 3.4 Unsharp Mask Sharpening
-```typescript
-function unsharpMask(imageData: ImageData, amount: number = 0.5): ImageData {
-  // Sharpen text edges for crisp output
-  // output = original + amount * (original - blurred)
-}
-```
-
----
-
-## Part 4: Scanner UI Enhancements
-
-### Updates to `DocumentScannerDialog.tsx`
-
-#### 4.1 New State & Imports
-```typescript
-import { detectDocumentEdges, DetectedCorners } from '@/utils/documentEdgeDetection';
-import { enhanceDocument, applyPerspectiveTransform } from '@/utils/documentEnhancement';
-
-const [detectedCorners, setDetectedCorners] = useState<DetectedCorners | null>(null);
-const [processingMode, setProcessingMode] = useState<'color' | 'bw'>('bw'); // B&W default for docs
-const [isProcessing, setIsProcessing] = useState(false);
-```
-
-#### 4.2 Edge Detection Loop
-```typescript
-// Run every 200ms while camera is active
-useEffect(() => {
-  if (!cameraReady || !videoRef.current) return;
+const getDocumentForRequirement = (stepKey: string) => {
+  if (!requirementDocuments) return null;
   
-  const interval = setInterval(() => {
-    const video = videoRef.current!;
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = video.videoWidth / 4; // Downsample for speed
-    tempCanvas.height = video.videoHeight / 4;
-    const ctx = tempCanvas.getContext('2d')!;
-    ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
-    
-    const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
-    const corners = detectDocumentEdges(imageData);
-    
-    if (corners) {
-      // Scale corners back to full resolution
-      setDetectedCorners({
-        ...corners,
-        topLeft: { x: corners.topLeft.x * 4, y: corners.topLeft.y * 4 },
-        // ... scale all corners
-      });
-    }
-  }, 200);
+  // Map step keys to document types
+  const typeMap: Record<string, string[]> = {
+    'contract': ['contract'],
+    'notice_of_commencement': ['notice_of_commencement'],
+    'required_photos': ['required_photos', 'inspection_photo', 'photos'],
+  };
   
-  return () => clearInterval(interval);
-}, [cameraReady]);
-```
-
-#### 4.3 Enhanced Capture Function
-```typescript
-const captureAndProcess = useCallback(async () => {
-  if (!videoRef.current || !canvasRef.current) return;
-  
-  setIsProcessing(true);
-  
-  // 1. Capture full-resolution frame
-  const video = videoRef.current;
-  const canvas = canvasRef.current;
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  const ctx = canvas.getContext('2d')!;
-  ctx.drawImage(video, 0, 0);
-  
-  // 2. Apply perspective correction if edges detected
-  let processedCanvas = canvas;
-  if (detectedCorners && detectedCorners.confidence > 0.5) {
-    processedCanvas = applyPerspectiveTransform(
-      canvas,
-      detectedCorners,
-      2550, // 8.5" at 300 DPI
-      3300  // 11" at 300 DPI
-    );
-  }
-  
-  // 3. Apply enhancement pipeline
-  const enhanced = enhanceDocument(processedCanvas, {
-    mode: processingMode,
-    shadowRemoval: true,
-    contrastBoost: 1.3,
-    brightnessNormalize: true,
-    sharpen: true,
-  });
-  
-  // 4. Convert to blob and add to pages
-  enhanced.toBlob((blob) => {
-    if (blob) {
-      const preview = URL.createObjectURL(blob);
-      setCapturedPages(prev => [...prev, { blob, preview }]);
-    }
-    setIsProcessing(false);
-  }, 'image/jpeg', 0.95);
-  
-}, [detectedCorners, processingMode]);
-```
-
-#### 4.4 Edge Overlay UI
-```tsx
-{/* Edge detection overlay */}
-{cameraReady && detectedCorners && (
-  <svg 
-    className="absolute inset-0 pointer-events-none"
-    viewBox={`0 0 ${videoWidth} ${videoHeight}`}
-  >
-    <polygon
-      points={`
-        ${detectedCorners.topLeft.x},${detectedCorners.topLeft.y}
-        ${detectedCorners.topRight.x},${detectedCorners.topRight.y}
-        ${detectedCorners.bottomRight.x},${detectedCorners.bottomRight.y}
-        ${detectedCorners.bottomLeft.x},${detectedCorners.bottomLeft.y}
-      `}
-      fill="rgba(34, 197, 94, 0.2)"
-      stroke="#22c55e"
-      strokeWidth="3"
-    />
-    {/* Corner markers */}
-    {Object.values(detectedCorners).filter(c => typeof c === 'object').map((corner, i) => (
-      <circle
-        key={i}
-        cx={corner.x}
-        cy={corner.y}
-        r="12"
-        fill="#22c55e"
-        stroke="white"
-        strokeWidth="2"
-      />
-    ))}
-  </svg>
-)}
-
-{/* Detection status indicator */}
-{cameraReady && (
-  <div className={cn(
-    "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium",
-    detectedCorners?.confidence > 0.7 
-      ? "bg-green-500/90 text-white" 
-      : "bg-yellow-500/90 text-white"
-  )}>
-    {detectedCorners?.confidence > 0.7 ? '✓ Document Detected' : 'Position document in frame'}
-  </div>
-)}
-```
-
-#### 4.5 Mode Toggle
-```tsx
-{/* Enhancement mode selector */}
-<div className="flex gap-2 px-4 py-2 border-t bg-muted/30">
-  <Button
-    variant={processingMode === 'bw' ? 'default' : 'outline'}
-    size="sm"
-    onClick={() => setProcessingMode('bw')}
-  >
-    📄 Document
-  </Button>
-  <Button
-    variant={processingMode === 'color' ? 'default' : 'outline'}
-    size="sm"
-    onClick={() => setProcessingMode('color')}
-  >
-    🖼️ Color
-  </Button>
-</div>
-```
-
----
-
-## Part 5: High-Quality PDF Output
-
-### Update `generateCombinedPDF` function
-
-```typescript
-const generateCombinedPDF = async (pages: CapturedPage[]): Promise<Blob> => {
-  const pdf = new jsPDF({
-    orientation: 'portrait',
-    unit: 'in',
-    format: 'letter',
-    compress: true,
-  });
-
-  for (let i = 0; i < pages.length; i++) {
-    if (i > 0) pdf.addPage();
-    
-    const dataUrl = await blobToDataURL(pages[i].blob);
-    
-    // Full page, edge-to-edge for scanned documents
-    // Images are already perspective-corrected to 8.5x11 ratio
-    pdf.addImage(dataUrl, 'JPEG', 0, 0, 8.5, 11, undefined, 'FAST');
-  }
-
-  return pdf.output('blob');
+  const docTypes = typeMap[stepKey] || [stepKey];
+  return requirementDocuments.find(doc => 
+    doc.document_type && docTypes.includes(doc.document_type)
+  );
 };
 ```
 
+#### 4. Add Delete Handler
+
+```typescript
+const handleDeleteRequirementDoc = async () => {
+  if (!deletingDocId) return;
+  
+  setIsDeleting(true);
+  try {
+    const { error } = await supabase.functions.invoke('delete-documents', {
+      body: { document_ids: [deletingDocId], mode: 'delete_only' }
+    });
+    
+    if (error) throw error;
+    
+    toast({
+      title: "Document Deleted",
+      description: "You can now upload a new document.",
+    });
+    
+    refetchDocuments();
+    onUploadComplete?.();
+  } catch (error: any) {
+    toast({
+      title: "Delete Failed",
+      description: error.message || "Could not delete document",
+      variant: "destructive",
+    });
+  } finally {
+    setIsDeleting(false);
+    setDeleteConfirmOpen(false);
+    setDeletingDocId(null);
+    setDeletingDocKey(null);
+  }
+};
+```
+
+#### 5. Update Completed Bubble Rendering (Lines 640-664)
+
+Replace the non-interactive completed bubble with a Popover:
+
+```typescript
+// BEFORE: Static completed bubble (lines 640-664)
+<div className={cn(
+  "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full ...",
+  isComplete ? `bg-gradient-to-br ${step.color} ...` : "..."
+)}>
+  ...
+</div>
+
+// AFTER: Interactive Popover for completed bubbles
+{isComplete ? (
+  <Popover>
+    <PopoverTrigger asChild>
+      <div className={cn(
+        "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
+        "border-2 sm:border-4 cursor-pointer",
+        `bg-gradient-to-br ${step.color} border-white shadow-lg hover:scale-110 hover:-translate-y-1 hover:shadow-xl`
+      )}>
+        <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
+        {/* Checkmark Badge */}
+        <div className="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md">
+          <CheckCircle className="h-3 w-3 text-success-foreground" />
+        </div>
+      </div>
+    </PopoverTrigger>
+    <PopoverContent className="w-56 p-2">
+      <div className="space-y-1">
+        {/* View Document */}
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => {
+            const doc = getDocumentForRequirement(step.key);
+            if (doc) setViewingDocument(doc);
+          }}
+          disabled={!getDocumentForRequirement(step.key)}
+        >
+          <Eye className="h-4 w-4 mr-2" />
+          View Document
+        </Button>
+        
+        {/* Replace Document */}
+        <Button
+          variant="ghost"
+          className="w-full justify-start"
+          onClick={() => {
+            setScanningDocType(step.key);
+            setScanningDocLabel(step.label);
+            setScannerOpen(true);
+          }}
+        >
+          <Camera className="h-4 w-4 mr-2" />
+          Replace Document
+        </Button>
+        
+        {/* Delete Document */}
+        <Button
+          variant="ghost"
+          className="w-full justify-start text-destructive hover:text-destructive"
+          onClick={() => {
+            const doc = getDocumentForRequirement(step.key);
+            if (doc) {
+              setDeletingDocId(doc.id);
+              setDeletingDocKey(step.label);
+              setDeleteConfirmOpen(true);
+            }
+          }}
+          disabled={!getDocumentForRequirement(step.key)}
+        >
+          <Trash2 className="h-4 w-4 mr-2" />
+          Delete Document
+        </Button>
+      </div>
+    </PopoverContent>
+  </Popover>
+) : (
+  // ... existing incomplete bubble rendering
+)}
+```
+
+#### 6. Add DocumentPreviewModal for Viewing
+
+```typescript
+// Add import at top
+import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
+
+// Add modal after AlertDialogs
+{viewingDocument && (
+  <DocumentPreviewModal
+    document={viewingDocument}
+    isOpen={!!viewingDocument}
+    onClose={() => setViewingDocument(null)}
+    onDownload={(doc) => {
+      // Simple download handler
+      const bucket = doc.document_type === 'contract' ? 'documents' : 'documents';
+      supabase.storage.from(bucket).download(doc.file_path).then(({ data }) => {
+        if (data) {
+          const url = URL.createObjectURL(data);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = doc.filename;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+      });
+    }}
+  />
+)}
+```
+
+#### 7. Add Delete Confirmation Dialog
+
+```typescript
+// Delete confirmation AlertDialog (after Override dialog)
+<AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Delete {deletingDocKey} Document?</AlertDialogTitle>
+      <AlertDialogDescription>
+        This will permanently delete the document. You will need to upload a new one to complete this requirement.
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+      <AlertDialogAction
+        onClick={handleDeleteRequirementDoc}
+        disabled={isDeleting}
+        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+      >
+        {isDeleting ? 'Deleting...' : 'Delete Document'}
+      </AlertDialogAction>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+#### 8. Add New Imports
+
+```typescript
+import { Eye, Trash2 } from 'lucide-react';
+import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
+```
+
 ---
 
-## Files to Create
+## UI Changes
 
-| File | Purpose |
-|------|---------|
-| `src/utils/documentEdgeDetection.ts` | Edge detection & corner finding |
-| `src/utils/documentEnhancement.ts` | Shadow removal, contrast, sharpening |
+### Completed Bubble Popover Menu
+
+```text
++-------------------------+
+|  👁️  View Document      |
+|  📷  Replace Document   |
+|  🗑️  Delete Document    |  (red text)
++-------------------------+
+```
+
+### User Flow
+
+1. **View**: Click completed bubble → "View Document" → Preview modal opens
+2. **Replace**: Click completed bubble → "Replace Document" → Scanner opens → New doc replaces old
+3. **Delete**: Click completed bubble → "Delete Document" → Confirm dialog → Document removed → Bubble returns to "Pending"
+
+---
 
 ## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/documents/DocumentScannerDialog.tsx` | Add edge overlay, processing pipeline, mode toggle |
+| `src/components/ApprovalRequirementsBubbles.tsx` | Add imports, state, query, handlers, Popover for completed bubbles, preview modal, delete confirmation |
 
 ---
 
-## Processing Quality Targets
+## Special Handling
 
-| Metric | Target |
-|--------|--------|
-| Edge detection accuracy | >90% on well-lit documents |
-| Shadow removal | Eliminates visible shadows from overhead lighting |
-| Text clarity | Razor-sharp at 300 DPI equivalent |
-| Processing time | <500ms per page on mobile |
-| Output quality | Print-ready, indistinguishable from original |
+### Estimate Bubble
+The Estimate bubble is different - it doesn't upload a document but selects an existing estimate. For completed estimates:
+- **View Estimate** → Navigate to estimate detail or show estimate summary
+- **Change Estimate** → Re-open the estimate selector popover
+- **Clear Selection** → Remove the selected estimate
 
----
-
-## User Experience Flow
-
-1. **Open Scanner** → Camera activates
-2. **Position Document** → Green overlay automatically outlines detected edges
-3. **Status Indicator** → "Document Detected" when confident
-4. **Tap Capture** → Brief processing animation
-5. **Review Thumbnail** → Shows enhanced, shadow-free result
-6. **Add More Pages** → Repeat for multi-page documents
-7. **Upload** → Combined into crisp, professional PDF
+### Required Photos
+May have multiple photos. The popover will show:
+- **View Photos** → Opens photo gallery
+- **Add More Photos** → Opens camera
+- **Manage Photos** → Navigate to Documents tab filtered to photos
 
 ---
 
-## Technical Notes
+## Benefits
 
-- **No external libraries needed** - Pure canvas operations
-- **Mobile optimized** - Downsampled edge detection for performance
-- **Fallback behavior** - If no edges detected, captures full frame (manual crop later)
-- **B&W mode default** - Best for official documents like Notice of Commencement
-- **Color mode available** - For photos or colored documents
+1. **Quick Access** - Review documents without leaving the progress view
+2. **Easy Correction** - Delete and re-scan wrong documents immediately
+3. **Clear Feedback** - Confirmation before destructive actions
+4. **Consistent UX** - Same popover pattern for incomplete and complete states
