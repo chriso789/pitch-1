@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FileText, DollarSign, Package, Camera, CheckCircle, ArrowRight, Upload, Shield, AlertCircle } from 'lucide-react';
+import { FileText, DollarSign, Package, Camera, CheckCircle, ArrowRight, Upload, Shield, AlertCircle, Eye, Trash2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -13,6 +13,8 @@ import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
 import { getIcon } from '@/lib/iconMap';
 import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
+import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
+import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import type { DynamicRequirement } from '@/hooks/useLeadDetails';
 
 interface ApprovalRequirements {
@@ -71,6 +73,19 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   const [scannerOpen, setScannerOpen] = useState(false);
   const [scanningDocType, setScanningDocType] = useState<string | null>(null);
   const [scanningDocLabel, setScanningDocLabel] = useState<string>('Document');
+  
+  // Review/Delete state for completed bubbles
+  const [viewingDocument, setViewingDocument] = useState<{
+    id: string;
+    filename: string;
+    file_path: string;
+    mime_type: string | null;
+    document_type: string | null;
+  } | null>(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deletingDocKey, setDeletingDocKey] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const genericFileInputRef = useRef<HTMLInputElement>(null);
@@ -136,6 +151,86 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
     },
     enabled: !!pipelineEntryId,
   });
+
+  // Fetch documents for this pipeline entry to enable review/delete on completed bubbles
+  const { data: requirementDocuments, refetch: refetchDocuments } = useQuery({
+    queryKey: ['requirement-documents', pipelineEntryId],
+    queryFn: async () => {
+      if (!pipelineEntryId) return [];
+      const { data, error } = await supabase
+        .from('documents')
+        .select('id, filename, file_path, mime_type, document_type')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .in('document_type', ['contract', 'notice_of_commencement', 'required_photos', 'inspection_photo', 'photos']);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // Helper to find document for a specific requirement step
+  const getDocumentForRequirement = (stepKey: string) => {
+    if (!requirementDocuments) return null;
+    
+    // Map step keys to document types
+    const typeMap: Record<string, string[]> = {
+      'contract': ['contract'],
+      'notice_of_commencement': ['notice_of_commencement'],
+      'required_photos': ['required_photos', 'inspection_photo', 'photos'],
+    };
+    
+    const docTypes = typeMap[stepKey] || [stepKey];
+    return requirementDocuments.find(doc => 
+      doc.document_type && docTypes.includes(doc.document_type)
+    );
+  };
+
+  // Delete handler for requirement documents
+  const handleDeleteRequirementDoc = async () => {
+    if (!deletingDocId) return;
+    
+    setIsDeleting(true);
+    try {
+      const { error } = await supabase.functions.invoke('delete-documents', {
+        body: { document_ids: [deletingDocId], mode: 'delete_only' }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Document Deleted",
+        description: "You can now upload a new document.",
+      });
+      
+      refetchDocuments();
+      onUploadComplete?.();
+    } catch (error: any) {
+      toast({
+        title: "Delete Failed",
+        description: error.message || "Could not delete document",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmOpen(false);
+      setDeletingDocId(null);
+      setDeletingDocKey(null);
+    }
+  };
+
+  // Download handler for document preview
+  const handleDownloadDocument = async (doc: { id: string; filename: string; file_path: string; mime_type: string | null; document_type: string | null }) => {
+    const bucket = resolveStorageBucket(doc.document_type, doc.file_path);
+    const { data } = await supabase.storage.from(bucket).download(doc.file_path);
+    if (data) {
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+  };
   
   const completedCount = bubbleSteps.filter(step => step.isComplete).length;
   const totalCount = bubbleSteps.length;
@@ -637,29 +732,92 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                         </div>
                       </PopoverContent>
                     </Popover>
+                  ) : isComplete ? (
+                    // Completed bubble - now interactive with review/delete options
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <div
+                          className={cn(
+                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
+                            "border-2 sm:border-4 cursor-pointer",
+                            `bg-gradient-to-br ${step.color} border-white shadow-lg hover:scale-110 hover:-translate-y-1 hover:shadow-xl`
+                          )}
+                        >
+                          <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
+                          {/* Checkmark Badge */}
+                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md">
+                            <CheckCircle className="h-3 w-3 text-success-foreground" />
+                          </div>
+                        </div>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 p-2">
+                        <div className="space-y-1">
+                          {/* View Document - only for document-based steps, not estimate */}
+                          {step.key !== 'estimate' && (
+                            <Button
+                              variant="ghost"
+                              className="w-full justify-start"
+                              onClick={() => {
+                                const doc = getDocumentForRequirement(step.key);
+                                if (doc) setViewingDocument(doc);
+                              }}
+                              disabled={!getDocumentForRequirement(step.key)}
+                            >
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Document
+                            </Button>
+                          )}
+                          
+                          {/* Replace Document */}
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => {
+                              if (step.key === 'estimate') {
+                                setOpenEstimatePopover(true);
+                              } else {
+                                setScanningDocType(step.key);
+                                setScanningDocLabel(step.label);
+                                setScannerOpen(true);
+                              }
+                            }}
+                          >
+                            <Camera className="h-4 w-4 mr-2" />
+                            {step.key === 'estimate' ? 'Change Estimate' : 'Replace Document'}
+                          </Button>
+                          
+                          {/* Delete Document - only for document-based steps, not estimate */}
+                          {step.key !== 'estimate' && (
+                            <Button
+                              variant="ghost"
+                              className="w-full justify-start text-destructive hover:text-destructive"
+                              onClick={() => {
+                                const doc = getDocumentForRequirement(step.key);
+                                if (doc) {
+                                  setDeletingDocId(doc.id);
+                                  setDeletingDocKey(step.label);
+                                  setDeleteConfirmOpen(true);
+                                }
+                              }}
+                              disabled={!getDocumentForRequirement(step.key)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete Document
+                            </Button>
+                          )}
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   ) : (
+                    // Incomplete non-interactive bubble (fallback for steps without upload handling)
                     <div
                       className={cn(
                         "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
                         "border-2 sm:border-4",
-                        isComplete
-                          ? `bg-gradient-to-br ${step.color} border-white shadow-lg animate-scale-in hover:scale-110 hover:-translate-y-1 hover:shadow-xl cursor-pointer`
-                          : "bg-muted border-border opacity-50"
+                        "bg-muted border-border opacity-50"
                       )}
                     >
-                      <Icon 
-                        className={cn(
-                          "h-4 w-4 sm:h-6 sm:w-6 transition-colors",
-                          isComplete ? "text-white" : "text-muted-foreground"
-                        )} 
-                      />
-                      
-                      {/* Checkmark Badge */}
-                      {isComplete && (
-                        <div className="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md animate-fade-in">
-                          <CheckCircle className="h-3 w-3 text-success-foreground" />
-                        </div>
-                      )}
+                      <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground" />
                     </div>
                   )}
                   
@@ -796,9 +954,44 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
           documentType={scanningDocType || 'document'}
           documentLabel={scanningDocLabel}
           pipelineEntryId={pipelineEntryId}
-          onUploadComplete={onUploadComplete}
+          onUploadComplete={() => {
+            refetchDocuments();
+            onUploadComplete?.();
+          }}
         />
       )}
+
+      {/* Document Preview Modal for viewing requirement documents */}
+      {viewingDocument && (
+        <DocumentPreviewModal
+          document={viewingDocument}
+          isOpen={!!viewingDocument}
+          onClose={() => setViewingDocument(null)}
+          onDownload={handleDownloadDocument}
+        />
+      )}
+
+      {/* Delete Confirmation Dialog for requirement documents */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {deletingDocKey} Document?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the document. You will need to upload a new one to complete this requirement.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteRequirementDoc}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? 'Deleting...' : 'Delete Document'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
