@@ -87,9 +87,9 @@ export function DocumentScannerDialog({
         setVideoHeight(video.videoHeight);
       }
       
-      // Downsample for performance
+      // Downsample for performance (2x preserves more edge detail)
       const tempCanvas = document.createElement('canvas');
-      const scale = 4;
+      const scale = 2;
       tempCanvas.width = Math.floor(video.videoWidth / scale);
       tempCanvas.height = Math.floor(video.videoHeight / scale);
       const ctx = tempCanvas.getContext('2d');
@@ -191,7 +191,7 @@ export function DocumentScannerDialog({
 
       // Apply perspective correction if edges detected with good confidence
       let processedCanvas: HTMLCanvasElement = canvas;
-      if (detectedCorners && detectedCorners.confidence > 0.5) {
+      if (detectedCorners && detectedCorners.confidence > 0.6) {
         processedCanvas = applyPerspectiveTransform(
           canvas,
           detectedCorners,
@@ -346,12 +346,8 @@ export function DocumentScannerDialog({
           file_size: pdfBlob.size,
           mime_type: 'application/pdf',
           uploaded_by: user.id,
-          metadata: {
-            page_count: capturedPages.length,
-            scan_timestamp: timestamp,
-            generated_from: 'document_scanner',
-            enhancement_mode: processingMode,
-          },
+          // Store scan metadata in description field (metadata column doesn't exist)
+          description: `Scanned document: ${capturedPages.length} page(s), ${processingMode} mode, ${new Date(timestamp).toLocaleString()}`,
         });
 
       if (dbError) throw dbError;
@@ -492,8 +488,8 @@ export function DocumentScannerDialog({
               {cameraReady && (
                 <div className={cn(
                   "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg",
-                  detectedCorners && detectedCorners.confidence > 0.6
-                    ? "bg-green-500/90 text-white" 
+                  detectedCorners && detectedCorners.confidence > 0.65
+                    ? "bg-green-500/90 text-white"
                     : "bg-yellow-500/90 text-white"
                 )}>
                   {detectedCorners && detectedCorners.confidence > 0.6 
