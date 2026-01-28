@@ -39,7 +39,8 @@ export interface PricingBreakdown {
   repCommissionAmount: number;
   sellingPrice: number;
   actualProfitMargin: number;
-  // Sales tax
+  // Sales tax (applied to materials portion only - labor is tax-exempt)
+  materialsSellingPortion: number; // Materials portion of selling price for tax calculation
   salesTaxAmount: number;
   totalWithTax: number;
 }
@@ -166,9 +167,12 @@ export function useEstimatePricing(
       repCommissionAmount = sellingPrice * (config.repCommissionPercent / 100);
     }
 
-    // Calculate sales tax (applied to selling price)
+    // Calculate sales tax (applied to MATERIALS portion only - labor is tax-exempt)
+    // Proportionally allocate selling price between materials and labor based on direct cost ratio
+    const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
+    const materialsSellingPortion = sellingPrice * materialsRatio;
     const salesTaxAmount = config.salesTaxEnabled 
-      ? sellingPrice * (config.salesTaxRate / 100) 
+      ? materialsSellingPortion * (config.salesTaxRate / 100) 
       : 0;
     const totalWithTax = sellingPrice + salesTaxAmount;
 
@@ -183,6 +187,7 @@ export function useEstimatePricing(
       repCommissionAmount,
       sellingPrice,
       actualProfitMargin,
+      materialsSellingPortion,
       salesTaxAmount,
       totalWithTax,
     };
