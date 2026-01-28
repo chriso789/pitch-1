@@ -2162,7 +2162,7 @@ Return ONLY valid JSON.`
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'google/gemini-2.5-flash', // Switched from pro for 3-5x speed improvement
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
         max_completion_tokens: 3000
       })
@@ -2308,7 +2308,7 @@ IMPORTANT: Return ONLY valid JSON. Detect ALL visible ridges and hips.`;
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'google/gemini-2.5-flash', // Switched from pro for 3-5x speed improvement
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
         max_completion_tokens: 2000
       })
@@ -3518,7 +3518,12 @@ const ROOF_AREA_CAPS = {
   PLANIMETER_TARGET_ACCURACY: 0.05,  // Target 5% accuracy
   AREA_PERIMETER_MAX_RATIO: 20,  // If area/perimeter > 20, likely multi-building trace (lowered from 22)
   DOUBLE_COUNT_WARNING_THRESHOLD: 1.25,  // Warn if AI area > 125% of Solar (lowered from 1.4)
-  AI_SOLAR_MAX_VARIANCE: 0.20  // If AI > 20% over Solar, use Solar
+  AI_SOLAR_MAX_VARIANCE: 0.20,  // If AI > 20% over Solar, use Solar
+  // NEW: Shape correction for solar_bbox_fallback (bounding boxes over-estimate non-rectangular roofs)
+  BBOX_SHAPE_CORRECTION_DEFAULT: 0.78,    // Typical L/T-shaped roofs fill ~78% of bbox
+  BBOX_SHAPE_CORRECTION_FLORIDA: 0.72,    // Florida roofs with screen enclosures make bbox even larger
+  BBOX_SHAPE_CORRECTION_MIN: 0.65,        // Very complex shapes (U-shape, irregular)
+  BBOX_SHAPE_CORRECTION_MAX: 0.88,        // Near-rectangular shapes
 }
 
 // isFloridaAddress is now imported from roof-analysis-helpers.ts
@@ -3762,9 +3767,33 @@ function calculateAreaFromPerimeterVertices(
       }
     }
   } else if (isSolarBboxFallback) {
-    // When using solar_bbox_fallback, the shoelace calculation IS the best we have
-    // The Solar buildingFootprintSqft is the same bounding box area - don't override with itself
-    console.log(`📐 solar_bbox_fallback: Using shoelace polygon area ${calculatedArea.toFixed(0)} sqft (not overriding with Solar bbox ${solarData?.buildingFootprintSqft?.toFixed(0) || 'N/A'} sqft)`)
+    // When using solar_bbox_fallback, apply shape correction factor
+    // Most residential roofs are NOT rectangles - L-shape, T-shape, etc.
+    // The bbox is a simple rectangle that includes empty space at corners
+    const originalBboxArea = calculatedArea;
+    
+    const isFlorida = address ? isFloridaAddress(address) : false;
+    
+    // Use area/perimeter ratio to estimate shape complexity
+    // Perfect square ratio = side/4 (e.g., 50ft side = 12.5 ratio)
+    // L-shaped buildings have LOWER ratios (more perimeter per unit area)
+    const shapeEfficiencyFromRatio = Math.min(0.90, Math.max(0.60, areaPerimeterRatio / 18));
+    
+    // Apply region-specific correction
+    // Florida properties often have screen enclosures that inflate the bounding box
+    const shapeCorrection = isFlorida 
+      ? ROOF_AREA_CAPS.BBOX_SHAPE_CORRECTION_FLORIDA 
+      : ROOF_AREA_CAPS.BBOX_SHAPE_CORRECTION_DEFAULT;
+    
+    // Use the lower of estimated efficiency or default correction
+    const finalCorrection = Math.min(shapeEfficiencyFromRatio, shapeCorrection);
+    
+    calculatedArea = calculatedArea * finalCorrection;
+    
+    console.log(`📐 solar_bbox_fallback: Applying ${(finalCorrection * 100).toFixed(0)}% shape correction`);
+    console.log(`📐 Bbox area: ${originalBboxArea.toFixed(0)} → Corrected: ${calculatedArea.toFixed(0)} sqft`);
+    console.log(`📐 (isFlorida=${isFlorida}, areaPerimRatio=${areaPerimeterRatio.toFixed(1)}, efficiencyEstimate=${(shapeEfficiencyFromRatio * 100).toFixed(0)}%)`);
+    console.warn(`⚠️ ACCURACY DEGRADED: Using solar_bbox_fallback - manual review RECOMMENDED`);
   }
   
   // Hard caps - lowered to catch errors
