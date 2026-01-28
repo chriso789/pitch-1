@@ -1,287 +1,307 @@
 
-# Plan: Fix Estimate Calculations to Use Assigned Rep's Actual Commission & Overhead Rates
+# Plan: Smart CSV Import with Price Comparison & Audit
 
-## Problem Summary
+## Overview
 
-The estimate pricing system uses hardcoded default rates (10% overhead, 8% commission) instead of the actual assigned sales rep's personalized rates from their profile. The screenshot shows "Test Rep" has 5% overhead and 60% commission (Profit Split), but estimates are being calculated with incorrect rates.
-
-## Root Causes Identified
-
-| Issue | Location | Impact |
-|-------|----------|--------|
-| Missing `personal_overhead_rate` in query | `MultiTemplateSelector.tsx` line 203 | Falls back to wrong overhead |
-| Overhead hierarchy not applied | `MultiTemplateSelector.tsx` line 219 | Uses base `overhead_rate` instead of personal |
-| Config initialization timing | `useEstimatePricing.ts` line 69-72 | Defaults applied before rep data arrives |
-| Edge function uses default config | `update-estimate-line-items/index.ts` | Ignores rep-specific rates on save |
-| Secondary rep logic incomplete | Multiple files | Doesn't handle secondary rep commission deduction before primary split |
-
-## User Requirements (Clarified)
-
-1. **Overhead Calculation**: Use the commission-split rep's overhead percentage
-2. **Secondary Rep (Selling Price Commission)**: Their commission is deducted from total profit BEFORE the profit-split rep's percentage is calculated
-3. **Two Profit-Split Reps**: Can only split if they have the SAME overhead percentages
-4. **Auto-Sync**: When assigned rep changes, all estimates automatically recalculate with new rep's rates
+Create an enhanced CSV import workflow for the Material Catalog that compares imported items against existing materials, displays pricing differences in an audit view, and allows selective saving of new/updated items.
 
 ---
 
-## Technical Solution
+## Current State
 
-### Fix 1: Update MultiTemplateSelector to Fetch and Apply Personal Overhead Rate
+The existing `MaterialCatalogManager.tsx` has a basic CSV import that:
+- Parses CSV and calls `api_bulk_import_materials` RPC
+- Blindly upserts all records without comparison
+- No visibility into what changed or what pricing differences exist
 
-**File:** `src/components/estimates/MultiTemplateSelector.tsx`
+---
 
-The existing query (lines 196-209) fetches both `overhead_rate` and `commission_structure`, but needs to also fetch `personal_overhead_rate` and apply the correct hierarchy.
+## Proposed Solution
 
-**Changes:**
-1. Add `personal_overhead_rate` to the profile select query
-2. Apply the hierarchy: `personal_overhead_rate > 0` ? use it : use `overhead_rate`
-3. Pass correct rates to `setConfig`
+### New Component: `MaterialImportAuditDialog.tsx`
+
+A multi-step import dialog that:
+1. **Step 1: Upload** - User uploads CSV file
+2. **Step 2: Analysis** - System compares against existing materials and categorizes:
+   - **New Items** - Not in catalog (will be added)
+   - **Price Increases** - Existing item, new cost > current cost
+   - **Price Decreases** - Existing item, new cost < current cost  
+   - **No Change** - Existing item, same cost
+3. **Step 3: Review & Confirm** - User reviews the audit and selects what to import
+4. **Step 4: Save** - Imports selected items to Material Catalog
+
+---
+
+## Technical Implementation
+
+### 1. New Component Structure
+
+**File:** `src/components/materials/MaterialImportAuditDialog.tsx`
+
+```text
+MaterialImportAuditDialog
+├── Step 1: FileUploadStep (CSV upload + parse)
+├── Step 2: AnalysisStep (compare to existing materials)
+├── Step 3: AuditReviewStep (show price diff table)
+└── Step 4: ConfirmImportStep (save selected items)
+```
+
+### 2. Data Structures
 
 ```typescript
-// Query update (around line 198-206)
-.select(`
-  assigned_to,
-  profiles!pipeline_entries_assigned_to_fkey(
-    first_name,
-    last_name,
-    overhead_rate,
-    personal_overhead_rate,  // ADD THIS
-    commission_rate,
-    commission_structure
-  )
-`)
+interface ImportedItem {
+  code: string;
+  name: string;
+  category: string;
+  uom: string;
+  newCost: number;
+  supplierSku?: string;
+  markupPct?: number;
+  coverage?: number;
+}
 
-// Rate application (around line 216-230)
-const profile = data?.profiles as any;
-if (profile) {
-  // Apply overhead hierarchy: personal_overhead_rate > 0 takes priority
-  const personalOverhead = profile.personal_overhead_rate ?? 0;
-  const baseOverhead = profile.overhead_rate ?? 10;
-  const effectiveOverheadPercent = personalOverhead > 0 ? personalOverhead : baseOverhead;
+interface AuditItem extends ImportedItem {
+  existingMaterial?: Material; // From current catalog
+  currentCost: number | null;
+  priceDiff: number | null;     // newCost - currentCost
+  priceDiffPct: number | null;  // % change
+  status: 'new' | 'increase' | 'decrease' | 'no_change';
+  selected: boolean;            // User can toggle
+}
+
+interface ImportAuditSummary {
+  totalItems: number;
+  newItems: AuditItem[];
+  priceIncreases: AuditItem[];
+  priceDecreases: AuditItem[];
+  noChange: AuditItem[];
+}
+```
+
+### 3. Analysis Logic
+
+When CSV is parsed, fetch existing materials and compare:
+
+```typescript
+async function analyzeImport(importedItems: ImportedItem[], existingMaterials: Material[]): ImportAuditSummary {
+  // Create lookup map by code and supplier_sku
+  const materialByCode = new Map(existingMaterials.map(m => [m.code.toLowerCase(), m]));
+  const materialBySku = new Map(existingMaterials.filter(m => m.supplier_sku).map(m => [m.supplier_sku!.toLowerCase(), m]));
   
-  const rates = {
-    overheadPercent: effectiveOverheadPercent,
-    commissionPercent: profile.commission_rate ?? 50,
-    commissionStructure: (profile.commission_structure === 'sales_percentage' 
-      ? 'sales_percentage' 
-      : 'profit_split') as 'profit_split' | 'sales_percentage',
-    repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
-  };
-  setRepRates(rates);
-  
-  // Apply to pricing config
-  setConfig({
-    overheadPercent: rates.overheadPercent,
-    repCommissionPercent: rates.commissionPercent,
-    commissionStructure: rates.commissionStructure,
+  const auditItems: AuditItem[] = importedItems.map(item => {
+    // Try to match by code first, then by supplier_sku
+    const existing = materialByCode.get(item.code.toLowerCase()) 
+                  || materialBySku.get(item.code.toLowerCase())
+                  || materialBySku.get(item.supplierSku?.toLowerCase() || '');
+    
+    const currentCost = existing?.base_cost ?? null;
+    const priceDiff = currentCost !== null ? item.newCost - currentCost : null;
+    const priceDiffPct = currentCost && currentCost > 0 ? (priceDiff! / currentCost) * 100 : null;
+    
+    let status: AuditItem['status'];
+    if (!existing) {
+      status = 'new';
+    } else if (priceDiff === 0 || priceDiff === null) {
+      status = 'no_change';
+    } else if (priceDiff > 0) {
+      status = 'increase';
+    } else {
+      status = 'decrease';
+    }
+    
+    return {
+      ...item,
+      existingMaterial: existing,
+      currentCost,
+      priceDiff,
+      priceDiffPct,
+      status,
+      selected: status !== 'no_change' // Auto-select new items and price changes
+    };
   });
-}
-```
-
-### Fix 2: Update ProfitCenterPanel to Use Personal Overhead Rate
-
-**File:** `src/components/estimates/ProfitCenterPanel.tsx`
-
-The ProfitCenterPanel already fetches `personal_overhead_rate` (line 75), but the overhead calculation logic (lines 130-132) should be verified to correctly apply the hierarchy.
-
-**Changes:**
-The current logic is correct (lines 130-132):
-```typescript
-const personalOverhead = salesRepData?.personal_overhead_rate ?? 0;
-const baseOverhead = (salesRepData as any)?.overhead_rate ?? 10;
-const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
-```
-
-No changes needed here - just ensure this pattern is replicated everywhere.
-
-### Fix 3: Update EstimateHyperlinkBar to Use Personal Overhead Rate
-
-**File:** `src/components/estimates/EstimateHyperlinkBar.tsx`
-
-The current query (lines 102-105) fetches both rates but needs to apply the hierarchy correctly.
-
-**Changes:**
-Add `personal_overhead_rate` to the query and apply the same hierarchy logic:
-
-```typescript
-// Query already correct (lines 102-105), but add personal_overhead_rate if missing
-.select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(overhead_rate, personal_overhead_rate)')
-
-// Apply hierarchy (around line 108-112)
-const profile = data?.profiles as { overhead_rate: number | null; personal_overhead_rate: number | null } | null;
-const personal = profile?.personal_overhead_rate ?? 0;
-const base = profile?.overhead_rate ?? 10;
-return personal > 0 ? personal : base;
-```
-
-### Fix 4: Update Edge Function to Use Rep-Specific Rates
-
-**File:** `supabase/functions/update-estimate-line-items/index.ts`
-
-When line items are saved, the edge function should fetch and apply the assigned rep's rates rather than using defaults.
-
-**Changes:**
-
-Add a query to fetch the assigned rep's rates from the pipeline entry (around line 95-125):
-
-```typescript
-// After line 119 (tenant validation), add:
-
-// Fetch assigned rep's overhead and commission rates
-const pipelineEntryId = estimate.pipeline_entry_id;
-let repOverheadRate = config.overheadPercent || 10;
-let repCommissionRate = config.repCommissionPercent || 5;
-let commissionStructure = 'profit_split';
-
-if (pipelineEntryId) {
-  const { data: pipelineData } = await serviceClient
-    .from('pipeline_entries')
-    .select(`
-      assigned_to,
-      profiles!pipeline_entries_assigned_to_fkey(
-        overhead_rate,
-        personal_overhead_rate,
-        commission_rate,
-        commission_structure
-      )
-    `)
-    .eq('id', pipelineEntryId)
-    .single();
   
-  if (pipelineData?.profiles) {
-    const profile = pipelineData.profiles as any;
-    const personalOverhead = profile.personal_overhead_rate ?? 0;
-    const baseOverhead = profile.overhead_rate ?? 10;
-    repOverheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
-    repCommissionRate = profile.commission_rate ?? 50;
-    commissionStructure = profile.commission_structure || 'profit_split';
-  }
-}
-
-// Use these rates in calculations below
-const overheadPercent = repOverheadRate;
-const overheadAmount = finalSellingPrice * (overheadPercent / 100);
-
-// Calculate commission based on structure
-let repCommissionAmount: number;
-if (commissionStructure === 'profit_split') {
-  const netProfit = finalSellingPrice - directCost - overheadAmount;
-  repCommissionAmount = Math.max(0, netProfit * (repCommissionRate / 100));
-} else {
-  repCommissionAmount = finalSellingPrice * (repCommissionRate / 100);
+  return {
+    totalItems: auditItems.length,
+    newItems: auditItems.filter(i => i.status === 'new'),
+    priceIncreases: auditItems.filter(i => i.status === 'increase'),
+    priceDecreases: auditItems.filter(i => i.status === 'decrease'),
+    noChange: auditItems.filter(i => i.status === 'no_change')
+  };
 }
 ```
 
-### Fix 5: Update RepProfitBreakdown for Secondary Rep Commission Deduction
+### 4. UI Design for Audit View
 
-**File:** `src/components/estimates/RepProfitBreakdown.tsx`
+The audit step shows a summary card + detailed table:
 
-When a secondary rep with `sales_percentage` (Percent of Contract) commission is assigned, their commission should be deducted from gross profit BEFORE calculating the primary rep's profit split.
-
-**Changes:**
-
-Update the commission calculation logic (around lines 117-155):
-
-```typescript
-// Calculate commissions with proper ordering
-// Step 1: Calculate gross profit (before any commissions)
-const totalCost = materialCost + laborCost;
-const grossProfit = sellingPrice - totalCost;
-
-// Step 2: Deduct company overhead (from primary/profit-split rep)
-const overheadAmount = sellingPrice * (primaryOverheadRate / 100);
-const profitAfterOverhead = grossProfit - overheadAmount;
-
-// Step 3: If secondary rep is "sales_percentage" type, deduct their commission first
-let profitAfterSecondary = profitAfterOverhead;
-let secondaryRepCommission = 0;
-
-if (hasSecondaryRep && secondaryCommissionStructure === 'percentage_contract_price') {
-  // Secondary rep takes percentage of selling price (deducted before profit split)
-  secondaryRepCommission = sellingPrice * (secondaryCommissionRate / 100);
-  profitAfterSecondary = profitAfterOverhead - secondaryRepCommission;
-}
-
-// Step 4: Primary (profit-split) rep takes their percentage of remaining profit
-let primaryRepCommission = 0;
-if (primaryCommissionStructure === 'profit_split') {
-  primaryRepCommission = Math.max(0, profitAfterSecondary * (primaryCommissionRate / 100));
-} else {
-  primaryRepCommission = sellingPrice * (primaryCommissionRate / 100);
-}
-
-// Step 5: Apply split percentages if both reps are profit-split with same overhead
-// (User requirement: two profit-split reps can only split if same overhead %)
-if (hasSecondaryRep && 
-    secondaryCommissionStructure === 'profit_split' && 
-    primaryOverheadRate === secondaryOverheadRate) {
-  // Both are profit-split with same overhead - apply split percentages
-  const totalProfitSplitCommission = profitAfterSecondary * (primaryCommissionRate / 100);
-  primaryRepCommission = (totalProfitSplitCommission * primarySplitPercent) / 100;
-  secondaryRepCommission = (totalProfitSplitCommission * secondarySplitPercent) / 100;
-}
-
-const totalRepCommission = primaryRepCommission + secondaryRepCommission;
-const companyNet = profitAfterSecondary - totalRepCommission;
+**Summary Cards:**
+```text
+┌──────────────┐ ┌──────────────┐ ┌──────────────┐ ┌──────────────┐
+│  📦 NEW      │ │  📈 INCREASE │ │  📉 DECREASE │ │  ✓ NO CHANGE │
+│     12       │ │      8       │ │      3       │ │      45      │
+│   items      │ │   items      │ │   items      │ │   items      │
+└──────────────┘ └──────────────┘ └──────────────┘ └──────────────┘
 ```
 
-### Fix 6: Update useEstimatePricing Hook to Accept Initial Config Properly
+**Audit Table (tabs for each category):**
+```text
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ [✓] Code       │ Name                   │ Current │ New     │ Diff   │ %    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [✓] SRS-HDZ    │ GAF Timberline HDZ     │ $110.00 │ $115.00 │ +$5.00 │ +4.5%│
+│ [✓] SRS-OC-DUR │ OC Duration            │ $108.00 │ $114.00 │ +$6.00 │ +5.6%│
+│ [ ] SRS-CT-LM  │ CertainTeed Landmark   │ $113.00 │ $113.00 │ $0.00  │ 0%   │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-**File:** `src/hooks/useEstimatePricing.ts`
+- Rows are color-coded: green for new, yellow/orange for increases, blue for decreases
+- Checkboxes allow selecting which items to save
+- "Select All" / "Deselect All" buttons per category
 
-The hook already has a `useEffect` to update config when `initialConfig` changes (lines 76-80), but the dependency array only checks specific properties. This should be more robust.
+### 5. Save Logic
 
-**Changes:**
-
-Update the useEffect to properly sync when initialConfig updates (around lines 76-80):
+When user clicks "Save to Catalog":
 
 ```typescript
-// Update config when initialConfig changes (e.g., when rep rates are fetched)
-useEffect(() => {
-  if (initialConfig) {
-    setConfigState(current => ({
-      ...current,
-      overheadPercent: initialConfig.overheadPercent ?? current.overheadPercent,
-      repCommissionPercent: initialConfig.repCommissionPercent ?? current.repCommissionPercent,
-      commissionStructure: initialConfig.commissionStructure ?? current.commissionStructure,
-    }));
+async function saveSelectedItems(items: AuditItem[]): Promise<{ added: number; updated: number }> {
+  const selectedItems = items.filter(i => i.selected);
+  
+  // Call existing RPC or new dedicated RPC
+  const { data, error } = await supabase.rpc('api_bulk_import_materials', {
+    p_materials: selectedItems.map(item => ({
+      code: item.code,
+      name: item.name,
+      category: item.category,
+      uom: item.uom,
+      base_cost: item.newCost,
+      markup_pct: item.markupPct || 0.35,
+      coverage: item.coverage,
+      sku: item.supplierSku
+    }))
+  });
+  
+  // Log to price_history for audit trail
+  for (const item of selectedItems.filter(i => i.status === 'increase' || i.status === 'decrease')) {
+    await supabase.from('price_history').insert({
+      tenant_id: tenantId,
+      sku: item.code,
+      product_name: item.name,
+      old_price: item.currentCost,
+      new_price: item.newCost,
+      price_change_pct: item.priceDiffPct,
+      changed_at: new Date().toISOString()
+    });
   }
-}, [
-  initialConfig?.overheadPercent, 
-  initialConfig?.repCommissionPercent, 
-  initialConfig?.commissionStructure
-]);
+  
+  return {
+    added: selectedItems.filter(i => i.status === 'new').length,
+    updated: selectedItems.filter(i => i.status !== 'new').length
+  };
+}
+```
+
+### 6. Integration with MaterialCatalogManager
+
+Replace the simple import dialog in `MaterialCatalogManager.tsx` with the new audit dialog:
+
+```typescript
+// Before (lines 242-265)
+<Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+  <DialogTrigger asChild>
+    <Button variant="outline">
+      <Upload className="h-4 w-4 mr-2" />
+      Import CSV
+    </Button>
+  </DialogTrigger>
+  <DialogContent>
+    {/* Simple file input */}
+  </DialogContent>
+</Dialog>
+
+// After
+<MaterialImportAuditDialog
+  open={importDialogOpen}
+  onOpenChange={setImportDialogOpen}
+  existingMaterials={materials}
+  onImportComplete={() => {
+    loadData();
+    toast.success('Materials imported successfully');
+  }}
+/>
 ```
 
 ---
 
-## Files to Modify
+## Files to Create/Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/estimates/MultiTemplateSelector.tsx` | Add `personal_overhead_rate` to query, apply overhead hierarchy |
-| `src/components/estimates/EstimateHyperlinkBar.tsx` | Verify overhead hierarchy is applied correctly |
-| `src/components/estimates/RepProfitBreakdown.tsx` | Update secondary rep commission deduction logic |
-| `supabase/functions/update-estimate-line-items/index.ts` | Fetch assigned rep's rates and use in calculations |
-| `src/hooks/useEstimatePricing.ts` | Ensure config syncs when initialConfig updates |
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/materials/MaterialImportAuditDialog.tsx` | **Create** | New multi-step import dialog with audit view |
+| `src/components/materials/ImportAuditTable.tsx` | **Create** | Reusable audit table component with diff highlighting |
+| `src/components/MaterialCatalogManager.tsx` | **Modify** | Replace simple import dialog with new audit dialog |
+
+---
+
+## User Experience Flow
+
+1. User clicks "Import CSV" button in Material Catalog
+2. Dialog opens with file upload dropzone
+3. User uploads CSV file (e.g., from SRS pricelist)
+4. System parses CSV and compares against existing materials (loading spinner)
+5. **Audit View** appears showing:
+   - Summary cards (12 new, 8 price increases, 3 decreases, 45 unchanged)
+   - Tabbed table view with checkboxes for each category
+   - Price differences highlighted with colors and percentage change
+6. User reviews and toggles checkboxes as needed
+7. User clicks "Save Selected Items to Catalog"
+8. Confirmation toast: "Added 12 new materials, updated 11 prices"
+9. Dialog closes, catalog refreshes
+
+---
+
+## Visual Design Specifications
+
+**Color Coding:**
+- **New Items**: Green badge, green highlight
+- **Price Increases**: Orange/yellow badge, warning highlight
+- **Price Decreases**: Blue badge, info highlight  
+- **No Change**: Gray badge, no highlight
+
+**Price Diff Display:**
+- Increases: `+$5.00 (+4.5%)` in orange text
+- Decreases: `-$3.50 (-3.2%)` in blue text
+- No change: `$0.00` in gray text
+
+**Selection States:**
+- Checkbox column for each row
+- "Select All New Items" button
+- "Select All Price Changes" button
+- "Deselect All" button
+
+---
+
+## CSV Format Support
+
+The importer should support flexible column names to handle different vendor formats:
+
+| Accepted Column Names | Maps To |
+|----------------------|---------|
+| `code`, `sku`, `item_code`, `Code`, `SKU`, `Item Code` | `code` |
+| `name`, `description`, `product`, `item_name`, `Name`, `Description` | `name` |
+| `cost`, `price`, `base_cost`, `unit_cost`, `Cost`, `Price` | `base_cost` |
+| `uom`, `unit`, `UOM`, `Unit` | `uom` |
+| `category`, `category_name`, `Category` | `category` |
+| `markup`, `markup_pct`, `Markup` | `markup_pct` |
+| `coverage`, `coverage_per_unit`, `Coverage` | `coverage` |
+| `supplier_sku`, `vendor_sku` | `supplier_sku` |
 
 ---
 
 ## Expected Results
 
-After these changes:
-1. **Test Rep (5% overhead, 60% profit split)** will see estimates calculated with their actual rates
-2. Secondary reps with "Percent of Contract" commission will have their commission deducted BEFORE the primary rep's profit split is calculated
-3. When a project's assigned rep changes, all estimate calculations will auto-update to the new rep's rates
-4. The Profit Center panel will accurately reflect each rep's personalized rates
-
----
-
-## Technical Notes
-
-1. **Overhead Hierarchy**: `personal_overhead_rate > 0` takes precedence over `overhead_rate` (company default)
-2. **Commission Types**:
-   - `profit_split` (Net Profit Split): Commission = Net Profit × Rate %
-   - `sales_percentage` (Percent of Contract): Commission = Selling Price × Rate %
-3. **Secondary Rep Deduction Order**: Secondary rep's "Percent of Contract" commission is deducted from gross profit BEFORE the primary rep's profit split is calculated
-4. **Two Profit-Split Reps**: Only allowed to split if they have the same overhead percentage
+After implementation:
+1. Users can import vendor pricelists (SRS, ABC, etc.) with full visibility into changes
+2. Price increases/decreases are clearly visible before committing
+3. New materials are identified and can be added selectively
+4. Audit trail is maintained in `price_history` table
+5. No accidental price overrides - user explicitly confirms changes
