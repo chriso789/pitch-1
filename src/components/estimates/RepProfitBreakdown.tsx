@@ -109,47 +109,48 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
     : 100;
   const secondarySplitPercent = 100 - primarySplitPercent;
 
-  // Use the higher overhead rate for calculation (company takes the higher)
-  const overheadRate = hasSecondaryRep 
-    ? Math.max(primaryOverheadRate, secondaryOverheadRate)
-    : primaryOverheadRate;
+  // Overhead comes from the profit-split rep (primary by default)
+  // For two profit-split reps, they must have the same overhead
+  const overheadRate = primaryOverheadRate;
 
-  // Calculate primary rep commission
-  const primaryCommissionResult = calculateCommission({
-    contractValue: sellingPrice,
-    actualMaterialCost: materialCost,
-    actualLaborCost: laborCost,
-    adjustments: 0,
-    repOverheadRate: overheadRate,
-    commissionType: primaryCommissionStructure === 'percentage_contract_price' 
-      ? 'percentage_contract_price' 
-      : 'profit_split',
-    commissionRate: primaryCommissionRate
-  });
-
-  // Calculate secondary rep commission if applicable
-  const secondaryCommissionResult = hasSecondaryRep ? calculateCommission({
-    contractValue: sellingPrice,
-    actualMaterialCost: materialCost,
-    actualLaborCost: laborCost,
-    adjustments: 0,
-    repOverheadRate: overheadRate,
-    commissionType: secondaryCommissionStructure === 'percentage_contract_price' 
-      ? 'percentage_contract_price' 
-      : 'profit_split',
-    commissionRate: secondaryCommissionRate
-  }) : null;
-
+  // Calculate costs and profits
   const totalCost = materialCost + laborCost;
-  const overheadAmount = sellingPrice * (overheadRate / 100);
   const grossProfit = sellingPrice - totalCost;
-  const netProfit = primaryCommissionResult.netProfit;
+  const overheadAmount = sellingPrice * (overheadRate / 100);
+  const profitAfterOverhead = grossProfit - overheadAmount;
 
-  // Calculate actual commissions based on split
-  const primaryRepCommission = (primaryCommissionResult.commissionAmount * primarySplitPercent) / 100;
-  const secondaryRepCommission = hasSecondaryRep && secondaryCommissionResult
-    ? (secondaryCommissionResult.commissionAmount * secondarySplitPercent) / 100
-    : 0;
+  // Step 1: If secondary rep is "percentage_contract_price" (Percent of Contract), 
+  // deduct their commission FIRST before calculating primary's profit split
+  let profitAvailableForSplit = profitAfterOverhead;
+  let secondaryRepCommission = 0;
+
+  if (hasSecondaryRep && secondaryCommissionStructure === 'percentage_contract_price') {
+    // Secondary rep with "Percent of Contract" gets paid from selling price first
+    secondaryRepCommission = sellingPrice * (secondaryCommissionRate / 100);
+    profitAvailableForSplit = profitAfterOverhead - secondaryRepCommission;
+  }
+
+  // Step 2: Calculate primary rep commission
+  let primaryRepCommission = 0;
+  if (primaryCommissionStructure === 'profit_split') {
+    // Profit split: percentage of remaining profit after overhead and secondary deduction
+    primaryRepCommission = Math.max(0, profitAvailableForSplit * (primaryCommissionRate / 100));
+  } else {
+    // Percent of Contract: percentage of selling price
+    primaryRepCommission = sellingPrice * (primaryCommissionRate / 100);
+  }
+
+  // Step 3: If both reps are profit-split with same overhead, apply split percentages
+  if (hasSecondaryRep && 
+      secondaryCommissionStructure === 'profit_split' && 
+      primaryOverheadRate === secondaryOverheadRate) {
+    // Both are profit-split with same overhead - split the commission pool
+    const totalProfitSplitCommission = Math.max(0, profitAfterOverhead * (primaryCommissionRate / 100));
+    primaryRepCommission = (totalProfitSplitCommission * primarySplitPercent) / 100;
+    secondaryRepCommission = (totalProfitSplitCommission * secondarySplitPercent) / 100;
+  }
+
+  const netProfit = profitAfterOverhead;
   const totalRepCommission = primaryRepCommission + secondaryRepCommission;
   const companyNet = netProfit - totalRepCommission;
   const profitMargin = sellingPrice > 0 ? (netProfit / sellingPrice) * 100 : 0;

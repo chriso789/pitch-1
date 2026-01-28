@@ -201,6 +201,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               first_name,
               last_name,
               overhead_rate,
+              personal_overhead_rate,
               commission_rate,
               commission_structure
             )
@@ -215,8 +216,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         
         const profile = data?.profiles as any;
         if (profile) {
+          // Apply overhead hierarchy: personal_overhead_rate > 0 takes priority over overhead_rate
+          const personalOverhead = profile.personal_overhead_rate ?? 0;
+          const baseOverhead = profile.overhead_rate ?? 10;
+          const effectiveOverheadPercent = personalOverhead > 0 ? personalOverhead : baseOverhead;
+          
           const rates = {
-            overheadPercent: profile.overhead_rate ?? 10,
+            overheadPercent: effectiveOverheadPercent,
             commissionPercent: profile.commission_rate ?? 50,
             commissionStructure: (profile.commission_structure === 'sales_percentage' ? 'sales_percentage' : 'profit_split') as 'profit_split' | 'sales_percentage',
             repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
@@ -228,6 +234,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             overheadPercent: rates.overheadPercent,
             repCommissionPercent: rates.commissionPercent,
             commissionStructure: rates.commissionStructure,
+          });
+          
+          console.log('[MultiTemplateSelector] Applied rep rates:', {
+            repName: rates.repName,
+            effectiveOverhead: effectiveOverheadPercent,
+            personalOverhead,
+            baseOverhead,
+            commissionRate: rates.commissionPercent,
+            commissionStructure: rates.commissionStructure
           });
         }
       } catch (err) {
