@@ -1180,6 +1180,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setExistingEstimateId(null);
       setEditingEstimateNumber(null);
       setIsEditingLoadedEstimate(false);
+      setEditEstimateProcessed(false);
       setSelectedTemplateId(null);
       setLineItems([]);
     } catch (error) {
