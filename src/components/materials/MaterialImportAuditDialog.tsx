@@ -101,8 +101,107 @@ export function MaterialImportAuditDialog({
     return null;
   };
 
-  const parseCSVRow = (row: any, headers: string[]): ImportedItem | null => {
-    // Expanded to support more vendor formats (SRS, ABC Supply, etc.)
+  // Section header indicators to skip (for SRS-style CSVs)
+  const SECTION_INDICATORS = [
+    'shingle hip and ridge',
+    'mechanically fastened',
+    'self adhered',
+    'residential low slope',
+    'ventilation',
+    'flashing',
+    'drip edge',
+    'accessories',
+    'nails',
+    'sealants',
+    'uom+d',
+    'brand, shingle'
+  ];
+
+  const isSectionHeader = (value: string): boolean => {
+    if (!value) return false;
+    const lower = value.toLowerCase();
+    return SECTION_INDICATORS.some(indicator => lower.includes(indicator));
+  };
+
+  const generateCodeFromName = (name: string): string => {
+    return name
+      .toUpperCase()
+      .replace(/[^A-Z0-9\s]/g, '')
+      .trim()
+      .replace(/\s+/g, '-')
+      .substring(0, 50);
+  };
+
+  const extractUOMFromCalculation = (calc: string): string => {
+    if (!calc) return 'EA';
+    // Examples: "3BD/SQ" → "SQ", "25LF/BD" → "BD", "10SQ/RL" → "RL"
+    const parts = calc.split('/');
+    if (parts.length === 2) {
+      const uom = parts[1].replace(/[^A-Z]/gi, '').toUpperCase();
+      if (uom) return uom;
+    }
+    // Try to find known UOMs
+    const uomMatch = calc.match(/(BD|SQ|RL|EA|LF|BX|CS|PC|TB|GAL|CT)/i);
+    return uomMatch ? uomMatch[1].toUpperCase() : 'EA';
+  };
+
+  const parseCSVRow = (row: any, headers: string[], currentCategory: string = ''): ImportedItem | null => {
+    // Check for SRS format first (has 'item' column but no separate 'name')
+    const itemCol = mapColumnName(headers, ['item', 'Item']);
+    const isSRSFormat = itemCol && !mapColumnName(headers, ['name', 'Name', 'description', 'Description', 'product', 'Product']);
+    
+    if (isSRSFormat) {
+      // SRS-specific parsing
+      const calcCol = mapColumnName(headers, ['calculation', 'Calculation']);
+      const costPerItemCol = mapColumnName(headers, ['cost per item', 'Cost Per Item', '$/UOM']);
+      const costPerBundleCol = mapColumnName(headers, ['cost per bundle', 'Cost Per Bundle']);
+      const costPerSqCol = mapColumnName(headers, ['cost per sq', 'Cost Per Sq', 'cost per square', 'Cost Per Square']);
+      const brandCol = mapColumnName(headers, ['brand', 'brand logo', 'Brand', 'Brand Logo']);
+
+      const itemName = itemCol ? row[itemCol]?.toString().trim() : null;
+      
+      // Skip empty rows or section headers
+      if (!itemName || isSectionHeader(itemName)) return null;
+      
+      // Skip if Brand column has section header text
+      const brandValue = brandCol ? row[brandCol]?.toString().trim() : '';
+      if (brandValue && isSectionHeader(brandValue)) return null;
+
+      // Get cost - try multiple columns in priority order
+      let costStr: string | null = null;
+      if (costPerItemCol && row[costPerItemCol]) {
+        costStr = row[costPerItemCol].toString().replace(/[$,]/g, '').trim();
+      }
+      if ((!costStr || costStr === '0' || costStr === '') && costPerBundleCol && row[costPerBundleCol]) {
+        costStr = row[costPerBundleCol].toString().replace(/[$,]/g, '').trim();
+      }
+      if ((!costStr || costStr === '0' || costStr === '') && costPerSqCol && row[costPerSqCol]) {
+        costStr = row[costPerSqCol].toString().replace(/[$,]/g, '').trim();
+      }
+
+      const cost = costStr ? parseFloat(costStr) : NaN;
+      if (isNaN(cost) || cost <= 0) return null;
+
+      // Extract UOM from calculation column
+      const calcValue = calcCol ? row[calcCol]?.toString().trim() : '';
+      const uom = extractUOMFromCalculation(calcValue);
+
+      // Generate code from item name
+      const code = generateCodeFromName(itemName);
+
+      return {
+        code,
+        name: itemName,
+        newCost: cost,
+        uom,
+        category: currentCategory,
+        markupPct: 0.35,
+        coverage: undefined,
+        supplierSku: undefined,
+      };
+    }
+
+    // Standard format parsing (existing logic)
     const codeCol = mapColumnName(headers, [
       'code', 'sku', 'item_code', 'item', 'item_number', 'part_number', 'product_code',
       'Code', 'SKU', 'Item Code', 'ItemCode', 'Item', 'Item Number', 'Part Number', 'Product Code'
@@ -128,10 +227,6 @@ export function MaterialImportAuditDialog({
     const markupCol = mapColumnName(headers, ['markup', 'markup_pct', 'Markup', 'MarkupPct']);
     const coverageCol = mapColumnName(headers, ['coverage', 'coverage_per_unit', 'Coverage']);
     const skuCol = mapColumnName(headers, ['supplier_sku', 'vendor_sku', 'SupplierSku', 'VendorSku']);
-    const brandCol = mapColumnName(headers, [
-      'brand', 'manufacturer', 'brand_name', 'brand logo',
-      'Brand', 'Manufacturer', 'Brand Name', 'Brand Logo'
-    ]);
 
     const code = codeCol ? row[codeCol]?.toString().trim() : null;
     const name = nameCol ? row[nameCol]?.toString().trim() : null;
@@ -212,9 +307,48 @@ export function MaterialImportAuditDialog({
       complete: (results) => {
         try {
           const headers = results.meta.fields || [];
-          const importedItems: ImportedItem[] = results.data
-            .map((row: any) => parseCSVRow(row, headers))
-            .filter((item): item is ImportedItem => item !== null);
+          
+          // Check if this is an SRS-format CSV (has 'item' column, no 'name' column)
+          const hasItemCol = headers.some(h => h.toLowerCase() === 'item');
+          const hasNameCol = headers.some(h => ['name', 'description', 'product'].includes(h.toLowerCase()));
+          const isSRSFormat = hasItemCol && !hasNameCol;
+          
+          let importedItems: ImportedItem[] = [];
+          
+          if (isSRSFormat) {
+            // SRS-specific parsing with section category tracking
+            let currentCategory = 'Shingles'; // Default first section
+            
+            for (const row of results.data as any[]) {
+              const itemValue = (row as any)['item']?.toString().trim() || '';
+              const brandValue = (row as any)['brand logo']?.toString()?.trim() || (row as any)['Brand']?.toString()?.trim() || '';
+              
+              // Check if this is a section header and update category
+              if (isSectionHeader(itemValue) || isSectionHeader(brandValue)) {
+                // Extract category name from section header
+                const headerText = itemValue || brandValue;
+                if (headerText && !headerText.toLowerCase().includes('uom')) {
+                  // Clean up the category name
+                  currentCategory = headerText
+                    .replace(/^Brand,?\s*/i, '')
+                    .split(' and ')[0]
+                    .split(',')[0]
+                    .trim();
+                }
+                continue;
+              }
+              
+              const parsed = parseCSVRow(row, headers, currentCategory);
+              if (parsed) {
+                importedItems.push(parsed);
+              }
+            }
+          } else {
+            // Standard format parsing
+            importedItems = results.data
+              .map((row: any) => parseCSVRow(row, headers, ''))
+              .filter((item): item is ImportedItem => item !== null);
+          }
 
           if (importedItems.length === 0) {
             toast.error('No valid rows found in CSV. Check column names and data.');
