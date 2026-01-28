@@ -127,6 +127,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   const [isCreatingNewEstimate, setIsCreatingNewEstimate] = useState(false);
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
+  const [estimatePricingTier, setEstimatePricingTier] = useState<'good' | 'better' | 'best' | ''>('');
   
   // Add line item state
   const [isAddingItem, setIsAddingItem] = useState(false);
@@ -964,6 +965,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           status: 'draft',
           template_id: selectedTemplateId,
           display_name: estimateDisplayName.trim() || null,
+          pricing_tier: estimatePricingTier || null,
           customer_name: customerName,
           customer_address: customerAddress,
           property_details: propertyDetails,
@@ -1587,22 +1589,44 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         />
       )}
 
-      {/* Estimate Name Input */}
+      {/* Estimate Name and Pricing Tier */}
       {shouldShowTemplateContent && lineItems.length > 0 && (
-        <div className="space-y-2">
-          <Label htmlFor="estimate-display-name" className="text-sm font-medium">
-            Estimate Name <span className="text-muted-foreground font-normal">(optional)</span>
-          </Label>
-          <Input
-            id="estimate-display-name"
-            value={estimateDisplayName}
-            onChange={(e) => setEstimateDisplayName(e.target.value)}
-            placeholder="e.g., Smith Residence - Full Roof Replacement"
-            className="max-w-md"
-          />
-          <p className="text-xs text-muted-foreground">
-            Leave blank to use auto-generated estimate number
-          </p>
+        <div className="flex gap-4 flex-wrap items-start">
+          <div className="space-y-2 flex-1 min-w-[250px]">
+            <Label htmlFor="estimate-display-name" className="text-sm font-medium">
+              Estimate Name <span className="text-muted-foreground font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="estimate-display-name"
+              value={estimateDisplayName}
+              onChange={(e) => setEstimateDisplayName(e.target.value)}
+              placeholder="e.g., Smith Residence - Full Roof Replacement"
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to use auto-generated estimate number
+            </p>
+          </div>
+          <div className="space-y-2 w-[160px]">
+            <Label htmlFor="estimate-pricing-tier" className="text-sm font-medium">
+              Pricing Tier
+            </Label>
+            <Select
+              value={estimatePricingTier}
+              onValueChange={(val) => setEstimatePricingTier(val as 'good' | 'better' | 'best' | '')}
+            >
+              <SelectTrigger id="estimate-pricing-tier">
+                <SelectValue placeholder="Select tier" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="good">Good</SelectItem>
+                <SelectItem value="better">Better</SelectItem>
+                <SelectItem value="best">Best</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Good/Better/Best
+            </p>
+          </div>
         </div>
       )}
 

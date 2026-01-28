@@ -9943,6 +9943,7 @@ export type Database = {
           permit_costs: number
           pipeline_entry_id: string | null
           price_per_sq_ft: number
+          pricing_tier: string | null
           project_id: string | null
           property_details: Json
           rep_commission_amount: number | null
@@ -10034,6 +10035,7 @@ export type Database = {
           permit_costs?: number
           pipeline_entry_id?: string | null
           price_per_sq_ft?: number
+          pricing_tier?: string | null
           project_id?: string | null
           property_details?: Json
           rep_commission_amount?: number | null
@@ -10125,6 +10127,7 @@ export type Database = {
           permit_costs?: number
           pipeline_entry_id?: string | null
           price_per_sq_ft?: number
+          pricing_tier?: string | null
           project_id?: string | null
           property_details?: Json
           rep_commission_amount?: number | null
