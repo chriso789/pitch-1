@@ -381,7 +381,9 @@ async function tryMapboxVector(options: FootprintResolverOptions): Promise<{
   source: FootprintSource;
   confidence: number;
 } | null> {
-  if (!options.mapboxToken) return null;
+  // Use environment fallback if token not provided
+  const mapboxToken = options.mapboxToken || Deno.env.get('MAPBOX_ACCESS_TOKEN') || '';
+  if (!mapboxToken) return null;
   
   try {
     // Dynamic import to avoid bundling issues
@@ -390,7 +392,7 @@ async function tryMapboxVector(options: FootprintResolverOptions): Promise<{
     const result = await fetchMapboxVectorFootprint(
       options.lat,
       options.lng,
-      options.mapboxToken,
+      mapboxToken,
       { radius: 50 }
     );
     
@@ -487,7 +489,9 @@ async function tryRegridParcel(options: FootprintResolverOptions): Promise<{
   source: FootprintSource;
   confidence: number;
 } | null> {
-  if (!options.regridApiKey) return null;
+  // Use environment fallback if key not provided
+  const regridApiKey = options.regridApiKey || Deno.env.get('REGRID_API_KEY') || '';
+  if (!regridApiKey) return null;
   
   try {
     const { fetchRegridFootprint } = await import('./regrid-footprint-extractor.ts');
@@ -495,7 +499,7 @@ async function tryRegridParcel(options: FootprintResolverOptions): Promise<{
     const result = await fetchRegridFootprint(
       options.lat,
       options.lng,
-      options.regridApiKey
+      regridApiKey
     );
     
     if (result && result.vertices.length >= 4) {
@@ -546,8 +550,9 @@ export async function resolveFootprint(options: FootprintResolverOptions): Promi
     candidates.push(osm);
   }
   
-  // 4. Regrid (PAID - only if free sources fail)
-  if (candidates.length === 0 && options.regridApiKey) {
+  // 4. Regrid (PAID - only if free sources fail or env key is available)
+  const hasRegridKey = options.regridApiKey || Deno.env.get('REGRID_API_KEY');
+  if (candidates.length === 0 && hasRegridKey) {
     const regrid = await tryRegridParcel(options);
     if (regrid) {
       console.log(`✓ Regrid Parcel: ${regrid.vertices.length} vertices, ${(regrid.confidence * 100).toFixed(0)}% confidence`);
