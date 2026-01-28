@@ -159,11 +159,14 @@ Deno.serve(async (req) => {
   const startTime = Date.now()
   
   try {
-    const { address, coordinates, customerId, userId, forceFullAnalysis } = await req.json()
+    const { address, coordinates, customerId, userId, forceFullAnalysis, pitchOverride } = await req.json()
     console.log('🏠 Analyzing roof:', address)
     console.log('📍 Coordinates:', coordinates.lat, coordinates.lng)
     if (forceFullAnalysis) {
       console.log('🔄 forceFullAnalysis=true: Bypassing Solar Fast Path for full AI analysis')
+    }
+    if (pitchOverride) {
+      console.log(`📐 Using manual pitch override: ${pitchOverride}`)
     }
 
     // Initialize Supabase client early for historical lookup
@@ -233,7 +236,8 @@ Deno.serve(async (req) => {
           googleImage,
           mapboxImage,
           supabaseClient,
-          startTime
+          startTime,
+          pitchOverride
         )
         
         if (fastResult.success) {
@@ -819,7 +823,7 @@ Deno.serve(async (req) => {
     const linearTotalsFromWKT = calculateLinearTotalsFromWKT(preLinearFeatures)
     console.log(`📐 Linear totals from WKT:`, linearTotalsFromWKT)
     
-    const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData, linearTotalsFromWKT, actualAreaSqft)
+    const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData, linearTotalsFromWKT, actualAreaSqft, pitchOverride)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
     // Convert derived lines to WKT
@@ -3263,16 +3267,23 @@ function calculateScale(solarData: any, image: any, aiAnalysis: any) {
   return { pixelsPerFoot: bestMethod.value, method: bestMethod.method, confidence: variance > 15 ? 'medium' : bestMethod.confidence, variance, allMethods: methods }
 }
 
-function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any, authoritativeFlatAreaSqft?: number) {
-  // IMPROVED PITCH DETECTION: Use Solar API segment data WITH VALIDATION, then Florida defaults
+function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any, authoritativeFlatAreaSqft?: number, pitchOverride?: string) {
+  // IMPROVED PITCH DETECTION: Use override first, then Solar API segment data WITH VALIDATION, then Florida defaults
   let predominantPitch = '5/12' // Default fallback
   let pitchSource = 'assumed'
   
-  // Priority 1: Solar API segment pitch data - WITH VALIDATION
+  // Priority 0: User-specified pitch override (highest priority)
+  if (pitchOverride) {
+    predominantPitch = pitchOverride
+    pitchSource = 'user_override'
+    console.log(`📐 Using user-specified pitch override: ${predominantPitch}`)
+  }
+  
+  // Priority 1: Solar API segment pitch data - WITH VALIDATION (only if no override)
   // CRITICAL: Solar API pitch can be wrong (measuring wrong structure, bad imagery, etc.)
   // Typical residential roofs are 3/12 to 12/12 (14° to 45°)
   // If pitch is outside 10° to 45° range, it's likely measuring the wrong structure
-  if (solarData?.available && solarData?.roofSegments?.length > 0) {
+  if (pitchSource === 'assumed' && solarData?.available && solarData?.roofSegments?.length > 0) {
     // Get pitches from roof segments weighted by area
     const segmentPitches: { pitch: string; area: number; degrees: number }[] = solarData.roofSegments
       .filter((seg: any) => seg.pitchDegrees && seg.areaMeters2)
@@ -4655,7 +4666,8 @@ async function processSolarFastPath(
   googleImage: any,
   mapboxImage: any,
   supabase: any,
-  startTime: number
+  startTime: number,
+  pitchOverride?: string
 ): Promise<SolarFastPathResult> {
   
   console.log('🚀 Solar Fast Path: Starting...')
@@ -5004,13 +5016,18 @@ async function processSolarFastPath(
   }
   // ═══════════════════════════════════════════════════════════════════════════
   
-  // Determine predominant pitch from Solar segments
+  // Determine predominant pitch - use override if provided, else Solar segments
   let predominantPitch = '6/12'
-  const segmentsWithPitch = solarData.roofSegments.filter((s: any) => s.pitchDegrees > 0)
-  if (segmentsWithPitch.length > 0) {
-    const avgPitchDegrees = segmentsWithPitch.reduce((sum: number, s: any) => sum + s.pitchDegrees, 0) / segmentsWithPitch.length
-    predominantPitch = degreesToPitchFast(avgPitchDegrees)
-    console.log(`📐 Pitch from Solar: ${avgPitchDegrees.toFixed(1)}° -> ${predominantPitch}`)
+  if (pitchOverride) {
+    predominantPitch = pitchOverride
+    console.log(`📐 Using user-specified pitch override: ${predominantPitch}`)
+  } else {
+    const segmentsWithPitch = solarData.roofSegments.filter((s: any) => s.pitchDegrees > 0)
+    if (segmentsWithPitch.length > 0) {
+      const avgPitchDegrees = segmentsWithPitch.reduce((sum: number, s: any) => sum + s.pitchDegrees, 0) / segmentsWithPitch.length
+      predominantPitch = degreesToPitchFast(avgPitchDegrees)
+      console.log(`📐 Pitch from Solar: ${avgPitchDegrees.toFixed(1)}° -> ${predominantPitch}`)
+    }
   }
   
   // Use Solar Segment Assembler (will now detect L-shape from decomposed footprint)

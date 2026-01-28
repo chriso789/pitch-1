@@ -216,7 +216,7 @@ export function PullMeasurementsButton({
   }, [loadCoordinates, toast]);
 
   // Run AI analysis with the confirmed coordinates from PIN selection
-  async function handlePull(confirmedLat: number, confirmedLng: number) {
+  async function handlePull(confirmedLat: number, confirmedLng: number, pitchOverride?: string) {
     const pullLat = confirmedLat;
     const pullLng = confirmedLng;
 
@@ -268,7 +268,8 @@ export function PullMeasurementsButton({
           address: address || 'Unknown Address',
           coordinates: { lat: pullLat, lng: pullLng },
           customerId: propertyId,
-          userId: user?.id
+          userId: user?.id,
+          pitchOverride: pitchOverride || undefined
         }
       });
       
@@ -595,14 +596,16 @@ export function PullMeasurementsButton({
   };
 
   // Handle structure selection from PIN map - immediately run AI analysis
-  const handleStructureConfirmed = (selectedLat: number, selectedLng: number) => {
+  const handleStructureConfirmed = (selectedLat: number, selectedLng: number, pitchOverride?: string) => {
     setShowStructureSelector(false);
     toast({
       title: "📍 Structure Selected",
-      description: "Now pulling measurements for the selected building...",
+      description: pitchOverride 
+        ? `Using ${pitchOverride} pitch for measurements...` 
+        : "Now pulling measurements for the selected building...",
     });
-    // Immediately trigger pull with confirmed coordinates
-    handlePull(selectedLat, selectedLng);
+    // Immediately trigger pull with confirmed coordinates and pitch override
+    handlePull(selectedLat, selectedLng, pitchOverride);
   };
 
   // Re-analyze using stored verified coordinates (skips structure selector)
