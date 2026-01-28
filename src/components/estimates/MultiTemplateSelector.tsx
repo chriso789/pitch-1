@@ -1107,6 +1107,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       
       // Reset override state since changes are now saved
       resetToOriginal();
+      
+      // Exit editing mode and hide the estimate builder
+      setExistingEstimateId(null);
+      setEditingEstimateNumber(null);
+      setIsEditingLoadedEstimate(false);
+      setSelectedTemplateId(null);
+      setLineItems([]);
     } catch (error) {
       console.error('Error saving line item changes:', error);
       toast({
