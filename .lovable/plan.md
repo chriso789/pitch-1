@@ -1,76 +1,137 @@
 
-# Fix: Estimate Names Not Showing in Documents
+
+# Fix: Profit Button Not Updating with Estimate Changes
+
+## Problem
+
+The "Profit" button in the hyperlink bar shows a static 30% value even when the estimate's selling price changes. When using the "Quick Price Adjust" slider or when the estimate is updated, the profit percentage displayed doesn't reflect the actual calculated margin.
+
+Looking at the screenshot: The Profit Center shows "32.9% Margin" but the Profit button shows "30%".
+
+---
 
 ## Root Cause Analysis
 
-After investigating the database and code:
+The issue has two parts:
 
-1. **Database columns exist correctly**: `estimate_display_name` and `estimate_pricing_tier` columns were added to the `documents` table ✓
-2. **Code is correctly written**: `saveEstimatePdf` accepts and inserts these values ✓
-3. **Call site passes values**: `MultiTemplateSelector.tsx` sends the display name and tier ✓
+### 1. Quick Price Adjust doesn't recalculate profit
 
-**The issue**: The documents currently in the database were created **before** the code changes were deployed. The migration added the columns, but the code to populate them wasn't running when those estimates were saved.
+In `EstimateHyperlinkBar.tsx` (lines 125-129), when the price slider is used:
 
-| Estimate | In `enhanced_estimates` | In `documents` |
-|----------|-------------------------|----------------|
-| OBR-00023-8818 | `display_name: "Owens Corning - Reroof"`, `pricing_tier: "better"` | `estimate_display_name: NULL`, `estimate_pricing_tier: NULL` |
-
----
-
-## Solution: Backfill Existing Documents
-
-Create a database migration to populate the document metadata from existing `enhanced_estimates` records.
-
-### SQL Migration
-
-```sql
--- Backfill estimate metadata from enhanced_estimates to documents
-UPDATE documents d
-SET 
-  estimate_display_name = ee.display_name,
-  estimate_pricing_tier = ee.pricing_tier
-FROM enhanced_estimates ee
-WHERE d.document_type = 'estimate'
-  AND d.filename LIKE ee.estimate_number || '%'
-  AND d.pipeline_entry_id = ee.pipeline_entry_id
-  AND (d.estimate_display_name IS NULL OR d.estimate_pricing_tier IS NULL)
-  AND (ee.display_name IS NOT NULL OR ee.pricing_tier IS NOT NULL);
+```typescript
+.update({ selling_price: newPrice })
 ```
 
-This migration:
-- Matches documents to estimates using the estimate number in the filename
-- Only updates documents where values are currently NULL
-- Only pulls from estimates that have values to copy
+This only updates `selling_price` but does NOT recalculate:
+- `overhead_amount` (depends on selling price)
+- `actual_profit_amount` (selling price - costs - overhead)
+- `actual_profit_percent` (profit / selling price * 100)
+
+### 2. RPC reads stale values
+
+The `api_estimate_hyperlink_bar` function reads `actual_profit_percent` from the database (line 49):
+
+```sql
+COALESCE(actual_profit_percent, 30)
+```
+
+Since this value isn't updated when the price changes, it shows the old percentage.
 
 ---
 
-## Files Changed
+## Solution
+
+Update the Quick Price Adjust mutation in `EstimateHyperlinkBar.tsx` to recalculate and store all dependent profit values when the selling price changes.
+
+### Implementation
+
+**File:** `src/components/estimates/EstimateHyperlinkBar.tsx`
+
+Update the `updatePriceMutation` to:
+1. Fetch the current estimate costs (materials, labor, overhead rate)
+2. Recalculate overhead based on new price
+3. Calculate new profit amount and percentage
+4. Update all fields together
+
+```typescript
+const updatePriceMutation = useMutation({
+  mutationFn: async (newPrice: number) => {
+    if (!hyperlinkData?.selected_estimate_id) {
+      throw new Error('No estimate selected');
+    }
+    
+    // Fetch current estimate to get cost data
+    const { data: estimate, error: fetchError } = await supabase
+      .from('enhanced_estimates')
+      .select('material_cost, labor_cost, overhead_percent')
+      .eq('id', hyperlinkData.selected_estimate_id)
+      .single();
+    
+    if (fetchError || !estimate) {
+      throw new Error('Could not fetch estimate');
+    }
+    
+    // Recalculate dependent values
+    const directCost = (estimate.material_cost || 0) + (estimate.labor_cost || 0);
+    const overheadRate = estimate.overhead_percent || salesRepOverheadRate;
+    const overheadAmount = newPrice * (overheadRate / 100);
+    const profitAmount = newPrice - directCost - overheadAmount;
+    const profitPercent = newPrice > 0 ? (profitAmount / newPrice) * 100 : 0;
+    
+    // Update all values together
+    const { error } = await supabase
+      .from('enhanced_estimates')
+      .update({
+        selling_price: newPrice,
+        overhead_amount: Math.round(overheadAmount * 100) / 100,
+        actual_profit_amount: Math.round(profitAmount * 100) / 100,
+        actual_profit_percent: Math.round(profitPercent * 100) / 100,
+      })
+      .eq('id', hyperlinkData.selected_estimate_id);
+    
+    if (error) throw error;
+  },
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
+    toast.success('Price updated');
+    setIsAdjusting(false);
+    setPriceAdjustment(0);
+  },
+  onError: (error: Error) => {
+    toast.error(`Failed to update price: ${error.message}`);
+  },
+});
+```
+
+---
+
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| New migration | Backfill `estimate_display_name` and `estimate_pricing_tier` from `enhanced_estimates` to `documents` |
-
----
-
-## Future Behavior
-
-After this backfill:
-- Existing estimate documents will show their display names and pricing tiers
-- New estimates will automatically save this metadata (code already handles this)
+| `src/components/estimates/EstimateHyperlinkBar.tsx` | Update `updatePriceMutation` to recalculate and store overhead, profit amount, and profit percent when selling price changes |
 
 ---
 
 ## Expected Result
 
-**Before fix:**
-```
-📄 OBR-00023-8818.pdf
-   [Estimates]  607.1 KB
-```
+**Before:**
+- Selling Price: $19,631
+- Profit button: 30% (static)
+- Profit Center: 32.9% Margin (actual calculation)
 
-**After fix:**
-```
-📄 Owens Corning - Reroof
-   [Estimates]  [BETTER]  607.1 KB
-   OBR-00023-8818.pdf
-```
+**After:**
+- Selling Price: $19,631  
+- Profit button: 32.9% (matches Profit Center)
+- Both values update together when price changes
+
+---
+
+## Technical Notes
+
+- The Profit Center panel calculates margin dynamically from the stored values
+- The Hyperlink Bar reads `margin_pct` from the RPC which reads `actual_profit_percent` from the database
+- This fix ensures both sources use the same stored values that are updated together
+- Commission is not included in the overhead-adjusted profit calculation for the hyperlink bar display (matches current behavior)
+
