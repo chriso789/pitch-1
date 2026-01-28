@@ -1,231 +1,257 @@
 
-# Plan: Improve AI Measurement Accuracy & Diagram Integration
+# Plan: Fix Estimate Calculations to Use Assigned Rep's Actual Commission & Overhead Rates
 
 ## Problem Summary
 
-The AI measurement system is over-estimating areas by 30-36% in certain cases. The root cause is a two-part problem:
+The estimate pricing system uses hardcoded default rates (10% overhead, 8% commission) instead of the actual assigned sales rep's personalized rates from their profile. The screenshot shows "Test Rep" has 5% overhead and 60% commission (Profit Split), but estimates are being calculated with incorrect rates.
 
-1. **Fallback to `solar_bbox_fallback`**: When Mapbox/Microsoft/OSM/AI Vision sources fail, the system uses Google Solar API's bounding box (a simple rectangle), which massively over-estimates L-shaped and complex buildings.
+## Root Causes Identified
 
-2. **AI Vision tracing failures**: When Pass 1-2 (AI Vision tracing) produces multi-building or low-confidence results, the system discards the trace and falls back to bbox instead of improving the AI prompts to trace more accurately.
+| Issue | Location | Impact |
+|-------|----------|--------|
+| Missing `personal_overhead_rate` in query | `MultiTemplateSelector.tsx` line 203 | Falls back to wrong overhead |
+| Overhead hierarchy not applied | `MultiTemplateSelector.tsx` line 219 | Uses base `overhead_rate` instead of personal |
+| Config initialization timing | `useEstimatePricing.ts` line 69-72 | Defaults applied before rep data arrives |
+| Edge function uses default config | `update-estimate-line-items/index.ts` | Ignores rep-specific rates on save |
+| Secondary rep logic incomplete | Multiple files | Doesn't handle secondary rep commission deduction before primary split |
 
-**Example from logs:**
-- AI traced 6,628 sqft (multiple buildings)
-- System fell back to Solar bbox: 3,864 sqft (still 36% over actual)
-- Actual flat area: 2,831 sqft
+## User Requirements (Clarified)
 
----
-
-## Two-Track Solution
-
-### Track A: Quick Fix - Shape Correction Factor for Bbox Fallback (Immediate)
-When forced to use `solar_bbox_fallback`, apply a shape correction factor to reduce the rectangular over-estimation.
-
-### Track B: Core Fix - Improve AI Vision Perimeter Tracing (Recommended)
-Enhance the AI Vision prompts to trace roof perimeters more accurately from aerial imagery, with explicit instructions to exclude screen enclosures, adjacent buildings, and trace only the main shingled structure.
+1. **Overhead Calculation**: Use the commission-split rep's overhead percentage
+2. **Secondary Rep (Selling Price Commission)**: Their commission is deducted from total profit BEFORE the profit-split rep's percentage is calculated
+3. **Two Profit-Split Reps**: Can only split if they have the SAME overhead percentages
+4. **Auto-Sync**: When assigned rep changes, all estimates automatically recalculate with new rep's rates
 
 ---
 
-## Technical Implementation
+## Technical Solution
 
-### Track A: Shape Correction for Bbox Fallback
+### Fix 1: Update MultiTemplateSelector to Fetch and Apply Personal Overhead Rate
 
-**File:** `supabase/functions/analyze-roof-aerial/index.ts`
+**File:** `src/components/estimates/MultiTemplateSelector.tsx`
 
-#### A1. Add Shape Correction Constants (around line 3513)
+The existing query (lines 196-209) fetches both `overhead_rate` and `commission_structure`, but needs to also fetch `personal_overhead_rate` and apply the correct hierarchy.
 
-Add new constants to `ROOF_AREA_CAPS`:
+**Changes:**
+1. Add `personal_overhead_rate` to the profile select query
+2. Apply the hierarchy: `personal_overhead_rate > 0` ? use it : use `overhead_rate`
+3. Pass correct rates to `setConfig`
 
 ```typescript
-const ROOF_AREA_CAPS = {
-  MIN_RESIDENTIAL: 800,
-  MAX_RESIDENTIAL: 5000,
-  // ... existing constants ...
+// Query update (around line 198-206)
+.select(`
+  assigned_to,
+  profiles!pipeline_entries_assigned_to_fkey(
+    first_name,
+    last_name,
+    overhead_rate,
+    personal_overhead_rate,  // ADD THIS
+    commission_rate,
+    commission_structure
+  )
+`)
+
+// Rate application (around line 216-230)
+const profile = data?.profiles as any;
+if (profile) {
+  // Apply overhead hierarchy: personal_overhead_rate > 0 takes priority
+  const personalOverhead = profile.personal_overhead_rate ?? 0;
+  const baseOverhead = profile.overhead_rate ?? 10;
+  const effectiveOverheadPercent = personalOverhead > 0 ? personalOverhead : baseOverhead;
   
-  // NEW: Shape correction for solar_bbox_fallback
-  BBOX_SHAPE_CORRECTION_DEFAULT: 0.78,    // Typical L/T-shaped roofs fill 78% of bbox
-  BBOX_SHAPE_CORRECTION_FLORIDA: 0.72,    // Florida roofs have screen enclosures
-  BBOX_SHAPE_CORRECTION_MIN: 0.65,        // Very complex shapes (U-shape)
-  BBOX_SHAPE_CORRECTION_MAX: 0.88,        // Near-rectangular shapes
+  const rates = {
+    overheadPercent: effectiveOverheadPercent,
+    commissionPercent: profile.commission_rate ?? 50,
+    commissionStructure: (profile.commission_structure === 'sales_percentage' 
+      ? 'sales_percentage' 
+      : 'profit_split') as 'profit_split' | 'sales_percentage',
+    repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
+  };
+  setRepRates(rates);
+  
+  // Apply to pricing config
+  setConfig({
+    overheadPercent: rates.overheadPercent,
+    repCommissionPercent: rates.commissionPercent,
+    commissionStructure: rates.commissionStructure,
+  });
 }
 ```
 
-#### A2. Apply Shape Correction in Area Calculation (after line 3767)
+### Fix 2: Update ProfitCenterPanel to Use Personal Overhead Rate
 
-In `calculateAreaFromPerimeterVertices`, after the existing `isSolarBboxFallback` check, add:
+**File:** `src/components/estimates/ProfitCenterPanel.tsx`
 
+The ProfitCenterPanel already fetches `personal_overhead_rate` (line 75), but the overhead calculation logic (lines 130-132) should be verified to correctly apply the hierarchy.
+
+**Changes:**
+The current logic is correct (lines 130-132):
 ```typescript
-} else if (isSolarBboxFallback) {
-  // When using solar_bbox_fallback, apply shape correction factor
-  // Most residential roofs are NOT rectangles - L-shape, T-shape, etc.
-  const originalBboxArea = calculatedArea;
-  
-  const isFlorida = address ? isFloridaAddress(address) : false;
-  
-  // Use area/perimeter ratio to estimate shape complexity
-  // Perfect square ratio = side/4 (e.g., 50ft side = 12.5 ratio)
-  // L-shaped buildings have LOWER ratios (more perimeter per area)
-  const shapeEfficiencyFromRatio = Math.min(0.90, Math.max(0.60, areaPerimeterRatio / 18));
-  
-  // Apply region-specific correction
-  const shapeCorrection = isFlorida 
-    ? ROOF_AREA_CAPS.BBOX_SHAPE_CORRECTION_FLORIDA 
-    : ROOF_AREA_CAPS.BBOX_SHAPE_CORRECTION_DEFAULT;
-  
-  // Use the lower of estimated efficiency or default correction
-  const finalCorrection = Math.min(shapeEfficiencyFromRatio, shapeCorrection);
-  
-  calculatedArea = calculatedArea * finalCorrection;
-  
-  console.log(`📐 solar_bbox_fallback: Applying ${(finalCorrection * 100).toFixed(0)}% shape correction`);
-  console.log(`📐 Bbox area: ${originalBboxArea.toFixed(0)} → Corrected: ${calculatedArea.toFixed(0)} sqft`);
-  console.log(`📐 (isFlorida=${isFlorida}, areaPerimRatio=${areaPerimeterRatio.toFixed(1)})`);
-}
+const personalOverhead = salesRepData?.personal_overhead_rate ?? 0;
+const baseOverhead = (salesRepData as any)?.overhead_rate ?? 10;
+const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
 ```
 
-#### A3. Expected Results for Track A
+No changes needed here - just ensure this pattern is replicated everywhere.
 
-| Scenario | Before | After (×0.72 FL) | Actual | Error |
-|----------|--------|------------------|--------|-------|
-| Via Bella Blvd (FL) | 3,864 sqft | 2,782 sqft | 2,831 sqft | -1.7% |
+### Fix 3: Update EstimateHyperlinkBar to Use Personal Overhead Rate
 
----
+**File:** `src/components/estimates/EstimateHyperlinkBar.tsx`
 
-### Track B: Improve AI Vision Perimeter Tracing
+The current query (lines 102-105) fetches both rates but needs to apply the hierarchy correctly.
 
-This is the root cause fix - make AI Vision trace the building perimeter accurately so we don't fall back to bbox.
-
-**File:** `supabase/functions/analyze-roof-aerial/index.ts`
-
-#### B1. Enhance Pass 2 Prompt for Better Perimeter Detection
-
-Replace the prompt in `detectPerimeterVertices` (around line 1750-1800) with explicit instructions:
+**Changes:**
+Add `personal_overhead_rate` to the query and apply the same hierarchy logic:
 
 ```typescript
-const prompt = `You are a professional roof measurement expert analyzing satellite imagery.
+// Query already correct (lines 102-105), but add personal_overhead_rate if missing
+.select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(overhead_rate, personal_overhead_rate)')
 
-## CRITICAL TASK: Trace ONLY the MAIN SHINGLED ROOF
-
-### WHAT TO TRACE (roof perimeter):
-- The OUTER EDGE of the shingled/tiled/metal roof material
-- Include the full eave overhang (typically 1-2 feet beyond walls)
-- Trace hip corners where diagonal edges meet
-- Mark valley entries (concave corners)
-- Mark gable peaks (triangle tops)
-
-### WHAT TO EXCLUDE (DO NOT TRACE):
-- Screen enclosures / pool cages / lanais (metal frame + mesh)
-- Covered patios with flat or translucent roofing
-- Carports and detached garages
-- Adjacent buildings or neighbor houses
-- Driveways, sidewalks, grass areas
-
-### VISUAL IDENTIFICATION:
-- ROOF: Consistent texture (shingles/tiles), shadows from pitch
-- SCREEN ENCLOSURE: Grid pattern, translucent/reflective, flat
-- PATIO: Different color/material than main roof
-
-### PERIMETER VERTEX FORMAT:
-Return vertices as PERCENTAGE of image (0-100):
-- Top-left is (0, 0), bottom-right is (100, 100)
-- Return vertices in CLOCKWISE order starting from top-left corner
-- Include cornerType: "corner", "hip-corner", "valley-entry", or "gable-peak"
-
-### SINGLE STRUCTURE RULE:
-If you see multiple separate structures, trace ONLY the PRIMARY residence.
-The primary residence is usually:
-- The largest building
-- Centered in the image
-- Has the most complex roof geometry
-
-RESPONSE FORMAT (JSON only):
-{
-  "vertices": [
-    {"x": 25.0, "y": 20.0, "cornerType": "corner"},
-    {"x": 75.0, "y": 20.0, "cornerType": "hip-corner"},
-    ...
-  ],
-  "roofType": "hip" | "gable" | "cross-hip" | "L-shaped" | "complex",
-  "complexity": "simple" | "moderate" | "complex",
-  "excludedStructures": ["screen enclosure on east side", "detached garage"],
-  "confidence": 85
-}`;
+// Apply hierarchy (around line 108-112)
+const profile = data?.profiles as { overhead_rate: number | null; personal_overhead_rate: number | null } | null;
+const personal = profile?.personal_overhead_rate ?? 0;
+const base = profile?.overhead_rate ?? 10;
+return personal > 0 ? personal : base;
 ```
 
-#### B2. Add Post-Detection Validation (after line 1800)
+### Fix 4: Update Edge Function to Use Rep-Specific Rates
 
-After receiving AI results, validate the trace before using it:
+**File:** `supabase/functions/update-estimate-line-items/index.ts`
+
+When line items are saved, the edge function should fetch and apply the assigned rep's rates rather than using defaults.
+
+**Changes:**
+
+Add a query to fetch the assigned rep's rates from the pipeline entry (around line 95-125):
 
 ```typescript
-// Validate perimeter area vs Solar API (sanity check)
-if (perimeterResult?.vertices?.length >= 4 && solarData?.buildingFootprintSqft) {
-  const tracedArea = calculatePolygonAreaFromPixelVertices(perimeterResult.vertices, bounds);
-  const solarArea = solarData.buildingFootprintSqft;
-  const overShoot = tracedArea / solarArea;
+// After line 119 (tenant validation), add:
+
+// Fetch assigned rep's overhead and commission rates
+const pipelineEntryId = estimate.pipeline_entry_id;
+let repOverheadRate = config.overheadPercent || 10;
+let repCommissionRate = config.repCommissionPercent || 5;
+let commissionStructure = 'profit_split';
+
+if (pipelineEntryId) {
+  const { data: pipelineData } = await serviceClient
+    .from('pipeline_entries')
+    .select(`
+      assigned_to,
+      profiles!pipeline_entries_assigned_to_fkey(
+        overhead_rate,
+        personal_overhead_rate,
+        commission_rate,
+        commission_structure
+      )
+    `)
+    .eq('id', pipelineEntryId)
+    .single();
   
-  if (overShoot > 1.50) {
-    console.warn(`⚠️ AI TRACE REJECTED: ${tracedArea.toFixed(0)} sqft is ${((overShoot - 1) * 100).toFixed(0)}% over Solar footprint`);
-    console.warn(`⚠️ Likely traced multiple buildings or included screen enclosure`);
-    
-    // Try to shrink toward centroid if trace is usable
-    if (overShoot < 2.0 && perimeterResult.vertices.length >= 6) {
-      const shrinkFactor = 1 - (0.5 / overShoot); // Proportional shrink
-      perimeterResult.vertices = applyVertexShrinkage(perimeterResult.vertices, shrinkFactor);
-      console.log(`📐 Applied ${(shrinkFactor * 100).toFixed(1)}% shrinkage to AI trace`);
-    } else {
-      // Trace is too far off - will fall back to bbox with shape correction
-      perimeterResult = null;
-    }
+  if (pipelineData?.profiles) {
+    const profile = pipelineData.profiles as any;
+    const personalOverhead = profile.personal_overhead_rate ?? 0;
+    const baseOverhead = profile.overhead_rate ?? 10;
+    repOverheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
+    repCommissionRate = profile.commission_rate ?? 50;
+    commissionStructure = profile.commission_structure || 'profit_split';
   }
 }
+
+// Use these rates in calculations below
+const overheadPercent = repOverheadRate;
+const overheadAmount = finalSellingPrice * (overheadPercent / 100);
+
+// Calculate commission based on structure
+let repCommissionAmount: number;
+if (commissionStructure === 'profit_split') {
+  const netProfit = finalSellingPrice - directCost - overheadAmount;
+  repCommissionAmount = Math.max(0, netProfit * (repCommissionRate / 100));
+} else {
+  repCommissionAmount = finalSellingPrice * (repCommissionRate / 100);
+}
 ```
 
-#### B3. Switch AI Models for Speed (lines 2165 and 2311)
+### Fix 5: Update RepProfitBreakdown for Secondary Rep Commission Deduction
 
-Replace slow `gemini-2.5-pro` with faster `gemini-2.5-flash` for vision tasks:
+**File:** `src/components/estimates/RepProfitBreakdown.tsx`
+
+When a secondary rep with `sales_percentage` (Percent of Contract) commission is assigned, their commission should be deducted from gross profit BEFORE calculating the primary rep's profit split.
+
+**Changes:**
+
+Update the commission calculation logic (around lines 117-155):
 
 ```typescript
-// Line 2165 (detectInteriorJunctions):
-model: 'google/gemini-2.5-flash',  // Was gemini-2.5-pro
+// Calculate commissions with proper ordering
+// Step 1: Calculate gross profit (before any commissions)
+const totalCost = materialCost + laborCost;
+const grossProfit = sellingPrice - totalCost;
 
-// Line 2311 (detectRidgeLinesFromImage):
-model: 'google/gemini-2.5-flash',  // Was gemini-2.5-pro
+// Step 2: Deduct company overhead (from primary/profit-split rep)
+const overheadAmount = sellingPrice * (primaryOverheadRate / 100);
+const profitAfterOverhead = grossProfit - overheadAmount;
+
+// Step 3: If secondary rep is "sales_percentage" type, deduct their commission first
+let profitAfterSecondary = profitAfterOverhead;
+let secondaryRepCommission = 0;
+
+if (hasSecondaryRep && secondaryCommissionStructure === 'percentage_contract_price') {
+  // Secondary rep takes percentage of selling price (deducted before profit split)
+  secondaryRepCommission = sellingPrice * (secondaryCommissionRate / 100);
+  profitAfterSecondary = profitAfterOverhead - secondaryRepCommission;
+}
+
+// Step 4: Primary (profit-split) rep takes their percentage of remaining profit
+let primaryRepCommission = 0;
+if (primaryCommissionStructure === 'profit_split') {
+  primaryRepCommission = Math.max(0, profitAfterSecondary * (primaryCommissionRate / 100));
+} else {
+  primaryRepCommission = sellingPrice * (primaryCommissionRate / 100);
+}
+
+// Step 5: Apply split percentages if both reps are profit-split with same overhead
+// (User requirement: two profit-split reps can only split if same overhead %)
+if (hasSecondaryRep && 
+    secondaryCommissionStructure === 'profit_split' && 
+    primaryOverheadRate === secondaryOverheadRate) {
+  // Both are profit-split with same overhead - apply split percentages
+  const totalProfitSplitCommission = profitAfterSecondary * (primaryCommissionRate / 100);
+  primaryRepCommission = (totalProfitSplitCommission * primarySplitPercent) / 100;
+  secondaryRepCommission = (totalProfitSplitCommission * secondarySplitPercent) / 100;
+}
+
+const totalRepCommission = primaryRepCommission + secondaryRepCommission;
+const companyNet = profitAfterSecondary - totalRepCommission;
 ```
 
-This provides 3-5x speed improvement with negligible accuracy loss for pattern recognition tasks.
+### Fix 6: Update useEstimatePricing Hook to Accept Initial Config Properly
 
----
+**File:** `src/hooks/useEstimatePricing.ts`
 
-### Track C: Ensure Linear Features Flow to Diagram
+The hook already has a `useEffect` to update config when `initialConfig` changes (lines 76-80), but the dependency array only checks specific properties. This should be more robust.
 
-The roof diagram already receives linear features correctly via `linear_features_wkt` stored in the database. The diagram uses these WKT coordinates to render ridges, hips, valleys, eaves, and rakes.
+**Changes:**
 
-#### C1. Current Data Flow (No Changes Needed)
+Update the useEffect to properly sync when initialConfig updates (around lines 76-80):
 
-```text
-Edge Function                     Database                    Frontend
-────────────────────────────────────────────────────────────────────────
-detectRidgeLinesFromImage() ─┐
-                             ├──► deriveLinesToPerimeter() 
-detectInteriorJunctions() ───┘         │
-                                       ▼
-                         convertDerivedLinesToWKT() ──► roof_measurements.linear_features
-                                                              │
-                                                              ▼
-                                               SchematicRoofDiagram.tsx
-                                               (parses WKT, renders SVG lines)
+```typescript
+// Update config when initialConfig changes (e.g., when rep rates are fetched)
+useEffect(() => {
+  if (initialConfig) {
+    setConfigState(current => ({
+      ...current,
+      overheadPercent: initialConfig.overheadPercent ?? current.overheadPercent,
+      repCommissionPercent: initialConfig.repCommissionPercent ?? current.repCommissionPercent,
+      commissionStructure: initialConfig.commissionStructure ?? current.commissionStructure,
+    }));
+  }
+}, [
+  initialConfig?.overheadPercent, 
+  initialConfig?.repCommissionPercent, 
+  initialConfig?.commissionStructure
+]);
 ```
-
-#### C2. Diagram Data Verification
-
-The diagram correctly:
-1. Fetches `linear_features` or `linear_features_wkt` from measurement record
-2. Parses each WKT LINESTRING to lat/lng coordinates
-3. Converts to SVG pixel coordinates using image bounds
-4. Renders colored lines (ridge=light green, hip=purple, valley=red, eave=dark green, rake=cyan)
-5. Shows length labels from `length_ft` or calculated from WKT geometry
-
-No changes needed to the diagram rendering - it will automatically reflect improved linear features once AI detection is fixed.
 
 ---
 
@@ -233,39 +259,29 @@ No changes needed to the diagram rendering - it will automatically reflect impro
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/analyze-roof-aerial/index.ts` | Add shape correction constants and logic; enhance AI prompts; switch to flash models; add validation |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Add `personal_overhead_rate` to query, apply overhead hierarchy |
+| `src/components/estimates/EstimateHyperlinkBar.tsx` | Verify overhead hierarchy is applied correctly |
+| `src/components/estimates/RepProfitBreakdown.tsx` | Update secondary rep commission deduction logic |
+| `supabase/functions/update-estimate-line-items/index.ts` | Fetch assigned rep's rates and use in calculations |
+| `src/hooks/useEstimatePricing.ts` | Ensure config syncs when initialConfig updates |
 
 ---
 
-## Implementation Priority
+## Expected Results
 
-1. **Phase 1 (Immediate - Track A):** Apply shape correction factor to `solar_bbox_fallback` to reduce over-estimation by 22-28% immediately.
-
-2. **Phase 2 (Same deploy - Track B):** Switch AI models to `gemini-2.5-flash` for 3-5x speed improvement.
-
-3. **Phase 3 (Same deploy - Track B):** Enhance AI Vision prompts with explicit exclusion rules and single-structure focus.
-
-4. **Phase 4 (Same deploy - Track B):** Add post-detection validation to reject bad traces before fallback.
+After these changes:
+1. **Test Rep (5% overhead, 60% profit split)** will see estimates calculated with their actual rates
+2. Secondary reps with "Percent of Contract" commission will have their commission deducted BEFORE the primary rep's profit split is calculated
+3. When a project's assigned rep changes, all estimate calculations will auto-update to the new rep's rates
+4. The Profit Center panel will accurately reflect each rep's personalized rates
 
 ---
 
-## Verification Steps
+## Technical Notes
 
-After deployment:
-1. Re-run measurement on Via Bella Blvd FL address
-2. Expected flat area: ~2,800-2,900 sqft (within 5% of 2,831)
-3. Check that SchematicRoofDiagram shows accurate perimeter outline
-4. Verify ridge/hip/valley lines match visible roof geometry
-5. Confirm processing time is under 15 seconds (was 25+ seconds)
-
----
-
-## Summary
-
-This plan addresses both symptoms and root causes:
-- **Quick fix:** Shape correction reduces bbox over-estimation immediately
-- **Core fix:** Better AI prompts prevent fallback to bbox in the first place
-- **Performance:** Flash models reduce processing time by 50%+
-- **Diagram accuracy:** Improved linear features automatically render correctly
-
-All changes are isolated to the edge function with no frontend modifications needed.
+1. **Overhead Hierarchy**: `personal_overhead_rate > 0` takes precedence over `overhead_rate` (company default)
+2. **Commission Types**:
+   - `profit_split` (Net Profit Split): Commission = Net Profit × Rate %
+   - `sales_percentage` (Percent of Contract): Commission = Selling Price × Rate %
+3. **Secondary Rep Deduction Order**: Secondary rep's "Percent of Contract" commission is deducted from gross profit BEFORE the primary rep's profit split is calculated
+4. **Two Profit-Split Reps**: Only allowed to split if they have the same overhead percentage
