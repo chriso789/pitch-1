@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 // Simplified delete confirmation - v2
 import {
@@ -364,12 +364,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {estimate.status}
                   </Badge>
                   <span className={`flex items-center gap-1 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
-                    {(estimate.actual_profit_percent || 0) >= 25 ? (
-                      <TrendingUp className="h-3 w-3" />
-                    ) : (
-                      <TrendingDown className="h-3 w-3" />
-                    )}
-                    {(estimate.actual_profit_percent || 0).toFixed(1)}% Profit
+                    <Percent className="h-3 w-3" />
+                    {(estimate.actual_profit_percent || 0).toFixed(1)}% Margin
                   </span>
                 </div>
               </div>
