@@ -40,6 +40,9 @@ interface SectionedLineItemsTableProps {
   salesTaxEnabled?: boolean;
   salesTaxRate?: number;
   salesTaxAmount?: number;
+  // Pre-calculated selling price and total with tax from pricing breakdown
+  sellingPrice?: number;
+  totalWithTax?: number;
   className?: string;
   // Inline add item form props
   isAddingItem?: boolean;
@@ -76,6 +79,8 @@ export function SectionedLineItemsTable({
   salesTaxEnabled = false,
   salesTaxRate = 0,
   salesTaxAmount = 0,
+  sellingPrice,
+  totalWithTax,
   className = '',
   isAddingItem = false,
   addingItemType,
@@ -452,6 +457,19 @@ export function SectionedLineItemsTable({
                 {editable && <TableCell />}
               </TableRow>
 
+              {/* Selling Price Row (before tax) - only show when sales tax is enabled */}
+              {salesTaxEnabled && salesTaxRate > 0 && sellingPrice !== undefined && (
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                  <TableCell colSpan={editable ? 3 : 3} className="text-right font-medium">
+                    Selling Price (before tax)
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-bold">
+                    {formatCurrency(sellingPrice)}
+                  </TableCell>
+                  {editable && <TableCell />}
+                </TableRow>
+              )}
+
               {/* Sales Tax Row (Read-Only from Company Settings) */}
               {salesTaxEnabled && salesTaxRate > 0 && (
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
@@ -476,7 +494,7 @@ export function SectionedLineItemsTable({
                     Total with Tax
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-lg text-primary">
-                    {formatCurrency(materialsTotal + laborTotal + salesTaxAmount)}
+                    {formatCurrency(totalWithTax ?? (sellingPrice ?? (materialsTotal + laborTotal)) + salesTaxAmount)}
                   </TableCell>
                   {editable && <TableCell />}
                 </TableRow>
