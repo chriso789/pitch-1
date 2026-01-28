@@ -24,6 +24,7 @@ import {
   Plus
 } from 'lucide-react';
 import type { LineItem } from '@/hooks/useEstimatePricing';
+import { MaterialAutocomplete } from './MaterialAutocomplete';
 
 interface SectionedLineItemsTableProps {
   materialItems: LineItem[];
@@ -43,8 +44,8 @@ interface SectionedLineItemsTableProps {
   // Inline add item form props
   isAddingItem?: boolean;
   addingItemType?: 'material' | 'labor';
-  newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string };
-  onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string }) => void;
+  newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string };
+  onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string }) => void;
   onSaveNewItem?: () => void;
   onCancelAddItem?: () => void;
 }
@@ -283,12 +284,21 @@ export function SectionedLineItemsTable({
             <TableRow className="bg-primary/5 border-2 border-primary/30">
               <TableCell colSpan={editable ? 5 : 4} className="py-3">
                 <div className="flex items-end gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[180px]">
+                  <div className="flex-1 min-w-[200px]">
                     <Label className="text-xs">Item Name</Label>
-                    <Input
+                    <MaterialAutocomplete
                       value={newItem.item_name}
-                      onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
-                      placeholder="Item name"
+                      onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                      onSelectMaterial={(material) => {
+                        onNewItemChange({
+                          ...newItem,
+                          item_name: material.name,
+                          unit: material.uom,
+                          unit_cost: material.base_cost,
+                          material_id: material.id,
+                        });
+                      }}
+                      placeholder="Search materials..."
                       autoFocus
                     />
                   </div>
