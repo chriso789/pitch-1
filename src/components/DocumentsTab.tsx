@@ -47,6 +47,8 @@ interface Document {
     last_name: string;
   };
   signature_status?: 'pending' | 'sent' | 'signed' | 'voided' | null;
+  estimate_display_name?: string | null;
+  estimate_pricing_tier?: string | null;
 }
 
 interface DocumentsTabProps {
@@ -1071,9 +1073,25 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                           categoryColor={category?.color || 'bg-gray-500'}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium truncate">{doc.filename}</p>
+                          <p className="font-medium truncate">
+                            {doc.document_type === 'estimate' && doc.estimate_display_name 
+                              ? doc.estimate_display_name 
+                              : doc.filename}
+                          </p>
                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
                             <Badge variant="outline">{category?.label || 'Other'}</Badge>
+                            {doc.document_type === 'estimate' && doc.estimate_pricing_tier && (
+                              <Badge 
+                                variant="outline" 
+                                className={cn(
+                                  doc.estimate_pricing_tier === 'best' && 'border-amber-500 text-amber-600 bg-amber-50',
+                                  doc.estimate_pricing_tier === 'better' && 'border-blue-500 text-blue-600 bg-blue-50',
+                                  doc.estimate_pricing_tier === 'good' && 'border-gray-400 text-gray-600 bg-gray-50'
+                                )}
+                              >
+                                {doc.estimate_pricing_tier.toUpperCase()}
+                              </Badge>
+                            )}
                             <span>{formatFileSize(doc.file_size)}</span>
                             <span>{formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}</span>
                             {doc.uploader && (
@@ -1082,6 +1100,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                               </span>
                             )}
                           </div>
+                          {doc.document_type === 'estimate' && doc.estimate_display_name && (
+                            <p className="text-xs text-muted-foreground mt-0.5">{doc.filename}</p>
+                          )}
                         </div>
                       </div>
                     </div>
