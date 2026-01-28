@@ -1,29 +1,48 @@
 
-# Plan: Add Company-Level Sales Tax to Estimates
 
-## Summary
+# Plan: Fix SRS Pricelist CSV Import Parser
 
-Implement a sales tax feature that:
-- Is configured at the company level in Settings → Estimate PDF tab
-- Is automatically applied to ALL estimates when enabled
-- Cannot be edited on individual estimates (displayed as read-only)
-- Shows as a separate line item in the estimate breakdown
+## Problem Identified
+
+The SRS pricelist CSV has a unique format that the current parser doesn't handle:
+
+| Issue | Current Behavior | Required Behavior |
+|-------|------------------|-------------------|
+| Column `item` | Mapped as "code" | Should be "name" |
+| No code column | Returns null | Auto-generate from name (e.g., "GAF Timberline HDZ" → "GAF-TIMBERLINE-HDZ") |
+| Section headers | Parsed as data | Skip rows where `item` contains section text (e.g., "Shingle Hip and Ridge") |
+| Multiple price columns | Only checks one | Check `cost per item`, `cost per bundle`, `cost per sq` in order |
+| UOM | Defaults to "EA" | Extract from `calculation` column (e.g., "3BD/SQ" → "SQ", "25LF/BD" → "BD") |
+| Category | Not detected | Derive from section headers (track current section as we parse) |
 
 ---
 
-## Database Changes
+## CSV Structure Analysis
 
-### Modify `tenant_estimate_settings` table
-
-Add two new columns:
-- `sales_tax_enabled` (boolean, default false)
-- `sales_tax_rate` (numeric, default 0)
-
-```sql
-ALTER TABLE tenant_estimate_settings
-ADD COLUMN sales_tax_enabled boolean DEFAULT false,
-ADD COLUMN sales_tax_rate numeric(5,3) DEFAULT 0;
+**Headers:**
 ```
+brand logo, item, calculation, cost per bundle, cost per sq, cost per item
+```
+
+**Data Patterns:**
+- Rows 2-11: Shingles - use `cost per sq` column, UOM = "SQ"
+- Row 12: Section header "Brand, Shingle Hip and Ridge and Starter..." - SKIP
+- Rows 13-25: Hip/Ridge/Starter - use `cost per item` column, UOM from `calculation`
+- Row 26: Section header - SKIP
+- And so on...
+
+---
+
+## Solution
+
+Update `parseCSVRow` function in `MaterialImportAuditDialog.tsx` to:
+
+1. **Skip section headers**: Check if `item` column contains known section identifiers
+2. **Use `item` as name**: Map the `item` column to `name` field
+3. **Auto-generate code**: Create code from name (sanitize and uppercase)
+4. **Multi-price fallback**: Try `cost per item` → `cost per bundle` → `cost per sq`
+5. **Extract UOM**: Parse from `calculation` column (e.g., "3BD/SQ" → last part "SQ")
+6. **Track categories**: Detect section headers and assign category to subsequent rows
 
 ---
 
@@ -31,313 +50,184 @@ ADD COLUMN sales_tax_rate numeric(5,3) DEFAULT 0;
 
 | File | Change |
 |------|--------|
-| `src/components/settings/EstimateFinePrintSettings.tsx` | Add Sales Tax configuration section (enable/disable + rate input) |
-| `src/hooks/useEstimatePricing.ts` | Add tax fields to `PricingBreakdown` interface and calculation |
-| `src/components/estimates/MultiTemplateSelector.tsx` | Fetch tenant's sales tax settings and pass to pricing hook |
-| `src/components/estimates/EstimateBreakdownCard.tsx` | Display tax amount as read-only line (non-editable) |
-| `src/components/estimates/SectionedLineItemsTable.tsx` | Replace editable tax toggle with read-only display from company settings |
-| `src/components/estimates/EstimatePDFDocument.tsx` | Include tax line in PDF output |
-| Database migration | Add `sales_tax_enabled` and `sales_tax_rate` columns |
+| `src/components/materials/MaterialImportAuditDialog.tsx` | Update `parseCSVRow` function with SRS-specific parsing logic |
 
 ---
 
-## Technical Details
+## Technical Implementation
 
-### 1. Database Migration
+### Updated `parseCSVRow` Function
 
-```sql
--- Add sales tax settings to tenant_estimate_settings
-ALTER TABLE tenant_estimate_settings
-ADD COLUMN IF NOT EXISTS sales_tax_enabled boolean DEFAULT false,
-ADD COLUMN IF NOT EXISTS sales_tax_rate numeric(5,3) DEFAULT 0;
-
-COMMENT ON COLUMN tenant_estimate_settings.sales_tax_enabled IS 'Whether sales tax is applied to estimates';
-COMMENT ON COLUMN tenant_estimate_settings.sales_tax_rate IS 'Sales tax percentage (e.g., 7.25 for 7.25%)';
-```
-
-### 2. Update `useEstimatePricing.ts`
-
-Add to `PricingConfig` interface:
 ```typescript
-export interface PricingConfig {
-  overheadPercent: number;
-  profitMarginPercent: number;
-  repCommissionPercent: number;
-  commissionStructure: 'profit_split' | 'sales_percentage';
-  // NEW: Sales tax settings (from company config, read-only)
-  salesTaxEnabled: boolean;
-  salesTaxRate: number;
-}
-```
+// Section header indicators to skip
+const SECTION_INDICATORS = [
+  'shingle hip and ridge',
+  'mechanically fastened',
+  'self adhered',
+  'residential low slope',
+  'ventilation',
+  'flashing',
+  'drip edge',
+  'accessories',
+  'nails',
+  'sealants',
+  'uom+d' // Excel formula artifact
+];
 
-Add to `PricingBreakdown` interface:
-```typescript
-export interface PricingBreakdown {
-  // ... existing fields ...
-  salesTaxAmount: number;      // NEW: Calculated tax amount
-  totalWithTax: number;        // NEW: sellingPrice + tax
-}
-```
+const isSectionHeader = (value: string): boolean => {
+  if (!value) return false;
+  const lower = value.toLowerCase();
+  return SECTION_INDICATORS.some(indicator => lower.includes(indicator));
+};
 
-Update breakdown calculation:
-```typescript
-// Calculate sales tax
-const salesTaxAmount = config.salesTaxEnabled 
-  ? sellingPrice * (config.salesTaxRate / 100) 
-  : 0;
-const totalWithTax = sellingPrice + salesTaxAmount;
+const generateCodeFromName = (name: string): string => {
+  return name
+    .toUpperCase()
+    .replace(/[^A-Z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '-')
+    .substring(0, 30);
+};
 
-return {
-  // ... existing fields ...
-  salesTaxAmount,
-  totalWithTax,
+const extractUOMFromCalculation = (calc: string): string => {
+  if (!calc) return 'EA';
+  // Examples: "3BD/SQ" → "SQ", "25LF/BD" → "BD", "10SQ/RL" → "RL"
+  const parts = calc.split('/');
+  if (parts.length === 2) {
+    return parts[1].replace(/[^A-Z]/gi, '').toUpperCase() || 'EA';
+  }
+  // Try to find known UOMs
+  const uomMatch = calc.match(/(BD|SQ|RL|EA|LF|BX|CS)/i);
+  return uomMatch ? uomMatch[1].toUpperCase() : 'EA';
+};
+
+const parseCSVRow = (row: any, headers: string[]): ImportedItem | null => {
+  // Map columns for SRS format
+  const itemCol = mapColumnName(headers, ['item', 'Item']);
+  const calcCol = mapColumnName(headers, ['calculation', 'Calculation']);
+  const costPerItemCol = mapColumnName(headers, ['cost per item', 'Cost Per Item', '$/UOM']);
+  const costPerBundleCol = mapColumnName(headers, ['cost per bundle', 'Cost Per Bundle']);
+  const costPerSqCol = mapColumnName(headers, ['cost per sq', 'Cost Per Sq', 'cost per square']);
+  const brandCol = mapColumnName(headers, ['brand', 'brand logo', 'Brand', 'Brand Logo']);
+
+  const itemName = itemCol ? row[itemCol]?.toString().trim() : null;
+  
+  // Skip empty rows or section headers
+  if (!itemName || isSectionHeader(itemName)) return null;
+  
+  // Skip if Brand column has section header text
+  const brandValue = brandCol ? row[brandCol]?.toString().trim() : '';
+  if (brandValue && isSectionHeader(brandValue)) return null;
+
+  // Get cost - try multiple columns in priority order
+  let costStr: string | null = null;
+  if (costPerItemCol && row[costPerItemCol]) {
+    costStr = row[costPerItemCol].toString().replace(/[$,]/g, '').trim();
+  }
+  if ((!costStr || costStr === '0' || costStr === '') && costPerBundleCol && row[costPerBundleCol]) {
+    costStr = row[costPerBundleCol].toString().replace(/[$,]/g, '').trim();
+  }
+  if ((!costStr || costStr === '0' || costStr === '') && costPerSqCol && row[costPerSqCol]) {
+    costStr = row[costPerSqCol].toString().replace(/[$,]/g, '').trim();
+  }
+
+  const cost = costStr ? parseFloat(costStr) : NaN;
+  if (isNaN(cost) || cost <= 0) return null;
+
+  // Extract UOM from calculation column
+  const calcValue = calcCol ? row[calcCol]?.toString().trim() : '';
+  const uom = extractUOMFromCalculation(calcValue);
+
+  // Generate code from item name
+  const code = generateCodeFromName(itemName);
+
+  return {
+    code,
+    name: itemName,
+    newCost: cost,
+    uom,
+    category: '', // Will be enhanced with section tracking
+    markupPct: 0.35,
+    coverage: undefined,
+    supplierSku: undefined,
+  };
 };
 ```
 
-### 3. Update `EstimateFinePrintSettings.tsx`
+### Section Category Tracking
 
-Add a new "Sales Tax" section before the Fine Print editor:
-
-```typescript
-// Sales Tax Section
-<Card className="mb-6">
-  <CardHeader>
-    <CardTitle className="flex items-center gap-2">
-      <Receipt className="h-5 w-5" />
-      Sales Tax
-    </CardTitle>
-    <CardDescription>
-      Configure sales tax that will be automatically applied to all estimates. 
-      This cannot be changed on individual estimates.
-    </CardDescription>
-  </CardHeader>
-  <CardContent className="space-y-4">
-    <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-      <div className="space-y-0.5">
-        <Label className="text-base">Enable Sales Tax</Label>
-        <p className="text-sm text-muted-foreground">
-          When enabled, tax will be added to all estimate totals
-        </p>
-      </div>
-      <Switch
-        checked={salesTaxEnabled}
-        onCheckedChange={handleTaxEnabledChange}
-      />
-    </div>
-    
-    {salesTaxEnabled && (
-      <div className="space-y-2">
-        <Label>Tax Rate (%)</Label>
-        <div className="flex items-center gap-2">
-          <Input
-            type="number"
-            step="0.001"
-            min="0"
-            max="25"
-            value={salesTaxRate}
-            onChange={(e) => handleTaxRateChange(e.target.value)}
-            className="w-32"
-          />
-          <span className="text-muted-foreground">%</span>
-        </div>
-        <p className="text-xs text-muted-foreground">
-          Example: Enter 7.25 for 7.25% sales tax
-        </p>
-      </div>
-    )}
-  </CardContent>
-</Card>
-```
-
-### 4. Update `MultiTemplateSelector.tsx`
-
-Modify `fetchCompanyAndEstimateSettings` to also fetch tax settings:
+To properly categorize items, we'll track the current section as we parse:
 
 ```typescript
-// Fetch estimate settings (including sales tax)
-const { data: settings } = await supabaseClient
-  .from('tenant_estimate_settings')
-  .select('fine_print_content, default_include_fine_print, sales_tax_enabled, sales_tax_rate')
-  .eq('tenant_id', tenantId)
-  .maybeSingle();
-
-if (settings) {
-  setFinePrintContent(settings.fine_print_content || '');
-  // Apply tax settings to pricing config
-  setConfig({
-    ...config,
-    salesTaxEnabled: settings.sales_tax_enabled ?? false,
-    salesTaxRate: settings.sales_tax_rate ?? 0,
+const handleFileUpload = (event) => {
+  // ... existing code ...
+  
+  Papa.parse(file, {
+    header: true,
+    skipEmptyLines: true,
+    complete: (results) => {
+      const headers = results.meta.fields || [];
+      let currentCategory = 'Shingles'; // Default first section
+      
+      const importedItems: ImportedItem[] = [];
+      
+      for (const row of results.data as any[]) {
+        const itemValue = row['item']?.toString().trim() || '';
+        const brandValue = row['brand logo']?.toString()?.trim() || row['Brand']?.toString()?.trim() || '';
+        
+        // Check if this is a section header
+        if (isSectionHeader(itemValue) || isSectionHeader(brandValue)) {
+          // Update current category from the section header
+          if (itemValue && !itemValue.toLowerCase().includes('uom')) {
+            currentCategory = itemValue.split(' ').slice(0, 3).join(' ');
+          }
+          continue;
+        }
+        
+        const parsed = parseCSVRow(row, headers);
+        if (parsed) {
+          parsed.category = currentCategory;
+          importedItems.push(parsed);
+        }
+      }
+      
+      // ... rest of existing code ...
+    }
   });
-}
-```
-
-### 5. Update `EstimateBreakdownCard.tsx`
-
-Add read-only tax display (no toggle, no edit):
-
-```typescript
-{/* Sales Tax (Company Setting - Read Only) */}
-{config.salesTaxEnabled && (
-  <div className="flex items-center justify-between text-sm">
-    <span className="flex items-center gap-2 text-muted-foreground">
-      <Receipt className="h-4 w-4" />
-      Sales Tax ({formatPercent(config.salesTaxRate)})
-      <Badge variant="outline" className="text-xs">Company Rate</Badge>
-    </span>
-    <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount)}</span>
-  </div>
-)}
-
-{/* Update Grand Total */}
-<div className="flex items-center justify-between py-2">
-  <span className="text-lg font-semibold flex items-center gap-2">
-    <DollarSign className="h-5 w-5" />
-    {config.salesTaxEnabled ? 'TOTAL (with tax)' : 'SELLING PRICE'}
-  </span>
-  <span className="text-2xl font-bold text-primary">
-    {formatCurrency(config.salesTaxEnabled ? breakdown.totalWithTax : breakdown.sellingPrice)}
-  </span>
-</div>
-```
-
-### 6. Update `SectionedLineItemsTable.tsx`
-
-Remove the editable tax toggle. Instead, display tax as read-only if enabled:
-
-```typescript
-// Remove: taxEnabled prop with editable toggle
-// Add: Read-only tax display from company settings
-
-{salesTaxEnabled && (
-  <TableRow className="bg-muted/30">
-    <TableCell colSpan={editable ? 4 : 3} className="text-right">
-      <span className="flex items-center justify-end gap-2 text-sm">
-        <Receipt className="h-4 w-4 text-muted-foreground" />
-        Sales Tax ({salesTaxRate.toFixed(2)}%)
-        <Badge variant="outline" className="text-xs">Company Rate</Badge>
-      </span>
-    </TableCell>
-    <TableCell className="text-right font-mono">
-      {formatCurrency(salesTaxAmount)}
-    </TableCell>
-    {editable && <TableCell />}
-  </TableRow>
-)}
-```
-
-### 7. Update `EstimatePDFDocument.tsx`
-
-Include tax line in PDF when enabled:
-
-```typescript
-// In the totals section
-{config.salesTaxEnabled && config.salesTaxRate > 0 && (
-  <div className="flex justify-between">
-    <span>Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
-    <span className="font-mono">{formatCurrency(breakdown.salesTaxAmount)}</span>
-  </div>
-)}
-
-{/* Grand Total */}
-<div className="flex justify-between text-lg font-bold border-t pt-2">
-  <span>TOTAL DUE</span>
-  <span className="font-mono">
-    {formatCurrency(config.salesTaxEnabled ? breakdown.totalWithTax : breakdown.sellingPrice)}
-  </span>
-</div>
-```
-
-### 8. Update Estimate Save (MultiTemplateSelector)
-
-Save tax info to the estimate record:
-
-```typescript
-const { data: newEstimate, error: createError } = await supabaseClient
-  .from('enhanced_estimates')
-  .insert({
-    // ... existing fields ...
-    selling_price: breakdown.sellingPrice,
-    sales_tax_rate: config.salesTaxEnabled ? config.salesTaxRate : 0,
-    sales_tax_amount: breakdown.salesTaxAmount,
-    total_with_tax: breakdown.totalWithTax,
-    // ...
-  })
-```
-
-This requires adding columns to `enhanced_estimates`:
-
-```sql
-ALTER TABLE enhanced_estimates
-ADD COLUMN IF NOT EXISTS sales_tax_rate numeric(5,3) DEFAULT 0,
-ADD COLUMN IF NOT EXISTS sales_tax_amount numeric(10,2) DEFAULT 0,
-ADD COLUMN IF NOT EXISTS total_with_tax numeric(10,2);
+};
 ```
 
 ---
 
-## Data Flow
+## Expected Results
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│                     SETTINGS (Company Level)                     │
-│  Settings → General → Estimate PDF                               │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ ☑ Enable Sales Tax                                          │ │
-│  │ Tax Rate: [7.25] %                                          │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│        ↓ Saves to tenant_estimate_settings                       │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                    ESTIMATE BUILDER                              │
-│  MultiTemplateSelector loads settings on mount                   │
-│  ┌─────────────────────────────────────────────────────────────┐ │
-│  │ Pricing Breakdown:                                          │ │
-│  │   Materials: $15,000                                        │ │
-│  │   Labor: $8,000                                             │ │
-│  │   Overhead (10%): $2,300                                    │ │
-│  │   Profit (30%): $6,900                                      │ │
-│  │   ─────────────────                                         │ │
-│  │   Subtotal: $32,200                                         │ │
-│  │   Sales Tax (7.25%): $2,334.50  🔒 Company Rate             │ │
-│  │   ═══════════════════                                       │ │
-│  │   TOTAL: $34,534.50                                         │ │
-│  └─────────────────────────────────────────────────────────────┘ │
-│  Note: Tax rate shown as read-only with "Company Rate" badge     │
-└─────────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────────┐
-│                      PDF OUTPUT                                  │
-│  Same display - tax rate locked, pulled from company settings    │
-└─────────────────────────────────────────────────────────────────┘
-```
+After the fix, importing the SRS pricelist CSV will:
+
+| Before | After |
+|--------|-------|
+| "No valid rows found" error | Successfully parses 100+ materials |
+| - | Auto-generates codes (e.g., "GAF-TIMBERLINE-HDZ") |
+| - | Extracts correct UOM (SQ, BD, RL, EA) |
+| - | Uses appropriate price column |
+| - | Assigns categories by section |
+
+**Example Parsed Data:**
+| Code | Name | Cost | UOM | Category |
+|------|------|------|-----|----------|
+| GAF-TIMBERLINE-HDZ | GAF Timberline HDZ | $115.00 | SQ | Shingles |
+| GAF-S-A-R-HIP-AND-RIDGE | GAF S-A-R Hip and Ridge | $59.00 | BD | Hip and Ridge |
+| SG-30-TOP-SHIELD-CMI | SG-30 (Top Shield)(CMI) | $67.00 | RL | Underlayments |
 
 ---
 
-## Expected User Experience
+## Summary
 
-1. **Admin/Manager** goes to Settings → General → Estimate PDF
-2. Enables "Sales Tax" toggle
-3. Enters tax rate (e.g., 7.25%)
-4. Saves settings
+| Change | Purpose |
+|--------|---------|
+| Skip section headers | Don't treat "Shingle Hip and Ridge and Starter" as product rows |
+| Use `item` as name | CSV doesn't have separate code column |
+| Auto-generate code | Create unique identifier from product name |
+| Multi-price fallback | Check `cost per item`, `cost per bundle`, `cost per sq` |
+| Extract UOM from calculation | Parse "3BD/SQ" → "SQ" |
+| Track section categories | Assign products to correct category |
 
-5. **Sales Rep** creates an estimate
-6. Tax is automatically calculated and displayed
-7. Rep CANNOT change the tax rate (shows "Company Rate" badge)
-8. Saved estimate includes tax in totals
-9. PDF shows tax as separate line item
-
----
-
-## Summary of Changes
-
-| Component | What Changes |
-|-----------|-------------|
-| Database | 2 new columns in `tenant_estimate_settings`, 3 new columns in `enhanced_estimates` |
-| Settings UI | New "Sales Tax" configuration card |
-| Pricing Hook | New fields for tax calculation |
-| Estimate Builder | Fetches and applies company tax settings |
-| Breakdown Card | Displays tax as read-only |
-| Line Items Table | Shows tax (non-editable) |
-| PDF Document | Includes tax line in output |
