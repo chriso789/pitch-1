@@ -199,8 +199,13 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
     };
 
     // Replace dot notation with values
+    // CRITICAL: Sort by key length descending to replace longer keys first
+    // This prevents 'lf.ridge' from partially matching within 'lf.ridge_hip'
     let evalExpr = expression;
-    for (const [key, value] of Object.entries(flatCtx)) {
+    const sortedEntries = Object.entries(flatCtx).sort(
+      ([a], [b]) => b.length - a.length
+    );
+    for (const [key, value] of sortedEntries) {
       const escapedKey = key.replace(/\./g, '\\.');
       evalExpr = evalExpr.replace(new RegExp(escapedKey, 'g'), String(value));
     }
