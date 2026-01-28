@@ -78,7 +78,18 @@ Deno.serve(async (req) => {
       const contentType = imageResponse.headers.get('content-type')
       if (contentType?.includes('jpeg')) mediaType = 'image/jpeg'
       const imageBuffer = await imageResponse.arrayBuffer()
-      imageData = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)))
+      
+      // Convert ArrayBuffer to base64 in chunks to avoid stack overflow
+      // The spread operator on large Uint8Arrays causes "Maximum call stack size exceeded"
+      const uint8Array = new Uint8Array(imageBuffer)
+      const CHUNK_SIZE = 8192
+      let binary = ''
+      for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+        const chunk = uint8Array.slice(i, Math.min(i + CHUNK_SIZE, uint8Array.length))
+        binary += String.fromCharCode(...chunk)
+      }
+      imageData = btoa(binary)
+      console.log(`📸 Image fetched and encoded: ${uint8Array.length} bytes`)
     } else {
       return new Response(JSON.stringify({ error: 'No image provided' }), {
         status: 400,
