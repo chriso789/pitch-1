@@ -20,6 +20,8 @@ export async function saveEstimatePdf({
   estimateNumber,
   description,
   userId,
+  estimateDisplayName,
+  estimatePricingTier,
 }: {
   pdfBlob: Blob;
   pipelineEntryId: string;
@@ -27,6 +29,8 @@ export async function saveEstimatePdf({
   estimateNumber: string;
   description: string;
   userId: string;
+  estimateDisplayName?: string | null;
+  estimatePricingTier?: string | null;
 }): Promise<EstimatePdfSaveResult> {
   try {
     // Path structure: pipelineEntryId first to satisfy RLS policy
@@ -61,7 +65,9 @@ export async function saveEstimatePdf({
         file_size: pdfBlob.size,
         mime_type: 'application/pdf',
         description,
-        uploaded_by: userId
+        uploaded_by: userId,
+        estimate_display_name: estimateDisplayName || null,
+        estimate_pricing_tier: estimatePricingTier || null,
       });
 
     if (docError) {

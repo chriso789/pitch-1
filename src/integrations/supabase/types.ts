@@ -9173,6 +9173,8 @@ export type Database = {
           description: string | null
           document_type: string | null
           docusign_document_id: string | null
+          estimate_display_name: string | null
+          estimate_pricing_tier: string | null
           file_path: string
           file_size: number | null
           filename: string
@@ -9199,6 +9201,8 @@ export type Database = {
           description?: string | null
           document_type?: string | null
           docusign_document_id?: string | null
+          estimate_display_name?: string | null
+          estimate_pricing_tier?: string | null
           file_path: string
           file_size?: number | null
           filename: string
@@ -9225,6 +9229,8 @@ export type Database = {
           description?: string | null
           document_type?: string | null
           docusign_document_id?: string | null
+          estimate_display_name?: string | null
+          estimate_pricing_tier?: string | null
           file_path?: string
           file_size?: number | null
           filename?: string

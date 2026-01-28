@@ -939,7 +939,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           tenantId,
           estimateNumber,
           description: shortDescription,
-          userId: user.id
+          userId: user.id,
+          estimateDisplayName: estimateDisplayName.trim() || null,
+          estimatePricingTier: estimatePricingTier || null,
         });
 
         if (result.success && result.filePath) {
