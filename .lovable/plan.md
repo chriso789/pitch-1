@@ -1,135 +1,244 @@
 
-# Plan: Fix Measurement Accuracy - Resolve Solar Bbox Fallback Issue
+# Plan: Add Pitch Adjustment at Location Verification (Single Roof Pitch)
 
-## Problem Summary
+## Overview
 
-The "Area May Be Overestimated" warning is showing because the measurement system is falling back to `solar_bbox_fallback` (a simple 4-vertex rectangle) instead of an accurate building outline. This happens due to **two cascading failures**:
+This plan adds a pitch selector to the `StructureSelectionMap` dialog (the PIN placement step) so users can set the predominant pitch **before** the AI measurement runs. The selected pitch will be passed to the `analyze-roof-aerial` edge function and used as an override for all calculations.
 
-### Root Cause 1: Vector Footprint Sources Unavailable
-For address `2308 Via Bella Blvd, Land O' Lakes, FL 34639`:
-- **Mapbox Vector**: No building polygon returned (common for newer developments)
-- **Microsoft/Esri Buildings**: No footprint available
-- **OSM Overpass**: Building not mapped in OpenStreetMap
-- **Regrid**: Also failed to provide usable footprint
+## Current Flow (Problem)
 
-### Root Cause 2: AI Vision Detection Crash
-When all vector sources fail, the `detect-building-footprint` function is called but it crashes with:
-```
-RangeError: Maximum call stack size exceeded
+```text
+User clicks "AI Measurements" 
+    → StructureSelectionMap opens (PIN placement)
+    → User confirms location
+    → analyze-roof-aerial runs (pitch is auto-detected from Solar API)
+    → Report shows pitch (NOT EDITABLE)
 ```
 
-**Location**: `supabase/functions/detect-building-footprint/index.ts`, line 81
+The pitch shown in your screenshot (7/12) comes from the Solar API or AI detection and cannot be changed after the measurement is complete.
 
-**Problematic Code**:
-```typescript
-imageData = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)))
+## Proposed Flow (Solution)
+
+```text
+User clicks "AI Measurements"
+    → StructureSelectionMap opens (PIN placement + PITCH SELECTOR)
+    → User sets pitch (default: 6/12 or Solar-detected if available)
+    → User confirms location
+    → analyze-roof-aerial runs WITH pitchOverride parameter
+    → System uses override pitch for all area calculations
+    → Report shows user-selected pitch
 ```
-
-The spread operator (`...`) on a large Uint8Array (640x640 satellite image = ~400KB+) exceeds JavaScript's maximum call stack size.
 
 ---
 
-## Solution
+## Technical Implementation
 
-### Fix 1: Repair AI Vision Detection (Primary Fix)
+### Phase 1: Update StructureSelectionMap Component
 
-Replace the crashing base64 conversion with a chunk-based approach that handles large images:
+**File**: `src/components/measurements/StructureSelectionMap.tsx`
 
-**File**: `supabase/functions/detect-building-footprint/index.ts`
+**Changes**:
+1. Add pitch state: `const [selectedPitch, setSelectedPitch] = useState<string>('6/12');`
+2. Add pitch options constant
+3. Add Select dropdown in the dialog UI (above map or in footer)
+4. Update `onLocationConfirmed` callback signature to include pitch
+5. Update `handleConfirm` to pass pitch to parent
 
-**Current Code (Line 80-81)**:
+**New Props Interface**:
 ```typescript
-const imageBuffer = await imageResponse.arrayBuffer()
-imageData = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)))
-```
-
-**Fixed Code**:
-```typescript
-const imageBuffer = await imageResponse.arrayBuffer()
-// Convert ArrayBuffer to base64 in chunks to avoid stack overflow
-const uint8Array = new Uint8Array(imageBuffer)
-const CHUNK_SIZE = 8192
-let binary = ''
-for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
-  const chunk = uint8Array.slice(i, Math.min(i + CHUNK_SIZE, uint8Array.length))
-  binary += String.fromCharCode(...chunk)
+interface StructureSelectionMapProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  initialLat: number;
+  initialLng: number;
+  address?: string;
+  onLocationConfirmed: (lat: number, lng: number, pitchOverride?: string) => void;
+  defaultPitch?: string; // Optional: pre-fill from previous measurement
 }
-imageData = btoa(binary)
 ```
 
-This processes the image in 8KB chunks instead of trying to spread 400KB+ at once.
+**UI Addition** (in DialogHeader or footer):
+```tsx
+<div className="flex items-center gap-2 mt-2">
+  <Label className="text-xs">Roof Pitch:</Label>
+  <Select value={selectedPitch} onValueChange={setSelectedPitch}>
+    <SelectTrigger className="w-24 h-8">
+      <SelectValue />
+    </SelectTrigger>
+    <SelectContent className="bg-background z-50">
+      {PITCH_OPTIONS.map(p => (
+        <SelectItem key={p} value={p}>{p}</SelectItem>
+      ))}
+    </SelectContent>
+  </Select>
+  <span className="text-xs text-muted-foreground">(affects area calculation)</span>
+</div>
+```
+
+**Pitch Options**:
+```typescript
+const PITCH_OPTIONS = [
+  '0/12', '1/12', '2/12', '3/12', '4/12', '5/12', '6/12', 
+  '7/12', '8/12', '9/12', '10/12', '11/12', '12/12',
+  '14/12', '16/12', '18/12'
+];
+```
 
 ---
 
-### Fix 2: Improve Vector Footprint Logging (Diagnostic Enhancement)
+### Phase 2: Update PullMeasurementsButton to Pass Pitch
 
-Add explicit logging when each vector source fails in the Solar Fast Path to help diagnose future issues:
+**File**: `src/components/measurements/PullMeasurementsButton.tsx`
+
+**Changes**:
+1. Update `handleStructureConfirmed` to accept pitch parameter
+2. Pass pitch to `handlePull` function
+3. Include `pitchOverride` in the edge function request body
+
+**Current Code** (lines 573-577):
+```typescript
+const handleStructureConfirmed = (lat: number, lng: number) => {
+  setShowStructureSelector(false);
+  handlePull(lat, lng);
+};
+```
+
+**Updated Code**:
+```typescript
+const handleStructureConfirmed = (lat: number, lng: number, pitchOverride?: string) => {
+  setShowStructureSelector(false);
+  handlePull(lat, lng, pitchOverride);
+};
+```
+
+**Update handlePull signature** (line 219):
+```typescript
+async function handlePull(confirmedLat: number, confirmedLng: number, pitchOverride?: string) {
+```
+
+**Update edge function call** (lines 265-273):
+```typescript
+const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
+  body: {
+    address: address || 'Unknown Address',
+    coordinates: { lat: pullLat, lng: pullLng },
+    customerId: propertyId,
+    userId: user?.id,
+    pitchOverride: pitchOverride || undefined // NEW: Pass pitch override
+  }
+});
+```
+
+---
+
+### Phase 3: Update analyze-roof-aerial Edge Function
 
 **File**: `supabase/functions/analyze-roof-aerial/index.ts`
 
-In the `processSolarFastPath` function (around lines 4695-4720), enhance the Mapbox failure logging:
+**Changes**:
+1. Extract `pitchOverride` from request body
+2. Use it in slope factor calculations instead of Solar-detected pitch
+3. Store it in the database as `predominant_pitch`
 
-**Current**:
+**Request Handler** (around line 162):
 ```typescript
-console.log(`⚠️ Mapbox failed: reason=${mapboxResult.fallbackReason || 'unknown'}, error=${mapboxResult.error || 'none'}`)
+const { address, coordinates, customerId, userId, forceFullAnalysis, pitchOverride } = await req.json();
+
+if (pitchOverride) {
+  console.log(`📐 Using manual pitch override: ${pitchOverride}`);
+}
 ```
 
-**Enhanced** (add after each source attempt):
+**Calculation Usage** (multiple locations):
+When calculating `totalAdjustedArea`, use:
 ```typescript
-console.log(`📍 Footprint sources checked for ${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}:`)
-console.log(`   Mapbox: ${mapboxResult.footprint ? '✅' : '❌'} ${mapboxResult.fallbackReason || mapboxResult.error || 'no data'}`)
-// Similar for Regrid, OSM, Microsoft
+const effectivePitch = pitchOverride || solarDerivedPitch || '6/12';
+const slopeFactor = getSlopeFactorFromPitch(effectivePitch);
+const adjustedArea = flatArea * slopeFactor;
+```
+
+**Database Save** (line 3936):
+```typescript
+predominant_pitch: pitchOverride || measurements.predominantPitch,
 ```
 
 ---
 
-## Implementation Details
+### Phase 4: Update unified-measurement-pipeline (Optional Enhancement)
 
-### Files to Modify
+**File**: `supabase/functions/_shared/unified-measurement-pipeline.ts`
 
-| File | Change | Priority |
-|------|--------|----------|
-| `supabase/functions/detect-building-footprint/index.ts` | Fix base64 encoding stack overflow | **Critical** |
-| `supabase/functions/analyze-roof-aerial/index.ts` | Add diagnostic logging for footprint source failures | Medium |
+The new unified pipeline already supports `pitchOverride` in `UnifiedMeasurementRequest`. Ensure it flows through to area calculations:
 
-### Technical Notes
+```typescript
+// Line 272 already handles this:
+const effectivePitch = request.pitchOverride || 
+  (solarData?.available ? getPredominantPitchFromSolar(solarData) : '6/12');
+```
 
-1. **Chunk-based base64 encoding**: The 8192-byte chunk size is chosen because:
-   - `String.fromCharCode` can safely handle ~8K chars without stack issues
-   - Provides good balance between iterations and safety margin
-   - Works consistently across Deno and Node.js runtimes
-
-2. **Why the warning still shows for this property**: Even after fixing the AI Vision crash, if AI detection also fails or has low confidence, the system will still use `solar_bbox_fallback`. However, fixing the crash restores the AI detection capability for most properties.
-
-3. **Alternative fix using TextDecoder** (if base64 method still has issues):
-   ```typescript
-   // Alternative: Use streaming base64 encoding
-   const base64 = btoa(Array.from(new Uint8Array(imageBuffer), b => String.fromCharCode(b)).join(''))
-   ```
-   This is slower but more memory-efficient.
+No changes needed here - already implemented.
 
 ---
 
-## Expected Results After Fix
+## Files to Modify
 
-1. **AI Vision detection will work again** instead of crashing with stack overflow
-2. **Many properties** that were falling back to `solar_bbox_fallback` will now get proper AI-detected footprints
-3. **This specific property** may still show the warning if AI detection has low confidence for the building shape, but the warning will be correct (i.e., the system genuinely couldn't detect a good footprint)
-
----
-
-## Testing Strategy
-
-After deploying the fix:
-
-1. **Re-measure the current property** (2308 Via Bella Blvd, Land O' Lakes, FL) using the "Re-measure" button
-2. **Check edge function logs** for:
-   - No more "Maximum call stack size exceeded" errors
-   - AI Vision detection logs showing vertices detected
-3. **Expected outcome**: Either the warning disappears (AI detected good footprint) or the warning remains but with proper AI detection having been attempted
+| File | Changes |
+|------|---------|
+| `src/components/measurements/StructureSelectionMap.tsx` | Add pitch selector UI, update props/callback |
+| `src/components/measurements/PullMeasurementsButton.tsx` | Pass pitch through handlePull to edge function |
+| `supabase/functions/analyze-roof-aerial/index.ts` | Accept and use `pitchOverride` parameter |
 
 ---
 
-## Additional Improvement (Optional)
+## UI/UX Details
 
-If AI Vision detection is also consistently failing for this address, consider adding a **manual trace fallback UI** that allows users to draw the roof outline on the satellite image when automatic detection fails.
+### Pitch Selector Placement
+The pitch dropdown will be placed in the dialog header area of `StructureSelectionMap`, below the address and above the map. This keeps it visible while the user positions the PIN.
+
+### Visual Design
+- Label: "Roof Pitch:"
+- Dropdown with values from 0/12 to 18/12
+- Helper text: "(affects area calculation)"
+- Default value: 6/12 (industry standard for residential)
+
+### User Flow
+1. User clicks "AI Measurements"
+2. Structure Selection Map opens
+3. User sees pitch dropdown with default 6/12
+4. User can change pitch if they know it (e.g., from permit or existing report)
+5. User drags PIN to roof center
+6. User clicks "Confirm & Measure"
+7. AI analysis runs with the selected pitch as override
+8. Report shows the user-selected pitch value
+
+---
+
+## Edge Cases Handled
+
+1. **No pitch selected**: Uses 6/12 default
+2. **Solar API provides pitch**: User selection overrides Solar data
+3. **Invalid pitch format**: Validation in Select options prevents this
+4. **Existing measurements**: If re-measuring, could pre-fill with previous pitch (optional enhancement)
+
+---
+
+## Testing Verification
+
+After implementation:
+1. Open a lead page
+2. Click "AI Measurements" 
+3. Verify pitch dropdown appears in the Structure Selection Map dialog
+4. Select a specific pitch (e.g., 10/12)
+5. Confirm location
+6. Verify the resulting report shows the selected pitch (10/12)
+7. Verify the area calculation uses the correct slope factor for 10/12
+
+---
+
+## Expected Results
+
+- Users can set pitch BEFORE measurement runs
+- The system uses the user-specified pitch for all area calculations
+- Reports display the user-selected pitch
+- No more need to manually correct pitch after the fact
+- Calculations are correct from the first measurement
