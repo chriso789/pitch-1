@@ -37,12 +37,13 @@ export interface PricingBreakdown {
   profitAmount: number;
   netProfit: number; // Net profit before commission (for profit_split display)
   repCommissionAmount: number;
-  sellingPrice: number;
+  sellingPrice: number; // NOW INCLUDES TAX (customer-facing total)
+  preTaxSellingPrice: number; // Internal: selling price before tax
   actualProfitMargin: number;
   // Sales tax (applied to materials portion only - labor is tax-exempt)
   materialsSellingPortion: number; // Materials portion of selling price for tax calculation
-  salesTaxAmount: number;
-  totalWithTax: number;
+  salesTaxAmount: number; // Internal tracking only - baked into sellingPrice
+  totalWithTax: number; // Same as sellingPrice (backward compatibility)
 }
 
 export interface UseEstimatePricingReturn {
@@ -174,7 +175,15 @@ export function useEstimatePricing(
     const salesTaxAmount = config.salesTaxEnabled 
       ? materialsSellingPortion * (config.salesTaxRate / 100) 
       : 0;
-    const totalWithTax = sellingPrice + salesTaxAmount;
+    
+    // Store pre-tax selling price for internal accounting
+    const preTaxSellingPrice = sellingPrice;
+    
+    // BAKE TAX INTO SELLING PRICE - customer sees one total with tax included
+    const finalSellingPrice = sellingPrice + salesTaxAmount;
+    
+    // totalWithTax = same as finalSellingPrice for backward compatibility
+    const totalWithTax = finalSellingPrice;
 
     return {
       materialsTotal,
@@ -185,11 +194,12 @@ export function useEstimatePricing(
       profitAmount,
       netProfit,
       repCommissionAmount,
-      sellingPrice,
+      sellingPrice: finalSellingPrice, // NOW INCLUDES TAX
+      preTaxSellingPrice, // Internal: before tax
       actualProfitMargin,
       materialsSellingPortion,
-      salesTaxAmount,
-      totalWithTax,
+      salesTaxAmount, // Still tracked for internal accounting
+      totalWithTax, // Same as sellingPrice (backward compat)
     };
   }, [materialItems, laborItems, config, isFixedPrice, fixedPrice]);
 

@@ -457,48 +457,8 @@ export function SectionedLineItemsTable({
                 {editable && <TableCell />}
               </TableRow>
 
-              {/* Selling Price Row (before tax) - only show when sales tax is enabled */}
-              {salesTaxEnabled && salesTaxRate > 0 && sellingPrice !== undefined && (
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableCell colSpan={editable ? 3 : 3} className="text-right font-medium">
-                    Selling Price (before tax)
-                  </TableCell>
-                  <TableCell className="text-right font-mono font-bold">
-                    {formatCurrency(sellingPrice)}
-                  </TableCell>
-                  {editable && <TableCell />}
-                </TableRow>
-              )}
-
-              {/* Sales Tax Row (Read-Only from Company Settings) - Applied to materials only */}
-              {salesTaxEnabled && salesTaxRate > 0 && (
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
-                  <TableCell colSpan={editable ? 3 : 3} className="text-right">
-                    <span className="flex items-center justify-end gap-2 text-sm">
-                      <Receipt className="h-4 w-4 text-muted-foreground" />
-                      Sales Tax on Materials ({salesTaxRate.toFixed(2)}%)
-                      <Badge variant="outline" className="text-xs">Company Rate</Badge>
-                    </span>
-                  </TableCell>
-                  <TableCell className="text-right font-mono font-medium">
-                    {formatCurrency(salesTaxAmount)}
-                  </TableCell>
-                  {editable && <TableCell />}
-                </TableRow>
-              )}
-
-              {/* Grand Total with Tax */}
-              {salesTaxEnabled && salesTaxRate > 0 && (
-                <TableRow className="bg-primary/10 hover:bg-primary/10 border-t">
-                  <TableCell colSpan={editable ? 3 : 3} className="text-right font-bold text-lg">
-                    Total with Tax
-                  </TableCell>
-                  <TableCell className="text-right font-mono font-bold text-lg text-primary">
-                    {formatCurrency(totalWithTax ?? (sellingPrice ?? (materialsTotal + laborTotal)) + salesTaxAmount)}
-                  </TableCell>
-                  {editable && <TableCell />}
-                </TableRow>
-              )}
+              {/* NOTE: Sales Tax is now BAKED INTO the selling price - not shown separately to customer */}
+              {/* The sellingPrice prop already includes tax when salesTaxEnabled is true */}
             </>
           )}
         </TableBody>
