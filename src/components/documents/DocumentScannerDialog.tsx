@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { X, Camera, Trash2, RotateCcw, Loader2, FileText, Image } from 'lucide-react';
+import { X, Camera, Trash2, RotateCcw, Loader2, FileText, Image, Edit2 } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -9,7 +9,10 @@ import { cn } from '@/lib/utils';
 import { isMobileDevice, hasHomeIndicator } from '@/utils/mobileDetection';
 import jsPDF from 'jspdf';
 import { detectDocumentEdges, DetectedCorners } from '@/utils/documentEdgeDetection';
-import { enhanceDocument, applyPerspectiveTransform } from '@/utils/documentEnhancement';
+import { detectDocumentEdgesOpenCV, loadOpenCV, isOpenCVAvailable } from '@/utils/documentEdgeDetectionOpenCV';
+import { CornerStabilityBuffer, validateQuadrilateral, StabilityResult } from '@/utils/documentStability';
+import { enhanceDocumentPro } from '@/utils/documentEnhancementPro';
+import { ManualCropOverlay } from './ManualCropOverlay';
 
 interface CapturedPage {
   blob: Blob;
@@ -39,20 +42,37 @@ export function DocumentScannerDialog({
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [detectedCorners, setDetectedCorners] = useState<DetectedCorners | null>(null);
+  const [stabilityResult, setStabilityResult] = useState<StabilityResult | null>(null);
   const [processingMode, setProcessingMode] = useState<'color' | 'bw'>('bw');
   const [isProcessing, setIsProcessing] = useState(false);
   const [videoWidth, setVideoWidth] = useState(0);
   const [videoHeight, setVideoHeight] = useState(0);
+  const [opencvLoading, setOpencvLoading] = useState(false);
+  
+  // Manual crop state
+  const [showManualCrop, setShowManualCrop] = useState(false);
+  const [manualCropImage, setManualCropImage] = useState<{ url: string; width: number; height: number } | null>(null);
+  const [pendingCaptureCanvas, setPendingCaptureCanvas] = useState<HTMLCanvasElement | null>(null);
   
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const stabilityBufferRef = useRef(new CornerStabilityBuffer());
+
+  // Load OpenCV when dialog opens
+  useEffect(() => {
+    if (open && !isOpenCVAvailable()) {
+      setOpencvLoading(true);
+      loadOpenCV().finally(() => setOpencvLoading(false));
+    }
+  }, [open]);
 
   // Start camera when dialog opens
   useEffect(() => {
     if (open) {
       startCamera();
+      stabilityBufferRef.current.reset();
     } else {
       stopCamera();
       // Clean up captured pages on close
@@ -60,6 +80,10 @@ export function DocumentScannerDialog({
       setCapturedPages([]);
       setCameraError(null);
       setDetectedCorners(null);
+      setStabilityResult(null);
+      setShowManualCrop(false);
+      setManualCropImage(null);
+      setPendingCaptureCanvas(null);
     }
     
     return () => {
@@ -67,7 +91,7 @@ export function DocumentScannerDialog({
     };
   }, [open]);
 
-  // Edge detection loop
+  // Edge detection loop with stability tracking
   useEffect(() => {
     if (!cameraReady || !videoRef.current) {
       if (detectionIntervalRef.current) {
@@ -77,7 +101,7 @@ export function DocumentScannerDialog({
       return;
     }
     
-    const runDetection = () => {
+    const runDetection = async () => {
       const video = videoRef.current;
       if (!video || video.videoWidth === 0) return;
       
@@ -98,19 +122,41 @@ export function DocumentScannerDialog({
       ctx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
       const imageData = ctx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
       
-      const corners = detectDocumentEdges(imageData);
+      // Try OpenCV detection first, fall back to basic detector
+      let corners: DetectedCorners | null = null;
+      
+      if (isOpenCVAvailable()) {
+        corners = await detectDocumentEdgesOpenCV(imageData);
+      }
+      
+      if (!corners) {
+        corners = detectDocumentEdges(imageData);
+      }
       
       if (corners) {
         // Scale corners back to full resolution
-        setDetectedCorners({
+        const scaledCorners: DetectedCorners = {
           topLeft: { x: corners.topLeft.x * scale, y: corners.topLeft.y * scale },
           topRight: { x: corners.topRight.x * scale, y: corners.topRight.y * scale },
           bottomRight: { x: corners.bottomRight.x * scale, y: corners.bottomRight.y * scale },
           bottomLeft: { x: corners.bottomLeft.x * scale, y: corners.bottomLeft.y * scale },
           confidence: corners.confidence,
-        });
+        };
+        
+        // Add to stability buffer
+        const stability = stabilityBufferRef.current.addFrame(scaledCorners);
+        setStabilityResult(stability);
+        
+        // Use averaged corners for display (smoother)
+        if (stability.averagedCorners) {
+          setDetectedCorners(stability.averagedCorners);
+        } else {
+          setDetectedCorners(scaledCorners);
+        }
       } else {
+        stabilityBufferRef.current.addFrame(null);
         setDetectedCorners(null);
+        setStabilityResult(null);
       }
     };
     
@@ -168,7 +214,68 @@ export function DocumentScannerDialog({
     }
     setCameraReady(false);
     setDetectedCorners(null);
+    setStabilityResult(null);
   };
+
+  // Process captured frame with given corners
+  const processAndAddPage = useCallback(async (
+    sourceCanvas: HTMLCanvasElement,
+    corners: DetectedCorners
+  ) => {
+    try {
+      // Validate quadrilateral
+      const validation = validateQuadrilateral(corners, sourceCanvas.width, sourceCanvas.height);
+      if (!validation.valid) {
+        toast({
+          title: 'Invalid Selection',
+          description: validation.reason || 'Please adjust the document corners.',
+          variant: 'destructive',
+        });
+        return false;
+      }
+
+      // Apply professional enhancement pipeline
+      const enhanced = enhanceDocumentPro(sourceCanvas, corners, {
+        mode: processingMode,
+        illuminationCorrection: true,
+        whiteBackground: true,
+        sharpen: processingMode === 'color',
+        outputWidth: 2550, // 8.5" at 300 DPI
+        outputHeight: 3300, // 11" at 300 DPI
+      });
+
+      // Add page number overlay
+      const pageNum = capturedPages.length + 1;
+      const enhancedCtx = enhanced.getContext('2d');
+      if (enhancedCtx) {
+        enhancedCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        enhancedCtx.fillRect(enhanced.width - 120, 15, 100, 40);
+        enhancedCtx.fillStyle = 'white';
+        enhancedCtx.font = 'bold 24px sans-serif';
+        enhancedCtx.fillText(`Page ${pageNum}`, enhanced.width - 110, 45);
+      }
+
+      // Convert to blob with high quality
+      return new Promise<boolean>((resolve) => {
+        enhanced.toBlob(
+          (blob) => {
+            if (blob) {
+              const preview = URL.createObjectURL(blob);
+              setCapturedPages(prev => [...prev, { blob, preview }]);
+              resolve(true);
+            } else {
+              resolve(false);
+            }
+          },
+          'image/jpeg',
+          0.95
+        );
+      });
+    } catch (error) {
+      console.error('Processing error:', error);
+      return false;
+    }
+  }, [capturedPages.length, processingMode]);
 
   const captureAndProcess = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current || !cameraReady) return;
@@ -189,59 +296,90 @@ export function DocumentScannerDialog({
       // Draw video frame to canvas
       ctx.drawImage(video, 0, 0);
 
-      // Apply perspective correction if edges detected with good confidence
-      let processedCanvas: HTMLCanvasElement = canvas;
-      if (detectedCorners && detectedCorners.confidence > 0.6) {
-        processedCanvas = applyPerspectiveTransform(
-          canvas,
-          detectedCorners,
-          2550, // 8.5" at 300 DPI
-          3300  // 11" at 300 DPI
-        );
-      }
-
-      // Apply enhancement pipeline
-      const enhanced = enhanceDocument(processedCanvas, {
-        mode: processingMode,
-        shadowRemoval: true,
-        contrastBoost: 1.3,
-        brightnessNormalize: true,
-        sharpen: true,
-      });
-
-      // Add page number overlay
-      const pageNum = capturedPages.length + 1;
-      const enhancedCtx = enhanced.getContext('2d');
-      if (enhancedCtx) {
-        enhancedCtx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        enhancedCtx.fillRect(enhanced.width - 120, 15, 100, 40);
-        enhancedCtx.fillStyle = 'white';
-        enhancedCtx.font = 'bold 24px sans-serif';
-        enhancedCtx.fillText(`Page ${pageNum}`, enhanced.width - 110, 45);
-      }
-
-      // Convert to blob with high quality
-      enhanced.toBlob(
-        (blob) => {
+      // Check if we have stable detection
+      const currentStability = stabilityBufferRef.current.getResult();
+      
+      if (currentStability.stable && currentStability.averagedCorners) {
+        // AUTO MODE: Use stable corners immediately
+        const success = await processAndAddPage(canvas, currentStability.averagedCorners);
+        if (!success) {
+          toast({
+            title: 'Processing Failed',
+            description: 'Failed to process the captured image. Please try again.',
+            variant: 'destructive',
+          });
+        }
+      } else {
+        // MANUAL MODE: Show crop overlay
+        // Create a copy of the canvas for manual cropping
+        const captureCanvas = document.createElement('canvas');
+        captureCanvas.width = canvas.width;
+        captureCanvas.height = canvas.height;
+        const captureCtx = captureCanvas.getContext('2d');
+        captureCtx?.drawImage(canvas, 0, 0);
+        
+        setPendingCaptureCanvas(captureCanvas);
+        
+        // Create image URL for overlay
+        canvas.toBlob((blob) => {
           if (blob) {
-            const preview = URL.createObjectURL(blob);
-            setCapturedPages(prev => [...prev, { blob, preview }]);
+            const url = URL.createObjectURL(blob);
+            setManualCropImage({
+              url,
+              width: canvas.width,
+              height: canvas.height,
+            });
+            setShowManualCrop(true);
           }
-          setIsProcessing(false);
-        },
-        'image/jpeg',
-        0.95
-      );
+        }, 'image/jpeg', 0.9);
+      }
     } catch (error) {
-      console.error('Processing error:', error);
-      setIsProcessing(false);
+      console.error('Capture error:', error);
       toast({
-        title: 'Processing Failed',
-        description: 'Failed to process the captured image. Please try again.',
+        title: 'Capture Failed',
+        description: 'Failed to capture the image. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setIsProcessing(false);
     }
-  }, [cameraReady, capturedPages.length, detectedCorners, processingMode]);
+  }, [cameraReady, processAndAddPage]);
+
+  // Handle manual crop confirmation
+  const handleManualCropConfirm = useCallback(async (corners: DetectedCorners) => {
+    if (!pendingCaptureCanvas) return;
+    
+    setIsProcessing(true);
+    setShowManualCrop(false);
+    
+    try {
+      const success = await processAndAddPage(pendingCaptureCanvas, corners);
+      if (!success) {
+        toast({
+          title: 'Processing Failed',
+          description: 'Failed to process the cropped image. Please try again.',
+          variant: 'destructive',
+        });
+      }
+    } finally {
+      setIsProcessing(false);
+      if (manualCropImage) {
+        URL.revokeObjectURL(manualCropImage.url);
+      }
+      setManualCropImage(null);
+      setPendingCaptureCanvas(null);
+    }
+  }, [pendingCaptureCanvas, processAndAddPage, manualCropImage]);
+
+  // Handle manual crop cancel
+  const handleManualCropCancel = useCallback(() => {
+    setShowManualCrop(false);
+    if (manualCropImage) {
+      URL.revokeObjectURL(manualCropImage.url);
+    }
+    setManualCropImage(null);
+    setPendingCaptureCanvas(null);
+  }, [manualCropImage]);
 
   const removePage = (index: number) => {
     setCapturedPages(prev => {
@@ -387,8 +525,60 @@ export function DocumentScannerDialog({
     onOpenChange(false);
   };
 
+  // Force manual crop mode
+  const handleForceManualCrop = useCallback(() => {
+    if (!videoRef.current || !canvasRef.current || !cameraReady) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Capture frame
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0);
+
+    // Create a copy for manual cropping
+    const captureCanvas = document.createElement('canvas');
+    captureCanvas.width = canvas.width;
+    captureCanvas.height = canvas.height;
+    const captureCtx = captureCanvas.getContext('2d');
+    captureCtx?.drawImage(canvas, 0, 0);
+    setPendingCaptureCanvas(captureCanvas);
+
+    // Create image URL for overlay
+    canvas.toBlob((blob) => {
+      if (blob) {
+        const url = URL.createObjectURL(blob);
+        setManualCropImage({
+          url,
+          width: canvas.width,
+          height: canvas.height,
+        });
+        setShowManualCrop(true);
+      }
+    }, 'image/jpeg', 0.9);
+  }, [cameraReady]);
+
   const isMobile = isMobileDevice();
   const bottomPadding = hasHomeIndicator() ? 'pb-8' : 'pb-4';
+  const isStable = stabilityResult?.stable ?? false;
+  const detectionConfidence = detectedCorners?.confidence ?? 0;
+
+  // Show manual crop overlay
+  if (showManualCrop && manualCropImage) {
+    return (
+      <ManualCropOverlay
+        imageUrl={manualCropImage.url}
+        initialCorners={detectedCorners}
+        imageWidth={manualCropImage.width}
+        imageHeight={manualCropImage.height}
+        onConfirm={handleManualCropConfirm}
+        onCancel={handleManualCropCancel}
+      />
+    );
+  }
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -462,15 +652,24 @@ export function DocumentScannerDialog({
                       ${detectedCorners.bottomRight.x},${detectedCorners.bottomRight.y}
                       ${detectedCorners.bottomLeft.x},${detectedCorners.bottomLeft.y}
                     `}
-                    fill="hsla(142, 76%, 36%, 0.15)"
-                    stroke="hsl(142, 76%, 36%)"
+                    fill={isStable ? "hsla(142, 76%, 36%, 0.2)" : "hsla(45, 93%, 47%, 0.15)"}
+                    stroke={isStable ? "hsl(142, 76%, 36%)" : "hsl(45, 93%, 47%)"}
                     strokeWidth="4"
+                    className="transition-all duration-300"
                   />
                   {/* Corner markers */}
-                  <circle cx={detectedCorners.topLeft.x} cy={detectedCorners.topLeft.y} r="12" fill="hsl(142, 76%, 36%)" stroke="hsl(0, 0%, 100%)" strokeWidth="2" />
-                  <circle cx={detectedCorners.topRight.x} cy={detectedCorners.topRight.y} r="12" fill="hsl(142, 76%, 36%)" stroke="hsl(0, 0%, 100%)" strokeWidth="2" />
-                  <circle cx={detectedCorners.bottomRight.x} cy={detectedCorners.bottomRight.y} r="12" fill="hsl(142, 76%, 36%)" stroke="hsl(0, 0%, 100%)" strokeWidth="2" />
-                  <circle cx={detectedCorners.bottomLeft.x} cy={detectedCorners.bottomLeft.y} r="12" fill="hsl(142, 76%, 36%)" stroke="hsl(0, 0%, 100%)" strokeWidth="2" />
+                  {[detectedCorners.topLeft, detectedCorners.topRight, detectedCorners.bottomRight, detectedCorners.bottomLeft].map((corner, i) => (
+                    <circle 
+                      key={i}
+                      cx={corner.x} 
+                      cy={corner.y} 
+                      r="12" 
+                      fill={isStable ? "hsl(142, 76%, 36%)" : "hsl(45, 93%, 47%)"} 
+                      stroke="hsl(0, 0%, 100%)" 
+                      strokeWidth="2"
+                      className="transition-all duration-300"
+                    />
+                  ))}
                 </svg>
               )}
               
@@ -487,14 +686,25 @@ export function DocumentScannerDialog({
               {/* Detection status indicator */}
               {cameraReady && (
                 <div className={cn(
-                  "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg",
-                  detectedCorners && detectedCorners.confidence > 0.65
-                    ? "bg-green-500/90 text-white"
-                    : "bg-yellow-500/90 text-white"
+                  "absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-full text-sm font-medium shadow-lg transition-all duration-300",
+                  isStable
+                    ? "bg-success text-success-foreground"
+                    : detectedCorners
+                      ? "bg-warning text-warning-foreground"
+                      : "bg-muted text-muted-foreground"
                 )}>
-                  {detectedCorners && detectedCorners.confidence > 0.6 
-                    ? '✓ Document Detected' 
-                    : 'Position document in frame'}
+                  {isStable 
+                    ? '✓ Ready to Capture' 
+                    : detectedCorners
+                      ? 'Hold steady...'
+                      : 'Position document in frame'}
+                </div>
+              )}
+              
+              {/* OpenCV loading indicator */}
+              {opencvLoading && (
+                <div className="absolute top-14 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full text-xs bg-primary/80 text-primary-foreground">
+                  Loading scanner...
                 </div>
               )}
               
@@ -564,6 +774,15 @@ export function DocumentScannerDialog({
             <Image className="h-4 w-4 mr-2" />
             Color
           </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleForceManualCrop}
+            disabled={!cameraReady || isUploading || isProcessing}
+            title="Manually adjust corners"
+          >
+            <Edit2 className="h-4 w-4" />
+          </Button>
         </div>
 
         {/* Upload Progress */}
@@ -604,7 +823,7 @@ export function DocumentScannerDialog({
               "transition-all duration-150",
               "disabled:opacity-50 disabled:cursor-not-allowed",
               "border-4 border-primary-foreground shadow-lg",
-              detectedCorners && detectedCorners.confidence > 0.6 && "ring-4 ring-success/50"
+              isStable && "ring-4 ring-success/50 animate-pulse"
             )}
             aria-label="Capture page"
           >
