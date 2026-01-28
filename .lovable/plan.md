@@ -1,111 +1,124 @@
 
 
-# Plan: Fix Commission Rate Sync and Structure Mapping
+# Plan: Expand CSV Column Name Mapping for Material Import
 
-## Summary
+## Problem Summary
 
-There are two issues preventing the 60% commission from showing:
+The Material Import system doesn't recognize your CSV columns because they don't match the expected patterns. Your CSV has:
 
-1. **Database is stale**: The edge function was just deployed but hasn't been called. The `profiles.commission_rate` is still 50.00 for Test Rep.
-2. **Structure mapping mismatch**: The `MultiTemplateSelector.tsx` expects `sales_percentage` but the edge function saves `percentage_contract_price`.
+| Your Column | Expected Patterns | Match? |
+|-------------|-------------------|--------|
+| `brand logo` | N/A | ❌ Not mapped |
+| `item` | code, sku, item_code | ❌ Not recognized |
+| `calcluation` | N/A | ❌ Not mapped |
+| `cost per bundle` | cost, price, base_cost, unit_cost | ❌ Not recognized |
+| `cost per square` | N/A | ❌ Not mapped |
+| `cost per item` | cost, price, base_cost, unit_cost | ❌ Not recognized |
 
----
-
-## Issue 1: Stale Database Value
-
-**Current state**:
-- `profiles.commission_rate` = 50.00
-- `profiles.commission_structure` = profit_split
-
-**Action required**:
-The edge function is now deployed with the fix. The user must **re-save Test Rep's commission settings** (Settings → Users → Commission Settings) to trigger the sync and update the profile.
-
-Alternatively, run this SQL to immediately update the database:
-
-```sql
-UPDATE profiles 
-SET commission_rate = 60, commission_structure = 'profit_split'
-WHERE id = '3a45549d-e107-4ea0-9a16-c69e5fd6056f';
-```
+The `parseCSVRow` function in `MaterialImportAuditDialog.tsx` fails because it can't find required columns (code, name, cost).
 
 ---
 
-## Issue 2: Commission Structure Type Mismatch
+## Solution
 
-### Root Cause
+Expand the column name mapping to support more common variations used by suppliers like SRS Distribution.
 
-The application uses inconsistent type names for commission structure:
+### File: `src/components/materials/MaterialImportAuditDialog.tsx`
 
-| Location | Profit Split | Contract Percentage |
-|----------|--------------|---------------------|
-| Edge function saves | `profit_split` | `percentage_contract_price` |
-| MultiTemplateSelector expects | `profit_split` | `sales_percentage` |
-| RepProfitBreakdown expects | `profit_split` | `percentage_contract_price` |
-| useEstimatePricing uses | `profit_split` | `sales_percentage` |
-| Database enum | `profit_split` | `sales_percentage` |
-
-### Problem Code
-
-In `MultiTemplateSelector.tsx` line 227:
+**Current Column Mappings (lines 105-112):**
 ```typescript
-commissionStructure: (profile.commission_structure === 'sales_percentage' 
-  ? 'sales_percentage' 
-  : 'profit_split')
+const codeCol = mapColumnName(headers, ['code', 'sku', 'item_code', 'Code', 'SKU', 'Item Code', 'ItemCode']);
+const nameCol = mapColumnName(headers, ['name', 'description', 'product', 'item_name', 'Name', 'Description', 'Product', 'ItemName']);
+const costCol = mapColumnName(headers, ['cost', 'price', 'base_cost', 'unit_cost', 'Cost', 'Price', 'BaseCost', 'UnitCost']);
+const uomCol = mapColumnName(headers, ['uom', 'unit', 'UOM', 'Unit']);
+const categoryCol = mapColumnName(headers, ['category', 'category_name', 'Category', 'CategoryName']);
+const markupCol = mapColumnName(headers, ['markup', 'markup_pct', 'Markup', 'MarkupPct']);
 ```
 
-This checks for `sales_percentage`, but the edge function saves `percentage_contract_price`, so it always defaults to `profit_split`.
-
-### Solution
-
-Update `MultiTemplateSelector.tsx` to normalize both possible values:
-
+**Updated Column Mappings:**
 ```typescript
-// Accept both 'percentage_contract_price' (from edge function) and 'sales_percentage' (from DB enum)
-commissionStructure: (
-  profile.commission_structure === 'sales_percentage' || 
-  profile.commission_structure === 'percentage_contract_price'
-) ? 'sales_percentage' : 'profit_split'
+// Expanded to support more vendor formats (SRS, ABC Supply, etc.)
+const codeCol = mapColumnName(headers, [
+  'code', 'sku', 'item_code', 'item', 'item_number', 'part_number', 'product_code',
+  'Code', 'SKU', 'Item Code', 'ItemCode', 'Item', 'Item Number', 'Part Number', 'Product Code'
+]);
+const nameCol = mapColumnName(headers, [
+  'name', 'description', 'product', 'item_name', 'item_description', 'material',
+  'Name', 'Description', 'Product', 'ItemName', 'Item Name', 'Item Description', 'Material'
+]);
+const costCol = mapColumnName(headers, [
+  'cost', 'price', 'base_cost', 'unit_cost', 'unit_price', 
+  'cost_per_unit', 'cost per unit', 'cost per item', 'cost per bundle', 'cost per square',
+  'Cost', 'Price', 'BaseCost', 'UnitCost', 'Unit Cost', 'Unit Price',
+  'Cost Per Unit', 'Cost Per Item', 'Cost Per Bundle', 'Cost Per Square'
+]);
+const uomCol = mapColumnName(headers, [
+  'uom', 'unit', 'unit_of_measure', 'units',
+  'UOM', 'Unit', 'Unit of Measure', 'Units'
+]);
+const categoryCol = mapColumnName(headers, [
+  'category', 'category_name', 'type', 'product_type', 'material_type',
+  'Category', 'CategoryName', 'Type', 'Product Type', 'Material Type'
+]);
+const brandCol = mapColumnName(headers, [
+  'brand', 'manufacturer', 'brand_name', 'brand logo',
+  'Brand', 'Manufacturer', 'Brand Name', 'Brand Logo'
+]);
 ```
 
 ---
 
-## Files to Modify
+## Additional Enhancement
+
+Add a new `brand` field to the import to capture brand information from your CSV's "brand logo" column:
+
+1. Add `brandCol` mapping (shown above)
+2. Include brand in the `ImportedItem` interface
+3. Pass brand to the material catalog when saving
+
+---
+
+## UI Improvement
+
+Update the "Supported column names" section in the upload dialog to show more variations:
+
+**Current:**
+```
+Code: code, sku, item_code
+Name: name, description, product
+Cost: cost, price, base_cost, unit_cost
+```
+
+**Updated:**
+```
+Code: code, sku, item, item_code, product_code
+Name: name, description, product, material
+Cost: cost, price, unit_cost, cost per item, cost per bundle
+UOM: uom, unit (defaults to EA)
+Category: category, type
+Brand: brand, manufacturer, brand logo
+```
+
+---
+
+## Changes Summary
 
 | File | Change |
 |------|--------|
-| `src/components/estimates/MultiTemplateSelector.tsx` | Normalize commission structure type to accept both `percentage_contract_price` and `sales_percentage` |
+| `src/components/materials/MaterialImportAuditDialog.tsx` | Expand column name mappings to support vendor CSV formats |
 
 ---
 
-## Technical Details
+## Alternative Quick Fix
 
-### MultiTemplateSelector.tsx Changes (line 227)
+If you need an immediate solution, you can rename your CSV columns before uploading:
 
-Current:
-```typescript
-commissionStructure: (profile.commission_structure === 'sales_percentage' ? 'sales_percentage' : 'profit_split') as 'profit_split' | 'sales_percentage',
-```
+| Current Column | Rename To |
+|----------------|-----------|
+| `item` | `code` or `sku` |
+| `brand logo` | `brand` (optional) |
+| `cost per item` or `cost per bundle` | `cost` |
+| Add missing column | `name` (item description) |
 
-Updated:
-```typescript
-commissionStructure: (profile.commission_structure === 'sales_percentage' || profile.commission_structure === 'percentage_contract_price') ? 'sales_percentage' : 'profit_split',
-```
-
----
-
-## Testing Steps
-
-1. **Immediate fix**: Re-save Test Rep's commission settings in Settings → Users → Commission Settings
-2. **Verify**: Navigate to an estimate assigned to Test Rep
-3. **Expected result**: Commission should show 60% profit split
-
----
-
-## Expected Results
-
-After re-saving commission settings and applying the code fix:
-
-1. New estimates will show the correct 60% commission rate
-2. Commission structure type (`percentage_contract_price`) will be correctly mapped to `sales_percentage` for the pricing hook
-3. The estimate builder and profit breakdown will display accurate calculations
+**Note:** Your CSV appears to be missing a "name" or "description" column, which is required. The system needs to know what to call each material.
 
