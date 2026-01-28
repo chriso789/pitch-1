@@ -116,20 +116,47 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   const salesRepOverheadRate = salesRepData ?? 10;
 
-  // Mutation to update estimate selling price
+  // Mutation to update estimate selling price and recalculate profit
   const updatePriceMutation = useMutation({
     mutationFn: async (newPrice: number) => {
       if (!hyperlinkData?.selected_estimate_id) {
         throw new Error('No estimate selected');
       }
+      
+      // Fetch current estimate to get cost data
+      const { data: estimate, error: fetchError } = await supabase
+        .from('enhanced_estimates')
+        .select('material_cost, labor_cost, overhead_percent')
+        .eq('id', hyperlinkData.selected_estimate_id)
+        .single();
+      
+      if (fetchError || !estimate) {
+        throw new Error('Could not fetch estimate');
+      }
+      
+      // Recalculate dependent values
+      const directCost = (estimate.material_cost || 0) + (estimate.labor_cost || 0);
+      const overheadRate = estimate.overhead_percent || salesRepOverheadRate;
+      const overheadAmount = newPrice * (overheadRate / 100);
+      const profitAmount = newPrice - directCost - overheadAmount;
+      const profitPercent = newPrice > 0 ? (profitAmount / newPrice) * 100 : 0;
+      
+      // Update all values together
       const { error } = await supabase
         .from('enhanced_estimates')
-        .update({ selling_price: newPrice })
+        .update({
+          selling_price: newPrice,
+          overhead_amount: Math.round(overheadAmount * 100) / 100,
+          actual_profit_amount: Math.round(profitAmount * 100) / 100,
+          actual_profit_percent: Math.round(profitPercent * 100) / 100,
+        })
         .eq('id', hyperlinkData.selected_estimate_id);
+      
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['profit-center-data', pipelineEntryId] });
       toast.success('Price updated');
       setIsAdjusting(false);
       setPriceAdjustment(0);
