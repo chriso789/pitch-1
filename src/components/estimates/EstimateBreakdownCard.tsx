@@ -184,16 +184,19 @@ export function EstimateBreakdownCard({
 
         <Separator />
 
-        {/* Sales Tax (Company Setting - Read Only) */}
+        {/* Sales Tax (Company Setting - Read Only) - Applied to materials only */}
         {config.salesTaxEnabled && (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-muted-foreground">
                 <Receipt className="h-4 w-4" />
-                Sales Tax ({config.salesTaxRate.toFixed(2)}%)
+                Sales Tax on Materials ({config.salesTaxRate.toFixed(2)}%)
                 <Badge variant="outline" className="text-xs">Company Rate</Badge>
               </span>
               <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount)}</span>
+            </div>
+            <div className="text-xs text-muted-foreground pl-6">
+              Taxable amount: {formatCurrency(breakdown.materialsSellingPortion)}
             </div>
           </div>
         )}

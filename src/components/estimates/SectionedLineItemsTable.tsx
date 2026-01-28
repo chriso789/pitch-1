@@ -470,13 +470,13 @@ export function SectionedLineItemsTable({
                 </TableRow>
               )}
 
-              {/* Sales Tax Row (Read-Only from Company Settings) */}
+              {/* Sales Tax Row (Read-Only from Company Settings) - Applied to materials only */}
               {salesTaxEnabled && salesTaxRate > 0 && (
                 <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableCell colSpan={editable ? 3 : 3} className="text-right">
                     <span className="flex items-center justify-end gap-2 text-sm">
                       <Receipt className="h-4 w-4 text-muted-foreground" />
-                      Sales Tax ({salesTaxRate.toFixed(2)}%)
+                      Sales Tax on Materials ({salesTaxRate.toFixed(2)}%)
                       <Badge variant="outline" className="text-xs">Company Rate</Badge>
                     </span>
                   </TableCell>
