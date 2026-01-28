@@ -224,7 +224,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           const rates = {
             overheadPercent: effectiveOverheadPercent,
             commissionPercent: profile.commission_rate ?? 50,
-            commissionStructure: (profile.commission_structure === 'sales_percentage' ? 'sales_percentage' : 'profit_split') as 'profit_split' | 'sales_percentage',
+            commissionStructure: (profile.commission_structure === 'sales_percentage' || profile.commission_structure === 'percentage_contract_price') ? 'sales_percentage' : 'profit_split' as 'profit_split' | 'sales_percentage',
             repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
           };
           setRepRates(rates);
