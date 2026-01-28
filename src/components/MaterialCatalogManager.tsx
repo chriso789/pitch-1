@@ -14,6 +14,7 @@ import { Plus, Search, Upload, Database, Pencil, Trash2, Package, DollarSign, Pe
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
+import { MaterialImportAuditDialog } from "@/components/materials/MaterialImportAuditDialog";
 
 interface Material {
   id: string;
@@ -58,7 +59,6 @@ export function MaterialCatalogManager() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const queryClient = useQueryClient();
 
   // React Query for materials and categories - parallel calls
@@ -130,52 +130,7 @@ export function MaterialCatalogManager() {
     }
   };
 
-  const handleCSVImport = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    Papa.parse(file, {
-      header: true,
-      complete: async (results) => {
-        try {
-          const importData = results.data
-            .filter((row: any) => row.code || row.sku || row.item_code)
-            .map((row: any) => ({
-              code: row.code || row.sku || row.item_code || row.Code || row.SKU,
-              name: row.name || row.description || row.item_name || row.Name || row.Description,
-              description: row.long_description || row.full_description || row.desc,
-              category: row.category || row.category_name || row.Category,
-              uom: row.uom || row.unit || row.UOM || 'EA',
-              base_cost: parseFloat(row.cost || row.price || row.base_cost || row.Cost || row.Price) || null,
-              markup_pct: parseFloat(row.markup || row.markup_pct || row.Markup) || 0.35,
-              coverage: parseFloat(row.coverage || row.coverage_per_unit || row.Coverage) || null,
-              sku: row.supplier_sku || row.vendor_sku || row.sku || row.SKU
-            }));
-
-          if (importData.length === 0) {
-            toast.error('No valid rows found in CSV');
-            return;
-          }
-
-          const { data, error } = await supabase
-            .rpc('api_bulk_import_materials' as any, { p_materials: importData });
-
-          if (error) throw error;
-          
-          toast.success(`Imported ${data} materials`);
-          setImportDialogOpen(false);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-          loadData();
-        } catch (error: any) {
-          console.error('Import error:', error);
-          toast.error('Failed to import materials: ' + error.message);
-        }
-      },
-      error: (error) => {
-        toast.error('Failed to parse CSV: ' + error.message);
-      }
-    });
-  };
+  // CSV import is now handled by MaterialImportAuditDialog
 
   const materialsWithPricing = materials.filter(m => m.base_cost && m.base_cost > 0);
   const avgMarkup = materials.length > 0 
@@ -239,30 +194,17 @@ export function MaterialCatalogManager() {
           <p className="text-muted-foreground">Global materials library for estimates</p>
         </div>
         <div className="flex gap-2">
-          <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline">
-                <Upload className="h-4 w-4 mr-2" />
-                Import CSV
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Import Materials from CSV</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground">
-                  Upload a CSV file with columns: code, name, category, uom, cost, markup_pct, coverage
-                </p>
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleCSVImport}
-                />
-              </div>
-            </DialogContent>
-          </Dialog>
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
+          
+          <MaterialImportAuditDialog
+            open={importDialogOpen}
+            onOpenChange={setImportDialogOpen}
+            existingMaterials={materials}
+            onImportComplete={loadData}
+          />
 
           <Dialog open={dialogOpen} onOpenChange={(open) => {
             setDialogOpen(open);
