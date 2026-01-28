@@ -295,9 +295,43 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         });
       } else {
         console.log('Manual measurement inserted successfully:', insertedMeasurement.id);
-        // Only invalidate cache if insert succeeded
+        
+        // Create measurement_approvals record automatically with all tags
+        const perimeter = formData.eaves + formData.rakes;
+        const approvalTags = {
+          'roof.plan_area': adjustedArea,
+          'roof.total_sqft': adjustedArea,
+          'roof.squares': adjustedArea / 100,
+          'roof.predominant_pitch': formData.pitch,
+          'roof.faces_count': formData.facets,
+          'lf.ridge': formData.ridges,
+          'lf.hip': formData.hips,
+          'lf.valley': formData.valleys,
+          'lf.eave': formData.eaves,
+          'lf.rake': formData.rakes,
+          'lf.perimeter': perimeter,
+          'lf.step': formData.stepFlashing,
+          'source': 'manual_entry',
+        };
+
+        const { error: approvalError } = await supabase.from('measurement_approvals').insert({
+          tenant_id: pipelineData.tenant_id,
+          pipeline_entry_id: pipelineEntryId,
+          approved_at: new Date().toISOString(),
+          saved_tags: approvalTags,
+          approval_notes: `Manual entry - ${adjustedArea.toLocaleString()} sqft`,
+        });
+
+        if (approvalError) {
+          console.error('Failed to create measurement_approvals record:', approvalError);
+        } else {
+          console.log('Measurement approval created with perimeter:', perimeter);
+        }
+
+        // Invalidate cache after insert succeeded
         queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
         queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
       }
 
       toast({

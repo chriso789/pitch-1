@@ -271,7 +271,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, footprint_source, detection_method')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -937,6 +937,10 @@ function MeasurementHistorySection({
 
       const totalSquares = measurement.total_squares || (measurement.total_area_adjusted_sqft ? measurement.total_area_adjusted_sqft / 100 : 0);
 
+      const eaveLength = (measurement as any).total_eave_length || 0;
+      const rakeLength = (measurement as any).total_rake_length || 0;
+      const perimeter = eaveLength + rakeLength;
+
       const savedTags = {
         'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
         'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
@@ -946,6 +950,9 @@ function MeasurementHistorySection({
         'lf.ridge': measurement.total_ridge_length || 0,
         'lf.hip': measurement.total_hip_length || 0,
         'lf.valley': measurement.total_valley_length || 0,
+        'lf.eave': eaveLength,
+        'lf.rake': rakeLength,
+        'lf.perimeter': perimeter,
         'source': 'ai_pulled',
         'imported_at': measurement.created_at,
       };
