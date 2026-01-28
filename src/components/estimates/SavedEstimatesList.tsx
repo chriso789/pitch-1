@@ -32,6 +32,8 @@ interface SavedEstimate {
   id: string;
   estimate_number: string;
   short_description: string | null;
+  display_name: string | null;
+  pricing_tier: 'good' | 'better' | 'best' | null;
   selling_price: number;
   actual_profit_percent: number;
   status: string;
@@ -87,6 +89,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           id,
           estimate_number,
           short_description,
+          display_name,
+          pricing_tier,
           selling_price,
           actual_profit_percent,
           status,
@@ -328,12 +332,26 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                 className="h-5 w-5"
               />
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <span className="font-medium text-sm">{estimate.estimate_number}</span>
+                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                  <span className="font-medium text-sm">{estimate.display_name || estimate.estimate_number}</span>
                   {isSelected && (
                     <Badge variant="default" className="bg-primary text-primary-foreground text-xs">
                       <Check className="h-3 w-3 mr-1" />
                       Active
+                    </Badge>
+                  )}
+                  {estimate.pricing_tier && (
+                    <Badge 
+                      variant="outline" 
+                      className={
+                        estimate.pricing_tier === 'best' 
+                          ? 'border-amber-500 text-amber-600 bg-amber-50' 
+                          : estimate.pricing_tier === 'better' 
+                            ? 'border-blue-500 text-blue-600 bg-blue-50'
+                            : 'border-gray-400 text-gray-600 bg-gray-50'
+                      }
+                    >
+                      {estimate.pricing_tier.charAt(0).toUpperCase() + estimate.pricing_tier.slice(1)}
                     </Badge>
                   )}
                   <span className="text-muted-foreground">•</span>
