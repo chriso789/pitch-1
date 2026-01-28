@@ -1,233 +1,98 @@
 
-
-# Plan: Fix SRS Pricelist CSV Import Parser
+# Plan: Fix Measurement Formula Evaluation Order Bug
 
 ## Problem Identified
 
-The SRS pricelist CSV has a unique format that the current parser doesn't handle:
+The measurement context formula evaluation has a critical bug causing template line items to calculate as 0 when they use compound keys like `lf.ridge_hip`.
 
-| Issue | Current Behavior | Required Behavior |
-|-------|------------------|-------------------|
-| Column `item` | Mapped as "code" | Should be "name" |
-| No code column | Returns null | Auto-generate from name (e.g., "GAF Timberline HDZ" → "GAF-TIMBERLINE-HDZ") |
-| Section headers | Parsed as data | Skip rows where `item` contains section text (e.g., "Shingle Hip and Ridge") |
-| Multiple price columns | Only checks one | Check `cost per item`, `cost per bundle`, `cost per sq` in order |
-| UOM | Defaults to "EA" | Extract from `calculation` column (e.g., "3BD/SQ" → "SQ", "25LF/BD" → "BD") |
-| Category | Not detected | Derive from section headers (track current section as we parse) |
+### Root Cause
 
----
+In `evaluateFormula()` within `src/hooks/useMeasurementContext.ts`, the key replacement happens in object insertion order. When a formula like `{{ ceil(lf.ridge_hip / 100) }}` is evaluated:
 
-## CSV Structure Analysis
+1. `lf.ridge` (value: 42) is replaced first → expression becomes `ceil(42_hip / 100)`
+2. `lf.hip` (value: 102) doesn't match `_hip` → no change
+3. `lf.ridge_hip` doesn't match `42_hip` → no change
+4. Final expression `ceil(42_hip / 100)` is invalid JavaScript → throws error → returns 0
 
-**Headers:**
-```
-brand logo, item, calculation, cost per bundle, cost per sq, cost per item
-```
+### Evidence from User's Data
 
-**Data Patterns:**
-- Rows 2-11: Shingles - use `cost per sq` column, UOM = "SQ"
-- Row 12: Section header "Brand, Shingle Hip and Ridge and Starter..." - SKIP
-- Rows 13-25: Hip/Ridge/Starter - use `cost per item` column, UOM from `calculation`
-- Row 26: Section header - SKIP
-- And so on...
+- Saved measurements: `lf.ridge: 42`, `lf.hip: 102`
+- Formula: `{{ ceil(lf.ridge_hip / 100) }}`
+- Expected: `ceil((42 + 102) / 100)` = `ceil(1.44)` = 2 BDL
+- Actual: 0 BDL (shown in screenshot)
 
 ---
 
 ## Solution
 
-Update `parseCSVRow` function in `MaterialImportAuditDialog.tsx` to:
-
-1. **Skip section headers**: Check if `item` column contains known section identifiers
-2. **Use `item` as name**: Map the `item` column to `name` field
-3. **Auto-generate code**: Create code from name (sanitize and uppercase)
-4. **Multi-price fallback**: Try `cost per item` → `cost per bundle` → `cost per sq`
-5. **Extract UOM**: Parse from `calculation` column (e.g., "3BD/SQ" → last part "SQ")
-6. **Track categories**: Detect section headers and assign category to subsequent rows
+Sort the replacement keys by length (longest first) before performing string replacements. This ensures compound keys like `lf.ridge_hip` are replaced before their partial matches like `lf.ridge`.
 
 ---
 
-## Files to Modify
+## File to Modify
 
 | File | Change |
 |------|--------|
-| `src/components/materials/MaterialImportAuditDialog.tsx` | Update `parseCSVRow` function with SRS-specific parsing logic |
+| `src/hooks/useMeasurementContext.ts` | Sort keys by length descending before replacement loop |
 
 ---
 
 ## Technical Implementation
 
-### Updated `parseCSVRow` Function
-
+### Current Code (lines 201-206)
 ```typescript
-// Section header indicators to skip
-const SECTION_INDICATORS = [
-  'shingle hip and ridge',
-  'mechanically fastened',
-  'self adhered',
-  'residential low slope',
-  'ventilation',
-  'flashing',
-  'drip edge',
-  'accessories',
-  'nails',
-  'sealants',
-  'uom+d' // Excel formula artifact
-];
-
-const isSectionHeader = (value: string): boolean => {
-  if (!value) return false;
-  const lower = value.toLowerCase();
-  return SECTION_INDICATORS.some(indicator => lower.includes(indicator));
-};
-
-const generateCodeFromName = (name: string): string => {
-  return name
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, '')
-    .trim()
-    .replace(/\s+/g, '-')
-    .substring(0, 30);
-};
-
-const extractUOMFromCalculation = (calc: string): string => {
-  if (!calc) return 'EA';
-  // Examples: "3BD/SQ" → "SQ", "25LF/BD" → "BD", "10SQ/RL" → "RL"
-  const parts = calc.split('/');
-  if (parts.length === 2) {
-    return parts[1].replace(/[^A-Z]/gi, '').toUpperCase() || 'EA';
-  }
-  // Try to find known UOMs
-  const uomMatch = calc.match(/(BD|SQ|RL|EA|LF|BX|CS)/i);
-  return uomMatch ? uomMatch[1].toUpperCase() : 'EA';
-};
-
-const parseCSVRow = (row: any, headers: string[]): ImportedItem | null => {
-  // Map columns for SRS format
-  const itemCol = mapColumnName(headers, ['item', 'Item']);
-  const calcCol = mapColumnName(headers, ['calculation', 'Calculation']);
-  const costPerItemCol = mapColumnName(headers, ['cost per item', 'Cost Per Item', '$/UOM']);
-  const costPerBundleCol = mapColumnName(headers, ['cost per bundle', 'Cost Per Bundle']);
-  const costPerSqCol = mapColumnName(headers, ['cost per sq', 'Cost Per Sq', 'cost per square']);
-  const brandCol = mapColumnName(headers, ['brand', 'brand logo', 'Brand', 'Brand Logo']);
-
-  const itemName = itemCol ? row[itemCol]?.toString().trim() : null;
-  
-  // Skip empty rows or section headers
-  if (!itemName || isSectionHeader(itemName)) return null;
-  
-  // Skip if Brand column has section header text
-  const brandValue = brandCol ? row[brandCol]?.toString().trim() : '';
-  if (brandValue && isSectionHeader(brandValue)) return null;
-
-  // Get cost - try multiple columns in priority order
-  let costStr: string | null = null;
-  if (costPerItemCol && row[costPerItemCol]) {
-    costStr = row[costPerItemCol].toString().replace(/[$,]/g, '').trim();
-  }
-  if ((!costStr || costStr === '0' || costStr === '') && costPerBundleCol && row[costPerBundleCol]) {
-    costStr = row[costPerBundleCol].toString().replace(/[$,]/g, '').trim();
-  }
-  if ((!costStr || costStr === '0' || costStr === '') && costPerSqCol && row[costPerSqCol]) {
-    costStr = row[costPerSqCol].toString().replace(/[$,]/g, '').trim();
-  }
-
-  const cost = costStr ? parseFloat(costStr) : NaN;
-  if (isNaN(cost) || cost <= 0) return null;
-
-  // Extract UOM from calculation column
-  const calcValue = calcCol ? row[calcCol]?.toString().trim() : '';
-  const uom = extractUOMFromCalculation(calcValue);
-
-  // Generate code from item name
-  const code = generateCodeFromName(itemName);
-
-  return {
-    code,
-    name: itemName,
-    newCost: cost,
-    uom,
-    category: '', // Will be enhanced with section tracking
-    markupPct: 0.35,
-    coverage: undefined,
-    supplierSku: undefined,
-  };
-};
+// Replace dot notation with values
+let evalExpr = expression;
+for (const [key, value] of Object.entries(flatCtx)) {
+  const escapedKey = key.replace(/\./g, '\\.');
+  evalExpr = evalExpr.replace(new RegExp(escapedKey, 'g'), String(value));
+}
 ```
 
-### Section Category Tracking
-
-To properly categorize items, we'll track the current section as we parse:
-
+### Fixed Code
 ```typescript
-const handleFileUpload = (event) => {
-  // ... existing code ...
-  
-  Papa.parse(file, {
-    header: true,
-    skipEmptyLines: true,
-    complete: (results) => {
-      const headers = results.meta.fields || [];
-      let currentCategory = 'Shingles'; // Default first section
-      
-      const importedItems: ImportedItem[] = [];
-      
-      for (const row of results.data as any[]) {
-        const itemValue = row['item']?.toString().trim() || '';
-        const brandValue = row['brand logo']?.toString()?.trim() || row['Brand']?.toString()?.trim() || '';
-        
-        // Check if this is a section header
-        if (isSectionHeader(itemValue) || isSectionHeader(brandValue)) {
-          // Update current category from the section header
-          if (itemValue && !itemValue.toLowerCase().includes('uom')) {
-            currentCategory = itemValue.split(' ').slice(0, 3).join(' ');
-          }
-          continue;
-        }
-        
-        const parsed = parseCSVRow(row, headers);
-        if (parsed) {
-          parsed.category = currentCategory;
-          importedItems.push(parsed);
-        }
-      }
-      
-      // ... rest of existing code ...
-    }
-  });
-};
+// Replace dot notation with values
+// CRITICAL: Sort by key length descending to replace longer keys first
+// This prevents 'lf.ridge' from partially matching within 'lf.ridge_hip'
+let evalExpr = expression;
+const sortedEntries = Object.entries(flatCtx).sort(
+  ([a], [b]) => b.length - a.length
+);
+for (const [key, value] of sortedEntries) {
+  const escapedKey = key.replace(/\./g, '\\.');
+  evalExpr = evalExpr.replace(new RegExp(escapedKey, 'g'), String(value));
+}
 ```
 
 ---
 
 ## Expected Results
 
-After the fix, importing the SRS pricelist CSV will:
+After the fix, the OC Starter Shingle formula will evaluate correctly:
 
-| Before | After |
-|--------|-------|
-| "No valid rows found" error | Successfully parses 100+ materials |
-| - | Auto-generates codes (e.g., "GAF-TIMBERLINE-HDZ") |
-| - | Extracts correct UOM (SQ, BD, RL, EA) |
-| - | Uses appropriate price column |
-| - | Assigns categories by section |
+| Before Fix | After Fix |
+|------------|-----------|
+| Formula: `ceil(lf.ridge_hip / 100)` | Same |
+| Step 1: `lf.ridge` replaced first → `ceil(42_hip / 100)` (BROKEN) | Step 1: `lf.ridge_hip` replaced first → `ceil(144 / 100)` |
+| Step 2: Invalid expression → error → 0 | Step 2: `ceil(1.44)` → 2 |
+| **Result: 0 BDL** | **Result: 2 BDL** |
 
-**Example Parsed Data:**
-| Code | Name | Cost | UOM | Category |
-|------|------|------|-----|----------|
-| GAF-TIMBERLINE-HDZ | GAF Timberline HDZ | $115.00 | SQ | Shingles |
-| GAF-S-A-R-HIP-AND-RIDGE | GAF S-A-R Hip and Ridge | $59.00 | BD | Hip and Ridge |
-| SG-30-TOP-SHIELD-CMI | SG-30 (Top Shield)(CMI) | $67.00 | RL | Underlayments |
+### All Affected Items Now Working
+
+| Item | Formula | Result |
+|------|---------|--------|
+| OC Starter Shingle | `lf.ridge_hip / 100` | 2 BDL (was 0) |
+| OC DecoRidge Ridge Cap | `lf.ridge_hip / 25 * 1.05` | 7 BDL (was 0) |
+| Drip Edge | `lf.ridge_hip / 10 * 1.10` | 16 EA (was 0) |
+| Any formula using `lf.eave_rake` or `lf.perimeter` | Fixed |
 
 ---
 
 ## Summary
 
-| Change | Purpose |
-|--------|---------|
-| Skip section headers | Don't treat "Shingle Hip and Ridge and Starter" as product rows |
-| Use `item` as name | CSV doesn't have separate code column |
-| Auto-generate code | Create unique identifier from product name |
-| Multi-price fallback | Check `cost per item`, `cost per bundle`, `cost per sq` |
-| Extract UOM from calculation | Parse "3BD/SQ" → "SQ" |
-| Track section categories | Assign products to correct category |
-
+| What | Details |
+|------|---------|
+| Bug | Shorter keys replaced before longer keys, corrupting compound keys |
+| Fix | Sort replacement keys by length (longest first) |
+| Impact | All formulas using compound keys (`lf.ridge_hip`, `lf.eave_rake`, `lf.perimeter`) now work |
+| Files Changed | 1 file, ~3 lines of code |
