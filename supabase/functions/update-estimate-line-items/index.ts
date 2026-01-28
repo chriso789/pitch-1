@@ -220,7 +220,7 @@ serve(async (req) => {
         subtotal: Math.round(directCost * 100) / 100,
         overhead_percent: overheadPercent,
         overhead_amount: Math.round(overheadAmount * 100) / 100,
-        rep_commission_percent: repCommissionPercent,
+        rep_commission_percent: repCommissionRate,
         rep_commission_amount: Math.round(repCommissionAmount * 100) / 100,
         selling_price: Math.round(finalSellingPrice * 100) / 100,
         actual_profit_amount: Math.round(profitAmount * 100) / 100,
@@ -230,7 +230,7 @@ serve(async (req) => {
           ...((estimate.calculation_metadata as object) || {}),
           last_updated_by: user.id,
           last_updated_at: new Date().toISOString(),
-          pricing_config: config
+          pricing_config: pricing_config
         }
       })
       .eq('id', estimate_id)
