@@ -1,320 +1,135 @@
 
-
-# Plan: Make Shared Modules Fully API-Driven Without Upload Dependencies
+# Plan: Fix Measurement Accuracy - Resolve Solar Bbox Fallback Issue
 
 ## Problem Summary
 
-The newly created shared modules (`footprint-resolver.ts`, `roof-topology-builder.ts`, `facet-area-calculator.ts`, `measurement-qa-gate.ts`) currently require API keys to be passed as parameters, and the Solar API data must be fetched externally. This creates dependencies that prevent the pipeline from being fully self-contained.
+The "Area May Be Overestimated" warning is showing because the measurement system is falling back to `solar_bbox_fallback` (a simple 4-vertex rectangle) instead of an accurate building outline. This happens due to **two cascading failures**:
 
-## Current State
+### Root Cause 1: Vector Footprint Sources Unavailable
+For address `2308 Via Bella Blvd, Land O' Lakes, FL 34639`:
+- **Mapbox Vector**: No building polygon returned (common for newer developments)
+- **Microsoft/Esri Buildings**: No footprint available
+- **OSM Overpass**: Building not mapped in OpenStreetMap
+- **Regrid**: Also failed to provide usable footprint
 
-| Module | Issue |
-|--------|-------|
-| `footprint-resolver.ts` | Expects `mapboxToken`, `regridApiKey`, `solarData` as parameters |
-| `roof-topology-builder.ts` | No API dependencies (works on footprint data) |
-| `facet-area-calculator.ts` | No API dependencies (works on topology data) |
-| `measurement-qa-gate.ts` | No API dependencies (works on calculated results) |
+### Root Cause 2: AI Vision Detection Crash
+When all vector sources fail, the `detect-building-footprint` function is called but it crashes with:
+```
+RangeError: Maximum call stack size exceeded
+```
 
-## Available Secrets (Already Configured)
+**Location**: `supabase/functions/detect-building-footprint/index.ts`, line 81
 
-| Secret Name | Purpose |
-|-------------|---------|
-| `GOOGLE_SOLAR_API_KEY` | Google Solar API for building data, segments, pitch |
-| `MAPBOX_ACCESS_TOKEN` | Mapbox vector tile footprints |
-| `REGRID_API_KEY` | Regrid parcel data (paid fallback) |
-| `GOOGLE_MAPS_API_KEY` | Satellite imagery |
-| `GOOGLE_PLACES_API_KEY` | Address geocoding |
+**Problematic Code**:
+```typescript
+imageData = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)))
+```
+
+The spread operator (`...`) on a large Uint8Array (640x640 satellite image = ~400KB+) exceeds JavaScript's maximum call stack size.
 
 ---
 
-## Solution: Create Unified Pipeline Entry Point
+## Solution
 
-### New File: `supabase/functions/_shared/unified-measurement-pipeline.ts`
+### Fix 1: Repair AI Vision Detection (Primary Fix)
 
-A single entry point that:
-1. Reads all API keys from `Deno.env.get()`
-2. Fetches Solar API data automatically
-3. Calls `resolveFootprint()` with all keys
-4. Calls `buildRoofTopology()`
-5. Calls `computeFacetsAndAreas()`
-6. Runs `runQAGate()`
-7. Returns complete measurement result
+Replace the crashing base64 conversion with a chunk-based approach that handles large images:
 
+**File**: `supabase/functions/detect-building-footprint/index.ts`
+
+**Current Code (Line 80-81)**:
 ```typescript
-// Unified Measurement Pipeline
-// Single entry point that handles all API integrations
+const imageBuffer = await imageResponse.arrayBuffer()
+imageData = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)))
+```
 
-export interface UnifiedMeasurementRequest {
-  lat: number;
-  lng: number;
-  address?: string;
-  pitchOverride?: string;
-  eaveOverhangFt?: number;
+**Fixed Code**:
+```typescript
+const imageBuffer = await imageResponse.arrayBuffer()
+// Convert ArrayBuffer to base64 in chunks to avoid stack overflow
+const uint8Array = new Uint8Array(imageBuffer)
+const CHUNK_SIZE = 8192
+let binary = ''
+for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+  const chunk = uint8Array.slice(i, Math.min(i + CHUNK_SIZE, uint8Array.length))
+  binary += String.fromCharCode(...chunk)
 }
+imageData = btoa(binary)
+```
 
-export interface UnifiedMeasurementResult {
-  success: boolean;
-  footprint: ResolvedFootprint;
-  topology: RoofTopology;
-  areas: AreaCalculationResult;
-  qa: QAGateResult;
-  solarData?: SolarAPIData;
-  apiSources: {
-    footprint: FootprintSource;
-    ridgeDirection: string;
-    solar: boolean;
-  };
-}
+This processes the image in 8KB chunks instead of trying to spread 400KB+ at once.
 
-// All API keys read from environment
-const API_KEYS = {
-  GOOGLE_SOLAR_API_KEY: Deno.env.get('GOOGLE_SOLAR_API_KEY') || '',
-  MAPBOX_ACCESS_TOKEN: Deno.env.get('MAPBOX_ACCESS_TOKEN') || '',
-  REGRID_API_KEY: Deno.env.get('REGRID_API_KEY') || '',
-  GOOGLE_MAPS_API_KEY: Deno.env.get('GOOGLE_MAPS_API_KEY') || '',
-};
+---
 
-export async function runUnifiedMeasurementPipeline(
-  request: UnifiedMeasurementRequest
-): Promise<UnifiedMeasurementResult> {
-  
-  // Step 1: Fetch Solar API data (includes roof segments for pitch)
-  const solarData = await fetchGoogleSolarData(
-    request.lat, 
-    request.lng, 
-    API_KEYS.GOOGLE_SOLAR_API_KEY
-  );
-  
-  // Step 2: Resolve footprint using all available sources
-  const footprint = await resolveFootprint({
-    lat: request.lat,
-    lng: request.lng,
-    solarData,
-    mapboxToken: API_KEYS.MAPBOX_ACCESS_TOKEN,
-    regridApiKey: API_KEYS.REGRID_API_KEY,
-    eaveOverhangFt: request.eaveOverhangFt || 1.0,
-  });
-  
-  // Step 3: Build roof topology
-  const topology = buildRoofTopology({
-    footprintVertices: footprint.vertices,
-    solarSegments: solarData?.roofSegments,
-    eaveOffsetFt: request.eaveOverhangFt || 1.0,
-  });
-  
-  // Step 4: Compute facets and areas
-  const areas = computeFacetsAndAreas(
-    topology,
-    solarData?.roofSegments,
-    request.pitchOverride || '6/12'
-  );
-  
-  // Step 5: Run QA gate
-  const qa = runQAGate(topology, areas, solarData);
-  
-  return {
-    success: qa.passed,
-    footprint,
-    topology,
-    areas,
-    qa,
-    solarData,
-    apiSources: {
-      footprint: footprint.source,
-      ridgeDirection: topology.ridgeSource,
-      solar: solarData?.available ?? false,
-    }
-  };
-}
+### Fix 2: Improve Vector Footprint Logging (Diagnostic Enhancement)
+
+Add explicit logging when each vector source fails in the Solar Fast Path to help diagnose future issues:
+
+**File**: `supabase/functions/analyze-roof-aerial/index.ts`
+
+In the `processSolarFastPath` function (around lines 4695-4720), enhance the Mapbox failure logging:
+
+**Current**:
+```typescript
+console.log(`⚠️ Mapbox failed: reason=${mapboxResult.fallbackReason || 'unknown'}, error=${mapboxResult.error || 'none'}`)
+```
+
+**Enhanced** (add after each source attempt):
+```typescript
+console.log(`📍 Footprint sources checked for ${coordinates.lat.toFixed(4)}, ${coordinates.lng.toFixed(4)}:`)
+console.log(`   Mapbox: ${mapboxResult.footprint ? '✅' : '❌'} ${mapboxResult.fallbackReason || mapboxResult.error || 'no data'}`)
+// Similar for Regrid, OSM, Microsoft
 ```
 
 ---
 
-## Modification: `footprint-resolver.ts`
+## Implementation Details
 
-Add environment-based API key defaults while keeping parameter override capability:
+### Files to Modify
 
-```typescript
-// Lines 68-78: Update FootprintResolverOptions interface
+| File | Change | Priority |
+|------|--------|----------|
+| `supabase/functions/detect-building-footprint/index.ts` | Fix base64 encoding stack overflow | **Critical** |
+| `supabase/functions/analyze-roof-aerial/index.ts` | Add diagnostic logging for footprint source failures | Medium |
 
-export interface FootprintResolverOptions {
-  lat: number;
-  lng: number;
-  solarData?: SolarAPIData;
-  // API keys - now have environment defaults
-  mapboxToken?: string;   // Falls back to Deno.env.get('MAPBOX_ACCESS_TOKEN')
-  regridApiKey?: string;  // Falls back to Deno.env.get('REGRID_API_KEY')
-  enableAIFallback?: boolean;
-  imageUrl?: string;
-  eaveOverhangFt?: number;
-}
+### Technical Notes
 
-// Update resolveFootprint to use environment defaults
-export async function resolveFootprint(options: FootprintResolverOptions): Promise<ResolvedFootprint | null> {
-  // Use environment defaults if not provided
-  const effectiveOptions = {
-    ...options,
-    mapboxToken: options.mapboxToken || Deno.env.get('MAPBOX_ACCESS_TOKEN') || '',
-    regridApiKey: options.regridApiKey || Deno.env.get('REGRID_API_KEY') || '',
-  };
-  
-  // ... rest of function unchanged
-}
-```
+1. **Chunk-based base64 encoding**: The 8192-byte chunk size is chosen because:
+   - `String.fromCharCode` can safely handle ~8K chars without stack issues
+   - Provides good balance between iterations and safety margin
+   - Works consistently across Deno and Node.js runtimes
+
+2. **Why the warning still shows for this property**: Even after fixing the AI Vision crash, if AI detection also fails or has low confidence, the system will still use `solar_bbox_fallback`. However, fixing the crash restores the AI detection capability for most properties.
+
+3. **Alternative fix using TextDecoder** (if base64 method still has issues):
+   ```typescript
+   // Alternative: Use streaming base64 encoding
+   const base64 = btoa(Array.from(new Uint8Array(imageBuffer), b => String.fromCharCode(b)).join(''))
+   ```
+   This is slower but more memory-efficient.
 
 ---
 
-## New File: Add Solar API Fetcher to Shared
+## Expected Results After Fix
 
-**File**: `supabase/functions/_shared/google-solar-api.ts`
-
-```typescript
-// Google Solar API Client
-// Centralized Solar API fetching for all measurement functions
-
-export interface SolarAPIData {
-  available: boolean;
-  buildingFootprintSqft?: number;
-  estimatedPerimeterFt?: number;
-  roofSegments?: SolarSegment[];
-  boundingBox?: {
-    sw: { latitude: number; longitude: number };
-    ne: { latitude: number; longitude: number };
-  };
-  imageryQuality?: string;
-  imageryDate?: string;
-}
-
-export interface SolarSegment {
-  pitchDegrees: number;
-  azimuthDegrees: number;
-  areaMeters2?: number;
-  stats?: { areaMeters2: number };
-}
-
-export async function fetchGoogleSolarData(
-  lat: number,
-  lng: number,
-  apiKey?: string
-): Promise<SolarAPIData | null> {
-  const key = apiKey || Deno.env.get('GOOGLE_SOLAR_API_KEY') || '';
-  
-  if (!key) {
-    console.warn('⚠️ GOOGLE_SOLAR_API_KEY not configured');
-    return { available: false };
-  }
-  
-  try {
-    const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${key}`;
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      console.warn(`Solar API error: ${response.status}`);
-      return { available: false };
-    }
-    
-    const data = await response.json();
-    
-    // Extract relevant data
-    const roofSegments = data.solarPotential?.roofSegmentStats?.map((seg: any) => ({
-      pitchDegrees: seg.pitchDegrees ?? 20,
-      azimuthDegrees: seg.azimuthDegrees ?? 0,
-      areaMeters2: seg.stats?.areaMeters2,
-      stats: seg.stats,
-    })) || [];
-    
-    return {
-      available: true,
-      buildingFootprintSqft: data.solarPotential?.wholeRoofStats?.areaMeters2 
-        ? data.solarPotential.wholeRoofStats.areaMeters2 * 10.7639 
-        : undefined,
-      roofSegments,
-      boundingBox: data.boundingBox,
-      imageryQuality: data.imageryQuality,
-    };
-    
-  } catch (error) {
-    console.error('Solar API fetch failed:', error);
-    return { available: false };
-  }
-}
-```
+1. **AI Vision detection will work again** instead of crashing with stack overflow
+2. **Many properties** that were falling back to `solar_bbox_fallback` will now get proper AI-detected footprints
+3. **This specific property** may still show the warning if AI detection has low confidence for the building shape, but the warning will be correct (i.e., the system genuinely couldn't detect a good footprint)
 
 ---
 
-## Files to Create
+## Testing Strategy
 
-| File | Purpose |
-|------|---------|
-| `supabase/functions/_shared/unified-measurement-pipeline.ts` | Single entry point that orchestrates entire pipeline with auto API key loading |
-| `supabase/functions/_shared/google-solar-api.ts` | Centralized Solar API client with environment key fallback |
+After deploying the fix:
 
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `supabase/functions/_shared/footprint-resolver.ts` | Add `Deno.env.get()` fallbacks for API keys at lines 378-384, 490-492, and 519 |
+1. **Re-measure the current property** (2308 Via Bella Blvd, Land O' Lakes, FL) using the "Re-measure" button
+2. **Check edge function logs** for:
+   - No more "Maximum call stack size exceeded" errors
+   - AI Vision detection logs showing vertices detected
+3. **Expected outcome**: Either the warning disappears (AI detected good footprint) or the warning remains but with proper AI detection having been attempted
 
 ---
 
-## Usage After Changes
+## Additional Improvement (Optional)
 
-### Before (Required External API Key Management)
-```typescript
-// Caller must manage all API keys and fetch Solar data
-const solarData = await fetchGoogleSolarData(lat, lng, apiKey);
-const footprint = await resolveFootprint({
-  lat, lng,
-  solarData,
-  mapboxToken: Deno.env.get('MAPBOX_ACCESS_TOKEN'),
-  regridApiKey: Deno.env.get('REGRID_API_KEY'),
-});
-const topology = buildRoofTopology({ footprintVertices: footprint.vertices, solarSegments: solarData.roofSegments });
-// ... more manual orchestration
-```
-
-### After (Fully Self-Contained)
-```typescript
-// Single call - all API keys read from environment automatically
-const result = await runUnifiedMeasurementPipeline({
-  lat: 27.9506,
-  lng: -82.4572,
-});
-
-// Result contains everything:
-// - footprint (with source: 'mapbox_vector' | 'microsoft_buildings' | etc)
-// - topology (with ridgeSource: 'solar_segments' | 'skeleton_derived')
-// - areas (facets, totals, linear measurements)
-// - qa (passed/failed, errors, warnings)
-```
-
----
-
-## Expected Results
-
-1. **Zero Upload Dependencies**: Pipeline works purely from lat/lng coordinates
-2. **Auto API Key Loading**: All keys read from environment, no manual passing required
-3. **Single Entry Point**: `runUnifiedMeasurementPipeline()` handles everything
-4. **Transparent Source Tracking**: Result shows which API provided each piece of data
-5. **Graceful Degradation**: If Solar API unavailable, uses skeleton-derived topology
-
----
-
-## Testing Verification
-
-After implementation, test with:
-```typescript
-const result = await runUnifiedMeasurementPipeline({
-  lat: 27.9506,
-  lng: -82.4572,
-  address: '123 Test St, Tampa, FL'
-});
-
-console.log('Sources used:', result.apiSources);
-// Expected: { footprint: 'mapbox_vector', ridgeDirection: 'solar_segments', solar: true }
-
-console.log('Area:', result.areas.totals.slopedAreaSqft, 'sqft');
-console.log('QA Passed:', result.qa.passed);
-```
-
+If AI Vision detection is also consistently failing for this address, consider adding a **manual trace fallback UI** that allows users to draw the roof outline on the satellite image when automatic detection fails.
