@@ -1,87 +1,26 @@
 
-# Plan: Fix Commission Rate Sync Between Settings and Estimates
 
-## Problem Identified
+# Plan: Fix Commission Rate Sync and Structure Mapping
 
-The **"Test Rep" shows 50% commission** in the estimate even though you set 60%, because:
+## Summary
 
-1. **Commission Settings saves to**: `commission_plans.plan_config.commission_rate` (via edge function)
-2. **Estimate Builder reads from**: `profiles.commission_rate` (direct column on profiles table)
+There are two issues preventing the 60% commission from showing:
 
-The `save-commission-settings` edge function **does NOT sync** the `commission_rate` and `commission_structure` to the `profiles` table - it only updates the `commission_plans` table.
-
-## Current Database State for "Test Rep"
-
-| Table | Field | Value |
-|-------|-------|-------|
-| `profiles` | `commission_rate` | 50.00 (STALE - not being updated) |
-| `profiles` | `commission_structure` | profit_split |
-| `commission_plans.plan_config` | `commission_rate` | 50 |
-
-When you change the commission to 60%, only `commission_plans` gets updated, but `profiles.commission_rate` stays at 50%.
-
-## Solution
-
-Update the `save-commission-settings` edge function to also update `profiles.commission_rate` and `profiles.commission_structure` when saving commission settings.
+1. **Database is stale**: The edge function was just deployed but hasn't been called. The `profiles.commission_rate` is still 50.00 for Test Rep.
+2. **Structure mapping mismatch**: The `MultiTemplateSelector.tsx` expects `sales_percentage` but the edge function saves `percentage_contract_price`.
 
 ---
 
-## Technical Implementation
+## Issue 1: Stale Database Value
 
-### File: `supabase/functions/save-commission-settings/index.ts`
+**Current state**:
+- `profiles.commission_rate` = 50.00
+- `profiles.commission_structure` = profit_split
 
-**Current Code** (lines 138-152):
-```typescript
-const profileUpdate: Record<string, unknown> = {
-  personal_overhead_rate: rep_overhead_rate
-};
+**Action required**:
+The edge function is now deployed with the fix. The user must **re-save Test Rep's commission settings** (Settings → Users → Commission Settings) to trigger the sync and update the profile.
 
-if (is_manager) {
-  profileUpdate.manager_override_rate = manager_override_rate || 0;
-  // ... other manager fields
-} else {
-  profileUpdate.reports_to_manager_id = reports_to_manager_id || null;
-}
-```
-
-**Fixed Code**:
-```typescript
-const profileUpdate: Record<string, unknown> = {
-  personal_overhead_rate: rep_overhead_rate,
-  // ADD THESE TWO FIELDS to sync with estimate builder:
-  commission_rate: commission_rate,
-  commission_structure: commission_type, // 'profit_split' or 'percentage_contract_price'
-};
-
-if (is_manager) {
-  profileUpdate.manager_override_rate = manager_override_rate || 0;
-  // ... other manager fields
-} else {
-  profileUpdate.reports_to_manager_id = reports_to_manager_id || null;
-}
-```
-
----
-
-## Changes Summary
-
-| File | Change |
-|------|--------|
-| `supabase/functions/save-commission-settings/index.ts` | Add `commission_rate` and `commission_structure` to profile update |
-
----
-
-## Expected Results
-
-1. When you save commission settings (e.g., changing from 50% to 60%), both `commission_plans` AND `profiles` tables will be updated
-2. The estimate builder will now show the correct 60% commission rate
-3. All existing estimates will use the updated rate from `profiles.commission_rate`
-
----
-
-## Immediate Fix Option
-
-To fix Test Rep's rate right now (without deploying code), you could run this SQL in Supabase:
+Alternatively, run this SQL to immediately update the database:
 
 ```sql
 UPDATE profiles 
@@ -89,4 +28,84 @@ SET commission_rate = 60, commission_structure = 'profit_split'
 WHERE id = '3a45549d-e107-4ea0-9a16-c69e5fd6056f';
 ```
 
-However, the code fix is required to prevent this sync issue from happening again when commission settings are changed.
+---
+
+## Issue 2: Commission Structure Type Mismatch
+
+### Root Cause
+
+The application uses inconsistent type names for commission structure:
+
+| Location | Profit Split | Contract Percentage |
+|----------|--------------|---------------------|
+| Edge function saves | `profit_split` | `percentage_contract_price` |
+| MultiTemplateSelector expects | `profit_split` | `sales_percentage` |
+| RepProfitBreakdown expects | `profit_split` | `percentage_contract_price` |
+| useEstimatePricing uses | `profit_split` | `sales_percentage` |
+| Database enum | `profit_split` | `sales_percentage` |
+
+### Problem Code
+
+In `MultiTemplateSelector.tsx` line 227:
+```typescript
+commissionStructure: (profile.commission_structure === 'sales_percentage' 
+  ? 'sales_percentage' 
+  : 'profit_split')
+```
+
+This checks for `sales_percentage`, but the edge function saves `percentage_contract_price`, so it always defaults to `profit_split`.
+
+### Solution
+
+Update `MultiTemplateSelector.tsx` to normalize both possible values:
+
+```typescript
+// Accept both 'percentage_contract_price' (from edge function) and 'sales_percentage' (from DB enum)
+commissionStructure: (
+  profile.commission_structure === 'sales_percentage' || 
+  profile.commission_structure === 'percentage_contract_price'
+) ? 'sales_percentage' : 'profit_split'
+```
+
+---
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/estimates/MultiTemplateSelector.tsx` | Normalize commission structure type to accept both `percentage_contract_price` and `sales_percentage` |
+
+---
+
+## Technical Details
+
+### MultiTemplateSelector.tsx Changes (line 227)
+
+Current:
+```typescript
+commissionStructure: (profile.commission_structure === 'sales_percentage' ? 'sales_percentage' : 'profit_split') as 'profit_split' | 'sales_percentage',
+```
+
+Updated:
+```typescript
+commissionStructure: (profile.commission_structure === 'sales_percentage' || profile.commission_structure === 'percentage_contract_price') ? 'sales_percentage' : 'profit_split',
+```
+
+---
+
+## Testing Steps
+
+1. **Immediate fix**: Re-save Test Rep's commission settings in Settings → Users → Commission Settings
+2. **Verify**: Navigate to an estimate assigned to Test Rep
+3. **Expected result**: Commission should show 60% profit split
+
+---
+
+## Expected Results
+
+After re-saving commission settings and applying the code fix:
+
+1. New estimates will show the correct 60% commission rate
+2. Commission structure type (`percentage_contract_price`) will be correctly mapped to `sales_percentage` for the pricing hook
+3. The estimate builder and profit breakdown will display accurate calculations
+
