@@ -135,9 +135,12 @@ serve(async (req) => {
 
     console.log(`[save-commission-settings] Permission check passed`);
 
-    // Step 1: Update profile fields
+    // Step 1: Update profile fields (including commission_rate and commission_structure for estimate builder)
     const profileUpdate: Record<string, unknown> = {
-      personal_overhead_rate: rep_overhead_rate
+      personal_overhead_rate: rep_overhead_rate,
+      // Sync commission rate/structure to profiles table for estimate builder compatibility
+      commission_rate: commission_rate,
+      commission_structure: commission_type, // 'profit_split' or 'percentage_contract_price'
     };
 
     if (is_manager) {
