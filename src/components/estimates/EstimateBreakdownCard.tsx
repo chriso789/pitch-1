@@ -184,31 +184,34 @@ export function EstimateBreakdownCard({
 
         <Separator />
 
-        {/* Sales Tax (Company Setting - Read Only) - Applied to materials only */}
+        {/* Sales Tax (Internal View Only) - Applied to materials only */}
         {config.salesTaxEnabled && (
           <div className="space-y-2">
             <div className="flex items-center justify-between text-sm">
               <span className="flex items-center gap-2 text-muted-foreground">
                 <Receipt className="h-4 w-4" />
                 Sales Tax on Materials ({config.salesTaxRate.toFixed(2)}%)
-                <Badge variant="outline" className="text-xs">Company Rate</Badge>
+                <Badge variant="outline" className="text-xs">Included in Total</Badge>
               </span>
               <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount)}</span>
             </div>
             <div className="text-xs text-muted-foreground pl-6">
-              Taxable amount: {formatCurrency(breakdown.materialsSellingPortion)}
+              Pre-tax selling price: {formatCurrency(breakdown.preTaxSellingPrice)}
             </div>
           </div>
         )}
 
-        {/* Selling Price */}
+        {/* Selling Price - Now includes tax (customer-facing total) */}
         <div className="flex items-center justify-between py-2">
           <span className="text-lg font-semibold flex items-center gap-2">
             <DollarSign className="h-5 w-5" />
-            {config.salesTaxEnabled ? 'TOTAL (with tax)' : 'SELLING PRICE'}
+            SELLING PRICE
+            {config.salesTaxEnabled && (
+              <Badge variant="secondary" className="text-xs">Tax Included</Badge>
+            )}
           </span>
           <span className="text-2xl font-bold text-primary">
-            {formatCurrency(config.salesTaxEnabled ? breakdown.totalWithTax : breakdown.sellingPrice)}
+            {formatCurrency(breakdown.sellingPrice)}
           </span>
         </div>
 
