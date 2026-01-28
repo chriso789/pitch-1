@@ -1,366 +1,177 @@
 
 
-# Plan: Professional Document Scanner Upgrade
+# Plan: Bake Sales Tax Into Selling Price (Hide from Customer)
 
-## Executive Summary
+## Understanding the Requirement
 
-This upgrade transforms the document scanner from a "good enough" mobile scanner to a **Genius Scan-quality** professional scanning system. The key improvements address:
+Currently, sales tax is:
+- Calculated separately as `salesTaxAmount`
+- Saved as separate database fields (`sales_tax_amount`, `total_with_tax`)  
+- Shown to customers on PDFs and UI as a separate line item
 
-1. **Background leaking into scans** - Documents captured with table/floor visible
-2. **Unstable edge detection** - Corners jump around, detection flickers
-3. **Shadow artifacts** - Hand shadows and uneven lighting degrade output
-4. **No fallback** - When detection fails, full frame is captured instead of cropping
-5. **Quality inconsistency** - Output quality varies widely
-
----
-
-## What Users Will Experience After Upgrade
-
-| Before | After |
-|--------|-------|
-| Table/floor visible in final PDF | Clean, cropped document only |
-| "Document Detected" flickers on/off | Stable detection with smooth corners |
-| Hand shadows visible in output | Clean white background |
-| No option to manually adjust corners | Drag-to-adjust corner handles |
-| Capture allowed even with bad detection | Smart capture gating with quality checks |
+**What you want instead:**
+- Sales tax should be **included in the selling price** (not a separate line)
+- Customer sees **one total price** that already has tax baked in
+- Internally, you can still track tax for accounting, but it's not visible to customers
+- The saved `selling_price` should be the final price including tax
 
 ---
 
-## Architecture Overview
+## Changes Summary
 
-```text
-┌─────────────────────────────────────────────────────────────────────────┐
-│                        DOCUMENT SCANNER PIPELINE                        │
-├─────────────────────────────────────────────────────────────────────────┤
-│                                                                         │
-│  ┌──────────────┐    ┌──────────────────┐    ┌──────────────────────┐  │
-│  │   Camera     │───>│  Edge Detection  │───>│  Stability Filter    │  │
-│  │   Stream     │    │  (OpenCV + FBck) │    │  (Rolling Buffer)    │  │
-│  └──────────────┘    └──────────────────┘    └──────────────────────┘  │
-│                                                        │                │
-│                                                        v                │
-│                              ┌─────────────────────────────────────┐    │
-│                              │           Capture Gate              │    │
-│                              │  Stable? ──> Auto Crop              │    │
-│                              │  Unstable? ──> Manual Crop Overlay  │    │
-│                              └─────────────────────────────────────┘    │
-│                                                        │                │
-│                                                        v                │
-│  ┌──────────────────────────────────────────────────────────────────┐  │
-│  │                    ENHANCEMENT PIPELINE                          │  │
-│  │  1. Perspective Transform (ALWAYS applied with corners)          │  │
-│  │  2. Illumination Normalization (fix uneven lighting)             │  │
-│  │  3. White Background Enforcement                                 │  │
-│  │  4. Sauvola Binarization (BW) OR Color Enhancement               │  │
-│  │  5. Edge-Preserving Sharpening                                   │  │
-│  └──────────────────────────────────────────────────────────────────┘  │
-│                                                        │                │
-│                                                        v                │
-│                              ┌─────────────────────────────────────┐    │
-│                              │   Multi-Page PDF Generation         │    │
-│                              │   (Letter/A4 @ 300 DPI)             │    │
-│                              └─────────────────────────────────────┘    │
-│                                                                         │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+| Area | Current Behavior | New Behavior |
+|------|-----------------|--------------|
+| **Selling price calculation** | `sellingPrice` + `salesTaxAmount` = `totalWithTax` | `sellingPrice` already includes tax |
+| **Customer PDF** | Shows "Sales Tax (7%)" line + "Total with tax" | Shows just "Total Investment" |
+| **Internal view** | Shows tax breakdown | Still shows tax breakdown for accounting |
+| **Database** | Saves separate `sales_tax_amount` and `total_with_tax` | Tax baked into `selling_price`, tax fields kept for accounting records |
 
 ---
 
-## Technical Implementation Details
+## Files to Modify
 
-### Files to Create/Modify
-
-| File | Action | Purpose |
-|------|--------|---------|
-| `src/utils/documentEdgeDetectionOpenCV.ts` | **CREATE** | OpenCV.js-based edge detection with Canny + contour finding |
-| `src/utils/documentStability.ts` | **CREATE** | Rolling buffer for corner stability and jitter scoring |
-| `src/components/documents/ManualCropOverlay.tsx` | **CREATE** | Draggable corner handles for manual adjustment |
-| `src/utils/documentEnhancementPro.ts` | **CREATE** | Enhanced pipeline with illumination correction |
-| `src/components/documents/DocumentScannerDialog.tsx` | **MODIFY** | Integrate all new components |
-| `src/utils/documentEdgeDetection.ts` | **KEEP** | Remains as fallback detector |
-| `src/utils/documentEnhancement.ts` | **KEEP** | Base enhancement functions |
+| File | Change |
+|------|--------|
+| `src/hooks/useEstimatePricing.ts` | Make `sellingPrice` include tax; keep `salesTaxAmount` for internal tracking only |
+| `src/components/estimates/EstimatePDFDocument.tsx` | Remove sales tax line from customer view; keep for internal view |
+| `src/components/estimates/EstimateBreakdownCard.tsx` | Update display to show tax is included; clarify internal vs customer view |
+| `src/components/estimates/SectionedLineItemsTable.tsx` | Remove customer-facing sales tax rows |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Update saved estimate to reflect tax-inclusive pricing |
 
 ---
 
-### 1. OpenCV.js Edge Detection (`documentEdgeDetectionOpenCV.ts`)
+## Technical Details
 
-**Why OpenCV.js?**
-- Industry-standard contour detection algorithms
-- Canny edge detection with automatic thresholds
-- `approxPolyDP` for reliable quadrilateral detection
-- Battle-tested on millions of document scans
+### 1. Update Pricing Hook (`useEstimatePricing.ts`)
 
-**Implementation Approach:**
+The key change: Calculate `sellingPrice` to **include** tax for customer display, but still track `salesTaxAmount` internally.
+
+**Current calculation:**
 ```typescript
-// Lazy load OpenCV.js only when scanner opens (avoid 8MB bundle in main app)
-let cv: any = null;
-let cvLoading: Promise<void> | null = null;
-
-async function loadOpenCV(): Promise<void> {
-  if (cv) return;
-  if (cvLoading) return cvLoading;
-  
-  cvLoading = new Promise((resolve, reject) => {
-    const script = document.createElement('script');
-    script.src = 'https://docs.opencv.org/4.8.0/opencv.js';
-    script.onload = () => {
-      // OpenCV.js sets global cv variable when ready
-      (window as any).cv['onRuntimeInitialized'] = () => {
-        cv = (window as any).cv;
-        resolve();
-      };
-    };
-    script.onerror = reject;
-    document.body.appendChild(script);
-  });
-  
-  return cvLoading;
-}
-
-export async function detectDocumentEdgesOpenCV(imageData: ImageData): Promise<DetectedCorners | null> {
-  // 1. Grayscale conversion
-  // 2. GaussianBlur
-  // 3. Canny edge detection (dynamic thresholds using median)
-  // 4. Morphological close/open to connect edges
-  // 5. findContours
-  // 6. Score contours and pick best quadrilateral
-}
+// Current: Tax is separate
+const sellingPrice = directCost / (1 - overheadDecimal - profitDecimal);
+const salesTaxAmount = materialsSellingPortion * (taxRate / 100);
+const totalWithTax = sellingPrice + salesTaxAmount;
 ```
 
-**Scoring Algorithm:**
-- Largest area within bounds (but NOT full-frame)
-- Approximates to exactly 4 points with `approxPolyDP`
-- Aspect ratio near paper (letter: 1.29, A4: 1.41, tolerance ±0.3)
-- Convexity check (must be convex)
-- Edge-border penalty (corners too close to image edge are penalized)
-
----
-
-### 2. Stability Filter (`documentStability.ts`)
-
-**Problem:** Even good detection produces jittery corners frame-to-frame.
-
-**Solution:** Rolling buffer with statistical analysis
-
+**New calculation:**
 ```typescript
-interface StabilityResult {
-  stable: boolean;
-  averagedCorners: DetectedCorners | null;
-  jitterScore: number;  // 0 = perfectly stable, higher = more jitter
-  framesSinceStable: number;
-}
+// New: Tax is included in selling price
+const preTaxSellingPrice = directCost / (1 - overheadDecimal - profitDecimal);
+const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
+const materialsPortion = preTaxSellingPrice * materialsRatio;
+const salesTaxAmount = config.salesTaxEnabled 
+  ? materialsPortion * (config.salesTaxRate / 100) 
+  : 0;
+const sellingPrice = preTaxSellingPrice + salesTaxAmount; // TAX BAKED IN
 
-class CornerStabilityBuffer {
-  private buffer: DetectedCorners[] = [];
-  private readonly bufferSize = 8;  // Last 8 frames
-  private readonly jitterThreshold = 15;  // Max pixels of deviation
-  private readonly minStableFrames = 5;   // Need 5/8 consistent detections
-  
-  addFrame(corners: DetectedCorners | null): StabilityResult {
-    // 1. Add to rolling buffer
-    // 2. Calculate average corner positions
-    // 3. Calculate standard deviation (jitter)
-    // 4. Check if jitter < threshold for enough frames
-    // 5. Return stabilized corners (averaged) if stable
-  }
-}
+// Keep separate fields for internal accounting
+return {
+  sellingPrice,              // Customer-facing: includes tax
+  preTaxSellingPrice,        // Internal: before tax
+  salesTaxAmount,            // Internal: for accounting
+  totalWithTax: sellingPrice // Now same as sellingPrice (for backward compatibility)
+};
 ```
 
-**UI Indicators:**
-- Show "Document Detected" only when `stable === true`
-- Use averaged corners for overlay (smooth animation)
-- Pulse animation when transitioning to stable state
+### 2. Update PDF Document (`EstimatePDFDocument.tsx`)
 
----
-
-### 3. Manual Crop Overlay (`ManualCropOverlay.tsx`)
-
-**Triggers:**
-- Auto detection confidence < 0.5 at capture time
-- User explicitly taps "Adjust Corners" button
-- Detection returned null (no quadrilateral found)
-
-**UI Implementation:**
+**Remove sales tax line for customer view:**
 ```tsx
-interface ManualCropOverlayProps {
-  imageBlob: Blob;
-  initialCorners?: DetectedCorners | null;
-  onConfirm: (corners: DetectedCorners) => void;
-  onCancel: () => void;
-}
-
-export function ManualCropOverlay({ imageBlob, initialCorners, onConfirm, onCancel }: ManualCropOverlayProps) {
-  const [corners, setCorners] = useState<Point[]>(/* 4 corners */);
-  
-  // Draggable corner handles
-  // Show captured image as background
-  // Draw quadrilateral overlay connecting corners
-  // "Confirm" button applies perspective transform with these corners
-}
+// REMOVE this entire block for customer view:
+{/* Sales Tax (if enabled) - ONLY show for internal view */}
+{opts.showCostBreakdown && config.salesTaxEnabled && config.salesTaxRate > 0 && (
+  <div className="flex justify-between text-xs">
+    <span className="text-gray-600">Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
+    <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount || 0)}</span>
+  </div>
+)}
 ```
 
-**UX Details:**
-- Large touch targets (48x48px minimum) for corner handles
-- Haptic feedback on drag (if available via Capacitor)
-- Magnifier loupe when dragging (optional, performance permitting)
-- Default corners: centered rectangle if no detection available
+**Customer sees:**
+- "Your Investment" or "Total" → Just `sellingPrice` (which now includes tax)
 
----
+**Internal view sees:**
+- Pre-tax subtotal
+- Sales tax line
+- Total (same as selling price)
 
-### 4. Enhanced Processing Pipeline (`documentEnhancementPro.ts`)
+### 3. Update Breakdown Card (`EstimateBreakdownCard.tsx`)
 
-**New Features:**
+**For customer/display view:**
+- Show selling price as the final number
+- Add small note: "Price includes applicable sales tax" (optional)
+- Remove separate tax line display
 
-#### A. Illumination Normalization (fixes shadows)
+**For internal view:**
+- Keep tax breakdown visible for accounting
+- Show "Pre-tax selling price", "Sales Tax", "Final Price"
+
+### 4. Update Line Items Table (`SectionedLineItemsTable.tsx`)
+
+**Remove these rows from customer-facing table:**
+- "Selling Price (before tax)" row
+- "Sales Tax on Materials" row
+- "Total with Tax" row
+
+**Just show:**
+- Direct Cost Total (internal only)
+- Total → the final `sellingPrice` (which includes tax)
+
+### 5. Update Estimate Saving (`MultiTemplateSelector.tsx`)
+
+**Database fields adjustment:**
 ```typescript
-function normalizeIllumination(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
-  // 1. Estimate background illumination using large-kernel blur (morphological open)
-  // 2. Divide original by illumination map (or subtract + normalize)
-  // 3. This lifts shadows without affecting text contrast
-}
-```
+// Current save:
+selling_price: breakdown.sellingPrice,          // Pre-tax
+sales_tax_amount: breakdown.salesTaxAmount,     // Separate
+total_with_tax: breakdown.totalWithTax,         // With tax
 
-#### B. White Background Enforcement
-```typescript
-function enforceWhiteBackground(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
-  // 1. Sample border regions to detect background color
-  // 2. Calculate background median brightness
-  // 3. Normalize so background becomes ~248 (near white)
-  // 4. Clamp to avoid blowing out highlights
-}
-```
-
-#### C. Hand Shadow Correction
-```typescript
-function correctHandShadows(data: Uint8ClampedArray, width: number, height: number): Uint8ClampedArray {
-  // 1. Detect large low-frequency dark regions (shadows are smooth, text is sharp)
-  // 2. Apply local normalization to lift shadow areas
-  // 3. Preserve text edges using edge-aware filtering
-}
+// New save:
+selling_price: breakdown.sellingPrice,          // NOW INCLUDES TAX
+sales_tax_amount: breakdown.salesTaxAmount,     // Still saved for accounting
+total_with_tax: breakdown.sellingPrice,         // Same as selling_price (backward compat)
+pre_tax_selling_price: breakdown.preTaxSellingPrice  // NEW: for internal records
 ```
 
 ---
 
-### 5. Capture Gating (in DocumentScannerDialog)
+## Customer vs Internal View
 
-**New Logic:**
-```typescript
-const captureAndProcess = useCallback(async () => {
-  // 1. Capture current frame
-  const frameCanvas = captureFrame();
-  
-  // 2. Check if detection is stable
-  const stabilityResult = stabilityBuffer.getResult();
-  
-  if (stabilityResult.stable && stabilityResult.averagedCorners) {
-    // AUTO MODE: Use stable corners immediately
-    const processed = await processWithCorners(frameCanvas, stabilityResult.averagedCorners);
-    addPage(processed);
-  } else {
-    // MANUAL MODE: Show crop overlay
-    setManualCropImage(frameCanvas);
-    setShowManualCrop(true);
-  }
-}, [/* deps */]);
+| View | What They See |
+|------|---------------|
+| **Customer PDF** | Materials/Labor items → **Total: $21,548.67** (tax included, not shown separately) |
+| **Internal View** | Full breakdown: Pre-tax $20,611.08 + Tax $937.59 = Total $21,548.67 |
+
+---
+
+## Backward Compatibility
+
+- Existing estimates with separate `sales_tax_amount` will still work
+- `total_with_tax` field remains for any legacy queries
+- Internal reports can still access tax amounts
+
+---
+
+## Database Schema (Optional Enhancement)
+
+Consider adding a field to clarify tax inclusion:
+```sql
+ALTER TABLE enhanced_estimates 
+ADD COLUMN pre_tax_selling_price NUMERIC(12,2);
 ```
 
----
-
-### 6. Safety Checks
-
-**Before accepting corners (auto or manual):**
-```typescript
-function validateQuadrilateral(corners: DetectedCorners, frameWidth: number, frameHeight: number): { valid: boolean; reason?: string } {
-  // 1. Self-crossing check (polygon must be convex)
-  if (!isConvex(corners)) return { valid: false, reason: 'Invalid shape' };
-  
-  // 2. Too large check (>95% of frame = probably capturing whole view)
-  const area = quadArea(corners);
-  const frameArea = frameWidth * frameHeight;
-  if (area / frameArea > 0.95) return { valid: false, reason: 'Document too close' };
-  
-  // 3. Too small check (<10% of frame)
-  if (area / frameArea < 0.10) return { valid: false, reason: 'Document too far' };
-  
-  return { valid: true };
-}
-```
-
----
-
-### 7. Performance Optimizations
-
-| Optimization | Implementation |
-|--------------|----------------|
-| **Lazy OpenCV load** | Only load 8MB OpenCV.js when scanner dialog opens |
-| **Web Worker** | Run OpenCV detection in worker thread (optional, if perf issues) |
-| **Downsample** | Detect on 640px max dimension, only full-res for capture |
-| **Throttled detection** | Run every 200-300ms, not on every frame |
-| **Canvas reuse** | Reuse temp canvases/Mats instead of reallocating |
-| **requestIdleCallback** | Schedule heavy processing during idle time |
-
----
-
-### 8. iOS Safari Compatibility Notes
-
-| Issue | Solution |
-|-------|----------|
-| Memory pressure | Release ImageData/Mats promptly |
-| Canvas size limits | Limit to 4096x4096 max |
-| Video playback | `playsinline` attribute required |
-| Orientation | Handle EXIF orientation in captured frames |
-
----
-
-## Testing Checklist
-
-### Functional Tests
-- [ ] Document on dark table: output PDF has no table visible
-- [ ] Document partially out of frame: forces manual crop
-- [ ] Hand shadow across page: output readable, background mostly white
-- [ ] Low light grain: output does not over-sharpen noise
-- [ ] Rotated document: correctly oriented in output
-
-### Stability Tests
-- [ ] Corners don't flicker while document is steady
-- [ ] "Document Detected" only appears after stable lock
-- [ ] Smooth transition animations for corner overlay
-
-### Integration Tests
-- [ ] Multi-page capture works correctly
-- [ ] PDF uploads to Supabase successfully
-- [ ] Database record created with correct metadata
-- [ ] No regression in existing upload flow
-
----
-
-## Dependencies to Add
-
-```json
-{
-  "dependencies": {
-    // No new npm dependencies - OpenCV.js loaded from CDN
-  }
-}
-```
-
-OpenCV.js loaded lazily from CDN when scanner opens:
-- URL: `https://docs.opencv.org/4.8.0/opencv.js`
-- Size: ~8MB (loaded only when needed)
-- Cached by browser after first load
+This keeps the original pre-tax calculation for internal accounting while `selling_price` shows the customer-facing tax-inclusive amount.
 
 ---
 
 ## Summary
 
-| Component | What It Solves |
-|-----------|---------------|
-| OpenCV.js edge detection | Accurate, robust boundary detection |
-| Stability filter | Smooth, non-jittery corner tracking |
-| Manual crop overlay | Fallback when auto-detection fails |
-| Enhanced pipeline | Professional shadow/lighting correction |
-| Capture gating | Prevents bad captures |
-| Safety checks | Rejects invalid quadrilaterals |
-
-**This upgrade will bring the scanner quality from "acceptable" to "Genius Scan-level professional" while maintaining full compatibility with the existing dialog interface and upload flow.**
+| What | Change |
+|------|--------|
+| **Customer sees** | Single total price (tax included, not shown separately) |
+| **Internal sees** | Full breakdown with tax line for accounting |
+| **Database** | `selling_price` = tax-inclusive; `sales_tax_amount` kept for records |
+| **PDFs** | Customer PDFs show clean total; Internal PDFs show tax breakdown |
+| **Files changed** | 5 files |
 
