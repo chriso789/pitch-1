@@ -1097,9 +1097,77 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       if (error) throw error;
 
+      // Get tenant info for PDF upload
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user?.id)
+        .single();
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+
+      // Prepare PDF data and show template for capture
+      setPdfData({
+        estimateNumber: editingEstimateNumber,
+        customerName: customerInfo?.name,
+        customerAddress: customerInfo?.address,
+        companyInfo,
+        companyLocations,
+        materialItems,
+        laborItems,
+        breakdown,
+        config,
+        finePrintContent,
+        options: pdfOptions,
+      });
+      setShowPDFTemplate(true);
+
+      // Wait for render
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Generate PDF
+      let pdfBlob: Blob | null = null;
+      try {
+        const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
+          filename: `${editingEstimateNumber}.pdf`,
+          format: 'letter',
+          orientation: 'portrait',
+        });
+        
+        if (pdfResult.success && pdfResult.blob) {
+          pdfBlob = pdfResult.blob;
+        }
+      } catch (pdfError) {
+        console.error('PDF regeneration failed:', pdfError);
+      }
+
+      // Hide PDF template
+      setShowPDFTemplate(false);
+      setPdfData(null);
+
+      // Upload new PDF to storage (replaces old via upsert)
+      if (pdfBlob && editingEstimateNumber && tenantId && user?.id) {
+        const result = await saveEstimatePdf({
+          pdfBlob,
+          pipelineEntryId,
+          tenantId,
+          estimateNumber: editingEstimateNumber,
+          description: `Updated estimate ${editingEstimateNumber}`,
+          userId: user.id,
+        });
+        
+        if (result.success && result.filePath) {
+          // Update pdf_url in database
+          await supabaseClient
+            .from('enhanced_estimates')
+            .update({ pdf_url: result.filePath })
+            .eq('id', existingEstimateId);
+        }
+      }
+
       toast({
         title: 'Changes Saved',
-        description: 'Estimate line items updated successfully'
+        description: 'Estimate and PDF updated successfully'
       });
 
       // Invalidate queries to refresh the data
@@ -1116,6 +1184,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setLineItems([]);
     } catch (error) {
       console.error('Error saving line item changes:', error);
+      setShowPDFTemplate(false);
+      setPdfData(null);
       toast({
         title: 'Error',
         description: 'Failed to save line item changes',
