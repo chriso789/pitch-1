@@ -15,7 +15,8 @@ import {
   Hammer, 
   Package,
   AlertTriangle,
-  Lock
+  Lock,
+  Receipt
 } from 'lucide-react';
 import type { PricingBreakdown, PricingConfig } from '@/hooks/useEstimatePricing';
 
@@ -183,14 +184,28 @@ export function EstimateBreakdownCard({
 
         <Separator />
 
+        {/* Sales Tax (Company Setting - Read Only) */}
+        {config.salesTaxEnabled && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Receipt className="h-4 w-4" />
+                Sales Tax ({config.salesTaxRate.toFixed(2)}%)
+                <Badge variant="outline" className="text-xs">Company Rate</Badge>
+              </span>
+              <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount)}</span>
+            </div>
+          </div>
+        )}
+
         {/* Selling Price */}
         <div className="flex items-center justify-between py-2">
           <span className="text-lg font-semibold flex items-center gap-2">
             <DollarSign className="h-5 w-5" />
-            SELLING PRICE
+            {config.salesTaxEnabled ? 'TOTAL (with tax)' : 'SELLING PRICE'}
           </span>
           <span className="text-2xl font-bold text-primary">
-            {formatCurrency(breakdown.sellingPrice)}
+            {formatCurrency(config.salesTaxEnabled ? breakdown.totalWithTax : breakdown.sellingPrice)}
           </span>
         </div>
 

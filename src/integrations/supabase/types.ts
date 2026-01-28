@@ -9952,6 +9952,8 @@ export type Database = {
           sales_rep_commission_amount: number
           sales_rep_commission_percent: number
           sales_rep_id: string | null
+          sales_tax_amount: number | null
+          sales_tax_rate: number | null
           scope_of_work_html: string | null
           season: string
           selected_tier: string | null
@@ -9969,6 +9971,7 @@ export type Database = {
           tenant_id: string
           tier_line_items: Json | null
           tier_selected_at: string | null
+          total_with_tax: number | null
           tracking_enabled: boolean | null
           updated_at: string
           view_count: number | null
@@ -10040,6 +10043,8 @@ export type Database = {
           sales_rep_commission_amount?: number
           sales_rep_commission_percent?: number
           sales_rep_id?: string | null
+          sales_tax_amount?: number | null
+          sales_tax_rate?: number | null
           scope_of_work_html?: string | null
           season?: string
           selected_tier?: string | null
@@ -10057,6 +10062,7 @@ export type Database = {
           tenant_id: string
           tier_line_items?: Json | null
           tier_selected_at?: string | null
+          total_with_tax?: number | null
           tracking_enabled?: boolean | null
           updated_at?: string
           view_count?: number | null
@@ -10128,6 +10134,8 @@ export type Database = {
           sales_rep_commission_amount?: number
           sales_rep_commission_percent?: number
           sales_rep_id?: string | null
+          sales_tax_amount?: number | null
+          sales_tax_rate?: number | null
           scope_of_work_html?: string | null
           season?: string
           selected_tier?: string | null
@@ -10145,6 +10153,7 @@ export type Database = {
           tenant_id?: string
           tier_line_items?: Json | null
           tier_selected_at?: string | null
+          total_with_tax?: number | null
           tracking_enabled?: boolean | null
           updated_at?: string
           view_count?: number | null
@@ -32767,6 +32776,8 @@ export type Database = {
           default_terms: string | null
           fine_print_content: string | null
           id: string
+          sales_tax_enabled: boolean | null
+          sales_tax_rate: number | null
           tenant_id: string
           updated_at: string | null
         }
@@ -32777,6 +32788,8 @@ export type Database = {
           default_terms?: string | null
           fine_print_content?: string | null
           id?: string
+          sales_tax_enabled?: boolean | null
+          sales_tax_rate?: number | null
           tenant_id: string
           updated_at?: string | null
         }
@@ -32787,6 +32800,8 @@ export type Database = {
           default_terms?: string | null
           fine_print_content?: string | null
           id?: string
+          sales_tax_enabled?: boolean | null
+          sales_tax_rate?: number | null
           tenant_id?: string
           updated_at?: string | null
         }

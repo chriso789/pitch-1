@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -14,7 +15,8 @@ import {
   Eye, 
   Save, 
   RotateCcw,
-  Info
+  Info,
+  Receipt
 } from 'lucide-react';
 
 const DEFAULT_FINE_PRINT = `TERMS AND CONDITIONS
@@ -50,6 +52,8 @@ export function EstimateFinePrintSettings() {
   
   const [finePrintContent, setFinePrintContent] = useState('');
   const [includeFineByDefault, setIncludeFineByDefault] = useState(true);
+  const [salesTaxEnabled, setSalesTaxEnabled] = useState(false);
+  const [salesTaxRate, setSalesTaxRate] = useState(0);
   const [hasChanges, setHasChanges] = useState(false);
 
   // Fetch settings
@@ -57,7 +61,7 @@ export function EstimateFinePrintSettings() {
     queryKey: ['tenant-estimate-settings', tenantId],
     queryFn: async () => {
       if (!tenantId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('tenant_estimate_settings')
         .select('*')
         .eq('tenant_id', tenantId)
@@ -74,10 +78,14 @@ export function EstimateFinePrintSettings() {
     if (settings) {
       setFinePrintContent(settings.fine_print_content || DEFAULT_FINE_PRINT);
       setIncludeFineByDefault(settings.default_include_fine_print ?? true);
+      setSalesTaxEnabled(settings.sales_tax_enabled ?? false);
+      setSalesTaxRate(settings.sales_tax_rate ?? 0);
     } else if (!isLoading && tenantId) {
       // No settings exist, use defaults
       setFinePrintContent(DEFAULT_FINE_PRINT);
       setIncludeFineByDefault(true);
+      setSalesTaxEnabled(false);
+      setSalesTaxRate(0);
     }
   }, [settings, isLoading, tenantId]);
 
@@ -90,19 +98,21 @@ export function EstimateFinePrintSettings() {
         tenant_id: tenantId,
         fine_print_content: finePrintContent,
         default_include_fine_print: includeFineByDefault,
+        sales_tax_enabled: salesTaxEnabled,
+        sales_tax_rate: salesTaxRate,
         updated_at: new Date().toISOString(),
       };
 
       if (settings?.id) {
         // Update existing
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('tenant_estimate_settings')
           .update(payload)
           .eq('id', settings.id);
         if (error) throw error;
       } else {
         // Insert new
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from('tenant_estimate_settings')
           .insert(payload);
         if (error) throw error;
@@ -128,6 +138,19 @@ export function EstimateFinePrintSettings() {
     setHasChanges(true);
   };
 
+  const handleTaxEnabledChange = (value: boolean) => {
+    setSalesTaxEnabled(value);
+    setHasChanges(true);
+  };
+
+  const handleTaxRateChange = (value: string) => {
+    const numValue = parseFloat(value);
+    if (!isNaN(numValue) && numValue >= 0 && numValue <= 25) {
+      setSalesTaxRate(numValue);
+      setHasChanges(true);
+    }
+  };
+
   const handleReset = () => {
     if (confirm('Reset to default fine print? This will replace your current content.')) {
       setFinePrintContent(DEFAULT_FINE_PRINT);
@@ -146,31 +169,82 @@ export function EstimateFinePrintSettings() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <FileText className="h-5 w-5" />
-          Estimate PDF Fine Print
-        </CardTitle>
-        <CardDescription>
-          Customize the legal terms and conditions that appear at the bottom of estimate PDFs.
-          This content will be included when exporting estimates.
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        {/* Default Toggle */}
-        <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
-          <div className="space-y-0.5">
-            <Label className="text-base">Include fine print by default</Label>
-            <p className="text-sm text-muted-foreground">
-              When enabled, fine print will be included in PDF exports by default (can be toggled per export)
-            </p>
+    <div className="space-y-6">
+      {/* Sales Tax Configuration Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Receipt className="h-5 w-5" />
+            Sales Tax
+          </CardTitle>
+          <CardDescription>
+            Configure sales tax that will be automatically applied to all estimates.
+            This rate cannot be changed on individual estimates.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div className="space-y-0.5">
+              <Label className="text-base">Enable Sales Tax</Label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, tax will be added to all estimate totals
+              </p>
+            </div>
+            <Switch
+              checked={salesTaxEnabled}
+              onCheckedChange={handleTaxEnabledChange}
+            />
           </div>
-          <Switch
-            checked={includeFineByDefault}
-            onCheckedChange={handleToggleChange}
-          />
-        </div>
+          
+          {salesTaxEnabled && (
+            <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+              <Label>Tax Rate (%)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  step="0.001"
+                  min="0"
+                  max="25"
+                  value={salesTaxRate}
+                  onChange={(e) => handleTaxRateChange(e.target.value)}
+                  className="w-32"
+                />
+                <span className="text-muted-foreground">%</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Example: Enter 7.25 for 7.25% sales tax. This will apply to all estimates.
+              </p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Fine Print Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <FileText className="h-5 w-5" />
+            Estimate PDF Fine Print
+          </CardTitle>
+          <CardDescription>
+            Customize the legal terms and conditions that appear at the bottom of estimate PDFs.
+            This content will be included when exporting estimates.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Default Toggle */}
+          <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+            <div className="space-y-0.5">
+              <Label className="text-base">Include fine print by default</Label>
+              <p className="text-sm text-muted-foreground">
+                When enabled, fine print will be included in PDF exports by default (can be toggled per export)
+              </p>
+            </div>
+            <Switch
+              checked={includeFineByDefault}
+              onCheckedChange={handleToggleChange}
+            />
+          </div>
 
         {/* Editor and Preview Tabs */}
         <Tabs defaultValue="edit" className="w-full">
@@ -220,25 +294,26 @@ export function EstimateFinePrintSettings() {
         </Tabs>
 
         {/* Info Box */}
-        <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-sm border border-blue-200 dark:border-blue-900">
-          <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400" />
-          <div className="text-blue-700 dark:text-blue-300">
-            <strong>Tip:</strong> Include important terms like payment schedules, warranty information, 
-            and project scope limitations. This protects both you and your customers.
+          <div className="flex items-start gap-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-950/20 text-sm border border-blue-200 dark:border-blue-900">
+            <Info className="h-4 w-4 mt-0.5 text-blue-600 dark:text-blue-400" />
+            <div className="text-blue-700 dark:text-blue-300">
+              <strong>Tip:</strong> Include important terms like payment schedules, warranty information, 
+              and project scope limitations. This protects both you and your customers.
+            </div>
           </div>
-        </div>
 
-        {/* Save Button */}
-        <div className="flex justify-end gap-2 pt-4 border-t">
-          <Button 
-            onClick={() => saveMutation.mutate()} 
-            disabled={saveMutation.isPending || !hasChanges}
-          >
-            <Save className="h-4 w-4 mr-2" />
-            {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
+          {/* Save Button */}
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button 
+              onClick={() => saveMutation.mutate()} 
+              disabled={saveMutation.isPending || !hasChanges}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              {saveMutation.isPending ? 'Saving...' : 'Save Changes'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

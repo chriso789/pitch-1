@@ -90,11 +90,15 @@ interface EstimatePDFDocumentProps {
     repCommissionAmount: number;
     sellingPrice: number;
     actualProfitMargin: number;
+    salesTaxAmount?: number;
+    totalWithTax?: number;
   };
   config: {
     overheadPercent: number;
     profitMarginPercent: number;
     repCommissionPercent: number;
+    salesTaxEnabled?: boolean;
+    salesTaxRate?: number;
   };
   createdAt?: string;
   finePrintContent?: string;
@@ -656,16 +660,30 @@ const PricingSummary: React.FC<{
         )}
       </div>
       
+      {/* Sales Tax (if enabled) */}
+      {config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
+        <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 mt-1.5">
+          <span className="text-gray-600">Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
+          <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount || 0)}</span>
+        </div>
+      )}
+      
       {/* Consumer-Friendly Total */}
       {!opts.showCostBreakdown && !opts.showProfitInfo ? (
         <div className="text-center py-2">
           <p className="text-xs text-gray-500 mb-1">Your Investment</p>
-          <div className="text-xl font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</div>
+          <div className="text-xl font-bold text-blue-600">
+            {formatCurrency(config.salesTaxEnabled && breakdown.totalWithTax ? breakdown.totalWithTax : breakdown.sellingPrice)}
+          </div>
         </div>
       ) : (
         <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
-          <span className="text-gray-900 font-bold">Total Investment</span>
-          <span className="text-lg font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
+          <span className="text-gray-900 font-bold">
+            {config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 ? 'Total (with tax)' : 'Total Investment'}
+          </span>
+          <span className="text-lg font-bold text-blue-600">
+            {formatCurrency(config.salesTaxEnabled && breakdown.totalWithTax ? breakdown.totalWithTax : breakdown.sellingPrice)}
+          </span>
         </div>
       )}
     </div>

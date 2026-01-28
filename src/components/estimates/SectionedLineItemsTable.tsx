@@ -12,7 +12,6 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { 
   Package, 
   Hammer, 
@@ -36,9 +35,10 @@ interface SectionedLineItemsTableProps {
   onResetItem?: (id: string) => void;
   onAddItem?: (type: 'material' | 'labor') => void;
   editable?: boolean;
-  taxEnabled?: boolean;
-  taxRate?: number;
-  onTaxEnabledChange?: (enabled: boolean) => void;
+  // Sales tax from company settings (read-only)
+  salesTaxEnabled?: boolean;
+  salesTaxRate?: number;
+  salesTaxAmount?: number;
   className?: string;
   // Inline add item form props
   isAddingItem?: boolean;
@@ -72,9 +72,9 @@ export function SectionedLineItemsTable({
   onResetItem,
   onAddItem,
   editable = true,
-  taxEnabled = false,
-  taxRate = 7,
-  onTaxEnabledChange,
+  salesTaxEnabled = false,
+  salesTaxRate = 0,
+  salesTaxAmount = 0,
   className = '',
   isAddingItem = false,
   addingItemType,
@@ -442,37 +442,31 @@ export function SectionedLineItemsTable({
                 {editable && <TableCell />}
               </TableRow>
 
-              {/* Tax Toggle Row */}
-              {editable && onTaxEnabledChange && (
-                <TableRow className="hover:bg-muted/30">
+              {/* Sales Tax Row (Read-Only from Company Settings) */}
+              {salesTaxEnabled && salesTaxRate > 0 && (
+                <TableRow className="bg-muted/30 hover:bg-muted/30">
                   <TableCell colSpan={editable ? 3 : 3} className="text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Receipt className="h-4 w-4" />
-                        Sales Tax ({taxRate}%)
-                      </span>
-                      <Switch
-                        checked={taxEnabled}
-                        onCheckedChange={onTaxEnabledChange}
-                        aria-label="Toggle sales tax"
-                      />
-                    </div>
+                    <span className="flex items-center justify-end gap-2 text-sm">
+                      <Receipt className="h-4 w-4 text-muted-foreground" />
+                      Sales Tax ({salesTaxRate.toFixed(2)}%)
+                      <Badge variant="outline" className="text-xs">Company Rate</Badge>
+                    </span>
                   </TableCell>
-                  <TableCell className="text-right font-mono">
-                    {taxEnabled ? formatCurrency((materialsTotal + laborTotal) * (taxRate / 100)) : '—'}
+                  <TableCell className="text-right font-mono font-medium">
+                    {formatCurrency(salesTaxAmount)}
                   </TableCell>
                   {editable && <TableCell />}
                 </TableRow>
               )}
 
               {/* Grand Total with Tax */}
-              {taxEnabled && (
+              {salesTaxEnabled && salesTaxRate > 0 && (
                 <TableRow className="bg-primary/10 hover:bg-primary/10 border-t">
                   <TableCell colSpan={editable ? 3 : 3} className="text-right font-bold text-lg">
                     Total with Tax
                   </TableCell>
                   <TableCell className="text-right font-mono font-bold text-lg text-primary">
-                    {formatCurrency((materialsTotal + laborTotal) * (1 + taxRate / 100))}
+                    {formatCurrency(materialsTotal + laborTotal + salesTaxAmount)}
                   </TableCell>
                   {editable && <TableCell />}
                 </TableRow>
