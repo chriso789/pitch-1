@@ -192,6 +192,10 @@ export function evaluateFormula(formula: string, ctx: MeasurementContext): numbe
       'lf.valley': ctx.lf.valley,
       'lf.step': ctx.lf.step,
       'pen.pipe_vent': ctx.pen.pipe_vent,
+      // Compound convenience keys for common calculations
+      'lf.ridge_hip': ctx.lf.ridge + ctx.lf.hip,    // Ridge cap coverage (ridge + hip)
+      'lf.eave_rake': ctx.lf.eave + ctx.lf.rake,    // Drip edge perimeter (eave + rake)
+      'lf.perimeter': ctx.lf.eave + ctx.lf.rake,    // Alias for drip edge
     };
 
     // Replace dot notation with values
