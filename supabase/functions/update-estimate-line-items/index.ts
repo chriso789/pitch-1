@@ -119,10 +119,45 @@ serve(async (req) => {
     }
 
     const lineItemsData = line_items as LineItemsJson;
-    const config = pricing_config as PricingConfig || { 
-      overheadPercent: estimate.overhead_percent || 10, 
-      repCommissionPercent: estimate.rep_commission_percent || 5 
-    };
+    
+    // Fetch assigned rep's rates from the pipeline entry
+    let repOverheadRate = pricing_config?.overheadPercent || estimate.overhead_percent || 10;
+    let repCommissionRate = pricing_config?.repCommissionPercent || estimate.rep_commission_percent || 50;
+    let commissionStructure = 'profit_split';
+
+    if (estimate.pipeline_entry_id) {
+      const { data: pipelineData } = await serviceClient
+        .from('pipeline_entries')
+        .select(`
+          assigned_to,
+          profiles!pipeline_entries_assigned_to_fkey(
+            overhead_rate,
+            personal_overhead_rate,
+            commission_rate,
+            commission_structure
+          )
+        `)
+        .eq('id', estimate.pipeline_entry_id)
+        .single();
+      
+      if (pipelineData?.profiles) {
+        const repProfile = pipelineData.profiles as any;
+        // Apply overhead hierarchy: personal_overhead_rate > 0 takes priority
+        const personalOverhead = repProfile.personal_overhead_rate ?? 0;
+        const baseOverhead = repProfile.overhead_rate ?? 10;
+        repOverheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
+        repCommissionRate = repProfile.commission_rate ?? 50;
+        commissionStructure = repProfile.commission_structure || 'profit_split';
+        
+        console.log('[update-estimate-line-items] Using assigned rep rates:', {
+          effectiveOverhead: repOverheadRate,
+          personalOverhead,
+          baseOverhead,
+          commissionRate: repCommissionRate,
+          commissionStructure
+        });
+      }
+    }
 
     // Calculate totals from line items
     const materialsTotal = lineItemsData.materials.reduce((sum, item) => sum + (item.line_total || 0), 0);
@@ -132,11 +167,21 @@ serve(async (req) => {
     // Use provided selling price or calculate from estimate
     const finalSellingPrice = selling_price || estimate.selling_price;
 
-    // Calculate overhead and profit
-    const overheadPercent = config.overheadPercent;
+    // Calculate overhead using rep's effective rate
+    const overheadPercent = repOverheadRate;
     const overheadAmount = finalSellingPrice * (overheadPercent / 100);
-    const repCommissionPercent = config.repCommissionPercent;
-    const repCommissionAmount = finalSellingPrice * (repCommissionPercent / 100);
+    
+    // Calculate commission based on rep's structure
+    let repCommissionAmount: number;
+    const netProfitForSplit = finalSellingPrice - directCost - overheadAmount;
+    
+    if (commissionStructure === 'profit_split') {
+      // Profit Split: Commission = Net Profit × Rate %
+      repCommissionAmount = Math.max(0, netProfitForSplit * (repCommissionRate / 100));
+    } else {
+      // Percent of Contract: Commission = Selling Price × Rate %
+      repCommissionAmount = finalSellingPrice * (repCommissionRate / 100);
+    }
 
     // Calculate profit
     const profitAmount = finalSellingPrice - directCost - overheadAmount - repCommissionAmount;

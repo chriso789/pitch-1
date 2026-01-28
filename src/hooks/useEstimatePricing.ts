@@ -75,7 +75,12 @@ export function useEstimatePricing(
   // Update config when initialConfig changes (e.g., when rep rates are fetched)
   useEffect(() => {
     if (initialConfig) {
-      setConfigState(current => ({ ...current, ...initialConfig }));
+      setConfigState(current => ({
+        ...current,
+        overheadPercent: initialConfig.overheadPercent ?? current.overheadPercent,
+        repCommissionPercent: initialConfig.repCommissionPercent ?? current.repCommissionPercent,
+        commissionStructure: initialConfig.commissionStructure ?? current.commissionStructure,
+      }));
     }
   }, [initialConfig?.overheadPercent, initialConfig?.repCommissionPercent, initialConfig?.commissionStructure]);
 
