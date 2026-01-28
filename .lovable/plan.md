@@ -1,182 +1,129 @@
 
-# Plan: Add Pitch Adjustment at Location Verification (Single Roof Pitch)
+# Plan: Fix Diagram Source and Manual Measurement Perimeter Saving
 
-## Overview
+## Problem Summary
 
-This plan adds a pitch selector to the `StructureSelectionMap` dialog (the PIN placement step) so users can set the predominant pitch **before** the AI measurement runs. The selected pitch will be passed to the `analyze-roof-aerial` edge function and used as an override for all calculations.
+You have identified two distinct issues:
 
-## Current Flow (Problem)
-
-```text
-User clicks "AI Measurements" 
-    → StructureSelectionMap opens (PIN placement)
-    → User confirms location
-    → analyze-roof-aerial runs (pitch is auto-detected from Solar API)
-    → Report shows pitch (NOT EDITABLE)
-```
-
-The pitch shown in your screenshot (7/12) comes from the Solar API or AI detection and cannot be changed after the measurement is complete.
-
-## Proposed Flow (Solution)
-
-```text
-User clicks "AI Measurements"
-    → StructureSelectionMap opens (PIN placement + PITCH SELECTOR)
-    → User sets pitch (default: 6/12 or Solar-detected if available)
-    → User confirms location
-    → analyze-roof-aerial runs WITH pitchOverride parameter
-    → System uses override pitch for all area calculations
-    → Report shows user-selected pitch
-```
+1. **Diagram shows "Rectangular Estimate" warning** - The schematic diagram is built from rectangular bounding box fallback data instead of accurate AI-detected geometry
+2. **Manual Entry perimeter not saved** - When using "Enter Manually", the perimeter (eaves + rakes) is not being saved to `measurement_approvals.saved_tags`, causing estimates to show "Perimeter: 0 ft"
 
 ---
 
-## Technical Implementation
+## Issue 1: Diagram Built from Rectangular Fallback
 
-### Phase 1: Update StructureSelectionMap Component
+### Root Cause
+The `SchematicRoofDiagram` component checks `measurement?.footprint_source === 'solar_bbox_fallback'` and displays the warning banner. This happens when:
+- The AI measurement system fails to get an accurate footprint from Mapbox, OSM, Microsoft Buildings, or Regrid
+- The system falls back to the Google Solar API bounding box (a simple rectangle)
+- The diagram still has AI-detected linear features but they're constrained to a rectangular outline
 
-**File**: `src/components/measurements/StructureSelectionMap.tsx`
+### Current Behavior
+- AI pulls measurement but gets `footprint_source: 'solar_bbox_fallback'`
+- Diagram displays rectangle with warning "Rectangular Estimate - Import Report for Accuracy"
+- Linear features (ridge, hip, eave) are calculated but may be less accurate
 
-**Changes**:
-1. Add pitch state: `const [selectedPitch, setSelectedPitch] = useState<string>('6/12');`
-2. Add pitch options constant
-3. Add Select dropdown in the dialog UI (above map or in footer)
-4. Update `onLocationConfirmed` callback signature to include pitch
-5. Update `handleConfirm` to pass pitch to parent
+### Solution
+The diagram warning is actually **correct** - when footprint_source is solar_bbox_fallback, the geometry IS rectangular and less accurate. The fix should focus on:
 
-**New Props Interface**:
+1. Improving footprint detection (already done with the base64 stack overflow fix)
+2. Allow re-measuring after footprint source improvements take effect
+
+**No diagram code changes needed** - the warning is appropriate for rectangular fallbacks.
+
+---
+
+## Issue 2: Manual Entry Not Saving Perimeter/Eave/Rake
+
+### Root Cause
+The `ManualMeasurementDialog` saves data to two places:
+
+1. **`pipeline_entries.metadata`** (lines 196-217) - Correctly saves `eaves_lf`, `rakes_lf`
+2. **`roof_measurements` table** (lines 251-286) - Correctly saves `total_eave_length`, `total_rake_length`
+
+However, the **`measurement_approvals.saved_tags`** is NOT created during manual entry. The approval is only created when:
+- Importing vendor reports (has perimeter tag)
+- Saving from AI measurement history (missing eave/rake tags)
+
+### Missing Flow
+When user clicks "Save" in ManualMeasurementDialog:
+1. Creates `roof_measurements` record
+2. Does NOT create `measurement_approvals` record
+
+The approval is only created later when user clicks "Save" on the measurement history card.
+
+### Solution: Create Approval Automatically for Manual Entry
+
+**File**: `src/components/estimates/ManualMeasurementDialog.tsx`
+
+Add `measurement_approvals` record creation with proper tags including `lf.perimeter`, `lf.eave`, `lf.rake`:
+
 ```typescript
-interface StructureSelectionMapProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  initialLat: number;
-  initialLng: number;
-  address?: string;
-  onLocationConfirmed: (lat: number, lng: number, pitchOverride?: string) => void;
-  defaultPitch?: string; // Optional: pre-fill from previous measurement
+// After line 300 (after roof_measurements insert succeeds)
+// Also create measurement_approval automatically so it appears in saved list
+
+if (insertedMeasurement?.id) {
+  const perimeter = formData.eaves + formData.rakes;
+  
+  const approvalTags = {
+    'roof.plan_area': adjustedArea,
+    'roof.total_sqft': adjustedArea,
+    'roof.squares': adjustedArea / 100,
+    'roof.predominant_pitch': formData.pitch,
+    'lf.ridge': formData.ridges,
+    'lf.hip': formData.hips,
+    'lf.valley': formData.valleys,
+    'lf.eave': formData.eaves,
+    'lf.rake': formData.rakes,
+    'lf.perimeter': perimeter,
+    'lf.step': formData.stepFlashing,
+    'source': 'manual_entry',
+  };
+
+  await supabase.from('measurement_approvals').insert({
+    tenant_id: pipelineData.tenant_id,
+    pipeline_entry_id: pipelineEntryId,
+    approved_at: new Date().toISOString(),
+    saved_tags: approvalTags,
+    approval_notes: `Manual entry - ${adjustedArea.toLocaleString()} sqft`,
+  });
 }
 ```
 
-**UI Addition** (in DialogHeader or footer):
-```tsx
-<div className="flex items-center gap-2 mt-2">
-  <Label className="text-xs">Roof Pitch:</Label>
-  <Select value={selectedPitch} onValueChange={setSelectedPitch}>
-    <SelectTrigger className="w-24 h-8">
-      <SelectValue />
-    </SelectTrigger>
-    <SelectContent className="bg-background z-50">
-      {PITCH_OPTIONS.map(p => (
-        <SelectItem key={p} value={p}>{p}</SelectItem>
-      ))}
-    </SelectContent>
-  </Select>
-  <span className="text-xs text-muted-foreground">(affects area calculation)</span>
-</div>
-```
-
-**Pitch Options**:
-```typescript
-const PITCH_OPTIONS = [
-  '0/12', '1/12', '2/12', '3/12', '4/12', '5/12', '6/12', 
-  '7/12', '8/12', '9/12', '10/12', '11/12', '12/12',
-  '14/12', '16/12', '18/12'
-];
-```
-
 ---
 
-### Phase 2: Update PullMeasurementsButton to Pass Pitch
+## Issue 2B: AI Measurement Save Missing Eave/Rake
 
-**File**: `src/components/measurements/PullMeasurementsButton.tsx`
+### Root Cause
+In `UnifiedMeasurementPanel.tsx`, the `handleSaveAiMeasurement` function (lines 927-977) creates `savedTags` but misses:
+- `lf.eave` - should come from `measurement.total_eave_length`
+- `lf.rake` - should come from `measurement.total_rake_length`  
+- `lf.perimeter` - should be `total_eave_length + total_rake_length`
 
-**Changes**:
-1. Update `handleStructureConfirmed` to accept pitch parameter
-2. Pass pitch to `handlePull` function
-3. Include `pitchOverride` in the edge function request body
+### Solution: Add Missing Linear Features
 
-**Current Code** (lines 573-577):
+**File**: `src/components/measurements/UnifiedMeasurementPanel.tsx`
+
+Update `handleSaveAiMeasurement` function (around lines 940-951):
+
 ```typescript
-const handleStructureConfirmed = (lat: number, lng: number) => {
-  setShowStructureSelector(false);
-  handlePull(lat, lng);
+const savedTags = {
+  'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+  'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
+  'roof.squares': totalSquares,
+  'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
+  'roof.faces_count': measurement.facet_count || 0,
+  'lf.ridge': measurement.total_ridge_length || 0,
+  'lf.hip': measurement.total_hip_length || 0,
+  'lf.valley': measurement.total_valley_length || 0,
+  // ADD THESE MISSING TAGS:
+  'lf.eave': measurement.total_eave_length || 0,
+  'lf.rake': measurement.total_rake_length || 0,
+  'lf.perimeter': (measurement.total_eave_length || 0) + (measurement.total_rake_length || 0),
+  'source': 'ai_pulled',
+  'imported_at': measurement.created_at,
 };
 ```
-
-**Updated Code**:
-```typescript
-const handleStructureConfirmed = (lat: number, lng: number, pitchOverride?: string) => {
-  setShowStructureSelector(false);
-  handlePull(lat, lng, pitchOverride);
-};
-```
-
-**Update handlePull signature** (line 219):
-```typescript
-async function handlePull(confirmedLat: number, confirmedLng: number, pitchOverride?: string) {
-```
-
-**Update edge function call** (lines 265-273):
-```typescript
-const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
-  body: {
-    address: address || 'Unknown Address',
-    coordinates: { lat: pullLat, lng: pullLng },
-    customerId: propertyId,
-    userId: user?.id,
-    pitchOverride: pitchOverride || undefined // NEW: Pass pitch override
-  }
-});
-```
-
----
-
-### Phase 3: Update analyze-roof-aerial Edge Function
-
-**File**: `supabase/functions/analyze-roof-aerial/index.ts`
-
-**Changes**:
-1. Extract `pitchOverride` from request body
-2. Use it in slope factor calculations instead of Solar-detected pitch
-3. Store it in the database as `predominant_pitch`
-
-**Request Handler** (around line 162):
-```typescript
-const { address, coordinates, customerId, userId, forceFullAnalysis, pitchOverride } = await req.json();
-
-if (pitchOverride) {
-  console.log(`📐 Using manual pitch override: ${pitchOverride}`);
-}
-```
-
-**Calculation Usage** (multiple locations):
-When calculating `totalAdjustedArea`, use:
-```typescript
-const effectivePitch = pitchOverride || solarDerivedPitch || '6/12';
-const slopeFactor = getSlopeFactorFromPitch(effectivePitch);
-const adjustedArea = flatArea * slopeFactor;
-```
-
-**Database Save** (line 3936):
-```typescript
-predominant_pitch: pitchOverride || measurements.predominantPitch,
-```
-
----
-
-### Phase 4: Update unified-measurement-pipeline (Optional Enhancement)
-
-**File**: `supabase/functions/_shared/unified-measurement-pipeline.ts`
-
-The new unified pipeline already supports `pitchOverride` in `UnifiedMeasurementRequest`. Ensure it flows through to area calculations:
-
-```typescript
-// Line 272 already handles this:
-const effectivePitch = request.pitchOverride || 
-  (solarData?.available ? getPredominantPitchFromSolar(solarData) : '6/12');
-```
-
-No changes needed here - already implemented.
 
 ---
 
@@ -184,61 +131,53 @@ No changes needed here - already implemented.
 
 | File | Changes |
 |------|---------|
-| `src/components/measurements/StructureSelectionMap.tsx` | Add pitch selector UI, update props/callback |
-| `src/components/measurements/PullMeasurementsButton.tsx` | Pass pitch through handlePull to edge function |
-| `supabase/functions/analyze-roof-aerial/index.ts` | Accept and use `pitchOverride` parameter |
+| `src/components/estimates/ManualMeasurementDialog.tsx` | Auto-create `measurement_approvals` record with full tags including perimeter |
+| `src/components/measurements/UnifiedMeasurementPanel.tsx` | Add `lf.eave`, `lf.rake`, `lf.perimeter` to `handleSaveAiMeasurement` |
 
 ---
 
-## UI/UX Details
+## Technical Details
 
-### Pitch Selector Placement
-The pitch dropdown will be placed in the dialog header area of `StructureSelectionMap`, below the address and above the map. This keeps it visible while the user positions the PIN.
+### ManualMeasurementDialog Changes
 
-### Visual Design
-- Label: "Roof Pitch:"
-- Dropdown with values from 0/12 to 18/12
-- Helper text: "(affects area calculation)"
-- Default value: 6/12 (industry standard for residential)
+1. Get `tenant_id` from pipeline entry (already fetched at line 178)
+2. After successful `roof_measurements` insert (line 283-300), add approval insert
+3. Include all linear feature tags with proper naming:
+   - `lf.ridge`, `lf.hip`, `lf.valley`, `lf.eave`, `lf.rake`, `lf.perimeter`, `lf.step`
 
-### User Flow
-1. User clicks "AI Measurements"
-2. Structure Selection Map opens
-3. User sees pitch dropdown with default 6/12
-4. User can change pitch if they know it (e.g., from permit or existing report)
-5. User drags PIN to roof center
-6. User clicks "Confirm & Measure"
-7. AI analysis runs with the selected pitch as override
-8. Report shows the user-selected pitch value
+### UnifiedMeasurementPanel Changes
+
+1. Update `handleSaveAiMeasurement` function to include eave/rake/perimeter
+2. These values come from `roof_measurements` table columns:
+   - `total_eave_length` -> `lf.eave`
+   - `total_rake_length` -> `lf.rake`
+   - Sum of both -> `lf.perimeter`
 
 ---
 
-## Edge Cases Handled
+## Expected Results After Implementation
 
-1. **No pitch selected**: Uses 6/12 default
-2. **Solar API provides pitch**: User selection overrides Solar data
-3. **Invalid pitch format**: Validation in Select options prevents this
-4. **Existing measurements**: If re-measuring, could pre-fill with previous pitch (optional enhancement)
+1. **Manual Entry**: 
+   - Clicking "Save Measurements" in manual dialog will create both `roof_measurements` AND `measurement_approvals`
+   - The saved measurement will show correct Perimeter, Eave, and Rake values
+   - Estimate templates will have access to `lf.perimeter` for drip edge calculations
 
----
+2. **AI Measurement Save**:
+   - Clicking "Save" on AI measurement history card will include all linear features
+   - Perimeter will calculate correctly from eave + rake
 
-## Testing Verification
-
-After implementation:
-1. Open a lead page
-2. Click "AI Measurements" 
-3. Verify pitch dropdown appears in the Structure Selection Map dialog
-4. Select a specific pitch (e.g., 10/12)
-5. Confirm location
-6. Verify the resulting report shows the selected pitch (10/12)
-7. Verify the area calculation uses the correct slope factor for 10/12
+3. **Estimate Accuracy**:
+   - Formulas like `{{ ceil(lf.perimeter / 10) }}` for drip edge will evaluate correctly
+   - No more "0 ft" for perimeter in measurement cards
 
 ---
 
-## Expected Results
+## Note on Diagram Warning
 
-- Users can set pitch BEFORE measurement runs
-- The system uses the user-specified pitch for all area calculations
-- Reports display the user-selected pitch
-- No more need to manually correct pitch after the fact
-- Calculations are correct from the first measurement
+The "Rectangular Estimate - Import Report for Accuracy" warning will continue to show for measurements that used `solar_bbox_fallback` footprint source. This is **intentional** - these measurements genuinely have less accurate geometry. The warning encourages:
+
+1. Re-measuring with the newly fixed AI detection (base64 fix applied earlier)
+2. Importing a vendor report with verified footprint
+3. Manually drawing the footprint using the "Draw Footprint" tool
+
+The warning will disappear when measurements have a proper footprint source like `mapbox_vector`, `osm_overpass`, or `ai_detection`.
