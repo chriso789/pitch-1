@@ -102,14 +102,36 @@ export function MaterialImportAuditDialog({
   };
 
   const parseCSVRow = (row: any, headers: string[]): ImportedItem | null => {
-    const codeCol = mapColumnName(headers, ['code', 'sku', 'item_code', 'Code', 'SKU', 'Item Code', 'ItemCode']);
-    const nameCol = mapColumnName(headers, ['name', 'description', 'product', 'item_name', 'Name', 'Description', 'Product', 'ItemName']);
-    const costCol = mapColumnName(headers, ['cost', 'price', 'base_cost', 'unit_cost', 'Cost', 'Price', 'BaseCost', 'UnitCost']);
-    const uomCol = mapColumnName(headers, ['uom', 'unit', 'UOM', 'Unit']);
-    const categoryCol = mapColumnName(headers, ['category', 'category_name', 'Category', 'CategoryName']);
+    // Expanded to support more vendor formats (SRS, ABC Supply, etc.)
+    const codeCol = mapColumnName(headers, [
+      'code', 'sku', 'item_code', 'item', 'item_number', 'part_number', 'product_code',
+      'Code', 'SKU', 'Item Code', 'ItemCode', 'Item', 'Item Number', 'Part Number', 'Product Code'
+    ]);
+    const nameCol = mapColumnName(headers, [
+      'name', 'description', 'product', 'item_name', 'item_description', 'material',
+      'Name', 'Description', 'Product', 'ItemName', 'Item Name', 'Item Description', 'Material'
+    ]);
+    const costCol = mapColumnName(headers, [
+      'cost', 'price', 'base_cost', 'unit_cost', 'unit_price',
+      'cost_per_unit', 'cost per unit', 'cost per item', 'cost per bundle', 'cost per square',
+      'Cost', 'Price', 'BaseCost', 'UnitCost', 'Unit Cost', 'Unit Price',
+      'Cost Per Unit', 'Cost Per Item', 'Cost Per Bundle', 'Cost Per Square'
+    ]);
+    const uomCol = mapColumnName(headers, [
+      'uom', 'unit', 'unit_of_measure', 'units',
+      'UOM', 'Unit', 'Unit of Measure', 'Units'
+    ]);
+    const categoryCol = mapColumnName(headers, [
+      'category', 'category_name', 'type', 'product_type', 'material_type',
+      'Category', 'CategoryName', 'Type', 'Product Type', 'Material Type'
+    ]);
     const markupCol = mapColumnName(headers, ['markup', 'markup_pct', 'Markup', 'MarkupPct']);
     const coverageCol = mapColumnName(headers, ['coverage', 'coverage_per_unit', 'Coverage']);
     const skuCol = mapColumnName(headers, ['supplier_sku', 'vendor_sku', 'SupplierSku', 'VendorSku']);
+    const brandCol = mapColumnName(headers, [
+      'brand', 'manufacturer', 'brand_name', 'brand logo',
+      'Brand', 'Manufacturer', 'Brand Name', 'Brand Logo'
+    ]);
 
     const code = codeCol ? row[codeCol]?.toString().trim() : null;
     const name = nameCol ? row[nameCol]?.toString().trim() : null;
@@ -338,12 +360,12 @@ export function MaterialImportAuditDialog({
             <div className="bg-muted/50 rounded-lg p-4 text-sm">
               <p className="font-medium mb-2">Supported column names:</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-muted-foreground text-xs">
-                <p><strong>Code:</strong> code, sku, item_code</p>
-                <p><strong>Name:</strong> name, description, product</p>
-                <p><strong>Cost:</strong> cost, price, base_cost, unit_cost</p>
-                <p><strong>UOM:</strong> uom, unit</p>
-                <p><strong>Category:</strong> category, category_name</p>
-                <p><strong>Markup:</strong> markup, markup_pct</p>
+                <p><strong>Code:</strong> code, sku, item, item_code, product_code</p>
+                <p><strong>Name:</strong> name, description, product, material</p>
+                <p><strong>Cost:</strong> cost, price, unit_cost, cost per item, cost per bundle</p>
+                <p><strong>UOM:</strong> uom, unit (defaults to EA)</p>
+                <p><strong>Category:</strong> category, type</p>
+                <p><strong>Brand:</strong> brand, manufacturer, brand logo</p>
               </div>
             </div>
           </div>
