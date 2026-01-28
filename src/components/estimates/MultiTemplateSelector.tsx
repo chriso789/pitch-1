@@ -492,15 +492,23 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         setCompanyLocations(locations);
       }
 
-      // Fetch estimate settings for fine print
+      // Fetch estimate settings for fine print and sales tax
       const { data: settings } = await supabaseClient
         .from('tenant_estimate_settings')
-        .select('fine_print_content, default_include_fine_print')
+        .select('fine_print_content, default_include_fine_print, sales_tax_enabled, sales_tax_rate')
         .eq('tenant_id', tenantId)
         .maybeSingle();
 
       if (settings?.fine_print_content) {
         setFinePrintContent(settings.fine_print_content);
+      }
+      
+      // Apply sales tax settings to pricing config
+      if (settings) {
+        setConfig({
+          salesTaxEnabled: settings.sales_tax_enabled ?? false,
+          salesTaxRate: settings.sales_tax_rate ?? 0,
+        });
       }
 
       // Fetch customer info from pipeline entry
@@ -975,6 +983,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           rep_commission_amount: breakdown.repCommissionAmount,
           actual_profit_amount: breakdown.profitAmount,
           actual_profit_percent: breakdown.actualProfitMargin,
+          sales_tax_rate: config.salesTaxEnabled ? config.salesTaxRate : 0,
+          sales_tax_amount: breakdown.salesTaxAmount,
+          total_with_tax: breakdown.totalWithTax,
           line_items: lineItemsJson,
           pdf_url: pdfUrl,
           short_description: shortDescription,
@@ -1516,6 +1527,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               onResetItem={handleResetItem}
               onAddItem={handleAddLineItem}
               editable={true}
+              salesTaxEnabled={config.salesTaxEnabled}
+              salesTaxRate={config.salesTaxRate}
+              salesTaxAmount={breakdown.salesTaxAmount}
               isAddingItem={isAddingItem}
               addingItemType={newItemType}
               newItem={newItem}

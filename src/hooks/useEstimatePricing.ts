@@ -23,6 +23,9 @@ export interface PricingConfig {
   profitMarginPercent: number;
   repCommissionPercent: number;
   commissionStructure: 'profit_split' | 'sales_percentage';
+  // Sales tax settings (from company config, read-only in estimates)
+  salesTaxEnabled: boolean;
+  salesTaxRate: number;
 }
 
 export interface PricingBreakdown {
@@ -36,6 +39,9 @@ export interface PricingBreakdown {
   repCommissionAmount: number;
   sellingPrice: number;
   actualProfitMargin: number;
+  // Sales tax
+  salesTaxAmount: number;
+  totalWithTax: number;
 }
 
 export interface UseEstimatePricingReturn {
@@ -59,6 +65,8 @@ const DEFAULT_CONFIG: PricingConfig = {
   profitMarginPercent: 30,
   repCommissionPercent: 8,
   commissionStructure: 'profit_split',
+  salesTaxEnabled: false,
+  salesTaxRate: 0,
 };
 
 export function useEstimatePricing(
@@ -72,7 +80,7 @@ export function useEstimatePricing(
   }));
   const [fixedPrice, setFixedPriceState] = useState<number | null>(null);
 
-  // Update config when initialConfig changes (e.g., when rep rates are fetched)
+  // Update config when initialConfig changes (e.g., when rep rates or tax settings are fetched)
   useEffect(() => {
     if (initialConfig) {
       setConfigState(current => ({
@@ -80,9 +88,11 @@ export function useEstimatePricing(
         overheadPercent: initialConfig.overheadPercent ?? current.overheadPercent,
         repCommissionPercent: initialConfig.repCommissionPercent ?? current.repCommissionPercent,
         commissionStructure: initialConfig.commissionStructure ?? current.commissionStructure,
+        salesTaxEnabled: initialConfig.salesTaxEnabled ?? current.salesTaxEnabled,
+        salesTaxRate: initialConfig.salesTaxRate ?? current.salesTaxRate,
       }));
     }
-  }, [initialConfig?.overheadPercent, initialConfig?.repCommissionPercent, initialConfig?.commissionStructure]);
+  }, [initialConfig?.overheadPercent, initialConfig?.repCommissionPercent, initialConfig?.commissionStructure, initialConfig?.salesTaxEnabled, initialConfig?.salesTaxRate]);
 
   const isFixedPrice = fixedPrice !== null;
 
@@ -156,6 +166,12 @@ export function useEstimatePricing(
       repCommissionAmount = sellingPrice * (config.repCommissionPercent / 100);
     }
 
+    // Calculate sales tax (applied to selling price)
+    const salesTaxAmount = config.salesTaxEnabled 
+      ? sellingPrice * (config.salesTaxRate / 100) 
+      : 0;
+    const totalWithTax = sellingPrice + salesTaxAmount;
+
     return {
       materialsTotal,
       laborTotal,
@@ -167,6 +183,8 @@ export function useEstimatePricing(
       repCommissionAmount,
       sellingPrice,
       actualProfitMargin,
+      salesTaxAmount,
+      totalWithTax,
     };
   }, [materialItems, laborItems, config, isFixedPrice, fixedPrice]);
 
