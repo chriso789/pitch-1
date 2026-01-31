@@ -268,6 +268,53 @@ export function SchematicRoofDiagram({
     fetchFacets();
   }, [measurementId]);
   
+  // NEW Phase 8: Parse facets from facets_json field when database facets unavailable
+  const parsedFacetsFromJson = useMemo(() => {
+    const facetsJson = measurement?.facets_json;
+    if (!facetsJson) return [];
+    
+    try {
+      const facets = typeof facetsJson === 'string' 
+        ? JSON.parse(facetsJson) 
+        : facetsJson;
+      
+      return facets.map((f: any, idx: number) => ({
+        id: f.id || `F${idx + 1}`,
+        facet_number: idx + 1,
+        polygon_points: f.polygon || f.polygonGps || [],
+        centroid: f.centroid || calculateCentroid(f.polygon || f.polygonGps || []),
+        area_flat_sqft: f.areaSqft || f.area_flat_sqft || 0,
+        area_adjusted_sqft: f.areaSqft ? f.areaSqft * (getSlopeFactor(f.estimatedPitch || f.pitch) || 1) : 0,
+        pitch: f.estimatedPitch || f.pitch || '6/12',
+        primary_direction: f.orientation || 'unknown',
+      }));
+    } catch {
+      return [];
+    }
+  }, [measurement?.facets_json]);
+  
+  // Helper to calculate centroid from polygon
+  function calculateCentroid(polygon: Array<{ lat: number; lng: number }>) {
+    if (!polygon || polygon.length === 0) return { lat: 0, lng: 0 };
+    const lat = polygon.reduce((sum, p) => sum + (p.lat || 0), 0) / polygon.length;
+    const lng = polygon.reduce((sum, p) => sum + (p.lng || 0), 0) / polygon.length;
+    return { lat, lng };
+  }
+  
+  // Helper to get slope factor from pitch
+  function getSlopeFactor(pitch: string): number {
+    const factors: Record<string, number> = {
+      '0/12': 1.0, '1/12': 1.003, '2/12': 1.014, '3/12': 1.031,
+      '4/12': 1.054, '5/12': 1.083, '6/12': 1.118, '7/12': 1.158,
+      '8/12': 1.202, '9/12': 1.250, '10/12': 1.302, '11/12': 1.357,
+      '12/12': 1.414
+    };
+    return factors[pitch] || 1.118;
+  }
+  
+  // Combine database facets with parsed JSON facets
+  const effectiveFacets = facets.length > 0 ? facets : parsedFacetsFromJson;
+  
   // Calculate image bounds for satellite overlay mode
   const imageBounds = useMemo<ImageBounds | null>(() => {
     if (!measurement) return null;
