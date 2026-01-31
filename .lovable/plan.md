@@ -1,47 +1,75 @@
 
-# Fix: Cross-Location Data Contamination in Pipeline
 
-## ✅ COMPLETED
+# Fix: Move Duplicate Leads from East Coast to West Coast
 
-### Part 1: Database Cleanup (RUN THIS SQL)
+## Problem Summary
 
-**Run this SQL in Supabase SQL Editor to clean up the duplicate East Coast entries:**
+3 contacts that belong to **West Coast** were accidentally imported into **East Coast**, creating duplicate pipeline entries. One of them (Henry Germann) has an estimate worth $68,788 that needs to be preserved.
+
+## Current Situation
+
+| Contact | East Coast Entry | West Coast Entry | East Coast Work |
+|---------|------------------|------------------|-----------------|
+| **Henry Germann** | CLJ 3329-1-0 | CLJ 3318-1-0 | **1 estimate ($68,788)** |
+| Irina Gorovits | CLJ 3331-1-0 | CLJ 3320-1-0 | None |
+| James White | CLJ 3330-1-0 | CLJ 3324-1-0 | None |
+
+## Solution
+
+Since the West Coast entries are the **originals** (created first at 03:24), we will:
+1. **Move Henry Germann's estimate** from the East Coast entry to the West Coast entry
+2. **Soft-delete all 3 East Coast duplicate entries** (keep West Coast as the authoritative record)
+
+---
+
+## SQL Script to Run in Supabase SQL Editor
+
+**Run this in the [SQL Editor](https://supabase.com/dashboard/project/alxelfrbjzkmtnsulcei/sql/new):**
 
 ```sql
--- Soft-delete the duplicate East Coast pipeline entries
+-- Step 1: Move Henry Germann's estimate from East Coast to West Coast entry
+UPDATE enhanced_estimates 
+SET pipeline_entry_id = '9b56de04-684b-4995-aa5b-d2642fdebbf1'  -- West Coast Henry Germann
+WHERE pipeline_entry_id = 'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9' -- East Coast Henry Germann
+  AND id = 'e500a7f1-9482-4557-89b7-a6bf98aaf8db';  -- Estimate OBR-00023-gsjc
+
+-- Step 2: Soft-delete all 3 East Coast duplicate pipeline entries
 UPDATE pipeline_entries 
 SET is_deleted = true
 WHERE id IN (
-  SELECT pe1.id
-  FROM pipeline_entries pe1
-  JOIN contacts c1 ON pe1.contact_id = c1.id
-  JOIN pipeline_entries pe2 ON pe2.id != pe1.id
-  JOIN contacts c2 ON pe2.contact_id = c2.id
-  WHERE pe1.tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-    AND pe2.tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-    AND pe1.is_deleted = false
-    AND pe2.is_deleted = false
-    AND pe1.location_id = 'a3615f0d-c7b7-4ee9-a568-a71508a539c6' -- East Coast
-    AND pe2.location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16' -- West Coast
-    AND pe1.created_at > pe2.created_at  -- East Coast was created AFTER West Coast (duplicate)
-    AND REGEXP_REPLACE(c1.phone, '[^0-9]', '', 'g') = REGEXP_REPLACE(c2.phone, '[^0-9]', '', 'g')
+  'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9',  -- Henry Germann (East Coast duplicate)
+  '9e61c71f-1c54-4149-a3c9-acc964de52a0',  -- Irina Gorovits (East Coast duplicate)
+  'ad5481e3-3e0d-4e2b-b762-fbdfc7e8d30e'   -- James White (East Coast duplicate)
 );
+
+-- Verify the changes
+SELECT 
+  'Henry Germann estimate moved' as action,
+  ee.estimate_number,
+  ee.selling_price,
+  pe.clj_formatted_number,
+  l.name as location
+FROM enhanced_estimates ee
+JOIN pipeline_entries pe ON ee.pipeline_entry_id = pe.id
+JOIN locations l ON pe.location_id = l.id
+WHERE ee.id = 'e500a7f1-9482-4557-89b7-a6bf98aaf8db';
 ```
 
-### Part 2: Prevention Code (COMPLETED ✅)
+---
 
-Added cross-location duplicate detection to `ContactBulkImport.tsx`:
+## Expected Result After Running Script
 
-1. ✅ Added `checkForDuplicatesAcrossLocations()` function
-2. ✅ Added state for tracking duplicates: `crossLocationDuplicates`, `cleanContactsForImport`
-3. ✅ Checks for duplicates during CSV file upload
-4. ✅ Shows warning UI listing contacts that exist in other locations
-5. ✅ Filters out duplicates during import
+| Contact | Pipeline Entry | Location | Status |
+|---------|----------------|----------|--------|
+| Henry Germann | CLJ 3318-1-0 | **West Coast** | Has $68,788 estimate ✓ |
+| Irina Gorovits | CLJ 3320-1-0 | **West Coast** | Active ✓ |
+| James White | CLJ 3324-1-0 | **West Coast** | Active ✓ |
 
-## Expected Behavior
+**East Coast pipeline will no longer show these 3 contacts** (they'll be correctly in West Coast only).
 
-- **Data Cleanup**: After running the SQL, East Coast will no longer show West Coast duplicates
-- **Future Prevention**: When importing contacts, the system now:
-  - Checks if phone numbers already exist in other locations
-  - Shows a warning listing the duplicates with their location
-  - Automatically skips importing those duplicates
+---
+
+## No Code Changes Required
+
+This is purely a **data correction**. The prevention code for future imports has already been added in the previous update to `ContactBulkImport.tsx`.
+
