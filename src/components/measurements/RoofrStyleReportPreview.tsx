@@ -34,6 +34,18 @@ interface RoofrStyleReportPreviewProps {
 // Waste percentage options for report
 const WASTE_PERCENTAGES = [0, 10, 12, 15, 17, 20, 22];
 
+// Facet color palette - distinct colors for each facet
+const FACET_COLORS = [
+  'rgba(59, 130, 246, 0.7)',   // Blue
+  'rgba(239, 68, 68, 0.7)',    // Red
+  'rgba(34, 197, 94, 0.7)',    // Green
+  'rgba(251, 191, 36, 0.7)',   // Yellow
+  'rgba(139, 92, 246, 0.7)',   // Purple
+  'rgba(236, 72, 153, 0.7)',   // Pink
+  'rgba(20, 184, 166, 0.7)',   // Teal
+  'rgba(249, 115, 22, 0.7)',   // Orange
+];
+
 export function RoofrStyleReportPreview({
   open,
   onOpenChange,
@@ -1014,7 +1026,64 @@ export function RoofrStyleReportPreview({
                     </div>
                   </div>
 
-                  <div className="aspect-video bg-white rounded-lg border overflow-hidden">
+                  {/* NEW Phase 12: Per-Facet Breakdown Table */}
+                  {(enrichedMeasurement?.facets_json || measurement?.faces?.length > 0) && (
+                    <div className="mt-6">
+                      <h3 className="font-semibold mb-3">Per-Facet Breakdown</h3>
+                      <table className="w-full text-sm border rounded">
+                        <thead className="bg-muted">
+                          <tr>
+                            <th className="p-2 text-left">Facet</th>
+                            <th className="p-2 text-right">Plan Area</th>
+                            <th className="p-2 text-right">Surface Area</th>
+                            <th className="p-2 text-right">Pitch</th>
+                            <th className="p-2 text-center">Direction</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const facetsData = enrichedMeasurement?.facets_json 
+                              ? (typeof enrichedMeasurement.facets_json === 'string' 
+                                  ? JSON.parse(enrichedMeasurement.facets_json) 
+                                  : enrichedMeasurement.facets_json)
+                              : measurement?.faces || [];
+                            
+                            return facetsData.map((facet: any, idx: number) => {
+                              const planArea = facet.areaSqft || facet.plan_area_sqft || facet.area_sqft || 0;
+                              const pitch = facet.estimatedPitch || facet.pitch || '6/12';
+                              const slopeFactor = {
+                                '0/12': 1.0, '1/12': 1.003, '2/12': 1.014, '3/12': 1.031,
+                                '4/12': 1.054, '5/12': 1.083, '6/12': 1.118, '7/12': 1.158,
+                                '8/12': 1.202, '9/12': 1.250, '10/12': 1.302, '11/12': 1.357,
+                                '12/12': 1.414
+                              }[pitch] || 1.118;
+                              const surfaceArea = planArea * slopeFactor;
+                              
+                              return (
+                                <tr key={facet.id || idx} className="border-b last:border-b-0" id={`facet-row-${facet.id || idx}`}>
+                                  <td className="p-2 flex items-center gap-2">
+                                    <div 
+                                      className="w-4 h-4 rounded" 
+                                      style={{ backgroundColor: FACET_COLORS[idx % 8] }}
+                                    />
+                                    <span className="font-medium">{idx + 1}</span>
+                                  </td>
+                                  <td className="p-2 text-right">{Math.round(planArea).toLocaleString()} sqft</td>
+                                  <td className="p-2 text-right font-medium">{Math.round(surfaceArea).toLocaleString()} sqft</td>
+                                  <td className="p-2 text-right">{pitch}</td>
+                                  <td className="p-2 text-center text-muted-foreground">
+                                    {facet.orientation || facet.primary_direction || '—'}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  <div className="aspect-video bg-white rounded-lg border overflow-hidden mt-4">
                     <SchematicRoofDiagram 
                       measurement={enrichedMeasurement}
                       tags={tags}

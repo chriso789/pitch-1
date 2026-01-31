@@ -746,5 +746,8 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.roof-segmentation]
-verify_jwt = true
+verify_jwt = false
 wall_clock_limit = 120
+
+[functions.generate-roof-overlay]
+verify_jwt = false

@@ -263,13 +263,15 @@ export function PullMeasurementsButton({
       });
 
       // 🚀 Call the analyze-roof-aerial edge function with abort signal
+      // NEW: Enable unified pipeline for enhanced facet detection & QA
       const invokePromise = supabase.functions.invoke('analyze-roof-aerial', {
         body: {
           address: address || 'Unknown Address',
           coordinates: { lat: pullLat, lng: pullLng },
           customerId: propertyId,
           userId: user?.id,
-          pitchOverride: pitchOverride || undefined
+          pitchOverride: pitchOverride || undefined,
+          useUnifiedPipeline: true  // Phase 5: Enable unified AI pipeline
         }
       });
       
@@ -409,11 +411,20 @@ export function PullMeasurementsButton({
       queryClient.invalidateQueries({ queryKey: ['measurement-facets'] });
       queryClient.invalidateQueries({ queryKey: ['active-measurement', propertyId] });
       
-      // Show confidence-based toast with performance info
+      // Enhanced confidence display with accuracy tier badges
       const confidenceScore = data.data?.confidence?.score || 0;
       const confidenceRating = data.data?.confidence?.rating || 'unknown';
       const performanceData = data.data?.performance;
       const footprintData = data.data?.footprint;
+      const qaResult = data.data?.qaResult;
+      
+      // Calculate accuracy tier (Phase 13: Automation integration)
+      let accuracyTier = 'bronze';
+      let tierEmoji = '🥉';
+      if (confidenceScore >= 98) { accuracyTier = 'diamond'; tierEmoji = '💎'; }
+      else if (confidenceScore >= 95) { accuracyTier = 'platinum'; tierEmoji = '🏆'; }
+      else if (confidenceScore >= 90) { accuracyTier = 'gold'; tierEmoji = '🥇'; }
+      else if (confidenceScore >= 85) { accuracyTier = 'silver'; tierEmoji = '🥈'; }
       
       // Format path and timing info
       const pathUsed = performanceData?.path_used === 'solar_fast_path' ? '⚡ Fast Path' : '🔍 AI Analysis';
@@ -431,16 +442,17 @@ export function PullMeasurementsButton({
         'ai_detection': '🤖 AI Detection'
       }[footprintSource] || footprintSource;
       
+      // Show confidence toast with accuracy tier
       toast({
-        title: "🎯 AI Measurements Complete",
+        title: `${tierEmoji} ${accuracyTier.charAt(0).toUpperCase() + accuracyTier.slice(1)} Measurement`,
         description: (
           <div className="space-y-1">
-            <p>Confidence: {confidenceScore}% ({confidenceRating})</p>
+            <p>{data.data?.facets?.length || measurement.faces?.length || 0} facets • {confidenceScore}% confidence{qaResult?.overallPass ? ' ✓ QA' : ''}</p>
             <p className="text-muted-foreground text-xs">
               {measurement.summary?.total_squares?.toFixed(1)} squares • {pathUsed} • {totalTimeSeconds}s
             </p>
             <p className="text-xs text-muted-foreground">
-              Footprint: {footprintLabel}
+              {footprintLabel}
             </p>
           </div>
         ),
