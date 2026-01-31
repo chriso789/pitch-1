@@ -255,16 +255,17 @@ serve(async (req) => {
             .insert({
               tenant_id: profile.tenant_id,
               pipeline_entry_id: pipelineEntryId,
-              contact_id: fullEntry.contact_id,
               location_id: fullEntry.location_id,
               name: projectName,
               status: 'active',
-              project_type: fullEntry.lead_type || 'roofing',
-              selling_price: fullEntry.selling_price,
-              gross_profit: fullEntry.gross_profit,
               created_by: user.id,
-              approved_by: user.id,
-              approved_at: new Date().toISOString()
+              metadata: {
+                approved_by: user.id,
+                approved_by_name: `${profile.first_name} ${profile.last_name}`,
+                approved_at: new Date().toISOString(),
+                project_type: fullEntry.lead_type || 'roofing',
+                source: 'pipeline_drag'
+              }
             })
             .select()
             .single();
