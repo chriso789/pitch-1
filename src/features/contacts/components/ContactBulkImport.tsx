@@ -1123,6 +1123,88 @@ function countValidRows(normalizedData: ContactImportData[]): {
   return { validCount, totalCount, percentage };
 }
 
+// Cross-location duplicate check result type
+interface CrossLocationDuplicate {
+  importRow: ContactImportData;
+  existingContact: { name: string; phone: string; location_name: string };
+}
+
+// Check for duplicate contacts across locations before import
+async function checkForDuplicatesAcrossLocations(
+  contacts: ContactImportData[],
+  tenantId: string,
+  currentLocationId: string | null
+): Promise<{ 
+  duplicates: CrossLocationDuplicate[];
+  clean: ContactImportData[];
+}> {
+  // Extract all phones from import data
+  const importPhones = contacts
+    .map(c => c.phone?.replace(/\D/g, ''))
+    .filter(p => p && p.length >= 7);
+
+  if (importPhones.length === 0 || !currentLocationId) {
+    return { duplicates: [], clean: contacts };
+  }
+
+  // Check for existing contacts with matching phones in OTHER locations
+  const { data: existingContacts } = await supabase
+    .from('contacts')
+    .select('id, first_name, last_name, phone, location_id')
+    .eq('tenant_id', tenantId)
+    .eq('is_deleted', false)
+    .neq('location_id', currentLocationId)
+    .not('phone', 'is', null);
+
+  if (!existingContacts || existingContacts.length === 0) {
+    return { duplicates: [], clean: contacts };
+  }
+
+  // Get location names for the contacts
+  const locationIds = [...new Set(existingContacts.map(c => c.location_id).filter(Boolean))];
+  const { data: locations } = await supabase
+    .from('locations')
+    .select('id, name')
+    .in('id', locationIds);
+  
+  const locationNameMap = new Map<string, string>();
+  (locations || []).forEach(loc => locationNameMap.set(loc.id, loc.name));
+
+  // Build lookup map of existing phones
+  type ExistingContact = { id: string; first_name: string | null; last_name: string | null; phone: string | null; location_id: string | null };
+  const existingPhoneMap = new Map<string, ExistingContact>();
+  existingContacts.forEach((c: ExistingContact) => {
+    const normalizedPhone = c.phone?.replace(/\D/g, '');
+    if (normalizedPhone && normalizedPhone.length >= 7) {
+      existingPhoneMap.set(normalizedPhone, c);
+    }
+  });
+
+  // Separate duplicates from clean records
+  const duplicates: CrossLocationDuplicate[] = [];
+  const clean: ContactImportData[] = [];
+
+  contacts.forEach(c => {
+    const normalizedPhone = c.phone?.replace(/\D/g, '');
+    const existing = normalizedPhone ? existingPhoneMap.get(normalizedPhone) : null;
+    
+    if (existing) {
+      duplicates.push({
+        importRow: c,
+        existingContact: {
+          name: `${existing.first_name} ${existing.last_name}`,
+          phone: existing.phone || '',
+          location_name: locationNameMap.get(existing.location_id || '') || 'Unknown Location'
+        }
+      });
+    } else {
+      clean.push(c);
+    }
+  });
+
+  return { duplicates, clean };
+}
+
 export function ContactBulkImport({ open, onOpenChange, onImportComplete, currentLocationId }: ContactBulkImportProps) {
   const { currentLocation } = useLocation();
   const [importing, setImporting] = useState(false);
@@ -1141,6 +1223,9 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [profilesForPreview, setProfilesForPreview] = useState<ProfileMatch[]>([]);
   const [repMatchStats, setRepMatchStats] = useState<{ matched: number; unmatched: string[] }>({ matched: 0, unmatched: [] });
   const [manualRepMappings, setManualRepMappings] = useState<Record<string, string>>({});
+  // Cross-location duplicate detection state
+  const [crossLocationDuplicates, setCrossLocationDuplicates] = useState<CrossLocationDuplicate[]>([]);
+  const [cleanContactsForImport, setCleanContactsForImport] = useState<ContactImportData[]>([]);
 
   // Determine if import should be blocked
   const isImportBlocked = headerStatus.status === 'missing' || validRowStats.percentage < 5;
@@ -1201,7 +1286,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     Papa.parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         const rawData = results.data as Record<string, any>[];
         
         // Detect header status (missing headers = _1, _2, etc.)
@@ -1249,6 +1334,41 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           }
         }
         setRepMatchStats({ matched: matchedCount, unmatched: [...unmatchedReps] });
+        
+        // Check for cross-location duplicates BEFORE showing preview
+        if (currentLocationId) {
+          try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              const { data: userProfile } = await supabase
+                .from('profiles')
+                .select('tenant_id')
+                .eq('id', user.id)
+                .single();
+              
+              if (userProfile?.tenant_id) {
+                const { duplicates, clean } = await checkForDuplicatesAcrossLocations(
+                  importableRows,
+                  userProfile.tenant_id,
+                  currentLocationId
+                );
+                setCrossLocationDuplicates(duplicates);
+                setCleanContactsForImport(clean);
+                // Update total to only count clean contacts
+                setTotalRows(clean.length);
+                // Show first 5 clean rows in preview
+                setPreview(clean.slice(0, 5));
+                return; // Exit early since we set state above
+              }
+            }
+          } catch (err) {
+            console.error('Failed to check for duplicates:', err);
+          }
+        }
+        
+        // No location or duplicate check failed - use all rows
+        setCrossLocationDuplicates([]);
+        setCleanContactsForImport(importableRows);
         
         // Show importable row count for import, but track total for context
         setTotalRows(importableRows.length);
@@ -1319,7 +1439,25 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           const normalizedData = rawData.map(row => normalizeRow(row));
           
           // Filter for importable rows only (have name + contact info)
-          const importableRows = normalizedData.filter(isRowImportable);
+          let importableRows = normalizedData.filter(isRowImportable);
+          
+          // If we have clean contacts stored (excluding duplicates), use those instead
+          // This ensures we skip cross-location duplicates during import
+          if (cleanContactsForImport.length > 0) {
+            // Build a set of clean phone numbers for filtering
+            const cleanPhones = new Set(
+              cleanContactsForImport
+                .map(c => c.phone?.replace(/\D/g, ''))
+                .filter(p => p && p.length >= 7)
+            );
+            // Filter importableRows to only include contacts with phones in the clean set
+            // or contacts without phones (can't duplicate check those)
+            importableRows = importableRows.filter(row => {
+              const normalizedPhone = row.phone?.replace(/\D/g, '');
+              if (!normalizedPhone || normalizedPhone.length < 7) return true; // No phone = can't be a duplicate
+              return cleanPhones.has(normalizedPhone);
+            });
+          }
           
           // Track unmatched sales reps
           const unmatchedReps = new Set<string>();
@@ -1535,6 +1673,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setProfilesForPreview([]);
     setRepMatchStats({ matched: 0, unmatched: [] });
     setManualRepMappings({});
+    setCrossLocationDuplicates([]);
+    setCleanContactsForImport([]);
   };
 
   // Get rep match status for preview row - now considers manual mappings
@@ -1673,6 +1813,34 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Cross-Location Duplicate Warning */}
+          {crossLocationDuplicates.length > 0 && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-5 w-5 text-amber-500" />
+                <span className="text-sm font-medium text-amber-500">
+                  {crossLocationDuplicates.length} contact(s) already exist in another location
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground mb-2">
+                These contacts have matching phone numbers in other locations and will be skipped to prevent duplicates:
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-1 max-h-32 overflow-y-auto">
+                {crossLocationDuplicates.slice(0, 5).map((dup, i) => (
+                  <li key={i} className="flex items-center gap-1">
+                    <span>{dup.importRow.first_name} {dup.importRow.last_name}</span>
+                    <span className="text-xs">({dup.importRow.phone})</span>
+                    <span className="text-xs">→ exists in</span>
+                    <strong className="text-xs">{dup.existingContact.location_name}</strong>
+                  </li>
+                ))}
+                {crossLocationDuplicates.length > 5 && (
+                  <li className="text-xs italic">...and {crossLocationDuplicates.length - 5} more</li>
+                )}
+              </ul>
             </div>
           )}
 
