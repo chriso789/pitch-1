@@ -52,6 +52,7 @@ import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTime
 import { LeadNotesSection } from '@/components/lead-details/LeadNotesSection';
 import { InternalNotesSection } from '@/components/lead-details/InternalNotesSection';
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
+import { EditProjectDetailsDialog } from '@/components/lead-details/EditProjectDetailsDialog';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
@@ -309,6 +310,9 @@ const LeadDetails = () => {
   // Communication states
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showSMSDialog, setShowSMSDialog] = useState(false);
+  
+  // Project details edit dialog state
+  const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
   
   // Auth context
   const { user } = useAuth();
@@ -815,6 +819,14 @@ const LeadDetails = () => {
                   <span className="font-medium">${lead.estimated_value.toLocaleString()}</span>
                 </div>
               )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-5 w-5 p-0"
+                onClick={() => setShowEditProjectDialog(true)}
+              >
+                <Edit2 className="h-3 w-3" />
+              </Button>
             </div>
 
             {/* Sales Rep */}
@@ -1324,6 +1336,24 @@ const LeadDetails = () => {
         fromStatus={transitionFrom.replace(/_/g, ' ')}
         toStatus={transitionTo.replace(/_/g, ' ')}
         isBackward={false}
+      />
+
+      {/* Edit Project Details Dialog */}
+      <EditProjectDetailsDialog
+        open={showEditProjectDialog}
+        onOpenChange={setShowEditProjectDialog}
+        pipelineEntryId={id!}
+        initialValues={{
+          priority: lead.priority || 'medium',
+          roof_type: lead.roof_type || null,
+          roof_age_years: (lead.metadata as any)?.roof_age_years || null,
+          estimated_value: lead.estimated_value || null,
+        }}
+        existingMetadata={(lead.metadata as Record<string, unknown>) || {}}
+        onSave={() => {
+          refetchLead();
+          setShowEditProjectDialog(false);
+        }}
       />
     </div>
   );
