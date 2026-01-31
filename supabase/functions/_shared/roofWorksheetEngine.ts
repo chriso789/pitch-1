@@ -615,6 +615,162 @@ export function deriveComplexityFromSegments(segments: LinearSegment[], facetCou
   };
 }
 
+// ========== FACET AGGREGATION FUNCTIONS ==========
+
+export interface FacetData {
+  id: string;
+  planAreaSqft: number;
+  surfaceAreaSqft: number;
+  pitch: string;
+  slopeFactor: number;
+  orientation?: string;
+}
+
+export interface FacetTotals {
+  totalPlanAreaSqft: number;
+  totalSurfaceAreaSqft: number;
+  totalSquares: number;
+  facetCount: number;
+  predominantPitch: string;
+  areaByPitch: Record<string, number>;
+  facets: FacetData[];
+}
+
+/**
+ * Calculate facet surface area from plan area and pitch
+ * Returns detailed breakdown with formula
+ */
+export function calculateFacetSurfaceArea(
+  planArea: number, 
+  pitch: string
+): { planArea: number; surfaceArea: number; slopeFactor: number; formula: string } {
+  const pitchInfo = parsePitch(pitch);
+  const surfaceArea = planArea * pitchInfo.slopeFactor;
+  
+  return {
+    planArea: Math.round(planArea * 100) / 100,
+    surfaceArea: Math.round(surfaceArea * 100) / 100,
+    slopeFactor: pitchInfo.slopeFactor,
+    formula: `${planArea.toFixed(1)} × ${pitchInfo.slopeFactor.toFixed(4)} = ${surfaceArea.toFixed(1)} sqft`,
+  };
+}
+
+/**
+ * Aggregate all facet data into totals
+ */
+export function aggregateFacetTotals(
+  facets: Array<{ id: string; planAreaSqft: number; pitch: string; orientation?: string }>
+): FacetTotals {
+  if (!facets || facets.length === 0) {
+    return {
+      totalPlanAreaSqft: 0,
+      totalSurfaceAreaSqft: 0,
+      totalSquares: 0,
+      facetCount: 0,
+      predominantPitch: '6/12',
+      areaByPitch: {},
+      facets: [],
+    };
+  }
+
+  const processedFacets: FacetData[] = [];
+  const areaByPitch: Record<string, number> = {};
+  let totalPlan = 0;
+  let totalSurface = 0;
+
+  for (const facet of facets) {
+    const pitchInfo = parsePitch(facet.pitch);
+    const surfaceArea = facet.planAreaSqft * pitchInfo.slopeFactor;
+
+    processedFacets.push({
+      id: facet.id,
+      planAreaSqft: facet.planAreaSqft,
+      surfaceAreaSqft: Math.round(surfaceArea),
+      pitch: facet.pitch,
+      slopeFactor: pitchInfo.slopeFactor,
+      orientation: facet.orientation,
+    });
+
+    totalPlan += facet.planAreaSqft;
+    totalSurface += surfaceArea;
+
+    // Track area by pitch
+    if (!areaByPitch[facet.pitch]) {
+      areaByPitch[facet.pitch] = 0;
+    }
+    areaByPitch[facet.pitch] += surfaceArea;
+  }
+
+  // Determine predominant pitch (largest area)
+  let predominantPitch = '6/12';
+  let maxArea = 0;
+  for (const [pitch, area] of Object.entries(areaByPitch)) {
+    if (area > maxArea) {
+      maxArea = area;
+      predominantPitch = pitch;
+    }
+  }
+
+  return {
+    totalPlanAreaSqft: Math.round(totalPlan),
+    totalSurfaceAreaSqft: Math.round(totalSurface),
+    totalSquares: Math.round(totalSurface / 100 * 100) / 100,
+    facetCount: facets.length,
+    predominantPitch,
+    areaByPitch,
+    facets: processedFacets,
+  };
+}
+
+/**
+ * Aggregate linear features by type
+ */
+export function aggregateLinearByType(
+  linearFeatures: Array<{ type: string; lengthFt: number }>
+): LinearTotals & { breakdown: Record<string, { count: number; totalFt: number }> } {
+  const breakdown: Record<string, { count: number; totalFt: number }> = {
+    ridge: { count: 0, totalFt: 0 },
+    hip: { count: 0, totalFt: 0 },
+    valley: { count: 0, totalFt: 0 },
+    eave: { count: 0, totalFt: 0 },
+    rake: { count: 0, totalFt: 0 },
+    step_flashing: { count: 0, totalFt: 0 },
+  };
+
+  for (const feature of linearFeatures) {
+    const type = feature.type.toLowerCase();
+    if (breakdown[type]) {
+      breakdown[type].count++;
+      breakdown[type].totalFt += feature.lengthFt;
+    }
+  }
+
+  return {
+    ridge: Math.round(breakdown.ridge.totalFt),
+    hip: Math.round(breakdown.hip.totalFt),
+    valley: Math.round(breakdown.valley.totalFt),
+    eave: Math.round(breakdown.eave.totalFt),
+    rake: Math.round(breakdown.rake.totalFt),
+    step_flashing: Math.round(breakdown.step_flashing.totalFt),
+    perimeter: Math.round(breakdown.eave.totalFt + breakdown.rake.totalFt),
+    breakdown,
+  };
+}
+
+/**
+ * Calculate roof squares from total surface area
+ */
+export function calculateRoofSquares(totalSurfaceAreaSqft: number): {
+  squares: number;
+  formula: string;
+} {
+  const squares = totalSurfaceAreaSqft / 100;
+  return {
+    squares: Math.round(squares * 100) / 100,
+    formula: `${totalSurfaceAreaSqft.toFixed(0)} sqft ÷ 100 = ${squares.toFixed(2)} squares`,
+  };
+}
+
 // ========== WORKSHEET JSON OUTPUT ==========
 
 export interface WorksheetJSON {
@@ -717,6 +873,113 @@ export function buildWorksheetFromAI(
       squares: Math.round(totalSurface / 100 * 100) / 100,
     },
     linear_totals: linearTotals,
+    linear_segments: linearSegments.map(s => ({
+      id: s.id,
+      type: s.type,
+      length_ft: s.lengthFt,
+      measurement_type: s.measurementType,
+    })),
+    complexity,
+    waste,
+    order,
+    qc,
+  };
+}
+
+/**
+ * Build worksheet from facets (enhanced version)
+ */
+export function buildWorksheetFromFacets(
+  address: string,
+  facets: Array<{ id: string; planAreaSqft: number; pitch: string; orientation?: string }>,
+  linearFeatures: Array<{ type: string; lengthFt: number }>,
+  source: string = 'AI segmentation'
+): WorksheetJSON {
+  // Aggregate facets
+  const facetTotals = aggregateFacetTotals(facets);
+  
+  // Convert facets to planes
+  const planes: PlaneCalculation[] = facets.map((f, idx) => {
+    const pitchInfo = parsePitch(f.pitch);
+    const surfaceResult = calculateSurfaceArea(f.planAreaSqft, pitchInfo);
+    
+    return {
+      id: f.id || `FACET_${idx + 1}`,
+      shape: 'polygon' as PlaneShape,
+      dimensions: { shape: 'custom' as PlaneShape, customArea: f.planAreaSqft },
+      formula: 'plan_area × slope_factor',
+      substitution: surfaceResult.formula,
+      planAreaSqft: f.planAreaSqft,
+      pitch: f.pitch,
+      pitchInfo,
+      surfaceAreaSqft: surfaceResult.area,
+      surfaceFormula: surfaceResult.formula,
+      include: true,
+      notes: f.orientation ? `Orientation: ${f.orientation}` : '',
+    };
+  });
+  
+  // Aggregate linear features
+  const linearAggregated = aggregateLinearByType(linearFeatures);
+  const linearSegments: LinearSegment[] = linearFeatures.map((f, idx) => ({
+    id: `${f.type}_${idx + 1}`,
+    type: f.type as LinearType,
+    lengthFt: f.lengthFt,
+    measurementType: 'derived' as MeasurementType,
+    notes: '',
+  }));
+  
+  // Derive complexity
+  const complexity: ComplexityCounts = {
+    planesCount: facets.length,
+    valleysCount: linearAggregated.breakdown.valley?.count || 0,
+    dormersCount: 0,
+    penetrationsCount: 0,
+  };
+  
+  // Calculate waste
+  const avgPitch = parsePitch(facetTotals.predominantPitch);
+  const waste = recommendWaste(complexity, avgPitch);
+  
+  // Calculate order
+  const order = calculateOrder(
+    facetTotals.totalPlanAreaSqft,
+    facetTotals.totalSurfaceAreaSqft,
+    waste.totalPercent,
+    linearAggregated
+  );
+  
+  // Run QC
+  const qc = runQCChecks(planes, linearSegments, complexity, waste.totalPercent);
+  
+  return {
+    job_info: {
+      job_name: address,
+      date: new Date().toISOString(),
+      source,
+      notes: [
+        `Facets: ${facets.length}`,
+        `Predominant pitch: ${facetTotals.predominantPitch}`,
+        `Total area: ${facetTotals.totalSurfaceAreaSqft} sqft`,
+      ],
+    },
+    pitches_used: [...new Set(facets.map(f => f.pitch))].map(p => parsePitch(p)),
+    planes: planes.map(p => ({
+      id: p.id,
+      shape: p.shape,
+      plan_area_sqft: p.planAreaSqft,
+      pitch: p.pitch,
+      slope_factor: p.pitchInfo.slopeFactor,
+      surface_area_sqft: p.surfaceAreaSqft,
+      formula: p.formula,
+      substitution: p.substitution,
+    })),
+    plane_totals: {
+      plan_area_sqft: facetTotals.totalPlanAreaSqft,
+      surface_area_sqft: facetTotals.totalSurfaceAreaSqft,
+      squares: facetTotals.totalSquares,
+    },
+    linear_totals: linearAggregated,
     linear_segments: linearSegments.map(s => ({
       id: s.id,
       type: s.type,
