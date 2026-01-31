@@ -1,136 +1,150 @@
 
 
-# Data Reset: Clear Imported Leads for Fresh Location-Specific Import
+# Fix: Move Pipeline Entries to Correct Locations Based on City
 
-## Current State Summary
+## Problem Summary
 
-| Location | Pipeline Entries | With Estimates | Estimate Value | Projects |
-|----------|------------------|----------------|----------------|----------|
-| **East Coast** | 35 | 6 entries | $227,737 (7 estimates) | 2 |
-| **West Coast** | 19 | 3 entries | $186,474 (8 estimates) | 0 |
+Several pipeline entries are currently assigned to the wrong location. Based on Florida geography, entries need to be moved to their correct East Coast or West Coast locations.
 
----
+## Location Classification
 
-## ⚠️ Critical Decision Required
+**West Coast FL (c490231c-2a0e-4afc-8412-672e1c890c16):**
+- Bradenton, Sarasota, Venice, Englewood, Gulfport, Holmes Beach, Tampa, Lakeland, Land O' Lakes, St. Petersburg, North Port
 
-Some pipeline entries have **active work** (estimates and projects). Before wiping, you need to decide:
-
-### Entries with Estimates (Would Be Lost):
-
-**East Coast:**
-| Contact | Job # | Estimates | Total Value |
-|---------|-------|-----------|-------------|
-| Daniel Murphey | 3075-1-0 | 2 | $95,958 |
-| Henry Germann | 3329-1-0 | 1 | $68,788 |
-| Paul Wilbert | 2572-1-0 | 1 | $27,987 |
-| Grosso House | 3074-1-0 | 1 | $25,000 |
-| Yvonnie Spencer | 3076-1-0 | 1 | $10,004 |
-| Gary Neiskes | 3328-1-0 | 1 | $0 |
-
-**West Coast:**
-| Contact | Job # | Estimates | Total Value |
-|---------|-------|-----------|-------------|
-| Edward Lake | 2570-2-0 | 2 | $66,251 |
-| Don Brandt | 3077-1-0 | 3 | $65,310 |
-| Punit Shah | 3333-1-0 | 3 | $54,913 |
-
-### Entries with Projects:
-- Paul Wilbert (JOB-0003) - East Coast
-- Yvonnie Spencer (JOB-0011) - East Coast
+**East Coast FL (a3615f0d-c7b7-4ee9-a568-a71508a539c6):**
+- Boca Raton, Delray Beach, Miami Gardens, Riviera Beach, West Palm Beach
 
 ---
 
-## Option A: Full Wipe (Lose All Work)
+## Entries That Need to Move
 
-Delete ALL pipeline entries and contacts so you can re-import cleanly.
+### Currently in East Coast → Should be West Coast
 
-**What gets deleted:**
-- All 54 pipeline entries
-- All estimates ($414K worth)
-- Both projects
-- All associated contacts
+| Contact | City | Job # | Has Estimates |
+|---------|------|-------|---------------|
+| James White | Bradenton | 3330-1-0 | No |
+| Gary Neiskes | Englewood | 3328-1-0 | **Yes** |
+| Henry Germann | Venice | 3329-1-0 | **Yes** |
+| Irina Gorovits | Sarasota | 3331-1-0 | No |
 
-### SQL for Option A:
+**Note:** Henry Germann and Irina Gorovits appear to be duplicates of West Coast entries that already exist. These should be soft-deleted instead of moved.
+
+### Already in Correct Location (No Action Needed)
+
+| Contact | City | Current Location | Correct? |
+|---------|------|------------------|----------|
+| jj jj | Boca Raton | East Coast | ✓ |
+| Grosso House | Delray Beach | East Coast | ✓ |
+| Yvonnie Spencer | Miami Gardens | East Coast | ✓ |
+| Daniel Murphey | Riviera Beach | East Coast | ✓ |
+| Paul Wilbert | Riviera Beach | East Coast | ✓ |
+| Don Brandt | Bradenton | West Coast | ✓ |
+| Duke Herzel | Bradenton | West Coast | ✓ |
+| Barbara Bradley | Bradenton | West Coast | ✓ |
+| Rafael Perez | Bradenton | West Coast | ✓ |
+| James & Evelyn White | Bradenton | West Coast | ✓ |
+| Mike Stipp | Englewood | West Coast | ✓ |
+| Paul Batcho | Gulfport | West Coast | ✓ |
+| Ron Gagne | Holmes Beach | West Coast | ✓ |
+| Edward Lake | Lakeland | West Coast | ✓ |
+| Punit Shah | Land O' Lakes | West Coast | ✓ |
+| Ron Gagne (3319) | St. Petersburg | West Coast | ✓ |
+
+---
+
+## SQL Script to Run in Supabase SQL Editor
+
+**Run this in the [SQL Editor](https://supabase.com/dashboard/project/alxelfrbjzkmtnsulcei/sql/new):**
+
 ```sql
--- WARNING: This deletes ALL work including estimates and projects
+-- =====================================================
+-- STEP 1: Move Gary Neiskes from East Coast to West Coast
+-- (Has estimate that needs to stay with the entry)
+-- =====================================================
+UPDATE pipeline_entries 
+SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16'  -- West Coast
+WHERE id = '4e207407-1dec-4be1-9866-6bb234ab0c6d';        -- Gary Neiskes (3328-1-0)
 
--- Step 1: Delete estimates
-DELETE FROM enhanced_estimates 
-WHERE pipeline_entry_id IN (
-  SELECT id FROM pipeline_entries 
-  WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-);
+UPDATE contacts 
+SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16'  -- West Coast
+WHERE id = '45b4c650-5749-4661-aa28-87a1c26d6e7b';        -- Gary Neiskes contact
 
--- Step 2: Delete estimate line items (if any orphaned)
-DELETE FROM enhanced_estimate_line_items 
-WHERE estimate_id NOT IN (SELECT id FROM enhanced_estimates);
+-- =====================================================
+-- STEP 2: Soft-delete duplicate entries that already 
+-- exist in West Coast (these are the duplicates)
+-- =====================================================
 
--- Step 3: Delete projects
-DELETE FROM projects 
-WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
-
--- Step 4: Delete pipeline activities
-DELETE FROM pipeline_activities 
-WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
-
--- Step 5: Delete pipeline entries
-DELETE FROM pipeline_entries 
-WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
-
--- Step 6: Delete contacts
-DELETE FROM contacts 
-WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
-```
-
----
-
-## Option B: Keep Entries with Work, Wipe Only Empty Imports
-
-Keep the 9 entries that have estimates/projects, delete the rest.
-
-**What gets kept:**
-- 9 pipeline entries with estimates
-- All estimates ($414K)
-- Both projects
-- Associated contacts
-
-**What gets deleted:**
-- 45 pipeline entries without work
-- Their associated contacts (if no other links)
-
-### SQL for Option B:
-```sql
--- Soft-delete pipeline entries that have NO estimates and NO projects
+-- James White (3330-1-0 East Coast) - Duplicate of (3324-1-0 West Coast "James & Evelyn White")
 UPDATE pipeline_entries 
 SET is_deleted = true
-WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-  AND id NOT IN (
-    SELECT DISTINCT pipeline_entry_id FROM enhanced_estimates
-    UNION
-    SELECT DISTINCT pipeline_entry_id FROM projects WHERE pipeline_entry_id IS NOT NULL
-  );
+WHERE id = 'ad5481e3-3e0d-4e2b-b762-fbdfc7e8d30e';
 
--- Result: Only entries with real work remain
--- You can then re-import your lists - duplicates will be flagged by the new detection system
+-- Henry Germann (3329-1-0 East Coast) - Duplicate of (3318-1-0 West Coast)
+-- NOTE: If this East Coast entry has the estimate, move the estimate first
+UPDATE enhanced_estimates 
+SET pipeline_entry_id = '9b56de04-684b-4995-aa5b-d2642fdebbf1'  -- West Coast Henry Germann
+WHERE pipeline_entry_id = 'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9'; -- East Coast Henry Germann
+
+UPDATE pipeline_entries 
+SET is_deleted = true
+WHERE id = 'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9';
+
+-- Irina Gorovits (3331-1-0 East Coast) - Duplicate of (3320-1-0 West Coast)
+UPDATE pipeline_entries 
+SET is_deleted = true
+WHERE id = '9e61c71f-1c54-4149-a3c9-acc964de52a0';
+
+-- =====================================================
+-- STEP 3: Verify the changes
+-- =====================================================
+SELECT 
+  pe.clj_formatted_number,
+  c.first_name || ' ' || c.last_name as contact_name,
+  c.address_city,
+  l.name as location,
+  pe.is_deleted
+FROM pipeline_entries pe
+JOIN contacts c ON pe.contact_id = c.id
+LEFT JOIN locations l ON pe.location_id = l.id
+WHERE pe.tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
+  AND c.first_name IN ('Gary', 'James', 'Henry', 'Irina')
+ORDER BY c.last_name;
 ```
 
 ---
 
-## Recommendation
+## Expected Result After Running Script
 
-**Option B is safer** - it preserves the $414K in estimates and active projects while clearing out the empty imported leads.
+### East Coast Pipeline (Should Have)
+| Contact | City | Has Work |
+|---------|------|----------|
+| jj jj | Boca Raton | No |
+| Grosso House | Delray Beach | Yes (estimate) |
+| Yvonnie Spencer | Miami Gardens | Yes (estimate + project) |
+| Daniel Murphey | Riviera Beach | Yes (estimate) |
+| Paul Wilbert | Riviera Beach | Yes (estimate + project) |
 
-After running Option B:
-1. You'll have 9 entries left (the ones with real work)
-2. Import your East Coast list with "East Coast" selected
-3. Import your West Coast list with "West Coast" selected
-4. The duplicate detection added earlier will warn you if any imports match existing contacts
+### West Coast Pipeline (Should Have)
+| Contact | City | Has Work |
+|---------|------|----------|
+| Don Brandt | Bradenton | Yes (estimates) |
+| Duke Herzel | Bradenton | No |
+| Barbara Bradley | Bradenton | No |
+| Rafael Perez | Bradenton | No |
+| James & Evelyn White | Bradenton | No |
+| Mike Stipp | Englewood | No |
+| **Gary Neiskes** | Englewood | **Yes (moved)** |
+| Paul Batcho | Gulfport | No |
+| Ron Gagne | Holmes Beach | No |
+| Edward Lake | Lakeland | Yes (estimates) |
+| Punit Shah | Land O' Lakes | Yes (estimates) |
+| Ron Gagne | St. Petersburg | No |
+| Henry Germann | Venice | Yes (estimate moved) |
+| Irina Gorovits | Sarasota | No |
 
 ---
 
 ## No Code Changes Required
 
-This is purely a data operation. Run the SQL in [Supabase SQL Editor](https://supabase.com/dashboard/project/alxelfrbjzkmtnsulcei/sql/new).
-
-**Tell me which option you want and I'll confirm the exact SQL to run.**
+This is purely a **data correction** using SQL. The cross-location duplicate prevention code has already been added to `ContactBulkImport.tsx` in the earlier update to prevent this from happening in future imports.
 
