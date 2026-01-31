@@ -26889,10 +26889,13 @@ export type Database = {
           detection_method: string | null
           detection_timestamp: string | null
           dsm_available: boolean | null
+          edge_continuity_score: number | null
           edge_count: number | null
           edge_coverage_percent: number | null
           edge_segments: Json | null
+          facet_closure_score: number | null
           facet_count: number | null
+          facets_json: Json | null
           footprint_confidence: number | null
           footprint_detection_method: string | null
           footprint_is_rectangular: boolean | null
@@ -26925,6 +26928,7 @@ export type Database = {
           material_calculations: Json | null
           measured_by: string | null
           measurement_confidence: number | null
+          measurement_method: string | null
           metadata: Json | null
           meters_per_pixel: number | null
           notes: string | null
@@ -26936,6 +26940,7 @@ export type Database = {
           pitch_multiplier: number | null
           pixels_per_foot: number | null
           predominant_pitch: string | null
+          preprocessing_applied: Json | null
           property_address: string
           property_city: string | null
           property_state: string | null
@@ -26948,8 +26953,11 @@ export type Database = {
           requires_manual_review: boolean | null
           roof_perimeter: Json | null
           roof_type: string | null
+          satellite_overlay_url: string | null
           scale_confidence: string | null
           scale_method: string | null
+          segmentation_confidence: number | null
+          segmentation_model: string | null
           selected_image_source: string | null
           solar_api_available: boolean | null
           solar_api_response: Json | null
@@ -26976,6 +26984,7 @@ export type Database = {
           validation_notes: string | null
           validation_status: string | null
           valley_entry_count: number | null
+          vector_diagram_svg: string | null
           verification_status: string | null
           vertex_count: number | null
           vision_edges: Json | null
@@ -27000,10 +27009,13 @@ export type Database = {
           detection_method?: string | null
           detection_timestamp?: string | null
           dsm_available?: boolean | null
+          edge_continuity_score?: number | null
           edge_count?: number | null
           edge_coverage_percent?: number | null
           edge_segments?: Json | null
+          facet_closure_score?: number | null
           facet_count?: number | null
+          facets_json?: Json | null
           footprint_confidence?: number | null
           footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
@@ -27036,6 +27048,7 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          measurement_method?: string | null
           metadata?: Json | null
           meters_per_pixel?: number | null
           notes?: string | null
@@ -27047,6 +27060,7 @@ export type Database = {
           pitch_multiplier?: number | null
           pixels_per_foot?: number | null
           predominant_pitch?: string | null
+          preprocessing_applied?: Json | null
           property_address: string
           property_city?: string | null
           property_state?: string | null
@@ -27059,8 +27073,11 @@ export type Database = {
           requires_manual_review?: boolean | null
           roof_perimeter?: Json | null
           roof_type?: string | null
+          satellite_overlay_url?: string | null
           scale_confidence?: string | null
           scale_method?: string | null
+          segmentation_confidence?: number | null
+          segmentation_model?: string | null
           selected_image_source?: string | null
           solar_api_available?: boolean | null
           solar_api_response?: Json | null
@@ -27087,6 +27104,7 @@ export type Database = {
           validation_notes?: string | null
           validation_status?: string | null
           valley_entry_count?: number | null
+          vector_diagram_svg?: string | null
           verification_status?: string | null
           vertex_count?: number | null
           vision_edges?: Json | null
@@ -27111,10 +27129,13 @@ export type Database = {
           detection_method?: string | null
           detection_timestamp?: string | null
           dsm_available?: boolean | null
+          edge_continuity_score?: number | null
           edge_count?: number | null
           edge_coverage_percent?: number | null
           edge_segments?: Json | null
+          facet_closure_score?: number | null
           facet_count?: number | null
+          facets_json?: Json | null
           footprint_confidence?: number | null
           footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
@@ -27147,6 +27168,7 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          measurement_method?: string | null
           metadata?: Json | null
           meters_per_pixel?: number | null
           notes?: string | null
@@ -27158,6 +27180,7 @@ export type Database = {
           pitch_multiplier?: number | null
           pixels_per_foot?: number | null
           predominant_pitch?: string | null
+          preprocessing_applied?: Json | null
           property_address?: string
           property_city?: string | null
           property_state?: string | null
@@ -27170,8 +27193,11 @@ export type Database = {
           requires_manual_review?: boolean | null
           roof_perimeter?: Json | null
           roof_type?: string | null
+          satellite_overlay_url?: string | null
           scale_confidence?: string | null
           scale_method?: string | null
+          segmentation_confidence?: number | null
+          segmentation_model?: string | null
           selected_image_source?: string | null
           solar_api_available?: boolean | null
           solar_api_response?: Json | null
@@ -27198,6 +27224,7 @@ export type Database = {
           validation_notes?: string | null
           validation_status?: string | null
           valley_entry_count?: number | null
+          vector_diagram_svg?: string | null
           verification_status?: string | null
           vertex_count?: number | null
           vision_edges?: Json | null
