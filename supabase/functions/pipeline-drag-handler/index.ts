@@ -249,7 +249,7 @@ serve(async (req) => {
             ? `${contact.first_name} ${contact.last_name} - ${contact.address_street || 'Project'}`
             : `Project ${new Date().toISOString().split('T')[0]}`;
 
-          // Create the project
+          // Create the project (only include columns that exist in schema)
           const { data: newProject, error: projectError } = await supabase
             .from('projects')
             .insert({
@@ -260,10 +260,6 @@ serve(async (req) => {
               name: projectName,
               status: 'active',
               project_type: fullEntry.lead_type || 'roofing',
-              address_street: contact?.address_street,
-              address_city: contact?.address_city,
-              address_state: contact?.address_state,
-              address_zip: contact?.address_zip,
               selling_price: fullEntry.selling_price,
               gross_profit: fullEntry.gross_profit,
               created_by: user.id,
