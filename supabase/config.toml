@@ -744,3 +744,7 @@ verify_jwt = false
 
 [functions.regrid-diagnostics]
 verify_jwt = true
+
+[functions.roof-segmentation]
+verify_jwt = true
+wall_clock_limit = 120
