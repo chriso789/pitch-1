@@ -1,121 +1,113 @@
 
 
-# Fix: Move Pipeline Entries to Correct Locations Based on City
+# Complete Data Cleanup: Remove All CSV Imports + Fix Location Assignments
 
-## Problem Summary
+## Current Problem (Larger Than Expected)
 
-Several pipeline entries are currently assigned to the wrong location. Based on Florida geography, entries need to be moved to their correct East Coast or West Coast locations.
+The earlier SQL scripts were **never executed**. Here's the actual current state:
 
-## Location Classification
+### CSV Import Contamination (Still Present)
+| Location | CSV Import Pipeline Entries | Total CSV Contacts |
+|----------|------------------------------|-------------------|
+| East Coast | 25 | 3,208 total |
+| West Coast | 1 | across tenant |
 
-**West Coast FL (c490231c-2a0e-4afc-8412-672e1c890c16):**
-- Bradenton, Sarasota, Venice, Englewood, Gulfport, Holmes Beach, Tampa, Lakeland, Land O' Lakes, St. Petersburg, North Port
+### Wrong Location Assignments (11 entries in East Coast → Should be West Coast)
 
-**East Coast FL (a3615f0d-c7b7-4ee9-a568-a71508a539c6):**
-- Boca Raton, Delray Beach, Miami Gardens, Riviera Beach, West Palm Beach
-
----
-
-## Entries That Need to Move
-
-### Currently in East Coast → Should be West Coast
-
-| Contact | City | Job # | Has Estimates |
-|---------|------|-------|---------------|
-| James White | Bradenton | 3330-1-0 | No |
-| Gary Neiskes | Englewood | 3328-1-0 | **Yes** |
-| Henry Germann | Venice | 3329-1-0 | **Yes** |
-| Irina Gorovits | Sarasota | 3331-1-0 | No |
-
-**Note:** Henry Germann and Irina Gorovits appear to be duplicates of West Coast entries that already exist. These should be soft-deleted instead of moved.
-
-### Already in Correct Location (No Action Needed)
-
-| Contact | City | Current Location | Correct? |
-|---------|------|------------------|----------|
-| jj jj | Boca Raton | East Coast | ✓ |
-| Grosso House | Delray Beach | East Coast | ✓ |
-| Yvonnie Spencer | Miami Gardens | East Coast | ✓ |
-| Daniel Murphey | Riviera Beach | East Coast | ✓ |
-| Paul Wilbert | Riviera Beach | East Coast | ✓ |
-| Don Brandt | Bradenton | West Coast | ✓ |
-| Duke Herzel | Bradenton | West Coast | ✓ |
-| Barbara Bradley | Bradenton | West Coast | ✓ |
-| Rafael Perez | Bradenton | West Coast | ✓ |
-| James & Evelyn White | Bradenton | West Coast | ✓ |
-| Mike Stipp | Englewood | West Coast | ✓ |
-| Paul Batcho | Gulfport | West Coast | ✓ |
-| Ron Gagne | Holmes Beach | West Coast | ✓ |
-| Edward Lake | Lakeland | West Coast | ✓ |
-| Punit Shah | Land O' Lakes | West Coast | ✓ |
-| Ron Gagne (3319) | St. Petersburg | West Coast | ✓ |
+| Contact | City | Job # | Lead Source | Has Work? |
+|---------|------|-------|-------------|-----------|
+| Ibrahim Aldani | Bradenton | 2889-29-0 | csv_import | No |
+| James White | Bradenton | 3330-1-0 | manual | No |
+| **Gary Neiskes** | Englewood | 3328-1-0 | manual | **1 estimate** |
+| Hussein Taha | Englewood | 2646-17-0 | csv_import | No |
+| Thomas Dondlinger | North Port | 2596-10-0 | csv_import | No |
+| Sonila Cook | Sarasota | 2946-30-0 | csv_import | No |
+| Irina Gorovits | Sarasota | 3331-1-0 | manual | No |
+| Gerald Rosplock | Sarasota | 3056-31-0 | csv_import | No |
+| Patricia Stevenson | Sarasota | 2676-20-0 | csv_import | No |
+| Rodney Woods | Sarasota | 2687-22-0 | csv_import | No |
+| **Henry Germann** | Venice | 3329-1-0 | manual | **1 estimate** |
 
 ---
 
-## SQL Script to Run in Supabase SQL Editor
+## Complete Cleanup SQL (Run in Order)
 
-**Run this in the [SQL Editor](https://supabase.com/dashboard/project/alxelfrbjzkmtnsulcei/sql/new):**
+Execute this in the [Supabase SQL Editor](https://supabase.com/dashboard/project/alxelfrbjzkmtnsulcei/sql/new):
 
 ```sql
 -- =====================================================
--- STEP 1: Move Gary Neiskes from East Coast to West Coast
--- (Has estimate that needs to stay with the entry)
+-- STEP 1: Delete ALL CSV imported pipeline entries
+-- (26 entries - none have estimates/projects)
+-- =====================================================
+DELETE FROM pipeline_entries 
+WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
+  AND contact_id IN (
+    SELECT id FROM contacts 
+    WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d' 
+      AND lead_source = 'csv_import'
+  );
+
+-- =====================================================
+-- STEP 2: Delete ALL CSV imported contacts (3,208)
+-- =====================================================
+DELETE FROM contacts 
+WHERE tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
+  AND lead_source = 'csv_import';
+
+-- =====================================================
+-- STEP 3: Move Gary Neiskes to West Coast (has estimate)
 -- =====================================================
 UPDATE pipeline_entries 
-SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16'  -- West Coast
-WHERE id = '4e207407-1dec-4be1-9866-6bb234ab0c6d';        -- Gary Neiskes (3328-1-0)
+SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16'
+WHERE id = '4e207407-1dec-4be1-9866-6bb234ab0c6d';
 
 UPDATE contacts 
-SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16'  -- West Coast
-WHERE id = '45b4c650-5749-4661-aa28-87a1c26d6e7b';        -- Gary Neiskes contact
+SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16'
+WHERE id = '45b4c650-5749-4661-aa28-87a1c26d6e7b';
 
 -- =====================================================
--- STEP 2: Soft-delete duplicate entries that already 
--- exist in West Coast (these are the duplicates)
+-- STEP 4: Move Henry Germann estimate to West Coast entry
+-- then soft-delete East Coast duplicate
 -- =====================================================
-
--- James White (3330-1-0 East Coast) - Duplicate of (3324-1-0 West Coast "James & Evelyn White")
-UPDATE pipeline_entries 
-SET is_deleted = true
-WHERE id = 'ad5481e3-3e0d-4e2b-b762-fbdfc7e8d30e';
-
--- Henry Germann (3329-1-0 East Coast) - Duplicate of (3318-1-0 West Coast)
--- NOTE: If this East Coast entry has the estimate, move the estimate first
 UPDATE enhanced_estimates 
-SET pipeline_entry_id = '9b56de04-684b-4995-aa5b-d2642fdebbf1'  -- West Coast Henry Germann
-WHERE pipeline_entry_id = 'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9'; -- East Coast Henry Germann
+SET pipeline_entry_id = '9b56de04-684b-4995-aa5b-d2642fdebbf1'
+WHERE pipeline_entry_id = 'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9';
 
 UPDATE pipeline_entries 
 SET is_deleted = true
 WHERE id = 'c97b5e9e-6a89-4ee5-bebc-405c7fa923a9';
 
--- Irina Gorovits (3331-1-0 East Coast) - Duplicate of (3320-1-0 West Coast)
+-- =====================================================
+-- STEP 5: Soft-delete remaining wrong-location entries
+-- (James White and Irina Gorovits - duplicates)
+-- =====================================================
 UPDATE pipeline_entries 
 SET is_deleted = true
-WHERE id = '9e61c71f-1c54-4149-a3c9-acc964de52a0';
+WHERE id IN (
+  'ad5481e3-3e0d-4e2b-b762-fbdfc7e8d30e',  -- James White
+  '9e61c71f-1c54-4149-a3c9-acc964de52a0'   -- Irina Gorovits
+);
 
 -- =====================================================
--- STEP 3: Verify the changes
+-- STEP 6: Verify results
 -- =====================================================
 SELECT 
-  pe.clj_formatted_number,
-  c.first_name || ' ' || c.last_name as contact_name,
-  c.address_city,
   l.name as location,
-  pe.is_deleted
+  COUNT(*) as pipeline_entries,
+  SUM(CASE WHEN c.lead_source = 'csv_import' THEN 1 ELSE 0 END) as csv_imports
 FROM pipeline_entries pe
 JOIN contacts c ON pe.contact_id = c.id
 LEFT JOIN locations l ON pe.location_id = l.id
 WHERE pe.tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-  AND c.first_name IN ('Gary', 'James', 'Henry', 'Irina')
-ORDER BY c.last_name;
+  AND pe.is_deleted = false
+GROUP BY l.name;
 ```
 
 ---
 
-## Expected Result After Running Script
+## Expected Result After Cleanup
 
-### East Coast Pipeline (Should Have)
+### East Coast Pipeline (5 entries - all correct)
 | Contact | City | Has Work |
 |---------|------|----------|
 | jj jj | Boca Raton | No |
@@ -124,27 +116,37 @@ ORDER BY c.last_name;
 | Daniel Murphey | Riviera Beach | Yes (estimate) |
 | Paul Wilbert | Riviera Beach | Yes (estimate + project) |
 
-### West Coast Pipeline (Should Have)
+### West Coast Pipeline (14 entries - all correct)
 | Contact | City | Has Work |
 |---------|------|----------|
-| Don Brandt | Bradenton | Yes (estimates) |
+| Don Brandt | Bradenton | Yes (3 estimates) |
 | Duke Herzel | Bradenton | No |
 | Barbara Bradley | Bradenton | No |
 | Rafael Perez | Bradenton | No |
 | James & Evelyn White | Bradenton | No |
 | Mike Stipp | Englewood | No |
-| **Gary Neiskes** | Englewood | **Yes (moved)** |
+| Gary Neiskes | Englewood | Yes (1 estimate) |
 | Paul Batcho | Gulfport | No |
 | Ron Gagne | Holmes Beach | No |
-| Edward Lake | Lakeland | Yes (estimates) |
-| Punit Shah | Land O' Lakes | Yes (estimates) |
+| Edward Lake | Lakeland | Yes (2 estimates) |
+| Punit Shah | Land O' Lakes | Yes (3 estimates) |
 | Ron Gagne | St. Petersburg | No |
 | Henry Germann | Venice | Yes (estimate moved) |
 | Irina Gorovits | Sarasota | No |
 
+### Total Cleanup Summary
+- **Deleted:** 3,208 CSV imported contacts
+- **Deleted:** 26 CSV imported pipeline entries  
+- **Moved:** 1 entry (Gary Neiskes) to correct location
+- **Merged:** 1 estimate (Henry Germann) to existing West Coast entry
+- **Soft-deleted:** 3 duplicate entries
+
 ---
 
-## No Code Changes Required
+## After Running This
 
-This is purely a **data correction** using SQL. The cross-location duplicate prevention code has already been added to `ContactBulkImport.tsx` in the earlier update to prevent this from happening in future imports.
+1. Refresh the Pipeline page
+2. Switch between East Coast and West Coast to verify correct entries
+3. Re-import your lists with the correct location selected
+4. The duplicate detection will now prevent cross-location contamination
 
