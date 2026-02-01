@@ -540,8 +540,8 @@ export default function PropertyInfoPanel({
           {/* Disposition Buttons - Horizontal Scrollable */}
           <div className="mb-4">
             <p className="text-xs font-medium text-muted-foreground mb-2">Set Disposition</p>
-            <ScrollArea className="w-full">
-              <div className="flex gap-2 pb-2">
+            <div className="overflow-x-auto -mx-4 px-4">
+              <div className="flex gap-2 pb-2 min-w-max">
                 {DISPOSITIONS.map((disp) => {
                   const Icon = disp.icon;
                   const isSelected = property.disposition === disp.id;
@@ -562,7 +562,7 @@ export default function PropertyInfoPanel({
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           </div>
 
           {/* Select Home Owner Section */}

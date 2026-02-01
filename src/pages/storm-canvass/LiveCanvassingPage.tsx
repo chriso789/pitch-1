@@ -82,6 +82,7 @@ export default function LiveCanvassingPage() {
   // Raw loading state from markers layer
   const [rawIsLoading, setRawIsLoading] = useState(false);
   const [rawLoadedCount, setRawLoadedCount] = useState<number | null>(null);
+  const [markersRefreshKey, setMarkersRefreshKey] = useState(0);
   
   // Debounced stable loading state for smooth UI
   const [stableLoadingState, setStableLoadingState] = useState<'idle' | 'loading' | 'success'>('idle');
@@ -396,6 +397,7 @@ export default function LiveCanvassingPage() {
           mapStyle={mapStyle}
           onLoadingChange={setRawIsLoading}
           onPropertiesLoaded={setRawLoadedCount}
+          refreshKey={markersRefreshKey}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         
@@ -455,7 +457,8 @@ export default function LiveCanvassingPage() {
         property={selectedProperty}
         userLocation={userLocation}
         onDispositionUpdate={() => {
-          // Keep panel open, property will be refreshed by markers layer
+          // Force refresh markers by incrementing the key
+          setMarkersRefreshKey(prev => prev + 1);
         }}
         onNavigate={handleNavigateToProperty}
       />

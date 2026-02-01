@@ -23,10 +23,10 @@ export default function StormCanvassPro() {
         <div>
           <h1 className="text-3xl font-bold flex items-center gap-3">
             <CloudRain className="h-8 w-8 text-primary" />
-            Storm Canvass Pro
+            Storm Canvas Pro
           </h1>
           <p className="text-muted-foreground mt-1">
-            Advanced storm damage canvassing and lead generation
+            Advanced storm damage canvasing and lead generation
           </p>
         </div>
         <Badge variant="secondary" className="text-sm">

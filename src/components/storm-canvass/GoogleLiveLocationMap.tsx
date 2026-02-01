@@ -17,6 +17,7 @@ interface GoogleLiveLocationMapProps {
   mapStyle: MapStyle;
   onLoadingChange?: (isLoading: boolean) => void;
   onPropertiesLoaded?: (count: number) => void;
+  refreshKey?: number; // Incremented to force marker refresh
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
@@ -34,6 +35,7 @@ export default function GoogleLiveLocationMap({
   mapStyle,
   onLoadingChange,
   onPropertiesLoaded,
+  refreshKey,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -170,6 +172,7 @@ export default function GoogleLiveLocationMap({
       {mapReady && map.current && (
         <>
           <GooglePropertyMarkersLayer
+            key={`markers-${refreshKey || 0}`}
             map={map.current}
             userLocation={userLocation}
             onPropertyClick={onParcelSelect}
