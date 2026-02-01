@@ -363,7 +363,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
             <div className="flex items-center space-x-2">
               <Briefcase className="h-4 w-4 text-primary" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Total Jobs</p>
+                <p className="text-sm font-medium leading-none">Total Leads</p>
                 <p className="text-2xl font-bold">{totalJobs}</p>
               </div>
             </div>
@@ -375,7 +375,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
             <div className="flex items-center space-x-2">
               <Clock className="h-4 w-4 text-warning" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Active Jobs</p>
+                <p className="text-sm font-medium leading-none">Active Leads</p>
                 <p className="text-2xl font-bold">{activeJobs}</p>
               </div>
             </div>
@@ -387,7 +387,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
             <div className="flex items-center space-x-2">
               <DollarSign className="h-4 w-4 text-success" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Completed</p>
+                <p className="text-sm font-medium leading-none">Won/Closed</p>
                 <p className="text-2xl font-bold">{completedJobs}</p>
               </div>
             </div>
@@ -400,7 +400,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <Briefcase className="h-5 w-5" />
-            Jobs & Leads ({totalJobs})
+            Pipeline Leads ({totalJobs})
             {selectedJobs.length > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {selectedJobs.length} selected
@@ -650,7 +650,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
                 <Card className="border-dashed border-2 col-span-full">
                   <CardContent className="flex flex-col items-center justify-center py-12">
                     <Briefcase className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No jobs or leads yet</h3>
+                    <h3 className="text-lg font-semibold mb-2">No pipeline leads yet</h3>
                     <p className="text-muted-foreground mb-4 text-center">
                       Create the first lead for this contact to get started.
                     </p>
