@@ -303,8 +303,8 @@ const ContactProfile = () => {
               Details
             </TabsTrigger>
             <TabsTrigger value="jobs" className="flex items-center gap-2">
-              <Briefcase className="h-4 w-4" />
-              Jobs ({jobs.length + pipelineEntries.length})
+              <Activity className="h-4 w-4" />
+              Pipeline ({pipelineEntries.length})
             </TabsTrigger>
             <TabsTrigger value="communication" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
