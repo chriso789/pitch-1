@@ -268,6 +268,8 @@ interface PriceStats {
   median: number;
   p25: number;
   p75: number;
+  min: number;
+  max: number;
   paid_rate: number;
   sample_count: number;
 }
@@ -316,6 +318,8 @@ export function useEvidenceSearch(params: EvidenceSearchParams | null) {
         median: prices.length > 0 ? prices[Math.floor(prices.length / 2)] : 0,
         p25: prices.length >= 4 ? prices[Math.floor(prices.length * 0.25)] : prices[0] || 0,
         p75: prices.length >= 4 ? prices[Math.floor(prices.length * 0.75)] : prices[prices.length - 1] || 0,
+        min: prices.length > 0 ? prices[0] : 0,
+        max: prices.length > 0 ? prices[prices.length - 1] : 0,
         paid_rate: 1.0, // All internal examples are assumed paid
         sample_count: prices.length,
       };

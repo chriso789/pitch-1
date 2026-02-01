@@ -16,17 +16,21 @@ import {
   TrendingUp, 
   Database,
   RefreshCw,
-  ExternalLink
+  ExternalLink,
+  BarChart3,
+  Package
 } from 'lucide-react';
 import { useScopeDocuments } from '@/hooks/useScopeIntelligence';
 import { ScopeUploader } from '@/components/insurance/ScopeUploader';
 import { ScopeViewer } from '@/components/insurance/ScopeViewer';
+import { ScopeIntelligenceDashboard } from '@/components/insurance/ScopeIntelligenceDashboard';
+import { DisputeEvidenceBuilder } from '@/components/insurance/DisputeEvidenceBuilder';
 import { getCarrierDisplayName, getParseStatusInfo, getDocumentTypeLabel } from '@/lib/insurance/canonicalItems';
 import { format } from 'date-fns';
 
 const ScopeIntelligence: React.FC = () => {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState('documents');
+  const [activeTab, setActiveTab] = useState('dashboard');
   
   const { data: documents, isLoading, refetch } = useScopeDocuments();
 
@@ -125,6 +129,10 @@ const ScopeIntelligence: React.FC = () => {
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
+            <TabsTrigger value="dashboard">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Analytics
+            </TabsTrigger>
             <TabsTrigger value="documents">
               <FileText className="h-4 w-4 mr-2" />
               Documents
@@ -133,7 +141,15 @@ const ScopeIntelligence: React.FC = () => {
               <Upload className="h-4 w-4 mr-2" />
               Upload
             </TabsTrigger>
+            <TabsTrigger value="disputes">
+              <Package className="h-4 w-4 mr-2" />
+              Supplements
+            </TabsTrigger>
           </TabsList>
+
+          <TabsContent value="dashboard" className="mt-4">
+            <ScopeIntelligenceDashboard />
+          </TabsContent>
 
           <TabsContent value="documents" className="mt-4">
             <Card>
@@ -210,6 +226,22 @@ const ScopeIntelligence: React.FC = () => {
                 setSelectedDocumentId(docId);
               }}
             />
+          </TabsContent>
+
+          <TabsContent value="disputes" className="mt-4">
+            <div className="space-y-4">
+              <div>
+                <h2 className="text-lg font-semibold">Build Supplement Evidence</h2>
+                <p className="text-sm text-muted-foreground">
+                  Create evidence packets with prior paid examples to support your supplement claims
+                </p>
+              </div>
+              <DisputeEvidenceBuilder 
+                onPacketCreated={(packetId) => {
+                  console.log('Packet created:', packetId);
+                }}
+              />
+            </div>
           </TabsContent>
         </Tabs>
       </div>
