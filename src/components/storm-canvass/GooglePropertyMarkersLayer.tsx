@@ -9,6 +9,7 @@ interface GooglePropertyMarkersLayerProps {
   onPropertyClick: (property: any) => void;
   onLoadingChange?: (isLoading: boolean) => void;
   onPropertiesLoaded?: (count: number) => void;
+  refreshKey?: number;
 }
 
 interface CanvassiqProperty {
@@ -41,7 +42,7 @@ const DEFAULT_COLOR = '#D4A84B';
 const GRID_CELL_SIZE = 0.0015;
 
 // Debounce delay for map movement (ms)
-const LOAD_DEBOUNCE_MS = 300;
+const LOAD_DEBOUNCE_MS = 400;
 
 function getGridCell(lat: number, lng: number): string {
   const cellLat = Math.floor(lat / GRID_CELL_SIZE) * GRID_CELL_SIZE;
@@ -158,13 +159,16 @@ export default function GooglePropertyMarkersLayer({
   onPropertyClick,
   onLoadingChange,
   onPropertiesLoaded,
+  refreshKey,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
-  const markersRef = useRef<google.maps.Marker[]>([]);
+  // Map-based marker tracking for incremental updates (prevents flickering)
+  const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const [currentZoom, setCurrentZoom] = useState(18);
   const [isLoading, setIsLoading] = useState(false);
   const loadingRef = useRef(false);
   const loadedGridCellsRef = useRef<Set<string>>(new Set());
+  const propertiesCacheRef = useRef<Map<string, CanvassiqProperty>>(new Map());
 
   // Calculate load radius based on zoom level
   const getLoadRadius = useCallback((zoom: number): number => {
@@ -261,9 +265,56 @@ export default function GooglePropertyMarkersLayer({
     };
   }, []);
 
-  const clearMarkers = useCallback(() => {
+  // Incremental marker update - only add/remove/update what changed
+  const updateMarkersIncrementally = useCallback((properties: CanvassiqProperty[], zoom: number) => {
+    const currentPropertyIds = new Set(properties.map(p => p.id));
+    
+    // Remove markers that are no longer in view
+    markersRef.current.forEach((marker, id) => {
+      if (!currentPropertyIds.has(id)) {
+        marker.setMap(null);
+        markersRef.current.delete(id);
+        propertiesCacheRef.current.delete(id);
+      }
+    });
+    
+    // Add new markers or update existing ones
+    properties.forEach((property) => {
+      if (!property.lat || !property.lng) return;
+      
+      const existingMarker = markersRef.current.get(property.id);
+      const cachedProperty = propertiesCacheRef.current.get(property.id);
+      
+      if (existingMarker) {
+        // Check if disposition changed - update icon only
+        if (cachedProperty?.disposition !== property.disposition) {
+          existingMarker.setIcon(createMarkerIcon(property, zoom));
+          propertiesCacheRef.current.set(property.id, property);
+        }
+      } else {
+        // Create new marker
+        const marker = new google.maps.Marker({
+          position: { lat: property.lat, lng: property.lng },
+          map,
+          icon: createMarkerIcon(property, zoom),
+          optimized: true,
+        });
+        
+        marker.addListener('click', () => {
+          onPropertyClick(property);
+        });
+        
+        markersRef.current.set(property.id, marker);
+        propertiesCacheRef.current.set(property.id, property);
+      }
+    });
+  }, [map, createMarkerIcon, onPropertyClick]);
+
+  // Clear all markers (only used on unmount or refreshKey change)
+  const clearAllMarkers = useCallback(() => {
     markersRef.current.forEach(marker => marker.setMap(null));
-    markersRef.current = [];
+    markersRef.current.clear();
+    propertiesCacheRef.current.clear();
   }, []);
 
   const loadProperties = useCallback(async () => {
@@ -281,7 +332,6 @@ export default function GooglePropertyMarkersLayer({
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
       const zoom = map.getZoom() || 18;
-      const center = map.getCenter();
       
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
@@ -335,23 +385,8 @@ export default function GooglePropertyMarkersLayer({
             const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
             
             if (newProperties.length > 0) {
-              clearMarkers();
-              newProperties.forEach((property: CanvassiqProperty) => {
-                if (!property.lat || !property.lng) return;
-                
-                const marker = new google.maps.Marker({
-                  position: { lat: property.lat, lng: property.lng },
-                  map,
-                  icon: createMarkerIcon(property, zoom),
-                  optimized: true,
-                });
-                
-                marker.addListener('click', () => {
-                  onPropertyClick(property);
-                });
-                
-                markersRef.current.push(marker);
-              });
+              // Use incremental update instead of clearing all markers
+              updateMarkersIncrementally(newProperties, zoom);
             }
             setCurrentZoom(zoom);
             loadingRef.current = false;
@@ -360,26 +395,8 @@ export default function GooglePropertyMarkersLayer({
         }
       }
       
-      // Clear existing markers
-      clearMarkers();
-      
-      // Create new markers
-      (properties || []).forEach((property: CanvassiqProperty) => {
-        if (!property.lat || !property.lng) return;
-        
-        const marker = new google.maps.Marker({
-          position: { lat: property.lat, lng: property.lng },
-          map,
-          icon: createMarkerIcon(property, zoom),
-          optimized: true,
-        });
-        
-        marker.addListener('click', () => {
-          onPropertyClick(property);
-        });
-        
-        markersRef.current.push(marker);
-      });
+      // Use incremental update instead of clearing all markers
+      updateMarkersIncrementally(properties || [], zoom);
       
       setCurrentZoom(zoom);
     } catch (err) {
@@ -387,9 +404,9 @@ export default function GooglePropertyMarkersLayer({
     } finally {
       loadingRef.current = false;
     }
-  }, [profile?.tenant_id, map, createMarkerIcon, clearMarkers, onPropertyClick, loadParcelsFromEdgeFunction, getLoadRadius]);
+  }, [profile?.tenant_id, map, updateMarkersIncrementally, loadParcelsFromEdgeFunction, getLoadRadius]);
 
-  // Update marker sizes when zoom changes
+  // Update marker sizes when zoom changes significantly
   const updateMarkerSizes = useCallback(() => {
     if (!map) return;
     
@@ -412,6 +429,14 @@ export default function GooglePropertyMarkersLayer({
     }, LOAD_DEBOUNCE_MS);
   }, [loadProperties]);
 
+  // Handle refreshKey changes (disposition updates)
+  useEffect(() => {
+    if (refreshKey !== undefined && refreshKey > 0) {
+      // Force reload when refreshKey changes (e.g., after disposition update)
+      loadProperties();
+    }
+  }, [refreshKey, loadProperties]);
+
   // Set up map event listeners with debouncing
   useEffect(() => {
     if (!map) return;
@@ -429,9 +454,10 @@ export default function GooglePropertyMarkersLayer({
       }
       google.maps.event.removeListener(idleListener);
       google.maps.event.removeListener(zoomListener);
-      clearMarkers();
+      // Only clear all markers on unmount
+      clearAllMarkers();
     };
-  }, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearMarkers]);
+  }, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearAllMarkers]);
 
   // Notify parent of loading state changes
   useEffect(() => {

@@ -299,9 +299,10 @@ async function callSearchBugAPI(apiKey: string, name: string, address: any) {
   return { owners, phones, emails };
 }
 
-function generateDemoEnrichment(ownerName: string) {
-  const firstName = ownerName.split(' ')[0] || 'John';
-  const lastName = ownerName.split(' ').slice(1).join(' ') || 'Doe';
+function generateDemoEnrichment(ownerName: string | null) {
+  const name = ownerName || 'Unknown Owner';
+  const firstName = name.split(' ')[0] || 'John';
+  const lastName = name.split(' ').slice(1).join(' ') || 'Doe';
   
   return {
     owners: [
