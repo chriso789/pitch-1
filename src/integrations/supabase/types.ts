@@ -14310,6 +14310,60 @@ export type Database = {
           },
         ]
       }
+      insurance_canonical_items: {
+        Row: {
+          alternate_units: string[] | null
+          canonical_key: string
+          category: string
+          code_patterns: string[] | null
+          created_at: string | null
+          description_patterns: string[] | null
+          display_name: string
+          id: string
+          is_labor: boolean | null
+          is_material: boolean | null
+          is_overhead: boolean | null
+          standard_unit: string
+          subcategory: string | null
+          updated_at: string | null
+          xactimate_selector: string | null
+        }
+        Insert: {
+          alternate_units?: string[] | null
+          canonical_key: string
+          category: string
+          code_patterns?: string[] | null
+          created_at?: string | null
+          description_patterns?: string[] | null
+          display_name: string
+          id?: string
+          is_labor?: boolean | null
+          is_material?: boolean | null
+          is_overhead?: boolean | null
+          standard_unit: string
+          subcategory?: string | null
+          updated_at?: string | null
+          xactimate_selector?: string | null
+        }
+        Update: {
+          alternate_units?: string[] | null
+          canonical_key?: string
+          category?: string
+          code_patterns?: string[] | null
+          created_at?: string | null
+          description_patterns?: string[] | null
+          display_name?: string
+          id?: string
+          is_labor?: boolean | null
+          is_material?: boolean | null
+          is_overhead?: boolean | null
+          standard_unit?: string
+          subcategory?: string | null
+          updated_at?: string | null
+          xactimate_selector?: string | null
+        }
+        Relationships: []
+      }
       insurance_claim_measurements: {
         Row: {
           accuracy_match_pct: number | null
@@ -14497,6 +14551,724 @@ export type Database = {
           },
           {
             foreignKeyName: "insurance_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_line_item_mappings: {
+        Row: {
+          canonical_item_id: string
+          carrier_normalized: string
+          confidence: number
+          created_at: string | null
+          id: string
+          mapping_method: string
+          raw_code: string | null
+          raw_description: string
+          updated_at: string | null
+          usage_count: number | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          canonical_item_id: string
+          carrier_normalized: string
+          confidence: number
+          created_at?: string | null
+          id?: string
+          mapping_method: string
+          raw_code?: string | null
+          raw_description: string
+          updated_at?: string | null
+          usage_count?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          canonical_item_id?: string
+          carrier_normalized?: string
+          confidence?: number
+          created_at?: string | null
+          id?: string
+          mapping_method?: string
+          raw_code?: string | null
+          raw_description?: string
+          updated_at?: string | null
+          usage_count?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_line_item_mappings_canonical_item_id_fkey"
+            columns: ["canonical_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_canonical_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_line_item_mappings_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_line_item_mappings_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      insurance_network_contributions: {
+        Row: {
+          canonical_item_id: string
+          carrier_normalized: string
+          consent_given_at: string
+          consent_version: string | null
+          contributor_hash: string
+          created_at: string | null
+          id: string
+          is_tearoff: boolean | null
+          loss_year: number | null
+          pitch_category: string | null
+          quantity_bucket: string | null
+          redacted_snippet: string | null
+          state_code: string | null
+          story_count: number | null
+          unit_price_bucket: string | null
+          was_disputed: boolean | null
+          was_paid: boolean | null
+          was_supplemented: boolean | null
+        }
+        Insert: {
+          canonical_item_id: string
+          carrier_normalized: string
+          consent_given_at: string
+          consent_version?: string | null
+          contributor_hash: string
+          created_at?: string | null
+          id?: string
+          is_tearoff?: boolean | null
+          loss_year?: number | null
+          pitch_category?: string | null
+          quantity_bucket?: string | null
+          redacted_snippet?: string | null
+          state_code?: string | null
+          story_count?: number | null
+          unit_price_bucket?: string | null
+          was_disputed?: boolean | null
+          was_paid?: boolean | null
+          was_supplemented?: boolean | null
+        }
+        Update: {
+          canonical_item_id?: string
+          carrier_normalized?: string
+          consent_given_at?: string
+          consent_version?: string | null
+          contributor_hash?: string
+          created_at?: string | null
+          id?: string
+          is_tearoff?: boolean | null
+          loss_year?: number | null
+          pitch_category?: string | null
+          quantity_bucket?: string | null
+          redacted_snippet?: string | null
+          state_code?: string | null
+          story_count?: number | null
+          unit_price_bucket?: string | null
+          was_disputed?: boolean | null
+          was_paid?: boolean | null
+          was_supplemented?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_network_contributions_canonical_item_id_fkey"
+            columns: ["canonical_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_canonical_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_scope_disputes: {
+        Row: {
+          approved_amount: number | null
+          canonical_item_id: string | null
+          carrier_response: string | null
+          created_at: string | null
+          dispute_reason: string
+          disputed_line_item_id: string | null
+          evidence_packet_id: string | null
+          id: string
+          insurance_claim_id: string | null
+          job_id: string | null
+          requested_amount: number | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_amount?: number | null
+          canonical_item_id?: string | null
+          carrier_response?: string | null
+          created_at?: string | null
+          dispute_reason: string
+          disputed_line_item_id?: string | null
+          evidence_packet_id?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          job_id?: string | null
+          requested_amount?: number | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_amount?: number | null
+          canonical_item_id?: string | null
+          carrier_response?: string | null
+          created_at?: string | null
+          dispute_reason?: string
+          disputed_line_item_id?: string | null
+          evidence_packet_id?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          job_id?: string | null
+          requested_amount?: number | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_scope_disputes_canonical_item_id_fkey"
+            columns: ["canonical_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_canonical_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_disputes_disputed_line_item_id_fkey"
+            columns: ["disputed_line_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_disputes_evidence_packet_id_fkey"
+            columns: ["evidence_packet_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_supplement_packets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_disputes_insurance_claim_id_fkey"
+            columns: ["insurance_claim_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_disputes_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_disputes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_scope_document_pages: {
+        Row: {
+          document_id: string
+          id: string
+          page_image_path: string | null
+          page_number: number
+          page_tables_json: Json | null
+          page_text_content: string | null
+        }
+        Insert: {
+          document_id: string
+          id?: string
+          page_image_path?: string | null
+          page_number: number
+          page_tables_json?: Json | null
+          page_text_content?: string | null
+        }
+        Update: {
+          document_id?: string
+          id?: string
+          page_image_path?: string | null
+          page_number?: number
+          page_tables_json?: Json | null
+          page_text_content?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_scope_document_pages_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_scope_documents: {
+        Row: {
+          adjuster_name: string | null
+          carrier_name: string | null
+          carrier_normalized: string | null
+          claim_number_detected: string | null
+          created_at: string | null
+          created_by: string | null
+          document_type: string
+          file_hash: string
+          file_name: string
+          file_size_bytes: number | null
+          format_family: string | null
+          id: string
+          insurance_claim_id: string | null
+          job_id: string | null
+          loss_date_detected: string | null
+          parse_completed_at: string | null
+          parse_error: string | null
+          parse_started_at: string | null
+          parse_status: string | null
+          parser_version: string | null
+          raw_json_output: Json | null
+          raw_text_content: string | null
+          storage_path: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          adjuster_name?: string | null
+          carrier_name?: string | null
+          carrier_normalized?: string | null
+          claim_number_detected?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          document_type: string
+          file_hash: string
+          file_name: string
+          file_size_bytes?: number | null
+          format_family?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          job_id?: string | null
+          loss_date_detected?: string | null
+          parse_completed_at?: string | null
+          parse_error?: string | null
+          parse_started_at?: string | null
+          parse_status?: string | null
+          parser_version?: string | null
+          raw_json_output?: Json | null
+          raw_text_content?: string | null
+          storage_path: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          adjuster_name?: string | null
+          carrier_name?: string | null
+          carrier_normalized?: string | null
+          claim_number_detected?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          document_type?: string
+          file_hash?: string
+          file_name?: string
+          file_size_bytes?: number | null
+          format_family?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          job_id?: string | null
+          loss_date_detected?: string | null
+          parse_completed_at?: string | null
+          parse_error?: string | null
+          parse_started_at?: string | null
+          parse_status?: string | null
+          parser_version?: string | null
+          raw_json_output?: Json | null
+          raw_text_content?: string | null
+          storage_path?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_scope_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_documents_insurance_claim_id_fkey"
+            columns: ["insurance_claim_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_documents_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_scope_headers: {
+        Row: {
+          created_at: string | null
+          deductible: number | null
+          document_id: string
+          estimate_date: string | null
+          id: string
+          non_recoverable_depreciation: number | null
+          overhead_amount: number | null
+          price_list_effective_date: string | null
+          price_list_name: string | null
+          price_list_region: string | null
+          profit_amount: number | null
+          property_address: string | null
+          property_city: string | null
+          property_state: string | null
+          property_zip: string | null
+          recoverable_depreciation: number | null
+          supplement_count: number | null
+          tax_amount: number | null
+          total_acv: number | null
+          total_depreciation: number | null
+          total_net_claim: number | null
+          total_rcv: number | null
+          total_supplement_amount: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          deductible?: number | null
+          document_id: string
+          estimate_date?: string | null
+          id?: string
+          non_recoverable_depreciation?: number | null
+          overhead_amount?: number | null
+          price_list_effective_date?: string | null
+          price_list_name?: string | null
+          price_list_region?: string | null
+          profit_amount?: number | null
+          property_address?: string | null
+          property_city?: string | null
+          property_state?: string | null
+          property_zip?: string | null
+          recoverable_depreciation?: number | null
+          supplement_count?: number | null
+          tax_amount?: number | null
+          total_acv?: number | null
+          total_depreciation?: number | null
+          total_net_claim?: number | null
+          total_rcv?: number | null
+          total_supplement_amount?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          deductible?: number | null
+          document_id?: string
+          estimate_date?: string | null
+          id?: string
+          non_recoverable_depreciation?: number | null
+          overhead_amount?: number | null
+          price_list_effective_date?: string | null
+          price_list_name?: string | null
+          price_list_region?: string | null
+          profit_amount?: number | null
+          property_address?: string | null
+          property_city?: string | null
+          property_state?: string | null
+          property_zip?: string | null
+          recoverable_depreciation?: number | null
+          supplement_count?: number | null
+          tax_amount?: number | null
+          total_acv?: number | null
+          total_depreciation?: number | null
+          total_net_claim?: number | null
+          total_rcv?: number | null
+          total_supplement_amount?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_scope_headers_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_scope_line_item_evidence: {
+        Row: {
+          bbox_height: number | null
+          bbox_width: number | null
+          bbox_x: number | null
+          bbox_y: number | null
+          created_at: string | null
+          document_id: string
+          field_type: string
+          id: string
+          line_item_id: string
+          page_number: number
+          row_index: number | null
+          snippet_hash: string
+          snippet_text: string
+          table_index: number | null
+        }
+        Insert: {
+          bbox_height?: number | null
+          bbox_width?: number | null
+          bbox_x?: number | null
+          bbox_y?: number | null
+          created_at?: string | null
+          document_id: string
+          field_type: string
+          id?: string
+          line_item_id: string
+          page_number: number
+          row_index?: number | null
+          snippet_hash: string
+          snippet_text: string
+          table_index?: number | null
+        }
+        Update: {
+          bbox_height?: number | null
+          bbox_width?: number | null
+          bbox_x?: number | null
+          bbox_y?: number | null
+          created_at?: string | null
+          document_id?: string
+          field_type?: string
+          id?: string
+          line_item_id?: string
+          page_number?: number
+          row_index?: number | null
+          snippet_hash?: string
+          snippet_text?: string
+          table_index?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_scope_line_item_evidence_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_line_item_evidence_line_item_id_fkey"
+            columns: ["line_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_line_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_scope_line_items: {
+        Row: {
+          age_years: number | null
+          canonical_item_id: string | null
+          created_at: string | null
+          depreciation_amount: number | null
+          depreciation_percent: number | null
+          document_id: string
+          header_id: string
+          id: string
+          is_taxable: boolean | null
+          labor_amount: number | null
+          life_years: number | null
+          line_order: number | null
+          mapping_confidence: number | null
+          mapping_method: string | null
+          material_amount: number | null
+          quantity: number | null
+          raw_category: string | null
+          raw_code: string | null
+          raw_description: string
+          section_name: string | null
+          tax_amount: number | null
+          total_acv: number | null
+          total_rcv: number | null
+          unit: string | null
+          unit_price: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          age_years?: number | null
+          canonical_item_id?: string | null
+          created_at?: string | null
+          depreciation_amount?: number | null
+          depreciation_percent?: number | null
+          document_id: string
+          header_id: string
+          id?: string
+          is_taxable?: boolean | null
+          labor_amount?: number | null
+          life_years?: number | null
+          line_order?: number | null
+          mapping_confidence?: number | null
+          mapping_method?: string | null
+          material_amount?: number | null
+          quantity?: number | null
+          raw_category?: string | null
+          raw_code?: string | null
+          raw_description: string
+          section_name?: string | null
+          tax_amount?: number | null
+          total_acv?: number | null
+          total_rcv?: number | null
+          unit?: string | null
+          unit_price?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          age_years?: number | null
+          canonical_item_id?: string | null
+          created_at?: string | null
+          depreciation_amount?: number | null
+          depreciation_percent?: number | null
+          document_id?: string
+          header_id?: string
+          id?: string
+          is_taxable?: boolean | null
+          labor_amount?: number | null
+          life_years?: number | null
+          line_order?: number | null
+          mapping_confidence?: number | null
+          mapping_method?: string | null
+          material_amount?: number | null
+          quantity?: number | null
+          raw_category?: string | null
+          raw_code?: string | null
+          raw_description?: string
+          section_name?: string | null
+          tax_amount?: number | null
+          total_acv?: number | null
+          total_rcv?: number | null
+          unit?: string | null
+          unit_price?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_scope_line_items_canonical_item_id_fkey"
+            columns: ["canonical_item_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_canonical_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_line_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_line_items_header_id_fkey"
+            columns: ["header_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_scope_headers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      insurance_supplement_packets: {
+        Row: {
+          created_at: string | null
+          html_content: string | null
+          id: string
+          insurance_claim_id: string | null
+          items_json: Json
+          job_id: string | null
+          pdf_url: string | null
+          prior_examples_json: Json | null
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          html_content?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          items_json: Json
+          job_id?: string | null
+          pdf_url?: string | null
+          prior_examples_json?: Json | null
+          status?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          html_content?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          items_json?: Json
+          job_id?: string | null
+          pdf_url?: string | null
+          prior_examples_json?: Json | null
+          status?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_supplement_packets_insurance_claim_id_fkey"
+            columns: ["insurance_claim_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_supplement_packets_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_supplement_packets_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
