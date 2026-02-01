@@ -751,3 +751,6 @@ wall_clock_limit = 120
 
 [functions.generate-roof-overlay]
 verify_jwt = false
+
+[functions.scope-document-ingest]
+verify_jwt = true
