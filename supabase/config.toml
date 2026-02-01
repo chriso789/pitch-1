@@ -754,3 +754,6 @@ verify_jwt = false
 
 [functions.scope-document-ingest]
 verify_jwt = true
+
+[functions.scope-evidence-search]
+verify_jwt = true
