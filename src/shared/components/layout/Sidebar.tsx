@@ -255,11 +255,11 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       testId: TEST_IDS.sidebar.calendar
     },
     {
-      name: "Storm Canvass Pro",
+      name: "Storm Canvas Pro",
       href: "storm-canvass",
       path: "/storm-canvass",
       icon: CloudRain,
-      description: "Lead generation & canvassing"
+      description: "Lead generation & canvasing"
     },
     // Communications is now an expandable section - see communicationsSubNav below
     {
