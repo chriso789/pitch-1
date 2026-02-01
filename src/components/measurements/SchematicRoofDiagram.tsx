@@ -1,12 +1,14 @@
 import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 import { Badge } from '@/components/ui/badge';
 import { useSegmentHover } from '@/contexts/SegmentHoverContext';
+import { getGeometrySource, getSourceLabel, getSourceBadgeColor, type GeometrySourceResult } from '@/lib/measurements/geometryConfidenceScorer';
+import { mergeAllPitchSources, getPredominantPitch, applyPitchToFacets } from '@/lib/measurements/pitchMerger';
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
   eave: '#006400',    // Dark green - Eaves
@@ -228,6 +230,14 @@ export function SchematicRoofDiagram({
   const [reconstructedGeometry, setReconstructedGeometry] = useState<ReconstructedRoof | null>(null);
   // Default to minimized (badge) state - user can expand if needed
   const [showWarningBanner, setShowWarningBanner] = useState(false);
+  
+  // Calculate geometry source and confidence for conditional rendering
+  const geometrySourceInfo: GeometrySourceResult = useMemo(() => 
+    getGeometrySource(measurement), [measurement]);
+  
+  // Merge pitch data from all sources for consistent display
+  const unifiedPitches = useMemo(() => 
+    mergeAllPitchSources(measurement), [measurement]);
   
   // Segment hover context for interactive highlighting
   const { isSegmentHighlighted, setHoveredSegment, clearHover } = useSegmentHover();
@@ -1000,8 +1010,16 @@ export function SchematicRoofDiagram({
         )}
         
         {/* Facet polygons (rendered first so they're behind lines) */}
-        {/* Hide facets when source is bounding box fallback - they would be fake triangular subdivisions */}
-        {showFacets && diagramSource !== 'perimeter' && facetPaths.map((facet: any, i: number) => (
+        {/* Hide facets when geometry confidence is low or source recommends hiding */}
+        {showFacets && 
+         geometrySourceInfo.shouldShowFacets && 
+         diagramSource !== 'perimeter' && 
+         facetPaths.map((facet: any, i: number) => {
+          // Get pitch from unified sources
+          const facetPitch = unifiedPitches.get(i);
+          const displayPitch = facetPitch?.pitch || facet.pitch;
+          
+          return (
           <g key={`facet-${facet.facetNumber}`}>
             <path
               d={facet.path}
@@ -1041,7 +1059,7 @@ export function SchematicRoofDiagram({
                 {facet.direction}
               </text>
             )}
-            {/* Area label below direction */}
+            {/* Area label below direction - show pitch from unified source */}
             {facet.area > 0 && (
               <text
                 x={facet.centroid.x}
@@ -1050,11 +1068,11 @@ export function SchematicRoofDiagram({
                 fontSize={9}
                 fill="#6b7280"
               >
-                {Math.round(facet.area)} sqft
+                {Math.round(facet.area)} sqft {displayPitch && `@ ${displayPitch}`}
               </text>
             )}
           </g>
-        ))}
+        )})}
         
         {/* Perimeter outline (thin guide line - behind everything) */}
         {/* Perimeter outline - rendered prominently as "perimeter first" */}
@@ -1754,11 +1772,34 @@ export function SchematicRoofDiagram({
         );
       })()}
       
+      {/* GEOMETRY CONFIDENCE WARNING - Shows when source is estimated/low confidence */}
+      {geometrySourceInfo.warningMessage && geometrySourceInfo.source === 'estimated' && (
+        <div className="absolute top-1 left-1/2 -translate-x-1/2 z-20 bg-amber-100 border border-amber-300 text-amber-900 rounded-full px-3 py-1 shadow-md text-[10px] font-medium flex items-center gap-1.5">
+          <ShieldAlert className="h-3 w-3" />
+          <span>{geometrySourceInfo.warningMessage}</span>
+          <span className="text-amber-600 ml-1">({Math.round(geometrySourceInfo.confidence * 100)}% confidence)</span>
+        </div>
+      )}
+      
       {/* CRITICAL WARNING: Solar BBox Fallback - Compact single line */}
-      {measurement?.footprint_source === 'solar_bbox_fallback' && (
+      {measurement?.footprint_source === 'solar_bbox_fallback' && !geometrySourceInfo.warningMessage && (
         <div className="absolute top-1 left-1/2 -translate-x-1/2 z-20 bg-destructive text-destructive-foreground rounded-full px-3 py-1 shadow-md text-[10px] font-medium flex items-center gap-1.5">
           <AlertTriangle className="h-3 w-3" />
           <span>Rectangular Estimate - Import Report for Accuracy</span>
+        </div>
+      )}
+      
+      {/* Geometry Source Quality Badge - shows rendering confidence */}
+      {geometrySourceInfo.source !== 'estimated' && (
+        <div className="absolute top-3 left-3 z-10">
+          <Badge 
+            variant="outline"
+            className={`text-xs gap-1 ${getSourceBadgeColor(geometrySourceInfo.source).bg} ${getSourceBadgeColor(geometrySourceInfo.source).text} ${getSourceBadgeColor(geometrySourceInfo.source).border}`}
+          >
+            {geometrySourceInfo.source === 'manual' && <CheckCircle className="h-3 w-3" />}
+            {geometrySourceInfo.source === 'validated' && <CheckCircle className="h-3 w-3" />}
+            {getSourceLabel(geometrySourceInfo.source)} ({Math.round(geometrySourceInfo.confidence * 100)}%)
+          </Badge>
         </div>
       )}
       
