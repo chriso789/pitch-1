@@ -329,24 +329,30 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
     return null;
   };
 
-  // Calculate statistics based on unified jobs
-  const totalJobs = unifiedJobs.length;
-  const activeJobs = unifiedJobs.filter(job => {
-    if (job.type === 'pipeline') {
-      return !job.status.toLowerCase().includes('lost') && !job.status.toLowerCase().includes('won');
-    } else {
-      return ['scheduled', 'in progress', 'materials ordered', 'quality check'].some(s => 
-        job.status.toLowerCase().includes(s.toLowerCase())
-      );
-    }
-  }).length;
-  const completedJobs = unifiedJobs.filter(job => {
-    if (job.type === 'pipeline') {
-      return job.status.toLowerCase().includes('won');
-    } else {
-      return job.status.toLowerCase().includes('completed');
-    }
-  }).length;
+  // Helper constants for Lead vs Job distinction
+  const LEAD_STATUSES = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval'];
+  const JOB_STATUSES = ['project', 'completed', 'closed'];
+  const TERMINAL_STATUSES = ['lost', 'canceled', 'duplicate'];
+
+  const isLeadStatus = (status: string) => LEAD_STATUSES.includes(status);
+  const isJobStatus = (status: string) => JOB_STATUSES.includes(status);
+
+  // Calculate statistics with Lead/Job distinction
+  const leadsCount = unifiedJobs.filter(job => 
+    job.type === 'pipeline' && isLeadStatus(job.originalStatus || '')
+  ).length;
+
+  const activeJobsCount = unifiedJobs.filter(job => 
+    job.type === 'pipeline' && 
+    job.originalStatus === 'project'
+  ).length;
+
+  const closedCount = unifiedJobs.filter(job => 
+    job.type === 'pipeline' && 
+    ['closed', 'completed'].includes(job.originalStatus || '')
+  ).length;
+
+  const totalPipeline = unifiedJobs.filter(job => job.type === 'pipeline').length;
 
   return (
     <div className="space-y-6">
@@ -356,15 +362,15 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
         onJobCreated={fetchUnifiedJobs}
       />
 
-      {/* Jobs Overview */}
+      {/* Pipeline Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="shadow-soft">
           <CardContent className="pt-6">
             <div className="flex items-center space-x-2">
-              <Briefcase className="h-4 w-4 text-primary" />
+              <TrendingUp className="h-4 w-4 text-primary" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Total Leads</p>
-                <p className="text-2xl font-bold">{totalJobs}</p>
+                <p className="text-sm font-medium leading-none">Leads</p>
+                <p className="text-2xl font-bold">{leadsCount}</p>
               </div>
             </div>
           </CardContent>
@@ -373,10 +379,10 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
         <Card className="shadow-soft">
           <CardContent className="pt-6">
             <div className="flex items-center space-x-2">
-              <Clock className="h-4 w-4 text-warning" />
+              <Briefcase className="h-4 w-4 text-warning" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Active Leads</p>
-                <p className="text-2xl font-bold">{activeJobs}</p>
+                <p className="text-sm font-medium leading-none">Active Jobs</p>
+                <p className="text-2xl font-bold">{activeJobsCount}</p>
               </div>
             </div>
           </CardContent>
@@ -385,10 +391,10 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
         <Card className="shadow-soft">
           <CardContent className="pt-6">
             <div className="flex items-center space-x-2">
-              <DollarSign className="h-4 w-4 text-success" />
+              <CheckCircle className="h-4 w-4 text-success" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Won/Closed</p>
-                <p className="text-2xl font-bold">{completedJobs}</p>
+                <p className="text-sm font-medium leading-none">Closed</p>
+                <p className="text-2xl font-bold">{closedCount}</p>
               </div>
             </div>
           </CardContent>
@@ -400,7 +406,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <Briefcase className="h-5 w-5" />
-            Pipeline Leads ({totalJobs})
+            Pipeline ({totalPipeline})
             {selectedJobs.length > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {selectedJobs.length} selected
@@ -511,13 +517,23 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
                         )}
                         <div className="flex-1 min-w-0 pr-2">
                           <h3 className="font-semibold text-sm leading-tight truncate max-w-full">{job.name}</h3>
-                          <div className="flex items-center gap-2 mt-1 flex-wrap">
-                            <Badge 
-                              variant={job.type === 'pipeline' ? 'secondary' : 'outline'}
-                              className="text-xs"
-                            >
-                              {job.type === 'pipeline' ? 'Lead' : 'Job'}
-                            </Badge>
+                            <div className="flex items-center gap-2 mt-1 flex-wrap">
+                            {job.type === 'pipeline' && (
+                              isLeadStatus(job.originalStatus || '') ? (
+                                <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                  Lead
+                                </Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
+                                  Job
+                                </Badge>
+                              )
+                            )}
+                            {job.type === 'job' && (
+                              <Badge variant="outline" className="text-xs">
+                                Job
+                              </Badge>
+                            )}
                             {job.job_number && (
                               <Badge variant="outline" className="text-xs">
                                 {job.job_number}
