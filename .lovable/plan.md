@@ -1,72 +1,132 @@
 
-# Rename "Jobs" Tab to "Pipeline Leads" on Contact Profile
+# Update Pipeline Terminology: Leads & Jobs Distinction
 
-## Problem Summary
+## Understanding the Workflow
 
-The Contact Profile page currently shows a "Jobs" tab that displays pipeline entries (leads), which is confusing because:
-- **Leads** belong in the **Pipeline** (sales workflow)
-- **Jobs** are for **Production** (work execution after approval)
-- The current label "Jobs & Leads" conflates two different workflow stages
+The pipeline contains entries at different stages of the sales-to-completion lifecycle:
 
-The user clarified the correct workflow:
-- Contacts stay in Contacts
-- Once a lead is created → it goes into the Pipeline
-- Jobs = Production items (post-approval work)
+| Stage | Type | Description |
+|-------|------|-------------|
+| New Lead | **Lead** | Initial inquiry |
+| Contingency Signed | **Lead** | Agreement in place |
+| Legal Review | **Lead** | Awaiting legal clearance |
+| Ready for Approval | **Lead** | Pending final approval |
+| **Approved/Project** | **Job** | Approved - now active work |
+| Completed | **Job** | Work finished |
+| Closed | **Job** | Fully closed out |
 
-## Solution
-
-Rename the "Jobs" tab and related terminology to "Pipeline Leads" or just "Leads" to accurately reflect what's being displayed.
+**Key Insight:** A pipeline entry transitions from "Lead" to "Job" at the **Approved/Project** stage, but it **stays in the pipeline** through closeout.
 
 ---
 
 ## Changes Required
 
-### 1. ContactProfile.tsx (Tab Label)
+### 1. ContactProfile.tsx - Tab Label
 
-**File:** `src/pages/ContactProfile.tsx`
+**Current:** `Pipeline ({pipelineEntries.length})`
 
-**Lines 305-307:**
-```typescript
-// Current:
-<TabsTrigger value="jobs" className="flex items-center gap-2">
-  <Briefcase className="h-4 w-4" />
-  Jobs ({jobs.length + pipelineEntries.length})
-</TabsTrigger>
+**Change to:** Show both counts for clarity
 
-// Change to:
-<TabsTrigger value="jobs" className="flex items-center gap-2">
-  <Activity className="h-4 w-4" />  
-  Pipeline ({pipelineEntries.length})
-</TabsTrigger>
+```tsx
+Pipeline ({leadsCount} leads, {jobsCount} jobs)
+// or simply:
+Pipeline ({pipelineEntries.length})  // Keep generic since both are there
 ```
 
-Note: Keep `value="jobs"` to avoid breaking existing navigation, just change the display label.
+**Recommendation:** Keep `Pipeline ({count})` as the tab label since it contains both leads and jobs. No change needed here.
 
-### 2. ContactJobsTab.tsx (Card Headers & Labels)
+### 2. ContactJobsTab.tsx - Statistics Cards
 
-**File:** `src/components/contact-profile/ContactJobsTab.tsx`
+Update the three stats cards to properly distinguish:
 
-| Line | Current | Change To |
-|------|---------|-----------|
-| 366 | `Total Jobs` | `Total Leads` |
-| 378 | `Active Jobs` | `Active Leads` |
-| 390 | `Completed` | `Won/Closed` |
-| 403 | `Jobs & Leads ({totalJobs})` | `Pipeline Leads ({totalJobs})` |
-| 653 | `No jobs or leads yet` | `No pipeline leads yet` |
-| 655 | `Create the first lead for this contact...` | Keep as-is |
+| Current | Change To |
+|---------|-----------|
+| Total Leads | **Pipeline Total** |
+| Active Leads | **Active** (pre-closeout) |
+| Won/Closed | **Closed** |
 
-### 3. Update Statistics Calculation
+**Or better - show Lead/Job breakdown:**
 
-**File:** `src/components/contact-profile/ContactJobsTab.tsx`
+| Card 1 | Card 2 | Card 3 |
+|--------|--------|--------|
+| **Leads** (pre-approval count) | **Active Jobs** (approved, not closed) | **Closed** |
 
-Since the focus is now on pipeline entries (not jobs table):
-- `totalJobs` → `totalLeads` (variable rename for clarity)
-- `activeJobs` → `activeLeads` 
-- `completedJobs` → `wonLeads`
+### 3. ContactJobsTab.tsx - Section Header
 
-### 4. Remove Jobs Table Query (Optional Cleanup)
+**Current:** `Pipeline Leads ({totalJobs})`
 
-Since the tab now focuses on pipeline entries, the query to the `jobs` table (lines 112-122) may be unnecessary. However, keeping it allows showing both if needed later.
+**Change to:** `Pipeline ({totalJobs})` or `Leads & Jobs ({totalJobs})`
+
+### 4. Add Visual Distinction for Lead vs Job
+
+In the pipeline card items, show a badge indicating whether an entry is a "Lead" or "Job" based on its status:
+
+```tsx
+{isLeadStage(entry.status) ? (
+  <Badge variant="outline" className="bg-blue-50 text-blue-700">Lead</Badge>
+) : (
+  <Badge variant="outline" className="bg-green-50 text-green-700">Job</Badge>
+)}
+```
+
+Where `isLeadStage` checks if status is one of: `lead`, `contingency_signed`, `legal_review`, `ready_for_approval`
+
+---
+
+## Implementation Details
+
+### File: `src/components/contact-profile/ContactJobsTab.tsx`
+
+**Line 366:** 
+```typescript
+// Change from: "Total Leads"
+// To: "Leads" with count of pre-approval entries only
+```
+
+**Line 378:**
+```typescript
+// Change from: "Active Leads"  
+// To: "Active Jobs" with count of post-approval, non-closed entries
+```
+
+**Line 390:**
+```typescript
+// Keep: "Won/Closed" or change to just "Closed"
+```
+
+**Line 403:**
+```typescript
+// Change from: "Pipeline Leads ({totalJobs})"
+// To: "Pipeline ({totalJobs})"
+```
+
+### Add Helper Constants
+
+```typescript
+const LEAD_STATUSES = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval'];
+const JOB_STATUSES = ['project', 'completed', 'closed'];
+const TERMINAL_STATUSES = ['lost', 'canceled', 'duplicate'];
+
+const isLead = (status: string) => LEAD_STATUSES.includes(status);
+const isJob = (status: string) => JOB_STATUSES.includes(status);
+```
+
+### Calculate Separate Counts
+
+```typescript
+const leadsCount = unifiedJobs.filter(j => 
+  j.type === 'pipeline' && isLead(j.originalStatus || '')
+).length;
+
+const activeJobsCount = unifiedJobs.filter(j => 
+  j.type === 'pipeline' && isJob(j.originalStatus || '') && 
+  !['closed', 'completed'].includes(j.originalStatus || '')
+).length;
+
+const closedCount = unifiedJobs.filter(j => 
+  ['closed', 'completed', 'closed_won'].includes(j.originalStatus || '')
+).length;
+```
 
 ---
 
@@ -74,30 +134,29 @@ Since the tab now focuses on pipeline entries, the query to the `jobs` table (li
 
 ### Before:
 ```
-┌─────────┬─────────┬───────────────┬───────────┐
-│ Details │ Jobs(1) │ Communication │ Documents │
-└─────────┴─────────┴───────────────┴───────────┘
-     ↓
-┌─────────────────────────────────────────────────┐
-│ Jobs & Leads (1)                                │
-│ ├─ Total Jobs: 1                                │
-│ ├─ Active Jobs: 1                               │
-│ └─ Completed: 0                                 │
-└─────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│ Pipeline Leads (5)                                 │
+│                                                    │
+│ [Total Leads: 5] [Active Leads: 3] [Won/Closed: 2] │
+└────────────────────────────────────────────────────┘
 ```
 
 ### After:
 ```
-┌─────────┬────────────┬───────────────┬───────────┐
-│ Details │ Pipeline(1)│ Communication │ Documents │
-└─────────┴────────────┴───────────────┴───────────┘
-     ↓
-┌─────────────────────────────────────────────────┐
-│ Pipeline Leads (1)                              │
-│ ├─ Total Leads: 1                               │
-│ ├─ Active Leads: 1                              │
-│ └─ Won/Closed: 0                                │
-└─────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────┐
+│ Pipeline (5)                                       │
+│                                                    │
+│ [Leads: 3] [Active Jobs: 1] [Closed: 1]            │
+│                                                    │
+│ ┌─────────────────────────────────────┐            │
+│ │ 🔵 Lead  | Smith - Roofing Lead     │            │
+│ │ Status: Contingency Signed          │            │
+│ └─────────────────────────────────────┘            │
+│ ┌─────────────────────────────────────┐            │
+│ │ 🟢 Job   | Jones - Tile Project     │            │
+│ │ Status: Active Project              │            │
+│ └─────────────────────────────────────┘            │
+└────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -106,14 +165,15 @@ Since the tab now focuses on pipeline entries, the query to the `jobs` table (li
 
 | File | Changes |
 |------|---------|
-| `src/pages/ContactProfile.tsx` | Rename "Jobs" tab label to "Pipeline", update icon |
-| `src/components/contact-profile/ContactJobsTab.tsx` | Rename all "Jobs" terminology to "Leads/Pipeline" |
+| `src/components/contact-profile/ContactJobsTab.tsx` | Update statistics labels, add Lead/Job distinction logic, update section header |
+| `src/pages/ContactProfile.tsx` | No changes needed - "Pipeline" is the correct generic term |
 
 ---
 
 ## Technical Notes
 
-- Keep `value="jobs"` in TabsTrigger to avoid breaking URL state or any navigation that uses this value
-- The actual jobs from `jobs` table are rarely used in this view - pipeline entries are the primary data
-- This aligns with user workflow: Contacts → Leads (Pipeline) → Projects (after approval)
-- "Pipeline Leads" is clearer than "Jobs" because it indicates these are sales-stage items, not production items
+- The `originalStatus` field on `UnifiedJobItem` stores the raw pipeline status (e.g., 'lead', 'project')
+- Pre-approval statuses: `lead`, `contingency_signed`, `legal_review`, `ready_for_approval`
+- Post-approval statuses: `project`, `completed`, `closed`
+- Terminal statuses: `lost`, `canceled`, `duplicate`
+- This matches the `LEAD_STAGES` constant in `usePipelineData.ts`
