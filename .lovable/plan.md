@@ -1,94 +1,119 @@
 
-# Fix: Pipeline Drag Handler - Missing Columns Error
+# Rename "Jobs" Tab to "Pipeline Leads" on Contact Profile
 
-## Problem Identified
+## Problem Summary
 
-When dragging a pipeline entry to the "Project" status, the `pipeline-drag-handler` edge function throws an error:
+The Contact Profile page currently shows a "Jobs" tab that displays pipeline entries (leads), which is confusing because:
+- **Leads** belong in the **Pipeline** (sales workflow)
+- **Jobs** are for **Production** (work execution after approval)
+- The current label "Jobs & Leads" conflates two different workflow stages
 
-```
-Could not find the 'approved_at' column of 'projects' in the schema cache
-```
-
-**Root Cause:** Lines 266-267 in `pipeline-drag-handler/index.ts` try to insert `approved_by` and `approved_at` columns that don't exist in the `projects` table.
-
-```typescript
-// These columns don't exist in the projects table:
-approved_by: user.id,     // Line 266
-approved_at: new Date().toISOString()  // Line 267
-```
-
-## Projects Table Schema (Actual)
-
-| Column | Exists |
-|--------|--------|
-| `id`, `tenant_id`, `pipeline_entry_id` | ✅ |
-| `name`, `status`, `project_type` | ✅ |
-| `selling_price`, `gross_profit` | ❌ (Not in schema) |
-| `created_by`, `location_id`, `contact_id` | ✅ `contact_id` missing! |
-| `approved_by`, `approved_at` | ❌ **Missing** |
+The user clarified the correct workflow:
+- Contacts stay in Contacts
+- Once a lead is created → it goes into the Pipeline
+- Jobs = Production items (post-approval work)
 
 ## Solution
 
-Remove the non-existent columns from the insert statement in `pipeline-drag-handler/index.ts`:
+Rename the "Jobs" tab and related terminology to "Pipeline Leads" or just "Leads" to accurately reflect what's being displayed.
 
-**File:** `supabase/functions/pipeline-drag-handler/index.ts` (lines 253-270)
+---
 
-**Changes:**
-1. Remove `approved_by` and `approved_at` from the insert
-2. Remove `selling_price`, `gross_profit` (also not in schema)
-3. Remove `contact_id` (not in projects schema - address inherited via pipeline_entry)
-4. Store approval info in `metadata` JSONB field instead
+## Changes Required
 
-**Current (broken):**
+### 1. ContactProfile.tsx (Tab Label)
+
+**File:** `src/pages/ContactProfile.tsx`
+
+**Lines 305-307:**
 ```typescript
-.insert({
-  tenant_id: profile.tenant_id,
-  pipeline_entry_id: pipelineEntryId,
-  contact_id: fullEntry.contact_id,    // ❌ Column doesn't exist
-  location_id: fullEntry.location_id,
-  name: projectName,
-  status: 'active',
-  project_type: fullEntry.lead_type || 'roofing',
-  selling_price: fullEntry.selling_price,  // ❌ Column doesn't exist
-  gross_profit: fullEntry.gross_profit,    // ❌ Column doesn't exist
-  created_by: user.id,
-  approved_by: user.id,                     // ❌ Column doesn't exist
-  approved_at: new Date().toISOString()     // ❌ Column doesn't exist
-})
+// Current:
+<TabsTrigger value="jobs" className="flex items-center gap-2">
+  <Briefcase className="h-4 w-4" />
+  Jobs ({jobs.length + pipelineEntries.length})
+</TabsTrigger>
+
+// Change to:
+<TabsTrigger value="jobs" className="flex items-center gap-2">
+  <Activity className="h-4 w-4" />  
+  Pipeline ({pipelineEntries.length})
+</TabsTrigger>
 ```
 
-**Fixed:**
-```typescript
-.insert({
-  tenant_id: profile.tenant_id,
-  pipeline_entry_id: pipelineEntryId,
-  location_id: fullEntry.location_id,
-  name: projectName,
-  status: 'active',
-  created_by: user.id,
-  metadata: {
-    approved_by: user.id,
-    approved_by_name: `${profile.first_name} ${profile.last_name}`,
-    approved_at: new Date().toISOString(),
-    project_type: fullEntry.lead_type || 'roofing',
-    source: 'pipeline_drag'
-  }
-})
+Note: Keep `value="jobs"` to avoid breaking existing navigation, just change the display label.
+
+### 2. ContactJobsTab.tsx (Card Headers & Labels)
+
+**File:** `src/components/contact-profile/ContactJobsTab.tsx`
+
+| Line | Current | Change To |
+|------|---------|-----------|
+| 366 | `Total Jobs` | `Total Leads` |
+| 378 | `Active Jobs` | `Active Leads` |
+| 390 | `Completed` | `Won/Closed` |
+| 403 | `Jobs & Leads ({totalJobs})` | `Pipeline Leads ({totalJobs})` |
+| 653 | `No jobs or leads yet` | `No pipeline leads yet` |
+| 655 | `Create the first lead for this contact...` | Keep as-is |
+
+### 3. Update Statistics Calculation
+
+**File:** `src/components/contact-profile/ContactJobsTab.tsx`
+
+Since the focus is now on pipeline entries (not jobs table):
+- `totalJobs` → `totalLeads` (variable rename for clarity)
+- `activeJobs` → `activeLeads` 
+- `completedJobs` → `wonLeads`
+
+### 4. Remove Jobs Table Query (Optional Cleanup)
+
+Since the tab now focuses on pipeline entries, the query to the `jobs` table (lines 112-122) may be unnecessary. However, keeping it allows showing both if needed later.
+
+---
+
+## Visual Summary
+
+### Before:
+```
+┌─────────┬─────────┬───────────────┬───────────┐
+│ Details │ Jobs(1) │ Communication │ Documents │
+└─────────┴─────────┴───────────────┴───────────┘
+     ↓
+┌─────────────────────────────────────────────────┐
+│ Jobs & Leads (1)                                │
+│ ├─ Total Jobs: 1                                │
+│ ├─ Active Jobs: 1                               │
+│ └─ Completed: 0                                 │
+└─────────────────────────────────────────────────┘
+```
+
+### After:
+```
+┌─────────┬────────────┬───────────────┬───────────┐
+│ Details │ Pipeline(1)│ Communication │ Documents │
+└─────────┴────────────┴───────────────┴───────────┘
+     ↓
+┌─────────────────────────────────────────────────┐
+│ Pipeline Leads (1)                              │
+│ ├─ Total Leads: 1                               │
+│ ├─ Active Leads: 1                              │
+│ └─ Won/Closed: 0                                │
+└─────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `supabase/functions/pipeline-drag-handler/index.ts` | Remove non-existent columns, use metadata JSONB |
+| File | Changes |
+|------|---------|
+| `src/pages/ContactProfile.tsx` | Rename "Jobs" tab label to "Pipeline", update icon |
+| `src/components/contact-profile/ContactJobsTab.tsx` | Rename all "Jobs" terminology to "Leads/Pipeline" |
 
 ---
 
-## Testing After Fix
+## Technical Notes
 
-1. Navigate to `/pipeline`
-2. Drag a card from "Ready for Approval" to "Project"
-3. Verify the project is created successfully
-4. Check that no error toast appears
+- Keep `value="jobs"` in TabsTrigger to avoid breaking URL state or any navigation that uses this value
+- The actual jobs from `jobs` table are rarely used in this view - pipeline entries are the primary data
+- This aligns with user workflow: Contacts → Leads (Pipeline) → Projects (after approval)
+- "Pipeline Leads" is clearer than "Jobs" because it indicates these are sales-stage items, not production items
