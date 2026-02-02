@@ -1,221 +1,111 @@
 
-# Fix: Scope Intelligence Not Showing Data
+# Fix Back Button Not Working on Lead Details Page
 
-## Problem Summary
+## Problem
 
-The Scope Intelligence page shows 0 documents because insurance scopes are being uploaded to the wrong table:
+The "Back" button on the Lead Details page (`/lead/:id`) does not navigate anywhere when clicked. The user remains on the same page.
 
-| Current State | What Scope Intelligence Expects |
-|--------------|--------------------------------|
-| Documents uploaded to `documents` table with `document_type = 'insurance'` | Documents processed into `insurance_scope_documents` table via `scope-document-ingest` edge function |
-| Tristate has 2 insurance documents in `documents` | `insurance_scope_documents` table is EMPTY |
-| O'Brien has 0 insurance documents uploaded | No scopes to process |
+**Root Cause:** The `useBrowserBackButton` hook relies on `document.referrer` to check if the user came from within the app. However, `document.referrer` is NOT updated during client-side SPA navigation - it only reflects the original referrer when the browser tab was opened. This means:
 
-**Root Cause:** Two disconnected upload flows exist - the generic document upload and the specialized Scope Intelligence ingestion pipeline. Documents uploaded through Insurance Claims Manager never get processed into the Scope Intelligence system.
+- When user clicks a lead from Pipeline → `document.referrer` is NOT updated
+- The check `document.referrer.includes(window.location.host)` returns `false`
+- The hook falls back to `navigate(fallbackPath)` but that also seems to fail silently
 
 ---
 
-## Solution: Bridge Existing Documents + Unify Future Uploads
+## Solution
 
-### Part 1: Backfill Existing Documents
+Simplify the `goBack` logic to use a more reliable approach:
 
-Create an edge function to process existing insurance documents from the `documents` table into `insurance_scope_documents`.
+| Priority | Check | Action |
+|----------|-------|--------|
+| 1 | `location.state?.from` exists | Navigate to that path |
+| 2 | Has browser history (`history.length > 1`) | Use `navigate(-1)` |
+| 3 | Fallback | Navigate to `fallbackPath` |
 
-**New Edge Function:** `scope-backfill-documents`
+The key change: **Trust the browser's history stack** instead of checking `document.referrer`. If `window.history.length > 1`, we know there's a history entry to go back to.
 
-```text
-supabase/functions/scope-backfill-documents/index.ts
+---
+
+## File to Modify
+
+**`src/hooks/useBrowserBackButton.tsx`**
+
+---
+
+## Code Changes
+
+### Before (Broken Logic)
+```typescript
+const goBack = useCallback(() => {
+  if (location.state?.from) {
+    navigate(location.state.from);
+    return;
+  }
+  
+  // ❌ This check is unreliable in SPAs
+  const isInternalReferrer = document.referrer && 
+    document.referrer.includes(window.location.host);
+  
+  if (isInternalReferrer) {
+    navigate(-1);
+  } else {
+    navigate(fallbackPath);
+  }
+}, [navigate, fallbackPath, location.state]);
 ```
 
-**Logic:**
-1. Query `documents` table for records with `document_type = 'insurance'`
-2. For each document, call the `scope-document-ingest` function (or replicate its logic)
-3. Mark processed documents to avoid re-processing
-4. Return summary of processed documents
-
----
-
-### Part 2: Auto-Ingest Future Uploads
-
-Modify the document upload flow to automatically trigger scope ingestion when `document_type = 'insurance'`.
-
-**Option A: Database Trigger (Preferred)**
-
-Create a Postgres trigger that fires when a document with `document_type = 'insurance'` is inserted, calling an edge function via `pg_net`:
-
-```sql
-CREATE OR REPLACE FUNCTION trigger_scope_ingestion()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.document_type = 'insurance' THEN
-    PERFORM net.http_post(
-      url := 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/scope-document-ingest',
-      body := json_build_object(
-        'storage_path', NEW.file_path,
-        'document_type', 'estimate',
-        'file_name', NEW.filename
-      )::text
-    );
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER auto_ingest_insurance_docs
-AFTER INSERT ON documents
-FOR EACH ROW EXECUTE FUNCTION trigger_scope_ingestion();
-```
-
-**Option B: Frontend Hook**
-
-Update the document upload component to call `scope-document-ingest` after uploading insurance documents.
-
----
-
-### Part 3: Admin Backfill Button
-
-Add a temporary admin UI button in Scope Intelligence to trigger the backfill for existing documents:
-
-**Location:** `src/components/insurance/ScopeIntelligenceDashboard.tsx`
-
-```tsx
-// Add a "Process Existing Documents" button for admins
-{isAdmin && unprocessedCount > 0 && (
-  <Button onClick={handleBackfill}>
-    Process {unprocessedCount} Existing Insurance Documents
-  </Button>
-)}
+### After (Fixed Logic)
+```typescript
+const goBack = useCallback(() => {
+  // Priority 1: Use explicit navigation state if provided
+  if (location.state?.from) {
+    navigate(location.state.from);
+    return;
+  }
+  
+  // Priority 2: Use browser history if available
+  // history.length > 2 accounts for the initial page + at least one navigation
+  // (browsers often start with length 1 or 2 depending on how page was loaded)
+  if (window.history.length > 2) {
+    navigate(-1);
+    return;
+  }
+  
+  // Priority 3: No history - use fallback path
+  navigate(fallbackPath);
+}, [navigate, fallbackPath, location.state]);
 ```
 
 ---
 
-## Files to Create/Modify
+## Why This Fix Works
 
-| File | Action | Description |
-|------|--------|-------------|
-| `supabase/functions/scope-backfill-documents/index.ts` | CREATE | Edge function to backfill existing insurance docs |
-| `supabase/migrations/xxx_auto_ingest_trigger.sql` | CREATE | Trigger to auto-process new insurance uploads |
-| `src/components/insurance/ScopeIntelligenceDashboard.tsx` | MODIFY | Add backfill button for admins |
-| `supabase/config.toml` | MODIFY | Register new edge function |
-
----
-
-## Implementation Flow
-
-```text
-[Existing Documents]          [New Uploads]
-        │                           │
-        ▼                           ▼
-┌─────────────────┐     ┌─────────────────────┐
-│ scope-backfill- │     │ documents table     │
-│ documents       │     │ INSERT              │
-│ (manual trigger)│     └─────────┬───────────┘
-└────────┬────────┘               │
-         │                        ▼
-         │              ┌─────────────────────┐
-         │              │ Postgres Trigger    │
-         │              │ (document_type =    │
-         │              │  'insurance')       │
-         │              └─────────┬───────────┘
-         │                        │
-         ▼                        ▼
-┌─────────────────────────────────────────────┐
-│         scope-document-ingest               │
-│  - Downloads PDF from storage               │
-│  - AI extracts line items                   │
-│  - Creates insurance_scope_documents record │
-│  - Creates header + line items              │
-└─────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────┐
-│      insurance_scope_documents              │
-│      insurance_scope_headers                │
-│      insurance_scope_line_items             │
-└─────────────────────────────────────────────┘
-                     │
-                     ▼
-┌─────────────────────────────────────────────┐
-│      Scope Intelligence Dashboard           │
-│      (Now shows data!)                      │
-└─────────────────────────────────────────────┘
-```
+| Scenario | Old Behavior | New Behavior |
+|----------|-------------|--------------|
+| User clicks lead from Pipeline | `document.referrer` empty → fallback fails | `history.length > 2` → `navigate(-1)` ✅ |
+| User directly opens lead URL | `document.referrer` empty → fallback | `history.length ≤ 2` → `/pipeline` fallback ✅ |
+| User comes from Pipeline with state | `location.state.from` → `/pipeline` ✅ | Same ✅ |
+| User refreshes the page | `document.referrer` points to old page | `history.length` may be reset → fallback ✅ |
 
 ---
 
-## Edge Function: scope-backfill-documents
+## Additional Improvement
+
+Also add `replace: true` when navigating to fallback to prevent creating a back-loop:
 
 ```typescript
-// Key logic
-async function backfillDocuments(tenantId?: string) {
-  const supabase = supabaseService();
-  
-  // Find unprocessed insurance documents
-  let query = supabase
-    .from('documents')
-    .select('id, file_path, filename, tenant_id')
-    .eq('document_type', 'insurance');
-  
-  if (tenantId) {
-    query = query.eq('tenant_id', tenantId);
-  }
-  
-  const { data: documents } = await query;
-  
-  const results = [];
-  for (const doc of documents || []) {
-    // Check if already processed
-    const { data: existing } = await supabase
-      .from('insurance_scope_documents')
-      .select('id')
-      .eq('storage_path', doc.file_path)
-      .single();
-    
-    if (existing) continue; // Skip already processed
-    
-    // Process via scope-document-ingest logic
-    // ... (call ingestion pipeline)
-    
-    results.push({ id: doc.id, status: 'processed' });
-  }
-  
-  return results;
-}
+navigate(fallbackPath, { replace: true });
 ```
 
----
-
-## Database: Link Source Document
-
-Add a column to track the source document:
-
-```sql
-ALTER TABLE insurance_scope_documents
-ADD COLUMN IF NOT EXISTS source_document_id UUID REFERENCES documents(id);
-```
-
-This creates a link between the generic `documents` record and the processed `insurance_scope_documents` record.
+This ensures if user lands directly on the page and clicks back, they go to Pipeline without being able to return to the lead page via browser back button.
 
 ---
 
-## Security Notes
+## Testing Scenarios
 
-- Backfill function uses service role to access cross-tenant documents when called by admin
-- Regular users can only backfill their own tenant's documents
-- The auto-trigger respects existing RLS on the `documents` table
-
----
-
-## Expected Results After Implementation
-
-**Tristate Contracting:**
-- 2 existing insurance documents will be processed
-- Scope Intelligence will show 2 documents
-
-**O'Brien Contracting:**
-- Currently has 0 insurance documents
-- Will need to upload insurance scopes to see data
-
-**Network Intelligence:**
-- Will show aggregated data from all processed scopes across tenants
-- Anonymized (tenant hashed, PII redacted)
+After the fix, verify:
+1. ✅ Navigate to lead from Pipeline → Back button returns to Pipeline
+2. ✅ Navigate to lead from Contact Profile → Back button returns to Contact Profile  
+3. ✅ Open lead URL directly (no history) → Back button goes to `/pipeline`
+4. ✅ Browser back button still works normally
