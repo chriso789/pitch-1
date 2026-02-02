@@ -88,7 +88,7 @@ serve(async (req: Request) => {
     // Find insurance documents that haven't been processed
     let query = supabase
       .from('documents')
-      .select('id, file_path, filename, tenant_id, created_at, created_by')
+      .select('id, file_path, filename, tenant_id, created_at')
       .eq('document_type', 'insurance')
       .order('created_at', { ascending: false })
       .limit(limit);
