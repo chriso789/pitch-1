@@ -32,11 +32,46 @@ const JOB_TYPES = [
   { value: 'handyman', label: 'Handyman' },
 ];
 
+interface QBOConnection {
+  id: string;
+  tenant_id: string;
+  is_active: boolean;
+}
+
 export function JobTypeQBOMapping() {
   const queryClient = useQueryClient();
   const [selectedMappings, setSelectedMappings] = useState<Record<string, string>>({});
 
-  // Fetch QBO Service Items
+  // Check if QBO is connected first
+  const { data: qboConnection, isLoading: loadingConnection } = useQuery({
+    queryKey: ['qbo-connection-check'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) return null;
+
+      const { data } = await (supabase as any)
+        .from('qbo_connections')
+        .select('id, tenant_id, is_active')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      return data as QBOConnection | null;
+    },
+  });
+
+  const isQBOConnected = !!qboConnection;
+
+  // Fetch QBO Service Items - only when connected
   const { data: qboItems, isLoading: loadingItems, refetch: refetchItems } = useQuery({
     queryKey: ['qbo-items'],
     queryFn: async () => {
@@ -45,6 +80,7 @@ export function JobTypeQBOMapping() {
       return data.items as QBOItem[];
     },
     retry: 1,
+    enabled: isQBOConnected, // Only fetch when QBO is connected
   });
 
   // Fetch existing mappings
@@ -146,7 +182,21 @@ export function JobTypeQBOMapping() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        {loadingMappings || loadingItems ? (
+        {loadingConnection ? (
+          <div className="text-center py-8 text-muted-foreground">
+            Checking QuickBooks connection...
+          </div>
+        ) : !isQBOConnected ? (
+          <div className="text-center py-8">
+            <AlertCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+            <p className="text-muted-foreground mb-4">
+              Connect to QuickBooks first to configure job type mappings.
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Go to Settings → QuickBooks Integration to connect your account.
+            </p>
+          </div>
+        ) : loadingMappings || loadingItems ? (
           <div className="text-center py-8 text-muted-foreground">
             Loading mappings...
           </div>
