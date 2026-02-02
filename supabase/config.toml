@@ -757,3 +757,9 @@ verify_jwt = true
 
 [functions.scope-evidence-search]
 verify_jwt = true
+
+[functions.scope-network-stats]
+verify_jwt = false
+
+[functions.scope-network-list]
+verify_jwt = false
