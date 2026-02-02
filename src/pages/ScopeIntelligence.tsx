@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { 
   FileText, 
   Upload, 
@@ -18,9 +19,13 @@ import {
   RefreshCw,
   ExternalLink,
   BarChart3,
-  Package
+  Package,
+  Shield,
+  Globe,
+  Building2
 } from 'lucide-react';
 import { useScopeDocuments } from '@/hooks/useScopeIntelligence';
+import { useNetworkIntelligenceStats } from '@/hooks/useNetworkIntelligence';
 import { ScopeUploader } from '@/components/insurance/ScopeUploader';
 import { ScopeViewer } from '@/components/insurance/ScopeViewer';
 import { ScopeIntelligenceDashboard } from '@/components/insurance/ScopeIntelligenceDashboard';
@@ -31,15 +36,29 @@ import { format } from 'date-fns';
 const ScopeIntelligence: React.FC = () => {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [viewMode, setViewMode] = useState<'my-scopes' | 'network'>('my-scopes');
   
   const { data: documents, isLoading, refetch } = useScopeDocuments();
+  const { data: networkStats, isLoading: networkLoading } = useNetworkIntelligenceStats();
 
-  const stats = {
+  // Stats for current tenant (My Scopes)
+  const myStats = {
     totalDocuments: documents?.length || 0,
     parsedDocuments: documents?.filter(d => d.parse_status === 'complete').length || 0,
     pendingReview: documents?.filter(d => d.parse_status === 'needs_review').length || 0,
     carriers: new Set(documents?.map(d => d.carrier_normalized).filter(Boolean)).size,
   };
+
+  // Stats for network view (all tenants, anonymized)
+  const netStats = {
+    totalDocuments: networkStats?.total_documents || 0,
+    parsedDocuments: networkStats?.total_documents || 0,
+    contributors: networkStats?.total_contributors || 0,
+    carriers: networkStats?.carrier_distribution?.length || 0,
+  };
+
+  // Display stats based on view mode
+  const stats = viewMode === 'my-scopes' ? myStats : netStats;
 
   if (selectedDocumentId) {
     return (
@@ -64,11 +83,47 @@ const ScopeIntelligence: React.FC = () => {
               Transform insurance scopes into searchable evidence
             </p>
           </div>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* View Mode Toggle */}
+            <div className="flex items-center bg-muted rounded-lg p-1">
+              <Button
+                variant={viewMode === 'my-scopes' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('my-scopes')}
+                className="gap-2"
+              >
+                <Building2 className="h-4 w-4" />
+                My Scopes
+              </Button>
+              <Button
+                variant={viewMode === 'network' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('network')}
+                className="gap-2"
+              >
+                <Globe className="h-4 w-4" />
+                Network
+                <Badge variant="outline" className="ml-1 text-xs">Beta</Badge>
+              </Button>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Refresh
+            </Button>
+          </div>
         </div>
+
+        {/* Network Mode Notice */}
+        {viewMode === 'network' && (
+          <Alert className="border-primary/20 bg-primary/5">
+            <Shield className="h-4 w-4" />
+            <AlertDescription>
+              <strong>Network Intelligence:</strong> Showing anonymized data from{' '}
+              <span className="font-semibold">{netStats.contributors}</span> companies.
+              Client names, addresses, and claim numbers are redacted for privacy.
+            </AlertDescription>
+          </Alert>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -80,7 +135,9 @@ const ScopeIntelligence: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-2xl font-bold">{stats.totalDocuments}</p>
-                  <p className="text-xs text-muted-foreground">Total Documents</p>
+                  <p className="text-xs text-muted-foreground">
+                    {viewMode === 'network' ? 'Network Documents' : 'Total Documents'}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -102,11 +159,19 @@ const ScopeIntelligence: React.FC = () => {
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-muted rounded-lg">
-                  <Search className="h-5 w-5 text-muted-foreground" />
+                  {viewMode === 'network' ? (
+                    <Building2 className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <Search className="h-5 w-5 text-muted-foreground" />
+                  )}
                 </div>
                 <div>
-                  <p className="text-2xl font-bold">{stats.pendingReview}</p>
-                  <p className="text-xs text-muted-foreground">Needs Review</p>
+                  <p className="text-2xl font-bold">
+                    {viewMode === 'network' ? netStats.contributors : myStats.pendingReview}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {viewMode === 'network' ? 'Contributors' : 'Needs Review'}
+                  </p>
                 </div>
               </div>
             </CardContent>
@@ -148,7 +213,7 @@ const ScopeIntelligence: React.FC = () => {
           </TabsList>
 
           <TabsContent value="dashboard" className="mt-4">
-            <ScopeIntelligenceDashboard />
+            <ScopeIntelligenceDashboard viewMode={viewMode} networkStats={networkStats} />
           </TabsContent>
 
           <TabsContent value="documents" className="mt-4">

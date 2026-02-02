@@ -14823,6 +14823,13 @@ export type Database = {
             referencedRelation: "insurance_scope_documents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "insurance_scope_document_pages_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_intelligence"
+            referencedColumns: ["document_id"]
+          },
         ]
       }
       insurance_scope_documents: {
@@ -15032,6 +15039,13 @@ export type Database = {
             referencedRelation: "insurance_scope_documents"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "insurance_scope_headers_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_intelligence"
+            referencedColumns: ["document_id"]
+          },
         ]
       }
       insurance_scope_line_item_evidence: {
@@ -15090,6 +15104,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "insurance_scope_documents"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_line_item_evidence_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_intelligence"
+            referencedColumns: ["document_id"]
           },
           {
             foreignKeyName: "insurance_scope_line_item_evidence_line_item_id_fkey"
@@ -15199,6 +15220,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "insurance_scope_documents"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_line_items_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_intelligence"
+            referencedColumns: ["document_id"]
           },
           {
             foreignKeyName: "insurance_scope_line_items_header_id_fkey"
@@ -36900,6 +36928,35 @@ export type Database = {
         }
         Relationships: []
       }
+      scope_network_intelligence: {
+        Row: {
+          carrier_normalized: string | null
+          contributor_hash: string | null
+          created_at: string | null
+          deductible: number | null
+          document_id: string | null
+          document_type: string | null
+          format_family: string | null
+          line_item_count: number | null
+          loss_month: number | null
+          loss_year: number | null
+          non_recoverable_depreciation: number | null
+          overhead_amount: number | null
+          parse_status: string | null
+          price_list_name: string | null
+          price_list_region: string | null
+          profit_amount: number | null
+          recoverable_depreciation: number | null
+          state_code: string | null
+          tax_amount: number | null
+          total_acv: number | null
+          total_depreciation: number | null
+          total_net_claim: number | null
+          total_rcv: number | null
+          zip_prefix: string | null
+        }
+        Relationships: []
+      }
       user_activity_summary: {
         Row: {
           avatar_url: string | null
@@ -38010,6 +38067,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      get_scope_network_stats: { Args: never; Returns: Json }
       get_tenant_sms_number: { Args: { p_tenant_id: string }; Returns: string }
       get_tenant_voice_number: {
         Args: { p_tenant_id: string }
