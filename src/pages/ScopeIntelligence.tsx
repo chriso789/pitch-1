@@ -22,10 +22,13 @@ import {
   Package,
   Shield,
   Globe,
-  Building2
+  Building2,
+  PlayCircle,
+  Loader2
 } from 'lucide-react';
 import { useScopeDocuments } from '@/hooks/useScopeIntelligence';
 import { useNetworkIntelligenceStats } from '@/hooks/useNetworkIntelligence';
+import { useBackfillScopes, useUnprocessedDocumentCount } from '@/hooks/useBackfillScopes';
 import { ScopeUploader } from '@/components/insurance/ScopeUploader';
 import { ScopeViewer } from '@/components/insurance/ScopeViewer';
 import { ScopeIntelligenceDashboard } from '@/components/insurance/ScopeIntelligenceDashboard';
@@ -40,6 +43,8 @@ const ScopeIntelligence: React.FC = () => {
   
   const { data: documents, isLoading, refetch } = useScopeDocuments();
   const { data: networkStats, isLoading: networkLoading } = useNetworkIntelligenceStats();
+  const { data: unprocessedCount } = useUnprocessedDocumentCount();
+  const { backfill, isProcessing } = useBackfillScopes();
 
   // Stats for current tenant (My Scopes)
   const myStats = {
@@ -59,6 +64,11 @@ const ScopeIntelligence: React.FC = () => {
 
   // Display stats based on view mode
   const stats = viewMode === 'my-scopes' ? myStats : netStats;
+
+  const handleBackfill = () => {
+    backfill({ limit: 50 });
+  };
+
 
   if (selectedDocumentId) {
     return (
@@ -110,6 +120,22 @@ const ScopeIntelligence: React.FC = () => {
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
             </Button>
+            {/* Backfill button for unprocessed documents */}
+            {unprocessedCount && unprocessedCount > 0 && (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={handleBackfill}
+                disabled={isProcessing}
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                )}
+                Process {unprocessedCount} Insurance Docs
+              </Button>
+            )}
           </div>
         </div>
 

@@ -14856,6 +14856,7 @@ export type Database = {
           parser_version: string | null
           raw_json_output: Json | null
           raw_text_content: string | null
+          source_document_id: string | null
           storage_path: string
           tenant_id: string
           updated_at: string | null
@@ -14883,6 +14884,7 @@ export type Database = {
           parser_version?: string | null
           raw_json_output?: Json | null
           raw_text_content?: string | null
+          source_document_id?: string | null
           storage_path: string
           tenant_id: string
           updated_at?: string | null
@@ -14910,6 +14912,7 @@ export type Database = {
           parser_version?: string | null
           raw_json_output?: Json | null
           raw_text_content?: string | null
+          source_document_id?: string | null
           storage_path?: string
           tenant_id?: string
           updated_at?: string | null
@@ -14941,6 +14944,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_documents_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
             referencedColumns: ["id"]
           },
           {

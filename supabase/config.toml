@@ -763,3 +763,6 @@ verify_jwt = false
 
 [functions.scope-network-list]
 verify_jwt = false
+
+[functions.scope-backfill-documents]
+verify_jwt = true
