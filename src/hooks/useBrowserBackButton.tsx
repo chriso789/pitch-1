@@ -39,22 +39,22 @@ export const useBrowserBackButton = ({
 
   // Custom back function that respects history
   const goBack = useCallback(() => {
-    // Check if we have explicit state about where we came from
+    // Priority 1: Use explicit navigation state if provided
     if (location.state?.from) {
       navigate(location.state.from);
       return;
     }
     
-    // Check if we came from within the app using document.referrer
-    const isInternalReferrer = document.referrer && 
-      document.referrer.includes(window.location.host);
-    
-    if (isInternalReferrer) {
+    // Priority 2: Use browser history if available
+    // history.length > 2 accounts for the initial page + at least one navigation
+    // (browsers often start with length 1 or 2 depending on how page was loaded)
+    if (window.history.length > 2) {
       navigate(-1);
-    } else {
-      // No internal history - use fallback path
-      navigate(fallbackPath);
+      return;
     }
+    
+    // Priority 3: No history - use fallback path with replace to prevent back-loop
+    navigate(fallbackPath, { replace: true });
   }, [navigate, fallbackPath, location.state]);
 
   return {
