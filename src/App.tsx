@@ -122,6 +122,7 @@ import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGaller
 import PublicPortalView from "./pages/PublicPortalView";
 import SchedulingDashboard from "./pages/SchedulingDashboard";
 import InsuranceClaimsDashboard from "./pages/InsuranceClaimsDashboard";
+import ScopeIntelligence from "./pages/ScopeIntelligence";
 import DispatchDashboard from "./pages/DispatchDashboard";
 import StormCanvassConfig from "./pages/StormCanvassConfig";
 import StormCanvassPhotos from "./pages/StormCanvassPhotos";
@@ -322,6 +323,7 @@ const AppContent = () => {
         <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
         <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
         <Route path="/insurance" element={<ProtectedRoute><InsuranceClaimsDashboard /></ProtectedRoute>} />
+        <Route path="/scope-intelligence" element={<ProtectedRoute><ScopeIntelligence /></ProtectedRoute>} />
         <Route path="/dispatch" element={<ProtectedRoute><DispatchDashboard /></ProtectedRoute>} />
         <Route path="/storm-canvass/config" element={<ProtectedRoute><StormCanvassConfig /></ProtectedRoute>} />
         <Route path="/storm-canvass/photos" element={<ProtectedRoute><StormCanvassPhotos /></ProtectedRoute>} />
