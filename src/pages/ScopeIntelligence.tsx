@@ -32,6 +32,7 @@ import { useBackfillScopes, useUnprocessedDocumentCount } from '@/hooks/useBackf
 import { ScopeUploader } from '@/components/insurance/ScopeUploader';
 import { ScopeViewer } from '@/components/insurance/ScopeViewer';
 import { ScopeIntelligenceDashboard } from '@/components/insurance/ScopeIntelligenceDashboard';
+import { ScopeBulkUploader } from '@/components/insurance/ScopeBulkUploader';
 import { ScopeDocumentBrowser } from '@/components/insurance/ScopeDocumentBrowser';
 import { DisputeEvidenceBuilder } from '@/components/insurance/DisputeEvidenceBuilder';
 import { format } from 'date-fns';
@@ -40,6 +41,7 @@ const ScopeIntelligence: React.FC = () => {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [viewMode, setViewMode] = useState<'my-scopes' | 'network'>('my-scopes');
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
   
   const { data: documents, isLoading, refetch } = useScopeDocuments();
   const { data: networkStats, isLoading: networkLoading } = useNetworkIntelligenceStats();
@@ -116,6 +118,10 @@ const ScopeIntelligence: React.FC = () => {
                 <Badge variant="outline" className="ml-1 text-xs">Beta</Badge>
               </Button>
             </div>
+            <Button variant="outline" size="sm" onClick={() => setShowBulkUpload(true)}>
+              <Upload className="h-4 w-4 mr-2" />
+              Bulk Upload
+            </Button>
             <Button variant="outline" size="sm" onClick={() => refetch()}>
               <RefreshCw className="h-4 w-4 mr-2" />
               Refresh
@@ -274,6 +280,16 @@ const ScopeIntelligence: React.FC = () => {
             </div>
           </TabsContent>
         </Tabs>
+
+        {/* Bulk Upload Modal */}
+        <ScopeBulkUploader
+          open={showBulkUpload}
+          onOpenChange={setShowBulkUpload}
+          onUploadComplete={() => {
+            refetch();
+            setShowBulkUpload(false);
+          }}
+        />
       </div>
     </GlobalLayout>
   );
