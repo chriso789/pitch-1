@@ -1,211 +1,133 @@
 
+# Fix Bulk Upload Overflow and Remove "All Locations" Option
 
-# Bulk Upload for Scope Intelligence
+## Issues Found
 
-## Overview
+### Issue 1: Bulk Upload File List Overflow
+The screenshot shows that with 23 files selected, the file list breaks out of the dialog boundaries. The content is not properly contained within the modal window.
 
-Add a dedicated bulk upload feature to Scope Intelligence that allows users to upload as many insurance scope PDFs as they want in a single batch, with all documents processed through the AI extraction pipeline.
+**Root Cause:** The dialog content needs explicit overflow constraints. While there's a `ScrollArea` with `h-48`, the overall dialog structure needs `overflow-hidden` on the content wrapper to prevent breaking out of the modal.
+
+### Issue 2: "All Locations" Still Present
+Per the project's architecture decision (memory: `architecture/location-context-enforcement`), the "All Locations" option should have been removed to enforce strict location-based data isolation. However, it's still present in both location switcher components.
+
+**Files with "All Locations" option:**
+1. `src/components/layout/QuickLocationSwitcher.tsx` (lines 94-104) - Used in sidebar
+2. `src/shared/components/LocationSwitcher.tsx` (lines 96-108) - Used elsewhere
 
 ---
 
-## Implementation
+## Solution
 
-### 1. New Component: ScopeBulkUploader
+### Fix 1: Constrain Bulk Upload Dialog Content
 
 **File:** `src/components/insurance/ScopeBulkUploader.tsx`
 
-A modal dialog for bulk uploading insurance scopes, based on the existing `BulkDocumentUpload` pattern.
-
-**Features:**
-- Drag-and-drop zone for multiple PDFs
-- Document type selector (applies to all files in batch)
-- Scrollable file list with status indicators
-- Batch processing (5 files at a time for performance)
-- Overall progress bar
-- Individual file status (pending → uploading → processing → success/error)
-- Cancel/retry capabilities
-
-**UI Layout:**
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  Bulk Upload Insurance Scopes                          [X] │
-├─────────────────────────────────────────────────────────────┤
-│  Document Type: [Estimate ▼]                                │
-│                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │                                                     │   │
-│  │      📄  Drag & drop insurance scope PDFs           │   │
-│  │          or click to select files                   │   │
-│  │                                                     │   │
-│  │         [Select Files]                              │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│  Files to upload (12):                                      │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ ✓ StateFarm_Estimate_001.pdf          2.4 MB        │   │
-│  │ ⟳ Allstate_Supplement.pdf             1.8 MB        │   │
-│  │ ○ Farmers_Final.pdf                   3.2 MB    [X] │   │
-│  │ ○ USAA_Reinspection.pdf               1.1 MB    [X] │   │
-│  │ ...                                                 │   │
-│  └─────────────────────────────────────────────────────┘   │
-│                                                             │
-│  ────────────────────────────────── 45% ──────────────      │
-│  Uploading 5 of 12 files...                                 │
-│                                                             │
-│                         [Cancel]  [Upload 12 Files]         │
-└─────────────────────────────────────────────────────────────┘
-```
-
----
-
-### 2. Update ScopeIntelligence Page Header
-
-**File:** `src/pages/ScopeIntelligence.tsx`
-
-Add a "Bulk Upload" button in the header actions area:
+Add `overflow-hidden` to the DialogContent and use `max-h-[80vh]` with `flex flex-col` to ensure the content stays within the viewport:
 
 ```tsx
-<div className="flex items-center gap-2">
-  {/* ... existing view mode toggle ... */}
-  <Button variant="outline" size="sm" onClick={() => setShowBulkUpload(true)}>
-    <Upload className="h-4 w-4 mr-2" />
-    Bulk Upload
-  </Button>
-  {/* ... existing refresh and backfill buttons ... */}
+<DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+```
+
+And wrap the scrollable content in a flex-1 container:
+
+```tsx
+<div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+  {/* ... Document Type Selector stays fixed */}
+  
+  {/* ... Dropzone stays fixed */}
+  
+  {/* File list - make it flex-1 to take remaining space */}
+  {files.length > 0 && (
+    <div className="flex-1 min-h-0 flex flex-col">
+      {/* ... header */}
+      <ScrollArea className="flex-1 min-h-[100px] max-h-[200px] border rounded-lg">
+        {/* ... file list */}
+      </ScrollArea>
+    </div>
+  )}
 </div>
 ```
 
-Add the dialog component:
+### Fix 2: Remove "All Locations" from Both Switchers
 
+**File 1:** `src/components/layout/QuickLocationSwitcher.tsx`
+
+Remove lines 94-104 (the "All Locations" dropdown item and separator):
 ```tsx
-<ScopeBulkUploader
-  open={showBulkUpload}
-  onOpenChange={setShowBulkUpload}
-  onUploadComplete={() => {
-    refetch();
-    setShowBulkUpload(false);
-  }}
-/>
+// REMOVE:
+<DropdownMenuItem 
+  onClick={() => handleLocationSelect(null)}
+  className="flex items-center gap-2 cursor-pointer"
+>
+  <Building2 className="h-4 w-4 text-muted-foreground" />
+  <span className="flex-1">All Locations</span>
+  {!currentLocationId && (
+    <Check className="h-4 w-4 text-primary" />
+  )}
+</DropdownMenuItem>
+<DropdownMenuSeparator />
+```
+
+Update the display name fallback (line 66):
+```tsx
+// Change from:
+const displayName = currentLocation?.name || "All";
+
+// To:
+const displayName = currentLocation?.name || locations[0]?.name || "Select";
+```
+
+**File 2:** `src/shared/components/LocationSwitcher.tsx`
+
+Remove lines 96-108 (the "All Locations" dropdown item):
+```tsx
+// REMOVE:
+<DropdownMenuItem 
+  onClick={() => handleLocationSelect(null)}
+  className="flex items-center gap-2"
+>
+  <Building2 className="h-4 w-4" />
+  <div className="flex-1">
+    <div className="font-medium">All Locations</div>
+    <div className="text-xs text-muted-foreground">View data from all locations</div>
+  </div>
+  {!currentLocationId && (
+    <Badge variant="default" className="text-xs">Current</Badge>
+  )}
+</DropdownMenuItem>
+```
+
+Update the display name fallback (line 90):
+```tsx
+// Change from:
+{currentLocation ? currentLocation.name : "All Locations"}
+
+// To:
+{currentLocation?.name || locations[0]?.name || "Select Location"}
 ```
 
 ---
 
-### 3. Upload Flow
+## Files to Modify
 
-For each file in the batch:
-
-1. **Upload to Storage**
-   - Path: `insurance-scopes/{tenant_id}/{timestamp}_{filename}.pdf`
-   - Bucket: `documents`
-
-2. **Call scope-document-ingest Edge Function**
-   - Pass `storage_path`, `document_type`, `file_name`
-   - The existing edge function handles:
-     - Creating `insurance_scope_documents` record
-     - AI extraction of carrier, totals, line items
-     - Creating header and line item records
-     - Status updates (extracting → parsing → mapping → complete)
-
-3. **Update UI Status**
-   - pending → uploading → processing → success/error
+| File | Change |
+|------|--------|
+| `src/components/insurance/ScopeBulkUploader.tsx` | Add overflow constraints and flex layout to dialog |
+| `src/components/layout/QuickLocationSwitcher.tsx` | Remove "All Locations" option |
+| `src/shared/components/LocationSwitcher.tsx` | Remove "All Locations" option |
 
 ---
 
-### 4. Batch Processing Strategy
+## Visual Result
 
-Process files in parallel batches of 5 (same pattern as existing `BulkDocumentUpload`):
+### After Bulk Upload Fix:
+- File list will scroll within the dialog
+- Dialog stays properly sized within viewport
+- No content breaking out of modal boundaries
 
-```typescript
-const batchSize = 5;
-for (let i = 0; i < files.length; i += batchSize) {
-  const batch = files.slice(i, i + batchSize);
-  await Promise.all(batch.map(file => processFile(file)));
-}
-```
-
-This prevents overwhelming the edge function and provides better progress feedback.
-
----
-
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/components/insurance/ScopeBulkUploader.tsx` | CREATE | Modal dialog for bulk PDF uploads |
-| `src/pages/ScopeIntelligence.tsx` | MODIFY | Add bulk upload button and dialog |
-
----
-
-## Component Structure
-
-```typescript
-interface ScopeBulkUploaderProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onUploadComplete: () => void;
-}
-
-interface FileUploadStatus {
-  file: File;
-  status: 'pending' | 'uploading' | 'processing' | 'success' | 'error';
-  error?: string;
-  documentId?: string;
-}
-```
-
----
-
-## Key Implementation Details
-
-### Document Type Options
-Users can select one document type that applies to all files in the batch:
-- Estimate (default)
-- Supplement
-- Final Settlement
-- Denial
-- Policy
-- Reinspection
-
-### File Validation
-- Accept only PDFs: `.pdf` files
-- Max file size: 50MB per file (matches existing ScopeUploader)
-- No limit on number of files
-
-### Progress Tracking
-- Overall progress bar showing % of files completed
-- Individual file icons:
-  - ○ Pending (gray)
-  - ⟳ Uploading/Processing (spinning)
-  - ✓ Success (green)
-  - ✕ Error (red)
-
-### Error Handling
-- Individual file errors don't stop the batch
-- Summary toast at completion shows success/failure counts
-- Error message displayed per file
-
----
-
-## Expected User Flow
-
-1. Click "Bulk Upload" button in Scope Intelligence header
-2. Dialog opens with dropzone
-3. Select document type (optional, defaults to "Estimate")
-4. Drag & drop PDFs or click to select
-5. Review file list, remove any unwanted files
-6. Click "Upload X Files"
-7. Watch progress bar as files upload and process
-8. See success/error status per file
-9. Dialog closes, document list refreshes
-10. Documents appear in list as they complete processing
-
----
-
-## Technical Notes
-
-- Uses same `useUploadScope` mutation pattern but wrapped in batch logic
-- Files uploaded to `documents` storage bucket (same as existing)
-- Edge function `scope-document-ingest` handles AI extraction (no changes needed)
-- All files in batch get same `document_type` (simplifies UX)
-- Query cache invalidated on completion to show new documents
+### After Location Switcher Fix:
+- Only specific locations shown (East Coast, West Coast, etc.)
+- No "All Locations" option
+- If no location is selected, first available location is shown as fallback
 
