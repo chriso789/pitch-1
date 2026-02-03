@@ -32,8 +32,8 @@ import { useBackfillScopes, useUnprocessedDocumentCount } from '@/hooks/useBackf
 import { ScopeUploader } from '@/components/insurance/ScopeUploader';
 import { ScopeViewer } from '@/components/insurance/ScopeViewer';
 import { ScopeIntelligenceDashboard } from '@/components/insurance/ScopeIntelligenceDashboard';
+import { ScopeDocumentBrowser } from '@/components/insurance/ScopeDocumentBrowser';
 import { DisputeEvidenceBuilder } from '@/components/insurance/DisputeEvidenceBuilder';
-import { getCarrierDisplayName, getParseStatusInfo, getDocumentTypeLabel } from '@/lib/insurance/canonicalItems';
 import { format } from 'date-fns';
 
 const ScopeIntelligence: React.FC = () => {
@@ -243,72 +243,11 @@ const ScopeIntelligence: React.FC = () => {
           </TabsContent>
 
           <TabsContent value="documents" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Ingested Scope Documents</CardTitle>
-                <CardDescription>
-                  Insurance estimates and supplements with extracted line items
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
-                  </div>
-                ) : documents && documents.length > 0 ? (
-                  <div className="space-y-2">
-                    {documents.map(doc => {
-                      const statusInfo = getParseStatusInfo(doc.parse_status);
-                      return (
-                        <div
-                          key={doc.id}
-                          className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                          onClick={() => setSelectedDocumentId(doc.id)}
-                        >
-                          <div className="flex items-center gap-4">
-                            <div className="p-2 bg-muted rounded-lg">
-                              <FileText className="h-5 w-5 text-muted-foreground" />
-                            </div>
-                            <div>
-                              <p className="font-medium">{doc.file_name}</p>
-                              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                                <span>{getDocumentTypeLabel(doc.document_type)}</span>
-                                {doc.carrier_normalized && (
-                                  <>
-                                    <span>•</span>
-                                    <span>{getCarrierDisplayName(doc.carrier_normalized)}</span>
-                                  </>
-                                )}
-                                <span>•</span>
-                                <span>{format(new Date(doc.created_at), 'MMM d, yyyy')}</span>
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <Badge className={statusInfo.color}>{statusInfo.label}</Badge>
-                            <Button variant="ghost" size="icon">
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No documents yet</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Upload insurance scope PDFs to start building your evidence vault
-                    </p>
-                    <Button onClick={() => setActiveTab('upload')}>
-                      <Upload className="h-4 w-4 mr-2" />
-                      Upload First Scope
-                    </Button>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <ScopeDocumentBrowser 
+              onSelectDocument={setSelectedDocumentId}
+              onUploadClick={() => setActiveTab('upload')}
+              viewMode={viewMode}
+            />
           </TabsContent>
 
           <TabsContent value="upload" className="mt-4">
