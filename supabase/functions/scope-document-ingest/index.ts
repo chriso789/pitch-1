@@ -115,6 +115,44 @@ async function computeHash(data: Uint8Array): Promise<string> {
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function formatStorageError(err: unknown): string {
+  if (!err) return 'unknown';
+  if (err instanceof Error) return `${err.name}: ${err.message}`;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
+}
+
+async function downloadPdfWithRetry(
+  supabase: ReturnType<typeof createClient>,
+  path: string,
+  opts: { attempts?: number; baseDelayMs?: number } = {}
+): Promise<Uint8Array> {
+  const attempts = Math.max(1, opts.attempts ?? 4);
+  const baseDelayMs = Math.max(0, opts.baseDelayMs ?? 250);
+
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const { data, error } = await supabase.storage.from('documents').download(path);
+    if (!error && data) {
+      return new Uint8Array(await data.arrayBuffer());
+    }
+
+    lastErr = error;
+    // Storage can be briefly inconsistent right after upload; retry with backoff.
+    if (i < attempts - 1) {
+      const delay = baseDelayMs * Math.pow(2, i);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+
+  throw new Error(
+    `Storage download failed (bucket=documents path=${path}) after ${attempts} attempts: ${formatStorageError(lastErr)}`
+  );
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -171,11 +209,7 @@ serve(async (req: Request) => {
       pdfBytes = new Uint8Array(await response.arrayBuffer());
     } else if (body.storage_path) {
       // Download from Supabase storage
-      const { data, error } = await supabase.storage
-        .from("documents")
-        .download(body.storage_path);
-      if (error) throw new Error(`Storage download failed: ${error.message}`);
-      pdfBytes = new Uint8Array(await data.arrayBuffer());
+      pdfBytes = await downloadPdfWithRetry(supabase, body.storage_path);
     } else {
       throw new Error("Must provide storage_path, file_url, or base64_pdf");
     }
@@ -225,9 +259,9 @@ serve(async (req: Request) => {
 
     console.log("[scope-ingest] Document created:", document.id);
 
-    // Extract text from PDF using AI vision
-    // For now, we'll use base64 encoding to send to AI
-    const base64Pdf = btoa(String.fromCharCode(...pdfBytes));
+    // NOTE: Avoid converting large PDFs to base64 via spread/fromCharCode.
+    // That pattern can throw "Maximum call stack size exceeded" for typical PDF sizes.
+    // (If/when we pass binary content to an AI model, do it via chunked encoding or file URLs.)
     
     // Use AI to extract structured data
     const extractionPrompt = `You are an expert insurance claims analyst. Analyze this insurance estimate/scope PDF and extract ALL structured data.
