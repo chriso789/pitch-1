@@ -1,133 +1,129 @@
 
 
-# Scope Intelligence Database Browser with Filtering
+# Bulk Upload for Scope Intelligence
 
-## Summary
+## Overview
 
-You have **3 scope documents** in your database, but only **1 has completed parsing**. The "Network" view correctly shows only 1 because it only includes fully-parsed documents with header data. The other 2 are stuck in "extracting" status.
-
-This plan adds a proper database browser with filtering by insurance carrier and state, plus the ability to see and manage document processing status.
+Add a dedicated bulk upload feature to Scope Intelligence that allows users to upload as many insurance scope PDFs as they want in a single batch, with all documents processed through the AI extraction pipeline.
 
 ---
 
-## Current Data State
+## Implementation
 
-| Document | Carrier | Parse Status | Issue |
-|----------|---------|--------------|-------|
-| State Farm Estimate | State Farm | ✅ Complete | Has header with TX state |
-| CHRISTIAN_MORRISSET1... | Unknown | ⏳ Extracting | Stuck in processing |
-| Doc - Dec 3 2025... | Unknown | ⏳ Extracting | Stuck in processing |
+### 1. New Component: ScopeBulkUploader
 
-**Why Network shows 1:** The `scope_network_intelligence` view filters by `parse_status = 'complete'` and requires header data.
+**File:** `src/components/insurance/ScopeBulkUploader.tsx`
 
----
-
-## Solution: Enhanced Documents Tab with Filters
-
-### New Features
-
-1. **Filter Bar** - Filter documents by:
-   - Insurance Carrier (dropdown)
-   - State (dropdown) 
-   - Parse Status (All / Complete / Processing / Failed)
-   - Document Type (Estimate, Supplement, etc.)
-
-2. **Enhanced List View** - Show:
-   - Document name and type
-   - Carrier and state (from header)
-   - Parse status with action buttons
-   - RCV/ACV totals when available
-   - Created date
-
-3. **Status Management** - Buttons to:
-   - Re-process stuck documents
-   - View processing errors
-   - Delete failed documents
-
-4. **Expandable Details** - Click to see:
-   - Full header info (address, pricing totals)
-   - Line item preview
-   - Processing history
-
----
-
-## Technical Implementation
-
-### 1. New Component: ScopeDocumentBrowser
-
-Create a dedicated browser component with filtering:
-
-```text
-src/components/insurance/ScopeDocumentBrowser.tsx
-```
+A modal dialog for bulk uploading insurance scopes, based on the existing `BulkDocumentUpload` pattern.
 
 **Features:**
-- Filter dropdowns for carrier, state, status
-- Data grid with sortable columns
-- Inline actions (view, reprocess, delete)
-- Pagination for large datasets
+- Drag-and-drop zone for multiple PDFs
+- Document type selector (applies to all files in batch)
+- Scrollable file list with status indicators
+- Batch processing (5 files at a time for performance)
+- Overall progress bar
+- Individual file status (pending → uploading → processing → success/error)
+- Cancel/retry capabilities
 
-### 2. New Hook: useScopeDocumentsWithHeaders
-
-Join documents with headers to get state/carrier data in one query:
-
-```typescript
-// Extended query with header data
-const { data } = await supabase
-  .from('insurance_scope_documents')
-  .select(`
-    *,
-    header:insurance_scope_headers(
-      property_state,
-      property_city,
-      total_rcv,
-      total_acv
-    )
-  `)
-  .order('created_at', { ascending: false });
-```
-
-### 3. Update ScopeIntelligence Page
-
-Replace simple document list with new browser component:
-
-```typescript
-<TabsContent value="documents">
-  <ScopeDocumentBrowser 
-    onSelectDocument={setSelectedDocumentId}
-    viewMode={viewMode}
-  />
-</TabsContent>
+**UI Layout:**
+```text
+┌─────────────────────────────────────────────────────────────┐
+│  Bulk Upload Insurance Scopes                          [X] │
+├─────────────────────────────────────────────────────────────┤
+│  Document Type: [Estimate ▼]                                │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │                                                     │   │
+│  │      📄  Drag & drop insurance scope PDFs           │   │
+│  │          or click to select files                   │   │
+│  │                                                     │   │
+│  │         [Select Files]                              │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  Files to upload (12):                                      │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ ✓ StateFarm_Estimate_001.pdf          2.4 MB        │   │
+│  │ ⟳ Allstate_Supplement.pdf             1.8 MB        │   │
+│  │ ○ Farmers_Final.pdf                   3.2 MB    [X] │   │
+│  │ ○ USAA_Reinspection.pdf               1.1 MB    [X] │   │
+│  │ ...                                                 │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ────────────────────────────────── 45% ──────────────      │
+│  Uploading 5 of 12 files...                                 │
+│                                                             │
+│                         [Cancel]  [Upload 12 Files]         │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## UI Design
+### 2. Update ScopeIntelligence Page Header
 
-### Filter Bar Layout
+**File:** `src/pages/ScopeIntelligence.tsx`
 
-```text
-┌─────────────────────────────────────────────────────────────────┐
-│ 🔍 Search documents...                                          │
-├─────────────────────────────────────────────────────────────────┤
-│ [Carrier ▼]  [State ▼]  [Status ▼]  [Type ▼]  [Clear Filters]  │
-└─────────────────────────────────────────────────────────────────┘
+Add a "Bulk Upload" button in the header actions area:
+
+```tsx
+<div className="flex items-center gap-2">
+  {/* ... existing view mode toggle ... */}
+  <Button variant="outline" size="sm" onClick={() => setShowBulkUpload(true)}>
+    <Upload className="h-4 w-4 mr-2" />
+    Bulk Upload
+  </Button>
+  {/* ... existing refresh and backfill buttons ... */}
+</div>
 ```
 
-### Document List Row
+Add the dialog component:
 
-```text
-┌────────────────────────────────────────────────────────────────────────┐
-│ 📄 final_draft_with_without_removal...pdf                              │
-│    Estimate • State Farm • TX                       ✅ Complete        │
-│    RCV: $14,250.75 • ACV: $11,450.25               Feb 2, 2026        │
-│                                                    [View] [•••]       │
-├────────────────────────────────────────────────────────────────────────┤
-│ 📄 CHRISTIAN_MORRISSET1_FINAL_DRAFT...pdf                              │
-│    Estimate • Unknown                               ⏳ Extracting      │
-│                                                    [Reprocess] [•••]   │
-└────────────────────────────────────────────────────────────────────────┘
+```tsx
+<ScopeBulkUploader
+  open={showBulkUpload}
+  onOpenChange={setShowBulkUpload}
+  onUploadComplete={() => {
+    refetch();
+    setShowBulkUpload(false);
+  }}
+/>
 ```
+
+---
+
+### 3. Upload Flow
+
+For each file in the batch:
+
+1. **Upload to Storage**
+   - Path: `insurance-scopes/{tenant_id}/{timestamp}_{filename}.pdf`
+   - Bucket: `documents`
+
+2. **Call scope-document-ingest Edge Function**
+   - Pass `storage_path`, `document_type`, `file_name`
+   - The existing edge function handles:
+     - Creating `insurance_scope_documents` record
+     - AI extraction of carrier, totals, line items
+     - Creating header and line item records
+     - Status updates (extracting → parsing → mapping → complete)
+
+3. **Update UI Status**
+   - pending → uploading → processing → success/error
+
+---
+
+### 4. Batch Processing Strategy
+
+Process files in parallel batches of 5 (same pattern as existing `BulkDocumentUpload`):
+
+```typescript
+const batchSize = 5;
+for (let i = 0; i < files.length; i += batchSize) {
+  const batch = files.slice(i, i + batchSize);
+  await Promise.all(batch.map(file => processFile(file)));
+}
+```
+
+This prevents overwhelming the edge function and provides better progress feedback.
 
 ---
 
@@ -135,54 +131,81 @@ Replace simple document list with new browser component:
 
 | File | Action | Description |
 |------|--------|-------------|
-| `src/components/insurance/ScopeDocumentBrowser.tsx` | CREATE | New filterable document browser |
-| `src/hooks/useScopeDocumentsWithFilters.ts` | CREATE | Hook for filtered queries with headers |
-| `src/pages/ScopeIntelligence.tsx` | MODIFY | Use new browser component in Documents tab |
-| `src/components/insurance/ScopeDocumentRow.tsx` | CREATE | Reusable document row component |
+| `src/components/insurance/ScopeBulkUploader.tsx` | CREATE | Modal dialog for bulk PDF uploads |
+| `src/pages/ScopeIntelligence.tsx` | MODIFY | Add bulk upload button and dialog |
 
 ---
 
-## Filter Implementation Details
+## Component Structure
 
-### Carrier Filter
-- Populated dynamically from unique `carrier_normalized` values
-- Shows display names (State Farm, Allstate, etc.)
-- "Unknown" option for documents without carrier detection
+```typescript
+interface ScopeBulkUploaderProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onUploadComplete: () => void;
+}
 
-### State Filter  
-- Populated from `insurance_scope_headers.property_state`
-- Standard 2-letter state codes
-- Only shows states that exist in your data
-
-### Status Filter
-| Value | Description |
-|-------|-------------|
-| All | Show all documents |
-| Complete | Successfully parsed with line items |
-| Processing | Currently being extracted |
-| Failed | Parse error occurred |
-| Needs Review | Parsed but flagged for manual review |
+interface FileUploadStatus {
+  file: File;
+  status: 'pending' | 'uploading' | 'processing' | 'success' | 'error';
+  error?: string;
+  documentId?: string;
+}
+```
 
 ---
 
-## Stuck Documents Solution
+## Key Implementation Details
 
-For the 2 documents stuck in "extracting" status, I'll add a "Reprocess" button that:
+### Document Type Options
+Users can select one document type that applies to all files in the batch:
+- Estimate (default)
+- Supplement
+- Final Settlement
+- Denial
+- Policy
+- Reinspection
 
-1. Resets `parse_status` to `pending`
-2. Calls `scope-document-ingest` edge function again
-3. Shows progress toast
+### File Validation
+- Accept only PDFs: `.pdf` files
+- Max file size: 50MB per file (matches existing ScopeUploader)
+- No limit on number of files
 
-This allows you to retry failed extractions without re-uploading.
+### Progress Tracking
+- Overall progress bar showing % of files completed
+- Individual file icons:
+  - ○ Pending (gray)
+  - ⟳ Uploading/Processing (spinning)
+  - ✓ Success (green)
+  - ✕ Error (red)
+
+### Error Handling
+- Individual file errors don't stop the batch
+- Summary toast at completion shows success/failure counts
+- Error message displayed per file
 
 ---
 
-## Expected Result
+## Expected User Flow
 
-After implementation:
-- **Documents tab** will show a filterable, searchable list
-- You can filter by State Farm vs Unknown carrier
-- You can filter by TX (or other states once more docs are added)
-- Stuck documents can be reprocessed with one click
-- Network view will update as more documents complete parsing
+1. Click "Bulk Upload" button in Scope Intelligence header
+2. Dialog opens with dropzone
+3. Select document type (optional, defaults to "Estimate")
+4. Drag & drop PDFs or click to select
+5. Review file list, remove any unwanted files
+6. Click "Upload X Files"
+7. Watch progress bar as files upload and process
+8. See success/error status per file
+9. Dialog closes, document list refreshes
+10. Documents appear in list as they complete processing
+
+---
+
+## Technical Notes
+
+- Uses same `useUploadScope` mutation pattern but wrapped in batch logic
+- Files uploaded to `documents` storage bucket (same as existing)
+- Edge function `scope-document-ingest` handles AI extraction (no changes needed)
+- All files in batch get same `document_type` (simplifies UX)
+- Query cache invalidated on completion to show new documents
 
