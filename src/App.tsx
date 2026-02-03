@@ -120,6 +120,7 @@ import AIAgentSettingsPage from "./pages/settings/AIAgentSettingsPage";
 import AIAgentDashboardPage from "./pages/AIAgentDashboardPage";
 import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGallery";
 import PublicPortalView from "./pages/PublicPortalView";
+import PublicDocumentView from "./pages/PublicDocumentView";
 import SchedulingDashboard from "./pages/SchedulingDashboard";
 import InsuranceClaimsDashboard from "./pages/InsuranceClaimsDashboard";
 import ScopeIntelligence from "./pages/ScopeIntelligence";
@@ -237,6 +238,7 @@ const AppContent = () => {
         <Route path="/view-quote/:token" element={<ViewQuote />} />
         <Route path="/proposal/:token" element={<PublicProposalView />} />
         <Route path="/portal/:shareToken" element={<PublicPortalView />} />
+        <Route path="/v/:token" element={<PublicDocumentView />} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

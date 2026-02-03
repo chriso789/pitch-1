@@ -9165,6 +9165,50 @@ export type Database = {
           },
         ]
       }
+      document_versions: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          generated_pdf_path: string | null
+          id: string
+          instance_id: string
+          overlay_ops: Json
+          snapshot_html: string | null
+          tenant_id: string | null
+          version: number
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          generated_pdf_path?: string | null
+          id?: string
+          instance_id: string
+          overlay_ops?: Json
+          snapshot_html?: string | null
+          tenant_id?: string | null
+          version?: number
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          generated_pdf_path?: string | null
+          id?: string
+          instance_id?: string
+          overlay_ops?: Json
+          snapshot_html?: string | null
+          tenant_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_versions_instance_id_fkey"
+            columns: ["instance_id"]
+            isOneToOne: false
+            referencedRelation: "smart_doc_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           agreement_instance_id: string | null
@@ -10231,6 +10275,87 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      envelope_fields: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          envelope_id: string
+          field_type: string
+          font_family: string | null
+          font_size: number | null
+          height: number
+          id: string
+          label: string | null
+          metadata: Json | null
+          page: number
+          recipient_id: string | null
+          required: boolean | null
+          smart_tag_key: string | null
+          tenant_id: string | null
+          value: string | null
+          width: number
+          x: number
+          y: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          envelope_id: string
+          field_type: string
+          font_family?: string | null
+          font_size?: number | null
+          height?: number
+          id?: string
+          label?: string | null
+          metadata?: Json | null
+          page?: number
+          recipient_id?: string | null
+          required?: boolean | null
+          smart_tag_key?: string | null
+          tenant_id?: string | null
+          value?: string | null
+          width?: number
+          x: number
+          y: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          envelope_id?: string
+          field_type?: string
+          font_family?: string | null
+          font_size?: number | null
+          height?: number
+          id?: string
+          label?: string | null
+          metadata?: Json | null
+          page?: number
+          recipient_id?: string | null
+          required?: boolean | null
+          smart_tag_key?: string | null
+          tenant_id?: string | null
+          value?: string | null
+          width?: number
+          x?: number
+          y?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "envelope_fields_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "envelope_fields_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "signature_recipients"
             referencedColumns: ["id"]
           },
         ]
@@ -33368,6 +33493,53 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      template_versions: {
+        Row: {
+          base_pdf_path: string | null
+          created_at: string | null
+          created_by: string | null
+          header_footer_json: Json | null
+          id: string
+          overlay_ops: Json | null
+          template_id: string
+          template_json: Json
+          tenant_id: string | null
+          version: number
+        }
+        Insert: {
+          base_pdf_path?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          header_footer_json?: Json | null
+          id?: string
+          overlay_ops?: Json | null
+          template_id: string
+          template_json?: Json
+          tenant_id?: string | null
+          version?: number
+        }
+        Update: {
+          base_pdf_path?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          header_footer_json?: Json | null
+          id?: string
+          overlay_ops?: Json | null
+          template_id?: string
+          template_json?: Json
+          tenant_id?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_templates"
             referencedColumns: ["id"]
           },
         ]
