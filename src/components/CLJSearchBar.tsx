@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search, User, Briefcase, Target } from 'lucide-react';
+import { Search, User, Briefcase, Target, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
@@ -13,6 +13,29 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { cn } from '@/lib/utils';
+
+// Entity type badge configuration
+const ENTITY_CONFIG = {
+  contact: {
+    icon: User,
+    label: 'Contact',
+    badgeClass: 'bg-blue-100 text-blue-700 border-blue-200',
+    iconClass: 'text-blue-500',
+  },
+  lead: {
+    icon: Target,
+    label: 'Lead',
+    badgeClass: 'bg-orange-100 text-orange-700 border-orange-200',
+    iconClass: 'text-orange-500',
+  },
+  job: {
+    icon: Building2,
+    label: 'Job',
+    badgeClass: 'bg-green-100 text-green-700 border-green-200',
+    iconClass: 'text-green-500',
+  },
+} as const;
 
 interface SearchResult {
   entity_type: 'contact' | 'lead' | 'job';
@@ -152,78 +175,110 @@ export const CLJSearchBar = () => {
               {/* Contacts Group */}
               {!loading && contacts.length > 0 && (
                 <CommandGroup heading="Contacts">
-                  {contacts.map((result) => (
-                    <CommandItem
-                      key={`contact-${result.entity_id}`}
-                      onSelect={() => handleSelect(result)}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <User className="h-4 w-4 text-blue-500 shrink-0" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-medium truncate">{result.entity_name}</span>
-                          <span className="text-xs text-muted-foreground truncate">
-                            {result.entity_subtext}
-                          </span>
+                  {contacts.map((result) => {
+                    const config = ENTITY_CONFIG.contact;
+                    const Icon = config.icon;
+                    return (
+                      <CommandItem
+                        key={`contact-${result.entity_id}`}
+                        onSelect={() => handleSelect(result)}
+                        className="flex items-center justify-between cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={cn("p-1 rounded", "bg-blue-50")}>
+                            <Icon className={cn("h-4 w-4", config.iconClass)} />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{result.entity_name}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {result.entity_subtext}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <Badge variant="outline" className="text-xs shrink-0 ml-2">
-                        {result.entity_status}
-                      </Badge>
-                    </CommandItem>
-                  ))}
+                        <Badge variant="outline" className={cn("text-xs shrink-0 ml-2", config.badgeClass)}>
+                          {config.label}
+                        </Badge>
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
               )}
               
               {/* Leads Group */}
               {!loading && leads.length > 0 && (
                 <CommandGroup heading="Leads">
-                  {leads.map((result) => (
-                    <CommandItem
-                      key={`lead-${result.entity_id}`}
-                      onSelect={() => handleSelect(result)}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Target className="h-4 w-4 text-orange-500 shrink-0" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-medium truncate">{result.entity_name}</span>
-                          <span className="text-xs text-muted-foreground truncate">
-                            {result.entity_subtext}
-                          </span>
+                  {leads.map((result) => {
+                    const config = ENTITY_CONFIG.lead;
+                    const Icon = config.icon;
+                    return (
+                      <CommandItem
+                        key={`lead-${result.entity_id}`}
+                        onSelect={() => handleSelect(result)}
+                        className="flex items-center justify-between cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={cn("p-1 rounded", "bg-orange-50")}>
+                            <Icon className={cn("h-4 w-4", config.iconClass)} />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{result.entity_name}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {result.entity_subtext}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <Badge variant="outline" className="text-xs shrink-0 ml-2">
-                        {result.clj_number || result.entity_status}
-                      </Badge>
-                    </CommandItem>
-                  ))}
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {result.clj_number && (
+                            <Badge variant="secondary" className="text-xs">
+                              {result.clj_number}
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className={cn("text-xs", config.badgeClass)}>
+                            {config.label}
+                          </Badge>
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
               )}
               
               {/* Jobs Group */}
               {!loading && jobs.length > 0 && (
                 <CommandGroup heading="Jobs">
-                  {jobs.map((result) => (
-                    <CommandItem
-                      key={`job-${result.entity_id}`}
-                      onSelect={() => handleSelect(result)}
-                      className="flex items-center justify-between cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <Briefcase className="h-4 w-4 text-green-500 shrink-0" />
-                        <div className="flex flex-col min-w-0">
-                          <span className="font-medium truncate">{result.entity_name}</span>
-                          <span className="text-xs text-muted-foreground truncate">
-                            {result.entity_subtext}
-                          </span>
+                  {jobs.map((result) => {
+                    const config = ENTITY_CONFIG.job;
+                    const Icon = config.icon;
+                    return (
+                      <CommandItem
+                        key={`job-${result.entity_id}`}
+                        onSelect={() => handleSelect(result)}
+                        className="flex items-center justify-between cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={cn("p-1 rounded", "bg-green-50")}>
+                            <Icon className={cn("h-4 w-4", config.iconClass)} />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{result.entity_name}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {result.entity_subtext}
+                            </span>
+                          </div>
                         </div>
-                      </div>
-                      <Badge variant="outline" className="text-xs shrink-0 ml-2">
-                        {result.clj_number || result.entity_status}
-                      </Badge>
-                    </CommandItem>
-                  ))}
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {result.clj_number && (
+                            <Badge variant="secondary" className="text-xs">
+                              {result.clj_number}
+                            </Badge>
+                          )}
+                          <Badge variant="outline" className={cn("text-xs", config.badgeClass)}>
+                            {config.label}
+                          </Badge>
+                        </div>
+                      </CommandItem>
+                    );
+                  })}
                 </CommandGroup>
               )}
             </CommandList>
