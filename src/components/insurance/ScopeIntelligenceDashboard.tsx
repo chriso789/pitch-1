@@ -107,7 +107,7 @@ export const ScopeIntelligenceDashboard: React.FC<ScopeIntelligenceDashboardProp
       totalDocuments: documents.length,
       completedDocuments: completedDocs.length,
       failedDocuments: documents.filter(d => d.parse_status === 'failed').length,
-      needsReview: documents.filter(d => d.parse_status === 'needs_review').length,
+      needsReview: documents.filter(d => d.parse_status === 'needs_review' || d.parse_status === 'failed').length,
       parseRate: documents.length > 0 ? (completedDocs.length / documents.length) * 100 : 0,
       carrierDistribution: Array.from(carrierCounts.entries())
         .sort(([, a], [, b]) => b - a)
