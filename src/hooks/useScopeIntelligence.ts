@@ -130,7 +130,7 @@ export function useUploadScope() {
       if (!tenantId) throw new Error('No tenant context');
 
       // Upload to storage first
-      const storagePath = `insurance-scopes/${tenantId}/${Date.now()}_${file.name}`;
+      const storagePath = `${tenantId}/insurance-scopes/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(storagePath, file, {
