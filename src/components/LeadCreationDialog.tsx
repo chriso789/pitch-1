@@ -104,12 +104,13 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   ];
 
   const roofTypes = [
-    { value: "asphalt_shingle", label: "Asphalt Shingle" },
-    { value: "metal", label: "Metal Roofing" },
-    { value: "tile", label: "Tile (Clay/Concrete)" },
+    { value: "shingle", label: "Asphalt Shingle" },
+    { value: "metal", label: "Metal" },
+    { value: "tile", label: "Tile" },
+    { value: "flat", label: "Flat/Membrane" },
     { value: "slate", label: "Slate" },
-    { value: "wood_shake", label: "Wood Shake/Shingle" },
-    { value: "flat_membrane", label: "Flat/Membrane" },
+    { value: "cedar", label: "Cedar/Wood Shake" },
+    { value: "other", label: "Other" },
   ];
 
   useEffect(() => {
