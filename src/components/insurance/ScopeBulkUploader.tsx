@@ -231,7 +231,7 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
@@ -242,9 +242,9 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
+        <div className="space-y-4 flex-1 overflow-hidden flex flex-col min-h-0">
           {/* Document Type Selector */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 shrink-0">
             <label className="text-sm font-medium">Document Type:</label>
             <Select
               value={documentType}
@@ -268,7 +268,7 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
           <div
             {...getRootProps()}
             className={cn(
-              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors',
+              'border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors shrink-0',
               isDragActive && 'border-primary bg-primary/5',
               !isDragActive && 'border-border hover:border-primary/50',
               isUploading && 'opacity-50 cursor-not-allowed'
@@ -291,8 +291,8 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
 
           {/* File List */}
           {files.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="flex items-center justify-between shrink-0 mb-2">
                 <p className="text-sm font-medium">Files to upload ({files.length})</p>
                 {!isUploading && (
                   <Button
@@ -305,7 +305,7 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
                   </Button>
                 )}
               </div>
-              <ScrollArea className="h-48 border rounded-lg">
+              <ScrollArea className="flex-1 min-h-[100px] max-h-[200px] border rounded-lg">
                 <div className="p-2 space-y-1">
                   {files.map((fileStatus) => (
                     <div
@@ -344,7 +344,7 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
 
           {/* Progress Bar */}
           {isUploading && (
-            <div className="space-y-2">
+            <div className="space-y-2 shrink-0">
               <Progress value={progressPercent} className="h-2" />
               <p className="text-sm text-muted-foreground text-center">
                 Processing {completedFiles} of {files.length} files...

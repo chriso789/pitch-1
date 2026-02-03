@@ -63,7 +63,7 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
     return null;
   }
 
-  const displayName = currentLocation?.name || "All";
+  const displayName = currentLocation?.name || locations[0]?.name || "Select";
   const truncatedName = displayName.length > 12 ? displayName.slice(0, 10) + "…" : displayName;
 
   return (
@@ -91,17 +91,6 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
         side={isCollapsed ? "right" : "bottom"}
         className="w-56 bg-popover border border-border shadow-lg z-50"
       >
-        <DropdownMenuItem 
-          onClick={() => handleLocationSelect(null)}
-          className="flex items-center gap-2 cursor-pointer"
-        >
-          <Building2 className="h-4 w-4 text-muted-foreground" />
-          <span className="flex-1">All Locations</span>
-          {!currentLocationId && (
-            <Check className="h-4 w-4 text-primary" />
-          )}
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
         {locations.map((location) => (
           <DropdownMenuItem 
             key={location.id}
