@@ -116,7 +116,7 @@ export const ScopeBulkUploader: React.FC<ScopeBulkUploaderProps> = ({
 
     try {
       // Upload to storage
-      const storagePath = `insurance-scopes/${tenantId}/${Date.now()}_${file.name}`;
+      const storagePath = `${tenantId}/insurance-scopes/${Date.now()}_${file.name}`;
       const { error: uploadError } = await supabase.storage
         .from('documents')
         .upload(storagePath, file, {
