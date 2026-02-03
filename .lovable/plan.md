@@ -1,111 +1,188 @@
 
-# Fix Back Button Not Working on Lead Details Page
 
-## Problem
+# Scope Intelligence Database Browser with Filtering
 
-The "Back" button on the Lead Details page (`/lead/:id`) does not navigate anywhere when clicked. The user remains on the same page.
+## Summary
 
-**Root Cause:** The `useBrowserBackButton` hook relies on `document.referrer` to check if the user came from within the app. However, `document.referrer` is NOT updated during client-side SPA navigation - it only reflects the original referrer when the browser tab was opened. This means:
+You have **3 scope documents** in your database, but only **1 has completed parsing**. The "Network" view correctly shows only 1 because it only includes fully-parsed documents with header data. The other 2 are stuck in "extracting" status.
 
-- When user clicks a lead from Pipeline → `document.referrer` is NOT updated
-- The check `document.referrer.includes(window.location.host)` returns `false`
-- The hook falls back to `navigate(fallbackPath)` but that also seems to fail silently
+This plan adds a proper database browser with filtering by insurance carrier and state, plus the ability to see and manage document processing status.
 
 ---
 
-## Solution
+## Current Data State
 
-Simplify the `goBack` logic to use a more reliable approach:
+| Document | Carrier | Parse Status | Issue |
+|----------|---------|--------------|-------|
+| State Farm Estimate | State Farm | ✅ Complete | Has header with TX state |
+| CHRISTIAN_MORRISSET1... | Unknown | ⏳ Extracting | Stuck in processing |
+| Doc - Dec 3 2025... | Unknown | ⏳ Extracting | Stuck in processing |
 
-| Priority | Check | Action |
-|----------|-------|--------|
-| 1 | `location.state?.from` exists | Navigate to that path |
-| 2 | Has browser history (`history.length > 1`) | Use `navigate(-1)` |
-| 3 | Fallback | Navigate to `fallbackPath` |
-
-The key change: **Trust the browser's history stack** instead of checking `document.referrer`. If `window.history.length > 1`, we know there's a history entry to go back to.
+**Why Network shows 1:** The `scope_network_intelligence` view filters by `parse_status = 'complete'` and requires header data.
 
 ---
 
-## File to Modify
+## Solution: Enhanced Documents Tab with Filters
 
-**`src/hooks/useBrowserBackButton.tsx`**
+### New Features
+
+1. **Filter Bar** - Filter documents by:
+   - Insurance Carrier (dropdown)
+   - State (dropdown) 
+   - Parse Status (All / Complete / Processing / Failed)
+   - Document Type (Estimate, Supplement, etc.)
+
+2. **Enhanced List View** - Show:
+   - Document name and type
+   - Carrier and state (from header)
+   - Parse status with action buttons
+   - RCV/ACV totals when available
+   - Created date
+
+3. **Status Management** - Buttons to:
+   - Re-process stuck documents
+   - View processing errors
+   - Delete failed documents
+
+4. **Expandable Details** - Click to see:
+   - Full header info (address, pricing totals)
+   - Line item preview
+   - Processing history
 
 ---
 
-## Code Changes
+## Technical Implementation
 
-### Before (Broken Logic)
-```typescript
-const goBack = useCallback(() => {
-  if (location.state?.from) {
-    navigate(location.state.from);
-    return;
-  }
-  
-  // ❌ This check is unreliable in SPAs
-  const isInternalReferrer = document.referrer && 
-    document.referrer.includes(window.location.host);
-  
-  if (isInternalReferrer) {
-    navigate(-1);
-  } else {
-    navigate(fallbackPath);
-  }
-}, [navigate, fallbackPath, location.state]);
+### 1. New Component: ScopeDocumentBrowser
+
+Create a dedicated browser component with filtering:
+
+```text
+src/components/insurance/ScopeDocumentBrowser.tsx
 ```
 
-### After (Fixed Logic)
+**Features:**
+- Filter dropdowns for carrier, state, status
+- Data grid with sortable columns
+- Inline actions (view, reprocess, delete)
+- Pagination for large datasets
+
+### 2. New Hook: useScopeDocumentsWithHeaders
+
+Join documents with headers to get state/carrier data in one query:
+
 ```typescript
-const goBack = useCallback(() => {
-  // Priority 1: Use explicit navigation state if provided
-  if (location.state?.from) {
-    navigate(location.state.from);
-    return;
-  }
-  
-  // Priority 2: Use browser history if available
-  // history.length > 2 accounts for the initial page + at least one navigation
-  // (browsers often start with length 1 or 2 depending on how page was loaded)
-  if (window.history.length > 2) {
-    navigate(-1);
-    return;
-  }
-  
-  // Priority 3: No history - use fallback path
-  navigate(fallbackPath);
-}, [navigate, fallbackPath, location.state]);
+// Extended query with header data
+const { data } = await supabase
+  .from('insurance_scope_documents')
+  .select(`
+    *,
+    header:insurance_scope_headers(
+      property_state,
+      property_city,
+      total_rcv,
+      total_acv
+    )
+  `)
+  .order('created_at', { ascending: false });
+```
+
+### 3. Update ScopeIntelligence Page
+
+Replace simple document list with new browser component:
+
+```typescript
+<TabsContent value="documents">
+  <ScopeDocumentBrowser 
+    onSelectDocument={setSelectedDocumentId}
+    viewMode={viewMode}
+  />
+</TabsContent>
 ```
 
 ---
 
-## Why This Fix Works
+## UI Design
 
-| Scenario | Old Behavior | New Behavior |
-|----------|-------------|--------------|
-| User clicks lead from Pipeline | `document.referrer` empty → fallback fails | `history.length > 2` → `navigate(-1)` ✅ |
-| User directly opens lead URL | `document.referrer` empty → fallback | `history.length ≤ 2` → `/pipeline` fallback ✅ |
-| User comes from Pipeline with state | `location.state.from` → `/pipeline` ✅ | Same ✅ |
-| User refreshes the page | `document.referrer` points to old page | `history.length` may be reset → fallback ✅ |
+### Filter Bar Layout
 
----
-
-## Additional Improvement
-
-Also add `replace: true` when navigating to fallback to prevent creating a back-loop:
-
-```typescript
-navigate(fallbackPath, { replace: true });
+```text
+┌─────────────────────────────────────────────────────────────────┐
+│ 🔍 Search documents...                                          │
+├─────────────────────────────────────────────────────────────────┤
+│ [Carrier ▼]  [State ▼]  [Status ▼]  [Type ▼]  [Clear Filters]  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-This ensures if user lands directly on the page and clicks back, they go to Pipeline without being able to return to the lead page via browser back button.
+### Document List Row
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│ 📄 final_draft_with_without_removal...pdf                              │
+│    Estimate • State Farm • TX                       ✅ Complete        │
+│    RCV: $14,250.75 • ACV: $11,450.25               Feb 2, 2026        │
+│                                                    [View] [•••]       │
+├────────────────────────────────────────────────────────────────────────┤
+│ 📄 CHRISTIAN_MORRISSET1_FINAL_DRAFT...pdf                              │
+│    Estimate • Unknown                               ⏳ Extracting      │
+│                                                    [Reprocess] [•••]   │
+└────────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
-## Testing Scenarios
+## Files to Create/Modify
 
-After the fix, verify:
-1. ✅ Navigate to lead from Pipeline → Back button returns to Pipeline
-2. ✅ Navigate to lead from Contact Profile → Back button returns to Contact Profile  
-3. ✅ Open lead URL directly (no history) → Back button goes to `/pipeline`
-4. ✅ Browser back button still works normally
+| File | Action | Description |
+|------|--------|-------------|
+| `src/components/insurance/ScopeDocumentBrowser.tsx` | CREATE | New filterable document browser |
+| `src/hooks/useScopeDocumentsWithFilters.ts` | CREATE | Hook for filtered queries with headers |
+| `src/pages/ScopeIntelligence.tsx` | MODIFY | Use new browser component in Documents tab |
+| `src/components/insurance/ScopeDocumentRow.tsx` | CREATE | Reusable document row component |
+
+---
+
+## Filter Implementation Details
+
+### Carrier Filter
+- Populated dynamically from unique `carrier_normalized` values
+- Shows display names (State Farm, Allstate, etc.)
+- "Unknown" option for documents without carrier detection
+
+### State Filter  
+- Populated from `insurance_scope_headers.property_state`
+- Standard 2-letter state codes
+- Only shows states that exist in your data
+
+### Status Filter
+| Value | Description |
+|-------|-------------|
+| All | Show all documents |
+| Complete | Successfully parsed with line items |
+| Processing | Currently being extracted |
+| Failed | Parse error occurred |
+| Needs Review | Parsed but flagged for manual review |
+
+---
+
+## Stuck Documents Solution
+
+For the 2 documents stuck in "extracting" status, I'll add a "Reprocess" button that:
+
+1. Resets `parse_status` to `pending`
+2. Calls `scope-document-ingest` edge function again
+3. Shows progress toast
+
+This allows you to retry failed extractions without re-uploading.
+
+---
+
+## Expected Result
+
+After implementation:
+- **Documents tab** will show a filterable, searchable list
+- You can filter by State Farm vs Unknown carrier
+- You can filter by TX (or other states once more docs are added)
+- Stuck documents can be reprocessed with one click
+- Network view will update as more documents complete parsing
+
