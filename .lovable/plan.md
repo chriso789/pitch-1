@@ -1,193 +1,108 @@
 
-# Add Document Scanner to Documents Tab
+# Fix Mobile View, Search Visibility & Pipeline Display Issues
 
-## Overview
+## Problem Summary
 
-Add a "Scan Document" button to the Documents section that opens the professional document scanner, allowing users to scan documents with their device camera and save them directly to a selected document folder (category).
+Three issues identified:
 
----
+### Issue 1: Lead 3337-1-0 Not Showing in Pipeline
+**Root Cause:** The lead exists with status "project" in "East Coast" location. The user is viewing with a different location selected OR the Pipeline component isn't showing it properly.
 
-## Current State
+**Finding from DB:**
+- Lead 3337-1-0 (Paola Shaine) exists with `status: "project"` and `location_id: East Coast`
+- 30+ leads exist in the database across East Coast and West Coast locations
 
-| Component | Status |
-|-----------|--------|
-| `DocumentScannerDialog` | Exists - full OpenCV edge detection, perspective correction, multi-page PDF generation |
-| `DocumentsTab` | Has folder grid, upload dropdown, but no scan button |
-| Scanner in ApprovalRequirementsBubbles | Working - preset document type |
+**Solution:** Verify location selection and add visual confirmation of which location filter is active in the Pipeline view.
 
----
+### Issue 2: Mobile Search Bar Visibility
+**Root Cause:** The CLJSearchBar on mobile:
+- Has `max-w-sm` (384px) constraint which is too narrow
+- Header has cramped padding (`px-14 pr-3`) leaving little space
+- Dropdown z-index (z-50) may conflict with other overlays
 
-## Implementation Approach
+**Solution:** Improve mobile header layout and search bar responsiveness.
 
-### Option A: Scan Button Opens Category Selection Dialog First
-User clicks "Scan" → selects folder/category → scanner opens → saves to that folder
-
-### Option B: Scan Button Opens Scanner Directly → Category Selection After
-User clicks "Scan" → captures pages → selects folder on save → saves to that folder
-
-**Recommendation:** Option A is cleaner UX - user decides destination upfront before scanning.
+### Issue 3: Storm Canvas Mobile View
+**Root Cause:** The LiveCanvassingPage address search bar and controls could use better mobile optimization.
 
 ---
 
-## Changes Required
+## Technical Changes
 
-### 1. Modify DocumentsTab.tsx
+### File 1: `src/shared/components/layout/GlobalLayout.tsx`
 
-**Add state variables:**
-- `scannerOpen` - controls scanner dialog visibility
-- `scanCategory` - selected category for scanned document
-- `showCategoryPickerForScan` - shows folder picker dialog
+**Changes:**
+- Give search bar more room on mobile by reducing left padding
+- Make search bar expand to full width on mobile
+- Ensure proper z-index stacking for dropdown visibility
 
-**Add UI elements:**
-1. Add "Scan Document" button next to "Upload Document" dropdown
-2. Create category picker dialog that opens when scan button is clicked
-3. Import and render `DocumentScannerDialog` with selected category
-
-**Location of scan button:** In the CardHeader alongside the upload dropdown and "Add Smart Doc" button
-
-```text
-┌─────────────────────────────────────────────────────┐
-│ 📁 Documents                                        │
-│                    [Scan Doc] [Upload ▾] [SmartDoc] │
-├─────────────────────────────────────────────────────┤
-```
-
-### 2. Category Picker Dialog
-
-Simple dialog with the same folder grid shown on the main view:
-- Shows all 8 document categories
-- User taps a category → scanner opens with that category preset
-- Scanner saves to that folder automatically
-
----
-
-## UI Flow
-
-```text
-User Flow:
-1. User taps "Scan Document" button
-2. Category picker dialog appears (grid of 8 folders)
-3. User taps desired folder (e.g., "Insurance", "Contracts")
-4. Dialog closes, scanner dialog opens
-5. User captures pages with camera
-6. User taps "Upload" in scanner
-7. PDF is saved to the selected folder
-8. Success toast, documents list refreshes
-```
-
----
-
-## Code Changes
-
-### File: `src/components/DocumentsTab.tsx`
-
-**1. Add imports:**
 ```typescript
-import { Camera } from 'lucide-react';
-import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
+// Current mobile header padding: px-14 pr-3
+// Change to give more room for search
+
+<div className={cn(
+  "flex h-14 md:h-16 items-center gap-2 md:gap-4 justify-between",
+  isMobile ? "pl-14 pr-2" : "px-6"  // Reduced pr from 3 to 2
+)}>
 ```
 
-**2. Add state variables (after existing state):**
+### File 2: `src/components/CLJSearchBar.tsx`
+
+**Changes:**
+- Remove `max-w-sm` constraint on mobile
+- Use responsive width classes
+- Increase dropdown z-index to z-[60] to ensure it's above all overlays
+- Add mobile-friendly positioning
+
 ```typescript
-const [scannerOpen, setScannerOpen] = useState(false);
-const [scanCategory, setScanCategory] = useState<string>('other');
-const [showScanCategoryPicker, setShowScanCategoryPicker] = useState(false);
+// Current: w-full max-w-sm
+// Change to: w-full md:max-w-sm
+
+<div className="relative w-full md:max-w-sm">
 ```
 
-**3. Add category selection handler:**
+Also update dropdown:
 ```typescript
-const handleStartScan = (category: string) => {
-  setScanCategory(category);
-  setShowScanCategoryPicker(false);
-  setScannerOpen(true);
-};
-```
+// Current: z-50
+// Change to: z-[60] for reliable stacking
 
-**4. Add Scan button to CardHeader (alongside Upload dropdown):**
-```typescript
-<Button 
-  variant="outline"
-  onClick={() => setShowScanCategoryPicker(true)}
+<div 
+  ref={dropdownRef}
+  className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-[60] max-h-[400px] overflow-y-auto"
 >
-  <Camera className="h-4 w-4 mr-2" />
-  Scan Document
-</Button>
 ```
 
-**5. Add Category Picker Dialog:**
-```typescript
-<Dialog open={showScanCategoryPicker} onOpenChange={setShowScanCategoryPicker}>
-  <DialogContent className="sm:max-w-md">
-    <DialogHeader>
-      <DialogTitle>Select Document Folder</DialogTitle>
-    </DialogHeader>
-    <div className="grid grid-cols-2 gap-3 py-4">
-      {DOCUMENT_CATEGORIES.map((category) => {
-        const Icon = category.icon;
-        return (
-          <Button
-            key={category.value}
-            variant="outline"
-            className="h-auto py-4 flex flex-col items-center gap-2"
-            onClick={() => handleStartScan(category.value)}
-          >
-            <div className={`${category.color} text-white p-2 rounded-lg`}>
-              <Icon className="h-5 w-5" />
-            </div>
-            <span className="text-sm">{category.label}</span>
-          </Button>
-        );
-      })}
-    </div>
-  </DialogContent>
-</Dialog>
-```
+### File 3: `src/features/pipeline/components/Pipeline.tsx`
 
-**6. Add DocumentScannerDialog at end of component:**
-```typescript
-<DocumentScannerDialog
-  open={scannerOpen}
-  onOpenChange={setScannerOpen}
-  documentType={scanCategory}
-  documentLabel={getCategoryDetails(scanCategory)?.label || 'Document'}
-  pipelineEntryId={pipelineEntryId}
-  onUploadComplete={() => {
-    fetchDocuments();
-    onUploadComplete?.();
-  }}
-/>
-```
-
----
-
-## Folder View Enhancement (Bonus)
-
-When inside a folder view (`activeFolder` is set), also add a scan button:
+**Changes:**
+- Add visual indicator showing current location filter
+- Add badge showing which location is being viewed
+- This helps users understand why certain leads may not appear
 
 ```typescript
-{/* In active folder header section */}
-<div className="flex gap-2">
-  <Button 
-    onClick={() => triggerFileInput(activeFolder)}
-    disabled={uploading}
-  >
-    <Upload className="h-4 w-4 mr-2" />
-    Upload
-  </Button>
-  <Button 
-    variant="outline"
-    onClick={() => {
-      setScanCategory(activeFolder);
-      setScannerOpen(true);
-    }}
-  >
-    <Camera className="h-4 w-4 mr-2" />
-    Scan
-  </Button>
+// In the header section, add location indicator:
+<div className="flex items-center gap-2">
+  <h1 className="text-3xl font-bold tracking-tight">Jobs Pipeline</h1>
+  {currentLocation && (
+    <Badge variant="outline" className="text-sm">
+      <MapPin className="h-3 w-3 mr-1" />
+      {currentLocation.name}
+    </Badge>
+  )}
 </div>
 ```
 
-This allows users to scan directly when browsing a specific folder.
+### File 4: `src/pages/storm-canvass/LiveCanvassingPage.tsx`
+
+**Changes:**
+- Improve mobile header compactness
+- Make address search bar more prominent on mobile
+- Ensure search suggestions dropdown is fully visible
+
+```typescript
+// In the header Card, reduce padding on mobile:
+<div className="p-3 md:p-4 flex items-center justify-between">
+```
 
 ---
 
@@ -195,34 +110,32 @@ This allows users to scan directly when browsing a specific folder.
 
 | File | Change |
 |------|--------|
-| `src/components/DocumentsTab.tsx` | Add scan button, category picker dialog, DocumentScannerDialog integration |
+| `src/shared/components/layout/GlobalLayout.tsx` | Improve mobile header spacing for search bar |
+| `src/components/CLJSearchBar.tsx` | Full width on mobile, higher z-index for dropdown |
+| `src/features/pipeline/components/Pipeline.tsx` | Add location indicator badge to clarify filtering |
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Optimize mobile header and search visibility |
 
 ---
 
-## Mobile Considerations
+## Why the Lead Isn't Showing
 
-The scanner is already mobile-optimized with:
-- Back camera preference (`facingMode: 'environment'`)
-- Touch-friendly capture button
-- Full-screen camera view
-- Edge detection with visual feedback
-- Manual crop fallback
+The lead 3337-1-0 (Paola Shaine) with status "project" in "East Coast" **exists and is valid**. The most likely reasons it's not appearing:
 
-No additional mobile changes needed.
+1. **Location Filter Mismatch:** User has "West Coast" selected, not "East Coast"
+2. **Cache Issue:** The pipeline data may be stale - adding a location badge will make this clearer
+
+Adding the location indicator badge will help users immediately see which location they're filtering by, reducing confusion about why certain leads don't appear.
 
 ---
 
-## Testing Checklist
+## Testing Steps
 
 After implementation:
-1. Click "Scan Document" button in Documents section
-2. Verify category picker dialog appears with all 8 folders
-3. Select a category (e.g., "Insurance")
-4. Verify scanner opens with camera access
-5. Capture a document page
-6. Verify edge detection overlay works
-7. Add additional pages if needed
-8. Click Upload
-9. Verify PDF is created in the selected folder
-10. Navigate to that folder and confirm document appears
-11. Test folder-view scan button (when inside a folder)
+1. Open the Pipeline page on mobile
+2. Verify search bar expands to full width
+3. Type "paola" and verify dropdown is fully visible and not cut off
+4. Verify location badge appears showing current filter
+5. Switch to "East Coast" location and confirm lead 3337-1-0 appears in "Approved/Project" column
+6. Navigate to Storm Canvas > Live Canvassing
+7. Verify search bar is fully visible on mobile
+8. Test search suggestions appear without being cut off
