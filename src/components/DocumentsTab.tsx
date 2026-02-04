@@ -11,8 +11,10 @@ import {
   FileText, Download, Trash2, Upload, Eye,
   File, Image as ImageIcon, FileCheck, FileLock, X,
   Package, Wrench, DollarSign, Loader2, Sparkles,
-  ChevronDown, FolderOpen, ArrowLeft, CheckCircle, Clock
+  ChevronDown, FolderOpen, ArrowLeft, CheckCircle, Clock,
+  Camera
 } from 'lucide-react';
+import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
@@ -168,6 +170,18 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   
   // Smart doc dialog state
   const [addSmartDocOpen, setAddSmartDocOpen] = useState(false);
+  
+  // Document scanner state
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanCategory, setScanCategory] = useState<string>('other');
+  const [showScanCategoryPicker, setShowScanCategoryPicker] = useState(false);
+  
+  // Handler for starting scan with selected category
+  const handleStartScan = (category: string) => {
+    setScanCategory(category);
+    setShowScanCategoryPicker(false);
+    setScannerOpen(true);
+  };
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -754,14 +768,26 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
             </div>
           </div>
           
-          {/* Folder Upload Button */}
-          <Button 
-            onClick={() => triggerFileInput(activeFolder)}
-            disabled={uploading}
-          >
-            <Upload className="h-4 w-4 mr-2" />
-            Upload {getCategoryDetails(activeFolder)?.label || 'Document'}
-          </Button>
+          {/* Folder Upload and Scan Buttons */}
+          <div className="flex gap-2">
+            <Button 
+              onClick={() => triggerFileInput(activeFolder)}
+              disabled={uploading}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Upload {getCategoryDetails(activeFolder)?.label || 'Document'}
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => {
+                setScanCategory(activeFolder);
+                setScannerOpen(true);
+              }}
+            >
+              <Camera className="h-4 w-4 mr-2" />
+              Scan
+            </Button>
+          </div>
           
           {/* Folder Documents List */}
           {folderDocuments.length === 0 ? (
@@ -877,6 +903,13 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                     })}
                   </DropdownMenuContent>
                 </DropdownMenu>
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowScanCategoryPicker(true)}
+                >
+                  <Camera className="h-4 w-4 mr-2" />
+                  Scan
+                </Button>
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -1230,6 +1263,46 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         onOpenChange={setAddSmartDocOpen}
         pipelineEntryId={pipelineEntryId}
         onDocumentAdded={() => {
+          fetchDocuments();
+          onUploadComplete?.();
+        }}
+      />
+
+      {/* Scan Category Picker Dialog */}
+      <Dialog open={showScanCategoryPicker} onOpenChange={setShowScanCategoryPicker}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Select Document Folder</DialogTitle>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-3 py-4">
+            {DOCUMENT_CATEGORIES.map((category) => {
+              const Icon = category.icon;
+              return (
+                <Button
+                  key={category.value}
+                  variant="outline"
+                  className="h-auto py-4 flex flex-col items-center gap-2"
+                  onClick={() => handleStartScan(category.value)}
+                >
+                  <div className={`${category.color} text-white p-2 rounded-lg`}>
+                    <Icon className="h-5 w-5" />
+                  </div>
+                  <span className="text-sm">{category.label}</span>
+                </Button>
+              );
+            })}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Document Scanner Dialog */}
+      <DocumentScannerDialog
+        open={scannerOpen}
+        onOpenChange={setScannerOpen}
+        documentType={scanCategory}
+        documentLabel={getCategoryDetails(scanCategory)?.label || 'Document'}
+        pipelineEntryId={pipelineEntryId}
+        onUploadComplete={() => {
           fetchDocuments();
           onUploadComplete?.();
         }}
