@@ -337,31 +337,32 @@ export default function LiveCanvassingPage() {
 
   return (
     <div className="h-screen w-full flex flex-col bg-background">
-      {/* Header */}
+      {/* Header - Compact mobile-optimized */}
       <Card className="rounded-none border-x-0 border-t-0">
-        <div className="p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <div className="p-3 md:p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3">
             <Button
               variant="ghost"
               size="icon"
+              className="h-9 w-9"
               onClick={() => navigate('/storm-canvass')}
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="min-w-0">
-              <h1 className="text-lg font-semibold">Live Canvassing</h1>
+              <h1 className="text-base md:text-lg font-semibold">Live Canvassing</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">
-          <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex">
+            <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex text-xs">
               {isTracking ? 'Tracking' : 'Not Tracking'}
             </Badge>
             <OfflinePhotoSyncManager compact className="cursor-pointer" />
           </div>
         </div>
         
-        {/* Search Bar and Style Toggle */}
-        <div className="px-4 pb-4 flex flex-col gap-3">
+        {/* Search Bar and Style Toggle - Full width on mobile */}
+        <div className="px-3 md:px-4 pb-3 md:pb-4 flex flex-col gap-2 md:gap-3">
           <AddressSearchBar
             userLocation={userLocation}
             onAddressSelect={handleAddressSelect}
