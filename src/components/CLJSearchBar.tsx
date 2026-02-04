@@ -141,7 +141,7 @@ export const CLJSearchBar = () => {
   const jobs = results.filter(r => r.entity_type === 'job');
 
   return (
-    <div className="relative w-full max-w-sm">
+    <div className="relative w-full md:max-w-sm">
       <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground z-10" />
       <Input
         ref={inputRef}
@@ -161,7 +161,7 @@ export const CLJSearchBar = () => {
       {open && (
         <div 
           ref={dropdownRef}
-          className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-50 max-h-[400px] overflow-y-auto"
+          className="absolute top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg z-[60] max-h-[400px] overflow-y-auto"
         >
           <Command>
             <CommandList>

@@ -33,7 +33,8 @@ import {
   Search,
   X,
   CheckSquare,
-  Square
+  Square,
+  Building2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -80,6 +81,17 @@ const Pipeline = () => {
     { name: "Completed", key: "completed", color: "bg-teal-500", icon: CheckSquare },
     { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckSquare }
   ];
+
+  // Location indicator badge component
+  const LocationIndicator = () => {
+    if (!currentLocation) return null;
+    return (
+      <Badge variant="outline" className="text-sm flex items-center gap-1">
+        <Building2 className="h-3 w-3" />
+        {currentLocation.name}
+      </Badge>
+    );
+  };
 
   // Fetch user role
   useEffect(() => {
@@ -976,7 +988,7 @@ const Pipeline = () => {
             </h1>
             {currentLocation && (
               <Badge variant="outline" className="flex items-center gap-1">
-                <MapPin className="h-3 w-3" />
+                <Building2 className="h-3 w-3" />
                 {currentLocation.name}
               </Badge>
             )}
