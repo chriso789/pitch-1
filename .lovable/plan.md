@@ -1,112 +1,228 @@
 
-# Fix: Scope Documents Not Appearing After Bulk Upload
+# Add Document Scanner to Documents Tab
 
-## Problem Summary
+## Overview
 
-When uploading insurance scope documents via the Bulk Upload modal in Scope Intelligence, the documents are not appearing in the system. Currently, there are only **3 insurance scope documents** in the database (1 complete, 2 failed), and **no new uploads have been processed recently**.
-
----
-
-## Root Cause Analysis
-
-After thorough investigation, I identified these issues:
-
-### Issue 1: Edge Function Was Not Processing Calls
-
-The `scope-document-ingest` edge function showed **no recent activity** in the analytics logs, meaning calls weren't being executed. I've already redeployed the function, which should resolve this.
-
-### Issue 2: Storage Upload Path Inconsistency
-
-The bulk uploader uses the correct RLS-compliant path:
-```typescript
-// ScopeBulkUploader.tsx line 119
-const storagePath = `${tenantId}/insurance-scopes/${Date.now()}_${file.name}`;
-```
-
-But the single-file uploader in `useScopeIntelligence.ts` uses the **wrong path format**:
-```typescript
-// Line 133 - WRONG FORMAT
-const storagePath = `insurance-scopes/${tenantId}/${Date.now()}_${file.name}`;
-```
-
-This causes RLS violations when trying to upload via the single-file method.
-
-### Issue 3: Failed Documents Not Visible in "Needs Review" Count
-
-The dashboard shows "Needs Review: 0" but there are 2 failed documents. The "Needs Review" count only checks for `parse_status = 'needs_review'`, not `parse_status = 'failed'`.
+Add a "Scan Document" button to the Documents section that opens the professional document scanner, allowing users to scan documents with their device camera and save them directly to a selected document folder (category).
 
 ---
 
-## Solution
+## Current State
 
-### Fix 1: Fix Storage Path in useScopeIntelligence.ts
-
-**File:** `src/hooks/useScopeIntelligence.ts`
-**Line:** 133
-
-Change from:
-```typescript
-const storagePath = `insurance-scopes/${tenantId}/${Date.now()}_${file.name}`;
-```
-
-To:
-```typescript
-const storagePath = `${tenantId}/insurance-scopes/${Date.now()}_${file.name}`;
-```
-
-### Fix 2: Update Dashboard to Show Failed Documents
-
-**File:** `src/components/insurance/ScopeIntelligenceDashboard.tsx`
-
-Update the "Needs Review" card to include both `needs_review` AND `failed` status documents:
-```typescript
-const needsReviewCount = documents?.filter(d => 
-  d.parse_status === 'needs_review' || d.parse_status === 'failed'
-).length || 0;
-```
-
-Or create a separate "Failed" card to show failed documents distinctly.
-
-### Fix 3: Add Retry/Reprocess Button for Failed Documents
-
-The "Reprocess" functionality already exists in `ScopeDocumentBrowser.tsx`. Ensure the Documents tab shows failed documents prominently with reprocess buttons.
+| Component | Status |
+|-----------|--------|
+| `DocumentScannerDialog` | Exists - full OpenCV edge detection, perspective correction, multi-page PDF generation |
+| `DocumentsTab` | Has folder grid, upload dropdown, but no scan button |
+| Scanner in ApprovalRequirementsBubbles | Working - preset document type |
 
 ---
 
-## Files to Modify
+## Implementation Approach
+
+### Option A: Scan Button Opens Category Selection Dialog First
+User clicks "Scan" → selects folder/category → scanner opens → saves to that folder
+
+### Option B: Scan Button Opens Scanner Directly → Category Selection After
+User clicks "Scan" → captures pages → selects folder on save → saves to that folder
+
+**Recommendation:** Option A is cleaner UX - user decides destination upfront before scanning.
+
+---
+
+## Changes Required
+
+### 1. Modify DocumentsTab.tsx
+
+**Add state variables:**
+- `scannerOpen` - controls scanner dialog visibility
+- `scanCategory` - selected category for scanned document
+- `showCategoryPickerForScan` - shows folder picker dialog
+
+**Add UI elements:**
+1. Add "Scan Document" button next to "Upload Document" dropdown
+2. Create category picker dialog that opens when scan button is clicked
+3. Import and render `DocumentScannerDialog` with selected category
+
+**Location of scan button:** In the CardHeader alongside the upload dropdown and "Add Smart Doc" button
+
+```text
+┌─────────────────────────────────────────────────────┐
+│ 📁 Documents                                        │
+│                    [Scan Doc] [Upload ▾] [SmartDoc] │
+├─────────────────────────────────────────────────────┤
+```
+
+### 2. Category Picker Dialog
+
+Simple dialog with the same folder grid shown on the main view:
+- Shows all 8 document categories
+- User taps a category → scanner opens with that category preset
+- Scanner saves to that folder automatically
+
+---
+
+## UI Flow
+
+```text
+User Flow:
+1. User taps "Scan Document" button
+2. Category picker dialog appears (grid of 8 folders)
+3. User taps desired folder (e.g., "Insurance", "Contracts")
+4. Dialog closes, scanner dialog opens
+5. User captures pages with camera
+6. User taps "Upload" in scanner
+7. PDF is saved to the selected folder
+8. Success toast, documents list refreshes
+```
+
+---
+
+## Code Changes
+
+### File: `src/components/DocumentsTab.tsx`
+
+**1. Add imports:**
+```typescript
+import { Camera } from 'lucide-react';
+import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
+```
+
+**2. Add state variables (after existing state):**
+```typescript
+const [scannerOpen, setScannerOpen] = useState(false);
+const [scanCategory, setScanCategory] = useState<string>('other');
+const [showScanCategoryPicker, setShowScanCategoryPicker] = useState(false);
+```
+
+**3. Add category selection handler:**
+```typescript
+const handleStartScan = (category: string) => {
+  setScanCategory(category);
+  setShowScanCategoryPicker(false);
+  setScannerOpen(true);
+};
+```
+
+**4. Add Scan button to CardHeader (alongside Upload dropdown):**
+```typescript
+<Button 
+  variant="outline"
+  onClick={() => setShowScanCategoryPicker(true)}
+>
+  <Camera className="h-4 w-4 mr-2" />
+  Scan Document
+</Button>
+```
+
+**5. Add Category Picker Dialog:**
+```typescript
+<Dialog open={showScanCategoryPicker} onOpenChange={setShowScanCategoryPicker}>
+  <DialogContent className="sm:max-w-md">
+    <DialogHeader>
+      <DialogTitle>Select Document Folder</DialogTitle>
+    </DialogHeader>
+    <div className="grid grid-cols-2 gap-3 py-4">
+      {DOCUMENT_CATEGORIES.map((category) => {
+        const Icon = category.icon;
+        return (
+          <Button
+            key={category.value}
+            variant="outline"
+            className="h-auto py-4 flex flex-col items-center gap-2"
+            onClick={() => handleStartScan(category.value)}
+          >
+            <div className={`${category.color} text-white p-2 rounded-lg`}>
+              <Icon className="h-5 w-5" />
+            </div>
+            <span className="text-sm">{category.label}</span>
+          </Button>
+        );
+      })}
+    </div>
+  </DialogContent>
+</Dialog>
+```
+
+**6. Add DocumentScannerDialog at end of component:**
+```typescript
+<DocumentScannerDialog
+  open={scannerOpen}
+  onOpenChange={setScannerOpen}
+  documentType={scanCategory}
+  documentLabel={getCategoryDetails(scanCategory)?.label || 'Document'}
+  pipelineEntryId={pipelineEntryId}
+  onUploadComplete={() => {
+    fetchDocuments();
+    onUploadComplete?.();
+  }}
+/>
+```
+
+---
+
+## Folder View Enhancement (Bonus)
+
+When inside a folder view (`activeFolder` is set), also add a scan button:
+
+```typescript
+{/* In active folder header section */}
+<div className="flex gap-2">
+  <Button 
+    onClick={() => triggerFileInput(activeFolder)}
+    disabled={uploading}
+  >
+    <Upload className="h-4 w-4 mr-2" />
+    Upload
+  </Button>
+  <Button 
+    variant="outline"
+    onClick={() => {
+      setScanCategory(activeFolder);
+      setScannerOpen(true);
+    }}
+  >
+    <Camera className="h-4 w-4 mr-2" />
+    Scan
+  </Button>
+</div>
+```
+
+This allows users to scan directly when browsing a specific folder.
+
+---
+
+## Summary of Changes
 
 | File | Change |
 |------|--------|
-| `src/hooks/useScopeIntelligence.ts` | Fix storage path format (line 133) |
-| `src/components/insurance/ScopeIntelligenceDashboard.tsx` | Include failed docs in "Needs Review" count OR add separate "Failed" counter |
+| `src/components/DocumentsTab.tsx` | Add scan button, category picker dialog, DocumentScannerDialog integration |
 
 ---
 
-## Already Completed
+## Mobile Considerations
 
-- ✅ Redeployed `scope-document-ingest` edge function
-- ✅ Previously fixed edge function to handle timeouts and mark stuck docs as failed
+The scanner is already mobile-optimized with:
+- Back camera preference (`facingMode: 'environment'`)
+- Touch-friendly capture button
+- Full-screen camera view
+- Edge detection with visual feedback
+- Manual crop fallback
+
+No additional mobile changes needed.
 
 ---
 
-## Testing Steps
+## Testing Checklist
 
 After implementation:
-1. Open Scope Intelligence page
-2. Click "Bulk Upload" button
-3. Select 1-2 PDF files
-4. Verify upload progress shows correctly
-5. Verify documents appear in the Documents tab
-6. Verify status counts update on the dashboard
-
----
-
-## Current Database State
-
-| Status | Count |
-|--------|-------|
-| Complete | 1 |
-| Failed | 2 |
-| Total | 3 |
-
-The 2 failed documents have error: "Processing timeout - please reprocess"
+1. Click "Scan Document" button in Documents section
+2. Verify category picker dialog appears with all 8 folders
+3. Select a category (e.g., "Insurance")
+4. Verify scanner opens with camera access
+5. Capture a document page
+6. Verify edge detection overlay works
+7. Add additional pages if needed
+8. Click Upload
+9. Verify PDF is created in the selected folder
+10. Navigate to that folder and confirm document appears
+11. Test folder-view scan button (when inside a folder)
