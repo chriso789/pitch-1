@@ -12,6 +12,8 @@ import { Phone, Play, Pause, Square, PhoneOff, Clock, Users, List, Settings, Plu
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ContactHeader } from "@/components/ContactHeader";
+import { QuickSMSDialog } from "@/components/communication/QuickSMSDialog";
+import { QuickEmailDialog } from "@/components/communication/QuickEmailDialog";
 
 interface DialerList {
   id: string;
@@ -79,6 +81,8 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
   const [loading, setLoading] = useState(true);
   const [selectedCallerId, setSelectedCallerId] = useState<string>("");
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<Array<{number: string, label: string}>>([]);
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
 
   // Load data on component mount
   useEffect(() => {
@@ -372,10 +376,24 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
         <ContactHeader 
           contact={currentContact}
           onCall={initiateCall}
-          onText={() => toast({ title: "SMS", description: "SMS feature coming soon" })}
-          onEmail={() => toast({ title: "Email", description: "Email feature coming soon" })}
+          onText={() => currentContact?.phone && setSmsDialogOpen(true)}
+          onEmail={() => currentContact?.email && setEmailDialogOpen(true)}
         />
       )}
+
+      {/* SMS Dialog */}
+      <QuickSMSDialog
+        open={smsDialogOpen}
+        onOpenChange={setSmsDialogOpen}
+        contact={currentContact}
+      />
+
+      {/* Email Dialog */}
+      <QuickEmailDialog
+        open={emailDialogOpen}
+        onOpenChange={setEmailDialogOpen}
+        contact={currentContact}
+      />
 
       {/* Power Dialer Header */}
       <div className="flex items-center justify-between">

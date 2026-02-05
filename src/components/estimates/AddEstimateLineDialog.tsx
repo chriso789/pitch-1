@@ -7,9 +7,20 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { Search, Package, Wrench, Plus, Calculator } from "lucide-react";
+import { Search, Package, Wrench, Plus, Calculator, DollarSign } from "lucide-react";
+import {
+  useLaborRates,
+  calculateEffectiveRate,
+  evaluateLaborFormula,
+  LABOR_JOB_TYPES,
+  LABOR_SKILL_LEVELS,
+  LABOR_FORMULA_PRESETS,
+  type LaborRate,
+} from "@/hooks/useLaborRates";
 
 interface Material {
   id: string;
@@ -422,14 +433,315 @@ export function AddEstimateLineDialog({
           </TabsContent>
 
           <TabsContent value="labor" className="space-y-4 mt-4">
-            <div className="p-8 text-center text-muted-foreground">
-              <Wrench className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Labor line items coming soon...</p>
-              <p className="text-sm mt-2">Will support role selection, hourly rates, and formula-based calculations</p>
-            </div>
+            <LaborLineItemForm
+              measurements={measurements}
+              onAddLine={onAddLine}
+              onClose={() => onOpenChange(false)}
+            />
           </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ========================================
+// LABOR LINE ITEM FORM COMPONENT
+// ========================================
+
+interface LaborLineItemFormProps {
+  measurements: {
+    surface_area_sf?: number;
+    surface_squares?: number;
+    perimeter_lf?: number;
+    ridge_lf?: number;
+    valley_lf?: number;
+    hip_lf?: number;
+    rake_lf?: number;
+    eave_lf?: number;
+  };
+  onAddLine: (line: {
+    item_name: string;
+    description: string;
+    quantity: number;
+    unit_cost: number;
+    unit_type: string;
+    markup_percent: number;
+    formula?: string;
+    material_id?: string;
+  }) => void;
+  onClose: () => void;
+}
+
+function LaborLineItemForm({ measurements, onAddLine, onClose }: LaborLineItemFormProps) {
+  const { toast } = useToast();
+  const { data: laborRates = [], isLoading: loadingRates } = useLaborRates();
+
+  const [jobType, setJobType] = useState<string>("");
+  const [skillLevel, setSkillLevel] = useState<string>("");
+  const [useFormula, setUseFormula] = useState(false);
+  const [formula, setFormula] = useState("");
+  const [manualHours, setManualHours] = useState(0);
+  const [markupPercent, setMarkupPercent] = useState(15);
+  const [description, setDescription] = useState("");
+
+  // Find matching labor rate
+  const selectedRate = laborRates.find(
+    (r) => r.job_type === jobType && r.skill_level === skillLevel
+  );
+
+  // Calculate effective rate with multipliers
+  const effectiveRate = selectedRate ? calculateEffectiveRate(selectedRate) : 0;
+
+  // Calculate hours from formula or manual input
+  const calculatedHours = useFormula
+    ? evaluateLaborFormula(formula, measurements)
+    : manualHours;
+
+  // Calculate totals
+  const laborCost = calculatedHours * effectiveRate;
+  const totalWithMarkup = laborCost * (1 + markupPercent / 100);
+
+  const handleApplyPreset = (preset: typeof LABOR_FORMULA_PRESETS[number]) => {
+    setFormula(preset.formula);
+    setUseFormula(true);
+  };
+
+  const handleAddLabor = () => {
+    if (!jobType || !skillLevel) {
+      toast({
+        title: "Select Job Type and Skill Level",
+        description: "Please select both job type and skill level",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (calculatedHours <= 0) {
+      toast({
+        title: "Invalid Hours",
+        description: "Hours must be greater than 0",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const itemName = `${jobType} Labor - ${skillLevel}`;
+    const itemDescription = description || `${jobType} labor at ${skillLevel} rate`;
+
+    onAddLine({
+      item_name: itemName,
+      description: itemDescription,
+      quantity: calculatedHours,
+      unit_cost: effectiveRate,
+      unit_type: "hr",
+      markup_percent: markupPercent,
+      formula: useFormula ? formula : undefined,
+    });
+
+    toast({
+      title: "Labor Line Added",
+      description: `Added ${calculatedHours.toFixed(1)} hours of ${jobType} labor`,
+    });
+
+    onClose();
+  };
+
+  if (loadingRates) {
+    return (
+      <div className="flex items-center justify-center h-48">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Job Type & Skill Level Selection */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Job Type</Label>
+          <Select value={jobType} onValueChange={setJobType}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select job type..." />
+            </SelectTrigger>
+            <SelectContent>
+              {LABOR_JOB_TYPES.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Skill Level</Label>
+          <Select value={skillLevel} onValueChange={setSkillLevel}>
+            <SelectTrigger>
+              <SelectValue placeholder="Select skill level..." />
+            </SelectTrigger>
+            <SelectContent>
+              {LABOR_SKILL_LEVELS.map((level) => (
+                <SelectItem key={level} value={level}>
+                  {level}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Rate Information Card */}
+      {selectedRate && (
+        <Card className="bg-muted/50">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Base Rate</p>
+                <p className="text-lg font-semibold">
+                  ${selectedRate.base_rate_per_hour.toFixed(2)}/hr
+                </p>
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm text-muted-foreground">Multipliers</p>
+                <div className="flex gap-2">
+                  <Badge variant="secondary">
+                    {selectedRate.complexity_multiplier.toFixed(2)}x Complexity
+                  </Badge>
+                  <Badge variant="secondary">
+                    {selectedRate.seasonal_adjustment.toFixed(2)}x Seasonal
+                  </Badge>
+                </div>
+              </div>
+              <div className="text-right space-y-1">
+                <p className="text-sm text-muted-foreground">Effective Rate</p>
+                <p className="text-lg font-bold text-primary">
+                  ${effectiveRate.toFixed(2)}/hr
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Formula Toggle */}
+      <div className="flex items-center gap-2">
+        <input
+          type="checkbox"
+          id="use-labor-formula"
+          checked={useFormula}
+          onChange={(e) => setUseFormula(e.target.checked)}
+          className="rounded"
+        />
+        <Label htmlFor="use-labor-formula" className="cursor-pointer">
+          Use Formula (Calculate hours from measurements)
+        </Label>
+      </div>
+
+      {useFormula ? (
+        <>
+          {/* Formula Presets */}
+          <div className="space-y-2">
+            <Label>Quick Presets</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {LABOR_FORMULA_PRESETS.map((preset) => (
+                <Button
+                  key={preset.name}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleApplyPreset(preset)}
+                  className="justify-start text-left h-auto py-2"
+                >
+                  <div>
+                    <div className="font-medium text-xs">{preset.name}</div>
+                    <div className="text-xs text-muted-foreground">{preset.description}</div>
+                  </div>
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          {/* Formula Editor */}
+          <div className="space-y-2">
+            <Label>Formula</Label>
+            <Input
+              value={formula}
+              onChange={(e) => setFormula(e.target.value)}
+              placeholder="{{ measure.surface_squares }} * 2.5"
+            />
+            <p className="text-xs text-muted-foreground">
+              Available: surface_area_sf, surface_squares, perimeter_lf, ridge_lf, valley_lf, hip_lf, rake_lf, eave_lf
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <Calculator className="h-4 w-4 text-primary" />
+            <span className="font-medium">Calculated Hours:</span>
+            <span className="font-bold text-primary">{calculatedHours.toFixed(2)}</span>
+          </div>
+        </>
+      ) : (
+        <div className="space-y-2">
+          <Label>Hours</Label>
+          <Input
+            type="number"
+            value={manualHours}
+            onChange={(e) => setManualHours(parseFloat(e.target.value) || 0)}
+            step="0.5"
+            min="0"
+          />
+        </div>
+      )}
+
+      {/* Markup & Description */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label>Markup %</Label>
+          <Input
+            type="number"
+            value={markupPercent}
+            onChange={(e) => setMarkupPercent(parseFloat(e.target.value) || 0)}
+            step="1"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Description (Optional)</Label>
+          <Input
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder={jobType ? `${jobType} labor` : "Labor description"}
+          />
+        </div>
+      </div>
+
+      {/* Total Summary */}
+      {calculatedHours > 0 && effectiveRate > 0 && (
+        <Card className="bg-primary/5 border-primary/20">
+          <CardContent className="pt-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Labor Total</p>
+                <p className="text-lg">
+                  {calculatedHours.toFixed(1)} hrs × ${effectiveRate.toFixed(2)}/hr ={" "}
+                  <span className="font-semibold">${laborCost.toFixed(2)}</span>
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-muted-foreground">With {markupPercent}% Markup</p>
+                <p className="text-2xl font-bold text-primary">
+                  ${totalWithMarkup.toFixed(2)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Button onClick={handleAddLabor} className="w-full" disabled={!jobType || !skillLevel}>
+        <Plus className="h-4 w-4 mr-2" />
+        Add Labor Line Item
+      </Button>
+    </div>
   );
 }

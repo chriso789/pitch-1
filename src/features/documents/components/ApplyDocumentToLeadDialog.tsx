@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Search, User, FileText, Download, Send, CheckCircle, AlertCircle } from "lucide-react";
+import { RequestSignatureDialog } from "@/components/signatures/RequestSignatureDialog";
 
 interface Contact {
   id: string;
@@ -60,6 +61,7 @@ export const ApplyDocumentToLeadDialog: React.FC<ApplyDocumentToLeadDialogProps>
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [step, setStep] = useState<"select" | "preview">("select");
+  const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
 
   // Load contacts on search
   useEffect(() => {
@@ -418,9 +420,7 @@ export const ApplyDocumentToLeadDialog: React.FC<ApplyDocumentToLeadDialogProps>
                   Download PDF
                 </Button>
                 <Button
-                  onClick={() => {
-                    toast.info("Send for signature functionality coming soon");
-                  }}
+                  onClick={() => setSignatureDialogOpen(true)}
                   className="gap-2"
                 >
                   <Send className="h-4 w-4" />
@@ -428,6 +428,24 @@ export const ApplyDocumentToLeadDialog: React.FC<ApplyDocumentToLeadDialogProps>
                 </Button>
               </div>
             </DialogFooter>
+
+            {/* Signature Dialog */}
+            <RequestSignatureDialog
+              open={signatureDialogOpen}
+              onClose={() => setSignatureDialogOpen(false)}
+              documentId={document.id}
+              documentType="smart_doc_instance"
+              documentTitle={document.filename}
+              defaultRecipient={{
+                name: `${selectedContact.first_name} ${selectedContact.last_name}`.trim(),
+                email: selectedContact.email || ""
+              }}
+              onSuccess={(envelopeId) => {
+                toast.success("Document sent for signature");
+                setSignatureDialogOpen(false);
+                handleClose();
+              }}
+            />
           </>
         )}
       </DialogContent>

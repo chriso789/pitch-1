@@ -8,7 +8,10 @@ import {
   FileText,
   Send,
   Loader2,
+  Download,
 } from 'lucide-react';
+import { supabase } from "@/integrations/supabase/client";
+import { downloadProposalPdf } from "@/lib/proposalPdfGenerator";
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -81,6 +84,7 @@ export const ProposalBuilder = ({
   const calculatePricing = useCalculatePricing();
   const generateProposal = useGenerateProposal();
   const sendProposal = useSendProposal();
+  const [downloading, setDownloading] = useState(false);
 
   const [tiers, setTiers] = useState<{
     good: TierPricing;
@@ -351,10 +355,39 @@ export const ProposalBuilder = ({
           <ProposalPreview
             estimateId={estimateId}
             onSend={handleSendProposal}
-            onDownload={() => {
-              // TODO: Implement PDF download
-              toast({ title: 'Download', description: 'PDF download coming soon' });
+            onDownload={async () => {
+              if (!estimateId || downloading) return;
+              
+              setDownloading(true);
+              try {
+                // Fetch the HTML preview
+                const { data: previewData, error } = await supabase.functions.invoke('generate-proposal', {
+                  body: { action: 'preview', estimateId },
+                });
+                
+                if (error || !previewData?.html) {
+                  throw new Error('Failed to fetch proposal preview');
+                }
+                
+                // Generate and download PDF
+                await downloadProposalPdf(
+                  previewData.html,
+                  `Proposal-${estimateId}.pdf`
+                );
+                
+                toast({ title: 'Success', description: 'PDF downloaded successfully' });
+              } catch (error) {
+                console.error('PDF generation error:', error);
+                toast({ 
+                  title: 'Download Failed', 
+                  description: 'Could not generate PDF. Please try again.',
+                  variant: 'destructive'
+                });
+              } finally {
+                setDownloading(false);
+              }
             }}
+            downloading={downloading}
           />
 
           <div className="flex justify-between">
