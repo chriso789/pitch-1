@@ -1,123 +1,271 @@
 
-# Fix Pipeline Search & Nicole Walker Visibility
+# Multi-Part Enhancement: Scanner Fix, Template Attachments & Estimate Cover Pages
 
-## Issues Identified
+## Issues to Address
 
-### Issue 1: Pipeline Search Not Filtering Leads
-**Root Cause:** The `filterBySearch` function in `Pipeline.tsx` searches by `job.job_number` but pipeline entries use `clj_formatted_number` field.
-
-**Current Code (Line 167):**
-```typescript
-const jobNumber = (job.job_number || '').toLowerCase();
-```
-
-**Fix:** Search by `clj_formatted_number` instead of `job_number`
+| Issue | Root Cause | Solution |
+|-------|------------|----------|
+| image.jpg saved as JPG in Company Docs | SmartDocs accepts ANY file type - no validation | Add file type validation to only allow PDFs for company docs |
+| OBC vs SS PDF needs auto-assignment to 5V/Standing Seam templates | No template-to-document linking system exists | Create template attachment system |
+| Estimate cover pages needed | PDFs currently have no cover page option | Add cover page feature to estimate builder |
 
 ---
 
-### Issue 2: Nicole Walker (3344-1-0) Not Showing in Pipeline
-**Root Cause:** There are TWO "East Coast" locations in the database:
+## Part 1: Company Docs File Type Validation
 
-| ID | Name | Length |
-|----|------|--------|
-| `acb2ee85-...` | "East Coast" | 10 chars |
-| `a3615f0d-...` | "East Coast " | 11 chars (trailing space!) |
+**Problem:** The Company Docs upload in SmartDocs accepts any file type (images, PDFs, etc). The user uploaded "image.jpg" which shouldn't be a company document.
 
-Nicole Walker is assigned to the duplicate location with the trailing space. When the user selects "East Coast" from the dropdown, they get the first one, but Nicole is in the second one.
+**Solution:** Add validation to only accept PDF files for Company Documents, or at minimum warn users that images aren't recommended.
 
-**Fix:** Clean up the duplicate location data (move records and delete the duplicate)
+### File: `src/features/documents/components/SmartDocs.tsx`
 
----
-
-## Technical Changes
-
-### File 1: `src/features/pipeline/components/Pipeline.tsx`
-
-**Fix the search filter function (lines 159-174):**
+Add file type validation before upload:
 
 ```typescript
-const filterBySearch = (data: any[]) => {
-  if (!searchQuery) return data;
-  
-  const query = searchQuery.toLowerCase();
-  return data.filter(job => {
-    const contact = job.contacts;
-    const fullName = `${contact?.first_name || ''} ${contact?.last_name || ''}`.toLowerCase();
-    // FIX: Use clj_formatted_number instead of job_number
-    const cljNumber = (job.clj_formatted_number || '').toLowerCase();
-    const address = `${contact?.address_street || ''} ${contact?.address_city || ''}`.toLowerCase();
-    
-    return fullName.includes(query) || 
-           cljNumber.includes(query) || 
-           address.includes(query);
-  });
+const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0];
+  if (!file) return;
+
+  // Validate file type - only PDFs recommended for company docs
+  const allowedTypes = ['application/pdf'];
+  if (!allowedTypes.includes(file.type)) {
+    toast.error("Only PDF files are accepted for Company Documents");
+    return;
+  }
+  // ... rest of upload logic
 };
 ```
 
-### Database Cleanup: Merge Duplicate "East Coast" Locations
+Also update the file input to hint at PDF-only:
 
-**Step 1: Move records from duplicate location to canonical one:**
-```sql
--- Update pipeline_entries from duplicate to canonical "East Coast"
-UPDATE pipeline_entries 
-SET location_id = 'acb2ee85-d4f7-4a4e-9b97-cd421554b8af'
-WHERE location_id = 'a3615f0d-c7b7-4ee9-a568-a71508a539c6';
-
--- Update contacts from duplicate to canonical
-UPDATE contacts 
-SET location_id = 'acb2ee85-d4f7-4a4e-9b97-cd421554b8af'
-WHERE location_id = 'a3615f0d-c7b7-4ee9-a568-a71508a539c6';
-
--- Update any other tables that reference this location
-UPDATE projects 
-SET location_id = 'acb2ee85-d4f7-4a4e-9b97-cd421554b8af'
-WHERE location_id = 'a3615f0d-c7b7-4ee9-a568-a71508a539c6';
-```
-
-**Step 2: Delete the duplicate location:**
-```sql
-DELETE FROM locations 
-WHERE id = 'a3615f0d-c7b7-4ee9-a568-a71508a539c6';
+```typescript
+<input
+  type="file"
+  accept=".pdf,application/pdf"
+  ...
+/>
 ```
 
 ---
 
-## Summary of Changes
+## Part 2: Template Attachment System (OBC vs SS Document)
 
-| Change Type | Target | Description |
-|-------------|--------|-------------|
-| Code Fix | `Pipeline.tsx` | Fix search to use `clj_formatted_number` |
-| Data Fix | Database | Merge duplicate "East Coast" locations |
+**Goal:** Allow company documents to be automatically attached to estimates when using specific templates (e.g., 5V Metal, Standing Seam templates).
+
+### Database Changes
+
+Create a new junction table linking templates to company documents:
+
+```sql
+CREATE TABLE estimate_template_attachments (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+  template_id UUID REFERENCES estimate_templates(id) ON DELETE CASCADE,
+  document_id UUID REFERENCES documents(id) ON DELETE CASCADE,
+  attachment_order INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(template_id, document_id)
+);
+
+-- Enable RLS
+ALTER TABLE estimate_template_attachments ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "Users can manage attachments for their tenant templates"
+ON estimate_template_attachments
+FOR ALL
+USING (tenant_id IN (
+  SELECT p.active_tenant_id FROM profiles p WHERE p.id = auth.uid()
+  UNION
+  SELECT p.tenant_id FROM profiles p WHERE p.id = auth.uid()
+));
+```
+
+### UI Components
+
+**1. TemplateAttachmentManager component:**
+- Shows current attachments for a template
+- Allows selecting company docs to attach
+- Sets attachment order
+
+**2. Integration with estimate template editor:**
+- Add "Attachments" section to template settings
+- Show linked documents with drag-to-reorder
+
+**3. PDF generation update:**
+- When saving estimate, check if template has attachments
+- Merge attachment PDFs after estimate pages
+
+### File Changes
+
+| File | Change |
+|------|--------|
+| New: `src/components/estimates/TemplateAttachmentManager.tsx` | UI to manage template-document links |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Load attachments, merge into PDF on save |
+| New migration | Create `estimate_template_attachments` table |
 
 ---
 
-## Why Search Wasn't Working
+## Part 3: Estimate Cover Page Feature
 
-The search input looks for:
-- Contact name ✅
-- `job_number` field ❌ (doesn't exist on pipeline entries)
-- Address ✅
+**Goal:** Add a professional cover page option when creating estimates, making them look more polished.
 
-Pipeline entries have `clj_formatted_number` (like "3344-1-0"), not `job_number`. So searching "paola" wouldn't match anything.
-
----
-
-## Why Nicole Walker Is Missing
+### Cover Page Design
 
 ```text
-User selects: "East Coast" (id: acb2ee85-d4f7-4a4e-9b97-cd421554b8af)
-Nicole is in: "East Coast " (id: a3615f0d-c7b7-4ee9-a568-a71508a539c6)
-                        ^^ trailing space - DIFFERENT location!
++------------------------------------------+
+|                                          |
+|          [COMPANY LOGO]                  |
+|                                          |
+|       ROOFING ESTIMATE                   |
+|                                          |
+|  Prepared for:                           |
+|  [Customer Name]                         |
+|  [Property Address]                      |
+|                                          |
+|  Estimate #: [EST-XXXX]                  |
+|  Date: [Date]                            |
+|                                          |
+|  +------------------------------------+  |
+|  |                                    |  |
+|  |    [PROPERTY PHOTO or MAP]         |  |
+|  |                                    |  |
+|  +------------------------------------+  |
+|                                          |
+|  Prepared by:                            |
+|  [Company Name]                          |
+|  [Company Address]                       |
+|  [Phone] | [Email]                       |
+|  License #: [Number]                     |
+|                                          |
++------------------------------------------+
 ```
 
-The dropdown shows "East Coast" but it's filtering by the wrong UUID, so Nicole doesn't appear.
+### Implementation
+
+**1. New Component: EstimateCoverPage.tsx**
+
+```typescript
+interface EstimateCoverPageProps {
+  companyInfo: CompanyInfo;
+  companyLogo?: string;
+  customerName: string;
+  customerAddress: string;
+  estimateNumber: string;
+  createdAt: string;
+  propertyPhoto?: string; // Optional property image
+}
+
+export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({...}) => {
+  return (
+    <div 
+      data-report-page
+      className="bg-white flex flex-col items-center justify-center"
+      style={{ width: '816px', height: '1056px' }}
+    >
+      {/* Cover page content */}
+    </div>
+  );
+};
+```
+
+**2. Update PDFComponentOptions.ts:**
+
+Add new options for cover page:
+
+```typescript
+export interface PDFComponentOptions {
+  // ... existing options
+  showCoverPage: boolean;
+  coverPagePropertyPhoto?: string;
+}
+
+export function getDefaultOptions(mode: 'internal' | 'customer'): PDFComponentOptions {
+  return {
+    // ... existing
+    showCoverPage: true, // Default ON for customer-facing
+  };
+}
+```
+
+**3. Update EstimatePDFDocument.tsx:**
+
+Insert cover page as first page when enabled:
+
+```typescript
+// In useMemo for pages
+if (opts.showCoverPage) {
+  totalPageCount++;
+  pageList.unshift(
+    <EstimateCoverPage
+      key="cover-page"
+      companyInfo={companyInfo}
+      companyLogo={companyLogo}
+      customerName={customerName}
+      customerAddress={customerAddress}
+      estimateNumber={estimateNumber}
+      createdAt={createdAt}
+    />
+  );
+}
+```
+
+**4. Update MultiTemplateSelector.tsx:**
+
+Add UI toggle for cover page in the export options:
+
+```typescript
+{/* Add Cover Page toggle in export options section */}
+<div className="flex items-center space-x-2">
+  <Checkbox
+    id="showCoverPage"
+    checked={pdfOptions.showCoverPage}
+    onCheckedChange={(checked) => 
+      setPdfOptions(prev => ({ ...prev, showCoverPage: !!checked }))
+    }
+  />
+  <Label htmlFor="showCoverPage">Include Cover Page</Label>
+</div>
+```
 
 ---
 
-## Testing After Fix
+## Implementation Summary
 
-1. Open Pipeline page
-2. Type "nicole" in search - should filter to show Nicole Walker
-3. Type "3344" in search - should show lead 3344-1-0
-4. After database cleanup, Nicole Walker should appear in the leads column
-5. Search by name, CLJ number, and address should all work
+| Phase | Component | Priority |
+|-------|-----------|----------|
+| 1 | Company Docs PDF-only validation | High |
+| 2 | Create `estimate_template_attachments` table | High |
+| 3 | TemplateAttachmentManager UI | Medium |
+| 4 | EstimateCoverPage component | High |
+| 5 | Cover page toggle in export options | High |
+| 6 | PDF merge for template attachments | Medium |
+
+---
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| `src/features/documents/components/SmartDocs.tsx` | Modify | Add PDF-only validation |
+| `src/components/estimates/EstimateCoverPage.tsx` | Create | Cover page component |
+| `src/components/estimates/PDFComponentOptions.ts` | Modify | Add showCoverPage option |
+| `src/components/estimates/EstimatePDFDocument.tsx` | Modify | Render cover page as first page |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Modify | Add cover page toggle |
+| `src/components/estimates/TemplateAttachmentManager.tsx` | Create | UI for template-doc links |
+| New migration | Create | `estimate_template_attachments` table |
+
+---
+
+## Data Cleanup
+
+Remove the incorrectly uploaded image.jpg from Company Docs:
+
+```sql
+DELETE FROM documents 
+WHERE id = '90464293-b371-4b97-8436-53a2b5cf0953';
+```
+
+Then delete from storage:
+```sql
+-- Storage: smartdoc-assets/company-docs/1770119019387-image.jpg
+```
