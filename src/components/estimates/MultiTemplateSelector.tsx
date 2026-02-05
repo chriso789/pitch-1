@@ -129,6 +129,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   const [estimatePricingTier, setEstimatePricingTier] = useState<'good' | 'better' | 'best' | ''>('');
   
+   // Template attachments state (e.g., product flyers for metal roofs)
+   const [templateAttachments, setTemplateAttachments] = useState<Array<{
+     document_id: string;
+     file_path: string;
+     filename: string;
+     attachment_order: number;
+   }>>([]);
+   
   // Add line item state
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [newItemType, setNewItemType] = useState<'material' | 'labor'>('material');
@@ -731,12 +739,51 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplateId(templateId);
+     // Fetch any template attachments (e.g., metal roof flyers)
+     fetchTemplateAttachments(templateId);
     // Auto-enable creating mode when template is selected (unless already editing an existing estimate)
     if (!isEditingLoadedEstimate && !existingEstimateId) {
       setIsCreatingNewEstimate(true);
     }
     resetToOriginal();
   };
+   
+   // Fetch template attachments (e.g., metal roof flyer for 5V/Standing Seam templates)
+   const fetchTemplateAttachments = async (templateId: string) => {
+     try {
+       const { data, error } = await supabaseClient
+         .from('estimate_template_attachments')
+         .select(`
+           document_id,
+           attachment_order,
+           documents!inner(file_path, filename)
+         `)
+         .eq('template_id', templateId)
+         .order('attachment_order');
+       
+       if (error) {
+         console.error('[fetchTemplateAttachments] Error:', error);
+         setTemplateAttachments([]);
+         return;
+       }
+       
+       if (data && data.length > 0) {
+         const attachments = data.map((d: any) => ({
+           document_id: d.document_id,
+           file_path: d.documents.file_path,
+           filename: d.documents.filename,
+           attachment_order: d.attachment_order,
+         }));
+         setTemplateAttachments(attachments);
+         console.log(`[fetchTemplateAttachments] Found ${attachments.length} attachments for template:`, attachments.map(a => a.filename));
+       } else {
+         setTemplateAttachments([]);
+       }
+     } catch (err) {
+       console.error('[fetchTemplateAttachments] Exception:', err);
+       setTemplateAttachments([]);
+     }
+   };
 
   const handleSaveSelection = async () => {
     if (!selectedTemplateId) return;
@@ -924,6 +971,36 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       } catch (pdfError) {
         console.error('PDF generation failed:', pdfError);
       }
+
+       // Merge template attachments (e.g., metal roof flyer) if any exist
+       if (pdfBlob && templateAttachments.length > 0) {
+         try {
+           console.log(`[handleCreateEstimate] Merging ${templateAttachments.length} template attachments...`);
+           
+           // Get storage URLs for attachment documents
+           const attachmentUrls = templateAttachments.map(att => {
+             const { data } = supabase.storage
+               .from('company-docs')
+               .getPublicUrl(att.file_path);
+             return data.publicUrl;
+           });
+           
+           console.log('[handleCreateEstimate] Attachment URLs:', attachmentUrls);
+           
+           // Dynamically import and merge
+           const { mergeEstimateWithAttachments } = await import('@/lib/pdfMerger');
+           pdfBlob = await mergeEstimateWithAttachments(pdfBlob, attachmentUrls);
+           
+           console.log(`📎 Merged ${templateAttachments.length} attachments into estimate PDF`);
+           toast({ 
+             title: 'Attachments Added', 
+             description: `Added ${templateAttachments.length} product document(s) to estimate PDF` 
+           });
+         } catch (mergeError) {
+           console.error('[handleCreateEstimate] Failed to merge attachments:', mergeError);
+           // Continue with original PDF if merge fails
+         }
+       }
 
       // Hide PDF template
       setShowPDFTemplate(false);
