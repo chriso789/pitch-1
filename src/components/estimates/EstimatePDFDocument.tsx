@@ -7,6 +7,7 @@
 import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
+import { EstimateCoverPage } from './EstimateCoverPage';
 
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
@@ -380,11 +381,30 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     
     // Count total pages for page numbering
     let totalPageCount = itemChunks.length || 1; // At least 1 for main content
+    if (opts.showCoverPage) totalPageCount++;
     if (opts.showWarrantyInfo) totalPageCount++;
     if (opts.showMeasurementDetails && measurementSummary) totalPageCount++;
     if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) totalPageCount++;
     
     let currentPage = 0;
+
+    // Cover page (if enabled) - prepended before other content
+    if (opts.showCoverPage) {
+      currentPage++;
+      pageList.push(
+        <EstimateCoverPage
+          key="cover-page"
+          companyInfo={companyInfo}
+          companyLogo={companyLogo}
+          companyName={companyName}
+          customerName={customerName}
+          customerAddress={customerAddress}
+          estimateNumber={estimateNumber}
+          createdAt={createdAt}
+          propertyPhoto={opts.coverPagePropertyPhoto}
+        />
+      );
+    }
 
     // Page 1: Customer info + first chunk of items + summary
     currentPage++;
