@@ -648,14 +648,26 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
   // Collect tags from current canvas
   const collectCurrentPageTags = (): TagPlacement[] => {
-    if (!fabricCanvas) return [];
+   if (!fabricCanvas) {
+     console.warn("[collectCurrentPageTags] No canvas available");
+     return [];
+   }
     
     const objects = fabricCanvas.getObjects();
-    const tagRects = objects.filter((obj: any) => obj.tagKey && !obj.isLabel);
+   console.log("[collectCurrentPageTags] Total objects on canvas:", objects.length);
+   
+   const tagRects = objects.filter((obj: any) => {
+     // Check both direct property and Fabric.js get() method for compatibility
+     const tagKey = obj.tagKey || obj.get?.('tagKey');
+     const isLabel = obj.isLabel || obj.get?.('isLabel');
+     return tagKey && !isLabel;
+   });
+   
+   console.log("[collectCurrentPageTags] Tag rects found:", tagRects.length);
     
     // Normalize canvas coordinates to PDF coordinates (divide by scale)
     return tagRects.map((rect: any) => ({
-      tag_key: rect.tagKey,
+     tag_key: rect.tagKey || rect.get?.('tagKey'),
       page_number: currentPage,
       x_position: (rect.left || 0) / PDF_RENDER_SCALE,
       y_position: (rect.top || 0) / PDF_RENDER_SCALE,
@@ -712,8 +724,12 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
       hasBorders: true,
     });
 
-    // Store tag key in object data
-    (tagRect as any).tagKey = tagKey;
+   // Store tag key using Fabric.js set() method for proper persistence
+   tagRect.set('tagKey' as any, tagKey);
+   // Also set directly for backwards compatibility
+   (tagRect as any).tagKey = tagKey;
+   
+   console.log("[addTagToCanvas] Added tag with key:", tagKey);
 
     fabricCanvas.add(tagRect);
 
@@ -728,6 +744,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
       evented: false,
     });
     (labelText as any).isLabel = true;
+   labelText.set('isLabel' as any, true);
     (labelText as any).parentRect = tagRect;
 
     fabricCanvas.add(labelText);
@@ -784,10 +801,14 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
       return;
     }
 
+   console.log("[Save] Starting save, canvas:", !!fabricCanvas, "tenantId:", tenantId);
+   
     setSaving(true);
     try {
       // Collect current page tags
       const currentTags = collectCurrentPageTags();
+     console.log("[Save] Collected tags from current page:", currentTags.length, currentTags);
+     
       updatePlacementsForPage(currentPage, currentTags);
       
       // Get all placements including current page
@@ -795,6 +816,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         ...allPlacements.filter(p => p.page_number !== currentPage),
         ...currentTags
       ];
+     
+     console.log("[Save] Total placements to save:", allCurrentPlacements.length);
 
       // Delete existing placements
       await supabase
@@ -823,6 +846,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           );
 
         if (error) throw error;
+       console.log("[Save] ✅ Successfully inserted", allCurrentPlacements.length, "placements");
       }
 
       toast.success(`Saved ${allCurrentPlacements.length} tag placements`);
