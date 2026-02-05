@@ -14935,6 +14935,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "insurance_scope_disputes_disputed_line_item_id_fkey"
+            columns: ["disputed_line_item_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_line_items"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "insurance_scope_disputes_evidence_packet_id_fkey"
             columns: ["evidence_packet_id"]
             isOneToOne: false
@@ -15301,6 +15308,13 @@ export type Database = {
             columns: ["line_item_id"]
             isOneToOne: false
             referencedRelation: "insurance_scope_line_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_scope_line_item_evidence_line_item_id_fkey"
+            columns: ["line_item_id"]
+            isOneToOne: false
+            referencedRelation: "scope_network_line_items"
             referencedColumns: ["id"]
           },
         ]
@@ -37188,6 +37202,25 @@ export type Database = {
         }
         Relationships: []
       }
+      scope_network_line_items: {
+        Row: {
+          carrier_normalized: string | null
+          contributor_hash: string | null
+          created_at: string | null
+          id: string | null
+          quantity: number | null
+          raw_category: string | null
+          raw_code: string | null
+          raw_description: string | null
+          state_code: string | null
+          total_acv: number | null
+          total_rcv: number | null
+          unit: string | null
+          unit_price: number | null
+          zip_prefix: string | null
+        }
+        Relationships: []
+      }
       user_activity_summary: {
         Row: {
           avatar_url: string | null
@@ -37467,6 +37500,10 @@ export type Database = {
             }
             Returns: string
           }
+      analyze_scope_comparison: {
+        Args: { p_carrier_filter?: string; p_document_id: string }
+        Returns: Json
+      }
       api_approve_job_from_lead: {
         Args: { approval_notes?: string; pipeline_entry_id_param: string }
         Returns: Json
@@ -38628,6 +38665,34 @@ export type Database = {
           entity_subtext: string
           entity_type: string
           match_score: number
+        }[]
+      }
+      search_network_line_items: {
+        Args: {
+          p_carrier?: string
+          p_category?: string
+          p_limit?: number
+          p_max_price?: number
+          p_min_price?: number
+          p_offset?: number
+          p_search?: string
+          p_unit?: string
+        }
+        Returns: {
+          avg_price: number
+          carrier_normalized: string
+          contributor_hash: string
+          id: string
+          max_price: number
+          min_price: number
+          network_frequency: number
+          raw_category: string
+          raw_code: string
+          raw_description: string
+          state_code: string
+          total_rcv: number
+          unit: string
+          unit_price: number
         }[]
       }
       seed_dynamic_tags: { Args: { p_tenant_id: string }; Returns: undefined }

@@ -24,7 +24,8 @@ import {
   Globe,
   Building2,
   PlayCircle,
-  Loader2
+  Loader2,
+  GitCompare
 } from 'lucide-react';
 import { useScopeDocuments } from '@/hooks/useScopeIntelligence';
 import { useNetworkIntelligenceStats } from '@/hooks/useNetworkIntelligence';
@@ -35,6 +36,8 @@ import { ScopeIntelligenceDashboard } from '@/components/insurance/ScopeIntellig
 import { ScopeBulkUploader } from '@/components/insurance/ScopeBulkUploader';
 import { ScopeDocumentBrowser } from '@/components/insurance/ScopeDocumentBrowser';
 import { DisputeEvidenceBuilder } from '@/components/insurance/DisputeEvidenceBuilder';
+import { NetworkLineItemBrowser } from '@/components/insurance/NetworkLineItemBrowser';
+import { ScopeComparisonTool } from '@/components/insurance/ScopeComparisonTool';
 import { format } from 'date-fns';
 
 const ScopeIntelligence: React.FC = () => {
@@ -225,7 +228,7 @@ const ScopeIntelligence: React.FC = () => {
 
         {/* Main Content */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList>
+          <TabsList className="flex-wrap">
             <TabsTrigger value="dashboard">
               <BarChart3 className="h-4 w-4 mr-2" />
               Analytics
@@ -233,6 +236,14 @@ const ScopeIntelligence: React.FC = () => {
             <TabsTrigger value="documents">
               <FileText className="h-4 w-4 mr-2" />
               Documents
+            </TabsTrigger>
+            <TabsTrigger value="search">
+              <Search className="h-4 w-4 mr-2" />
+              Search Items
+            </TabsTrigger>
+            <TabsTrigger value="compare">
+              <GitCompare className="h-4 w-4 mr-2" />
+              Compare
             </TabsTrigger>
             <TabsTrigger value="upload">
               <Upload className="h-4 w-4 mr-2" />
@@ -253,6 +264,19 @@ const ScopeIntelligence: React.FC = () => {
               onSelectDocument={setSelectedDocumentId}
               onUploadClick={() => setActiveTab('upload')}
               viewMode={viewMode}
+            />
+          </TabsContent>
+
+          <TabsContent value="search" className="mt-4">
+            <NetworkLineItemBrowser />
+          </TabsContent>
+
+          <TabsContent value="compare" className="mt-4">
+            <ScopeComparisonTool 
+              onBuildSupplement={(items) => {
+                console.log('Building supplement with items:', items);
+                setActiveTab('disputes');
+              }}
             />
           </TabsContent>
 
