@@ -9,6 +9,7 @@ interface ProposalPreviewProps {
   estimateId: string;
   onSend?: () => void;
   onDownload?: () => void;
+  downloading?: boolean;
   className?: string;
 }
 
@@ -16,6 +17,7 @@ export const ProposalPreview = ({
   estimateId,
   onSend,
   onDownload,
+  downloading = false,
   className,
 }: ProposalPreviewProps) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -54,9 +56,13 @@ export const ProposalPreview = ({
             )}
           </Button>
           {onDownload && (
-            <Button variant="outline" size="sm" onClick={onDownload}>
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
+            <Button variant="outline" size="sm" onClick={onDownload} disabled={downloading}>
+              {downloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              {downloading ? 'Generating...' : 'Download PDF'}
             </Button>
           )}
           {onSend && (
