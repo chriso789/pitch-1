@@ -1,100 +1,221 @@
 
-# Fix SmartDocs Tag Save Issue
+# Auto-Attach OBC Metal Roof Flyer to Standing Seam/5V Metal Estimates
 
-## Problem
-When saving the `workmanship_lien_release.pdf` document in SmartDocs, the tag placements are not being saved to the database. The document shows 0 placements despite the user adding tags and clicking Save.
+## Objective
+Automatically attach the **"obc_-_metal_roof_flyer.pdf"** document (the Metal Roofing showcase PDF you showed) to estimates when a **Standing Seam** or **5V Metal** template is selected. The attachment should be appended to the estimate PDF during generation.
 
-## Root Cause Analysis
+---
 
-Looking at the save flow in `DocumentTagEditor.tsx`:
+## Current State
 
-1. **Line 650-668**: `collectCurrentPageTags()` filters canvas objects for those with `tagKey` property
-2. **Line 716**: Tags are added with `(tagRect as any).tagKey = tagKey`
-3. **Line 777-835**: `handleSave()` collects tags, deletes existing, and inserts new
+### Database Resources Identified
+| Resource | ID | Details |
+|----------|-----|---------|
+| Metal Roof Flyer Document | `9c38279e-4eff-47b2-9506-2a34897a8250` | `obc_-_metal_roof_flyer.pdf` in company-docs |
+| Template Attachments Table | Created | `estimate_template_attachments` junction table exists but is empty |
+| Metal Templates | Multiple | Templates with `roof_type: 'metal'` including "Standard Metal Roof", "5V Painted Metal with Polyglass XFR" |
 
-**Potential Issues:**
-- Canvas objects may not be properly retaining the `tagKey` property after canvas operations
-- The Fabric.js 6.x property assignment using `(object as any).tagKey` may be getting lost during serialization/deserialization
-- Race condition where save is called before canvas fully renders the PDF page
+### PDF Generation Flow
+1. User selects template in `MultiTemplateSelector.tsx`
+2. Template items loaded, pricing calculated
+3. `EstimatePDFDocument.tsx` renders the estimate pages
+4. `useMultiPagePDFGeneration.ts` captures pages and creates PDF
+5. `estimatePdfSaver.ts` uploads to storage
 
-## Technical Solution
+---
 
-### 1. Use Fabric.js Custom Properties Properly
+## Implementation Plan
 
-Fabric.js requires custom properties to be registered to persist across operations. Add `tagKey` and `isLabel` to the object's `stateProperties`:
+### Phase 1: Seed Template Attachments (Database)
 
-```typescript
-// When creating tag rectangle
-const tagRect = new Rect({
-  left,
-  top,
-  width,
-  height,
-  fill: "rgba(59, 130, 246, 0.15)",
-  stroke: "#3b82f6",
-  strokeWidth: 2,
-  rx: 4,
-  ry: 4,
-  hasControls: true,
-  hasBorders: true,
-});
+Insert records to link the Metal Roof Flyer to metal templates:
 
-// Use Fabric.js 6.x proper custom property assignment
-tagRect.set('tagKey', tagKey);
+```sql
+-- Link obc_-_metal_roof_flyer.pdf to all metal roof templates
+INSERT INTO estimate_template_attachments (tenant_id, template_id, document_id, attachment_order)
+SELECT 
+  t.tenant_id,
+  t.id as template_id,
+  '9c38279e-4eff-47b2-9506-2a34897a8250' as document_id,
+  0 as attachment_order
+FROM estimate_templates t
+WHERE t.roof_type = 'metal'
+  OR t.name ILIKE '%5v%'
+  OR t.name ILIKE '%standing seam%'
+ON CONFLICT (template_id, document_id) DO NOTHING;
 ```
 
-### 2. Add Debug Logging to Save Function
+### Phase 2: Fetch Template Attachments During Estimate Creation
 
-Add console logging to trace exactly what's happening:
+**File: `src/components/estimates/MultiTemplateSelector.tsx`**
+
+Add a function to load attachments when a template is selected:
 
 ```typescript
-const handleSave = async () => {
-  console.log("[Save] Starting save, canvas:", !!fabricCanvas, "tenantId:", tenantId);
+// New state
+const [templateAttachments, setTemplateAttachments] = useState<Array<{
+  document_id: string;
+  file_path: string;
+  filename: string;
+  attachment_order: number;
+}>>([]);
+
+// Fetch attachments when template is selected
+const fetchTemplateAttachments = async (templateId: string) => {
+  const { data, error } = await supabaseClient
+    .from('estimate_template_attachments')
+    .select(`
+      document_id,
+      attachment_order,
+      documents!inner(file_path, filename)
+    `)
+    .eq('template_id', templateId)
+    .order('attachment_order');
   
-  const currentTags = collectCurrentPageTags();
-  console.log("[Save] Collected tags from current page:", currentTags.length, currentTags);
-  
-  // ... rest of save logic
+  if (data && !error) {
+    setTemplateAttachments(data.map(d => ({
+      document_id: d.document_id,
+      file_path: d.documents.file_path,
+      filename: d.documents.filename,
+      attachment_order: d.attachment_order,
+    })));
+  }
 };
 ```
 
-### 3. Fix collectCurrentPageTags to Handle Fabric.js 6.x
+### Phase 3: Create PDF Merge Utility
+
+**New File: `src/lib/pdfMerger.ts`**
+
+Create a utility to merge the estimate PDF with attachment PDFs:
 
 ```typescript
-const collectCurrentPageTags = (): TagPlacement[] => {
-  if (!fabricCanvas) {
-    console.warn("[collectCurrentPageTags] No canvas available");
-    return [];
+import { PDFDocument } from 'pdf-lib';
+
+export async function mergeEstimateWithAttachments(
+  estimatePdfBlob: Blob,
+  attachmentUrls: string[]
+): Promise<Blob> {
+  // Load the base estimate PDF
+  const estimateBytes = await estimatePdfBlob.arrayBuffer();
+  const mergedPdf = await PDFDocument.load(estimateBytes);
+  
+  // Fetch and merge each attachment
+  for (const url of attachmentUrls) {
+    try {
+      const response = await fetch(url);
+      const attachmentBytes = await response.arrayBuffer();
+      const attachmentPdf = await PDFDocument.load(attachmentBytes);
+      
+      // Copy all pages from attachment
+      const pages = await mergedPdf.copyPages(
+        attachmentPdf,
+        attachmentPdf.getPageIndices()
+      );
+      pages.forEach(page => mergedPdf.addPage(page));
+    } catch (err) {
+      console.error('Failed to merge attachment:', url, err);
+    }
   }
   
-  const objects = fabricCanvas.getObjects();
-  console.log("[collectCurrentPageTags] Total objects on canvas:", objects.length);
-  
-  const tagRects = objects.filter((obj: any) => {
-    const hasTagKey = obj.tagKey || obj.get?.('tagKey');
-    const isNotLabel = !obj.isLabel && !obj.get?.('isLabel');
-    return hasTagKey && isNotLabel;
-  });
-  
-  console.log("[collectCurrentPageTags] Tag rects found:", tagRects.length);
-  // ... rest of function
-};
+  // Return merged PDF as blob
+  const mergedBytes = await mergedPdf.save();
+  return new Blob([mergedBytes], { type: 'application/pdf' });
+}
 ```
 
-## Files to Modify
+### Phase 4: Integrate Merging into Estimate Save Flow
 
-| File | Changes |
-|------|---------|
-| `src/features/documents/components/DocumentTagEditor.tsx` | Fix custom property assignment, add debug logging, improve tag collection |
+**File: `src/components/estimates/MultiTemplateSelector.tsx`**
 
-## Testing After Fix
+After PDF generation, merge attachments before upload:
 
-1. Open SmartDocs
-2. Click Edit on `workmanship_lien_release.pdf`
-3. Add 2-3 smart tags to the document
-4. Check browser console for debug logs
-5. Click Save
-6. Verify toast shows "Saved X tag placements"
-7. Close editor and verify document appears in "Tagged Documents" section
-8. Re-open document and verify tags are displayed
+```typescript
+// In handleCreateEstimate, after generating pdfBlob:
+if (pdfBlob && templateAttachments.length > 0) {
+  // Get storage URLs for attachment documents
+  const attachmentUrls = templateAttachments.map(att => {
+    const { data } = supabase.storage
+      .from('smartdoc-assets')
+      .getPublicUrl(att.file_path);
+    return data.publicUrl;
+  });
+  
+  // Merge estimate with attachments
+  const { mergeEstimateWithAttachments } = await import('@/lib/pdfMerger');
+  pdfBlob = await mergeEstimateWithAttachments(pdfBlob, attachmentUrls);
+  console.log('📎 Merged', templateAttachments.length, 'attachments into estimate PDF');
+}
+```
 
+### Phase 5: Add pdf-lib Dependency
+
+Update package.json to include the PDF merging library:
+
+```json
+"pdf-lib": "^1.17.1"
+```
+
+---
+
+## Files to Create/Modify
+
+| File | Action | Purpose |
+|------|--------|---------|
+| New migration | Create | Seed template attachments for metal templates |
+| `src/lib/pdfMerger.ts` | Create | PDF merge utility using pdf-lib |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Modify | Fetch attachments, merge into final PDF |
+| `package.json` | Modify | Add pdf-lib dependency |
+
+---
+
+## Technical Flow Diagram
+
+```text
+User selects "5V Painted Metal" template
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Fetch template attachments     │
+│  from estimate_template_attachments │
+│  → Returns: obc_-_metal_roof_flyer.pdf │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Generate estimate PDF pages    │
+│  (Cover page, line items, etc.) │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Merge with attachment PDFs     │
+│  using pdf-lib                  │
+│  → Final PDF: Estimate + Flyer  │
+└─────────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────┐
+│  Upload merged PDF to storage   │
+│  Save to enhanced_estimates     │
+└─────────────────────────────────┘
+```
+
+---
+
+## Existing Templates to Link
+
+Based on database query, these templates will get the Metal Roof Flyer attachment:
+- **Standard Metal Roof** (roof_type: metal)
+- **5V Painted Metal with Polyglass XFR** (name contains '5V')
+- Any future templates with roof_type = 'metal' or name containing '5v' or 'standing seam'
+
+---
+
+## Testing After Implementation
+
+1. Open a lead and go to Estimates
+2. Select a metal roof template (5V or Standard Metal)
+3. Add line items and save the estimate
+4. Open the saved estimate PDF
+5. Verify the Metal Roofing flyer appears as additional pages at the end
