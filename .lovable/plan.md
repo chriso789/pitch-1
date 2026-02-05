@@ -1,221 +1,346 @@
 
-# Auto-Attach OBC Metal Roof Flyer to Standing Seam/5V Metal Estimates
+# Scope Intelligence Enhancement: Network Search & Comparison System
 
-## Objective
-Automatically attach the **"obc_-_metal_roof_flyer.pdf"** document (the Metal Roofing showcase PDF you showed) to estimates when a **Standing Seam** or **5V Metal** template is selected. The attachment should be appended to the estimate PDF during generation.
+## Overview
 
----
+This plan enhances the Scope Intelligence system with three major capabilities:
 
-## Current State
+1. **Include ALL insurance documents in the network** - Currently, network stats only show documents from the `insurance_scope_documents` table. We'll ensure all uploaded insurance documents are automatically processed into the scope intelligence pipeline.
 
-### Database Resources Identified
-| Resource | ID | Details |
-|----------|-----|---------|
-| Metal Roof Flyer Document | `9c38279e-4eff-47b2-9506-2a34897a8250` | `obc_-_metal_roof_flyer.pdf` in company-docs |
-| Template Attachments Table | Created | `estimate_template_attachments` junction table exists but is empty |
-| Metal Templates | Multiple | Templates with `roof_type: 'metal'` including "Standard Metal Roof", "5V Painted Metal with Polyglass XFR" |
+2. **Network Line Item Search** - Add the ability to search line items across the entire network database by carrier, category, and description to find approved items as reference.
 
-### PDF Generation Flow
-1. User selects template in `MultiTemplateSelector.tsx`
-2. Template items loaded, pricing calculated
-3. `EstimatePDFDocument.tsx` renders the estimate pages
-4. `useMultiPagePDFGeneration.ts` captures pages and creates PDF
-5. `estimatePdfSaver.ts` uploads to storage
+3. **Scope Comparison Tool** - Allow users to upload a new insurance scope and compare it against the network database to identify missing items that other carriers have paid for similar work.
 
 ---
 
-## Implementation Plan
+## Phase 1: Ensure All Insurance Documents Feed Network
 
-### Phase 1: Seed Template Attachments (Database)
+### Current State
+- Documents uploaded to `/insurance` route go into `documents` table with `document_type = 'insurance'`
+- Scope documents uploaded via Scope Intelligence go into `insurance_scope_documents` table
+- Network view only aggregates from `insurance_scope_documents`
 
-Insert records to link the Metal Roof Flyer to metal templates:
+### Solution
+Create a database trigger and update the backfill function to automatically process any insurance document into the scope pipeline.
 
+**Database Migration:**
 ```sql
--- Link obc_-_metal_roof_flyer.pdf to all metal roof templates
-INSERT INTO estimate_template_attachments (tenant_id, template_id, document_id, attachment_order)
-SELECT 
-  t.tenant_id,
-  t.id as template_id,
-  '9c38279e-4eff-47b2-9506-2a34897a8250' as document_id,
-  0 as attachment_order
-FROM estimate_templates t
-WHERE t.roof_type = 'metal'
-  OR t.name ILIKE '%5v%'
-  OR t.name ILIKE '%standing seam%'
-ON CONFLICT (template_id, document_id) DO NOTHING;
-```
-
-### Phase 2: Fetch Template Attachments During Estimate Creation
-
-**File: `src/components/estimates/MultiTemplateSelector.tsx`**
-
-Add a function to load attachments when a template is selected:
-
-```typescript
-// New state
-const [templateAttachments, setTemplateAttachments] = useState<Array<{
-  document_id: string;
-  file_path: string;
-  filename: string;
-  attachment_order: number;
-}>>([]);
-
-// Fetch attachments when template is selected
-const fetchTemplateAttachments = async (templateId: string) => {
-  const { data, error } = await supabaseClient
-    .from('estimate_template_attachments')
-    .select(`
-      document_id,
-      attachment_order,
-      documents!inner(file_path, filename)
-    `)
-    .eq('template_id', templateId)
-    .order('attachment_order');
-  
-  if (data && !error) {
-    setTemplateAttachments(data.map(d => ({
-      document_id: d.document_id,
-      file_path: d.documents.file_path,
-      filename: d.documents.filename,
-      attachment_order: d.attachment_order,
-    })));
-  }
-};
-```
-
-### Phase 3: Create PDF Merge Utility
-
-**New File: `src/lib/pdfMerger.ts`**
-
-Create a utility to merge the estimate PDF with attachment PDFs:
-
-```typescript
-import { PDFDocument } from 'pdf-lib';
-
-export async function mergeEstimateWithAttachments(
-  estimatePdfBlob: Blob,
-  attachmentUrls: string[]
-): Promise<Blob> {
-  // Load the base estimate PDF
-  const estimateBytes = await estimatePdfBlob.arrayBuffer();
-  const mergedPdf = await PDFDocument.load(estimateBytes);
-  
-  // Fetch and merge each attachment
-  for (const url of attachmentUrls) {
-    try {
-      const response = await fetch(url);
-      const attachmentBytes = await response.arrayBuffer();
-      const attachmentPdf = await PDFDocument.load(attachmentBytes);
-      
-      // Copy all pages from attachment
-      const pages = await mergedPdf.copyPages(
-        attachmentPdf,
-        attachmentPdf.getPageIndices()
+-- Create trigger to auto-process insurance documents
+CREATE OR REPLACE FUNCTION process_insurance_document_to_scope()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only trigger for insurance documents with PDF files
+  IF NEW.document_type = 'insurance' 
+     AND NEW.file_path LIKE '%.pdf' THEN
+    
+    -- Check if not already processed
+    IF NOT EXISTS (
+      SELECT 1 FROM insurance_scope_documents 
+      WHERE source_document_id = NEW.id
+    ) THEN
+      -- Insert pending scope document for processing
+      INSERT INTO insurance_scope_documents (
+        tenant_id,
+        source_document_id,
+        document_type,
+        file_name,
+        file_hash,
+        file_size_bytes,
+        storage_path,
+        parse_status,
+        created_by
+      ) VALUES (
+        NEW.tenant_id,
+        NEW.id,
+        'estimate',
+        NEW.filename,
+        md5(NEW.file_path),
+        NEW.file_size,
+        NEW.file_path,
+        'pending',
+        NEW.uploaded_by
       );
-      pages.forEach(page => mergedPdf.addPage(page));
-    } catch (err) {
-      console.error('Failed to merge attachment:', url, err);
-    }
-  }
-  
-  // Return merged PDF as blob
-  const mergedBytes = await mergedPdf.save();
-  return new Blob([mergedBytes], { type: 'application/pdf' });
-}
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE TRIGGER auto_process_insurance_docs
+  AFTER INSERT ON documents
+  FOR EACH ROW
+  EXECUTE FUNCTION process_insurance_document_to_scope();
 ```
 
-### Phase 4: Integrate Merging into Estimate Save Flow
+---
 
-**File: `src/components/estimates/MultiTemplateSelector.tsx`**
+## Phase 2: Network Line Item Search
 
-After PDF generation, merge attachments before upload:
+### New Edge Function: `scope-network-line-items`
+
+Create an edge function to search line items across the entire network with anonymization:
+
+**File: `supabase/functions/scope-network-line-items/index.ts`**
 
 ```typescript
-// In handleCreateEstimate, after generating pdfBlob:
-if (pdfBlob && templateAttachments.length > 0) {
-  // Get storage URLs for attachment documents
-  const attachmentUrls = templateAttachments.map(att => {
-    const { data } = supabase.storage
-      .from('smartdoc-assets')
-      .getPublicUrl(att.file_path);
-    return data.publicUrl;
-  });
-  
-  // Merge estimate with attachments
-  const { mergeEstimateWithAttachments } = await import('@/lib/pdfMerger');
-  pdfBlob = await mergeEstimateWithAttachments(pdfBlob, attachmentUrls);
-  console.log('📎 Merged', templateAttachments.length, 'attachments into estimate PDF');
+interface LineItemSearchFilters {
+  search?: string;           // Text search in description
+  carrier_normalized?: string;
+  category?: string;
+  raw_code?: string;
+  unit?: string;
+  min_price?: number;
+  max_price?: number;
+  limit?: number;
+  offset?: number;
+}
+
+// Returns anonymized line items with price statistics
+interface NetworkLineItem {
+  id: string;
+  raw_code: string;
+  raw_description: string;
+  raw_category: string;
+  unit: string;
+  unit_price: number;
+  carrier_normalized: string;
+  contributor_hash: string;  // Anonymized tenant
+  state_code: string;
+  frequency: number;         // How often this item appears
 }
 ```
 
-### Phase 5: Add pdf-lib Dependency
+### New Hook: `useNetworkLineItemSearch`
 
-Update package.json to include the PDF merging library:
+**File: `src/hooks/useNetworkLineItemSearch.ts`**
 
-```json
-"pdf-lib": "^1.17.1"
+```typescript
+export function useNetworkLineItemSearch(filters: LineItemSearchFilters) {
+  return useQuery({
+    queryKey: ['network-line-items', filters],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke(
+        'scope-network-line-items',
+        { body: filters }
+      );
+      if (error) throw error;
+      return data;
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+}
 ```
 
+### New UI Component: `NetworkLineItemBrowser`
+
+**File: `src/components/insurance/NetworkLineItemBrowser.tsx`**
+
+Features:
+- Search box with debounced text search
+- Carrier dropdown filter (populated from network stats)
+- Category dropdown (Roofing, Gutters, Siding, etc.)
+- Unit filter (SQ, LF, SF, EA)
+- Price range slider
+- Results table with:
+  - Description
+  - Xactimate code
+  - Unit price (with min/avg/max across network)
+  - Carrier
+  - Frequency badge (how often item appears)
+- Click to see price statistics modal
+
 ---
 
-## Files to Create/Modify
+## Phase 3: Scope Comparison Tool
 
-| File | Action | Purpose |
-|------|--------|---------|
-| New migration | Create | Seed template attachments for metal templates |
-| `src/lib/pdfMerger.ts` | Create | PDF merge utility using pdf-lib |
-| `src/components/estimates/MultiTemplateSelector.tsx` | Modify | Fetch attachments, merge into final PDF |
-| `package.json` | Modify | Add pdf-lib dependency |
+### Concept
 
----
+User uploads an insurance scope PDF → System parses it → Compares line items against network database → Shows missing items that other carriers have paid for similar work.
 
-## Technical Flow Diagram
+### New Tab: "Compare" in Scope Intelligence
+
+Add a new tab to the Scope Intelligence page for the comparison workflow.
+
+### UI Flow
 
 ```text
-User selects "5V Painted Metal" template
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Fetch template attachments     │
-│  from estimate_template_attachments │
-│  → Returns: obc_-_metal_roof_flyer.pdf │
-└─────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Generate estimate PDF pages    │
-│  (Cover page, line items, etc.) │
-└─────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Merge with attachment PDFs     │
-│  using pdf-lib                  │
-│  → Final PDF: Estimate + Flyer  │
-└─────────────────────────────────┘
-         │
-         ▼
-┌─────────────────────────────────┐
-│  Upload merged PDF to storage   │
-│  Save to enhanced_estimates     │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  [Upload Scope for Comparison]                              │
+│                                                             │
+│  Drag & drop an insurance scope PDF to compare              │
+│  against the network database                               │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Processing: Extracting line items...                       │
+│  ████████████████░░░░░░░░░░░░░░ 60%                        │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│  Comparison Results                                         │
+│                                                             │
+│  📄 Your Scope: 42 line items | $18,500 RCV                │
+│  🌐 Carrier: State Farm | State: FL                        │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ ✅ Matched Items (38)                               │   │
+│  │    Items in your scope that match network patterns  │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ ⚠️ Missing Items (15)                 [Add to Supp] │   │
+│  │    Items commonly paid by State Farm but not in     │   │
+│  │    your scope                                        │   │
+│  │                                                     │   │
+│  │  • Drip edge - aluminum        $4.25/LF   87% paid │   │
+│  │  • Ice & water shield          $3.15/LF   92% paid │   │
+│  │  • Roof vent - turbine type   $125/EA    78% paid  │   │
+│  │  • Ridge vent - aluminum       $6.50/LF   65% paid │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │ 💰 Price Discrepancies (4)                          │   │
+│  │    Items where your pricing differs from network    │   │
+│  │                                                     │   │
+│  │  • Ridge cap: $4.85/LF vs Network avg $5.25/LF     │   │
+│  │  • Shingle removal: $54.12/SQ vs Network $58.00/SQ │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                             │
+│  [Download Comparison Report]  [Build Supplement Request]   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### New Edge Function: `scope-comparison-analyze`
+
+**File: `supabase/functions/scope-comparison-analyze/index.ts`**
+
+```typescript
+interface ComparisonRequest {
+  scope_document_id: string;  // ID of the uploaded scope to compare
+  carrier_filter?: string;    // Optional: compare against specific carrier
+}
+
+interface ComparisonResult {
+  scope_summary: {
+    total_items: number;
+    total_rcv: number;
+    carrier_detected: string;
+    state_detected: string;
+  };
+  matched_items: Array<{
+    line_item_id: string;
+    description: string;
+    unit_price: number;
+    network_avg_price: number;
+    network_frequency: number;
+  }>;
+  missing_items: Array<{
+    canonical_key: string;
+    description: string;
+    suggested_unit_price: number;
+    network_paid_rate: number;  // % of scopes that include this
+    network_sample_count: number;
+  }>;
+  price_discrepancies: Array<{
+    line_item_id: string;
+    description: string;
+    scope_price: number;
+    network_avg_price: number;
+    difference_percent: number;
+  }>;
+}
+```
+
+### New Components
+
+**`ScopeComparisonUploader.tsx`**
+- Drag-and-drop upload zone
+- Progress indicator during parsing
+- Carrier auto-detection display
+
+**`ScopeComparisonResults.tsx`**
+- Three collapsible sections: Matched, Missing, Discrepancies
+- Each missing item shows:
+  - Description
+  - Suggested price (network median)
+  - "Add to Supplement" button
+- Export comparison as PDF report
+
+**`MissingItemsTable.tsx`**
+- Sortable by paid rate, price, frequency
+- Bulk select for supplement building
+- Filter by category
+
+---
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `supabase/functions/scope-network-line-items/index.ts` | Network line item search API |
+| `supabase/functions/scope-comparison-analyze/index.ts` | Scope comparison logic |
+| `src/hooks/useNetworkLineItemSearch.ts` | React Query hook for line item search |
+| `src/hooks/useScopeComparison.ts` | React Query hook for comparison |
+| `src/components/insurance/NetworkLineItemBrowser.tsx` | Line item search UI |
+| `src/components/insurance/ScopeComparisonUploader.tsx` | Upload UI for comparison |
+| `src/components/insurance/ScopeComparisonResults.tsx` | Comparison results display |
+| `src/components/insurance/MissingItemsTable.tsx` | Missing items table |
+
+## Files to Modify
+
+| File | Changes |
+|------|---------|
+| `src/pages/ScopeIntelligence.tsx` | Add "Compare" tab, integrate NetworkLineItemBrowser in Documents tab |
+| `src/components/insurance/ScopeDocumentBrowser.tsx` | Add search functionality for line items |
+| `src/hooks/useNetworkIntelligence.ts` | Add line item search hook |
+| Database migration | Add trigger for auto-processing insurance docs |
+
+---
+
+## Database Views to Create
+
+**Network Line Items View (anonymized):**
+```sql
+CREATE VIEW scope_network_line_items AS
+SELECT 
+  li.id,
+  li.raw_code,
+  li.raw_description,
+  li.raw_category,
+  li.unit,
+  li.unit_price,
+  li.total_rcv,
+  d.carrier_normalized,
+  md5(d.tenant_id::text) as contributor_hash,
+  h.property_state as state_code,
+  LEFT(h.property_zip, 3) as zip_prefix
+FROM insurance_scope_line_items li
+JOIN insurance_scope_headers h ON li.header_id = h.id
+JOIN insurance_scope_documents d ON h.document_id = d.id
+WHERE d.parse_status = 'complete'
+  AND li.raw_description IS NOT NULL;
 ```
 
 ---
 
-## Existing Templates to Link
+## Technical Summary
 
-Based on database query, these templates will get the Metal Roof Flyer attachment:
-- **Standard Metal Roof** (roof_type: metal)
-- **5V Painted Metal with Polyglass XFR** (name contains '5V')
-- Any future templates with roof_type = 'metal' or name containing '5v' or 'standing seam'
+- **Network Inclusion**: Automatic trigger ensures all insurance documents flow into scope processing
+- **Line Item Search**: Full-text search across network with carrier/category filters
+- **Comparison Engine**: AI-powered matching of uploaded scope against network patterns
+- **Missing Item Detection**: Identifies commonly-paid items not in user's scope
+- **Price Analysis**: Highlights items priced below network averages
+- **Supplement Building**: Direct integration with existing DisputeEvidenceBuilder
 
 ---
 
-## Testing After Implementation
+## Testing Plan
 
-1. Open a lead and go to Estimates
-2. Select a metal roof template (5V or Standard Metal)
-3. Add line items and save the estimate
-4. Open the saved estimate PDF
-5. Verify the Metal Roofing flyer appears as additional pages at the end
+1. Upload an insurance PDF via the Claims page → Verify it appears in Scope Intelligence
+2. Search for "ridge cap" in Network Line Items → Verify results from multiple carriers
+3. Filter by "State Farm" carrier → Verify only State Farm items shown
+4. Upload a scope for comparison → Verify missing items are detected
+5. Add missing items to supplement → Verify integration with DisputeEvidenceBuilder
+6. Download comparison report → Verify PDF generation
