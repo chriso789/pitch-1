@@ -51,6 +51,10 @@ export interface PDFComponentOptions {
   enableSmartSign?: boolean;
   signerName?: string;
   signerEmail?: string;
+  
+  // Cover Page
+  showCoverPage: boolean;
+  coverPagePropertyPhoto?: string;
 }
 
 export type PDFViewMode = 'customer' | 'internal';
@@ -95,6 +99,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     // Header/Footer
     showPageHeader: true,
     showPageFooter: true,
+    // Cover Page
+    showCoverPage: false,
   },
   internal: {
     // Header
@@ -134,6 +140,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     // Header/Footer
     showPageHeader: true,
     showPageFooter: true,
+    // Cover Page
+    showCoverPage: false,
   },
 };
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,6 @@ import {
   Trash2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
 
@@ -229,6 +229,15 @@ const SmartDocs = () => {
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Validate file type - only PDFs allowed for company docs
+    const allowedTypes = ['application/pdf'];
+    if (!allowedTypes.includes(file.type)) {
+      toast.error("Only PDF files are accepted for Company Documents");
+      // Reset the input so the same file can be re-selected
+      event.target.value = '';
+      return;
+    }
 
     try {
       // Get user's tenant_id
@@ -550,7 +559,7 @@ const SmartDocs = () => {
                 id="file-upload"
                 className="hidden"
                 onChange={handleFileUpload}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"
+                accept=".pdf,application/pdf"
               />
               <Button
                 variant="outline"

@@ -11222,6 +11222,55 @@ export type Database = {
           },
         ]
       }
+      estimate_template_attachments: {
+        Row: {
+          attachment_order: number | null
+          created_at: string | null
+          document_id: string
+          id: string
+          template_id: string
+          tenant_id: string
+        }
+        Insert: {
+          attachment_order?: number | null
+          created_at?: string | null
+          document_id: string
+          id?: string
+          template_id: string
+          tenant_id: string
+        }
+        Update: {
+          attachment_order?: number | null
+          created_at?: string | null
+          document_id?: string
+          id?: string
+          template_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_template_attachments_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_template_attachments_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_template_attachments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_template_groups: {
         Row: {
           created_at: string | null

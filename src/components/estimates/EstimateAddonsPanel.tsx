@@ -14,7 +14,8 @@ import {
   Shield,
   ExternalLink,
   Check,
-  PenTool
+  PenTool,
+  BookOpen
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -104,6 +105,24 @@ export const EstimateAddonsPanel: React.FC<EstimateAddonsPanelProps> = ({
         </CollapsibleTrigger>
         <CollapsibleContent>
           <CardContent className="space-y-4 pt-0">
+            {/* Cover Page Toggle */}
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-primary/5 border-primary/20">
+              <Checkbox
+                id="cover-page"
+                checked={pdfOptions.showCoverPage}
+                onCheckedChange={(checked) => onOptionsChange({ showCoverPage: !!checked })}
+              />
+              <div className="flex-1">
+                <Label htmlFor="cover-page" className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                  <BookOpen className="h-4 w-4 text-primary" />
+                  Include Cover Page
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Add a professional cover page with company branding and customer info
+                </p>
+              </div>
+            </div>
+
             {/* Fine Print Toggle */}
             <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
               <Checkbox
