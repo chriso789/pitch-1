@@ -164,11 +164,11 @@ const Pipeline = () => {
     return data.filter(job => {
       const contact = job.contacts;
       const fullName = `${contact?.first_name || ''} ${contact?.last_name || ''}`.toLowerCase();
-      const jobNumber = (job.job_number || '').toLowerCase();
+      const cljNumber = (job.clj_formatted_number || '').toLowerCase();
       const address = `${contact?.address_street || ''} ${contact?.address_city || ''}`.toLowerCase();
       
       return fullName.includes(query) || 
-             jobNumber.includes(query) || 
+             cljNumber.includes(query) || 
              address.includes(query);
     });
   };
