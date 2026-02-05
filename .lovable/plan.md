@@ -1,346 +1,344 @@
 
-# Scope Intelligence Enhancement: Network Search & Comparison System
+# Implementation Plan: Four Core Feature Completions
 
-## Overview
-
-This plan enhances the Scope Intelligence system with three major capabilities:
-
-1. **Include ALL insurance documents in the network** - Currently, network stats only show documents from the `insurance_scope_documents` table. We'll ensure all uploaded insurance documents are automatically processed into the scope intelligence pipeline.
-
-2. **Network Line Item Search** - Add the ability to search line items across the entire network database by carrier, category, and description to find approved items as reference.
-
-3. **Scope Comparison Tool** - Allow users to upload a new insurance scope and compare it against the network database to identify missing items that other carriers have paid for similar work.
+This plan addresses four incomplete features identified in the internal audit: Labor Line Items, Proposal PDF Download, Dialer SMS/Email Buttons, and Send for Signature integration.
 
 ---
 
-## Phase 1: Ensure All Insurance Documents Feed Network
+## Feature 1: Labor Line Items Tab in AddEstimateLineDialog
 
 ### Current State
-- Documents uploaded to `/insurance` route go into `documents` table with `document_type = 'insurance'`
-- Scope documents uploaded via Scope Intelligence go into `insurance_scope_documents` table
-- Network view only aggregates from `insurance_scope_documents`
+- The Labor tab exists but shows a placeholder message: "Labor line items coming soon..."
+- Database has a `labor_rates` table with columns: `id`, `tenant_id`, `job_type`, `skill_level`, `base_rate_per_hour`, `location_zone`, `seasonal_adjustment`, `complexity_multiplier`, `effective_date`, `expires_date`, `is_active`
 
-### Solution
-Create a database trigger and update the backfill function to automatically process any insurance document into the scope pipeline.
+### Implementation
 
-**Database Migration:**
-```sql
--- Create trigger to auto-process insurance documents
-CREATE OR REPLACE FUNCTION process_insurance_document_to_scope()
-RETURNS TRIGGER AS $$
-BEGIN
-  -- Only trigger for insurance documents with PDF files
-  IF NEW.document_type = 'insurance' 
-     AND NEW.file_path LIKE '%.pdf' THEN
-    
-    -- Check if not already processed
-    IF NOT EXISTS (
-      SELECT 1 FROM insurance_scope_documents 
-      WHERE source_document_id = NEW.id
-    ) THEN
-      -- Insert pending scope document for processing
-      INSERT INTO insurance_scope_documents (
-        tenant_id,
-        source_document_id,
-        document_type,
-        file_name,
-        file_hash,
-        file_size_bytes,
-        storage_path,
-        parse_status,
-        created_by
-      ) VALUES (
-        NEW.tenant_id,
-        NEW.id,
-        'estimate',
-        NEW.filename,
-        md5(NEW.file_path),
-        NEW.file_size,
-        NEW.file_path,
-        'pending',
-        NEW.uploaded_by
-      );
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+**Files to Create:**
+| File | Purpose |
+|------|---------|
+| `src/hooks/useLaborRates.ts` | React Query hook to fetch labor rates |
 
-CREATE TRIGGER auto_process_insurance_docs
-  AFTER INSERT ON documents
-  FOR EACH ROW
-  EXECUTE FUNCTION process_insurance_document_to_scope();
-```
+**Files to Modify:**
+| File | Changes |
+|------|---------|
+| `src/components/estimates/AddEstimateLineDialog.tsx` | Build out the Labor tab UI |
 
----
-
-## Phase 2: Network Line Item Search
-
-### New Edge Function: `scope-network-line-items`
-
-Create an edge function to search line items across the entire network with anonymization:
-
-**File: `supabase/functions/scope-network-line-items/index.ts`**
-
-```typescript
-interface LineItemSearchFilters {
-  search?: string;           // Text search in description
-  carrier_normalized?: string;
-  category?: string;
-  raw_code?: string;
-  unit?: string;
-  min_price?: number;
-  max_price?: number;
-  limit?: number;
-  offset?: number;
-}
-
-// Returns anonymized line items with price statistics
-interface NetworkLineItem {
-  id: string;
-  raw_code: string;
-  raw_description: string;
-  raw_category: string;
-  unit: string;
-  unit_price: number;
-  carrier_normalized: string;
-  contributor_hash: string;  // Anonymized tenant
-  state_code: string;
-  frequency: number;         // How often this item appears
-}
-```
-
-### New Hook: `useNetworkLineItemSearch`
-
-**File: `src/hooks/useNetworkLineItemSearch.ts`**
-
-```typescript
-export function useNetworkLineItemSearch(filters: LineItemSearchFilters) {
-  return useQuery({
-    queryKey: ['network-line-items', filters],
-    queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke(
-        'scope-network-line-items',
-        { body: filters }
-      );
-      if (error) throw error;
-      return data;
-    },
-    staleTime: 5 * 60 * 1000,
-  });
-}
-```
-
-### New UI Component: `NetworkLineItemBrowser`
-
-**File: `src/components/insurance/NetworkLineItemBrowser.tsx`**
-
-Features:
-- Search box with debounced text search
-- Carrier dropdown filter (populated from network stats)
-- Category dropdown (Roofing, Gutters, Siding, etc.)
-- Unit filter (SQ, LF, SF, EA)
-- Price range slider
-- Results table with:
-  - Description
-  - Xactimate code
-  - Unit price (with min/avg/max across network)
-  - Carrier
-  - Frequency badge (how often item appears)
-- Click to see price statistics modal
-
----
-
-## Phase 3: Scope Comparison Tool
-
-### Concept
-
-User uploads an insurance scope PDF → System parses it → Compares line items against network database → Shows missing items that other carriers have paid for similar work.
-
-### New Tab: "Compare" in Scope Intelligence
-
-Add a new tab to the Scope Intelligence page for the comparison workflow.
-
-### UI Flow
+### Labor Tab UI Design
 
 ```text
 ┌─────────────────────────────────────────────────────────────┐
-│  [Upload Scope for Comparison]                              │
+│  LABOR LINE ITEM                                            │
 │                                                             │
-│  Drag & drop an insurance scope PDF to compare              │
-│  against the network database                               │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Processing: Extracting line items...                       │
-│  ████████████████░░░░░░░░░░░░░░ 60%                        │
-└─────────────────────────────────────────────────────────────┘
-                          │
-                          ▼
-┌─────────────────────────────────────────────────────────────┐
-│  Comparison Results                                         │
+│  Job Type:        [Roofing Installation ▼]                  │
+│  Skill Level:     [Journeyman ▼]                            │
 │                                                             │
-│  📄 Your Scope: 42 line items | $18,500 RCV                │
-│  🌐 Carrier: State Farm | State: FL                        │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Current Rate: $55.00/hr                               │ │
+│  │  Complexity: 1.15x  |  Seasonal: 1.00x                 │ │
+│  │  Effective Rate: $63.25/hr                             │ │
+│  └────────────────────────────────────────────────────────┘ │
 │                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ ✅ Matched Items (38)                               │   │
-│  │    Items in your scope that match network patterns  │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  ☑ Use Formula (Calculate from measurements)               │
 │                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ ⚠️ Missing Items (15)                 [Add to Supp] │   │
-│  │    Items commonly paid by State Farm but not in     │   │
-│  │    your scope                                        │   │
-│  │                                                     │   │
-│  │  • Drip edge - aluminum        $4.25/LF   87% paid │   │
-│  │  • Ice & water shield          $3.15/LF   92% paid │   │
-│  │  • Roof vent - turbine type   $125/EA    78% paid  │   │
-│  │  • Ridge vent - aluminum       $6.50/LF   65% paid │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  Formula:  [{{ measure.surface_squares }} * 2.5 hours]      │
+│  Hours:    12.5 (calculated)                                │
 │                                                             │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │ 💰 Price Discrepancies (4)                          │   │
-│  │    Items where your pricing differs from network    │   │
-│  │                                                     │   │
-│  │  • Ridge cap: $4.85/LF vs Network avg $5.25/LF     │   │
-│  │  • Shingle removal: $54.12/SQ vs Network $58.00/SQ │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  Manual Hours: [____] (if formula disabled)                 │
+│  Markup %:     [15.0]                                       │
+│  Description:  [Roofing labor - journeyman crew]            │
 │                                                             │
-│  [Download Comparison Report]  [Build Supplement Request]   │
+│  ┌────────────────────────────────────────────────────────┐ │
+│  │  Total: 12.5 hrs × $63.25/hr = $790.63                 │ │
+│  │  With 15% markup: $909.22                              │ │
+│  └────────────────────────────────────────────────────────┘ │
+│                                                             │
+│  [Add Labor Line Item]                                      │
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### New Edge Function: `scope-comparison-analyze`
+### Labor Tab Logic
 
-**File: `supabase/functions/scope-comparison-analyze/index.ts`**
-
-```typescript
-interface ComparisonRequest {
-  scope_document_id: string;  // ID of the uploaded scope to compare
-  carrier_filter?: string;    // Optional: compare against specific carrier
-}
-
-interface ComparisonResult {
-  scope_summary: {
-    total_items: number;
-    total_rcv: number;
-    carrier_detected: string;
-    state_detected: string;
-  };
-  matched_items: Array<{
-    line_item_id: string;
-    description: string;
-    unit_price: number;
-    network_avg_price: number;
-    network_frequency: number;
-  }>;
-  missing_items: Array<{
-    canonical_key: string;
-    description: string;
-    suggested_unit_price: number;
-    network_paid_rate: number;  // % of scopes that include this
-    network_sample_count: number;
-  }>;
-  price_discrepancies: Array<{
-    line_item_id: string;
-    description: string;
-    scope_price: number;
-    network_avg_price: number;
-    difference_percent: number;
-  }>;
-}
-```
-
-### New Components
-
-**`ScopeComparisonUploader.tsx`**
-- Drag-and-drop upload zone
-- Progress indicator during parsing
-- Carrier auto-detection display
-
-**`ScopeComparisonResults.tsx`**
-- Three collapsible sections: Matched, Missing, Discrepancies
-- Each missing item shows:
-  - Description
-  - Suggested price (network median)
-  - "Add to Supplement" button
-- Export comparison as PDF report
-
-**`MissingItemsTable.tsx`**
-- Sortable by paid rate, price, frequency
-- Bulk select for supplement building
-- Filter by category
+1. **Load labor rates** from `labor_rates` table filtered by `is_active = true` and within date range
+2. **Job Type dropdown** options: Roofing Installation, Roofing Repair, Gutter Install, Siding, etc.
+3. **Skill Level dropdown**: Apprentice, Journeyman, Master, Foreman
+4. **Calculate effective rate**: `base_rate * complexity_multiplier * seasonal_adjustment`
+5. **Formula presets** for labor hours:
+   - "Per Square Installation": `{{ measure.surface_squares }} * 2.5`
+   - "Per LF Gutter": `{{ measure.eave_lf }} * 0.15`
+   - "Tear-off Labor": `{{ measure.surface_squares }} * 1.5`
+6. **Output line item** with: `item_name`, `description`, `quantity` (hours), `unit_cost` (hourly rate), `unit_type: 'HR'`, `markup_percent`
 
 ---
 
-## Files to Create
+## Feature 2: PDF Download in ProposalBuilder
 
+### Current State
+- `ProposalPreview.tsx` has Download PDF button that calls `onDownload` prop
+- `ProposalBuilder.tsx` passes a placeholder handler: `toast({ title: 'Download', description: 'PDF download coming soon' })`
+- `pdf-lib` is already installed and used in `src/lib/pdfMerger.ts`
+- `useProposalPreview` returns HTML content that can be rendered
+
+### Implementation
+
+**Files to Create:**
 | File | Purpose |
 |------|---------|
-| `supabase/functions/scope-network-line-items/index.ts` | Network line item search API |
-| `supabase/functions/scope-comparison-analyze/index.ts` | Scope comparison logic |
-| `src/hooks/useNetworkLineItemSearch.ts` | React Query hook for line item search |
-| `src/hooks/useScopeComparison.ts` | React Query hook for comparison |
-| `src/components/insurance/NetworkLineItemBrowser.tsx` | Line item search UI |
-| `src/components/insurance/ScopeComparisonUploader.tsx` | Upload UI for comparison |
-| `src/components/insurance/ScopeComparisonResults.tsx` | Comparison results display |
-| `src/components/insurance/MissingItemsTable.tsx` | Missing items table |
+| `src/lib/proposalPdfGenerator.ts` | Convert proposal HTML to PDF using html2canvas + jsPDF |
 
-## Files to Modify
-
+**Files to Modify:**
 | File | Changes |
 |------|---------|
-| `src/pages/ScopeIntelligence.tsx` | Add "Compare" tab, integrate NetworkLineItemBrowser in Documents tab |
-| `src/components/insurance/ScopeDocumentBrowser.tsx` | Add search functionality for line items |
-| `src/hooks/useNetworkIntelligence.ts` | Add line item search hook |
-| Database migration | Add trigger for auto-processing insurance docs |
+| `src/components/proposals/ProposalBuilder.tsx` | Implement actual PDF download handler |
+| `src/components/proposals/ProposalPreview.tsx` | Add loading state during PDF generation |
 
----
+### PDF Generation Flow
 
-## Database Views to Create
+```typescript
+// src/lib/proposalPdfGenerator.ts
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
 
-**Network Line Items View (anonymized):**
-```sql
-CREATE VIEW scope_network_line_items AS
-SELECT 
-  li.id,
-  li.raw_code,
-  li.raw_description,
-  li.raw_category,
-  li.unit,
-  li.unit_price,
-  li.total_rcv,
-  d.carrier_normalized,
-  md5(d.tenant_id::text) as contributor_hash,
-  h.property_state as state_code,
-  LEFT(h.property_zip, 3) as zip_prefix
-FROM insurance_scope_line_items li
-JOIN insurance_scope_headers h ON li.header_id = h.id
-JOIN insurance_scope_documents d ON h.document_id = d.id
-WHERE d.parse_status = 'complete'
-  AND li.raw_description IS NOT NULL;
+export async function generateProposalPdf(
+  htmlContent: string,
+  filename: string
+): Promise<Blob> {
+  // 1. Create hidden container with the HTML
+  const container = document.createElement('div');
+  container.innerHTML = htmlContent;
+  container.style.cssText = 'position: absolute; left: -9999px; width: 816px;'; // Letter width
+  document.body.appendChild(container);
+
+  try {
+    // 2. Render to canvas
+    const canvas = await html2canvas(container, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+    });
+
+    // 3. Create PDF
+    const pdf = new jsPDF('p', 'pt', 'letter');
+    const imgData = canvas.toDataURL('image/png');
+    const imgWidth = 612; // Letter width in points
+    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    
+    // Handle multi-page
+    let heightLeft = imgHeight;
+    let position = 0;
+    const pageHeight = 792; // Letter height
+
+    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+
+    while (heightLeft > 0) {
+      position -= pageHeight;
+      pdf.addPage();
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+    }
+
+    return pdf.output('blob');
+  } finally {
+    document.body.removeChild(container);
+  }
+}
+```
+
+### ProposalBuilder Download Handler
+
+```typescript
+const handleDownloadPdf = async () => {
+  if (!estimateId) return;
+  
+  setDownloading(true);
+  try {
+    // Fetch the HTML preview
+    const { data: previewData } = await supabase.functions.invoke('generate-proposal', {
+      body: { action: 'preview', estimateId },
+    });
+    
+    if (!previewData?.html) throw new Error('No preview data');
+    
+    // Generate PDF
+    const pdfBlob = await generateProposalPdf(
+      previewData.html,
+      `Proposal-${estimateId}.pdf`
+    );
+    
+    // Trigger download
+    const url = URL.createObjectURL(pdfBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Proposal-${estimateId}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+    
+    toast.success('PDF downloaded successfully');
+  } catch (error) {
+    console.error('PDF generation error:', error);
+    toast.error('Failed to generate PDF');
+  } finally {
+    setDownloading(false);
+  }
+};
 ```
 
 ---
 
-## Technical Summary
+## Feature 3: Dialer SMS/Email Buttons
 
-- **Network Inclusion**: Automatic trigger ensures all insurance documents flow into scope processing
-- **Line Item Search**: Full-text search across network with carrier/category filters
-- **Comparison Engine**: AI-powered matching of uploaded scope against network patterns
-- **Missing Item Detection**: Identifies commonly-paid items not in user's scope
-- **Price Analysis**: Highlights items priced below network averages
-- **Supplement Building**: Direct integration with existing DisputeEvidenceBuilder
+### Current State
+- `ContactHeader.tsx` receives `onText` and `onEmail` callbacks
+- `Dialer.tsx` passes placeholder handlers: `toast({ title: "SMS", description: "SMS feature coming soon" })`
+- `useSendSMS` hook exists and works with `telnyx-send-sms` edge function
+- Edge function is fully implemented with multi-tenant location-based routing
+
+### Implementation
+
+**Files to Create:**
+| File | Purpose |
+|------|---------|
+| `src/components/communication/QuickSMSDialog.tsx` | Modal for composing quick SMS |
+| `src/components/communication/QuickEmailDialog.tsx` | Modal for composing quick email |
+
+**Files to Modify:**
+| File | Changes |
+|------|---------|
+| `src/features/communication/components/Dialer.tsx` | Replace placeholder handlers with real dialogs |
+
+### QuickSMSDialog Component
+
+```typescript
+interface QuickSMSDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  contact: {
+    id: string;
+    name: string;
+    phone: string;
+  };
+}
+
+// Features:
+// - Pre-populated recipient phone
+// - Message textarea with character count
+// - Template quick-insert dropdown
+// - Send button using useSendSMS hook
+// - Real-time delivery status feedback
+```
+
+### Dialer.tsx Integration
+
+```typescript
+const [smsDialogOpen, setSmsDialogOpen] = useState(false);
+const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+
+// In ContactHeader props:
+onText={() => currentContact?.phone && setSmsDialogOpen(true)}
+onEmail={() => currentContact?.email && setEmailDialogOpen(true)}
+
+// Add dialogs:
+<QuickSMSDialog
+  open={smsDialogOpen}
+  onOpenChange={setSmsDialogOpen}
+  contact={currentContact}
+/>
+<QuickEmailDialog
+  open={emailDialogOpen}
+  onOpenChange={setEmailDialogOpen}
+  contact={currentContact}
+/>
+```
 
 ---
+
+## Feature 4: Send for Signature in ApplyDocumentToLeadDialog
+
+### Current State
+- Button exists but shows: `toast.info("Send for signature functionality coming soon")`
+- `RequestSignatureDialog.tsx` exists and calls `send-document-for-signature` edge function
+- Edge function is fully implemented at `supabase/functions/send-document-for-signature/index.ts`
+- SmartDocs system has envelope/signature workflow ready
+
+### Implementation
+
+**Files to Modify:**
+| File | Changes |
+|------|---------|
+| `src/features/documents/components/ApplyDocumentToLeadDialog.tsx` | Integrate RequestSignatureDialog |
+
+### Integration Logic
+
+```typescript
+// Add state
+const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
+
+// Replace button handler
+<Button
+  onClick={() => setSignatureDialogOpen(true)}
+  className="gap-2"
+>
+  <Send className="h-4 w-4" />
+  Send for Signature
+</Button>
+
+// Add dialog
+<RequestSignatureDialog
+  open={signatureDialogOpen}
+  onClose={() => setSignatureDialogOpen(false)}
+  documentId={document.id}
+  documentType="smart_doc_instance"
+  documentTitle={document.filename}
+  defaultRecipient={{
+    name: `${selectedContact.first_name} ${selectedContact.last_name}`,
+    email: selectedContact.email || ''
+  }}
+  onSuccess={(envelopeId) => {
+    toast.success('Document sent for signature');
+    onOpenChange(false);
+  }}
+/>
+```
+
+---
+
+## Summary of Changes
+
+| Feature | Files Created | Files Modified |
+|---------|---------------|----------------|
+| Labor Line Items | `useLaborRates.ts` | `AddEstimateLineDialog.tsx` |
+| PDF Download | `proposalPdfGenerator.ts` | `ProposalBuilder.tsx`, `ProposalPreview.tsx` |
+| Dialer SMS/Email | `QuickSMSDialog.tsx`, `QuickEmailDialog.tsx` | `Dialer.tsx` |
+| Send for Signature | None | `ApplyDocumentToLeadDialog.tsx` |
+
+## Dependencies
+- **html2canvas** (already installed) - for PDF generation
+- **jsPDF** (already installed) - for PDF creation
+- **pdf-lib** (already installed) - available for advanced PDF manipulation
 
 ## Testing Plan
 
-1. Upload an insurance PDF via the Claims page → Verify it appears in Scope Intelligence
-2. Search for "ridge cap" in Network Line Items → Verify results from multiple carriers
-3. Filter by "State Farm" carrier → Verify only State Farm items shown
-4. Upload a scope for comparison → Verify missing items are detected
-5. Add missing items to supplement → Verify integration with DisputeEvidenceBuilder
-6. Download comparison report → Verify PDF generation
+1. **Labor Line Items**
+   - Open estimate builder → Add Line Item → Labor tab
+   - Select job type and skill level
+   - Verify rate calculation with multipliers
+   - Test formula-based hour calculation
+   - Add labor line and verify in estimate
+
+2. **PDF Download**
+   - Create a proposal through the builder
+   - Click "Download PDF" button
+   - Verify PDF contains all proposal content
+   - Check multi-page handling for long proposals
+
+3. **Dialer SMS/Email**
+   - Navigate to Dialer with a contact
+   - Click "Text" button → SMS dialog opens
+   - Compose and send message → verify delivery
+   - Click "Email" button → Email composer opens
+
+4. **Send for Signature**
+   - Go to SmartDocs → Apply to Lead
+   - Select a contact → Click "Send for Signature"
+   - Verify RequestSignatureDialog opens
+   - Complete signature workflow → verify envelope created
