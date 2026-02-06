@@ -1,5 +1,5 @@
 // Estimate Preview Panel with live toggle controls
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -133,6 +133,7 @@ export function EstimatePreviewPanel({
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [isExporting, setIsExporting] = useState(false);
   const [additionalAttachments, setAdditionalAttachments] = useState<TemplateAttachment[]>([]);
+  const [removedTemplateIds, setRemovedTemplateIds] = useState<Set<string>>(new Set());
   const [pageOrder, setPageOrder] = useState<PageOrderItem[]>(DEFAULT_PAGE_ORDER);
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
@@ -140,8 +141,14 @@ export function EstimatePreviewPanel({
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
 
-  // Combine template attachments with additional ones
-  const allAttachments = [...templateAttachments, ...additionalAttachments];
+  // Filter template attachments to exclude removed ones
+  const activeTemplateAttachments = useMemo(() => 
+    templateAttachments.filter(a => !removedTemplateIds.has(a.document_id)),
+    [templateAttachments, removedTemplateIds]
+  );
+
+  // Combine active template attachments with additional ones
+  const allAttachments = [...activeTemplateAttachments, ...additionalAttachments];
 
   // Handlers for attachment management
   const handleAddAttachment = useCallback((attachment: TemplateAttachment) => {
@@ -152,21 +159,20 @@ export function EstimatePreviewPanel({
     // Check if it's a template attachment
     const isTemplateAttachment = templateAttachments.some(a => a.document_id === documentId);
     if (isTemplateAttachment) {
-      // For template attachments, we need to track them as "removed" 
-      // This could be extended to persist removed template attachments if needed
+      // Track as removed (don't delete from DB, just hide in this session)
+      setRemovedTemplateIds(prev => new Set([...prev, documentId]));
       toast({
-        title: 'Cannot Remove',
-        description: 'Template attachments can be toggled off using the Attachments toggle above',
-        variant: 'default',
+        title: 'Attachment Removed',
+        description: 'Template attachment hidden from this estimate',
       });
-      return;
+    } else {
+      // Remove additional attachment normally
+      setAdditionalAttachments(prev => prev.filter(a => a.document_id !== documentId));
     }
-    setAdditionalAttachments(prev => prev.filter(a => a.document_id !== documentId));
   }, [templateAttachments, toast]);
 
   const handleReorderAttachments = useCallback((reordered: TemplateAttachment[]) => {
     // Split back into template and additional
-    const newTemplateOrder = reordered.filter(a => a.isFromTemplate);
     const newAdditionalOrder = reordered.filter(a => !a.isFromTemplate);
     setAdditionalAttachments(newAdditionalOrder);
     // Could notify parent of reorder if needed: onAttachmentsChange?.(reordered);
@@ -183,6 +189,8 @@ export function EstimatePreviewPanel({
 
   const handleResetToDefaults = () => {
     setOptions(getDefaultOptions(viewMode));
+    // Also restore removed template attachments
+    setRemovedTemplateIds(new Set());
   };
 
   // Generate safe filename from display name or estimate number
@@ -249,8 +257,9 @@ export function EstimatePreviewPanel({
 
         <div className="flex h-[calc(95vh-120px)]">
           {/* Left Panel - Toggle Controls */}
-          <div className="w-80 border-r flex flex-col bg-muted/30">
-            <ScrollArea className="flex-1 p-4">
+          <div className="w-80 border-r flex flex-col bg-muted/30 overflow-hidden">
+            <ScrollArea className="flex-1">
+              <div className="p-4 space-y-4">
               {/* View Mode Tabs */}
               <Tabs value={viewMode} onValueChange={(v) => handleViewModeChange(v as PDFViewMode)} className="mb-4">
                 <TabsList className="grid w-full grid-cols-2">
@@ -463,7 +472,7 @@ export function EstimatePreviewPanel({
                   </CollapsibleTrigger>
                   <CollapsibleContent className="pt-2">
                     <EstimateAttachmentsManager
-                      templateAttachments={templateAttachments}
+                      templateAttachments={activeTemplateAttachments}
                       additionalAttachments={additionalAttachments}
                       onAddAttachment={handleAddAttachment}
                       onRemoveAttachment={handleRemoveAttachment}
@@ -520,6 +529,7 @@ export function EstimatePreviewPanel({
                     />
                   </div>
                 </div>
+              </div>
               </div>
             </ScrollArea>
 
