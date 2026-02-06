@@ -8,7 +8,7 @@ import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { EstimateCoverPage } from './EstimateCoverPage';
-
+import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -69,6 +69,13 @@ interface JobPhoto {
   category?: string | null;
 }
 
+interface TemplateAttachment {
+  document_id: string;
+  file_path: string;
+  filename: string;
+  attachment_order: number;
+}
+
 interface EstimatePDFDocumentProps {
   estimateNumber: string;
   customerName: string;
@@ -106,6 +113,7 @@ interface EstimatePDFDocumentProps {
   options?: Partial<PDFComponentOptions>;
   measurementSummary?: MeasurementSummary;
   jobPhotos?: JobPhoto[];
+  templateAttachments?: TemplateAttachment[];
 }
 
 const formatCurrency = (amount: number) => {
@@ -357,6 +365,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   options: partialOptions,
   measurementSummary,
   jobPhotos,
+  templateAttachments,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
 
@@ -490,6 +499,11 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           {pageContent}
         </PageShell>
       ))}
+      
+      {/* Render attachment pages (marketing flyers, etc.) after main content */}
+      {templateAttachments && templateAttachments.length > 0 && (
+        <AttachmentPagesRenderer attachments={templateAttachments} />
+      )}
     </div>
   );
 };

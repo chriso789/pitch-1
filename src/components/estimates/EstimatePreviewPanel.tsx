@@ -503,6 +503,7 @@ export function EstimatePreviewPanel({
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
+                    templateAttachments={templateAttachments}
                   />
                 </div>
               </div>
