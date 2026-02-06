@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { 
   Home, MessageCircle, Gift, Briefcase, 
-  Scale, Phone, Mail, MapPin
+  Scale, Phone, Mail, MapPin, CreditCard
 } from 'lucide-react';
 import { useCustomerPortal } from '../hooks/useCustomerPortal';
 import { JobStatusTimeline } from './JobStatusTimeline';
@@ -16,6 +16,7 @@ import { ReferralRewardsSection } from './ReferralRewardsSection';
 import { AdditionalServicesCard } from './AdditionalServicesCard';
 import { AttorneyRequestCard } from './AttorneyRequestCard';
 import { MilestoneModal } from './MilestoneModals';
+import { CustomerPaymentSection } from './CustomerPaymentSection';
 
 export function EnhancedCustomerPortal() {
   const { token } = useParams<{ token: string }>();
@@ -179,10 +180,14 @@ export function EnhancedCustomerPortal() {
 
         {/* Tabs */}
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid grid-cols-4 w-full">
+          <TabsList className="grid grid-cols-5 w-full">
             <TabsTrigger value="overview" className="flex items-center gap-1">
               <Home className="w-4 h-4" />
               <span className="hidden sm:inline">Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="payments" className="flex items-center gap-1">
+              <CreditCard className="w-4 h-4" />
+              <span className="hidden sm:inline">Payments</span>
             </TabsTrigger>
             <TabsTrigger value="chat" className="flex items-center gap-1">
               <MessageCircle className="w-4 h-4" />
@@ -267,6 +272,21 @@ export function EnhancedCustomerPortal() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="payments" className="mt-4">
+            <CustomerPaymentSection
+              projectId={project.id}
+              contactId={contact?.id}
+              token={token}
+              payments={project.payments || []}
+              paymentLinks={project.payment_links || []}
+              estimates={project.estimates || []}
+              onPaymentComplete={() => {
+                // Refetch data to update payment status
+                window.location.reload();
+              }}
+            />
           </TabsContent>
 
           <TabsContent value="chat" className="mt-4">

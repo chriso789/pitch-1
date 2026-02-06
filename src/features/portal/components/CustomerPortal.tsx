@@ -15,7 +15,11 @@ import {
   MessageSquare,
   Package,
   User,
-  Clock
+  Clock,
+  CreditCard,
+  ExternalLink,
+  Loader2,
+  CheckCircle2
 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { ProjectTimeline } from './ProjectTimeline';
@@ -41,11 +45,22 @@ interface Payment {
   description: string;
 }
 
+interface PaymentLink {
+  id: string;
+  amount: number;
+  status: string;
+  stripe_payment_link_url: string;
+  description?: string;
+  created_at: string;
+}
+
 export const CustomerPortal: React.FC = () => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [paymentLinks, setPaymentLinks] = useState<PaymentLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [generatingPayment, setGeneratingPayment] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -76,6 +91,21 @@ export const CustomerPortal: React.FC = () => {
         console.warn('Payments not available:', paymentsError);
       } else {
         setPayments(paymentsData || []);
+      }
+
+      // Fetch payment links (table may not exist in some installations)
+      try {
+        const { data: linksData } = await supabase
+          .from('payment_links' as any)
+          .select('id, amount, status, stripe_payment_link_url, description, created_at')
+          .eq('status', 'active')
+          .order('created_at', { ascending: false });
+
+        if (linksData && Array.isArray(linksData)) {
+          setPaymentLinks(linksData as unknown as PaymentLink[]);
+        }
+      } catch {
+        console.warn('Payment links not available');
       }
 
       if (projectsData && projectsData.length > 0) {
@@ -282,32 +312,63 @@ export const CustomerPortal: React.FC = () => {
                   </TabsContent>
 
                   <TabsContent value="payments">
-                    <Card className="p-6">
-                      <h3 className="text-lg font-semibold mb-4">Payment History</h3>
-                      {payments.length === 0 ? (
-                        <p className="text-muted-foreground text-center py-8">
-                          No payment history available
-                        </p>
-                      ) : (
+                    <Card className="p-6 space-y-6">
+                      {/* Pay Now Section */}
+                      {paymentLinks.length > 0 && (
                         <div className="space-y-3">
-                          {payments.map((payment) => (
-                            <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
+                          <h3 className="text-lg font-semibold">Outstanding Balance</h3>
+                          {paymentLinks.map((link) => (
+                            <div key={link.id} className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
                               <div>
-                                <p className="font-semibold">{payment.description}</p>
-                                <p className="text-sm text-muted-foreground">
-                                  {formatDistanceToNow(new Date(payment.created_at), { addSuffix: true })}
-                                </p>
+                                <p className="font-semibold">{link.description || 'Project Payment'}</p>
+                                <p className="text-2xl font-bold text-primary">${link.amount.toLocaleString()}</p>
                               </div>
-                              <div className="text-right">
-                                <p className="text-lg font-bold text-primary">
-                                  ${payment.amount.toLocaleString()}
-                                </p>
-                                <Badge variant="outline">{payment.status}</Badge>
-                              </div>
+                              <Button 
+                                size="lg" 
+                                onClick={() => window.open(link.stripe_payment_link_url, '_blank')}
+                                className="gap-2"
+                              >
+                                <CreditCard className="h-5 w-5" />
+                                Pay Now
+                                <ExternalLink className="h-4 w-4" />
+                              </Button>
                             </div>
                           ))}
+                          <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1">
+                            <CheckCircle2 className="h-3 w-3" />
+                            Secure payment powered by Stripe
+                          </p>
                         </div>
                       )}
+
+                      {/* Payment History */}
+                      <div>
+                        <h3 className="text-lg font-semibold mb-4">Payment History</h3>
+                        {payments.length === 0 ? (
+                          <p className="text-muted-foreground text-center py-8">
+                            No payment history available
+                          </p>
+                        ) : (
+                          <div className="space-y-3">
+                            {payments.map((payment) => (
+                              <div key={payment.id} className="flex items-center justify-between p-4 border rounded-lg">
+                                <div>
+                                  <p className="font-semibold">{payment.description}</p>
+                                  <p className="text-sm text-muted-foreground">
+                                    {formatDistanceToNow(new Date(payment.created_at), { addSuffix: true })}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-lg font-bold text-primary">
+                                    ${payment.amount.toLocaleString()}
+                                  </p>
+                                  <Badge variant="outline">{payment.status}</Badge>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </Card>
                   </TabsContent>
 
