@@ -898,12 +898,35 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         contact_id: pipelineEntry?.contact_id || null
       };
 
-      // Generate 2-word short description
+      // Generate 2-word short description using roof_type for accurate categorization
       const templateName = selectedTemplate?.name || 'Custom';
-      const brandWord = templateName.split(' ')[0]; // "GAF", "Owens", etc.
+      const roofType = selectedTemplate?.roof_type || 'shingle';
+      
+      // Extract descriptor based on roof type and template name
+      const getDescriptor = (name: string, type: string): string => {
+        if (type === 'metal') {
+          if (name.toLowerCase().includes('5v')) return '5V Metal';
+          if (name.toLowerCase().includes('snap')) return 'SnapLok';
+          if (name.toLowerCase().includes('standing')) return 'Standing Seam';
+          return 'Metal';
+        }
+        if (type === 'shingle') {
+          if (name.toLowerCase().includes('gaf')) return 'GAF';
+          if (name.toLowerCase().includes('owens')) return 'Owens Corning';
+          if (name.toLowerCase().includes('certainteed')) return 'CertainTeed';
+          return 'Shingle';
+        }
+        if (type === 'tile') return 'Tile';
+        if (type === 'flat') return 'Flat';
+        if (type === 'slate') return 'Slate';
+        if (type === 'cedar') return 'Cedar';
+        return type.charAt(0).toUpperCase() + type.slice(1);
+      };
+      
+      const descriptor = getDescriptor(templateName, roofType);
       const priceWord = breakdown.sellingPrice > 20000 ? 'Premium' : 
                         breakdown.sellingPrice > 10000 ? 'Standard' : 'Basic';
-      const shortDescription = `${brandWord} ${priceWord}`;
+      const shortDescription = `${descriptor} ${priceWord}`;
 
       // Build line items JSON for storage
       const lineItemsJson = {
