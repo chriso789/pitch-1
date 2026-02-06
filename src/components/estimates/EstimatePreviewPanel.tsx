@@ -75,6 +75,7 @@ interface EstimatePreviewPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   estimateNumber: string;
+  estimateDisplayName?: string;
   customerName: string;
   customerAddress: string;
   customerPhone?: string | null;
@@ -113,6 +114,7 @@ export function EstimatePreviewPanel({
   open,
   onOpenChange,
   estimateNumber,
+  estimateDisplayName,
   customerName,
   customerAddress,
   customerPhone,
@@ -183,11 +185,26 @@ export function EstimatePreviewPanel({
     setOptions(getDefaultOptions(viewMode));
   };
 
+  // Generate safe filename from display name or estimate number
+  const getFilename = useCallback(() => {
+    if (estimateDisplayName?.trim()) {
+      // Sanitize: remove special chars, limit length
+      const sanitized = estimateDisplayName
+        .trim()
+        .replace(/[^a-zA-Z0-9\s-]/g, '')
+        .replace(/\s+/g, '_')
+        .slice(0, 50);
+      return `${sanitized}.pdf`;
+    }
+    return `${estimateNumber}.pdf`;
+  }, [estimateDisplayName, estimateNumber]);
+
   const handleExportPDF = async () => {
     setIsExporting(true);
+    const filename = getFilename();
     try {
       const pdfBlob = await generatePDF('estimate-preview-template', {
-        filename: `${estimateNumber}.pdf`,
+        filename,
         orientation: 'portrait',
         format: 'letter',
         quality: 2,
@@ -197,13 +214,13 @@ export function EstimatePreviewPanel({
         const url = URL.createObjectURL(pdfBlob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `${estimateNumber}.pdf`;
+        a.download = filename;
         a.click();
         URL.revokeObjectURL(url);
 
         toast({
           title: 'PDF Downloaded',
-          description: `${estimateNumber}.pdf has been downloaded`,
+          description: `${filename} has been downloaded`,
         });
       } else {
         throw new Error('PDF generation failed');
