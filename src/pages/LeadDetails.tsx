@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -233,6 +233,24 @@ const LeadDetails = () => {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
   const estimateSectionRef = useRef<HTMLDivElement>(null);
+  
+  // Unsaved changes tracking for estimate switching
+  const [estimateHasUnsavedChanges, setEstimateHasUnsavedChanges] = useState(false);
+  const [currentEditingEstimateName, setCurrentEditingEstimateName] = useState<string | undefined>(undefined);
+  const saveEstimateChangesRef = useRef<(() => Promise<void>) | null>(null);
+  
+  // Handle unsaved changes state from MultiTemplateSelector
+  const handleUnsavedChangesChange = useCallback((hasChanges: boolean, estimateName?: string) => {
+    setEstimateHasUnsavedChanges(hasChanges);
+    setCurrentEditingEstimateName(estimateName);
+  }, []);
+  
+  // Save handler for save-and-switch flow
+  const handleSaveAndSwitch = useCallback(async () => {
+    if (saveEstimateChangesRef.current) {
+      await saveEstimateChangesRef.current();
+    }
+  }, []);
   
   // Use optimized hook with parallel queries and caching
   const { 
@@ -565,6 +583,9 @@ const LeadDetails = () => {
               onEditEstimate={(estimateId) => {
                 navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
               }}
+              hasUnsavedChanges={estimateHasUnsavedChanges}
+              currentEditingName={currentEditingEstimateName}
+              onSaveAndSwitch={handleSaveAndSwitch}
             />
 
             {/* Unified Measurement Management Panel */}
@@ -586,6 +607,8 @@ const LeadDetails = () => {
                 console.log('Template calculations updated:', calculations);
                 refetchRequirements();
               }}
+              onUnsavedChangesChange={handleUnsavedChangesChange}
+              saveChangesRef={saveEstimateChangesRef}
             />
           </div>
         );
