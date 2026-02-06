@@ -749,8 +749,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
    
    // Fetch template attachments (e.g., metal roof flyer for 5V/Standing Seam templates)
+   // Falls back to roof_type-based attachments if no template-specific ones found
    const fetchTemplateAttachments = async (templateId: string) => {
      try {
+       // First, try template-specific attachments
        const { data, error } = await supabaseClient
          .from('estimate_template_attachments')
          .select(`
@@ -775,9 +777,48 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
            attachment_order: d.attachment_order,
          }));
          setTemplateAttachments(attachments);
-         console.log(`[fetchTemplateAttachments] Found ${attachments.length} attachments for template:`, attachments.map(a => a.filename));
+         console.log(`[fetchTemplateAttachments] Found ${attachments.length} template-specific attachments:`, attachments.map(a => a.filename));
        } else {
-         setTemplateAttachments([]);
+         // No template-specific attachments - try roof_type-based fallback
+         const selectedTemplate = templates.find(t => t.id === templateId);
+         if (selectedTemplate?.roof_type) {
+           console.log(`[fetchTemplateAttachments] No template attachments, checking roof_type fallback for: ${selectedTemplate.roof_type}`);
+           
+           // Find any template of the same roof_type that HAS attachments
+           const { data: roofTypeAttachments, error: rtError } = await supabaseClient
+             .from('estimate_template_attachments')
+             .select(`
+               document_id,
+               attachment_order,
+               documents!inner(file_path, filename),
+               estimate_templates!inner(roof_type)
+             `)
+             .eq('estimate_templates.roof_type', selectedTemplate.roof_type)
+             .order('attachment_order')
+             .limit(5);
+           
+           if (!rtError && roofTypeAttachments && roofTypeAttachments.length > 0) {
+             // Dedupe by document_id in case multiple templates have same attachment
+             const uniqueAttachments = new Map<string, any>();
+             for (const d of roofTypeAttachments) {
+               if (!uniqueAttachments.has(d.document_id)) {
+                 uniqueAttachments.set(d.document_id, {
+                   document_id: d.document_id,
+                   file_path: (d.documents as any).file_path,
+                   filename: (d.documents as any).filename,
+                   attachment_order: d.attachment_order,
+                 });
+               }
+             }
+             const attachments = Array.from(uniqueAttachments.values());
+             setTemplateAttachments(attachments);
+             console.log(`[fetchTemplateAttachments] Found ${attachments.length} roof_type fallback attachments for ${selectedTemplate.roof_type}:`, attachments.map(a => a.filename));
+           } else {
+             setTemplateAttachments([]);
+           }
+         } else {
+           setTemplateAttachments([]);
+         }
        }
      } catch (err) {
        console.error('[fetchTemplateAttachments] Exception:', err);
