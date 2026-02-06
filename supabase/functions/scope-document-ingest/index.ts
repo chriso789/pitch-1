@@ -512,6 +512,27 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
         })
         .eq("id", document.id);
 
+      // ======= Save to job documents for easy access =======
+      if (body.job_id) {
+        try {
+          const carrierLabel = extracted.carrier_name || 'Unknown Carrier';
+          await supabase.from('documents').insert({
+            tenant_id: tenantId,
+            pipeline_entry_id: body.job_id,
+            document_type: 'insurance',
+            filename: fileName,
+            file_path: storagePath,
+            file_size: pdfBytes.length,
+            mime_type: 'application/pdf',
+            description: `Insurance ${body.document_type} - ${carrierLabel}`,
+          });
+          console.log("[scope-ingest] Saved insurance document to job documents");
+        } catch (docErr) {
+          console.warn("[scope-ingest] Failed to save to job documents:", docErr);
+          // Non-fatal - scope document still created
+        }
+      }
+
       console.log("[scope-ingest] Ingestion complete:", {
         document_id: document.id,
         header_id: header.id,

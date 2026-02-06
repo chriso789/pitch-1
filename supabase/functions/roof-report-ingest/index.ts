@@ -1408,6 +1408,66 @@ serve(async (req) => {
       }
     }
 
+    // ======= Save PDF to job documents for easy access =======
+    if (lead_id && pdfBytes) {
+      try {
+        // Get tenant_id from lead
+        const { data: leadData } = await supabase
+          .from('pipeline_entries')
+          .select('tenant_id')
+          .eq('id', lead_id)
+          .single();
+
+        if (leadData?.tenant_id) {
+          const isInsurance = provider === 'xactimate' || parsed.provider === 'xactimate';
+          const docType = isInsurance ? 'insurance' : 'other';
+          const timestamp = Date.now();
+          const providerLabel: Record<string, string> = {
+            roofr: 'Roofr',
+            eagleview: 'EagleView',
+            hover: 'Hover',
+            roofscope: 'RoofScope',
+            xactimate: 'Xactimate',
+            google: 'Google Maps',
+            generic: 'Measurement'
+          };
+          const label = providerLabel[parsed.provider || provider] || 'Measurement';
+          const sqft = parsed.total_area_sqft?.toLocaleString() || '0';
+          
+          // Store PDF in job's folder (tenant_id must be first for RLS)
+          const safeFileName = (fileName || 'report').replace(/[^a-zA-Z0-9._-]/g, '_');
+          const docPath = `${leadData.tenant_id}/${lead_id}/measurements/${timestamp}_${safeFileName}.pdf`;
+          
+          const { error: uploadErr } = await supabase.storage
+            .from('documents')
+            .upload(docPath, pdfBytes, {
+              contentType: 'application/pdf',
+              upsert: true
+            });
+
+          if (!uploadErr) {
+            // Create document record linked to the job
+            await supabase.from('documents').insert({
+              tenant_id: leadData.tenant_id,
+              pipeline_entry_id: lead_id,
+              document_type: docType,
+              filename: `${label}_Report_${sqft}sqft.pdf`,
+              file_path: docPath,
+              file_size: pdfBytes.length,
+              mime_type: 'application/pdf',
+              description: `${label} Report - ${sqft} sqft`,
+            });
+            console.log("roof-report-ingest: Saved document to job:", docPath);
+          } else {
+            console.warn("roof-report-ingest: Storage upload failed:", uploadErr.message);
+          }
+        }
+      } catch (docErr) {
+        console.warn("roof-report-ingest: Failed to save document:", docErr);
+        // Non-fatal - measurement data still saved
+      }
+    }
+
     console.log("roof-report-ingest: Successfully processed report", { 
       provider: parsed.provider || provider, 
       address: parsed.address,
