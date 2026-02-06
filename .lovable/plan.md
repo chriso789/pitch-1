@@ -1,344 +1,289 @@
 
-# Implementation Plan: Four Core Feature Completions
+# Implementation Plan: Complete Approval Rules CRUD & Status Summary
 
-This plan addresses four incomplete features identified in the internal audit: Labor Line Items, Proposal PDF Download, Dialer SMS/Email Buttons, and Send for Signature integration.
+## Summary
+
+Based on my analysis, **4 of the 5 requested features are already implemented**:
+
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| Labor Line Items Tab | **Done** | `LaborLineItemForm` component exists in `AddEstimateLineDialog.tsx` |
+| PDF Download in ProposalBuilder | **Done** | Uses `downloadProposalPdf()` with html2canvas + jsPDF |
+| Dialer SMS/Email Buttons | **Done** | `QuickSMSDialog` and `QuickEmailDialog` integrated |
+| Send for Signature | **Done** | `RequestSignatureDialog` integrated with SmartDocs |
+| Approval Rules CRUD | **Incomplete** | Buttons show "coming soon" toasts |
+
+This plan covers only the **Approval Rules CRUD** implementation.
 
 ---
 
-## Feature 1: Labor Line Items Tab in AddEstimateLineDialog
+## Feature: Approval Rules CRUD Operations
 
 ### Current State
-- The Labor tab exists but shows a placeholder message: "Labor line items coming soon..."
-- Database has a `labor_rates` table with columns: `id`, `tenant_id`, `job_type`, `skill_level`, `base_rate_per_hour`, `location_zone`, `seasonal_adjustment`, `complexity_multiplier`, `effective_date`, `expires_date`, `is_active`
 
-### Implementation
+The `ApprovalRules.tsx` page displays rules from the `purchase_order_approval_rules` table but has placeholder handlers:
+- Line 101: `toast.info('Add rule dialog coming soon')`
+- Line 177: `toast.info('Edit coming soon')`
+- Line 183: `toast.info('Delete coming soon')`
 
-**Files to Create:**
-| File | Purpose |
-|------|---------|
-| `src/hooks/useLaborRates.ts` | React Query hook to fetch labor rates |
+### Database Schema (Already Exists)
 
-**Files to Modify:**
-| File | Changes |
-|------|---------|
-| `src/components/estimates/AddEstimateLineDialog.tsx` | Build out the Labor tab UI |
-
-### Labor Tab UI Design
-
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  LABOR LINE ITEM                                            │
-│                                                             │
-│  Job Type:        [Roofing Installation ▼]                  │
-│  Skill Level:     [Journeyman ▼]                            │
-│                                                             │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Current Rate: $55.00/hr                               │ │
-│  │  Complexity: 1.15x  |  Seasonal: 1.00x                 │ │
-│  │  Effective Rate: $63.25/hr                             │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                             │
-│  ☑ Use Formula (Calculate from measurements)               │
-│                                                             │
-│  Formula:  [{{ measure.surface_squares }} * 2.5 hours]      │
-│  Hours:    12.5 (calculated)                                │
-│                                                             │
-│  Manual Hours: [____] (if formula disabled)                 │
-│  Markup %:     [15.0]                                       │
-│  Description:  [Roofing labor - journeyman crew]            │
-│                                                             │
-│  ┌────────────────────────────────────────────────────────┐ │
-│  │  Total: 12.5 hrs × $63.25/hr = $790.63                 │ │
-│  │  With 15% markup: $909.22                              │ │
-│  └────────────────────────────────────────────────────────┘ │
-│                                                             │
-│  [Add Labor Line Item]                                      │
-└─────────────────────────────────────────────────────────────┘
+```sql
+purchase_order_approval_rules:
+  - id: UUID
+  - tenant_id: UUID
+  - rule_name: TEXT
+  - min_amount: DECIMAL
+  - max_amount: DECIMAL (nullable)
+  - required_approvers: JSONB (array of role names)
+  - approval_type: TEXT (any, sequential, parallel)
+  - is_active: BOOLEAN
+  - created_by: UUID
+  - created_at: TIMESTAMP
 ```
 
-### Labor Tab Logic
-
-1. **Load labor rates** from `labor_rates` table filtered by `is_active = true` and within date range
-2. **Job Type dropdown** options: Roofing Installation, Roofing Repair, Gutter Install, Siding, etc.
-3. **Skill Level dropdown**: Apprentice, Journeyman, Master, Foreman
-4. **Calculate effective rate**: `base_rate * complexity_multiplier * seasonal_adjustment`
-5. **Formula presets** for labor hours:
-   - "Per Square Installation": `{{ measure.surface_squares }} * 2.5`
-   - "Per LF Gutter": `{{ measure.eave_lf }} * 0.15`
-   - "Tear-off Labor": `{{ measure.surface_squares }} * 1.5`
-6. **Output line item** with: `item_name`, `description`, `quantity` (hours), `unit_cost` (hourly rate), `unit_type: 'HR'`, `markup_percent`
-
 ---
 
-## Feature 2: PDF Download in ProposalBuilder
+## Files to Create
 
-### Current State
-- `ProposalPreview.tsx` has Download PDF button that calls `onDownload` prop
-- `ProposalBuilder.tsx` passes a placeholder handler: `toast({ title: 'Download', description: 'PDF download coming soon' })`
-- `pdf-lib` is already installed and used in `src/lib/pdfMerger.ts`
-- `useProposalPreview` returns HTML content that can be rendered
+### 1. `src/components/approvals/ApprovalRuleDialog.tsx`
 
-### Implementation
+A unified dialog for Create and Edit operations.
 
-**Files to Create:**
-| File | Purpose |
-|------|---------|
-| `src/lib/proposalPdfGenerator.ts` | Convert proposal HTML to PDF using html2canvas + jsPDF |
-
-**Files to Modify:**
-| File | Changes |
-|------|---------|
-| `src/components/proposals/ProposalBuilder.tsx` | Implement actual PDF download handler |
-| `src/components/proposals/ProposalPreview.tsx` | Add loading state during PDF generation |
-
-### PDF Generation Flow
-
+**Props:**
 ```typescript
-// src/lib/proposalPdfGenerator.ts
-import jsPDF from 'jspdf';
-import html2canvas from 'html2canvas';
-
-export async function generateProposalPdf(
-  htmlContent: string,
-  filename: string
-): Promise<Blob> {
-  // 1. Create hidden container with the HTML
-  const container = document.createElement('div');
-  container.innerHTML = htmlContent;
-  container.style.cssText = 'position: absolute; left: -9999px; width: 816px;'; // Letter width
-  document.body.appendChild(container);
-
-  try {
-    // 2. Render to canvas
-    const canvas = await html2canvas(container, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-    });
-
-    // 3. Create PDF
-    const pdf = new jsPDF('p', 'pt', 'letter');
-    const imgData = canvas.toDataURL('image/png');
-    const imgWidth = 612; // Letter width in points
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
-    
-    // Handle multi-page
-    let heightLeft = imgHeight;
-    let position = 0;
-    const pageHeight = 792; // Letter height
-
-    pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-    heightLeft -= pageHeight;
-
-    while (heightLeft > 0) {
-      position -= pageHeight;
-      pdf.addPage();
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-    }
-
-    return pdf.output('blob');
-  } finally {
-    document.body.removeChild(container);
-  }
+interface ApprovalRuleDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  rule?: ApprovalRule | null; // null = create mode, object = edit mode
+  onSuccess: () => void;
 }
 ```
 
-### ProposalBuilder Download Handler
+**Form Fields:**
+| Field | Type | Validation |
+|-------|------|------------|
+| Rule Name | Text Input | Required, max 100 chars |
+| Min Amount | Number Input | Required, >= 0 |
+| Max Amount | Number Input | Optional, must be > min_amount if set |
+| Approval Type | Select | Required: any, sequential, parallel |
+| Required Approvers | Multi-select Checkbox | At least one role selected |
+| Active | Switch/Checkbox | Default: true |
+
+**Approver Role Options (from roleUtils.ts):**
+- Office Admin
+- Regional Manager
+- Sales Manager
+- Project Manager
+- Owner
+- Corporate
+
+**UI Layout:**
+```text
+┌───────────────────────────────────────────────────┐
+│  Create Approval Rule  /  Edit Approval Rule      │
+├───────────────────────────────────────────────────┤
+│  Rule Name:     [________________________]        │
+│                                                   │
+│  Amount Range:                                    │
+│  ┌─────────────────┐   ┌─────────────────┐       │
+│  │ Min: $[______]  │ → │ Max: $[______]  │       │
+│  └─────────────────┘   └─────────────────┘       │
+│  ☐ No maximum (unlimited)                        │
+│                                                   │
+│  Approval Type:  [Any ▾]                         │
+│  • Any: One approver is sufficient               │
+│  • Sequential: Must approve in order             │
+│  • Parallel: All must approve (any order)        │
+│                                                   │
+│  Required Approvers:                             │
+│  ☑ Office Admin                                  │
+│  ☑ Regional Manager                              │
+│  ☐ Sales Manager                                 │
+│  ☐ Project Manager                               │
+│  ☐ Owner                                         │
+│  ☐ Corporate                                     │
+│                                                   │
+│  ☑ Active                                        │
+│                                                   │
+│            [Cancel]  [Save Rule]                 │
+└───────────────────────────────────────────────────┘
+```
+
+---
+
+### 2. `src/components/approvals/DeleteApprovalRuleDialog.tsx`
+
+A confirmation dialog for deletion.
+
+**Props:**
+```typescript
+interface DeleteApprovalRuleDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  rule: ApprovalRule | null;
+  onSuccess: () => void;
+}
+```
+
+**UI Layout:**
+```text
+┌───────────────────────────────────────────────────┐
+│  ⚠ Delete Approval Rule                          │
+├───────────────────────────────────────────────────┤
+│                                                   │
+│  Are you sure you want to delete                 │
+│  "Medium Orders ($5,000 - $25,000)"?             │
+│                                                   │
+│  This action cannot be undone. Any pending       │
+│  purchase orders using this rule will need       │
+│  to be reassigned.                               │
+│                                                   │
+│            [Cancel]  [Delete]                    │
+└───────────────────────────────────────────────────┘
+```
+
+---
+
+## Files to Modify
+
+### 1. `src/pages/ApprovalRules.tsx`
+
+**Changes:**
+1. Import the new dialog components
+2. Add state for dialog visibility and selected rule
+3. Connect button handlers to dialogs
+4. Add delete mutation with confirmation
+
+**State Additions:**
+```typescript
+const [createDialogOpen, setCreateDialogOpen] = useState(false);
+const [editDialogOpen, setEditDialogOpen] = useState(false);
+const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+const [selectedRule, setSelectedRule] = useState<ApprovalRule | null>(null);
+```
+
+**Handler Updates:**
+```typescript
+// Line 101: Add Rule button
+onClick={() => setCreateDialogOpen(true)}
+
+// Line 122: Empty state button
+onClick={() => setCreateDialogOpen(true)}
+
+// Line 177: Edit button
+onClick={() => {
+  setSelectedRule(rule);
+  setEditDialogOpen(true);
+}}
+
+// Line 183: Delete button
+onClick={() => {
+  setSelectedRule(rule);
+  setDeleteDialogOpen(true);
+}}
+```
+
+---
+
+## Implementation Details
+
+### Create Rule Logic
 
 ```typescript
-const handleDownloadPdf = async () => {
-  if (!estimateId) return;
-  
-  setDownloading(true);
-  try {
-    // Fetch the HTML preview
-    const { data: previewData } = await supabase.functions.invoke('generate-proposal', {
-      body: { action: 'preview', estimateId },
+const handleCreateRule = async (formData: ApprovalRuleFormData) => {
+  // Get tenant_id from user profile
+  const { data: { user } } = await supabase.auth.getUser();
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('tenant_id')
+    .eq('id', user?.id)
+    .single();
+
+  const { error } = await supabase
+    .from('purchase_order_approval_rules')
+    .insert({
+      tenant_id: profile.tenant_id,
+      rule_name: formData.ruleName,
+      min_amount: formData.minAmount,
+      max_amount: formData.noMaximum ? null : formData.maxAmount,
+      required_approvers: formData.selectedRoles,
+      approval_type: formData.approvalType,
+      is_active: formData.isActive,
+      created_by: user?.id
     });
-    
-    if (!previewData?.html) throw new Error('No preview data');
-    
-    // Generate PDF
-    const pdfBlob = await generateProposalPdf(
-      previewData.html,
-      `Proposal-${estimateId}.pdf`
-    );
-    
-    // Trigger download
-    const url = URL.createObjectURL(pdfBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `Proposal-${estimateId}.pdf`;
-    a.click();
-    URL.revokeObjectURL(url);
-    
-    toast.success('PDF downloaded successfully');
-  } catch (error) {
-    console.error('PDF generation error:', error);
-    toast.error('Failed to generate PDF');
-  } finally {
-    setDownloading(false);
-  }
+
+  if (error) throw error;
+  toast.success('Approval rule created');
+  fetchRules(); // Refresh list
+};
+```
+
+### Edit Rule Logic
+
+```typescript
+const handleEditRule = async (ruleId: string, formData: ApprovalRuleFormData) => {
+  const { error } = await supabase
+    .from('purchase_order_approval_rules')
+    .update({
+      rule_name: formData.ruleName,
+      min_amount: formData.minAmount,
+      max_amount: formData.noMaximum ? null : formData.maxAmount,
+      required_approvers: formData.selectedRoles,
+      approval_type: formData.approvalType,
+      is_active: formData.isActive
+    })
+    .eq('id', ruleId);
+
+  if (error) throw error;
+  toast.success('Approval rule updated');
+  fetchRules();
+};
+```
+
+### Delete Rule Logic
+
+```typescript
+const handleDeleteRule = async (ruleId: string) => {
+  const { error } = await supabase
+    .from('purchase_order_approval_rules')
+    .delete()
+    .eq('id', ruleId);
+
+  if (error) throw error;
+  toast.success('Approval rule deleted');
+  fetchRules();
 };
 ```
 
 ---
 
-## Feature 3: Dialer SMS/Email Buttons
+## Validation Rules
 
-### Current State
-- `ContactHeader.tsx` receives `onText` and `onEmail` callbacks
-- `Dialer.tsx` passes placeholder handlers: `toast({ title: "SMS", description: "SMS feature coming soon" })`
-- `useSendSMS` hook exists and works with `telnyx-send-sms` edge function
-- Edge function is fully implemented with multi-tenant location-based routing
-
-### Implementation
-
-**Files to Create:**
-| File | Purpose |
-|------|---------|
-| `src/components/communication/QuickSMSDialog.tsx` | Modal for composing quick SMS |
-| `src/components/communication/QuickEmailDialog.tsx` | Modal for composing quick email |
-
-**Files to Modify:**
-| File | Changes |
-|------|---------|
-| `src/features/communication/components/Dialer.tsx` | Replace placeholder handlers with real dialogs |
-
-### QuickSMSDialog Component
-
-```typescript
-interface QuickSMSDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  contact: {
-    id: string;
-    name: string;
-    phone: string;
-  };
-}
-
-// Features:
-// - Pre-populated recipient phone
-// - Message textarea with character count
-// - Template quick-insert dropdown
-// - Send button using useSendSMS hook
-// - Real-time delivery status feedback
-```
-
-### Dialer.tsx Integration
-
-```typescript
-const [smsDialogOpen, setSmsDialogOpen] = useState(false);
-const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-
-// In ContactHeader props:
-onText={() => currentContact?.phone && setSmsDialogOpen(true)}
-onEmail={() => currentContact?.email && setEmailDialogOpen(true)}
-
-// Add dialogs:
-<QuickSMSDialog
-  open={smsDialogOpen}
-  onOpenChange={setSmsDialogOpen}
-  contact={currentContact}
-/>
-<QuickEmailDialog
-  open={emailDialogOpen}
-  onOpenChange={setEmailDialogOpen}
-  contact={currentContact}
-/>
-```
+1. **Rule Name**: Required, 2-100 characters
+2. **Min Amount**: Required, must be >= 0
+3. **Max Amount**: If provided, must be > min_amount
+4. **Required Approvers**: At least one role must be selected
+5. **No Overlapping Ranges**: Warn if new rule overlaps existing amounts
 
 ---
 
-## Feature 4: Send for Signature in ApplyDocumentToLeadDialog
+## File Summary
 
-### Current State
-- Button exists but shows: `toast.info("Send for signature functionality coming soon")`
-- `RequestSignatureDialog.tsx` exists and calls `send-document-for-signature` edge function
-- Edge function is fully implemented at `supabase/functions/send-document-for-signature/index.ts`
-- SmartDocs system has envelope/signature workflow ready
-
-### Implementation
-
-**Files to Modify:**
-| File | Changes |
-|------|---------|
-| `src/features/documents/components/ApplyDocumentToLeadDialog.tsx` | Integrate RequestSignatureDialog |
-
-### Integration Logic
-
-```typescript
-// Add state
-const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
-
-// Replace button handler
-<Button
-  onClick={() => setSignatureDialogOpen(true)}
-  className="gap-2"
->
-  <Send className="h-4 w-4" />
-  Send for Signature
-</Button>
-
-// Add dialog
-<RequestSignatureDialog
-  open={signatureDialogOpen}
-  onClose={() => setSignatureDialogOpen(false)}
-  documentId={document.id}
-  documentType="smart_doc_instance"
-  documentTitle={document.filename}
-  defaultRecipient={{
-    name: `${selectedContact.first_name} ${selectedContact.last_name}`,
-    email: selectedContact.email || ''
-  }}
-  onSuccess={(envelopeId) => {
-    toast.success('Document sent for signature');
-    onOpenChange(false);
-  }}
-/>
-```
+| Action | File |
+|--------|------|
+| Create | `src/components/approvals/ApprovalRuleDialog.tsx` |
+| Create | `src/components/approvals/DeleteApprovalRuleDialog.tsx` |
+| Modify | `src/pages/ApprovalRules.tsx` |
 
 ---
 
-## Summary of Changes
+## Testing Checklist
 
-| Feature | Files Created | Files Modified |
-|---------|---------------|----------------|
-| Labor Line Items | `useLaborRates.ts` | `AddEstimateLineDialog.tsx` |
-| PDF Download | `proposalPdfGenerator.ts` | `ProposalBuilder.tsx`, `ProposalPreview.tsx` |
-| Dialer SMS/Email | `QuickSMSDialog.tsx`, `QuickEmailDialog.tsx` | `Dialer.tsx` |
-| Send for Signature | None | `ApplyDocumentToLeadDialog.tsx` |
-
-## Dependencies
-- **html2canvas** (already installed) - for PDF generation
-- **jsPDF** (already installed) - for PDF creation
-- **pdf-lib** (already installed) - available for advanced PDF manipulation
-
-## Testing Plan
-
-1. **Labor Line Items**
-   - Open estimate builder → Add Line Item → Labor tab
-   - Select job type and skill level
-   - Verify rate calculation with multipliers
-   - Test formula-based hour calculation
-   - Add labor line and verify in estimate
-
-2. **PDF Download**
-   - Create a proposal through the builder
-   - Click "Download PDF" button
-   - Verify PDF contains all proposal content
-   - Check multi-page handling for long proposals
-
-3. **Dialer SMS/Email**
-   - Navigate to Dialer with a contact
-   - Click "Text" button → SMS dialog opens
-   - Compose and send message → verify delivery
-   - Click "Email" button → Email composer opens
-
-4. **Send for Signature**
-   - Go to SmartDocs → Apply to Lead
-   - Select a contact → Click "Send for Signature"
-   - Verify RequestSignatureDialog opens
-   - Complete signature workflow → verify envelope created
+1. Create a new approval rule with all fields
+2. Verify rule appears in the table immediately
+3. Edit an existing rule and change the amount range
+4. Toggle the active status on/off
+5. Delete a rule and confirm it's removed
+6. Verify validation prevents invalid inputs
+7. Check that multi-role selection works correctly
