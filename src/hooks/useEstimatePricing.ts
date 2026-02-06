@@ -130,8 +130,21 @@ export function useEstimatePricing(
     let actualProfitMargin: number;
 
     if (isFixedPrice) {
-      // Fixed price mode: work backwards
-      sellingPrice = fixedPrice!;
+      // Fixed price mode: user-entered price IS the final tax-included price
+      // Back-calculate the pre-tax selling price to make everything fit
+      
+      // Calculate materials ratio first (for tax calculation)
+      const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
+      
+      // Derive pre-tax selling price from fixed price
+      // fixedPrice = preTaxSelling + (preTaxSelling × materialsRatio × taxRate)
+      // fixedPrice = preTaxSelling × (1 + materialsRatio × taxRate)
+      // preTaxSelling = fixedPrice / (1 + materialsRatio × taxRate)
+      const taxMultiplier = config.salesTaxEnabled 
+        ? 1 + (materialsRatio * (config.salesTaxRate / 100))
+        : 1;
+      
+      sellingPrice = fixedPrice! / taxMultiplier;  // Pre-tax selling price
       overheadAmount = sellingPrice * (config.overheadPercent / 100);
       profitAmount = sellingPrice - directCost - overheadAmount;
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
