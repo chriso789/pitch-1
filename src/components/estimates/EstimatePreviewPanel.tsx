@@ -1,5 +1,5 @@
 // Estimate Preview Panel with live toggle controls
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -7,6 +7,11 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible';
 import {
   Dialog,
   DialogContent,
@@ -28,6 +33,8 @@ import {
   RotateCcw,
   FileText,
   Paperclip,
+  ChevronDown,
+  Layers,
 } from 'lucide-react';
 import {
   type PDFComponentOptions,
@@ -35,6 +42,8 @@ import {
   getDefaultOptions,
 } from './PDFComponentOptions';
 import { EstimatePDFDocument } from './EstimatePDFDocument';
+import { EstimateAttachmentsManager, type TemplateAttachment } from './EstimateAttachmentsManager';
+import { PageOrderManager, DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
 import { useToast } from '@/hooks/use-toast';
@@ -60,13 +69,6 @@ interface MeasurementSummary {
   valleyLength: number;
   rakeLength: number;
   wastePercent: number;
-}
-
-interface TemplateAttachment {
-  document_id: string;
-  file_path: string;
-  filename: string;
-  attachment_order: number;
 }
 
 interface EstimatePreviewPanelProps {
@@ -103,6 +105,8 @@ interface EstimatePreviewPanelProps {
   finePrintContent?: string;
   measurementSummary?: MeasurementSummary | null;
   templateAttachments?: TemplateAttachment[];
+  // Callbacks for managing attachments
+  onAttachmentsChange?: (attachments: TemplateAttachment[]) => void;
 }
 
 export function EstimatePreviewPanel({
@@ -120,14 +124,51 @@ export function EstimatePreviewPanel({
   config,
   finePrintContent,
   measurementSummary,
-  templateAttachments,
+  templateAttachments = [],
+  onAttachmentsChange,
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [isExporting, setIsExporting] = useState(false);
+  const [additionalAttachments, setAdditionalAttachments] = useState<TemplateAttachment[]>([]);
+  const [pageOrder, setPageOrder] = useState<PageOrderItem[]>(DEFAULT_PAGE_ORDER);
+  const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
+  const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const { generatePDF } = usePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // Combine template attachments with additional ones
+  const allAttachments = [...templateAttachments, ...additionalAttachments];
+
+  // Handlers for attachment management
+  const handleAddAttachment = useCallback((attachment: TemplateAttachment) => {
+    setAdditionalAttachments(prev => [...prev, attachment]);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((documentId: string) => {
+    // Check if it's a template attachment
+    const isTemplateAttachment = templateAttachments.some(a => a.document_id === documentId);
+    if (isTemplateAttachment) {
+      // For template attachments, we need to track them as "removed" 
+      // This could be extended to persist removed template attachments if needed
+      toast({
+        title: 'Cannot Remove',
+        description: 'Template attachments can be toggled off using the Attachments toggle above',
+        variant: 'default',
+      });
+      return;
+    }
+    setAdditionalAttachments(prev => prev.filter(a => a.document_id !== documentId));
+  }, [templateAttachments, toast]);
+
+  const handleReorderAttachments = useCallback((reordered: TemplateAttachment[]) => {
+    // Split back into template and additional
+    const newTemplateOrder = reordered.filter(a => a.isFromTemplate);
+    const newAdditionalOrder = reordered.filter(a => !a.isFromTemplate);
+    setAdditionalAttachments(newAdditionalOrder);
+    // Could notify parent of reorder if needed: onAttachmentsChange?.(reordered);
+  }, []);
 
   const handleViewModeChange = (mode: PDFViewMode) => {
     setViewMode(mode);
@@ -393,28 +434,47 @@ export function EstimatePreviewPanel({
                   </div>
                 </div>
 
-                {/* Template Attachments Indicator */}
-                {templateAttachments && templateAttachments.length > 0 && (
-                  <>
-                    <Separator />
-                    <div className="space-y-2">
-                      <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
-                        <Paperclip className="h-3 w-3" />
-                        Attachments
-                      </h4>
-                      <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded text-xs">
-                        <p className="text-blue-700 dark:text-blue-400">
-                          📎 {templateAttachments.length} document(s) will be appended:
-                        </p>
-                        <ul className="mt-1 text-blue-600 dark:text-blue-300 space-y-0.5">
-                          {templateAttachments.map((att, i) => (
-                            <li key={i}>• {att.filename}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    </div>
-                  </>
-                )}
+                {/* Attachments Manager Section */}
+                <Separator />
+                <Collapsible open={isAttachmentsOpen} onOpenChange={setIsAttachmentsOpen}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:bg-muted/50 rounded -mx-1 px-1">
+                    <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                      <Paperclip className="h-3 w-3" />
+                      Attachments ({allAttachments.length})
+                    </h4>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isAttachmentsOpen ? '' : '-rotate-90'}`} />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <EstimateAttachmentsManager
+                      templateAttachments={templateAttachments}
+                      additionalAttachments={additionalAttachments}
+                      onAddAttachment={handleAddAttachment}
+                      onRemoveAttachment={handleRemoveAttachment}
+                      onReorderAttachments={handleReorderAttachments}
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
+
+                {/* Page Order Manager Section */}
+                <Separator />
+                <Collapsible open={isPageOrderOpen} onOpenChange={setIsPageOrderOpen}>
+                  <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:bg-muted/50 rounded -mx-1 px-1">
+                    <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                      <Layers className="h-3 w-3" />
+                      Page Order
+                    </h4>
+                    <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isPageOrderOpen ? '' : '-rotate-90'}`} />
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="pt-2">
+                    <PageOrderManager
+                      pageOrder={pageOrder}
+                      onPageOrderChange={setPageOrder}
+                      hasAttachments={allAttachments.length > 0}
+                      hasMeasurements={!!measurementSummary}
+                      hasPhotos={false}
+                    />
+                  </CollapsibleContent>
+                </Collapsible>
 
                 <Separator />
 
@@ -503,7 +563,7 @@ export function EstimatePreviewPanel({
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
-                    templateAttachments={templateAttachments}
+                    templateAttachments={allAttachments}
                   />
                 </div>
               </div>

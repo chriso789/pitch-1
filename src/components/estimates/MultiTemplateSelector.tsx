@@ -413,9 +413,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         return;
       }
 
-      // Set the template ID from the estimate
+      // Set the template ID from the estimate and fetch its attachments
       if (estimate.template_id) {
         setSelectedTemplateId(estimate.template_id);
+        // FIX: Also fetch template attachments for the loaded template
+        fetchTemplateAttachments(estimate.template_id);
       }
 
       // Set the existing estimate ID to enable save/update mode
