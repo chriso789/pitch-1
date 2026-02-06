@@ -277,6 +277,33 @@ serve(async (req) => {
 
     console.log(`[update-estimate-line-items] Successfully updated estimate ${estimate_id}`);
 
+    // Sync display_name/pricing_tier to associated documents
+    if ((display_name !== undefined || pricing_tier !== undefined) && estimate.estimate_number) {
+      const docUpdatePayload: Record<string, any> = {};
+      
+      if (display_name !== undefined) {
+        docUpdatePayload.estimate_display_name = display_name?.trim() || null;
+      }
+      if (pricing_tier !== undefined) {
+        docUpdatePayload.estimate_pricing_tier = pricing_tier || null;
+      }
+
+      // Update documents where filename matches the estimate number
+      const { error: docUpdateError } = await serviceClient
+        .from('documents')
+        .update(docUpdatePayload)
+        .eq('document_type', 'estimate')
+        .eq('tenant_id', estimate.tenant_id)
+        .like('filename', `${estimate.estimate_number}%`);
+
+      if (docUpdateError) {
+        console.warn('[update-estimate-line-items] Document sync warning:', docUpdateError);
+        // Don't fail the request - estimate was updated successfully
+      } else {
+        console.log(`[update-estimate-line-items] Synced display_name to documents for ${estimate.estimate_number}`);
+      }
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
