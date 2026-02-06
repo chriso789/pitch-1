@@ -33,9 +33,6 @@ verify_jwt = false
 [functions.asterisk-call-events]
 verify_jwt = false
 
-[functions.asterisk-email-inbound]
-verify_jwt = false
-
 [functions.export-job-analytics]
 verify_jwt = true
 
@@ -508,15 +505,6 @@ verify_jwt = true
 [functions.optimize-crew-route]
 verify_jwt = true
 
-[functions.schedule-crew-job]
-verify_jwt = true
-
-[functions.submit-crew-schedule-request]
-verify_jwt = true
-
-[functions.process-insurance-claim]
-verify_jwt = true
-
 [functions.triple-line-dialer]
 verify_jwt = true
 
@@ -749,9 +737,6 @@ verify_jwt = true
 verify_jwt = false
 wall_clock_limit = 120
 
-[functions.generate-roof-overlay]
-verify_jwt = false
-
 [functions.scope-document-ingest]
 verify_jwt = true
 
@@ -765,4 +750,318 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.scope-backfill-documents]
+verify_jwt = true
+
+# ===== MISSING FUNCTIONS - BATCH ADD =====
+
+[functions.abc-pricing]
+verify_jwt = true
+
+[functions.admin-update-password]
+verify_jwt = true
+
+[functions.ai-appointment-scheduler]
+verify_jwt = true
+
+[functions.ai-sales-coach]
+verify_jwt = true
+
+[functions.amb-inbound]
+verify_jwt = false
+
+[functions.amb-send]
+verify_jwt = true
+
+[functions.audit-button-pathways]
+verify_jwt = true
+
+[functions.auto-generate-measurements]
+verify_jwt = true
+
+[functions.batch-regenerate-measurements]
+verify_jwt = true
+
+[functions.bi-report-engine]
+verify_jwt = true
+
+[functions.call-answering-service]
+verify_jwt = false
+
+[functions.canvassiq-snap-to-buildings]
+verify_jwt = true
+
+[functions.communication-template-engine]
+verify_jwt = true
+
+[functions.compliance-monitor]
+verify_jwt = false
+
+[functions.create-signature-envelope]
+verify_jwt = true
+
+[functions.cross-sell-analyzer]
+verify_jwt = true
+
+[functions.customer-lifecycle-manager]
+verify_jwt = true
+
+[functions.customer-retention-ai]
+verify_jwt = true
+
+[functions.delete-pipeline-entry]
+verify_jwt = true
+
+[functions.dialer-analytics-engine]
+verify_jwt = true
+
+[functions.document-generator-engine]
+verify_jwt = true
+
+[functions.document-template-manager]
+verify_jwt = true
+
+[functions.docusign-auth]
+verify_jwt = true
+
+[functions.docusign-create-envelope]
+verify_jwt = true
+
+[functions.docusign-embedded-views]
+verify_jwt = true
+
+[functions.docusign-send-envelope]
+verify_jwt = true
+
+[functions.docusign-update-docgen]
+verify_jwt = true
+
+[functions.docusign-webhook]
+verify_jwt = false
+
+[functions.equipment-maintenance-scheduler]
+verify_jwt = true
+
+[functions.excel-style-estimate-calculator]
+verify_jwt = true
+
+[functions.financial-forecasting-ai]
+verify_jwt = true
+
+[functions.financial-report-generator]
+verify_jwt = true
+
+[functions.financing-application-processor]
+verify_jwt = true
+
+[functions.financing-status-tracker]
+verify_jwt = true
+
+[functions.fleet-manager]
+verify_jwt = true
+
+[functions.franchise-manager]
+verify_jwt = true
+
+[functions.franchise-royalty-processor]
+verify_jwt = true
+
+[functions.generate-estimate-pdf]
+verify_jwt = true
+
+[functions.generate-scope-document]
+verify_jwt = true
+
+[functions.generate-supplement-request]
+verify_jwt = true
+
+[functions.inspection-scheduler]
+verify_jwt = true
+
+[functions.inventory-audit-processor]
+verify_jwt = true
+
+[functions.inventory-manager]
+verify_jwt = true
+
+[functions.job-drag-handler]
+verify_jwt = true
+
+[functions.labor-order-send-email]
+verify_jwt = true
+
+[functions.lead-attribution-tracker]
+verify_jwt = true
+
+[functions.log-performance-metric]
+verify_jwt = true
+
+[functions.marketing-roi-calculator]
+verify_jwt = true
+
+[functions.multi-location-hub]
+verify_jwt = true
+
+[functions.permit-application-generator]
+verify_jwt = true
+
+[functions.permit-detect-jurisdiction]
+verify_jwt = true
+
+[functions.permit-fetch-property-data]
+verify_jwt = true
+
+[functions.permit_build_case]
+verify_jwt = true
+
+[functions.permit_generate_documents]
+verify_jwt = true
+
+[functions.permit_link_approvals]
+verify_jwt = true
+
+[functions.pipeline-drag-handler]
+verify_jwt = true
+
+[functions.power-dialer-controller]
+verify_jwt = true
+
+[functions.predictive-analytics-engine]
+verify_jwt = true
+
+[functions.project-progress-reporter]
+verify_jwt = true
+
+[functions.project-timeline-builder]
+verify_jwt = true
+
+[functions.punch-list-processor]
+verify_jwt = true
+
+[functions.qbo-webhook]
+verify_jwt = false
+
+[functions.quality-inspection-manager]
+verify_jwt = true
+
+[functions.real-time-kpi-engine]
+verify_jwt = true
+
+[functions.reanalyze-with-footprint]
+verify_jwt = true
+
+[functions.referral-manager]
+verify_jwt = true
+
+[functions.referral-rewards-processor]
+verify_jwt = true
+
+[functions.regression-monitor]
+verify_jwt = false
+
+[functions.render-liquid]
+verify_jwt = true
+
+[functions.report-packet-generate-pdf]
+verify_jwt = true
+
+[functions.report-packet-send-resend]
+verify_jwt = true
+
+[functions.report-packet-sign]
+verify_jwt = false
+
+[functions.report-packet-upsert-draft]
+verify_jwt = true
+
+[functions.report-packet-view-event]
+verify_jwt = false
+
+[functions.run-measurement-benchmark]
+verify_jwt = true
+
+[functions.sales-territory-balancer]
+verify_jwt = true
+
+[functions.scope-comparison-analyze]
+verify_jwt = true
+
+[functions.scope-network-line-items]
+verify_jwt = true
+
+[functions.seed-company-owners]
+verify_jwt = true
+
+[functions.send-demo-request]
+verify_jwt = false
+
+[functions.send-email]
+verify_jwt = true
+
+[functions.send-mention-notification]
+verify_jwt = true
+
+[functions.send-presentation-notification]
+verify_jwt = true
+
+[functions.send-review-request]
+verify_jwt = true
+
+[functions.send-sms]
+verify_jwt = true
+
+[functions.srs-price-refresh-scheduler]
+verify_jwt = false
+
+[functions.srs-pricing]
+verify_jwt = true
+
+[functions.subcontractor-payment-processor]
+verify_jwt = true
+
+[functions.subcontractor-portal-manager]
+verify_jwt = true
+
+[functions.sync-user-email]
+verify_jwt = true
+
+[functions.sync-verified-coordinates]
+verify_jwt = true
+
+[functions.text-to-speech]
+verify_jwt = true
+
+[functions.transcripts-ingest]
+verify_jwt = false
+
+[functions.unified-search]
+verify_jwt = true
+
+[functions.update-user-role]
+verify_jwt = true
+
+[functions.validate-view-token]
+verify_jwt = false
+
+[functions.vendor-manager]
+verify_jwt = true
+
+[functions.vendor-scorecard-generator]
+verify_jwt = true
+
+[functions.warranty-claim-processor]
+verify_jwt = true
+
+[functions.warranty-registration-manager]
+verify_jwt = true
+
+[functions.webhook-manager]
+verify_jwt = true
+
+[functions.webrtc-signaling]
+verify_jwt = true
+
+[functions.workflow-automation]
+verify_jwt = true
+
+[functions.xactimate-exporter]
 verify_jwt = true
