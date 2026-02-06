@@ -1,118 +1,197 @@
 
-# Fix: Sync Estimate Display Name to Documents Table
+# Fix: Unsaved Changes Guard When Switching Estimates
 
 ## Problem
 
-When you change the name of an estimate (e.g., "Standing Seam Painted") and click "Save Changes", the estimate record is updated correctly, but the **documents table is NOT updated**. This causes the "Recent Documents" list to show the raw filename (`OBR-00025-i7dr.pdf`) instead of the friendly display name.
+When editing an estimate and making changes, clicking the **Edit** button on a different estimate immediately loads the new estimate without prompting the user to save or discard their changes. This causes data loss.
 
-**Current State:**
-- `enhanced_estimates.display_name` = "Standing Seam Painted" ✅
-- `documents.estimate_display_name` = null ❌
+**Current Behavior:**
+1. User edits Estimate A (changes line items, prices, etc.)
+2. User clicks "Edit" on Estimate B from the list
+3. Estimate B loads immediately — changes to A are **lost**
+
+**Expected Behavior:**
+1. User edits Estimate A
+2. User clicks "Edit" on Estimate B
+3. **Confirmation dialog appears**: "You have unsaved changes. Save or Discard?"
+4. User can Save → then switch, or Discard → then switch, or Cancel → stay on A
 
 ---
 
-## Solution
+## Solution Overview
 
-Update the `update-estimate-line-items` edge function to also update all associated document records when `display_name` or `pricing_tier` changes.
+1. **Track unsaved changes state** in `MultiTemplateSelector` using existing `is_override` flag
+2. **Expose a `beforeEdit` confirmation callback** from `MultiTemplateSelector` to `LeadDetails`
+3. **Add confirmation dialog** in `SavedEstimatesList` (or parent) that triggers before navigating
 
 ---
 
 ## Technical Implementation
 
-### File: `supabase/functions/update-estimate-line-items/index.ts`
+### 1. Create Unsaved Changes Context/Hook in MultiTemplateSelector
 
-**Add document sync after estimate update (around line 260):**
-
-After successfully updating the `enhanced_estimates` table, sync the display name and pricing tier to any documents that match the estimate number.
+Add state tracking and expose a method for parent components to check for unsaved changes:
 
 ```typescript
-// After the estimate update succeeds...
+// In MultiTemplateSelector.tsx
 
-// Sync display_name/pricing_tier to associated documents
-if ((display_name !== undefined || pricing_tier !== undefined) && estimate.estimate_number) {
-  const docUpdatePayload: Record<string, any> = {};
-  
-  if (display_name !== undefined) {
-    docUpdatePayload.estimate_display_name = display_name?.trim() || null;
-  }
-  if (pricing_tier !== undefined) {
-    docUpdatePayload.estimate_pricing_tier = pricing_tier || null;
-  }
+// Expose hasUnsavedChanges check - considering line item modifications
+const hasUnsavedChanges = useMemo(() => {
+  return existingEstimateId && lineItems.some(item => item.is_override);
+}, [existingEstimateId, lineItems]);
+```
 
-  // Update documents where filename matches the estimate number
-  const { error: docUpdateError } = await serviceClient
-    .from('documents')
-    .update(docUpdatePayload)
-    .eq('document_type', 'estimate')
-    .eq('tenant_id', estimate.tenant_id)
-    .like('filename', `${estimate.estimate_number}%`);
+### 2. Add Confirmation Dialog Component
 
-  if (docUpdateError) {
-    console.warn('[update-estimate-line-items] Document sync warning:', docUpdateError);
-    // Don't fail the request - estimate was updated successfully
-  } else {
-    console.log(`[update-estimate-line-items] Synced display_name to documents for ${estimate.estimate_number}`);
-  }
+Create a reusable dialog for unsaved changes prompts:
+
+```typescript
+// New component or inline in SavedEstimatesList
+<AlertDialog open={showUnsavedWarning}>
+  <AlertDialogContent>
+    <AlertDialogHeader>
+      <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+      <AlertDialogDescription>
+        You have unsaved changes to "{currentEditingEstimate}". 
+        What would you like to do?
+      </AlertDialogDescription>
+    </AlertDialogHeader>
+    <AlertDialogFooter>
+      <AlertDialogCancel onClick={handleCancelSwitch}>
+        Cancel
+      </AlertDialogCancel>
+      <Button variant="outline" onClick={handleDiscardAndSwitch}>
+        Discard Changes
+      </Button>
+      <Button onClick={handleSaveAndSwitch}>
+        Save Changes
+      </Button>
+    </AlertDialogFooter>
+  </AlertDialogContent>
+</AlertDialog>
+```
+
+### 3. Update SavedEstimatesList with Guarded Edit
+
+Modify the Edit button click handler to check for unsaved changes:
+
+```typescript
+// In SavedEstimatesList.tsx
+interface SavedEstimatesListProps {
+  // ... existing props
+  onEditEstimate?: (estimateId: string) => void;
+  currentEditingId?: string | null;  // NEW - which estimate is currently open
+  hasUnsavedChanges?: boolean;       // NEW - are there unsaved changes
+  onSaveAndSwitch?: () => Promise<void>;  // NEW - save then switch callback
 }
+
+// In the Edit button handler:
+onClick={(e) => {
+  e.stopPropagation();
+  
+  // If there's an active estimate being edited with changes, show confirmation
+  if (currentEditingId && currentEditingId !== estimate.id && hasUnsavedChanges) {
+    setPendingEditId(estimate.id);
+    setShowUnsavedWarning(true);
+    return;
+  }
+  
+  // Otherwise proceed directly
+  onEditEstimate?.(estimate.id);
+}}
+```
+
+### 4. Update LeadDetails.tsx Integration
+
+Pass the required props through to `SavedEstimatesList`:
+
+```typescript
+// In LeadDetails.tsx - estimate tab render
+<SavedEstimatesList 
+  pipelineEntryId={id!} 
+  currentEditingId={/* from URL param or state */}
+  hasUnsavedChanges={/* passed up from MultiTemplateSelector */}
+  onEditEstimate={(estimateId) => {
+    navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
+  }}
+  onSaveAndSwitch={async () => {
+    // Trigger save in MultiTemplateSelector then switch
+  }}
+/>
+```
+
+### 5. Option B: Self-Contained in SavedEstimatesList (Simpler)
+
+Alternatively, have `SavedEstimatesList` read the URL param directly to determine if editing is active:
+
+```typescript
+// In SavedEstimatesList
+const [searchParams] = useSearchParams();
+const currentEditingId = searchParams.get('editEstimate');
+
+// Then in edit handler:
+if (currentEditingId && currentEditingId !== estimate.id) {
+  // Show warning - even if we don't know if there are changes,
+  // ask for confirmation when switching between estimates
+  const confirmed = window.confirm(
+    'You are currently editing another estimate. Switch anyway?'
+  );
+  if (!confirmed) return;
+}
+onEditEstimate?.(estimate.id);
 ```
 
 ---
 
-## How Document Matching Works
-
-Documents are matched to estimates using the filename pattern:
-- Estimate number: `OBR-00025-i7dr`
-- Document filename: `OBR-00025-i7dr.pdf`
-
-The query uses `LIKE` with the estimate number prefix to match all versions of the estimate PDF.
-
----
-
-## Data Flow
-
-```text
-User clicks "Save Changes"
-       │
-       ▼
-MultiTemplateSelector.handleSaveLineItemChanges()
-       │ sends display_name, pricing_tier
-       ▼
-update-estimate-line-items Edge Function
-       │
-       ├──► UPDATE enhanced_estimates (display_name, pricing_tier)
-       │
-       └──► UPDATE documents (estimate_display_name, estimate_pricing_tier)
-              WHERE filename LIKE '{estimate_number}%'
-       │
-       ▼
-Documents Tab shows updated display name
-```
-
----
-
-## File to Modify
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/update-estimate-line-items/index.ts` | Add document sync after estimate update |
+| `src/components/estimates/SavedEstimatesList.tsx` | Add unsaved changes confirmation dialog, track pending edit state |
+| `src/pages/LeadDetails.tsx` | Pass `hasUnsavedChanges` and `onSaveAndSwitch` props to `SavedEstimatesList` |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Expose `hasUnsavedChanges` computed value via callback or ref |
 
 ---
 
-## Result After Fix
+## User Flow After Implementation
 
-1. User renames estimate to "Standing Seam Painted"
-2. User clicks "Save Changes"
-3. `enhanced_estimates.display_name` is updated ✅
-4. `documents.estimate_display_name` is also updated ✅
-5. Documents Tab immediately shows "Standing Seam Painted" instead of raw filename
+```text
+User editing Estimate A with changes
+       │
+       ▼
+User clicks "Edit" on Estimate B
+       │
+       ▼
+Dialog: "You have unsaved changes to Estimate A"
+       │
+   ┌───┴───┬───────────┐
+   │       │           │
+[Cancel] [Discard]  [Save]
+   │       │           │
+   ▼       ▼           ▼
+Stay on A  Load B    Save A → Load B
+```
 
 ---
 
-## Edge Cases Handled
+## Edge Cases
 
 | Scenario | Behavior |
 |----------|----------|
-| No documents exist for estimate | No error, update simply affects 0 rows |
-| Multiple document versions exist | All matching documents are updated |
-| Document sync fails | Warning logged, but estimate update succeeds |
-| Display name cleared (empty) | Documents updated to null |
+| No estimate currently being edited | Proceed directly to edit |
+| Editing but no changes made | Proceed directly (no `is_override` items) |
+| Clicking Edit on same estimate | Do nothing / show toast |
+| User clicks Cancel in dialog | Stay on current estimate |
+| Save fails | Show error, stay on current estimate |
+
+---
+
+## Result After Implementation
+
+1. User edits estimate and makes changes
+2. User clicks Edit on different estimate
+3. **Confirmation dialog appears with 3 options**:
+   - **Cancel**: Stay on current estimate
+   - **Discard Changes**: Load new estimate, lose changes
+   - **Save Changes**: Save current, then load new estimate
+4. No more accidental data loss when switching between estimates
