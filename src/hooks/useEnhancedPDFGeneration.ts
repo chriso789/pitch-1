@@ -35,6 +35,53 @@ interface PDFGenerationResult {
   error?: string;
 }
 
+/**
+ * Wait for all fonts to be fully loaded and rendered
+ */
+async function waitForFonts(): Promise<void> {
+  // Wait for fonts API to signal ready
+  await document.fonts.ready;
+  
+  // Check specifically for Inter font
+  const interLoaded = document.fonts.check('16px Inter');
+  if (!interLoaded) {
+    // Try to load Inter explicitly
+    try {
+      await document.fonts.load('400 16px Inter');
+      await document.fonts.load('500 16px Inter');
+      await document.fonts.load('600 16px Inter');
+      await document.fonts.load('700 16px Inter');
+    } catch (e) {
+      console.warn('Inter font loading failed, using fallback:', e);
+    }
+  }
+  
+  // Additional delay to ensure fonts are fully rasterized
+  await new Promise(resolve => setTimeout(resolve, 150));
+}
+
+/**
+ * Apply PDF-optimized styles to cloned element for html2canvas
+ */
+function applyPDFStyles(element: HTMLElement): void {
+  // Apply to root element
+  element.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  element.style.setProperty('-webkit-font-smoothing', 'antialiased');
+  element.style.setProperty('-moz-osx-font-smoothing', 'grayscale');
+  element.style.setProperty('text-rendering', 'optimizeLegibility');
+  element.style.letterSpacing = '0.01em';
+  element.classList.add('pdf-render-container');
+  
+  // Apply to all child elements
+  const allElements = element.querySelectorAll('*');
+  allElements.forEach(el => {
+    if (el instanceof HTMLElement) {
+      el.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      el.style.letterSpacing = '0.01em';
+    }
+  });
+}
+
 export function useEnhancedPDFGeneration() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -47,7 +94,7 @@ export function useEnhancedPDFGeneration() {
       filename = 'measurement-report.pdf',
       orientation = 'portrait',
       format = 'letter',
-      quality = 2,
+      quality = 3, // Increased from 2 to 3 for sharper text
       generateShareLink = true,
       shareExpiration = 7,
       makePublic = false,
@@ -69,7 +116,11 @@ export function useEnhancedPDFGeneration() {
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error('No tenant found');
 
+      // CRITICAL: Wait for fonts to be fully loaded
+      console.log('📄 Waiting for fonts to load...');
+      await waitForFonts();
       setProgress(20);
+      
       console.log('📄 Generating PDF from element:', elementId);
 
       const element = document.getElementById(elementId);
@@ -78,11 +129,16 @@ export function useEnhancedPDFGeneration() {
       setProgress(30);
       toast.info('Capturing report preview...');
 
+      // Capture with enhanced settings for text clarity
       const canvas = await html2canvas(element, {
         scale: quality,
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
+        // Critical: Apply PDF-optimized styles to cloned element
+        onclone: (_clonedDoc, clonedElement) => {
+          applyPDFStyles(clonedElement);
+        },
       });
 
       setProgress(50);
@@ -97,19 +153,20 @@ export function useEnhancedPDFGeneration() {
         format: format as any,
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      // Use PNG format for text clarity (no JPEG compression artifacts)
+      const imgData = canvas.toDataURL('image/png');
       
       let heightLeft = imgHeight;
       let position = 0;
       const pageHeight = orientation === 'portrait' ? 297 : 210;
 
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
       }
 

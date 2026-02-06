@@ -10,6 +10,53 @@ interface PDFGenerationOptions {
   quality?: number;
 }
 
+/**
+ * Wait for all fonts to be fully loaded and rendered
+ */
+async function waitForFonts(): Promise<void> {
+  // Wait for fonts API to signal ready
+  await document.fonts.ready;
+  
+  // Check specifically for Inter font
+  const interLoaded = document.fonts.check('16px Inter');
+  if (!interLoaded) {
+    // Try to load Inter explicitly
+    try {
+      await document.fonts.load('400 16px Inter');
+      await document.fonts.load('500 16px Inter');
+      await document.fonts.load('600 16px Inter');
+      await document.fonts.load('700 16px Inter');
+    } catch (e) {
+      console.warn('Inter font loading failed, using fallback:', e);
+    }
+  }
+  
+  // Additional delay to ensure fonts are fully rasterized
+  await new Promise(resolve => setTimeout(resolve, 150));
+}
+
+/**
+ * Apply PDF-optimized styles to cloned element for html2canvas
+ */
+function applyPDFStyles(element: HTMLElement): void {
+  // Apply to root element
+  element.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  element.style.setProperty('-webkit-font-smoothing', 'antialiased');
+  element.style.setProperty('-moz-osx-font-smoothing', 'grayscale');
+  element.style.setProperty('text-rendering', 'optimizeLegibility');
+  element.style.letterSpacing = '0.01em';
+  element.classList.add('pdf-render-container');
+  
+  // Apply to all child elements
+  const allElements = element.querySelectorAll('*');
+  allElements.forEach(el => {
+    if (el instanceof HTMLElement) {
+      el.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      el.style.letterSpacing = '0.01em';
+    }
+  });
+}
+
 export function usePDFGeneration() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -22,21 +69,26 @@ export function usePDFGeneration() {
       filename = 'measurement-report.pdf',
       orientation = 'portrait',
       format = 'letter',
-      quality = 2,
+      quality = 3, // Increased from 2 to 3 for sharper text
     } = options;
 
     setIsGenerating(true);
     setProgress(10);
 
     try {
+      // CRITICAL: Wait for fonts to be fully loaded
+      console.log('📄 Waiting for fonts to load...');
+      await waitForFonts();
+      setProgress(20);
+
       const element = document.getElementById(elementId);
       if (!element) {
         throw new Error(`Report element not found: ${elementId}`);
       }
 
-      // Validate element has dimensions (can be captured)
+      // Validate element has dimensions
       const rect = element.getBoundingClientRect();
-      console.log('PDF capture element:', elementId, { 
+      console.log('📄 PDF capture element:', elementId, { 
         width: rect.width, 
         height: rect.height,
         top: rect.top,
@@ -50,7 +102,7 @@ export function usePDFGeneration() {
       setProgress(30);
       toast.info('Generating report preview...');
 
-      // Capture the element as canvas
+      // Capture the element as canvas with enhanced settings
       const canvas = await html2canvas(element, {
         scale: quality,
         useCORS: true,
@@ -62,13 +114,17 @@ export function usePDFGeneration() {
         scrollY: 0,
         windowWidth: element.scrollWidth,
         windowHeight: element.scrollHeight,
+        // Critical: Apply PDF-optimized styles to cloned element
+        onclone: (_clonedDoc, clonedElement) => {
+          applyPDFStyles(clonedElement);
+        },
       });
 
       setProgress(60);
       toast.info('Creating PDF...');
 
-      // Create PDF
-      const imgWidth = orientation === 'portrait' ? 210 : 297; // A4 dimensions in mm
+      // Create PDF with proper dimensions
+      const imgWidth = orientation === 'portrait' ? 210 : 297; // A4/Letter dimensions in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       
       const pdf = new jsPDF({
@@ -77,20 +133,21 @@ export function usePDFGeneration() {
         format,
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      // Use PNG format for better text clarity (no JPEG compression artifacts)
+      const imgData = canvas.toDataURL('image/png');
       
       // Add pages if content is too tall
       let heightLeft = imgHeight;
       let position = 0;
       const pageHeight = orientation === 'portrait' ? 297 : 210;
 
-      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
       }
 
@@ -104,7 +161,7 @@ export function usePDFGeneration() {
       
       return blob;
     } catch (error: any) {
-      console.error('PDF generation error:', error);
+      console.error('❌ PDF generation error:', error);
       toast.error(error.message || 'Failed to generate PDF');
       return null;
     } finally {

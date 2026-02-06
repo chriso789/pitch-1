@@ -299,12 +299,17 @@ const PageShell: React.FC<{
   return (
     <div 
       data-report-page
-      className="bg-white text-black flex flex-col"
+      className="bg-white text-black flex flex-col pdf-render-container"
       style={{ 
         width: `${PAGE_WIDTH}px`, 
         minHeight: `${PAGE_HEIGHT}px`,
         maxHeight: `${PAGE_HEIGHT}px`,
-        fontFamily: 'Inter, system-ui, sans-serif',
+        // Safe font stack with explicit fallbacks for PDF rendering
+        fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+        WebkitFontSmoothing: 'antialiased',
+        MozOsxFontSmoothing: 'grayscale',
+        textRendering: 'optimizeLegibility',
+        letterSpacing: '0.01em',
         overflow: 'hidden'
       }}
     >
