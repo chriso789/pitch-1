@@ -27,13 +27,14 @@ import {
   Ruler,
   RotateCcw,
   FileText,
+  Paperclip,
 } from 'lucide-react';
 import {
   type PDFComponentOptions,
   type PDFViewMode,
   getDefaultOptions,
 } from './PDFComponentOptions';
-import { EstimatePDFTemplate } from './EstimatePDFTemplate';
+import { EstimatePDFDocument } from './EstimatePDFDocument';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
 import { useToast } from '@/hooks/use-toast';
@@ -61,6 +62,13 @@ interface MeasurementSummary {
   wastePercent: number;
 }
 
+interface TemplateAttachment {
+  document_id: string;
+  file_path: string;
+  filename: string;
+  attachment_order: number;
+}
+
 interface EstimatePreviewPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -82,14 +90,19 @@ interface EstimatePreviewPanelProps {
     repCommissionAmount: number;
     sellingPrice: number;
     actualProfitMargin: number;
+    salesTaxAmount?: number;
+    totalWithTax?: number;
   };
   config: {
     overheadPercent: number;
     profitMarginPercent: number;
     repCommissionPercent: number;
+    salesTaxEnabled?: boolean;
+    salesTaxRate?: number;
   };
   finePrintContent?: string;
   measurementSummary?: MeasurementSummary | null;
+  templateAttachments?: TemplateAttachment[];
 }
 
 export function EstimatePreviewPanel({
@@ -107,6 +120,7 @@ export function EstimatePreviewPanel({
   config,
   finePrintContent,
   measurementSummary,
+  templateAttachments,
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -356,6 +370,11 @@ export function EstimatePreviewPanel({
                   </h4>
                   <div className="space-y-2 pl-2">
                     <ToggleRow
+                      label="Cover Page"
+                      checked={options.showCoverPage}
+                      onChange={(v) => updateOption('showCoverPage', v)}
+                    />
+                    <ToggleRow
                       label="Measurement Details"
                       checked={options.showMeasurementDetails}
                       onChange={(v) => updateOption('showMeasurementDetails', v)}
@@ -373,6 +392,29 @@ export function EstimatePreviewPanel({
                     />
                   </div>
                 </div>
+
+                {/* Template Attachments Indicator */}
+                {templateAttachments && templateAttachments.length > 0 && (
+                  <>
+                    <Separator />
+                    <div className="space-y-2">
+                      <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                        <Paperclip className="h-3 w-3" />
+                        Attachments
+                      </h4>
+                      <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded text-xs">
+                        <p className="text-blue-700 dark:text-blue-400">
+                          📎 {templateAttachments.length} document(s) will be appended:
+                        </p>
+                        <ul className="mt-1 text-blue-600 dark:text-blue-300 space-y-0.5">
+                          {templateAttachments.map((att, i) => (
+                            <li key={i}>• {att.filename}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <Separator />
 
@@ -444,13 +486,15 @@ export function EstimatePreviewPanel({
                 style={{ transform: 'scale(0.75)', transformOrigin: 'top center' }}
               >
                 <div id="estimate-preview-template">
-                  <EstimatePDFTemplate
+                  <EstimatePDFDocument
                     estimateNumber={estimateNumber}
                     customerName={customerName}
                     customerAddress={customerAddress}
                     customerPhone={customerPhone}
                     customerEmail={customerEmail}
                     companyInfo={companyInfo || undefined}
+                    companyName={companyInfo?.name || 'Company'}
+                    companyLogo={companyInfo?.logo_url || undefined}
                     materialItems={materialItems}
                     laborItems={laborItems}
                     breakdown={breakdown}
@@ -458,6 +502,7 @@ export function EstimatePreviewPanel({
                     finePrintContent={options.showCustomFinePrint ? finePrintContent : undefined}
                     options={options}
                     measurementSummary={measurementSummary || undefined}
+                    createdAt={new Date().toISOString()}
                   />
                 </div>
               </div>
