@@ -1,196 +1,85 @@
-# Plan: Template Attachments Management & Page Organization for Estimates
 
-## ✅ COMPLETED
+# Plan: Fix PDF Filename and Duplicate Attachments Header
 
-## Problems Identified
+## Issues Identified
 
-1. **Metal flyer not attached when editing estimate**: When loading an existing estimate for editing, the code sets `selectedTemplateId` (line 418) but **does NOT call `fetchTemplateAttachments()`**. This means template attachments are only loaded when a user manually selects a template from the dropdown - not when editing a saved estimate.
+### Issue 1: PDF Not Saving with Estimate Display Name
+When exporting an estimate PDF, it saves as `EST-94749505.pdf` instead of using the custom display name the user entered (e.g., "Smith Residence - Full Roof Replacement").
 
-2. **No UI to add/remove attachments**: There's no interface for users to:
-   - See which attachments are linked to a template
-   - Add new attachments to an estimate
-   - Remove unwanted attachments from an estimate
+**Root Cause**: 
+- `EstimatePreviewPanel` uses only `estimateNumber` for the filename
+- `estimateDisplayName` is never passed to the preview panel from `MultiTemplateSelector`
 
-3. **No way to organize/reorder pages**: Users cannot reorder the extra pages (Cover Page, Warranty Info, Attachments, etc.) in the estimate preview.
+### Issue 2: "ATTACHMENTS" Header Appears Twice
+The screenshot shows two "ATTACHMENTS (1)" headers in the sidebar.
+
+**Root Cause**: 
+- `EstimatePreviewPanel.tsx` has a `Collapsible` section with header "Attachments"
+- `EstimateAttachmentsManager.tsx` component ALSO renders its own "Attachments" header internally
+- Result: When collapsible is open, both headers display
 
 ---
 
-## Solution Overview
+## Technical Solution
 
-### Fix 1: Load Template Attachments When Editing Estimate
+### Fix 1: Pass Display Name to Preview Panel & Use for Filename
 
-**File**: `src/components/estimates/MultiTemplateSelector.tsx`
+**File: `src/components/estimates/MultiTemplateSelector.tsx`**
+- Add `estimateDisplayName` prop when rendering `EstimatePreviewPanel`
 
-Add a call to `fetchTemplateAttachments()` after setting the template ID in `loadEstimateForEditing`:
+**File: `src/components/estimates/EstimatePreviewPanel.tsx`**
+- Add `estimateDisplayName?: string` to props interface
+- Use display name for filename if available, falling back to estimate number
+- Sanitize filename to remove special characters
 
+**Updated filename logic:**
 ```typescript
-// Around line 418
-if (estimate.template_id) {
-  setSelectedTemplateId(estimate.template_id);
-  // FIX: Also fetch template attachments for the loaded template
-  fetchTemplateAttachments(estimate.template_id);
-}
+// Generate safe filename from display name or estimate number
+const getFilename = () => {
+  if (estimateDisplayName?.trim()) {
+    // Sanitize: remove special chars, limit length
+    const sanitized = estimateDisplayName
+      .trim()
+      .replace(/[^a-zA-Z0-9\s-]/g, '')
+      .replace(/\s+/g, '_')
+      .slice(0, 50);
+    return `${sanitized}.pdf`;
+  }
+  return `${estimateNumber}.pdf`;
+};
 ```
 
 ---
 
-### Fix 2: Add Attachments Management UI Panel
+### Fix 2: Remove Duplicate Header from Attachments Manager
 
-Create a new component that displays in the Estimate Preview Panel's left sidebar, allowing users to:
-- View all auto-attached documents from template
-- Add additional PDF attachments from their Documents library
-- Remove attachments from this estimate (without removing from template)
-- Reorder attachments via drag-and-drop
+**File: `src/components/estimates/EstimateAttachmentsManager.tsx`**
+- Remove the internal header (`<h4>Attachments</h4>`) since the parent `Collapsible` already provides this header
+- Keep just the content (attachment list + add button)
 
-**New Component**: `src/components/estimates/EstimateAttachmentsManager.tsx`
-
-```typescript
-interface EstimateAttachmentsManagerProps {
-  templateAttachments: TemplateAttachment[];
-  additionalAttachments: TemplateAttachment[];
-  onAddAttachment: (attachment: TemplateAttachment) => void;
-  onRemoveAttachment: (documentId: string) => void;
-  onReorderAttachments: (attachments: TemplateAttachment[]) => void;
-}
+The parent `EstimatePreviewPanel` already has:
+```tsx
+<CollapsibleTrigger>
+  <h4>Attachments ({allAttachments.length})</h4>
+</CollapsibleTrigger>
+<CollapsibleContent>
+  <EstimateAttachmentsManager ... />  {/* Should NOT have its own header */}
+</CollapsibleContent>
 ```
 
-**Features**:
-- Section showing "Template Attachments" (auto-linked from template)
-- Section showing "Additional Attachments" (manually added for this estimate)
-- "Add Document" button that opens a picker from company documents
-- Drag handles for reordering
-- Remove buttons for each attachment
-
 ---
-
-### Fix 3: Add Page Order Management UI
-
-Add a collapsible panel in the Preview sidebar that shows all pages and allows drag-to-reorder:
-
-**Location**: `src/components/estimates/EstimatePreviewPanel.tsx` - add new section in left panel
-
-```typescript
-// New state to track page order
-const [pageOrder, setPageOrder] = useState<string[]>([
-  'cover_page',
-  'content_pages',
-  'warranty_info',
-  'attachments'
-]);
-
-// Page Order UI with drag-and-drop
-<div className="space-y-2">
-  <h4>Page Order</h4>
-  <DndContext onDragEnd={handleDragEnd}>
-    <SortableContext items={pageOrder}>
-      {pageOrder.map((pageId) => (
-        <SortablePageItem key={pageId} id={pageId} label={getPageLabel(pageId)} />
-      ))}
-    </SortableContext>
-  </DndContext>
-</div>
-```
-
-This uses the existing `@dnd-kit` library already installed in the project.
-
----
-
-## Technical Implementation
-
-### Step 1: Fix Attachment Loading on Estimate Edit
-
-**File**: `src/components/estimates/MultiTemplateSelector.tsx`
-
-In `loadEstimateForEditing()`, after setting the template ID, call `fetchTemplateAttachments`:
-
-| Line | Change |
-|------|--------|
-| ~418 | Add `fetchTemplateAttachments(estimate.template_id);` after `setSelectedTemplateId(estimate.template_id);` |
-
----
-
-### Step 2: Create Attachments Manager Component
-
-**New File**: `src/components/estimates/EstimateAttachmentsManager.tsx`
-
-Component with:
-- List of template attachments (with "From Template" badge)
-- List of additional attachments
-- Add button with document picker dialog
-- Remove buttons per attachment
-- Drag-and-drop reordering
-
----
-
-### Step 3: Add to Preview Panel Sidebar
-
-**File**: `src/components/estimates/EstimatePreviewPanel.tsx`
-
-Add new props:
-- `additionalAttachments` - user-added attachments
-- `onAttachmentsChange` - callback for add/remove/reorder
-
-Add new UI section after "Attachments" indicator:
-- Show `EstimateAttachmentsManager` component
-- Wire up callbacks
-
----
-
-### Step 4: Create Page Order Manager Component  
-
-**New File**: `src/components/estimates/PageOrderManager.tsx`
-
-Draggable list of page types with toggle visibility:
-- Cover Page (on/off + position)
-- Estimate Content (always on)
-- Warranty Info (on/off + position)
-- Attachments (on/off + position)
-
----
-
-### Step 5: Wire Up Page Order to PDF Generation
-
-**File**: `src/components/estimates/EstimatePDFDocument.tsx`
-
-Accept new `pageOrder` prop and render pages in specified order instead of hardcoded order.
-
----
-
-## Files to Create
-
-| File | Purpose |
-|------|---------|
-| `src/components/estimates/EstimateAttachmentsManager.tsx` | UI to add/remove/reorder attachments |
-| `src/components/estimates/PageOrderManager.tsx` | UI to reorder pages in estimate |
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `src/components/estimates/MultiTemplateSelector.tsx` | Call `fetchTemplateAttachments()` when loading estimate for edit |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Add attachments manager and page order UI to sidebar |
-| `src/components/estimates/EstimatePDFDocument.tsx` | Accept `pageOrder` prop, render pages in user-specified order |
+| File | Change |
+|------|--------|
+| `src/components/estimates/MultiTemplateSelector.tsx` | Pass `estimateDisplayName` prop to `EstimatePreviewPanel` |
+| `src/components/estimates/EstimatePreviewPanel.tsx` | Add `estimateDisplayName` prop, use for PDF filename |
+| `src/components/estimates/EstimateAttachmentsManager.tsx` | Remove duplicate header (lines 282-284) |
 
 ---
 
-## User Flow After Implementation
+## Result After Fix
 
-### Editing an Existing Estimate
-1. User clicks "Edit" on a metal roof estimate
-2. System loads estimate AND template attachments (metal flyer)
-3. Preview shows metal flyer attached
-4. User can remove flyer if not wanted for this estimate
-
-### Managing Attachments
-1. User opens Preview panel
-2. Sees "Attachments" section in sidebar showing template-linked documents
-3. Can click "Add Document" to attach additional PDFs
-4. Can click X to remove any attachment
-5. Can drag to reorder attachments
-
-### Organizing Pages
-1. User opens Preview panel
-2. Sees "Page Order" section with draggable list
-3. Drags "Warranty Info" above "Attachments"
-4. Preview updates to show new page order
-5. Exported PDF follows same order
+1. **PDF Export**: Will save as `Smith_Residence_-_Full_Roof_Replacement.pdf` instead of `EST-94749505.pdf`
+2. **Attachments UI**: Single "ATTACHMENTS (1)" header, no duplication
