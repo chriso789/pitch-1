@@ -1,71 +1,91 @@
 
-# Plan: Fix PDF Filename and Duplicate Attachments Header
+# Plan: Fix Estimate Switching Not Loading New Template
 
-## Issues Identified
+## Problem Identified
 
-### Issue 1: PDF Not Saving with Estimate Display Name
-When exporting an estimate PDF, it saves as `EST-94749505.pdf` instead of using the custom display name the user entered (e.g., "Smith Residence - Full Roof Replacement").
+When you're editing one estimate and click "Edit" on a different saved estimate, the template area doesn't update. The second estimate never loads.
 
-**Root Cause**: 
-- `EstimatePreviewPanel` uses only `estimateNumber` for the filename
-- `estimateDisplayName` is never passed to the preview panel from `MultiTemplateSelector`
-
-### Issue 2: "ATTACHMENTS" Header Appears Twice
-The screenshot shows two "ATTACHMENTS (1)" headers in the sidebar.
-
-**Root Cause**: 
-- `EstimatePreviewPanel.tsx` has a `Collapsible` section with header "Attachments"
-- `EstimateAttachmentsManager.tsx` component ALSO renders its own "Attachments" header internally
-- Result: When collapsible is open, both headers display
-
----
-
-## Technical Solution
-
-### Fix 1: Pass Display Name to Preview Panel & Use for Filename
-
-**File: `src/components/estimates/MultiTemplateSelector.tsx`**
-- Add `estimateDisplayName` prop when rendering `EstimatePreviewPanel`
-
-**File: `src/components/estimates/EstimatePreviewPanel.tsx`**
-- Add `estimateDisplayName?: string` to props interface
-- Use display name for filename if available, falling back to estimate number
-- Sanitize filename to remove special characters
-
-**Updated filename logic:**
+**Root Cause (Line 378 in MultiTemplateSelector.tsx):**
 ```typescript
-// Generate safe filename from display name or estimate number
-const getFilename = () => {
-  if (estimateDisplayName?.trim()) {
-    // Sanitize: remove special chars, limit length
-    const sanitized = estimateDisplayName
-      .trim()
-      .replace(/[^a-zA-Z0-9\s-]/g, '')
-      .replace(/\s+/g, '_')
-      .slice(0, 50);
-    return `${sanitized}.pdf`;
-  }
-  return `${estimateNumber}.pdf`;
-};
+if (editEstimateId && !editEstimateProcessed && !existingEstimateId) {
 ```
+
+The condition `!existingEstimateId` blocks loading a new estimate when another one is already being edited. Once `existingEstimateId` is set (from editing estimate #1), clicking "Edit" on estimate #2 fails because `existingEstimateId !== null`.
 
 ---
 
-### Fix 2: Remove Duplicate Header from Attachments Manager
+## Solution
 
-**File: `src/components/estimates/EstimateAttachmentsManager.tsx`**
-- Remove the internal header (`<h4>Attachments</h4>`) since the parent `Collapsible` already provides this header
-- Keep just the content (attachment list + add button)
+Change the useEffect logic to:
+1. Check if the `editEstimateId` from URL is **different** from the currently loaded estimate
+2. If so, load the new estimate (replacing the current one)
 
-The parent `EstimatePreviewPanel` already has:
-```tsx
-<CollapsibleTrigger>
-  <h4>Attachments ({allAttachments.length})</h4>
-</CollapsibleTrigger>
-<CollapsibleContent>
-  <EstimateAttachmentsManager ... />  {/* Should NOT have its own header */}
-</CollapsibleContent>
+---
+
+## Technical Changes
+
+### File: `src/components/estimates/MultiTemplateSelector.tsx`
+
+**Lines 375-388 - Update the editEstimate useEffect:**
+
+**Current (Broken):**
+```typescript
+useEffect(() => {
+  const editEstimateId = searchParams.get('editEstimate');
+  if (editEstimateId && !editEstimateProcessed && !existingEstimateId) {
+    setEditEstimateProcessed(true);
+    loadEstimateForEditing(editEstimateId);
+    // Clear the URL param after loading
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('editEstimate');
+    const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+  }
+}, [searchParams, editEstimateProcessed, existingEstimateId]);
 ```
+
+**Fixed:**
+```typescript
+useEffect(() => {
+  const editEstimateId = searchParams.get('editEstimate');
+  
+  // Load if:
+  // 1. There's an editEstimate param in URL
+  // 2. It's different from what we're currently editing (or nothing is being edited)
+  if (editEstimateId && editEstimateId !== existingEstimateId) {
+    // Reset previous editing state before loading new estimate
+    setEditEstimateProcessed(true);
+    setLineItems([]); // Clear old line items
+    setFixedPrice(null);
+    setEstimateDisplayName('');
+    setEstimatePricingTier(null);
+    
+    loadEstimateForEditing(editEstimateId);
+    
+    // Clear the URL param after loading
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('editEstimate');
+    const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+  }
+}, [searchParams, existingEstimateId]);
+```
+
+**Key Changes:**
+1. Remove `!editEstimateProcessed` condition - not needed when we check against `existingEstimateId`
+2. Change `!existingEstimateId` to `editEstimateId !== existingEstimateId` - allows switching between estimates
+3. Reset old state (`lineItems`, `fixedPrice`, `estimateDisplayName`, `estimatePricingTier`) before loading new estimate
+4. Remove `editEstimateProcessed` from dependencies since we're not using it in the condition
+
+---
+
+## Result
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| Click Edit on first estimate | ✅ Loads | ✅ Loads |
+| Click Edit on second estimate (while editing first) | ❌ Does nothing | ✅ Switches to second estimate |
+| Unsaved changes warning | ✅ Shows dialog | ✅ Still shows (handled by SavedEstimatesList) |
 
 ---
 
@@ -73,13 +93,4 @@ The parent `EstimatePreviewPanel` already has:
 
 | File | Change |
 |------|--------|
-| `src/components/estimates/MultiTemplateSelector.tsx` | Pass `estimateDisplayName` prop to `EstimatePreviewPanel` |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Add `estimateDisplayName` prop, use for PDF filename |
-| `src/components/estimates/EstimateAttachmentsManager.tsx` | Remove duplicate header (lines 282-284) |
-
----
-
-## Result After Fix
-
-1. **PDF Export**: Will save as `Smith_Residence_-_Full_Roof_Replacement.pdf` instead of `EST-94749505.pdf`
-2. **Attachments UI**: Single "ATTACHMENTS (1)" header, no duplication
+| `src/components/estimates/MultiTemplateSelector.tsx` | Fix the editEstimate URL parameter useEffect (lines 375-388) |
