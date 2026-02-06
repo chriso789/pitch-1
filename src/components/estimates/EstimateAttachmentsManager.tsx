@@ -249,10 +249,6 @@ export function EstimateAttachmentsManager({
   if (allAttachments.length === 0) {
     return (
       <div className="space-y-2">
-        <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
-          <Paperclip className="h-3 w-3" />
-          Attachments
-        </h4>
         <div className="p-3 border border-dashed rounded-md text-center">
           <p className="text-xs text-muted-foreground mb-2">No attachments</p>
           <Button
@@ -279,11 +275,6 @@ export function EstimateAttachmentsManager({
 
   return (
     <div className="space-y-2">
-      <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
-        <Paperclip className="h-3 w-3" />
-        Attachments ({allAttachments.length})
-      </h4>
-      
       <div className="space-y-1">
         <DndContext
           sensors={sensors}
