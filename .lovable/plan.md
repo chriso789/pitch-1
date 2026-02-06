@@ -1,53 +1,99 @@
 
+# Fix: Estimate Short Description Shows Wrong Roof Type
 
-# Fix: Restore East Coast Location to O'Brien Contracting
+## Problem Identified
 
-## Overview
+The "Saved Estimates" display is showing **"Shingle Premium"** for metal roofing estimates. This happens because the short description generation logic takes the **first word** of the template name:
 
-Execute Option 1 to reassign the "East Coast" location back to O'Brien Contracting and create a replacement location for "East Coast Roofing Services".
+```javascript
+const brandWord = templateName.split(' ')[0]; // Returns "Shingle" for "Shingle to 5v Painted"
+const priceWord = breakdown.sellingPrice > 20000 ? 'Premium' : 'Standard' : 'Basic';
+const shortDescription = `${brandWord} ${priceWord}`; // = "Shingle Premium" ❌
+```
+
+For templates like "Shingle to 5v Painted" or "Shingle to 1" SnapLok Painted", the first word is "Shingle" even though these are **metal roofing** templates.
 
 ---
 
-## SQL Operations to Execute
+## Solution
 
-### Step 1: Reassign East Coast to O'Brien Contracting
+Update the short description generation logic to use the template's `roof_type` field (which is correctly set to "metal" for these templates) combined with a smarter brand/style extraction.
 
-```sql
-UPDATE locations 
-SET tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-WHERE id = 'acb2ee85-d4f7-4a4e-9b97-cd421554b8af';
+### Improved Logic
+
+```javascript
+// 1. Get roof type from template (shingle, metal, tile, flat, etc.)
+const roofType = selectedTemplate?.roof_type || 'shingle';
+
+// 2. Extract actual material/brand name intelligently
+const getDescriptor = (name: string, roofType: string) => {
+  // For metal templates, extract the metal type (5v, SnapLok, Standing Seam)
+  if (roofType === 'metal') {
+    if (name.toLowerCase().includes('5v')) return '5V Metal';
+    if (name.toLowerCase().includes('snap')) return 'SnapLok';
+    if (name.toLowerCase().includes('standing')) return 'Standing Seam';
+    return 'Metal';
+  }
+  // For shingle templates, extract brand (GAF, Owens Corning, etc.)
+  if (roofType === 'shingle') {
+    if (name.toLowerCase().includes('gaf')) return 'GAF';
+    if (name.toLowerCase().includes('owens')) return 'Owens Corning';
+    if (name.toLowerCase().includes('certainteed')) return 'CertainTeed';
+    return 'Shingle';
+  }
+  // Default: capitalize roof type
+  return roofType.charAt(0).toUpperCase() + roofType.slice(1);
+};
+
+const descriptor = getDescriptor(templateName, roofType);
+const priceWord = breakdown.sellingPrice > 20000 ? 'Premium' : 
+                  breakdown.sellingPrice > 10000 ? 'Standard' : 'Basic';
+const shortDescription = `${descriptor} ${priceWord}`;
 ```
 
-### Step 2: Create New Location for East Coast Roofing Services
+### Expected Results
 
-```sql
-INSERT INTO locations (tenant_id, name, is_primary, is_active)
-VALUES ('cea48616-dc2c-4ee2-806b-ce0e75411bd4', 'Main Office', true, true);
+| Template Name | Current | Fixed |
+|--------------|---------|-------|
+| Shingle to 5v Painted | Shingle Premium | 5V Metal Premium |
+| Shingle to 1" SnapLok Painted | Shingle Premium | SnapLok Premium |
+| GAF Timberline HDZ | GAF Premium | GAF Premium |
+
+---
+
+## Files to Modify
+
+### 1. `src/components/estimates/MultiTemplateSelector.tsx`
+- Update lines 901-906 with improved short description generation
+- Use template `roof_type` field instead of just the first word
+- Add helper function for intelligent descriptor extraction
+
+---
+
+## Technical Details
+
+### Data Available
+The template object already includes `roof_type`:
+```
+{ id: 'abc93b46...', name: 'Shingle to 5v Painted', roof_type: 'metal' }
 ```
 
-### Step 3: Update Any Orphaned User Assignments
-
+### Existing Data Fix
+The two existing estimates can be updated:
 ```sql
-UPDATE user_location_assignments 
-SET tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
-WHERE location_id = 'acb2ee85-d4f7-4a4e-9b97-cd421554b8af';
+UPDATE enhanced_estimates 
+SET short_description = '5V Metal Premium' 
+WHERE id = '0c38ca37-cb89-413a-a659-3f7d4cfc8f09';
+
+UPDATE enhanced_estimates 
+SET short_description = 'SnapLok Premium' 
+WHERE id = 'f1571ce2-dba8-4db9-8a9e-130c104d06a0';
 ```
 
 ---
 
-## Expected Results
+## Testing
 
-After executing:
-- O'Brien Contracting will have both **East Coast** and **West Coast** locations
-- Location dropdown will reappear in the sidebar
-- All 1,730 contacts and 277 pipeline entries remain properly linked
-- East Coast Roofing Services will have a new "Main Office" location
-
----
-
-## Verification
-
-1. Hard refresh browser (Ctrl+Shift+R)
-2. Location dropdown should appear with both locations
-3. Switching to East Coast should show your contacts and leads
-
+1. Create a new estimate using a metal template
+2. Verify the "Saved Estimates" list shows correct descriptor (e.g., "5V Metal Premium")
+3. Create a shingle estimate and verify it still shows correctly (e.g., "GAF Premium")
