@@ -1232,7 +1232,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           estimate_id: existingEstimateId,
           line_items: lineItemsJson,
           selling_price: breakdown.sellingPrice,
-          pricing_config: config
+          pricing_config: config,
+          display_name: estimateDisplayName,
+          pricing_tier: estimatePricingTier
         }
       });
 

@@ -66,7 +66,7 @@ serve(async (req) => {
     console.log(`[update-estimate-line-items] User ${user.id} making request`);
 
     // Parse request body
-    const { estimate_id, line_items, selling_price, pricing_config } = await req.json();
+    const { estimate_id, line_items, selling_price, pricing_config, display_name, pricing_tier } = await req.json();
 
     if (!estimate_id || !line_items) {
       return new Response(
@@ -207,32 +207,45 @@ serve(async (req) => {
       actual_profit_percent: estimate.actual_profit_percent
     };
 
+    // Build update payload - include display_name and pricing_tier if provided
+    const updatePayload: Record<string, any> = {
+      line_items: lineItemsData,
+      material_cost: Math.round(materialsTotal * 100) / 100,
+      material_total: Math.round(materialsTotal * 100) / 100,
+      materials_total: Math.round(materialsTotal * 100) / 100,
+      labor_cost: Math.round(laborTotal * 100) / 100,
+      labor_total: Math.round(laborTotal * 100) / 100,
+      subtotal: Math.round(directCost * 100) / 100,
+      overhead_percent: overheadPercent,
+      overhead_amount: Math.round(overheadAmount * 100) / 100,
+      rep_commission_percent: repCommissionRate,
+      rep_commission_amount: Math.round(repCommissionAmount * 100) / 100,
+      selling_price: Math.round(finalSellingPrice * 100) / 100,
+      actual_profit_amount: Math.round(profitAmount * 100) / 100,
+      actual_profit_percent: Math.round(profitPercent * 100) / 100,
+      updated_at: new Date().toISOString(),
+      calculation_metadata: {
+        ...((estimate.calculation_metadata as object) || {}),
+        last_updated_by: user.id,
+        last_updated_at: new Date().toISOString(),
+        pricing_config: pricing_config
+      }
+    };
+
+    // Only update display_name/pricing_tier if explicitly provided (allows clearing with empty string/null)
+    if (display_name !== undefined) {
+      updatePayload.display_name = display_name?.trim() || null;
+    }
+    if (pricing_tier !== undefined) {
+      updatePayload.pricing_tier = pricing_tier || null;
+    }
+
+    console.log(`[update-estimate-line-items] Updating display_name: ${display_name}, pricing_tier: ${pricing_tier}`);
+
     // Update the estimate
     const { data: updatedEstimate, error: updateError } = await serviceClient
       .from('enhanced_estimates')
-      .update({
-        line_items: lineItemsData,
-        material_cost: Math.round(materialsTotal * 100) / 100,
-        material_total: Math.round(materialsTotal * 100) / 100,
-        materials_total: Math.round(materialsTotal * 100) / 100,
-        labor_cost: Math.round(laborTotal * 100) / 100,
-        labor_total: Math.round(laborTotal * 100) / 100,
-        subtotal: Math.round(directCost * 100) / 100,
-        overhead_percent: overheadPercent,
-        overhead_amount: Math.round(overheadAmount * 100) / 100,
-        rep_commission_percent: repCommissionRate,
-        rep_commission_amount: Math.round(repCommissionAmount * 100) / 100,
-        selling_price: Math.round(finalSellingPrice * 100) / 100,
-        actual_profit_amount: Math.round(profitAmount * 100) / 100,
-        actual_profit_percent: Math.round(profitPercent * 100) / 100,
-        updated_at: new Date().toISOString(),
-        calculation_metadata: {
-          ...((estimate.calculation_metadata as object) || {}),
-          last_updated_by: user.id,
-          last_updated_at: new Date().toISOString(),
-          pricing_config: pricing_config
-        }
-      })
+      .update(updatePayload)
       .eq('id', estimate_id)
       .select()
       .single();
