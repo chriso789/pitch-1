@@ -1,186 +1,165 @@
 
-# Save Imported Measurement Reports & Insurance Scopes to Job Documents
+# Fix: Missing Cover Page and Materials Marketing Flyer in Estimate PDFs
 
 ## Problem Summary
 
-When a user imports a measurement report from Roofr, EagleView, Xactimate, etc., or uploads an insurance scope, the system extracts the data but **doesn't save the original PDF to the job's Documents tab**. This means users can't access the original source document later.
+The generated estimate PDF is missing two expected components:
+
+1. **Cover Page** - Not appearing at the start of the PDF
+2. **Materials Marketing Flyer** - Metal roof product flyer not appended to the end
 
 ---
 
-## What Needs to Change
+## Root Cause Analysis
 
-### 1. Measurement Report Imports → Save to "Other" folder
+### Issue 1: Cover Page Not Showing
 
-**File:** `supabase/functions/roof-report-ingest/index.ts`
+**Why it's missing:**
 
-After successfully parsing and storing the report (around line 1314), add logic to:
-1. Get the tenant_id from the linked lead/job
-2. Upload the original PDF to Storage: `{tenant_id}/{pipeline_entry_id}/measurements/{timestamp}_{filename}.pdf`
-3. Create a `documents` table entry with:
-   - `document_type: 'other'` (or create new type `measurement_report`)
-   - `description: '{Provider} Measurement Report - {sqft} sqft'`
-   - `pipeline_entry_id`: Link to the job
-
-**Providers to detect:**
-- `roofr` → "Roofr Report"
-- `eagleview` → "EagleView Report"
-- `hover` → "Hover Report"
-- `roofscope` → "RoofScope Report"
-- `xactimate` → "Xactimate Scope" (save as `insurance` type instead)
-- `generic` → "Measurement Report"
-
-### 2. Insurance Scope Uploads → Also save to "Insurance" folder
-
-**File:** `supabase/functions/scope-document-ingest/index.ts`
-
-After creating the `insurance_scope_documents` record (around line 259), also create a `documents` table entry:
-- `document_type: 'insurance'`
-- `description: 'Insurance Scope - {carrier_name}'`
-- `pipeline_entry_id: job_id` (if provided)
-
-### 3. ScopeUploader Component → Pass job linkage
-
-**File:** `src/components/insurance/ScopeUploader.tsx`
-
-Ensure the `jobId` prop is properly passed to the edge function so documents are linked to the correct job.
-
----
-
-## Technical Implementation
-
-### Edge Function Changes
-
-#### `roof-report-ingest/index.ts` (after line ~1313)
+The `showCoverPage` option defaults to **`false`** in the PDF presets:
 
 ```typescript
-// After: const { error: measErr } = await supabase.from("roof_measurements_truth").insert(m);
-
-// ======= NEW: Save PDF to job documents =======
-if (lead_id) {
-  try {
-    // Get tenant_id from lead
-    const { data: leadData } = await supabase
-      .from('pipeline_entries')
-      .select('tenant_id')
-      .eq('id', lead_id)
-      .single();
-
-    if (leadData?.tenant_id) {
-      const isInsurance = parsed.provider === 'xactimate';
-      const docType = isInsurance ? 'insurance' : 'other';
-      const timestamp = Date.now();
-      const providerLabel = {
-        roofr: 'Roofr',
-        eagleview: 'EagleView',
-        hover: 'Hover',
-        roofscope: 'RoofScope',
-        xactimate: 'Xactimate',
-        generic: 'Measurement'
-      }[parsed.provider || 'generic'] || 'Measurement';
-      
-      // Store PDF in job's folder
-      const docPath = `${leadData.tenant_id}/${lead_id}/measurements/${timestamp}_${fileName || 'report'}.pdf`;
-      
-      const { error: uploadErr } = await supabase.storage
-        .from('documents')
-        .upload(docPath, pdfBytes, {
-          contentType: 'application/pdf',
-          upsert: true
-        });
-
-      if (!uploadErr) {
-        // Create document record
-        await supabase.from('documents').insert({
-          tenant_id: leadData.tenant_id,
-          pipeline_entry_id: lead_id,
-          document_type: docType,
-          filename: `${providerLabel}_Report_${parsed.total_area_sqft || 0}sqft.pdf`,
-          file_path: docPath,
-          file_size: pdfBytes.length,
-          mime_type: 'application/pdf',
-          description: `${providerLabel} Report - ${parsed.total_area_sqft?.toLocaleString() || 0} sqft`,
-        });
-        console.log("roof-report-ingest: Saved document to job:", docPath);
-      }
-    }
-  } catch (docErr) {
-    console.warn("roof-report-ingest: Failed to save document:", docErr);
-    // Non-fatal - measurement data still saved
-  }
-}
+// src/components/estimates/PDFComponentOptions.ts (line 103)
+showCoverPage: false,  // Both customer and internal presets
 ```
 
-#### `scope-document-ingest/index.ts` (after line ~259)
+The user must manually check the **"Include Cover Page"** checkbox in the Estimate Add-ons panel before creating the estimate. This was not checked when the estimate was created.
+
+**Evidence:** The `EstimateAddonsPanel` has the toggle (lines 108-124), and the `EstimateCoverPage` component exists and works - it's just not enabled by default.
+
+---
+
+### Issue 2: Metal Roof Flyer Not Attached
+
+**Why it's missing:**
+
+The estimates were created using templates that **no longer exist** in the database:
+- `abc93b46-fad5-40a8-b124-f5eb907451d5` (5V Metal) - **DELETED**
+- `f17563f3-65a2-4802-a115-a0d09913b15c` (SnapLok) - **DELETED**
+
+The metal roof flyer attachment is configured for template `9a7ed90d-3774-4ca2-bfba-e9766630c5c0` ("Standard Metal Roof"), which is a **different** template.
+
+**Attachment configuration found:**
+| Document | Template Attached To |
+|----------|----------------------|
+| `obc_-_metal_roof_flyer.pdf` | `9a7ed90d-3774-4ca2-bfba-e9766630c5c0` (Standard Metal Roof) |
+
+**Templates used for Nicole Walker's estimates:**
+| Estimate | Template ID | Status |
+|----------|-------------|--------|
+| OBR-00027-9opp | `abc93b46-...` | **Template deleted** |
+| OBR-00025-q8fe | `abc93b46-...` | **Template deleted** |
+| OBR-00024-lt6o | `f17563f3-...` | **Template deleted** |
+
+Since those templates were deleted, the `fetchTemplateAttachments` function finds no attachments to merge.
+
+---
+
+## Recommended Fixes
+
+### Fix 1: Enable Cover Page by Default for Customer PDFs
+
+Change the default in `PDFComponentOptions.ts`:
 
 ```typescript
-// After: console.log("[scope-ingest] Document created:", document.id);
+// Change from:
+showCoverPage: false,
 
-// ======= NEW: Also save to job documents for easy access =======
-if (body.job_id) {
-  try {
-    await supabase.from('documents').insert({
-      tenant_id: tenantId,
-      pipeline_entry_id: body.job_id,
-      document_type: 'insurance',
-      filename: fileName,
-      file_path: storagePath,
-      file_size: pdfBytes.length,
-      mime_type: 'application/pdf',
-      description: `Insurance ${body.document_type} - ${body.file_name}`,
-    });
-    console.log("[scope-ingest] Saved insurance document to job documents");
-  } catch (docErr) {
-    console.warn("[scope-ingest] Failed to save to job documents:", docErr);
-    // Non-fatal - scope document still created
-  }
+// Change to:
+showCoverPage: true,  // Customer preset only
+```
+
+This makes the professional cover page standard for all customer-facing estimates.
+
+---
+
+### Fix 2: Attach Flyer to ALL Metal Templates (Roof-Type Based)
+
+Instead of attaching flyers template-by-template, implement a **roof-type-based** attachment system. When creating an estimate with a metal template, automatically attach the metal flyer regardless of which specific metal template is used.
+
+**Option A: Database Fix - Add attachment to all metal templates**
+
+For all metal templates in the tenant, create attachment records:
+
+```sql
+-- Add flyer attachment to all metal roof templates for tenant
+INSERT INTO estimate_template_attachments (tenant_id, template_id, document_id, attachment_order)
+SELECT 
+  '14de934e-7964-4afd-940a-620d2ace125d',
+  et.id,
+  '9c38279e-4eff-47b2-9506-2a34897a8250',
+  0
+FROM estimate_templates et
+WHERE et.tenant_id = '14de934e-7964-4afd-940a-620d2ace125d'
+  AND et.roof_type = 'metal'
+  AND NOT EXISTS (
+    SELECT 1 FROM estimate_template_attachments eta
+    WHERE eta.template_id = et.id
+  );
+```
+
+**Option B: Code Enhancement - Query by roof_type**
+
+Modify `fetchTemplateAttachments` to also check for roof-type-based attachments when template-specific ones aren't found:
+
+```typescript
+// If no template-specific attachments, check for roof-type attachments
+if (data.length === 0 && selectedTemplate?.roof_type) {
+  const { data: roofTypeAttachments } = await supabaseClient
+    .from('roof_type_attachments')
+    .select('document_id, documents(file_path, filename)')
+    .eq('roof_type', selectedTemplate.roof_type);
+  // Use these instead
 }
 ```
 
 ---
 
-## Document Type Mapping
+### Fix 3: Recreate Missing Templates (If Needed)
 
-| Provider/Source | Document Type | Folder Location |
-|-----------------|---------------|-----------------|
-| Roofr | `other` or `measurement_report` | Documents > Other |
-| EagleView | `other` or `measurement_report` | Documents > Other |
-| Hover | `other` or `measurement_report` | Documents > Other |
-| RoofScope | `other` or `measurement_report` | Documents > Other |
-| Xactimate | `insurance` | Documents > Insurance |
-| Insurance Scopes | `insurance` | Documents > Insurance |
+If the original 5V and SnapLok templates were deleted accidentally, they should be recreated and have the flyer attachment linked. Currently there are only 3 templates in the database for this tenant:
+- Standard Shingle Roof
+- Standard Metal Roof  
+- Standard Tile Roof
 
 ---
 
-## Storage Path Convention
+## Immediate Actions
 
-Following RLS requirements (tenant_id must be first folder):
+### 1. Change Cover Page Default
 
-```
-{tenant_id}/{pipeline_entry_id}/measurements/{timestamp}_{filename}.pdf
-{tenant_id}/{pipeline_entry_id}/insurance/{timestamp}_{filename}.pdf
+**File:** `src/components/estimates/PDFComponentOptions.ts`
+
+Update customer preset:
+```typescript
+// Line 103
+showCoverPage: true,  // Changed from false
 ```
 
-Or using existing paths in scope-ingest:
-```
-{tenant_id}/insurance-scopes/{hash}.pdf
-```
+### 2. Link Flyer to Existing Metal Template
+
+Since the Standard Metal Roof template exists and has the flyer already attached, **no additional database changes needed** if users select that template.
+
+However, if you need the flyer attached when using templates with `roof_type = 'metal'` that don't have explicit attachments, add a fallback query in `fetchTemplateAttachments`.
+
+### 3. Enhance Template Attachment Logic (Optional)
+
+Modify `MultiTemplateSelector.tsx` to fetch attachments based on **roof_type** as a fallback when template-specific attachments aren't found. This ensures any metal template automatically gets the metal flyer.
 
 ---
 
 ## Files to Modify
 
-| File | Action |
+| File | Change |
 |------|--------|
-| `supabase/functions/roof-report-ingest/index.ts` | Add document storage after measurement save |
-| `supabase/functions/scope-document-ingest/index.ts` | Add job document link after scope creation |
+| `src/components/estimates/PDFComponentOptions.ts` | Enable `showCoverPage: true` in customer preset |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Add fallback to roof-type-based attachments |
 
 ---
 
-## Testing Plan
+## Testing After Fix
 
-1. Import a Roofr PDF for a job → Verify it appears in Documents > Other
-2. Import an EagleView PDF → Verify it appears in Documents > Other
-3. Import an Xactimate scope → Verify it appears in Documents > Insurance
-4. Upload insurance scope via ScopeUploader with jobId → Verify linkage
-5. Check that existing measurement import flow still works
-6. Verify documents can be downloaded and previewed from job Documents tab
+1. Create a new estimate using any metal template
+2. Verify the Cover Page appears as the first page
+3. Verify the Metal Roof Flyer is appended as the last page
+4. Test with shingle template to confirm flyer is NOT appended (only for metal)
