@@ -1,98 +1,173 @@
 
-# Fix: Fixed Price Override Should Be the Final Total (Tax Included)
+# Fix: Cover Page and Marketing Flyer Not Showing in Preview Panel
 
-## Problem
+## Problem Summary
 
-When a user enters a Fixed Price Override of $58,650, the system currently **adds sales tax on top**, resulting in a final price of $61,303.84. The user expects $58,650 to BE the final customer-facing selling price, with the system back-calculating the pre-tax amounts to fit within that total.
+The **Preview Estimate** dialog is missing two key components:
+1. **Cover Page** - Not shown and no toggle to enable it
+2. **Marketing Flyer (Template Attachments)** - Not visible in the preview
 
 ---
 
-## Root Cause
+## Root Cause Analysis
 
-In `src/hooks/useEstimatePricing.ts` (lines 132-183):
+### Why Cover Page is Missing
+
+The `EstimatePreviewPanel` component:
+- Uses `EstimatePDFTemplate` for rendering (line 447)
+- `EstimatePDFTemplate` is a **single-page** template with NO cover page support
+- The Cover Page functionality exists only in `EstimatePDFDocument` (used for actual PDF generation)
+- The "Extra Pages" section in the sidebar is missing the "Cover Page" toggle - it has Measurement Details, Job Photos, and Warranty Info, but NOT Cover Page
+
+### Why Marketing Flyer is Missing
+
+Template attachments (e.g., metal roof flyer):
+- Are fetched by `MultiTemplateSelector` via `fetchTemplateAttachments()`
+- Are merged into the PDF AFTER generation (`handleCreateEstimate` line 1040)
+- The preview panel has NO access to these attachments
+- Even if it did, there's no rendering logic to display PDF attachments as preview pages
+
+---
+
+## Solution Overview
+
+### Fix 1: Add Cover Page Toggle to Preview Panel
+
+**File:** `src/components/estimates/EstimatePreviewPanel.tsx`
+
+Add a "Cover Page" toggle in the "Extra Pages" section:
 
 ```typescript
-if (isFixedPrice) {
-  sellingPrice = fixedPrice!;  // ← Treated as PRE-TAX
-  // ... calculations ...
-}
-
-// Later:
-const finalSellingPrice = sellingPrice + salesTaxAmount;  // ← Tax ADDED on top
+// In the Extra Pages section (around line 357)
+<ToggleRow
+  label="Cover Page"
+  checked={options.showCoverPage}
+  onChange={(v) => updateOption('showCoverPage', v)}
+/>
 ```
 
-The fixed price is treated as the pre-tax price, then sales tax is added, which inflates the final total beyond what the user entered.
+### Fix 2: Replace EstimatePDFTemplate with EstimatePDFDocument
 
----
+The preview panel should use `EstimatePDFDocument` instead of `EstimatePDFTemplate` to render the full multi-page estimate with cover page support.
 
-## Solution
+**Changes:**
+1. Import `EstimatePDFDocument` instead of `EstimatePDFTemplate`
+2. Update the preview render area to use `EstimatePDFDocument`
+3. Pass additional required props: `companyName`, `createdAt`, `companyLogo`
 
-When fixed price is enabled, treat the user's input as the **FINAL selling price (tax included)**, and back-calculate the pre-tax selling price mathematically:
+### Fix 3: Pass Template Attachments to Preview (Indicator)
 
-```text
-Given:
-  - fixedPrice = Final price user wants (includes tax)
-  - taxRate = e.g., 7%
-  - materialsRatio = materials portion of direct costs
-
-We need:
-  preTaxSellingPrice = fixedPrice / (1 + taxRate × materialsRatio)
-```
-
-Then calculate overhead and profit from this derived pre-tax amount.
+Since PDF attachments can't be easily rendered as React components in the preview:
+1. Pass `templateAttachments` array to `EstimatePreviewPanel`
+2. Show an info badge in the sidebar indicating attachments will be included:
+   ```
+   📎 1 attachment will be appended:
+   - Metal Roof Product Flyer
+   ```
 
 ---
 
 ## Technical Changes
 
-### File: `src/hooks/useEstimatePricing.ts`
+### File 1: `src/components/estimates/EstimatePreviewPanel.tsx`
 
-**Change the fixed price logic (lines 132-137):**
+**Add Cover Page toggle (line ~357):**
 
 ```typescript
-if (isFixedPrice) {
-  // Fixed price mode: user-entered price IS the final tax-included price
-  // Back-calculate the pre-tax selling price to make everything fit
-  
-  // Calculate materials ratio first (for tax calculation)
-  const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
-  
-  // Derive pre-tax selling price from fixed price
-  // fixedPrice = preTaxSelling + (preTaxSelling × materialsRatio × taxRate)
-  // fixedPrice = preTaxSelling × (1 + materialsRatio × taxRate)
-  // preTaxSelling = fixedPrice / (1 + materialsRatio × taxRate)
-  const taxMultiplier = config.salesTaxEnabled 
-    ? 1 + (materialsRatio * (config.salesTaxRate / 100))
-    : 1;
-  
-  sellingPrice = fixedPrice! / taxMultiplier;  // Pre-tax selling price
-  overheadAmount = sellingPrice * (config.overheadPercent / 100);
-  profitAmount = sellingPrice - directCost - overheadAmount;
-  actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
-}
+<div className="space-y-2 pl-2">
+  {/* NEW: Cover Page toggle */}
+  <ToggleRow
+    label="Cover Page"
+    checked={options.showCoverPage}
+    onChange={(v) => updateOption('showCoverPage', v)}
+  />
+  <ToggleRow
+    label="Measurement Details"
+    checked={options.showMeasurementDetails}
+    onChange={(v) => updateOption('showMeasurementDetails', v)}
+    disabled={!measurementSummary}
+  />
+  {/* ... rest of toggles */}
+</div>
 ```
 
-**Keep the rest of the calculation the same**, because now:
-- `sellingPrice` = derived pre-tax amount
-- `salesTaxAmount` = calculated from `sellingPrice × materialsRatio × taxRate`
-- `finalSellingPrice = sellingPrice + salesTaxAmount` = equals original `fixedPrice` ✓
+**Replace EstimatePDFTemplate with EstimatePDFDocument (line ~447):**
+
+```typescript
+import { EstimatePDFDocument } from './EstimatePDFDocument';
+
+// In render area:
+<EstimatePDFDocument
+  estimateNumber={estimateNumber}
+  customerName={customerName}
+  customerAddress={customerAddress}
+  customerPhone={customerPhone}
+  customerEmail={customerEmail}
+  companyInfo={companyInfo}
+  companyName={companyInfo?.name || 'Company'}
+  companyLogo={companyInfo?.logo_url || undefined}
+  materialItems={materialItems}
+  laborItems={laborItems}
+  breakdown={breakdown}
+  config={config}
+  finePrintContent={finePrintContent}
+  options={options}
+  measurementSummary={measurementSummary}
+  createdAt={new Date().toISOString()}
+/>
+```
+
+**Add attachments indicator section:**
+
+```typescript
+// New prop
+interface EstimatePreviewPanelProps {
+  // ... existing props
+  templateAttachments?: Array<{ filename: string }>;
+}
+
+// In sidebar, after Extra Pages section:
+{templateAttachments && templateAttachments.length > 0 && (
+  <div className="space-y-2">
+    <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+      <Paperclip className="h-3 w-3" />
+      Attachments
+    </h4>
+    <div className="p-2 bg-blue-500/10 border border-blue-500/20 rounded text-xs">
+      <p className="text-blue-700 dark:text-blue-400">
+        📎 {templateAttachments.length} document(s) will be appended:
+      </p>
+      <ul className="mt-1 text-blue-600 dark:text-blue-300">
+        {templateAttachments.map((att, i) => (
+          <li key={i}>• {att.filename}</li>
+        ))}
+      </ul>
+    </div>
+  </div>
+)}
+```
+
+### File 2: `src/components/estimates/MultiTemplateSelector.tsx`
+
+**Pass attachments to preview panel:**
+
+Update the preview panel invocation to pass template attachments:
+
+```typescript
+<EstimatePreviewPanel
+  // ... existing props
+  templateAttachments={templateAttachments}
+/>
+```
 
 ---
 
-## Expected Result After Fix
+## Result After Fix
 
-**User Input:**
-- Fixed Price: $58,650
-
-**System Calculates:**
-- Pre-tax selling price: ~$55,996 (back-calculated to include tax buffer)
-- Sales Tax (7% of materials portion): ~$2,654
-- **Final Selling Price: $58,650** (exactly what user entered) ✓
-
-**Displayed:**
-- Profit margin adjusts based on the lower pre-tax price
-- Tax still shows as "included in total"
-- Customer sees their exact entered price
+1. ✅ **Cover Page toggle** appears in the Extra Pages section of the preview sidebar
+2. ✅ **Cover Page renders** in the preview when enabled (uses `EstimatePDFDocument`)
+3. ✅ **Attachments indicator** shows which documents will be appended to the final PDF
+4. ✅ **Full multi-page preview** - shows all pages including cover, content, warranty, etc.
 
 ---
 
@@ -100,15 +175,16 @@ if (isFixedPrice) {
 
 | File | Changes |
 |------|---------|
-| `src/hooks/useEstimatePricing.ts` | Update fixed price calculation to back-calculate pre-tax amount from user's tax-included total |
+| `src/components/estimates/EstimatePreviewPanel.tsx` | Add Cover Page toggle, switch to `EstimatePDFDocument`, add attachments indicator, add new prop |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Pass `templateAttachments` to `EstimatePreviewPanel` |
 
 ---
 
 ## Testing Plan
 
-1. Enable Fixed Price Override
-2. Enter a round number like $60,000
-3. Verify the Selling Price displays exactly $60,000 (not $60,000 + tax)
-4. Verify the sales tax line shows the embedded tax amount
-5. Verify profit margin and overhead are calculated from the pre-tax portion
-6. Test with sales tax disabled to ensure behavior is unchanged
+1. Open an estimate with a metal template selected
+2. Click "Preview Estimate" button
+3. Verify the Cover Page toggle appears in Extra Pages section
+4. Enable Cover Page and verify it renders as the first page in preview
+5. Verify the attachments indicator shows the metal roof flyer
+6. Export PDF and verify both cover page and flyer are included
