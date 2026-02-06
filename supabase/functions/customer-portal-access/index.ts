@@ -20,8 +20,10 @@ Deno.serve(async (req) => {
 
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+  const stripeSecretKey = Deno.env.get('STRIPE_SECRET_KEY');
+
   try {
-    const { action, token, project_id, contact_id, message } = await req.json();
+    const { action, token, project_id, contact_id, message, amount } = await req.json();
 
     // Action: Generate new portal access token
     if (action === 'generate') {
@@ -214,6 +216,141 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({
         success: true,
         message: newMessage,
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Action: Request payment link
+    if (action === 'request_payment_link') {
+      if (!token) {
+        throw new Error('Token required');
+      }
+
+      // Validate token
+      const { data: tokenRecord, error: tokenError } = await supabase
+        .from('customer_portal_tokens')
+        .select('*, projects(*), contacts(*)')
+        .eq('token', token)
+        .gt('expires_at', new Date().toISOString())
+        .single();
+
+      if (tokenError || !tokenRecord) {
+        throw new Error('Invalid or expired access link');
+      }
+
+      if (!stripeSecretKey) {
+        throw new Error('Payment processing is not configured');
+      }
+
+      // Dynamic import of Stripe
+      const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
+      const stripe = new Stripe(stripeSecretKey, {
+        apiVersion: '2023-10-16',
+        httpClient: Stripe.createFetchHttpClient(),
+      });
+
+      const projectName = tokenRecord.projects?.name || 'Project Payment';
+      const contactEmail = tokenRecord.contacts?.email;
+      const paymentAmount = amount || 0;
+
+      if (paymentAmount <= 0) {
+        throw new Error('Invalid payment amount');
+      }
+
+      // Create or get Stripe customer
+      let stripeCustomerId: string | undefined;
+      if (contactEmail) {
+        const existingCustomers = await stripe.customers.list({
+          email: contactEmail,
+          limit: 1,
+        });
+
+        if (existingCustomers.data.length > 0) {
+          stripeCustomerId = existingCustomers.data[0].id;
+        } else {
+          const customer = await stripe.customers.create({
+            email: contactEmail,
+            name: `${tokenRecord.contacts?.first_name || ''} ${tokenRecord.contacts?.last_name || ''}`.trim() || undefined,
+            metadata: {
+              contact_id: tokenRecord.contact_id,
+              tenant_id: tokenRecord.tenant_id,
+              project_id: tokenRecord.project_id,
+            },
+          });
+          stripeCustomerId = customer.id;
+
+          // Update contact with Stripe customer ID
+          await supabase
+            .from('contacts')
+            .update({ stripe_customer_id: customer.id })
+            .eq('id', tokenRecord.contact_id);
+        }
+      }
+
+      // Create Stripe Payment Link
+      const paymentLink = await stripe.paymentLinks.create({
+        line_items: [
+          {
+            price_data: {
+              currency: 'usd',
+              product_data: {
+                name: `Payment for ${projectName}`,
+              },
+              unit_amount: Math.round(paymentAmount * 100),
+            },
+            quantity: 1,
+          },
+        ],
+        after_completion: {
+          type: 'hosted_confirmation',
+          hosted_confirmation: {
+            custom_message: 'Thank you for your payment! Your payment has been received and will be processed.',
+          },
+        },
+        metadata: {
+          tenant_id: tokenRecord.tenant_id,
+          contact_id: tokenRecord.contact_id || '',
+          project_id: tokenRecord.project_id || '',
+          source: 'customer_portal',
+        },
+      });
+
+      // Save payment link to database
+      const { data: paymentLinkRecord, error: plError } = await supabase
+        .from('payment_links')
+        .insert({
+          tenant_id: tokenRecord.tenant_id,
+          contact_id: tokenRecord.contact_id,
+          project_id: tokenRecord.project_id,
+          stripe_payment_link_id: paymentLink.id,
+          stripe_payment_link_url: paymentLink.url,
+          amount: paymentAmount,
+          currency: 'usd',
+          description: `Payment for ${projectName}`,
+          status: 'active',
+        })
+        .select()
+        .single();
+
+      if (plError) {
+        console.error('Error saving payment link:', plError);
+      }
+
+      // Log the payment request
+      await supabase.from('customer_messages').insert({
+        tenant_id: tokenRecord.tenant_id,
+        project_id: tokenRecord.project_id,
+        contact_id: tokenRecord.contact_id,
+        sender_type: 'system',
+        message: `Customer requested payment link for $${paymentAmount.toLocaleString()}`,
+      });
+
+      return new Response(JSON.stringify({
+        success: true,
+        payment_link_id: paymentLink.id,
+        payment_link_url: paymentLink.url,
+        amount: paymentAmount,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

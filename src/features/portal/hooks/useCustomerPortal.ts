@@ -28,6 +28,29 @@ export interface CustomerProject {
       address_zip?: string;
     };
   }[];
+  // Payment-related fields
+  payments?: {
+    id: string;
+    amount: number;
+    status: string;
+    created_at: string;
+    description?: string;
+    payment_method?: string;
+  }[];
+  payment_links?: {
+    id: string;
+    amount: number;
+    status: string;
+    stripe_payment_link_url: string;
+    description?: string;
+    created_at: string;
+  }[];
+  estimates?: {
+    id: string;
+    total_amount: number;
+    status: string;
+    estimate_number?: string;
+  }[];
 }
 
 export interface CustomerMilestone {
@@ -119,7 +142,12 @@ export function useCustomerPortal(token: string) {
         throw new Error(data?.error || 'Failed to validate portal access');
       }
 
-      setProject(data.project);
+      // Merge payment_links into project for convenience
+      const projectWithPayments = {
+        ...data.project,
+        payment_links: data.payment_links || [],
+      };
+      setProject(projectWithPayments);
       setCompany(data.company);
       setContact(data.contact);
       setTokenData(data);
