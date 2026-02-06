@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -7,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-// Simplified delete confirmation - v2
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +48,10 @@ interface SavedEstimatesListProps {
   selectedEstimateId?: string | null;
   onEstimateSelect?: (estimateId: string) => void;
   onEditEstimate?: (estimateId: string) => void;
+  currentEditingId?: string | null;
+  hasUnsavedChanges?: boolean;
+  onSaveAndSwitch?: () => Promise<void>;
+  currentEditingName?: string;
 }
 
 export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
@@ -55,13 +59,26 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   onCreateNew,
   selectedEstimateId: externalSelectedId,
   onEstimateSelect,
-  onEditEstimate
+  onEditEstimate,
+  currentEditingId,
+  hasUnsavedChanges = false,
+  onSaveAndSwitch,
+  currentEditingName
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [estimateToDelete, setEstimateToDelete] = useState<SavedEstimate | null>(null);
   const [showCannotDeleteDialog, setShowCannotDeleteDialog] = useState(false);
+  
+  // Unsaved changes dialog state
+  const [showUnsavedWarning, setShowUnsavedWarning] = useState(false);
+  const [pendingEditId, setPendingEditId] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  
+  // Get current editing ID from URL if not provided as prop
+  const effectiveEditingId = currentEditingId ?? searchParams.get('editEstimate');
   
   // Fetch the current selected estimate from pipeline_entries metadata
   const { data: pipelineData } = useQuery({
@@ -378,6 +395,20 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                   size="sm"
                   onClick={(e) => {
                     e.stopPropagation();
+                    
+                    // If clicking on the same estimate, do nothing
+                    if (effectiveEditingId === estimate.id) {
+                      return;
+                    }
+                    
+                    // If there's an active estimate with unsaved changes, show confirmation
+                    if (effectiveEditingId && effectiveEditingId !== estimate.id && hasUnsavedChanges) {
+                      setPendingEditId(estimate.id);
+                      setShowUnsavedWarning(true);
+                      return;
+                    }
+                    
+                    // Otherwise proceed directly
                     onEditEstimate?.(estimate.id);
                   }}
                   className="h-8 px-2"
@@ -460,6 +491,85 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
             >
               Create New Estimate
             </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Unsaved changes warning dialog */}
+      <AlertDialog open={showUnsavedWarning} onOpenChange={setShowUnsavedWarning}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Unsaved Changes</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes{currentEditingName ? ` to "${currentEditingName}"` : ''}.
+              What would you like to do?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter className="flex-col sm:flex-row gap-2">
+            <AlertDialogCancel 
+              onClick={() => {
+                setShowUnsavedWarning(false);
+                setPendingEditId(null);
+              }}
+            >
+              Cancel
+            </AlertDialogCancel>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowUnsavedWarning(false);
+                // Discard and switch
+                if (pendingEditId) {
+                  onEditEstimate?.(pendingEditId);
+                }
+                setPendingEditId(null);
+              }}
+            >
+              Discard Changes
+            </Button>
+            <Button
+              onClick={async () => {
+                if (!onSaveAndSwitch) {
+                  // If no save handler, just switch
+                  setShowUnsavedWarning(false);
+                  if (pendingEditId) {
+                    onEditEstimate?.(pendingEditId);
+                  }
+                  setPendingEditId(null);
+                  return;
+                }
+                
+                setIsSaving(true);
+                try {
+                  await onSaveAndSwitch();
+                  setShowUnsavedWarning(false);
+                  // After save succeeds, switch to the pending estimate
+                  if (pendingEditId) {
+                    onEditEstimate?.(pendingEditId);
+                  }
+                  setPendingEditId(null);
+                } catch (error) {
+                  console.error('Error saving before switch:', error);
+                  toast({
+                    title: 'Save Failed',
+                    description: 'Could not save changes. Please try again.',
+                    variant: 'destructive',
+                  });
+                } finally {
+                  setIsSaving(false);
+                }
+              }}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                'Save Changes'
+              )}
+            </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

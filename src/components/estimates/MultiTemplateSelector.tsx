@@ -96,12 +96,17 @@ interface MultiTemplateSelectorProps {
   pipelineEntryId: string;
   onCalculationsUpdate?: (calculations: TemplateCalculation[]) => void;
   onEstimateCreated?: (estimateId: string) => void;
+  onUnsavedChangesChange?: (hasChanges: boolean, estimateName?: string) => void;
+  onSaveChanges?: () => Promise<void>;
+  saveChangesRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   pipelineEntryId,
   onCalculationsUpdate,
-  onEstimateCreated
+  onEstimateCreated,
+  onUnsavedChangesChange,
+  saveChangesRef
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -197,6 +202,104 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
            (isCreatingNewEstimate && !!selectedTemplateId) || 
            existingEstimateId !== null;
   }, [isEditingLoadedEstimate, isCreatingNewEstimate, selectedTemplateId, existingEstimateId]);
+
+  // Track if there are unsaved changes (items with is_override flag)
+  const hasUnsavedChanges = useMemo(() => {
+    return existingEstimateId !== null && lineItems.some(item => item.is_override);
+  }, [existingEstimateId, lineItems]);
+
+  // Get current estimate display name for the dialog
+  const currentEstimateName = estimateDisplayName || editingEstimateNumber || 'current estimate';
+
+  // Notify parent component when unsaved changes state changes
+  useEffect(() => {
+    onUnsavedChangesChange?.(hasUnsavedChanges, hasUnsavedChanges ? currentEstimateName : undefined);
+  }, [hasUnsavedChanges, currentEstimateName, onUnsavedChangesChange]);
+
+  // Expose save function to parent via ref
+  useEffect(() => {
+    if (saveChangesRef) {
+      saveChangesRef.current = handleSaveLineItemChangesForRef;
+    }
+    return () => {
+      if (saveChangesRef) {
+        saveChangesRef.current = null;
+      }
+    };
+  }, [saveChangesRef, existingEstimateId, lineItems, breakdown, config]);
+
+  // Save function that can be called from parent (doesn't exit edit mode)
+  const handleSaveLineItemChangesForRef = async () => {
+    if (!existingEstimateId || lineItems.length === 0) return;
+    
+    setSavingLineItems(true);
+    try {
+      const lineItemsJson = {
+        materials: materialItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          qty: item.qty,
+          qty_original: item.qty_original,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost_original,
+          line_total: item.line_total,
+          is_override: item.is_override,
+        })),
+        labor: laborItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          qty: item.qty,
+          qty_original: item.qty_original,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost_original,
+          line_total: item.line_total,
+          is_override: item.is_override,
+        })),
+      };
+
+      const { error } = await supabase.functions.invoke('update-estimate-line-items', {
+        body: {
+          estimate_id: existingEstimateId,
+          line_items: lineItemsJson,
+          selling_price: breakdown.sellingPrice,
+          pricing_config: config,
+          display_name: estimateDisplayName,
+          pricing_tier: estimatePricingTier
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Changes Saved',
+        description: 'Estimate updated successfully'
+      });
+
+      // Reset override flags since changes are now saved
+      const resetItems = lineItems.map(item => ({
+        ...item,
+        is_override: false,
+        qty_original: item.qty,
+        unit_cost_original: item.unit_cost
+      }));
+      setLineItems(resetItems);
+
+      // Invalidate queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+    } catch (error) {
+      console.error('Error saving line item changes:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save changes',
+        variant: 'destructive'
+      });
+      throw error; // Re-throw so caller knows save failed
+    } finally {
+      setSavingLineItems(false);
+    }
+  };
 
   // Fetch assigned rep's rates from the pipeline entry
   useEffect(() => {
