@@ -8,6 +8,8 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowLeft, Plus, Shield, DollarSign, Users, Edit, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
+import { ApprovalRuleDialog } from '@/components/approvals/ApprovalRuleDialog';
+import { DeleteApprovalRuleDialog } from '@/components/approvals/DeleteApprovalRuleDialog';
 
 interface ApprovalRule {
   id: string;
@@ -24,6 +26,10 @@ export default function ApprovalRules() {
   const navigate = useNavigate();
   const [rules, setRules] = useState<ApprovalRule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [selectedRule, setSelectedRule] = useState<ApprovalRule | null>(null);
 
   useEffect(() => {
     fetchRules();
@@ -98,7 +104,7 @@ export default function ApprovalRules() {
             </p>
           </div>
         </div>
-        <Button onClick={() => toast.info('Add rule dialog coming soon')}>
+        <Button onClick={() => setCreateDialogOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
           Add Rule
         </Button>
@@ -119,7 +125,7 @@ export default function ApprovalRules() {
               <p className="text-muted-foreground mb-4">
                 Add your first approval rule to enable workflow management
               </p>
-              <Button>
+              <Button onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Create First Rule
               </Button>
@@ -174,14 +180,20 @@ export default function ApprovalRules() {
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => toast.info('Edit coming soon')}
+                          onClick={() => {
+                            setSelectedRule(rule);
+                            setEditDialogOpen(true);
+                          }}
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
-                          onClick={() => toast.info('Delete coming soon')}
+                          onClick={() => {
+                            setSelectedRule(rule);
+                            setDeleteDialogOpen(true);
+                          }}
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -224,6 +236,28 @@ export default function ApprovalRules() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Dialogs */}
+      <ApprovalRuleDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        rule={null}
+        onSuccess={fetchRules}
+      />
+
+      <ApprovalRuleDialog
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        rule={selectedRule}
+        onSuccess={fetchRules}
+      />
+
+      <DeleteApprovalRuleDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        rule={selectedRule}
+        onSuccess={fetchRules}
+      />
     </div>
   );
 }
