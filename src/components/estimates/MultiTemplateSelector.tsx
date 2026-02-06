@@ -1976,6 +1976,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         config={config}
         finePrintContent={finePrintContent}
         measurementSummary={measurementSummary}
+        templateAttachments={templateAttachments}
       />
     </div>
   );
