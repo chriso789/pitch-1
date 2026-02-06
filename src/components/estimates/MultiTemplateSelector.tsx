@@ -375,9 +375,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Handle editEstimate URL parameter to load estimate for editing
   useEffect(() => {
     const editEstimateId = searchParams.get('editEstimate');
-    if (editEstimateId && !editEstimateProcessed && !existingEstimateId) {
+    
+    // Load if:
+    // 1. There's an editEstimate param in URL
+    // 2. It's different from what we're currently editing (or nothing is being edited)
+    if (editEstimateId && editEstimateId !== existingEstimateId) {
+      // Reset previous editing state before loading new estimate
       setEditEstimateProcessed(true);
+      setLineItems([]); // Clear old line items
+      setFixedPrice(null);
+      setEstimateDisplayName('');
+      setEstimatePricingTier(null);
+      
       loadEstimateForEditing(editEstimateId);
+      
       // Clear the URL param after loading
       const newParams = new URLSearchParams(searchParams);
       newParams.delete('editEstimate');
@@ -385,7 +396,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       window.history.replaceState({}, '', newUrl);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, editEstimateProcessed, existingEstimateId]);
+  }, [searchParams, existingEstimateId]);
 
   // NOTE: Auto-load of saved estimates on page mount is DISABLED.
   // Users must explicitly select a template from the dropdown to see content.
