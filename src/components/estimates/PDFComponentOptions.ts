@@ -99,8 +99,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     // Header/Footer
     showPageHeader: true,
     showPageFooter: true,
-    // Cover Page
-    showCoverPage: false,
+    // Cover Page - enabled by default for professional customer presentation
+    showCoverPage: true,
   },
   internal: {
     // Header
