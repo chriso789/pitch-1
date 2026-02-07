@@ -46,7 +46,7 @@ import { EstimatePDFDocument } from './EstimatePDFDocument';
 import { EstimateAttachmentsManager, type TemplateAttachment } from './EstimateAttachmentsManager';
 import { PageOrderManager, DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
 import { type LineItem } from '@/hooks/useEstimatePricing';
-import { usePDFGeneration } from '@/hooks/usePDFGeneration';
+import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 import { useToast } from '@/hooks/use-toast';
 import { ShareEstimateDialog } from './ShareEstimateDialog';
 
@@ -147,7 +147,7 @@ export function EstimatePreviewPanel({
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const { generatePDF } = usePDFGeneration();
+  const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
 
@@ -220,16 +220,46 @@ export function EstimatePreviewPanel({
   const handleExportPDF = async () => {
     setIsExporting(true);
     const filename = getFilename();
+    
     try {
-      const pdfBlob = await generatePDF('estimate-preview-template', {
+      // Wait for any attachments to finish rendering
+      const container = document.getElementById('estimate-preview-template');
+      if (!container) throw new Error('Preview template not found');
+      
+      // Poll for attachment loading completion (max 10 seconds)
+      const maxWaitMs = 10000;
+      const pollIntervalMs = 200;
+      let waited = 0;
+      
+      while (waited < maxWaitMs) {
+        const loadingIndicators = container.querySelectorAll('.animate-spin');
+        const pageCount = container.querySelectorAll('[data-report-page]').length;
+        
+        if (loadingIndicators.length === 0 && pageCount > 0) {
+          console.log(`[PreviewExport] Ready after ${waited}ms, ${pageCount} pages found`);
+          break;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        waited += pollIntervalMs;
+      }
+      
+      // Small delay for final render stability
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      // Count actual pages
+      const pageCount = container.querySelectorAll('[data-report-page]').length;
+      console.log(`[PreviewExport] Generating PDF with ${pageCount} pages`);
+      
+      // Generate multi-page PDF (captures each [data-report-page] separately)
+      const result = await generateMultiPagePDF('estimate-preview-template', pageCount, {
         filename,
-        orientation: 'portrait',
         format: 'letter',
-        quality: 3,
+        orientation: 'portrait',
       });
 
-      if (pdfBlob) {
-        const url = URL.createObjectURL(pdfBlob);
+      if (result.success && result.blob) {
+        const url = URL.createObjectURL(result.blob);
         const a = document.createElement('a');
         a.href = url;
         a.download = filename;
@@ -238,16 +268,16 @@ export function EstimatePreviewPanel({
 
         toast({
           title: 'PDF Downloaded',
-          description: `${filename} has been downloaded`,
+          description: `${filename} has been downloaded (${pageCount} pages)`,
         });
       } else {
-        throw new Error('PDF generation failed');
+        throw new Error(result.error || 'PDF generation failed');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error exporting PDF:', error);
       toast({
         title: 'Export Failed',
-        description: 'Failed to generate PDF',
+        description: error.message || 'Failed to generate PDF',
         variant: 'destructive',
       });
     } finally {
@@ -567,10 +597,10 @@ export function EstimatePreviewPanel({
                 </Button>
                 <Button
                   onClick={handleExportPDF}
-                  disabled={isExporting}
+                  disabled={isExporting || isGeneratingPDF}
                   className="flex-1"
                 >
-                  {isExporting ? (
+                  {isExporting || isGeneratingPDF ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Generating...
