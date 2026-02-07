@@ -21603,6 +21603,7 @@ export type Database = {
           description: string | null
           id: string
           is_active: boolean | null
+          key: string | null
           name: string
           probability_percent: number
           stage_order: number
@@ -21617,6 +21618,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          key?: string | null
           name: string
           probability_percent?: number
           stage_order?: number
@@ -21631,6 +21633,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_active?: boolean | null
+          key?: string | null
           name?: string
           probability_percent?: number
           stage_order?: number
