@@ -1,148 +1,83 @@
 
-# Plan: Align Pipeline Settings with Actual System Workflow
+# Plan: Fix Pipeline Stage List Not Showing All Stages
 
-## Problem Summary
+## Problem Identified
 
-There's a complete mismatch between:
+**Good news:** Your "Working" stage **was saved successfully!** ✓
 
-| Where | Current State |
-|-------|---------------|
-| **Settings → Pipeline Stages** | Generic sales stages: "New Lead", "Contacted", "Qualified", "Negotiating", etc. - with **no keys set** |
-| **Actual Pipeline Entries** | Construction workflow stages: `lead`, `contingency_signed`, `legal_review`, `ready_for_approval`, `project`, `completed`, `closed` |
-| **Kanban Display** | Shows the actual stages from entries (working correctly) |
+The database confirms all 11 stages exist:
+1. Leads
+2. Contingency Signed
+3. Legal Review
+4. Ready for Approval
+5. Project
+6. Completed
+7. Closed
+8. Lost
+9. Canceled
+10. Duplicate
+11. **Working** (your new stage at order 11)
 
-**Result:** Settings shows the wrong stages because someone created generic stages that don't match the existing workflow.
+**The Problem:** The Settings UI's scroll container (`max-h-[500px]`) is not tall enough to show all stages, and the scrollbar may not be visible or the component may be clipping content.
 
-## Root Cause
+## Solution
 
-1. The `pipeline_stages` table was populated with generic CRM stages
-2. None of these stages have their `key` field set
-3. The actual system uses construction-specific stages: Lead → Contingency Signed → Legal Review → Ready for Approval → Project → Completed → Closed
+Fix the ScrollArea container to properly display all stages and ensure scrolling works correctly.
 
-## Solution: Replace Settings Stages with Correct Workflow Stages
+## Implementation
 
-### Part 1: Clear and Re-seed Correct Pipeline Stages
+### Part 1: Increase ScrollArea Height and Fix Overflow
 
-Delete the mismatched stages and create the correct O'Brien Contracting workflow stages:
+Update `PipelineStageManager.tsx` to:
+1. Increase `max-h-[500px]` to `max-h-[600px]` or use viewport-relative sizing
+2. Add proper padding at the bottom so the last items aren't cut off
+3. Ensure the ScrollArea properly handles the full content
 
-```text
-| Stage Name         | Key                | Order | Description                        |
-|--------------------|--------------------:|------:|------------------------------------|
-| Leads              | lead               | 1     | Initial lead intake                |
-| Contingency Signed | contingency_signed | 2     | Customer signed contingency        |
-| Legal Review       | legal_review       | 3     | Contract under legal review        |
-| Ready for Approval | ready_for_approval | 4     | Ready for manager approval         |
-| Project            | project            | 5     | Approved - now a Project           |
-| Completed          | completed          | 6     | Project work completed             |
-| Closed             | closed             | 7     | Project fully closed               |
-```
+### Part 2: Add Stage Count Display
 
-Plus terminal statuses that appear across all stages:
-- **Lost** (`lost`)
-- **Canceled** (`canceled`)
-- **Duplicate** (`duplicate`)
+Show a count of total stages so users know if there are more stages below the visible area.
 
-### Part 2: Add "Contact Management Board" for Contacts
-
-Per your requirement, contacts need their **own Kanban board** separate from the Jobs Pipeline. This will use the existing `contact_statuses` table:
-
-```text
-| Contact Status   | Key             | Category    |
-|------------------|-----------------|-------------|
-| Not Home         | not_home        | Disposition |
-| Interested       | interested      | Interest    |
-| Not Interested   | not_interested  | Interest    |
-| Qualified        | qualified       | Disposition |
-| Follow Up        | follow_up       | Action      |
-| Do Not Contact   | do_not_contact  | Disposition |
-```
-
-### Part 3: Create Contact Kanban Board Component
-
-Create a new `ContactKanbanBoard` component that:
-- Displays contacts grouped by their `qualification_status`
-- Uses the stages from `contact_statuses` table
-- Allows drag-and-drop to update contact qualification
-- Shows on the Client List page as an alternative view
-
-### Part 4: Update Contact → Lead → Project Workflow Clarity
-
-Reinforce the workflow distinction:
-
-```text
-CONTACT (qualification tracking)
-    |
-    └── Creates LEAD (when Qualified)
-           |
-           └── Travels through JOBS PIPELINE
-                  |
-                  └── Becomes PROJECT (at "Ready for Approval" stage)
-                         |
-                         └── Completes & Closes
-```
-
-## Implementation Steps
-
-### Database Changes
-
-1. **Delete incorrect pipeline stages** for O'Brien tenant
-2. **Insert correct pipeline stages** with proper keys matching existing entries
-3. **Add `is_terminal` flag** to pipeline_stages for Lost/Canceled/Duplicate statuses
-
-### New Components
-
-1. **ContactKanbanBoard.tsx** - Kanban view for contact qualification
-2. **Update EnhancedClientList.tsx** - Add toggle for Kanban vs Table view
-
-### File Changes
+## File Changes
 
 | File | Change |
 |------|--------|
-| `supabase/migration` | Delete/insert correct pipeline stages for O'Brien |
-| `src/features/contacts/components/ContactKanbanBoard.tsx` | New Kanban for contacts |
-| `src/features/contacts/components/EnhancedClientList.tsx` | Add Kanban view toggle |
-| `src/hooks/useContactStatuses.ts` | Hook to fetch contact statuses |
-| `src/hooks/usePipelineStages.ts` | No changes needed (already supports keys) |
+| `src/components/settings/PipelineStageManager.tsx` | Fix ScrollArea height, add bottom padding, show stage count |
 
-## Visual Architecture
+## Technical Details
 
-```text
-┌─────────────────────────────────────────────────────────────────────┐
-│                        CLIENT MANAGEMENT                            │
-├─────────────────────────────────────────────────────────────────────┤
-│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐            │
-│  │  Not Home    │   │  Interested  │   │  Qualified   │  ...       │
-│  │  (contacts)  │   │  (contacts)  │   │  (contacts)  │            │
-│  └──────────────┘   └──────────────┘   └──────────────┘            │
-│                                              │                      │
-│                                              ▼                      │
-│                                     Creates Lead ───────────────────┤
-└─────────────────────────────────────────────────────────────────────┘
-                                              │
-                                              ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                         JOBS PIPELINE                               │
-├─────────────────────────────────────────────────────────────────────┤
-│  ┌──────────┐ ┌────────────────┐ ┌──────────────┐ ┌─────────────┐  │
-│  │  Leads   │ │ Contingency    │ │ Legal Review │ │ Ready for   │  │
-│  │          │ │ Signed         │ │              │ │ Approval    │  │
-│  └──────────┘ └────────────────┘ └──────────────┘ └─────────────┘  │
-│       │                                                 │           │
-│       └─────────────────────────────────────────────────┤           │
-│                                                         ▼           │
-│  ┌──────────┐ ┌────────────────┐ ┌──────────────┐                  │
-│  │ Project  │ │   Completed    │ │   Closed     │  (Terminal)      │
-│  │          │ │                │ │              │                   │
-│  └──────────┘ └────────────────┘ └──────────────┘                  │
-│                                                                     │
-│  [Lost] [Canceled] [Duplicate]  ← Available from any stage         │
-└─────────────────────────────────────────────────────────────────────┘
+```tsx
+// Before
+<ScrollArea className="max-h-[500px]">
+  <div className="space-y-2">
+    {stages.map(...)}
+  </div>
+</ScrollArea>
+
+// After
+<ScrollArea className="max-h-[calc(100vh-400px)] min-h-[300px]">
+  <div className="space-y-2 pb-4">
+    {stages.map(...)}
+  </div>
+</ScrollArea>
 ```
+
+Also add a stage count indicator in the header:
+
+```tsx
+<CardTitle>Stage Order</CardTitle>
+<CardDescription>
+  Drag or use arrows to reorder. Stages appear left-to-right in the Kanban view.
+  <span className="block mt-1 font-medium">{stages.length} stages configured</span>
+</CardDescription>
+```
+
+## Verification
+
+After implementation, you should:
+1. See all 11 stages including "Working", "Lost", "Canceled", and "Duplicate"
+2. Be able to scroll through the full list
+3. See the stage count in the header
 
 ## Summary
 
-This plan:
-1. **Fixes the mismatch** - Replaces generic stages with actual construction workflow stages
-2. **Adds Contact Board** - Separate Kanban for tracking contact qualification
-3. **Clarifies workflow** - Contact → Lead → Project progression is clear
-4. **Supports multiple leads per contact** - Property managers can have multiple leads from one contact
+Your data is safe - the stage saved correctly. This is purely a UI display fix to show the full list of pipeline stages.
