@@ -75,8 +75,8 @@ serve(async (req: Request) => {
 
     // Get estimate info
     const { data: estimate } = await supabase
-      .from("estimates")
-      .select("*, pipeline_entries(id, lead_number)")
+      .from("enhanced_estimates")
+      .select("id, estimate_number, selling_price, pipeline_entry_id, pipeline_entries(id, lead_number)")
       .eq("id", body.estimate_id)
       .single();
 

@@ -83,7 +83,7 @@ serve(async (req: Request) => {
       .from("quote_tracking_links")
       .select(`
         *,
-        estimates (
+        enhanced_estimates (
           id,
           estimate_number,
           selling_price,
@@ -134,8 +134,8 @@ serve(async (req: Request) => {
         JSON.stringify({
           success: true,
           quote: {
-            estimate_number: trackingLink.estimates?.estimate_number,
-            selling_price: trackingLink.estimates?.selling_price,
+            estimate_number: trackingLink.enhanced_estimates?.estimate_number,
+            selling_price: trackingLink.enhanced_estimates?.selling_price,
             pdf_url: trackingLink.pdf_url,
             recipient_name: trackingLink.recipient_name,
             contact: trackingLink.contacts,
@@ -213,7 +213,7 @@ serve(async (req: Request) => {
         tenant_id: trackingLink.tenant_id,
         user_id: trackingLink.sent_by,
         title: "Quote Viewed! 👀",
-        message: `${contactName} just opened your quote #${trackingLink.estimates?.estimate_number || 'N/A'}`,
+        message: `${contactName} just opened your quote #${trackingLink.enhanced_estimates?.estimate_number || 'N/A'}`,
         type: "quote_viewed",
         priority: "high",
         metadata: {
@@ -235,7 +235,7 @@ serve(async (req: Request) => {
 
       if (repProfile?.phone) {
         const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
-        const estimateNum = trackingLink.estimates?.estimate_number || 'your quote';
+        const estimateNum = trackingLink.enhanced_estimates?.estimate_number || 'your quote';
         const locationText = geo.city ? ` From ${geo.city}` : '';
         
         const smsMessage = `🔔 ${contactName} ${viewText} quote #${estimateNum}!${locationText}`;
