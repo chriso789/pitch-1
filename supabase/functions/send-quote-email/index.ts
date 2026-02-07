@@ -74,33 +74,48 @@ serve(async (req: Request) => {
     const tenantId = profile.active_tenant_id || profile.tenant_id;
     const body: SendQuoteEmailRequest = await req.json();
 
+    console.log("[send-quote-email] Request params:", {
+      estimate_id: body.estimate_id,
+      pipeline_entry_id: body.pipeline_entry_id,
+      tenantId,
+      profile_tenant_id: profile.tenant_id,
+      active_tenant_id: profile.active_tenant_id,
+    });
+
     // Get estimate info - try by ID first, then by pipeline_entry_id
     let estimate: any = null;
     
     if (body.estimate_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, pipeline_entries(id, lead_number)")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pipeline_entries(id, lead_number)")
         .eq("id", body.estimate_id)
         .eq("tenant_id", tenantId)
         .single();
+      console.log("[send-quote-email] Lookup by estimate_id:", { data, error });
       estimate = data;
     }
     
     // Fallback: find most recent estimate for this pipeline entry
     if (!estimate && body.pipeline_entry_id) {
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, pipeline_entries(id, lead_number)")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pipeline_entries(id, lead_number)")
         .eq("pipeline_entry_id", body.pipeline_entry_id)
         .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false })
         .limit(1)
         .single();
+      console.log("[send-quote-email] Lookup by pipeline_entry_id:", { data, error });
       estimate = data;
     }
 
     if (!estimate) {
+      console.error("[send-quote-email] Estimate not found. Params:", {
+        estimate_id: body.estimate_id,
+        pipeline_entry_id: body.pipeline_entry_id,
+        tenantId,
+      });
       return new Response(
         JSON.stringify({ success: false, error: "Estimate not found. Please save the estimate first." }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
