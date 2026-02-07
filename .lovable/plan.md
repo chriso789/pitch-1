@@ -1,180 +1,76 @@
 
-# Fix: Slow PDF Export Performance
+# Fix: "Cannot perform Construct on a detached ArrayBuffer" Error
 
-## Problem Summary
+## Problem
 
-The PDF export is very slow due to multiple issues that compound:
-1. Attachment files are re-downloaded repeatedly during export
-2. The `allAttachments` array is recreated on every render, triggering re-fetches
-3. Each page is rendered at 3x scale (very expensive)
-4. Multiple built-in delays add up
-
-## Console Log Evidence
-
-From the logs, the same attachments are downloaded **4+ times**:
+When loading PDF attachments, the error appears:
 ```
-[AttachmentPagesRenderer] Downloaded: License and Warranty - Marketing.pdf size: 2478652
-[AttachmentPagesRenderer] Downloaded: License and Warranty - Marketing.pdf size: 2478652  
-[AttachmentPagesRenderer] Downloaded: License and Warranty - Marketing.pdf size: 2478652
-[AttachmentPagesRenderer] Downloaded: OC Metal Roof Flyer.pdf size: 7641930
+TypeError: Cannot perform Construct on a detached ArrayBuffer
 ```
 
-This happens because the component remounts multiple times during the capture process.
+This happens because:
+1. We added a download cache to prevent re-downloading the same PDF files
+2. When PDF.js processes an ArrayBuffer, it **transfers ownership** of the buffer
+3. The original ArrayBuffer becomes "detached" (unusable) after PDF.js consumes it
+4. When the component re-renders and tries to reuse the cached ArrayBuffer, it fails
 
----
+## Root Cause
 
-## Technical Fixes
-
-### Fix 1: Memoize `allAttachments` Array
-
-**File**: `src/components/estimates/EstimatePreviewPanel.tsx`
-
-**Line 161** - Currently creates new array every render:
+In `AttachmentPagesRenderer.tsx` line 110:
 ```typescript
-// BEFORE (creates new array every render, triggers re-fetch)
-const allAttachments = [...activeTemplateAttachments, ...additionalAttachments];
-
-// AFTER (stable reference, only recalculates when dependencies change)
-const allAttachments = useMemo(
-  () => [...activeTemplateAttachments, ...additionalAttachments],
-  [activeTemplateAttachments, additionalAttachments]
-);
+const pdf = await loadPDFFromArrayBuffer(arrayBuffer);  // ← This detaches the buffer!
 ```
 
-This prevents `AttachmentPagesRenderer` from unnecessarily re-running its `useEffect` and re-downloading files.
+The ArrayBuffer from cache is passed directly to PDF.js. After the first use, the cached buffer becomes detached and cannot be used again.
 
----
+## Solution
 
-### Fix 2: Add Download Cache to AttachmentPagesRenderer
+**Clone the ArrayBuffer before passing it to PDF.js** using `.slice()`. This creates a fresh copy that PDF.js can consume while keeping the original cached buffer intact.
 
-**File**: `src/components/estimates/AttachmentPagesRenderer.tsx`
+### File: `src/components/estimates/AttachmentPagesRenderer.tsx`
 
-Create a module-level cache for downloaded PDF ArrayBuffers to prevent re-downloading the same file:
-
+**Line 109-110** - Add `.slice()` to clone the buffer:
 ```typescript
-// At top of file, after imports
-// Cache for downloaded PDF ArrayBuffers (persists across re-renders)
-const downloadCache = new Map<string, ArrayBuffer>();
+// BEFORE (passes original, which gets detached)
+const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
 
-export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRendererProps) {
-  // ... existing code ...
-
-  async function loadAllAttachmentPages() {
-    // ...
-    for (const att of attachments) {
-      try {
-        // Check cache first
-        const cacheKey = `${att.document_id}:${att.file_path}`;
-        let arrayBuffer = downloadCache.get(cacheKey);
-        
-        if (!arrayBuffer) {
-          // Download only if not cached
-          console.log('[AttachmentPagesRenderer] Downloading:', att.filename);
-          const { data: blob, error } = await supabase.storage
-            .from(bucket)
-            .download(att.file_path);
-          
-          if (error || !blob) {
-            loadErrors.push(`Failed to fetch ${att.filename}`);
-            continue;
-          }
-          
-          arrayBuffer = await blob.arrayBuffer();
-          downloadCache.set(cacheKey, arrayBuffer);
-        } else {
-          console.log('[AttachmentPagesRenderer] Using cached:', att.filename);
-        }
-        
-        // Continue with PDF processing...
-      }
-    }
-  }
-  // ...
-}
+// AFTER (passes a clone, original stays intact in cache)
+const pdf = await loadPDFFromArrayBuffer(arrayBuffer.slice(0));
 ```
+
+The `.slice(0)` method creates a complete copy of the ArrayBuffer, allowing:
+- The cache to retain the original undisturbed
+- PDF.js to consume its own copy without affecting future uses
 
 ---
 
-### Fix 3: Reduce PDF Capture Scale
+## Technical Details
 
-**File**: `src/hooks/useMultiPagePDFGeneration.ts`
-
-**Line 157** - Reduce from 3x to 2x for faster generation while still maintaining quality:
-
-```typescript
-// BEFORE (3x = 2448x3168 per page, very slow)
-scale: 3,
-
-// AFTER (2x = 1632x2112 per page, much faster, still good quality)
-scale: 2,
-```
-
----
-
-### Fix 4: Reduce Font/Render Delays
-
-**File**: `src/hooks/useMultiPagePDFGeneration.ts`
-
-The current hook has:
-- 150ms font delay (line 48 in waitForFonts)
-- 300ms render delay in the preview handler
-
-These can be reduced:
-
-**Line 48** (in waitForFonts):
-```typescript
-// BEFORE
-await new Promise(resolve => setTimeout(resolve, 150));
-
-// AFTER - 50ms is usually sufficient
-await new Promise(resolve => setTimeout(resolve, 50));
-```
-
-**File**: `src/components/estimates/EstimatePreviewPanel.tsx`
-
-**Line 248** (in handleExportPDF):
-```typescript
-// BEFORE
-await new Promise(resolve => setTimeout(resolve, 300));
-
-// AFTER - 100ms is usually sufficient
-await new Promise(resolve => setTimeout(resolve, 100));
-```
-
----
-
-## Summary of Changes
-
-| File | Change | Impact |
-|------|--------|--------|
-| `EstimatePreviewPanel.tsx` | Memoize `allAttachments` | Prevents unnecessary re-renders |
-| `EstimatePreviewPanel.tsx` | Reduce post-poll delay 300→100ms | Saves 200ms |
-| `AttachmentPagesRenderer.tsx` | Add ArrayBuffer download cache | Prevents 4x+ duplicate downloads |
-| `useMultiPagePDFGeneration.ts` | Reduce scale 3→2 | ~50% faster canvas capture |
-| `useMultiPagePDFGeneration.ts` | Reduce font delay 150→50ms | Saves 100ms |
-
----
-
-## Expected Performance Improvement
-
-| Metric | Before | After |
+| Aspect | Before | After |
 |--------|--------|-------|
-| Attachment downloads | 4+ per file | 1 per file (cached) |
-| Canvas pixels per page | 7.8M (3x) | 3.4M (2x) |
-| Fixed delays | 450ms | 150ms |
-| Estimated export time | 15-30 seconds | 5-10 seconds |
+| Buffer passed to PDF.js | Original (cached) | Clone via `.slice(0)` |
+| Cached buffer after use | Detached (broken) | Intact (reusable) |
+| Memory impact | Minimal (one buffer) | Slightly higher (temp clone) |
+| Re-render behavior | Crashes | Works correctly |
+
+---
+
+## Why This Happens
+
+ArrayBuffers are "transferable" objects in JavaScript. When you pass an ArrayBuffer to certain APIs (like PDF.js workers), ownership can be transferred and the original becomes empty/detached. This is by design for performance reasons in worker-based APIs.
 
 ---
 
 ## Files to Modify
 
-1. `src/components/estimates/EstimatePreviewPanel.tsx`
-   - Memoize `allAttachments` array
-   - Reduce post-poll delay
+1. **`src/components/estimates/AttachmentPagesRenderer.tsx`** (1 line change)
+   - Line 110: Add `.slice(0)` when passing ArrayBuffer to `loadPDFFromArrayBuffer()`
 
-2. `src/components/estimates/AttachmentPagesRenderer.tsx`
-   - Add module-level download cache
+---
 
-3. `src/hooks/useMultiPagePDFGeneration.ts`
-   - Reduce scale from 3 to 2
-   - Reduce font delay
+## Expected Result
+
+- "License and Warranty - Marketing.pdf" and all other attachments load correctly
+- No "Cannot perform Construct on a detached ArrayBuffer" errors
+- Cache continues to prevent duplicate downloads
+- Fast re-renders work properly
