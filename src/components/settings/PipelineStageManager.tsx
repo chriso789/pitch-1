@@ -20,6 +20,7 @@ interface PipelineStage {
   id: string;
   tenant_id: string;
   name: string;
+  key: string | null;
   description: string | null;
   stage_order: number;
   probability_percent: number;
@@ -50,10 +51,20 @@ interface StageDialogProps {
   trigger: React.ReactNode;
 }
 
+// Generate a URL-safe key from stage name
+function generateStageKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, '_')
+    .trim();
+}
+
 const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave, trigger }) => {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState(stage?.name || '');
+  const [stageKey, setStageKey] = useState(stage?.key || '');
   const [description, setDescription] = useState(stage?.description || '');
   const [color, setColor] = useState(stage?.color || '#3b82f6');
   const [probability, setProbability] = useState(stage?.probability_percent || 0);
@@ -64,12 +75,14 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   useEffect(() => {
     if (open && stage) {
       setName(stage.name);
+      setStageKey(stage.key || '');
       setDescription(stage.description || '');
       setColor(stage.color);
       setProbability(stage.probability_percent);
       setIsActive(stage.is_active);
     } else if (open && !stage) {
       setName('');
+      setStageKey('');
       setDescription('');
       setColor('#3b82f6');
       setProbability(0);
@@ -77,9 +90,32 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
     }
   }, [open, stage]);
 
+  // Auto-generate key when name changes (only for new stages or if key is empty)
+  useEffect(() => {
+    if (!stage && name && !stageKey) {
+      // Auto-suggest key for new stages
+    }
+  }, [name, stage, stageKey]);
+
   const handleSave = async () => {
     if (!name.trim()) {
       toast({ title: 'Error', description: 'Stage name is required', variant: 'destructive' });
+      return;
+    }
+
+    // Use provided key or auto-generate from name
+    const finalKey = stageKey.trim() || generateStageKey(name);
+    
+    // Check for duplicate keys within tenant
+    const duplicateKey = existingStages.find(
+      s => s.id !== stage?.id && (s.key === finalKey || (!s.key && generateStageKey(s.name) === finalKey))
+    );
+    if (duplicateKey) {
+      toast({ 
+        title: 'Error', 
+        description: `Key "${finalKey}" is already used by "${duplicateKey.name}"`, 
+        variant: 'destructive' 
+      });
       return;
     }
 
@@ -90,6 +126,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
           .from('pipeline_stages')
           .update({
             name: name.trim(),
+            key: finalKey,
             description: description.trim() || null,
             color,
             probability_percent: probability,
@@ -109,6 +146,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
           .insert({
             tenant_id: profile?.tenant_id,
             name: name.trim(),
+            key: finalKey,
             description: description.trim() || null,
             color,
             probability_percent: probability,
@@ -148,6 +186,24 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g., New Lead, Proposal Sent"
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="stageKey">Status Key</Label>
+            <Input
+              id="stageKey"
+              value={stageKey}
+              onChange={(e) => setStageKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+              placeholder={name ? generateStageKey(name) : 'e.g., new_lead, proposal_sent'}
+            />
+            <p className="text-xs text-muted-foreground">
+              Internal identifier used to match pipeline entries. Leave blank to auto-generate from name.
+              {stage && stage.key && (
+                <span className="text-amber-600 dark:text-amber-400 ml-1">
+                  Changing this may orphan existing entries with status "{stage.key}"
+                </span>
+              )}
+            </p>
           </div>
           
           <div className="space-y-2">
@@ -304,19 +360,21 @@ export const PipelineStageManager: React.FC = () => {
 
   const deleteStage = async (stageId: string) => {
     try {
-      // Check if any pipeline entries use this stage (by name match for now)
+      // Check if any pipeline entries use this stage by key
       const stage = stages.find(s => s.id === stageId);
+      const stageKey = stage?.key || generateStageKey(stage?.name || '');
+      
       const { count, error: countError } = await supabase
         .from('pipeline_entries')
         .select('id', { count: 'exact', head: true } as const)
-        .eq('status', stage?.name?.toLowerCase().replace(/\s+/g, '_') || '');
+        .eq('status', stageKey);
       
       if (countError) throw countError;
       
       if (count && count > 0) {
         toast({
           title: 'Cannot Delete',
-          description: `This stage has ${count} entries. Move them to another stage first.`,
+          description: `This stage has ${count} entries with status "${stageKey}". Move them to another stage first.`,
           variant: 'destructive'
         });
         return;
@@ -419,11 +477,16 @@ export const PipelineStageManager: React.FC = () => {
                             <Badge variant="secondary" className="text-xs">Inactive</Badge>
                           )}
                         </div>
-                        {stage.description && (
-                          <p className="text-xs text-muted-foreground truncate">
-                            {stage.description}
-                          </p>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <code className="text-xs bg-muted px-1.5 py-0.5 rounded text-muted-foreground">
+                            {stage.key || generateStageKey(stage.name)}
+                          </code>
+                          {stage.description && (
+                            <p className="text-xs text-muted-foreground truncate">
+                              {stage.description}
+                            </p>
+                          )}
+                        </div>
                       </div>
                       <Badge variant="outline" className="shrink-0">
                         {stage.probability_percent}%

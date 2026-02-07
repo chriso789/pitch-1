@@ -81,7 +81,8 @@ export function usePipelineStages() {
       return data.map(stage => ({
         id: stage.id,
         name: stage.name,
-        key: generateStageKey(stage.name),
+        // Use database key if set, otherwise fallback to auto-generated
+        key: stage.key || generateStageKey(stage.name),
         color: hexToTailwindColor(stage.color),
         description: stage.description,
         probability_percent: stage.probability_percent,
