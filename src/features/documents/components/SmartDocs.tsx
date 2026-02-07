@@ -466,6 +466,15 @@ const SmartDocs = () => {
                         <Eye className="h-4 w-4" />
                         Preview
                       </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setRenameDoc(doc)}
+                        className="gap-1"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Rename
+                      </Button>
                       {canEditSmartTags && (
                         <>
                           <Button
