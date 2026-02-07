@@ -450,11 +450,12 @@ export const PipelineStageManager: React.FC = () => {
             <CardTitle>Stage Order</CardTitle>
             <CardDescription>
               Drag or use arrows to reorder. Stages appear left-to-right in the Kanban view.
+              <span className="block mt-1 font-medium text-foreground">{stages.length} stages configured</span>
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="max-h-[500px]">
-              <div className="space-y-2">
+            <ScrollArea className="max-h-[calc(100vh-400px)] min-h-[300px]">
+              <div className="space-y-2 pb-4">
                 {stages.map((stage, index) => (
                   <div
                     key={stage.id}
