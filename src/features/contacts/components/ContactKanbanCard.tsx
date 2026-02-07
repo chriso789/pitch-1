@@ -1,10 +1,9 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, Mail, MapPin, Eye, Star } from "lucide-react";
+import { Phone, Mail, Eye, Star } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 
@@ -49,10 +48,6 @@ export const ContactKanbanCard: React.FC<ContactKanbanCardProps> = ({
     transition,
   };
 
-  const address = [contact.address_street, contact.address_city, contact.address_state]
-    .filter(Boolean)
-    .join(', ');
-
   const getScoreColor = (score: number | null) => {
     if (!score) return 'text-muted-foreground';
     if (score >= 80) return 'text-success';
@@ -72,97 +67,72 @@ export const ContactKanbanCard: React.FC<ContactKanbanCardProps> = ({
       )}
     >
       <Card className={cn(
-        "p-3 cursor-grab active:cursor-grabbing shadow-soft hover:shadow-medium transition-all",
-        "border border-border/50 bg-card"
+        "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
+        "shadow-soft border-0 hover:shadow-medium transition-all",
+        "cursor-grab active:cursor-grabbing relative group overflow-hidden bg-card",
+        isDragging && "shadow-2xl scale-105 border-2 border-primary"
       )}>
-        {/* Header */}
-        <div className="flex items-start justify-between gap-2 mb-2">
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-mono text-muted-foreground mb-0.5">
+        <CardContent className="p-1.5 h-full flex flex-col justify-between">
+          {/* Header Row: Contact Number + Lead Score */}
+          <div className="flex items-center justify-between gap-1">
+            <p className="text-[8px] font-mono text-muted-foreground truncate">
               {contact.contact_number}
             </p>
-            <h4 className="font-medium text-sm truncate">
-              {contact.first_name} {contact.last_name}
-            </h4>
+            {contact.lead_score && contact.lead_score > 0 && (
+              <div className={cn("flex items-center gap-0.5", getScoreColor(contact.lead_score))}>
+                <Star className="h-2 w-2" />
+                <span className="text-[8px] font-medium">{contact.lead_score}</span>
+              </div>
+            )}
           </div>
-          {contact.lead_score && contact.lead_score > 0 && (
-            <div className={cn("flex items-center gap-0.5", getScoreColor(contact.lead_score))}>
-              <Star className="h-3 w-3" />
-              <span className="text-xs font-medium">{contact.lead_score}</span>
-            </div>
-          )}
-        </div>
 
-        {/* Contact Info */}
-        <div className="space-y-1 text-xs text-muted-foreground mb-3">
-          {contact.phone && (
-            <div className="flex items-center gap-1.5">
-              <Phone className="h-3 w-3 shrink-0" />
-              <span className="truncate">{contact.phone}</span>
-            </div>
-          )}
-          {contact.email && (
-            <div className="flex items-center gap-1.5">
-              <Mail className="h-3 w-3 shrink-0" />
-              <span className="truncate">{contact.email}</span>
-            </div>
-          )}
-          {address && (
-            <div className="flex items-center gap-1.5">
-              <MapPin className="h-3 w-3 shrink-0" />
-              <span className="truncate">{address}</span>
-            </div>
-          )}
-        </div>
+          {/* Name Row */}
+          <h4 className="font-medium text-[10px] truncate text-center py-0.5">
+            {contact.first_name} {contact.last_name}
+          </h4>
 
-        {/* Lead Source Badge */}
-        {contact.lead_source && (
-          <Badge variant="secondary" className="text-[10px] mb-2">
-            {contact.lead_source.replace(/_/g, ' ')}
-          </Badge>
-        )}
-
-        {/* Actions */}
-        <div className="flex items-center gap-1 pt-2 border-t border-border/50">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            className="h-7 px-2 text-xs flex-1"
-            onClick={(e) => {
-              e.stopPropagation();
-              navigate(`/contact/${contact.id}`);
-            }}
-          >
-            <Eye className="h-3 w-3 mr-1" />
-            View
-          </Button>
-          {contact.phone && onCall && (
+          {/* Actions Row */}
+          <div className="flex items-center justify-center gap-0.5 pt-0.5">
             <Button 
               variant="ghost" 
               size="sm" 
-              className="h-7 px-2"
+              className="h-5 px-1.5 text-[8px]"
               onClick={(e) => {
                 e.stopPropagation();
-                onCall(contact);
+                navigate(`/contact/${contact.id}`);
               }}
             >
-              <Phone className="h-3 w-3" />
+              <Eye className="h-2.5 w-2.5 mr-0.5" />
+              View
             </Button>
-          )}
-          {contact.email && onEmail && (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="h-7 px-2"
-              onClick={(e) => {
-                e.stopPropagation();
-                onEmail(contact);
-              }}
-            >
-              <Mail className="h-3 w-3" />
-            </Button>
-          )}
-        </div>
+            {contact.phone && onCall && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-5 px-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onCall(contact);
+                }}
+              >
+                <Phone className="h-2.5 w-2.5" />
+              </Button>
+            )}
+            {contact.email && onEmail && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-5 px-1"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEmail(contact);
+                }}
+              >
+                <Mail className="h-2.5 w-2.5" />
+              </Button>
+            )}
+          </div>
+        </CardContent>
       </Card>
     </div>
   );
