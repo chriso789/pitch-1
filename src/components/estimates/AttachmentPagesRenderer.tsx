@@ -139,11 +139,10 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
     };
   }, [attachments]);
 
-  // Loading state
+  // Loading state - NO data-report-page so it won't be captured as a PDF page
   if (loading) {
     return (
       <div
-        data-report-page
         className="bg-white flex flex-col items-center justify-center"
         style={{
           width: `${PAGE_WIDTH}px`,

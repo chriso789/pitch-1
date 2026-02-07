@@ -498,15 +498,26 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
 
   return (
     <div id="estimate-pdf-pages" className="flex flex-col gap-4">
-      {pages.pages.map((pageContent, idx) => (
-        <PageShell
-          key={idx}
-          {...commonProps}
-          pageNumber={idx + 1}
-        >
-          {pageContent}
-        </PageShell>
-      ))}
+      {pages.pages.map((pageContent, idx) => {
+        // Cover page already has its own data-report-page attribute, don't wrap in PageShell
+        const isCoverPage = opts.showCoverPage && idx === 0;
+        
+        if (isCoverPage) {
+          // Render cover page directly without PageShell wrapper to avoid duplicate data-report-page
+          return <React.Fragment key="cover">{pageContent}</React.Fragment>;
+        }
+        
+        // Wrap other pages in PageShell
+        return (
+          <PageShell
+            key={idx}
+            {...commonProps}
+            pageNumber={idx + 1}
+          >
+            {pageContent}
+          </PageShell>
+        );
+      })}
       
       {/* Render attachment pages (marketing flyers, etc.) after main content */}
       {templateAttachments && templateAttachments.length > 0 && (
