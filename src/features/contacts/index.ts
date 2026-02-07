@@ -6,3 +6,6 @@ export { DuplicateDetection } from './components/DuplicateDetection';
 export { default as ContactForm } from './components/ContactForm';
 export { LeadForm } from './components/LeadForm';
 export { default as EnhancedContacts } from './components/EnhancedContacts';
+export { ContactKanbanBoard } from './components/ContactKanbanBoard';
+export { ContactKanbanCard } from './components/ContactKanbanCard';
+export { ContactKanbanColumn } from './components/ContactKanbanColumn';
