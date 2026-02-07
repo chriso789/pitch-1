@@ -87,7 +87,8 @@ serve(async (req: Request) => {
           id,
           estimate_number,
           selling_price,
-          pipeline_entry_id
+          pipeline_entry_id,
+          pdf_url
         ),
         contacts (
           id,
@@ -130,13 +131,31 @@ serve(async (req: Request) => {
         .eq("id", trackingLink.tenant_id)
         .single();
 
+      // Get PDF URL - prefer from tracking link, fallback to estimate's pdf_url
+      let pdfUrl = trackingLink.pdf_url;
+      
+      // If no PDF URL in tracking link, try to get from estimate
+      if (!pdfUrl && trackingLink.enhanced_estimates?.pdf_url) {
+        const storagePath = trackingLink.enhanced_estimates.pdf_url;
+        // Convert storage path to full public URL
+        const { data: publicUrlData } = supabase.storage
+          .from('documents')
+          .getPublicUrl(storagePath);
+        pdfUrl = publicUrlData?.publicUrl || null;
+        
+        console.log("[track-quote-view] Built PDF URL from estimate:", { 
+          storagePath, 
+          publicUrl: pdfUrl 
+        });
+      }
+
       return new Response(
         JSON.stringify({
           success: true,
           quote: {
             estimate_number: trackingLink.enhanced_estimates?.estimate_number,
             selling_price: trackingLink.enhanced_estimates?.selling_price,
-            pdf_url: trackingLink.pdf_url,
+            pdf_url: pdfUrl,
             recipient_name: trackingLink.recipient_name,
             contact: trackingLink.contacts,
           },
