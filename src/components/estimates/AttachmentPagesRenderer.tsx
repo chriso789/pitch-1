@@ -26,6 +26,7 @@ interface AttachmentPagesRendererProps {
 }
 
 interface AttachmentPage extends RenderedPage {
+  documentId: string;
   attachmentFilename: string;
   pageNumber: number;
   totalPages: number;
@@ -37,18 +38,37 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
   const [errors, setErrors] = useState<string[]>([]);
 
   useEffect(() => {
+    // Reset state immediately when attachments change to prevent stale data
+    setPages([]);
+    setErrors([]);
+    setLoading(true);
+    
     if (!attachments || attachments.length === 0) {
       setLoading(false);
       return;
     }
+
+    // Create abort controller to prevent race conditions
+    const abortController = new AbortController();
+    let isAborted = false;
 
     async function loadAllAttachmentPages() {
       const allPages: AttachmentPage[] = [];
       const loadErrors: string[] = [];
 
       for (const att of attachments) {
+        // Check if aborted before processing each attachment
+        if (isAborted) {
+          console.log('[AttachmentPagesRenderer] Loading aborted, stopping');
+          return;
+        }
+        
         try {
-          console.log('[AttachmentPagesRenderer] Fetching:', att.filename, 'from path:', att.file_path);
+          console.log('[AttachmentPagesRenderer] Attachment data:', {
+            document_id: att.document_id,
+            filename: att.filename,
+            file_path: att.file_path,
+          });
           
           // Resolve the correct bucket based on file path
           const bucket = resolveStorageBucket('company_resource', att.file_path);
@@ -58,6 +78,8 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
           const { data: blob, error } = await supabase.storage
             .from(bucket)
             .download(att.file_path);
+
+          if (isAborted) return;
 
           if (error || !blob) {
             console.error('[AttachmentPagesRenderer] Download error:', error);
@@ -69,15 +91,22 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
           const arrayBuffer = await blob.arrayBuffer();
           console.log('[AttachmentPagesRenderer] Downloaded:', att.filename, 'size:', arrayBuffer.byteLength);
 
+          if (isAborted) return;
+
           // Load PDF with PDF.js
           const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
           console.log('[AttachmentPagesRenderer] PDF loaded:', att.filename, 'pages:', pdf.numPages);
 
           // Render each page to a data URL
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            if (isAborted) {
+              pdf.destroy();
+              return;
+            }
             const rendered = await renderPageToDataUrl(pdf, pageNum, 2); // Scale 2 for crisp rendering
             allPages.push({
               ...rendered,
+              documentId: att.document_id,
               attachmentFilename: att.filename,
               pageNumber: pageNum,
               totalPages: pdf.numPages,
@@ -92,12 +121,21 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
         }
       }
 
-      setPages(allPages);
-      setErrors(loadErrors);
-      setLoading(false);
+      // Only update state if not aborted
+      if (!isAborted) {
+        setPages(allPages);
+        setErrors(loadErrors);
+        setLoading(false);
+      }
     }
 
     loadAllAttachmentPages();
+
+    // Cleanup function to abort on unmount or attachment change
+    return () => {
+      isAborted = true;
+      abortController.abort();
+    };
   }, [attachments]);
 
   // Loading state
@@ -128,7 +166,7 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
       {/* Render each attachment page as a full page */}
       {pages.map((page, idx) => (
         <div
-          key={`attachment-page-${idx}`}
+          key={`attachment-${page.documentId}-page-${page.pageNumber}`}
           data-report-page
           className="bg-white flex flex-col"
           style={{
