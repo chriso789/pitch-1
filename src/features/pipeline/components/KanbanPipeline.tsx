@@ -12,21 +12,16 @@ import {
   User,
   Home,
   HourglassIcon,
+  CircleDot,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { auditService } from "@/services/auditService";
-import { usePipelineData, LEAD_STAGES, type PipelineEntry } from '@/hooks/usePipelineData';
+import { usePipelineData, type PipelineEntry } from '@/hooks/usePipelineData';
 
-const STAGE_ICONS = {
-  lead: User,
-  qualified: CheckCircle,
-  contingency_signed: FileText,
-  legal_review: AlertCircle,
-  ready_for_approval: HourglassIcon,
-  project: CheckCircle,
-} as const;
+// Default icon for stages without a specific icon
+const DefaultStageIcon = CircleDot;
 
 const KanbanPipeline = () => {
   const [dragging, setDragging] = useState(false);
@@ -34,10 +29,11 @@ const KanbanPipeline = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Use React Query cached data
+  // Use React Query cached data with dynamic stages
   const { 
     entries, 
     groupedData, 
+    stages, // Dynamic stages from database
     isLoading, 
     userCanDelete,
     updateEntryStatus,
@@ -77,7 +73,7 @@ const KanbanPipeline = () => {
     let newStatus = over.id as string;
 
     // VALIDATION: Check if over.id is a valid stage key
-    const validStageKeys = LEAD_STAGES.map(s => s.key) as string[];
+    const validStageKeys = stages.map(s => s.key);
     
     if (!validStageKeys.includes(newStatus)) {
       // over.id is not a stage key, it's a card ID - find which column it belongs to
@@ -248,10 +244,9 @@ const KanbanPipeline = () => {
         onDragEnd={handleDragEnd}
       >
         <ScrollArea className="w-full">
-          <div className="flex gap-2 min-h-[600px] pb-4" style={{ minWidth: `${LEAD_STAGES.length * 60}px` }}>
-            {LEAD_STAGES.map((stage) => {
+          <div className="flex gap-2 min-h-[600px] pb-4" style={{ minWidth: `${stages.length * 60}px` }}>
+            {stages.map((stage) => {
               const stageEntries = groupedData[stage.key] || [];
-              const StageIcon = STAGE_ICONS[stage.key as keyof typeof STAGE_ICONS];
 
               return (
                 <div key={stage.key} className="flex-shrink-0 w-[56px]">
@@ -259,7 +254,7 @@ const KanbanPipeline = () => {
                     id={stage.key}
                     title={stage.name}
                     color={stage.color}
-                    icon={StageIcon}
+                    icon={DefaultStageIcon}
                     count={stageEntries.length}
                     total={formatCurrency(0)}
                     items={stageEntries.map(entry => entry.id)}

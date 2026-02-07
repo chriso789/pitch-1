@@ -1,8 +1,9 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { useEffect } from 'react';
+import { usePipelineStages, type PipelineStage, DEFAULT_STAGES } from './usePipelineStages';
 
 export interface PipelineEntry {
   id: string;
@@ -29,18 +30,8 @@ export interface PipelineEntry {
   };
 }
 
-export const LEAD_STAGES = [
-  { name: "New Lead", key: "lead", color: "bg-blue-500" },
-  { name: "Contingency Signed", key: "contingency_signed", color: "bg-yellow-500" },
-  { name: "Legal Review", key: "legal_review", color: "bg-purple-500" },
-  { name: "Ready for Approval", key: "ready_for_approval", color: "bg-orange-500" },
-  { name: "Approved/Project", key: "project", color: "bg-emerald-600" },
-  { name: "Lost", key: "lost", color: "bg-red-500" },
-  { name: "Canceled", key: "canceled", color: "bg-gray-500" },
-  { name: "Completed", key: "completed", color: "bg-green-600" },
-  { name: "Closed", key: "closed", color: "bg-slate-400" },
-  { name: "Duplicate", key: "duplicate", color: "bg-gray-400" },
-] as const;
+// Legacy export for backwards compatibility - now dynamically loaded
+export const LEAD_STAGES = DEFAULT_STAGES;
 
 async function fetchPipelineEntries(locationId: string | null): Promise<PipelineEntry[]> {
   let query = supabase
@@ -94,11 +85,20 @@ async function fetchPipelineEntries(locationId: string | null): Promise<Pipeline
   }));
 }
 
-function groupByStatus(entries: PipelineEntry[]): Record<string, PipelineEntry[]> {
+function groupByStatus(entries: PipelineEntry[], stages: PipelineStage[]): Record<string, PipelineEntry[]> {
   const grouped: Record<string, PipelineEntry[]> = {};
-  LEAD_STAGES.forEach(stage => {
+  stages.forEach(stage => {
     grouped[stage.key] = entries.filter(e => e.status === stage.key);
   });
+  // Also include entries with statuses not matching any stage (orphaned)
+  const allStageKeys = stages.map(s => s.key);
+  const orphanedEntries = entries.filter(e => !allStageKeys.includes(e.status));
+  if (orphanedEntries.length > 0) {
+    // Add orphaned entries to first stage for visibility
+    if (stages.length > 0) {
+      grouped[stages[0].key] = [...(grouped[stages[0].key] || []), ...orphanedEntries];
+    }
+  }
   return grouped;
 }
 
@@ -106,6 +106,9 @@ export function usePipelineData() {
   const { profile } = useUserProfile();
   const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
+  
+  // Load dynamic stages from database
+  const { stages, isLoading: stagesLoading } = usePipelineStages();
 
   const query = useQuery({
     queryKey: ['pipeline-entries', currentLocationId],
@@ -129,7 +132,7 @@ export function usePipelineData() {
 
   // Optimistic update for drag operations
   const updateEntryStatus = (entryId: string, fromStatus: string, toStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries'], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
       if (!old) return old;
       return old.map(entry => 
         entry.id === entryId ? { ...entry, status: toStatus } : entry
@@ -139,7 +142,7 @@ export function usePipelineData() {
 
   // Revert optimistic update
   const revertEntryStatus = (entryId: string, originalStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries'], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
       if (!old) return old;
       return old.map(entry => 
         entry.id === entryId ? { ...entry, status: originalStatus } : entry
@@ -149,7 +152,7 @@ export function usePipelineData() {
 
   // Remove entry from cache (for delete)
   const removeEntry = (entryId: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries'], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
       if (!old) return old;
       return old.filter(entry => entry.id !== entryId);
     });
@@ -162,8 +165,9 @@ export function usePipelineData() {
 
   return {
     entries: query.data || [],
-    groupedData: groupByStatus(query.data || []),
-    isLoading: query.isLoading,
+    groupedData: groupByStatus(query.data || [], stages),
+    stages, // NEW: expose dynamic stages
+    isLoading: query.isLoading || stagesLoading,
     isError: query.isError,
     error: query.error,
     userCanDelete,
