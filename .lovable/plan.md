@@ -1,122 +1,126 @@
 
-# Plan: Improve Estimate Attachment File Loading Reliability
+## What’s happening (root cause)
 
-## Investigation Summary
+The edge function `send-quote-email` is currently trying to find the estimate like this:
 
-After extensive code review and database analysis, I found that:
+- It derives `tenantId` from the **sender’s profile**: `profile.active_tenant_id || profile.tenant_id`
+- Then it queries `enhanced_estimates` with **both**:
+  - `.eq('id', estimate_id)` (or `.eq('pipeline_entry_id', ...)`)
+  - `.eq('tenant_id', tenantId)`
 
-1. **Code logic is correct** - The document picker correctly fetches files from the `documents` table, and the selected document's `file_path` is correctly passed through to the `AttachmentPagesRenderer` for download.
+If the user is a multi-company user (company switcher) or “master” user, it’s very common for:
+- the estimate to belong to **Company B**, while
+- `profile.active_tenant_id` is **null** or still pointing to **Company A** (or the “home” tenant)
 
-2. **Console logs confirm correct fetching**:
-   - `OBC Workmanship Warranty.pdf` → `company-docs/1770439998989-OBC Workmanship Warranty.pdf`
-   - Files are downloading successfully from the correct bucket (`smartdoc-assets`)
+In that case, the estimate lookup becomes:
+- “Find estimate X in tenant A”
+- but estimate X is in tenant B
+- result: **404 Estimate not found** even though it exists.
 
-3. **Potential issues identified**:
-   - State isn't reset when attachments change (could show stale pages briefly)
-   - No abort controller for cancelled requests (could cause race conditions)
-   - The preview might show "Lifetime Workmanship Warranty Certificate" which IS the warranty document
+This also explains why your UI can show an estimate/preview but the email function says it can’t find it.
 
-## Root Cause Analysis
+A second issue in the current edge function code:
+- It joins tenant branding via `tenants:tenant_id(...)` based on the **profile tenant**, which can be the wrong company if the estimate is in another tenant. Even after we fix the estimate lookup, branding could still be wrong unless we also fetch tenant info by the **estimate’s tenant**.
 
-| Possible Cause | Evidence |
-|----------------|----------|
-| Wrong file_path in database | ❌ Database shows correct mappings |
-| Wrong bucket resolution | ❌ Console shows `smartdoc-assets` (correct) |
-| Wrong file content in storage | ⚠️ Cannot verify directly, but possible |
-| React state/cache issue | ⚠️ Possible - no state reset on attachment change |
-| Browser cache | ⚠️ Possible - user might need hard refresh |
+## Goal
 
-## Solution: Improve Attachment Loading Reliability
+Make “Send Quote” always:
+1) attach/email the correct estimate, and  
+2) use the correct company (tenant) context for branding + outbound domain,  
+even when the user has switched companies.
 
-### Part 1: Reset State When Attachments Change
+## Implementation approach
 
-Ensure pages are cleared immediately when attachments change to prevent stale data:
+### A) Frontend: send the effective tenant id (best-effort hint)
+Update the UI invocation to pass the currently selected company (effective tenant) so the backend has an explicit hint.
 
-**File**: `src/components/estimates/AttachmentPagesRenderer.tsx`
+- File: `src/components/estimates/ShareEstimateDialog.tsx`
+- Add `tenant_id` to the payload using the existing multi-tenant hook:
+  - `useEffectiveTenantId()`
 
-```typescript
-useEffect(() => {
-  // Reset state immediately when attachments change
-  setPages([]);
-  setErrors([]);
-  setLoading(true);
-  
-  if (!attachments || attachments.length === 0) {
-    setLoading(false);
-    return;
-  }
-  
-  // ... rest of loading logic
-}, [attachments]);
-```
+This won’t be the security source of truth, but it improves correctness and makes debugging clearer.
 
-### Part 2: Add Abort Controller for Race Conditions
+### B) Edge Function: stop filtering by “profile tenant”; resolve tenant from the estimate itself
+Update `supabase/functions/send-quote-email/index.ts` to:
 
-Prevent race conditions when attachments change quickly:
+1. **Authenticate user** (keep current JWT flow).
+2. Parse request body and accept optional `tenant_id` (from frontend).
+3. **Look up the estimate WITHOUT tenant filtering first**, using service role:
+   - If `estimate_id` present:
+     - `select ... from enhanced_estimates where id = estimate_id`
+   - Else if `pipeline_entry_id` present:
+     - `select ... from enhanced_estimates where pipeline_entry_id = ... order by created_at desc limit 1`
+4. If estimate not found -> 404 “Estimate not found” (true missing).
+5. If found:
+   - Set `resolvedTenantId = estimate.tenant_id`
+6. **Verify the user is allowed to operate on that tenant**
+   - Use the existing pattern from other hardened functions:
+     - Check membership via `profiles` (home/active tenant) OR `user_company_access`
+   - If not a member -> return **403** (not 404) with a clear message like:
+     - “You don’t have access to this estimate’s company. Switch companies and try again.”
+7. From here onward, use `resolvedTenantId` for:
+   - `company_email_domains` lookup
+   - `quote_tracking_links.tenant_id`
+   - `communication_history.tenant_id`
+   - tenant branding (logo/colors/name)
+8. Fix branding lookup:
+   - Don’t rely on `tenants:tenant_id(...)` join from the sender profile.
+   - Instead query `tenants` table directly with `resolvedTenantId`.
 
-```typescript
-useEffect(() => {
-  const abortController = new AbortController();
-  
-  setPages([]);
-  setErrors([]);
-  setLoading(true);
-  
-  // ... loading with abort check
-  
-  return () => {
-    abortController.abort();
-  };
-}, [attachments]);
-```
+### C) Make the error message accurate (so you don’t get misled)
+Adjust failure messaging so:
+- 404 is only for “no estimate exists for that id / pipeline entry”
+- 403 is for “estimate exists but belongs to a different tenant you’re not authorized for”
+- optionally 409 for “company mismatch” (if you want a distinct “switch company” response)
 
-### Part 3: Add Unique Key for Attachment Identification
+### D) Add minimal “diagnostic logs” that will actually help
+Keep logs but make them actionable and safe:
+- Log IDs and tenant IDs (no emails/phones)
+- Example:
+  - request: estimate_id, pipeline_entry_id, body.tenant_id
+  - lookup result: estimate.id, estimate.tenant_id
+  - membership check: pass/fail
 
-Add a stable key based on document_id for better debugging and rendering:
+This will let us prove it’s a tenant-resolution issue immediately.
 
-```typescript
-// When building pages, include document_id
-allPages.push({
-  ...rendered,
-  documentId: att.document_id, // Add this
-  attachmentFilename: att.filename,
-  pageNumber: pageNum,
-  totalPages: pdf.numPages,
-});
-```
+## Files that will change
 
-### Part 4: Enhanced Logging for Debugging
+1) **Frontend**
+- `src/components/estimates/ShareEstimateDialog.tsx`
+  - Add `tenant_id: effectiveTenantId` to the invoke body
 
-Add more detailed logging to help identify issues:
+2) **Backend**
+- `supabase/functions/send-quote-email/index.ts`
+  - Resolve estimate first (no tenant filter)
+  - Use estimate.tenant_id as the tenant source of truth
+  - Verify membership
+  - Fetch tenant branding by resolvedTenantId
+  - Use resolvedTenantId everywhere in inserts/lookups
+  - Improve status codes/messages
 
-```typescript
-console.log('[AttachmentPagesRenderer] Attachment data:', {
-  document_id: att.document_id,
-  filename: att.filename,
-  file_path: att.file_path,
-});
-```
+## Step-by-step verification plan (after implementation)
 
-## Files to Modify
+1. Reproduce in Preview (test env):
+   - Open an estimate while switched to a non-home company
+   - Click Share → Send Quote
+2. Confirm edge function logs show:
+   - estimate found by id
+   - resolvedTenantId matches estimate row
+   - membership check passed
+3. Confirm email “From” domain + name match the correct company settings.
+4. Confirm `quote_tracking_links` row created with the correct `tenant_id` and `estimate_id`.
+5. Open the customer link and confirm view tracking still works.
 
-| File | Changes |
-|------|---------|
-| `src/components/estimates/AttachmentPagesRenderer.tsx` | Reset state, add abort controller, improve logging |
+## Notes about why logs weren’t showing in our tool earlier
+Your screenshot error could be coming from the **Published (Live)** app while we’re checking **Test** logs. After we fix this in Test, you’ll either:
+- test in Preview URL, or
+- publish to Live once confirmed working.
 
-## Verification Steps
+(We’ll validate by checking which hostname is calling the function and by re-testing after deploying.)
 
-After implementation:
-1. Open an estimate with attachments
-2. Check console logs show correct document IDs and file paths
-3. Remove an attachment → verify it disappears immediately
-4. Add a different attachment → verify correct content shows
-5. Hard refresh the page and verify attachments load correctly
+## Edge cases handled by this plan
 
-## Additional Recommendation
-
-If the issue persists after these code changes, the problem is likely that the **actual PDF file in Supabase Storage** contains different content than expected. In that case:
-
-1. Go to **Supabase Dashboard → Storage → smartdoc-assets**
-2. Navigate to `company-docs/1770439998989-OBC Workmanship Warranty.pdf`
-3. Download the file and verify its content matches what you expect
-4. If wrong, re-upload the correct Workmanship Warranty PDF file
+- Company switcher set to a tenant that isn’t reflected in `profiles.active_tenant_id`
+- “Master” user with multiple tenant access
+- estimate_id missing but pipeline_entry_id present
+- correct branding/outbound domain per tenant
