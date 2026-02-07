@@ -1,67 +1,88 @@
 
+# Plan: Fix RLS Policies for Pipeline Stages Table
 
-# Plan: Simplify Settings - Remove Smart Docs Tab
+## Problem Identified
 
-## Current State
+The Pipeline Stage Manager is failing to save new stages because the `pipeline_stages` table is missing the required RLS policies.
 
-The Settings page currently has Smart Documents in **two places**:
-1. **Sidebar Menu** - Direct access button (user wants to keep this)
-2. **Settings → Automations** - Sub-tab with "Smart Documents" and "Dynamic Tags" (user wants to remove this)
-
-Pipeline Stages management is **already implemented** at **Settings → General → Pipeline Stages** sub-tab.
-
-## Changes Required
-
-### Remove Smart Docs from Automations Tab
-
-**File:** `src/features/settings/components/Settings.tsx`
-
-Remove the Smart Documents and Dynamic Tags sub-tabs from the Automations section:
-
-**Before (lines 314-331):**
-```typescript
-case "automations":
-  return (
-    <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-      <TabsList>
-        <TabsTrigger value="automations">Automations</TabsTrigger>
-        <TabsTrigger value="templates">Smart Documents</TabsTrigger>
-        <TabsTrigger value="tags">Dynamic Tags</TabsTrigger>
-      </TabsList>
-      <TabsContent value="automations">
-        <AutomationManager />
-      </TabsContent>
-      <TabsContent value="templates">
-        <SmartDocumentEditor />
-      </TabsContent>
-      <TabsContent value="tags">
-        <DynamicTagManager />
-      </TabsContent>
-    </Tabs>
-  );
+**Console Error:**
+```
+"new row violates row-level security policy for table \"pipeline_stages\""
 ```
 
-**After:**
-```typescript
-case "automations":
-  return <AutomationManager />;
+**Current State:**
+| Policy | Status |
+|--------|--------|
+| SELECT | ✅ Exists - `Users can view pipeline stages in their tenant` |
+| INSERT | ❌ Missing |
+| UPDATE | ❌ Missing |
+| DELETE | ❌ Missing |
+
+## Solution
+
+Add RLS policies for INSERT, UPDATE, and DELETE operations that:
+1. Only allow users within the same tenant
+2. Restrict modification access to manager-level roles (admin, corporate, office_admin, etc.)
+
+## Database Migration
+
+```sql
+-- Policy: Allow managers to INSERT new stages in their tenant
+CREATE POLICY "Managers can create pipeline stages"
+ON public.pipeline_stages
+FOR INSERT
+WITH CHECK (
+  tenant_id = get_user_tenant_id()
+  AND EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() 
+    AND role IN ('master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager')
+  )
+);
+
+-- Policy: Allow managers to UPDATE stages in their tenant
+CREATE POLICY "Managers can update pipeline stages"
+ON public.pipeline_stages
+FOR UPDATE
+USING (
+  tenant_id = get_user_tenant_id()
+  AND EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() 
+    AND role IN ('master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager')
+  )
+)
+WITH CHECK (
+  tenant_id = get_user_tenant_id()
+);
+
+-- Policy: Allow managers to DELETE stages in their tenant
+CREATE POLICY "Managers can delete pipeline stages"
+ON public.pipeline_stages
+FOR DELETE
+USING (
+  tenant_id = get_user_tenant_id()
+  AND EXISTS (
+    SELECT 1 FROM profiles 
+    WHERE id = auth.uid() 
+    AND role IN ('master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager')
+  )
+);
 ```
 
-This simplifies the Automations tab to only show the automation rules, since Smart Documents are accessible via the sidebar menu.
+## How It Works
 
-### Remove Unused Imports
+| Operation | Who Can Perform |
+|-----------|----------------|
+| View stages | All authenticated users in the tenant |
+| Add stages | Managers only (master, owner, corporate, office_admin, regional_manager, sales_manager) |
+| Edit stages | Managers only |
+| Delete stages | Managers only |
 
-Remove the now-unused imports:
-- `SmartDocumentEditor` (line 17)
-- `DynamicTagManager` (line 18)
+## Files to Modify
 
-## Summary
+| Type | Change |
+|------|--------|
+| Database Migration | Add 3 RLS policies (INSERT, UPDATE, DELETE) |
 
-| Change | Before | After |
-|--------|--------|-------|
-| Automations tab | 3 sub-tabs (Automations, Smart Documents, Dynamic Tags) | Single AutomationManager component |
-| Pipeline Stages | ✅ Already in General → Pipeline Stages | No change needed |
-| Smart Docs access | Sidebar menu + Settings tab | Sidebar menu only |
-
-This keeps the Settings page cleaner while maintaining access to Smart Documents through the dedicated sidebar menu button.
-
+After this migration, the Pipeline Stage Manager will work correctly for users with manager roles.
