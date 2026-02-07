@@ -32,21 +32,21 @@ export const ContactKanbanColumn: React.FC<ContactKanbanColumnProps> = ({
     : {};
 
   return (
-    <div className="space-y-2 min-w-[280px] max-w-[320px] flex-shrink-0">
+    <div className="space-y-1.5">
       {/* Column Header */}
       <Card className="shadow-soft border-0">
-        <CardHeader className="p-3">
-          <CardTitle className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
+        <CardHeader className="p-2">
+          <CardTitle className="flex items-center justify-between text-[10px]">
+            <div className="flex items-center gap-1.5">
               <div 
-                className="w-5 h-5 rounded-full flex items-center justify-center"
+                className="w-4 h-4 rounded-full flex items-center justify-center"
                 style={colorStyle}
               >
-                <Users className="h-3 w-3 text-white" />
+                <Users className="h-2.5 w-2.5 text-white" />
               </div>
-              <span className="font-medium">{title}</span>
+              <span className="font-medium truncate">{title}</span>
             </div>
-            <span className="text-muted-foreground font-normal">
+            <span className="text-muted-foreground font-normal text-[9px]">
               {count}
             </span>
           </CardTitle>
@@ -58,13 +58,13 @@ export const ContactKanbanColumn: React.FC<ContactKanbanColumnProps> = ({
         <div
           ref={setNodeRef}
           className={cn(
-            "min-h-[400px] p-2 rounded-lg transition-colors",
+            "min-h-[400px] p-1.5 rounded-lg transition-colors",
             isOver 
               ? "bg-primary/10 border-2 border-primary border-dashed" 
               : "bg-muted/20 border-2 border-transparent"
           )}
         >
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             {children}
           </div>
         </div>
