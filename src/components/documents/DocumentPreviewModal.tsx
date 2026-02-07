@@ -54,20 +54,29 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   }, [document, documents]);
 
   // Cleanup PDF on unmount or document change
+  // Using ref to track pdfDoc to avoid stale closure issues
+  const pdfDocRef = React.useRef<PDFDocumentProxy | null>(null);
+  
+  React.useEffect(() => {
+    pdfDocRef.current = pdfDoc;
+  }, [pdfDoc]);
+  
   const cleanupPdf = useCallback(() => {
-    if (pdfDoc) {
+    const docToCleanup = pdfDocRef.current;
+    if (docToCleanup) {
       try {
-        pdfDoc.destroy();
+        docToCleanup.destroy();
       } catch (e) {
         console.warn('[PDF] Cleanup error:', e);
       }
     }
+    pdfDocRef.current = null;
     setPdfDoc(null);
     setPdfNumPages(0);
     setPdfCurrentPage(1);
     setPdfRenderedPage(null);
     clearPageCache();
-  }, [pdfDoc]);
+  }, []);
 
   // Render current PDF page when page or scale changes
   useEffect(() => {
@@ -89,6 +98,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   }, [pdfDoc, pdfCurrentPage, pdfScale, pdfNumPages]);
 
   useEffect(() => {
+    // Clear previous state immediately when document changes
     if (!currentDoc || !isOpen) {
       setPreviewUrl(null);
       setTextContent(null);
@@ -97,12 +107,14 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       return;
     }
 
+    // Cleanup previous PDF before loading new one
+    cleanupPdf();
+    
     const loadPreview = async () => {
       setLoading(true);
       setTextContent(null);
       setLoadError(null);
       setZoom(1);
-      cleanupPdf();
 
       const isExternal = currentDoc.file_path.startsWith('http') || currentDoc.file_path.startsWith('data:');
       
@@ -203,7 +215,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         URL.revokeObjectURL(previewUrl);
       }
     };
-  }, [currentDoc, isOpen]);
+  }, [currentDoc?.id, isOpen, cleanupPdf]);
 
   // Open document in new tab using public or signed URL
   const openInNewTab = async () => {
