@@ -1,66 +1,155 @@
 
-# Plan: Add Share Button with Tracked Email and SMS Notifications
 
-## Status: ✅ COMPLETED
+# Plan: Fix Back Button and Add Auto-Collapsed Sidebar to Lead Details Page
 
-## Overview
+## Problems Identified
 
-Add a "Share" button to the Estimate Preview Panel that sends a trackable email to the customer. When the customer opens and views the estimate, the sales rep receives an SMS text notification to their phone - both on initial open AND every subsequent reopen.
+### 1. Missing Sidebar
+The Lead Details page (`/lead/:id`) does **not** use `GlobalLayout`, which means there's no sidebar navigation at all. Users have to use browser navigation to get back to the main app.
 
----
-
-## Implementation Summary
-
-### Completed Tasks:
-
-1. ✅ **Created ShareEstimateDialog Component**
-   - File: `src/components/estimates/ShareEstimateDialog.tsx`
-   - Collects recipient email, name, optional subject, and custom message
-   - Pre-fills from contact info when available
-   - Invokes `send-quote-email` edge function
-   - Shows success state with confirmation message
-
-2. ✅ **Added Share Button to EstimatePreviewPanel**
-   - File: `src/components/estimates/EstimatePreviewPanel.tsx`
-   - Added Share button next to Export PDF button
-   - Added new props: `estimateId`, `contactId`
-   - Button is disabled until estimate is saved (needs estimateId)
-
-3. ✅ **Updated MultiTemplateSelector**
-   - File: `src/components/estimates/MultiTemplateSelector.tsx`
-   - Added `contactId` state
-   - Fetches `contact_id` from pipeline_entries
-   - Passes `estimateId` and `contactId` to EstimatePreviewPanel
-
-4. ✅ **Enhanced track-quote-view Edge Function**
-   - File: `supabase/functions/track-quote-view/index.ts`
-   - Sends SMS notification to rep on EVERY view (not just first)
-   - Includes view count in message (e.g., "viewed again (3x)")
-   - Includes location if available (e.g., "From Dallas")
-   - Non-blocking: SMS failure doesn't break view tracking
+### 2. Back Button Not Working
+The `BackButton` component uses `window.history.length > 2` to detect if there's navigation history. This can fail when:
+- User accesses the page directly via URL
+- Browser pre-populates history on page load
+- SPA routing doesn't increment history as expected
 
 ---
 
-## User Experience Flow
+## Solution
 
-1. Rep creates/views estimate preview
-2. Clicks "Share" button → Dialog opens
-3. Enters recipient email (pre-filled if contact has email)
-4. Clicks "Send" → Email dispatched with tracking link
-5. Customer receives email → Clicks "View Your Quote"
-6. Customer views estimate → Rep instantly gets SMS: 
-   > "🔔 Nicole Walker just opened quote #EST-12345678! From Dallas"
-7. Customer reopens later → Rep gets another SMS:
-   > "🔔 Nicole Walker viewed again (3x) quote #EST-12345678!"
+### Part 1: Wrap LeadDetails in GlobalLayout
+
+Update `src/pages/LeadDetails.tsx` to use `GlobalLayout` wrapper, matching the pattern used by Dashboard, Pipeline, and Settings pages.
+
+**Before:**
+```tsx
+const LeadDetails = () => {
+  // ... component logic
+  return (
+    <div className="max-w-7xl mx-auto space-y-6 p-3 md:p-6 pb-32 md:pb-16">
+      {/* content */}
+    </div>
+  );
+};
+```
+
+**After:**
+```tsx
+import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
+
+const LeadDetailsPage = () => {
+  return (
+    <GlobalLayout>
+      <LeadDetailsContent />
+    </GlobalLayout>
+  );
+};
+```
+
+### Part 2: Auto-Collapse Sidebar on Lead Details (Like Settings)
+
+Update `src/components/ui/collapsible-sidebar.tsx` to auto-collapse on `/lead/:id` routes, following the same pattern as the `/settings` route.
+
+**Current (only Settings):**
+```typescript
+const isSettingsRoute = location.pathname === '/settings' || 
+                        location.pathname.startsWith('/settings/');
+
+useEffect(() => {
+  if (isSettingsRoute && !isCollapsed) {
+    setIsCollapsed(true);
+  }
+}, [location.pathname, isSettingsRoute]);
+```
+
+**Updated (Settings + Lead Details):**
+```typescript
+const isSettingsRoute = location.pathname === '/settings' || 
+                        location.pathname.startsWith('/settings/');
+const isLeadDetailsRoute = location.pathname.startsWith('/lead/');
+
+// Auto-collapse on detail pages that need more screen space
+const shouldAutoCollapse = isSettingsRoute || isLeadDetailsRoute;
+
+useEffect(() => {
+  if (shouldAutoCollapse && !isCollapsed) {
+    setIsCollapsed(true);
+  }
+}, [location.pathname, shouldAutoCollapse]);
+```
+
+### Part 3: Fix Back Button Reliability
+
+Update `src/hooks/useBrowserBackButton.tsx` to use a more reliable detection method that doesn't depend solely on `window.history.length`:
+
+**Improved Logic:**
+```typescript
+const goBack = useCallback(() => {
+  // Priority 1: Use explicit navigation state if provided
+  if (location.state?.from) {
+    navigate(location.state.from);
+    return;
+  }
+  
+  // Priority 2: Check if we have any navigation key (React Router assigns these)
+  // A key that's not "default" means we navigated here within the SPA
+  const hasInternalNavigation = location.key && location.key !== 'default';
+  
+  if (hasInternalNavigation) {
+    navigate(-1);
+    return;
+  }
+  
+  // Priority 3: Fall back to explicit path
+  navigate(fallbackPath, { replace: true });
+}, [navigate, fallbackPath, location.state, location.key]);
+```
+
+The `location.key` check is more reliable because React Router assigns a unique key to each navigation entry. If the key is "default", it means the user accessed the page directly (no internal navigation history).
 
 ---
 
-## Files Modified/Created
+## Files to Modify
 
-| File | Action |
-|------|--------|
-| `src/components/estimates/ShareEstimateDialog.tsx` | Created |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Modified |
-| `src/components/estimates/MultiTemplateSelector.tsx` | Modified |
-| `supabase/functions/track-quote-view/index.ts` | Modified |
+| File | Changes |
+|------|---------|
+| `src/pages/LeadDetails.tsx` | Wrap content with `GlobalLayout`, remove padding from outer div (handled by layout) |
+| `src/components/ui/collapsible-sidebar.tsx` | Add `/lead/` route to auto-collapse detection |
+| `src/hooks/useBrowserBackButton.tsx` | Use `location.key` for more reliable history detection |
+
+---
+
+## Visual Result
+
+**Before:**
+- No sidebar on lead details page
+- Back button sometimes doesn't work
+
+**After:**
+- Collapsed sidebar (minimized icons) on lead details page
+- User can expand sidebar to navigate if needed
+- Back button reliably navigates to pipeline or previous page
+
+```
+┌────────────────────────────────────────────────────────────────┐
+│ [≡]     ┌──────────────────────────────────────────────────────┤
+│ [📊]    │  ← Back                                              │
+│ [📋]    │                                                      │
+│ [📞]    │  Nicole Walker      ● Ready For Approval            │
+│ [⚙️]    │  1982 Longhorn St, Eustis, FL 32726                  │
+│         │                                                      │
+│ Icons   │  [Lead content continues...]                         │
+│ only    │                                                      │
+└────────────────────────────────────────────────────────────────┘
+  16px                         Full content area
+```
+
+---
+
+## Technical Notes
+
+- The `GlobalLayout` wrapper provides consistent header (search bar, notifications) across all pages
+- Auto-collapse gives lead details maximum screen space for estimate work
+- Users can manually expand the sidebar at any time using the toggle button
+- The `location.key` approach is a documented React Router feature for detecting navigation source
 
