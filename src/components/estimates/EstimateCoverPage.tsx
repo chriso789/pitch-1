@@ -22,27 +22,29 @@
    license_number?: string | null;
  }
  
- interface EstimateCoverPageProps {
-   companyInfo?: CompanyInfo;
-   companyLogo?: string;
-   companyName: string;
-   customerName: string;
-   customerAddress: string;
-   estimateNumber: string;
-   createdAt?: string;
-   propertyPhoto?: string;
- }
+interface EstimateCoverPageProps {
+  companyInfo?: CompanyInfo;
+  companyLogo?: string;
+  companyName: string;
+  customerName: string;
+  customerAddress: string;
+  estimateNumber: string;
+  createdAt?: string;
+  propertyPhoto?: string;
+  estimateName?: string;
+}
  
- export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
-   companyInfo,
-   companyLogo,
-   companyName,
-   customerName,
-   customerAddress,
-   estimateNumber,
-   createdAt,
-   propertyPhoto,
- }) => {
+export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
+  companyInfo,
+  companyLogo,
+  companyName,
+  customerName,
+  customerAddress,
+  estimateNumber,
+  createdAt,
+  propertyPhoto,
+  estimateName,
+}) => {
    const dateStr = createdAt 
      ? new Date(createdAt).toLocaleDateString('en-US', { 
          year: 'numeric', 
@@ -100,14 +102,13 @@
            )}
          </div>
  
-         {/* Title Section */}
-         <div className="text-center space-y-2 my-8">
-           <p className="text-sm uppercase tracking-widest text-gray-500">Professional</p>
-           <h2 className="text-5xl font-bold text-gray-900 tracking-tight">
-             ROOFING ESTIMATE
-           </h2>
+        {/* Title Section */}
+        <div className="text-center space-y-2 my-8">
+          <h2 className="text-5xl font-bold text-gray-900 tracking-tight">
+            {estimateName || 'ROOFING ESTIMATE'}
+          </h2>
           <div className="w-24 h-1 bg-primary mx-auto mt-4" />
-         </div>
+        </div>
  
          {/* Customer Info Section */}
          <div className="text-center space-y-1 bg-gray-50 rounded-xl px-12 py-6 w-full max-w-lg">

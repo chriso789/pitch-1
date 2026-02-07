@@ -78,6 +78,7 @@ interface TemplateAttachment {
 
 interface EstimatePDFDocumentProps {
   estimateNumber: string;
+  estimateName?: string;
   customerName: string;
   customerAddress: string;
   customerPhone?: string | null;
@@ -353,6 +354,7 @@ const PageShell: React.FC<{
 // Main Document Component
 export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   estimateNumber,
+  estimateName,
   customerName,
   customerAddress,
   customerPhone,
@@ -416,6 +418,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           estimateNumber={estimateNumber}
           createdAt={createdAt}
           propertyPhoto={opts.coverPagePropertyPhoto}
+          estimateName={estimateName}
         />
       );
     }
