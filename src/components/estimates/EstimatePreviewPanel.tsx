@@ -652,11 +652,11 @@ function ToggleRow({
   disabled?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between ${disabled ? 'opacity-50' : ''}`}>
-      <Label className="text-sm flex items-center gap-1.5 cursor-pointer">
-        {label}
+    <div className={`flex items-center justify-between gap-2 ${disabled ? 'opacity-50' : ''}`}>
+      <Label className="text-sm flex items-center gap-1.5 cursor-pointer min-w-0">
+        <span className="truncate">{label}</span>
         {badge && (
-          <Badge variant="outline" className="text-[10px] py-0 px-1">
+          <Badge variant="outline" className="text-[10px] py-0 px-1 shrink-0">
             {badge}
           </Badge>
         )}
@@ -665,7 +665,7 @@ function ToggleRow({
         checked={checked}
         onCheckedChange={onChange}
         disabled={disabled}
-        className="scale-90"
+        className="scale-90 shrink-0"
       />
     </div>
   );
