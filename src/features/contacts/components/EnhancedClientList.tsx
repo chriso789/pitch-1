@@ -177,8 +177,9 @@ export const EnhancedClientList = () => {
   // Import dialog state
   const [showImportDialog, setShowImportDialog] = useState(false);
   
-  // Display mode state (table vs kanban) - only for contacts view
-  const [displayMode, setDisplayMode] = useState<DisplayMode>('table');
+  // Display mode state (table vs kanban) - only for contacts view - defaults to kanban (board)
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('kanban');
+  const [displayModeLoaded, setDisplayModeLoaded] = useState(false);
 
   // Refetch data when location changes
   useEffect(() => {
@@ -301,8 +302,23 @@ export const EnhancedClientList = () => {
         const preferred = setting.setting_value as ViewType;
         setPreferredView(preferred);
       }
+
+      // Load contacts display mode preference (table vs kanban)
+      const { data: displayModeSetting } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('user_id', user.id)
+        .eq('setting_key', 'preferred_contacts_display_mode')
+        .maybeSingle();
+
+      if (displayModeSetting?.setting_value) {
+        const preferred = displayModeSetting.setting_value as DisplayMode;
+        setDisplayMode(preferred);
+      }
+      setDisplayModeLoaded(true);
     } catch (error) {
       console.error('Error loading user preferences:', error);
+      setDisplayModeLoaded(true);
     }
   };
 
@@ -327,6 +343,29 @@ export const EnhancedClientList = () => {
     } catch (error) {
       console.error('Error saving preference:', error);
       toast.error('Failed to save preference');
+    }
+  };
+
+  // Save display mode preference (table vs kanban)
+  const saveDisplayMode = async (mode: DisplayMode) => {
+    setDisplayMode(mode);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          user_id: user.id,
+          tenant_id: userProfile?.tenant_id,
+          setting_key: 'preferred_contacts_display_mode',
+          setting_value: mode
+        });
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Error saving display mode preference:', error);
     }
   };
 
@@ -1097,18 +1136,20 @@ export const EnhancedClientList = () => {
                   <Button
                     variant={displayMode === 'table' ? 'secondary' : 'ghost'}
                     size="sm"
-                    className="rounded-r-none"
-                    onClick={() => setDisplayMode('table')}
+                    className="rounded-r-none gap-1.5 px-3"
+                    onClick={() => saveDisplayMode('table')}
                   >
                     <List className="h-4 w-4" />
+                    <span className="hidden sm:inline">Table</span>
                   </Button>
                   <Button
                     variant={displayMode === 'kanban' ? 'secondary' : 'ghost'}
                     size="sm"
-                    className="rounded-l-none"
-                    onClick={() => setDisplayMode('kanban')}
+                    className="rounded-l-none gap-1.5 px-3"
+                    onClick={() => saveDisplayMode('kanban')}
                   >
                     <LayoutGrid className="h-4 w-4" />
+                    <span className="hidden sm:inline">Board</span>
                   </Button>
                 </div>
               )}

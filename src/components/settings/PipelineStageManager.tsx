@@ -454,7 +454,8 @@ export const PipelineStageManager: React.FC = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="max-h-[calc(100vh-400px)] min-h-[300px]">
+            {/* Native scroll container for reliable cross-browser scrolling */}
+            <div className="max-h-[calc(100vh-360px)] min-h-[300px] overflow-y-auto pr-2">
               <div className="space-y-2 pb-4">
                 {stages.map((stage, index) => (
                   <div
@@ -558,7 +559,7 @@ export const PipelineStageManager: React.FC = () => {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </CardContent>
         </Card>
       )}
