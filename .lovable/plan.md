@@ -1,205 +1,148 @@
 
+# Fix: Duplicate Cover Page and Missing Attachments in Preview Export
 
-# Fix: Manually Added Attachments Missing from Preview Export PDF
+## Problems Identified
 
-## Problem Summary
+### Problem 1: Cover Page Appears Twice in PDF
 
-When you click "Export PDF" from the Preview Estimate dialog, manually-added attachments (from Company Docs) are not included in the downloaded PDF. You confirmed:
-- The attachments finish loading and display correctly in the preview
-- You wait for them to load before clicking Export
-- The downloaded PDF is still missing those attachment pages
+**Root Cause**: Double `data-report-page` nesting
 
-## Root Cause
+In `EstimatePDFDocument.tsx` (lines 500-509), ALL page content is wrapped in `PageShell`:
 
-The Preview Panel uses `usePDFGeneration` (single-page capture) instead of `useMultiPagePDFGeneration` (multi-page capture).
-
-**The critical difference:**
-
-| Hook | Capture Method | Result |
-|------|----------------|--------|
-| `usePDFGeneration` | Captures entire element as ONE canvas image, then slices into pages | Long content gets chopped arbitrarily; attachment pages at the bottom get cut off |
-| `useMultiPagePDFGeneration` | Finds each `[data-report-page]` element and captures separately | Each page is captured individually with proper boundaries |
-
-### Code Flow
-
-**Current (broken):**
-```typescript
-// EstimatePreviewPanel.tsx line 150
-const { generatePDF } = usePDFGeneration(); // WRONG
-
-// line 224 - captures id="estimate-preview-template" as ONE image
-const pdfBlob = await generatePDF('estimate-preview-template', {...});
+```tsx
+{pages.pages.map((pageContent, idx) => (
+  <PageShell key={idx} {...commonProps} pageNumber={idx + 1}>
+    {pageContent}
+  </PageShell>
+))}
 ```
 
-The `usePDFGeneration.generatePDF()` function:
-1. Uses `html2canvas` to render the ENTIRE container as one giant canvas
-2. Slices that canvas image into pages by height
-3. This approach DOES NOT respect page boundaries
+But the `EstimateCoverPage` component ALREADY has its own `data-report-page` attribute (EstimateCoverPage.tsx line 71). This creates:
 
-**What happens:**
-- Cover page (data-report-page) renders at ~1056px height
-- Estimate content pages render at ~1056px each
-- Attachment pages render at ~1056px each
-- BUT html2canvas captures them all as one tall image
-- jsPDF then slices at fixed intervals (297mm) which doesn't align with actual page boundaries
-- Attachments at the bottom get cut off or omitted entirely
+```text
+<PageShell data-report-page>     ← Captured as Page 1
+  <EstimateCoverPage data-report-page>   ← Captured as Page 2
+    [cover content]
+  </EstimateCoverPage>
+</PageShell>
+```
 
-### Why MultiTemplateSelector Works (Sometimes)
+The PDF generator captures BOTH elements, resulting in the cover appearing twice.
 
-In `MultiTemplateSelector.tsx` (lines 1174-1192), after capturing the PDF it also:
-1. Calls `mergeEstimateWithAttachments()` to fetch attachment PDFs from storage
-2. Uses `pdf-lib` to merge the original PDFs as full pages
+### Problem 2: Attachments Captured While Still Loading
 
-But `EstimatePreviewPanel` doesn't have this merge step - it only relies on `usePDFGeneration` which can't properly capture multi-page documents.
+**Root Cause**: The loading spinner element still has `data-report-page` attribute
+
+In `AttachmentPagesRenderer.tsx` (lines 143-157), the loading state returns a page with the spinner:
+
+```tsx
+if (loading) {
+  return (
+    <div data-report-page className="...">  ← This gets captured!
+      <Loader2 className="animate-spin" />
+      <p>Loading attachments...</p>
+    </div>
+  );
+}
+```
+
+When the PDF export polls and finds `.animate-spin`, it keeps waiting. BUT when it finally captures, if attachments haven't finished loading, this "Loading attachments..." page is captured as a full PDF page instead of the actual attachments.
 
 ---
 
-## The Fix
+## Solution
 
-### Part 1: Switch to Multi-Page PDF Generation
+### Fix 1: Skip PageShell for Cover Page
 
-Replace `usePDFGeneration` with `useMultiPagePDFGeneration` in EstimatePreviewPanel.
+Modify `EstimatePDFDocument.tsx` to render the cover page WITHOUT wrapping it in `PageShell`:
 
-**File**: `src/components/estimates/EstimatePreviewPanel.tsx`
-
-**Change 1** - Update import (around line 49):
 ```typescript
-// OLD
-import { usePDFGeneration } from '@/hooks/usePDFGeneration';
-
-// NEW
-import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
-```
-
-**Change 2** - Update hook usage (around line 150):
-```typescript
-// OLD
-const { generatePDF } = usePDFGeneration();
-
-// NEW
-const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
-```
-
-**Change 3** - Rewrite `handleExportPDF` (lines 220-256):
-```typescript
-const handleExportPDF = async () => {
-  setIsExporting(true);
-  const filename = getFilename();
-  
-  try {
-    // Wait for any attachments to finish rendering
-    const container = document.getElementById('estimate-preview-template');
-    if (!container) throw new Error('Preview template not found');
-    
-    // Poll for attachment loading completion (max 10 seconds)
-    const maxWaitMs = 10000;
-    const pollIntervalMs = 200;
-    let waited = 0;
-    
-    while (waited < maxWaitMs) {
-      const loadingIndicators = container.querySelectorAll('.animate-spin');
-      const pageCount = container.querySelectorAll('[data-report-page]').length;
+// Line 500-516 - render pages
+return (
+  <div id="estimate-pdf-pages" className="flex flex-col gap-4">
+    {pages.pages.map((pageContent, idx) => {
+      // Cover page already has its own data-report-page, don't wrap
+      const isCoverPage = opts.showCoverPage && idx === 0;
       
-      if (loadingIndicators.length === 0 && pageCount > 0) {
-        console.log(`[PreviewExport] Ready after ${waited}ms, ${pageCount} pages found`);
-        break;
+      if (isCoverPage) {
+        // Render cover page directly without PageShell wrapper
+        return <React.Fragment key="cover">{pageContent}</React.Fragment>;
       }
       
-      await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
-      waited += pollIntervalMs;
-    }
+      // Wrap other pages in PageShell
+      return (
+        <PageShell
+          key={idx}
+          {...commonProps}
+          pageNumber={idx + 1}
+        >
+          {pageContent}
+        </PageShell>
+      );
+    })}
     
-    // Small delay for final render stability
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    // Count actual pages
-    const pageCount = container.querySelectorAll('[data-report-page]').length;
-    console.log(`[PreviewExport] Generating PDF with ${pageCount} pages`);
-    
-    // Generate multi-page PDF (captures each [data-report-page] separately)
-    const result = await generateMultiPagePDF('estimate-preview-template', pageCount, {
-      filename,
-      format: 'letter',
-      orientation: 'portrait',
-    });
-
-    if (result.success && result.blob) {
-      const url = URL.createObjectURL(result.blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-
-      toast({
-        title: 'PDF Downloaded',
-        description: `${filename} has been downloaded (${pageCount} pages)`,
-      });
-    } else {
-      throw new Error(result.error || 'PDF generation failed');
-    }
-  } catch (error: any) {
-    console.error('Error exporting PDF:', error);
-    toast({
-      title: 'Export Failed',
-      description: error.message || 'Failed to generate PDF',
-      variant: 'destructive',
-    });
-  } finally {
-    setIsExporting(false);
-  }
-};
+    {/* Attachment pages */}
+    {templateAttachments && templateAttachments.length > 0 && (
+      <AttachmentPagesRenderer attachments={templateAttachments} />
+    )}
+  </div>
+);
 ```
 
-**Change 4** - Update button disabled state (around line 570):
+### Fix 2: Loading State Should NOT Have data-report-page
+
+Modify `AttachmentPagesRenderer.tsx` - the loading spinner should NOT be captured as a PDF page:
+
 ```typescript
-// OLD
-disabled={isExporting}
-
-// NEW  
-disabled={isExporting || isGeneratingPDF}
+// Lines 143-158 - Loading state should not have data-report-page
+if (loading) {
+  return (
+    <div
+      // REMOVED: data-report-page - loading spinner should not be captured
+      className="bg-white flex flex-col items-center justify-center"
+      style={{
+        width: `${PAGE_WIDTH}px`,
+        minHeight: `${PAGE_HEIGHT}px`,
+        maxHeight: `${PAGE_HEIGHT}px`,
+      }}
+    >
+      <Loader2 className="h-12 w-12 animate-spin text-muted-foreground mb-4" />
+      <p className="text-muted-foreground text-sm">Loading attachments...</p>
+    </div>
+  );
+}
 ```
 
----
-
-## How This Fixes the Issue
-
-1. **`useMultiPagePDFGeneration`** iterates over all `[data-report-page]` elements
-2. Each page (cover, content, warranty, attachments) is captured **individually** as its own canvas
-3. Each canvas becomes a proper PDF page with correct boundaries
-4. Manually-added attachments (rendered by `AttachmentPagesRenderer`) are now properly captured
-
----
-
-## Technical Summary
-
-| What | Before | After |
-|------|--------|-------|
-| Hook | `usePDFGeneration` | `useMultiPagePDFGeneration` |
-| Capture method | Single canvas slice | Per-page capture |
-| Page boundaries | Arbitrary height slicing | Respects `[data-report-page]` elements |
-| Attachment handling | Gets cut off at bottom | Each attachment page captured separately |
-| Wait for attachments | No waiting | Polls for `.animate-spin` completion |
+This ensures:
+1. While loading, the spinner is visible in preview but NOT counted as a PDF page
+2. The polling mechanism still detects `.animate-spin` and waits
+3. Once attachments finish loading, the actual attachment pages (with `data-report-page`) appear and get captured
 
 ---
 
 ## Files to Modify
 
-1. **`src/components/estimates/EstimatePreviewPanel.tsx`**
-   - Change import from `usePDFGeneration` to `useMultiPagePDFGeneration`
-   - Rewrite `handleExportPDF` to use multi-page generation with attachment wait polling
+| File | Change |
+|------|--------|
+| `src/components/estimates/EstimatePDFDocument.tsx` | Skip PageShell wrapper for cover page (lines 500-509) |
+| `src/components/estimates/AttachmentPagesRenderer.tsx` | Remove `data-report-page` from loading state (line 146) |
 
 ---
 
-## Testing After Fix
+## Expected Result After Fix
 
-1. Open Preview Estimate for an estimate with manually-added attachments
-2. Verify attachments load and display in the preview
-3. Click "Export PDF"
-4. Open the downloaded PDF
-5. Verify ALL pages are present:
-   - Cover page
-   - Estimate content pages
-   - Warranty page
-   - **All attachment pages (template + manually added)**
+1. **Cover page appears once** - no duplication
+2. **Attachments are captured correctly** - actual PDF pages, not "Loading..." spinner
+3. **Page count is accurate** - only real content pages are numbered
 
+---
+
+## Testing Steps
+
+1. Open an estimate with attachments in Preview
+2. Wait for "Loading attachments..." to finish
+3. Click Export PDF
+4. Verify:
+   - Cover page appears exactly once
+   - All attachment pages are included
+   - No "Loading attachments..." page in final PDF
