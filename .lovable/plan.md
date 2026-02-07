@@ -1,99 +1,98 @@
 
-# Plan: Add Rename Button to Smart Docs Tagged Documents
+# Plan: Fix PDF Font Overlapping Issue in Estimate Export
 
 ## Problem
 
-In the **Smart Docs** tab, documents listed under "Tagged Documents" cannot be renamed. The existing rename functionality only appears in the "Company Docs" tab. Users want to rename documents like `ob_customer_completion.pdf` to more descriptive names like `Customer Completion Form`.
+Exported estimate PDFs have fonts that are "messed up and overlaying" - text characters overlap or render incorrectly. The preview looks fine in the browser, but the downloaded PDF has rendering artifacts.
 
-## Current State
+## Root Cause
 
-| Tab | Rename Available? |
-|-----|-------------------|
-| Company Docs | ✅ Yes - "Rename" button exists |
-| Smart Docs (Tagged Documents) | ❌ No - Missing rename button |
+The Estimate Preview Panel displays the document at 75% scale using CSS `transform: scale(0.75)` for visual fit within the dialog. When html2canvas captures the `#estimate-preview-template` element, it inherits the parent's scale transform which causes known font rendering issues:
 
-The infrastructure is already in place:
-- `DocumentRenameDialog` component exists and works
-- `renameDoc` state is already defined
-- Dialog is already rendered at the bottom of the component
+```text
+Current DOM Structure:
+┌─────────────────────────────────────────────────┐
+│ <div style="transform: scale(0.75)">            │  ← Parent with scale
+│   ┌───────────────────────────────────────────┐ │
+│   │ <div id="estimate-preview-template">      │ │  ← Captured element
+│   │   <EstimatePDFDocument />                 │ │
+│   └───────────────────────────────────────────┘ │
+└─────────────────────────────────────────────────┘
+```
+
+This is a documented html2canvas issue where CSS transforms cause:
+- Font rendering errors
+- Character spacing problems  
+- Text overlapping
+
+---
 
 ## Solution
 
-Add a "Rename" button to the Tagged Documents section, positioned alongside the existing action buttons (Preview, Edit Tags, Delete, Apply to Lead).
+### 1. Reset Transform in onclone Callback
 
----
+Modify `usePDFGeneration.ts` to reset any CSS transforms on the captured element and its ancestors during the clone phase. This ensures html2canvas renders at 100% scale with proper font rendering.
 
-## Technical Implementation
+**File:** `src/hooks/usePDFGeneration.ts`
 
-### File: `src/components/features/documents/components/SmartDocs.tsx`
+**Update `applyPDFStyles` function (lines 41-58):**
 
-**Add Rename button to Tagged Documents row (around line 468):**
-
-Insert the Rename button between the Preview button and the Edit Tags button:
-
-```tsx
-{/* Line ~459-499: Tagged Documents action buttons */}
-<div className="flex gap-2">
-  <Button
-    size="sm"
-    variant="outline"
-    onClick={() => setPreviewDoc(doc)}
-    className="gap-1"
-  >
-    <Eye className="h-4 w-4" />
-    Preview
-  </Button>
+```typescript
+function applyPDFStyles(element: HTMLElement): void {
+  // CRITICAL: Reset any CSS transforms that cause font rendering issues
+  element.style.transform = 'none';
+  element.style.webkitTransform = 'none';
   
-  {/* NEW: Add Rename button */}
-  <Button
-    size="sm"
-    variant="outline"
-    onClick={() => setRenameDoc(doc)}
-    className="gap-1"
-  >
-    <Pencil className="h-4 w-4" />
-    Rename
-  </Button>
+  // Also reset transforms on all parent elements in the cloned tree
+  let parent = element.parentElement;
+  while (parent) {
+    parent.style.transform = 'none';
+    parent.style.webkitTransform = 'none';
+    parent = parent.parentElement;
+  }
+
+  // Apply font optimizations to root element
+  element.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+  element.style.setProperty('-webkit-font-smoothing', 'antialiased');
+  element.style.setProperty('-moz-osx-font-smoothing', 'grayscale');
+  element.style.setProperty('text-rendering', 'optimizeLegibility');
+  element.style.letterSpacing = '0.01em';
+  element.classList.add('pdf-render-container');
   
-  {canEditSmartTags && (
-    <>
-      <Button
-        size="sm"
-        variant="secondary"
-        onClick={() => setTagEditorDoc(doc)}
-        className="gap-1"
-      >
-        <Sparkles className="h-4 w-4" />
-        Edit Tags
-      </Button>
-      {/* ... rest of buttons */}
-    </>
-  )}
-</div>
+  // Apply to all child elements
+  const allElements = element.querySelectorAll('*');
+  allElements.forEach(el => {
+    if (el instanceof HTMLElement) {
+      el.style.transform = 'none';
+      el.style.webkitTransform = 'none';
+      el.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
+      el.style.letterSpacing = '0.01em';
+    }
+  });
+}
 ```
 
----
+### 2. Apply Same Fix to Multi-Page PDF Generation
 
-## Visual Result
+The same fix needs to be applied to `useMultiPagePDFGeneration.ts` which is used for the main estimate export flow.
 
-**Before:**
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│ 📄 ob_customer_completion.pdf                                         │
-│    🏷️ 14 smart tags  Uploaded 1/4/2026                               │
-│                                                                       │
-│    [Preview] [Edit Tags] [🗑️] [Apply to Lead]                        │
-└──────────────────────────────────────────────────────────────────────┘
-```
+**File:** `src/hooks/useMultiPagePDFGeneration.ts`
 
-**After:**
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│ 📄 Customer Completion Form.pdf                                       │
-│    🏷️ 14 smart tags  Uploaded 1/4/2026                               │
-│                                                                       │
-│    [Preview] [Rename] [Edit Tags] [🗑️] [Apply to Lead]              │
-└──────────────────────────────────────────────────────────────────────┘
+Apply identical transform reset logic to the `applyPDFStyles` function (lines 54-71).
+
+### 3. Increase Quality for EstimatePreviewPanel
+
+Update the PDF generation call in `EstimatePreviewPanel.tsx` to use quality 3 instead of 2 for sharper text.
+
+**File:** `src/components/estimates/EstimatePreviewPanel.tsx`
+
+**Line 218:**
+```typescript
+// Before
+quality: 2,
+
+// After
+quality: 3,
 ```
 
 ---
@@ -102,15 +101,45 @@ Insert the Rename button between the Preview button and the Edit Tags button:
 
 | File | Change |
 |------|--------|
-| `src/features/documents/components/SmartDocs.tsx` | Add Rename button to Tagged Documents section (lines 468-470) |
+| `src/hooks/usePDFGeneration.ts` | Add transform reset logic to `applyPDFStyles` function |
+| `src/hooks/useMultiPagePDFGeneration.ts` | Add same transform reset logic |
+| `src/components/estimates/EstimatePreviewPanel.tsx` | Increase quality from 2 to 3 |
 
 ---
 
-## Expected Behavior
+## Technical Details
 
-1. User clicks "Rename" button on any tagged document
-2. Dialog opens with current filename (minus extension)
-3. User edits the name and clicks Save
-4. Document is renamed in the database
-5. UI refreshes to show new name
-6. Extension is preserved (`.pdf` stays `.pdf`)
+### Why This Works
+
+html2canvas creates a **clone** of the DOM element before rendering. The `onclone` callback gives access to this clone, allowing us to:
+
+1. Remove the CSS transform that causes the font issue
+2. Apply explicit font styling for consistent rendering
+3. The original DOM remains unchanged (still shows 75% scale in preview)
+
+### Before vs After
+
+```text
+BEFORE (with transform: scale(0.75)):
+┌────────────────────────────────────┐
+│ O'Brien Contracting                │
+│ OOFFOOFFFIIICCCEEEE                │  ← Overlapping/garbled text
+│ ROOFOFOFING ESTIESTIMATE           │
+└────────────────────────────────────┘
+
+AFTER (transform reset):
+┌────────────────────────────────────┐
+│ O'Brien Contracting                │
+│ OFFICE                             │  ← Clean text
+│ ROOFING ESTIMATE                   │
+└────────────────────────────────────┘
+```
+
+---
+
+## Expected Results
+
+- Clean, professional PDF exports with no text overlap
+- All fonts render correctly at full resolution
+- File size may be slightly larger due to quality 3 (still under 20MB)
+- Browser preview remains scaled at 75% for visual fit
