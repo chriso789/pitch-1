@@ -131,22 +131,40 @@ serve(async (req: Request) => {
         .eq("id", trackingLink.tenant_id)
         .single();
 
-      // Get PDF URL - prefer from tracking link, fallback to estimate's pdf_url
-      let pdfUrl = trackingLink.pdf_url;
-      
-      // If no PDF URL in tracking link, try to get from estimate
-      if (!pdfUrl && trackingLink.enhanced_estimates?.pdf_url) {
-        const storagePath = trackingLink.enhanced_estimates.pdf_url;
-        // Convert storage path to full public URL
-        const { data: publicUrlData } = supabase.storage
-          .from('documents')
-          .getPublicUrl(storagePath);
-        pdfUrl = publicUrlData?.publicUrl || null;
+      // Helper to resolve PDF URL - handles private bucket with signed URLs
+      async function resolvePdfUrl(pdfValue: string | null | undefined): Promise<string | null> {
+        if (!pdfValue) return null;
         
-        console.log("[track-quote-view] Built PDF URL from estimate:", { 
-          storagePath, 
-          publicUrl: pdfUrl 
-        });
+        // If it's already a full URL, return as-is
+        if (pdfValue.startsWith('http://') || pdfValue.startsWith('https://')) {
+          return pdfValue;
+        }
+        
+        // Otherwise, treat as a storage path and create a signed URL
+        try {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from('documents')
+            .createSignedUrl(pdfValue, 60 * 60 * 6); // 6 hours expiry
+          
+          if (signedError) {
+            console.error("[track-quote-view] Failed to create signed URL:", signedError);
+            return null;
+          }
+          
+          console.log("[track-quote-view] Created signed URL for path:", pdfValue);
+          return signedData?.signedUrl || null;
+        } catch (err) {
+          console.error("[track-quote-view] Error creating signed URL:", err);
+          return null;
+        }
+      }
+
+      // Get PDF URL - prefer from tracking link, fallback to estimate's pdf_url
+      let pdfUrl = await resolvePdfUrl(trackingLink.pdf_url);
+      
+      // If no PDF URL from tracking link, try estimate
+      if (!pdfUrl && trackingLink.enhanced_estimates?.pdf_url) {
+        pdfUrl = await resolvePdfUrl(trackingLink.enhanced_estimates.pdf_url);
       }
 
       return new Response(
