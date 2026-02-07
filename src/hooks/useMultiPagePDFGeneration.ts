@@ -52,7 +52,19 @@ async function waitForFonts(): Promise<void> {
  * Apply PDF-optimized styles to cloned element for html2canvas
  */
 function applyPDFStyles(element: HTMLElement): void {
-  // Apply to root element
+  // CRITICAL: Reset any CSS transforms that cause font rendering issues
+  element.style.transform = 'none';
+  element.style.webkitTransform = 'none';
+  
+  // Also reset transforms on all parent elements in the cloned tree
+  let parent = element.parentElement;
+  while (parent) {
+    parent.style.transform = 'none';
+    parent.style.webkitTransform = 'none';
+    parent = parent.parentElement;
+  }
+
+  // Apply font optimizations to root element
   element.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
   element.style.setProperty('-webkit-font-smoothing', 'antialiased');
   element.style.setProperty('-moz-osx-font-smoothing', 'grayscale');
@@ -64,6 +76,8 @@ function applyPDFStyles(element: HTMLElement): void {
   const allElements = element.querySelectorAll('*');
   allElements.forEach(el => {
     if (el instanceof HTMLElement) {
+      el.style.transform = 'none';
+      el.style.webkitTransform = 'none';
       el.style.fontFamily = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
       el.style.letterSpacing = '0.01em';
     }

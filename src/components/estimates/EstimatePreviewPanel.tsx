@@ -215,7 +215,7 @@ export function EstimatePreviewPanel({
         filename,
         orientation: 'portrait',
         format: 'letter',
-        quality: 2,
+        quality: 3,
       });
 
       if (pdfBlob) {
