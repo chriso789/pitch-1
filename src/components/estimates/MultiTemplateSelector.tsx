@@ -125,6 +125,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
+  const [contactId, setContactId] = useState<string | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
@@ -639,9 +640,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Fetch customer info from pipeline entry
       const { data: pipelineEntry } = await supabaseClient
         .from('pipeline_entries')
-        .select('contacts(first_name, last_name, email, phone, address_street, address_city, address_state, address_zip)')
+        .select('contact_id, contacts(first_name, last_name, email, phone, address_street, address_city, address_state, address_zip)')
         .eq('id', pipelineEntryId)
         .single();
+
+      if (pipelineEntry?.contact_id) {
+        setContactId(pipelineEntry.contact_id);
+      }
 
       if (pipelineEntry?.contacts) {
         const c = pipelineEntry.contacts;
@@ -2096,6 +2101,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         finePrintContent={finePrintContent}
         measurementSummary={measurementSummary}
         templateAttachments={templateAttachments}
+        estimateId={existingEstimateId || undefined}
+        contactId={contactId || undefined}
       />
     </div>
   );

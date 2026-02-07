@@ -35,6 +35,7 @@ import {
   Paperclip,
   ChevronDown,
   Layers,
+  Share2,
 } from 'lucide-react';
 import {
   type PDFComponentOptions,
@@ -47,6 +48,7 @@ import { PageOrderManager, DEFAULT_PAGE_ORDER, type PageOrderItem } from './Page
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
 import { useToast } from '@/hooks/use-toast';
+import { ShareEstimateDialog } from './ShareEstimateDialog';
 
 interface CompanyInfo {
   name: string;
@@ -108,6 +110,9 @@ interface EstimatePreviewPanelProps {
   templateAttachments?: TemplateAttachment[];
   // Callbacks for managing attachments
   onAttachmentsChange?: (attachments: TemplateAttachment[]) => void;
+  // Share functionality props
+  estimateId?: string;
+  contactId?: string;
 }
 
 export function EstimatePreviewPanel({
@@ -128,6 +133,8 @@ export function EstimatePreviewPanel({
   measurementSummary,
   templateAttachments = [],
   onAttachmentsChange,
+  estimateId,
+  contactId,
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -137,6 +144,7 @@ export function EstimatePreviewPanel({
   const [pageOrder, setPageOrder] = useState<PageOrderItem[]>(DEFAULT_PAGE_ORDER);
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
+  const [showShareDialog, setShowShareDialog] = useState(false);
   const { generatePDF } = usePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -544,23 +552,35 @@ export function EstimatePreviewPanel({
                 <RotateCcw className="h-4 w-4 mr-2" />
                 Reset Defaults
               </Button>
-              <Button
-                onClick={handleExportPDF}
-                disabled={isExporting}
-                className="w-full"
-              >
-                {isExporting ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <Download className="mr-2 h-4 w-4" />
-                    Export PDF
-                  </>
-                )}
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowShareDialog(true)}
+                  disabled={!estimateId}
+                  className="flex-1"
+                  title={!estimateId ? 'Save the estimate first to share' : 'Share via email'}
+                >
+                  <Share2 className="h-4 w-4 mr-2" />
+                  Share
+                </Button>
+                <Button
+                  onClick={handleExportPDF}
+                  disabled={isExporting}
+                  className="flex-1"
+                >
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="mr-2 h-4 w-4" />
+                      Export PDF
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -599,6 +619,17 @@ export function EstimatePreviewPanel({
           </div>
         </div>
       </DialogContent>
+
+      {/* Share Estimate Dialog */}
+      <ShareEstimateDialog
+        open={showShareDialog}
+        onOpenChange={setShowShareDialog}
+        estimateId={estimateId || ''}
+        contactId={contactId}
+        customerEmail={customerEmail || ''}
+        customerName={customerName}
+        estimateNumber={estimateNumber}
+      />
     </Dialog>
   );
 }
