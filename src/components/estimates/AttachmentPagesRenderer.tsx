@@ -106,8 +106,8 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
 
           if (isAborted) return;
 
-          // Load PDF with PDF.js
-          const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
+          // Load PDF with PDF.js - clone buffer to prevent detaching the cached original
+          const pdf = await loadPDFFromArrayBuffer(arrayBuffer.slice(0));
           console.log('[AttachmentPagesRenderer] PDF loaded:', att.filename, 'pages:', pdf.numPages);
 
           // Render each page to a data URL, passing document_id for cache isolation
