@@ -48,36 +48,56 @@ serve(async (req) => {
       throw new Error('Telnyx SMS Profile ID not configured. Please add TELNYX_SMS_PROFILE_ID in Lovable Secrets.');
     }
 
-    // Authenticate user
+    // Authenticate user OR allow service-to-service calls
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
       throw new Error('Missing authorization header');
     }
 
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Check if this is a service-to-service call (using service role key)
+    const isServiceCall = token === supabaseServiceKey;
+
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      supabaseServiceKey
     );
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    let userId: string | null = null;
+    let tenantId: string | null = null;
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      throw new Error('Unauthorized');
+    if (isServiceCall) {
+      // Service-to-service call - get tenant from request body
+      console.log('[telnyx-send-sms] Service-to-service call detected, skipping user auth');
+      const bodyPeek = await req.clone().json();
+      tenantId = bodyPeek.tenant_id || null;
+      userId = bodyPeek.sent_by || null;
+      console.log('[telnyx-send-sms] Service call context:', { tenantId, userId });
+    } else {
+      // Regular user authentication
+      const supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { global: { headers: { Authorization: authHeader } } }
+      );
+
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+      if (authError || !user) {
+        throw new Error('Unauthorized');
+      }
+      userId = user.id;
+
+      // Get user's active tenant
+      const { data: profile } = await supabaseAdmin
+        .from('profiles')
+        .select('active_tenant_id, tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      tenantId = profile?.active_tenant_id || profile?.tenant_id;
     }
-
-    // Get user's active tenant
-    const { data: profile } = await supabaseAdmin
-      .from('profiles')
-      .select('active_tenant_id, tenant_id')
-      .eq('id', user.id)
-      .single();
-
-    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
 
     // Parse request body - now accepts locationId
     const { to, message, contactId, jobId, fromNumber, locationId } = await req.json();
@@ -284,7 +304,7 @@ serve(async (req) => {
     if (tenantId) {
       await supabaseAdmin.from('communication_history').insert({
         tenant_id: tenantId,
-        rep_id: user.id,
+        rep_id: userId,
         contact_id: contactId || null,
         pipeline_entry_id: jobId || null,
         communication_type: 'sms',
