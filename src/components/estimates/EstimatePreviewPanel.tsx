@@ -157,8 +157,11 @@ export function EstimatePreviewPanel({
     [templateAttachments, removedTemplateIds]
   );
 
-  // Combine active template attachments with additional ones
-  const allAttachments = [...activeTemplateAttachments, ...additionalAttachments];
+  // Combine active template attachments with additional ones (memoized to prevent re-renders)
+  const allAttachments = useMemo(
+    () => [...activeTemplateAttachments, ...additionalAttachments],
+    [activeTemplateAttachments, additionalAttachments]
+  );
 
   // Handlers for attachment management
   const handleAddAttachment = useCallback((attachment: TemplateAttachment) => {
@@ -244,8 +247,8 @@ export function EstimatePreviewPanel({
         waited += pollIntervalMs;
       }
       
-      // Small delay for final render stability
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Small delay for final render stability (reduced for performance)
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Count actual pages
       const pageCount = container.querySelectorAll('[data-report-page]').length;

@@ -44,8 +44,8 @@ async function waitForFonts(): Promise<void> {
     }
   }
   
-  // Additional delay to ensure fonts are fully rasterized
-  await new Promise(resolve => setTimeout(resolve, 150));
+  // Additional delay to ensure fonts are fully rasterized (reduced for performance)
+  await new Promise(resolve => setTimeout(resolve, 50));
 }
 
 /**
@@ -154,7 +154,7 @@ export function useMultiPagePDFGeneration() {
 
         // Capture page to canvas with enhanced settings
         const canvas = await html2canvas(pageElement, {
-          scale: 3, // Increased from 2 to 3 for sharper text
+          scale: 2, // Reduced from 3 to 2 for faster generation while maintaining quality
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
