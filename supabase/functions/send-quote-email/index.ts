@@ -8,7 +8,8 @@ const corsHeaders = {
 };
 
 interface SendQuoteEmailRequest {
-  estimate_id: string;
+  estimate_id?: string;
+  pipeline_entry_id?: string;  // Fallback to find estimate by lead
   contact_id: string;
   recipient_email: string;
   recipient_name: string;
@@ -73,16 +74,35 @@ serve(async (req: Request) => {
     const tenantId = profile.active_tenant_id || profile.tenant_id;
     const body: SendQuoteEmailRequest = await req.json();
 
-    // Get estimate info
-    const { data: estimate } = await supabase
-      .from("enhanced_estimates")
-      .select("id, estimate_number, selling_price, pipeline_entry_id, pipeline_entries(id, lead_number)")
-      .eq("id", body.estimate_id)
-      .single();
+    // Get estimate info - try by ID first, then by pipeline_entry_id
+    let estimate: any = null;
+    
+    if (body.estimate_id) {
+      const { data } = await supabase
+        .from("enhanced_estimates")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, pipeline_entries(id, lead_number)")
+        .eq("id", body.estimate_id)
+        .eq("tenant_id", tenantId)
+        .single();
+      estimate = data;
+    }
+    
+    // Fallback: find most recent estimate for this pipeline entry
+    if (!estimate && body.pipeline_entry_id) {
+      const { data } = await supabase
+        .from("enhanced_estimates")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, pipeline_entries(id, lead_number)")
+        .eq("pipeline_entry_id", body.pipeline_entry_id)
+        .eq("tenant_id", tenantId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .single();
+      estimate = data;
+    }
 
     if (!estimate) {
       return new Response(
-        JSON.stringify({ success: false, error: "Estimate not found" }),
+        JSON.stringify({ success: false, error: "Estimate not found. Please save the estimate first." }),
         { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -114,7 +134,7 @@ serve(async (req: Request) => {
         tenant_id: tenantId,
         token: trackingToken,
         token_hash: tokenHash,
-        estimate_id: body.estimate_id,
+        estimate_id: estimate.id,  // Use resolved estimate ID
         contact_id: body.contact_id,
         pipeline_entry_id: estimate.pipeline_entry_id,
         pdf_url: body.pdf_url,

@@ -18,7 +18,8 @@ import { useToast } from '@/hooks/use-toast';
 interface ShareEstimateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  estimateId: string;
+  estimateId?: string;
+  pipelineEntryId?: string;  // Fallback for finding estimate
   contactId?: string;
   customerEmail?: string;
   customerName?: string;
@@ -29,6 +30,7 @@ export function ShareEstimateDialog({
   open,
   onOpenChange,
   estimateId,
+  pipelineEntryId,
   contactId,
   customerEmail = '',
   customerName = '',
@@ -88,7 +90,8 @@ export function ShareEstimateDialog({
     try {
       const { data, error } = await supabase.functions.invoke('send-quote-email', {
         body: {
-          estimate_id: estimateId,
+          estimate_id: estimateId || undefined,
+          pipeline_entry_id: pipelineEntryId || undefined,  // Fallback for finding estimate
           contact_id: contactId || null,
           recipient_email: recipientEmail.trim(),
           recipient_name: recipientName.trim(),

@@ -2136,6 +2136,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         measurementSummary={measurementSummary}
         templateAttachments={templateAttachments}
         estimateId={existingEstimateId || undefined}
+        pipelineEntryId={pipelineEntryId || undefined}
         contactId={contactId || undefined}
       />
     </div>
