@@ -575,6 +575,7 @@ export function EstimatePreviewPanel({
                 <div id="estimate-preview-template">
                   <EstimatePDFDocument
                     estimateNumber={estimateNumber}
+                    estimateName={estimateDisplayName}
                     customerName={customerName}
                     customerAddress={customerAddress}
                     customerPhone={customerPhone}
