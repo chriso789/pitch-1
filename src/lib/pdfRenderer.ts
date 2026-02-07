@@ -116,14 +116,25 @@ export async function loadPDFFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<
 /**
  * Render a specific page of a PDF to a data URL
  */
+/**
+ * Render a specific page of a PDF to a data URL
+ * @param pdf - PDF document proxy
+ * @param pageNum - Page number to render (1-indexed)
+ * @param scale - Render scale (default 1.5 for attachments)
+ * @param pdfId - Optional ID for cache isolation
+ * @param useJpeg - Use JPEG format for smaller file size (default true for attachments)
+ * @param quality - JPEG quality 0-1 (default 0.85)
+ */
 export async function renderPageToDataUrl(
   pdf: PDFDocumentProxy,
   pageNum: number,
   scale: number = 1.5,
-  pdfId?: string
+  pdfId?: string,
+  useJpeg: boolean = true,
+  quality: number = 0.85
 ): Promise<RenderedPage> {
   // Use pdfId if provided, otherwise skip cache for safety
-  const cacheKey = pdfId ? `${pdfId}-${pageNum}-${scale}` : null;
+  const cacheKey = pdfId ? `${pdfId}-${pageNum}-${scale}-${useJpeg ? 'jpg' : 'png'}` : null;
   
   // Check cache first (only if we have a valid cache key)
   if (cacheKey && pageCache.has(cacheKey)) {
@@ -131,7 +142,7 @@ export async function renderPageToDataUrl(
     return pageCache.get(cacheKey)!;
   }
 
-  console.log('[PDF] Rendering page', pageNum, 'at scale', scale, pdfId ? `for ${pdfId}` : '');
+  console.log('[PDF] Rendering page', pageNum, 'at scale', scale, useJpeg ? 'JPEG' : 'PNG', pdfId ? `for ${pdfId}` : '');
   
   const page = await pdf.getPage(pageNum);
   const viewport = page.getViewport({ scale });
@@ -152,8 +163,10 @@ export async function renderPageToDataUrl(
     viewport,
   }).promise;
 
-  // Convert to data URL
-  const dataUrl = canvas.toDataURL("image/png");
+  // Convert to data URL - use JPEG for smaller files (attachments are image-heavy)
+  const dataUrl = useJpeg 
+    ? canvas.toDataURL("image/jpeg", quality)
+    : canvas.toDataURL("image/png");
 
   const result: RenderedPage = {
     dataUrl,

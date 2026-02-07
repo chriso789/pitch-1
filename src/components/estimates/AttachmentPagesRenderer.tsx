@@ -117,7 +117,8 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
               return;
             }
             // Pass document_id as pdfId to ensure each PDF's pages are cached separately
-            const rendered = await renderPageToDataUrl(pdf, pageNum, 2, att.document_id);
+            // Use JPEG at 0.85 quality and 1.5 scale for smaller file sizes
+            const rendered = await renderPageToDataUrl(pdf, pageNum, 1.5, att.document_id, true, 0.85);
             allPages.push({
               ...rendered,
               documentId: att.document_id,

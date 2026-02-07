@@ -175,13 +175,21 @@ export function useMultiPagePDFGeneration() {
           pdf.addPage();
         }
 
-        // Add image centered on page - use PNG for text clarity
+        // Smart format detection: Use JPEG for attachment pages (image-heavy), PNG for text pages
+        // Attachment pages have full-bleed images with object-fit: contain
+        const isAttachmentPage = pageElement.querySelector('img[style*="object-fit"]') !== null;
+        
         const xOffset = 10;
         const yOffset = 10;
         
+        // Use JPEG at 0.85 quality for attachments (much smaller), PNG for text clarity
+        const imageData = isAttachmentPage
+          ? canvas.toDataURL('image/jpeg', 0.85)
+          : canvas.toDataURL('image/png');
+        
         pdf.addImage(
-          canvas.toDataURL('image/png'), // PNG instead of JPEG for text clarity
-          'PNG',
+          imageData,
+          isAttachmentPage ? 'JPEG' : 'PNG',
           xOffset,
           yOffset,
           imgWidth,
@@ -189,7 +197,7 @@ export function useMultiPagePDFGeneration() {
         );
 
         setProgress(((i + 1) / pageElements.length) * 90 + 5);
-        console.log(`📄 Page ${i + 1}/${pageElements.length} captured`);
+        console.log(`📄 Page ${i + 1}/${pageElements.length} captured (${isAttachmentPage ? 'JPEG' : 'PNG'})`);
       }
 
       // Generate blob
