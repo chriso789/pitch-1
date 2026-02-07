@@ -17,14 +17,18 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
   const isMobile = useIsMobile();
   const location = useLocation();
   
-  // Auto-collapse on settings page
+  // Auto-collapse on settings page and lead details page
   const isSettingsRoute = location.pathname === '/settings' || location.pathname.startsWith('/settings/');
+  const isLeadDetailsRoute = location.pathname.startsWith('/lead/');
+  
+  // Auto-collapse on detail pages that need more screen space
+  const shouldAutoCollapse = isSettingsRoute || isLeadDetailsRoute;
   
   useEffect(() => {
-    if (isSettingsRoute && !isCollapsed) {
+    if (shouldAutoCollapse && !isCollapsed) {
       setIsCollapsed(true);
     }
-  }, [location.pathname, isSettingsRoute]);
+  }, [location.pathname, shouldAutoCollapse]);
 
   // Close mobile menu when navigating
   useEffect(() => {

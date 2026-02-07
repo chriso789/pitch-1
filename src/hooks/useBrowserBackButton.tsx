@@ -45,17 +45,18 @@ export const useBrowserBackButton = ({
       return;
     }
     
-    // Priority 2: Use browser history if available
-    // history.length > 2 accounts for the initial page + at least one navigation
-    // (browsers often start with length 1 or 2 depending on how page was loaded)
-    if (window.history.length > 2) {
+    // Priority 2: Check if we have any navigation key (React Router assigns these)
+    // A key that's not "default" means we navigated here within the SPA
+    const hasInternalNavigation = location.key && location.key !== 'default';
+    
+    if (hasInternalNavigation) {
       navigate(-1);
       return;
     }
     
     // Priority 3: No history - use fallback path with replace to prevent back-loop
     navigate(fallbackPath, { replace: true });
-  }, [navigate, fallbackPath, location.state]);
+  }, [navigate, fallbackPath, location.state, location.key]);
 
   return {
     goBack

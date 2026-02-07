@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
+import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -1382,4 +1383,13 @@ const LeadDetails = () => {
   );
 };
 
-export default LeadDetails;
+// Wrap LeadDetails in GlobalLayout for consistent navigation
+const LeadDetailsPage = () => {
+  return (
+    <GlobalLayout>
+      <LeadDetails />
+    </GlobalLayout>
+  );
+};
+
+export default LeadDetailsPage;
