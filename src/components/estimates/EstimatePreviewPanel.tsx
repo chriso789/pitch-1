@@ -112,6 +112,7 @@ interface EstimatePreviewPanelProps {
   onAttachmentsChange?: (attachments: TemplateAttachment[]) => void;
   // Share functionality props
   estimateId?: string;
+  pipelineEntryId?: string;
   contactId?: string;
 }
 
@@ -134,6 +135,7 @@ export function EstimatePreviewPanel({
   templateAttachments = [],
   onAttachmentsChange,
   estimateId,
+  pipelineEntryId,
   contactId,
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
@@ -624,7 +626,8 @@ export function EstimatePreviewPanel({
       <ShareEstimateDialog
         open={showShareDialog}
         onOpenChange={setShowShareDialog}
-        estimateId={estimateId || ''}
+        estimateId={estimateId}
+        pipelineEntryId={pipelineEntryId}
         contactId={contactId}
         customerEmail={customerEmail || ''}
         customerName={customerName}
