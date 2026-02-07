@@ -1,111 +1,148 @@
 
-# Plan: Fix Pipeline Stage Key Mismatch
+# Plan: Align Pipeline Settings with Actual System Workflow
 
-## Problem Identified
+## Problem Summary
 
-The Pipeline Stages in Settings don't match the Kanban because:
+There's a complete mismatch between:
 
-| Component | Status Keys Used |
-|-----------|-----------------|
-| **Settings > Pipeline Stages** | Auto-generates keys from name: `new_lead`, `contacted`, `qualified`, etc. |
-| **Existing Pipeline Entries** | Use legacy hardcoded keys: `lead`, `contingency_signed`, `legal_review`, `project`, etc. |
-| **Kanban View** | Groups entries by status key - **no matches found** |
+| Where | Current State |
+|-------|---------------|
+| **Settings → Pipeline Stages** | Generic sales stages: "New Lead", "Contacted", "Qualified", "Negotiating", etc. - with **no keys set** |
+| **Actual Pipeline Entries** | Construction workflow stages: `lead`, `contingency_signed`, `legal_review`, `ready_for_approval`, `project`, `completed`, `closed` |
+| **Kanban Display** | Shows the actual stages from entries (working correctly) |
 
-**Current Entry Status Distribution:**
-- `lead` - 267 entries
-- `contingency_signed` - 15 entries  
-- `legal_review` - 14 entries
-- `ready_for_approval` - 8 entries
-- `project` - 7 entries
-- `completed` - 3 entries
-- `closed` - 1 entry
+**Result:** Settings shows the wrong stages because someone created generic stages that don't match the existing workflow.
 
-**Current Stage Keys (Generated):**
-- `new_lead`, `contacted`, `qualified`, `appointment_set`, `proposal_sent`, `negotiating`, `closed_won`, `closed_lost`, `estimate_sent`
+## Root Cause
 
-**Result:** All 315 entries are "orphaned" and dumped into the first column.
+1. The `pipeline_stages` table was populated with generic CRM stages
+2. None of these stages have their `key` field set
+3. The actual system uses construction-specific stages: Lead → Contingency Signed → Legal Review → Ready for Approval → Project → Completed → Closed
 
-## Solution: Add Persistent Stage Keys
+## Solution: Replace Settings Stages with Correct Workflow Stages
 
-Add a `key` column to `pipeline_stages` table so administrators can explicitly set the status key that matches existing entries.
+### Part 1: Clear and Re-seed Correct Pipeline Stages
 
-### Part 1: Database Migration
+Delete the mismatched stages and create the correct O'Brien Contracting workflow stages:
 
-Add `key` column to `pipeline_stages`:
-
-```sql
-ALTER TABLE pipeline_stages 
-ADD COLUMN key TEXT;
-
--- Add unique constraint per tenant
-ALTER TABLE pipeline_stages
-ADD CONSTRAINT pipeline_stages_tenant_key_unique 
-UNIQUE (tenant_id, key);
-
--- Update existing O'Brien stages to match their legacy keys
-UPDATE pipeline_stages SET key = 'lead' WHERE name = 'New Lead' AND tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
-UPDATE pipeline_stages SET key = 'contingency_signed' WHERE name = 'Contacted' AND tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
--- etc.
+```text
+| Stage Name         | Key                | Order | Description                        |
+|--------------------|--------------------:|------:|------------------------------------|
+| Leads              | lead               | 1     | Initial lead intake                |
+| Contingency Signed | contingency_signed | 2     | Customer signed contingency        |
+| Legal Review       | legal_review       | 3     | Contract under legal review        |
+| Ready for Approval | ready_for_approval | 4     | Ready for manager approval         |
+| Project            | project            | 5     | Approved - now a Project           |
+| Completed          | completed          | 6     | Project work completed             |
+| Closed             | closed             | 7     | Project fully closed               |
 ```
 
-### Part 2: Update usePipelineStages Hook
+Plus terminal statuses that appear across all stages:
+- **Lost** (`lost`)
+- **Canceled** (`canceled`)
+- **Duplicate** (`duplicate`)
 
-Use the database `key` column instead of auto-generating:
+### Part 2: Add "Contact Management Board" for Contacts
 
-```typescript
-// Before
-key: generateStageKey(stage.name),  // "New Lead" → "new_lead"
+Per your requirement, contacts need their **own Kanban board** separate from the Jobs Pipeline. This will use the existing `contact_statuses` table:
 
-// After  
-key: stage.key || generateStageKey(stage.name),  // Use DB key first, fallback to generated
+```text
+| Contact Status   | Key             | Category    |
+|------------------|-----------------|-------------|
+| Not Home         | not_home        | Disposition |
+| Interested       | interested      | Interest    |
+| Not Interested   | not_interested  | Interest    |
+| Qualified        | qualified       | Disposition |
+| Follow Up        | follow_up       | Action      |
+| Do Not Contact   | do_not_contact  | Disposition |
 ```
 
-### Part 3: Update PipelineStageManager Component
+### Part 3: Create Contact Kanban Board Component
 
-Allow users to edit the stage key in the Settings UI:
-- Add a "Key" input field to the stage editor
-- Auto-populate from name if blank
-- Validate key uniqueness per tenant
-- Show warning if key change would orphan entries
+Create a new `ContactKanbanBoard` component that:
+- Displays contacts grouped by their `qualification_status`
+- Uses the stages from `contact_statuses` table
+- Allows drag-and-drop to update contact qualification
+- Shows on the Client List page as an alternative view
 
-### Part 4: Provide Migration UI
+### Part 4: Update Contact → Lead → Project Workflow Clarity
 
-Add a "Fix Orphaned Entries" tool that:
-1. Scans for entries with status values not matching any stage key
-2. Shows admin which entries would be affected
-3. Allows bulk update of entry statuses to new keys
+Reinforce the workflow distinction:
 
-## Alternative Quick Fix
-
-If you want to fix this immediately without UI changes:
-
-**Option A:** Rename stages to match existing keys:
-- Rename "New Lead" → "Lead" (generates key `lead`)
-- Add "Contingency Signed" stage (generates key `contingency_signed`)
-- Add "Legal Review" stage (generates key `legal_review`)
-- etc.
-
-**Option B:** Bulk update existing entries to new keys:
-```sql
-UPDATE pipeline_entries SET status = 'new_lead' WHERE status = 'lead';
-UPDATE pipeline_entries SET status = 'contacted' WHERE status = 'contingency_signed';
--- etc.
+```text
+CONTACT (qualification tracking)
+    |
+    └── Creates LEAD (when Qualified)
+           |
+           └── Travels through JOBS PIPELINE
+                  |
+                  └── Becomes PROJECT (at "Ready for Approval" stage)
+                         |
+                         └── Completes & Closes
 ```
 
-## Recommended Approach
+## Implementation Steps
 
-1. Add `key` column to `pipeline_stages` table
-2. Update Settings UI to allow key editing
-3. Update O'Brien's existing stages with correct keys
-4. Update `usePipelineStages` to use database key
+### Database Changes
 
-This gives full control over stage-to-status mapping without losing existing data.
+1. **Delete incorrect pipeline stages** for O'Brien tenant
+2. **Insert correct pipeline stages** with proper keys matching existing entries
+3. **Add `is_terminal` flag** to pipeline_stages for Lost/Canceled/Duplicate statuses
 
-## Files to Modify
+### New Components
+
+1. **ContactKanbanBoard.tsx** - Kanban view for contact qualification
+2. **Update EnhancedClientList.tsx** - Add toggle for Kanban vs Table view
+
+### File Changes
 
 | File | Change |
 |------|--------|
-| Database migration | Add `key` column to `pipeline_stages` |
-| `usePipelineStages.ts` | Use `stage.key` from DB |
-| `PipelineStageManager.tsx` | Add key field to edit form |
-| `Settings.tsx` | No change needed |
+| `supabase/migration` | Delete/insert correct pipeline stages for O'Brien |
+| `src/features/contacts/components/ContactKanbanBoard.tsx` | New Kanban for contacts |
+| `src/features/contacts/components/EnhancedClientList.tsx` | Add Kanban view toggle |
+| `src/hooks/useContactStatuses.ts` | Hook to fetch contact statuses |
+| `src/hooks/usePipelineStages.ts` | No changes needed (already supports keys) |
+
+## Visual Architecture
+
+```text
+┌─────────────────────────────────────────────────────────────────────┐
+│                        CLIENT MANAGEMENT                            │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐   ┌──────────────┐   ┌──────────────┐            │
+│  │  Not Home    │   │  Interested  │   │  Qualified   │  ...       │
+│  │  (contacts)  │   │  (contacts)  │   │  (contacts)  │            │
+│  └──────────────┘   └──────────────┘   └──────────────┘            │
+│                                              │                      │
+│                                              ▼                      │
+│                                     Creates Lead ───────────────────┤
+└─────────────────────────────────────────────────────────────────────┘
+                                              │
+                                              ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                         JOBS PIPELINE                               │
+├─────────────────────────────────────────────────────────────────────┤
+│  ┌──────────┐ ┌────────────────┐ ┌──────────────┐ ┌─────────────┐  │
+│  │  Leads   │ │ Contingency    │ │ Legal Review │ │ Ready for   │  │
+│  │          │ │ Signed         │ │              │ │ Approval    │  │
+│  └──────────┘ └────────────────┘ └──────────────┘ └─────────────┘  │
+│       │                                                 │           │
+│       └─────────────────────────────────────────────────┤           │
+│                                                         ▼           │
+│  ┌──────────┐ ┌────────────────┐ ┌──────────────┐                  │
+│  │ Project  │ │   Completed    │ │   Closed     │  (Terminal)      │
+│  │          │ │                │ │              │                   │
+│  └──────────┘ └────────────────┘ └──────────────┘                  │
+│                                                                     │
+│  [Lost] [Canceled] [Duplicate]  ← Available from any stage         │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+## Summary
+
+This plan:
+1. **Fixes the mismatch** - Replaces generic stages with actual construction workflow stages
+2. **Adds Contact Board** - Separate Kanban for tracking contact qualification
+3. **Clarifies workflow** - Contact → Lead → Project progression is clear
+4. **Supports multiple leads per contact** - Property managers can have multiple leads from one contact
