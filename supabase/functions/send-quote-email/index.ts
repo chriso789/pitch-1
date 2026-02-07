@@ -112,7 +112,7 @@ serve(async (req: Request) => {
     if (body.estimate_id) {
       const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pipeline_entries(id, lead_number)")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id")
         .eq("id", body.estimate_id)
         .single();
       
@@ -129,7 +129,7 @@ serve(async (req: Request) => {
     if (!estimate && body.pipeline_entry_id) {
       const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pipeline_entries(id, lead_number)")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id")
         .eq("pipeline_entry_id", body.pipeline_entry_id)
         .order("created_at", { ascending: false })
         .limit(1)
