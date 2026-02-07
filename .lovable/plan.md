@@ -1,148 +1,180 @@
 
-# Fix: Duplicate Cover Page and Missing Attachments in Preview Export
+# Fix: Slow PDF Export Performance
 
-## Problems Identified
+## Problem Summary
 
-### Problem 1: Cover Page Appears Twice in PDF
+The PDF export is very slow due to multiple issues that compound:
+1. Attachment files are re-downloaded repeatedly during export
+2. The `allAttachments` array is recreated on every render, triggering re-fetches
+3. Each page is rendered at 3x scale (very expensive)
+4. Multiple built-in delays add up
 
-**Root Cause**: Double `data-report-page` nesting
+## Console Log Evidence
 
-In `EstimatePDFDocument.tsx` (lines 500-509), ALL page content is wrapped in `PageShell`:
-
-```tsx
-{pages.pages.map((pageContent, idx) => (
-  <PageShell key={idx} {...commonProps} pageNumber={idx + 1}>
-    {pageContent}
-  </PageShell>
-))}
+From the logs, the same attachments are downloaded **4+ times**:
+```
+[AttachmentPagesRenderer] Downloaded: License and Warranty - Marketing.pdf size: 2478652
+[AttachmentPagesRenderer] Downloaded: License and Warranty - Marketing.pdf size: 2478652  
+[AttachmentPagesRenderer] Downloaded: License and Warranty - Marketing.pdf size: 2478652
+[AttachmentPagesRenderer] Downloaded: OC Metal Roof Flyer.pdf size: 7641930
 ```
 
-But the `EstimateCoverPage` component ALREADY has its own `data-report-page` attribute (EstimateCoverPage.tsx line 71). This creates:
-
-```text
-<PageShell data-report-page>     ← Captured as Page 1
-  <EstimateCoverPage data-report-page>   ← Captured as Page 2
-    [cover content]
-  </EstimateCoverPage>
-</PageShell>
-```
-
-The PDF generator captures BOTH elements, resulting in the cover appearing twice.
-
-### Problem 2: Attachments Captured While Still Loading
-
-**Root Cause**: The loading spinner element still has `data-report-page` attribute
-
-In `AttachmentPagesRenderer.tsx` (lines 143-157), the loading state returns a page with the spinner:
-
-```tsx
-if (loading) {
-  return (
-    <div data-report-page className="...">  ← This gets captured!
-      <Loader2 className="animate-spin" />
-      <p>Loading attachments...</p>
-    </div>
-  );
-}
-```
-
-When the PDF export polls and finds `.animate-spin`, it keeps waiting. BUT when it finally captures, if attachments haven't finished loading, this "Loading attachments..." page is captured as a full PDF page instead of the actual attachments.
+This happens because the component remounts multiple times during the capture process.
 
 ---
 
-## Solution
+## Technical Fixes
 
-### Fix 1: Skip PageShell for Cover Page
+### Fix 1: Memoize `allAttachments` Array
 
-Modify `EstimatePDFDocument.tsx` to render the cover page WITHOUT wrapping it in `PageShell`:
+**File**: `src/components/estimates/EstimatePreviewPanel.tsx`
 
+**Line 161** - Currently creates new array every render:
 ```typescript
-// Line 500-516 - render pages
-return (
-  <div id="estimate-pdf-pages" className="flex flex-col gap-4">
-    {pages.pages.map((pageContent, idx) => {
-      // Cover page already has its own data-report-page, don't wrap
-      const isCoverPage = opts.showCoverPage && idx === 0;
-      
-      if (isCoverPage) {
-        // Render cover page directly without PageShell wrapper
-        return <React.Fragment key="cover">{pageContent}</React.Fragment>;
-      }
-      
-      // Wrap other pages in PageShell
-      return (
-        <PageShell
-          key={idx}
-          {...commonProps}
-          pageNumber={idx + 1}
-        >
-          {pageContent}
-        </PageShell>
-      );
-    })}
-    
-    {/* Attachment pages */}
-    {templateAttachments && templateAttachments.length > 0 && (
-      <AttachmentPagesRenderer attachments={templateAttachments} />
-    )}
-  </div>
+// BEFORE (creates new array every render, triggers re-fetch)
+const allAttachments = [...activeTemplateAttachments, ...additionalAttachments];
+
+// AFTER (stable reference, only recalculates when dependencies change)
+const allAttachments = useMemo(
+  () => [...activeTemplateAttachments, ...additionalAttachments],
+  [activeTemplateAttachments, additionalAttachments]
 );
 ```
 
-### Fix 2: Loading State Should NOT Have data-report-page
+This prevents `AttachmentPagesRenderer` from unnecessarily re-running its `useEffect` and re-downloading files.
 
-Modify `AttachmentPagesRenderer.tsx` - the loading spinner should NOT be captured as a PDF page:
+---
+
+### Fix 2: Add Download Cache to AttachmentPagesRenderer
+
+**File**: `src/components/estimates/AttachmentPagesRenderer.tsx`
+
+Create a module-level cache for downloaded PDF ArrayBuffers to prevent re-downloading the same file:
 
 ```typescript
-// Lines 143-158 - Loading state should not have data-report-page
-if (loading) {
-  return (
-    <div
-      // REMOVED: data-report-page - loading spinner should not be captured
-      className="bg-white flex flex-col items-center justify-center"
-      style={{
-        width: `${PAGE_WIDTH}px`,
-        minHeight: `${PAGE_HEIGHT}px`,
-        maxHeight: `${PAGE_HEIGHT}px`,
-      }}
-    >
-      <Loader2 className="h-12 w-12 animate-spin text-muted-foreground mb-4" />
-      <p className="text-muted-foreground text-sm">Loading attachments...</p>
-    </div>
-  );
+// At top of file, after imports
+// Cache for downloaded PDF ArrayBuffers (persists across re-renders)
+const downloadCache = new Map<string, ArrayBuffer>();
+
+export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRendererProps) {
+  // ... existing code ...
+
+  async function loadAllAttachmentPages() {
+    // ...
+    for (const att of attachments) {
+      try {
+        // Check cache first
+        const cacheKey = `${att.document_id}:${att.file_path}`;
+        let arrayBuffer = downloadCache.get(cacheKey);
+        
+        if (!arrayBuffer) {
+          // Download only if not cached
+          console.log('[AttachmentPagesRenderer] Downloading:', att.filename);
+          const { data: blob, error } = await supabase.storage
+            .from(bucket)
+            .download(att.file_path);
+          
+          if (error || !blob) {
+            loadErrors.push(`Failed to fetch ${att.filename}`);
+            continue;
+          }
+          
+          arrayBuffer = await blob.arrayBuffer();
+          downloadCache.set(cacheKey, arrayBuffer);
+        } else {
+          console.log('[AttachmentPagesRenderer] Using cached:', att.filename);
+        }
+        
+        // Continue with PDF processing...
+      }
+    }
+  }
+  // ...
 }
 ```
 
-This ensures:
-1. While loading, the spinner is visible in preview but NOT counted as a PDF page
-2. The polling mechanism still detects `.animate-spin` and waits
-3. Once attachments finish loading, the actual attachment pages (with `data-report-page`) appear and get captured
+---
+
+### Fix 3: Reduce PDF Capture Scale
+
+**File**: `src/hooks/useMultiPagePDFGeneration.ts`
+
+**Line 157** - Reduce from 3x to 2x for faster generation while still maintaining quality:
+
+```typescript
+// BEFORE (3x = 2448x3168 per page, very slow)
+scale: 3,
+
+// AFTER (2x = 1632x2112 per page, much faster, still good quality)
+scale: 2,
+```
+
+---
+
+### Fix 4: Reduce Font/Render Delays
+
+**File**: `src/hooks/useMultiPagePDFGeneration.ts`
+
+The current hook has:
+- 150ms font delay (line 48 in waitForFonts)
+- 300ms render delay in the preview handler
+
+These can be reduced:
+
+**Line 48** (in waitForFonts):
+```typescript
+// BEFORE
+await new Promise(resolve => setTimeout(resolve, 150));
+
+// AFTER - 50ms is usually sufficient
+await new Promise(resolve => setTimeout(resolve, 50));
+```
+
+**File**: `src/components/estimates/EstimatePreviewPanel.tsx`
+
+**Line 248** (in handleExportPDF):
+```typescript
+// BEFORE
+await new Promise(resolve => setTimeout(resolve, 300));
+
+// AFTER - 100ms is usually sufficient
+await new Promise(resolve => setTimeout(resolve, 100));
+```
+
+---
+
+## Summary of Changes
+
+| File | Change | Impact |
+|------|--------|--------|
+| `EstimatePreviewPanel.tsx` | Memoize `allAttachments` | Prevents unnecessary re-renders |
+| `EstimatePreviewPanel.tsx` | Reduce post-poll delay 300→100ms | Saves 200ms |
+| `AttachmentPagesRenderer.tsx` | Add ArrayBuffer download cache | Prevents 4x+ duplicate downloads |
+| `useMultiPagePDFGeneration.ts` | Reduce scale 3→2 | ~50% faster canvas capture |
+| `useMultiPagePDFGeneration.ts` | Reduce font delay 150→50ms | Saves 100ms |
+
+---
+
+## Expected Performance Improvement
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Attachment downloads | 4+ per file | 1 per file (cached) |
+| Canvas pixels per page | 7.8M (3x) | 3.4M (2x) |
+| Fixed delays | 450ms | 150ms |
+| Estimated export time | 15-30 seconds | 5-10 seconds |
 
 ---
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/components/estimates/EstimatePDFDocument.tsx` | Skip PageShell wrapper for cover page (lines 500-509) |
-| `src/components/estimates/AttachmentPagesRenderer.tsx` | Remove `data-report-page` from loading state (line 146) |
+1. `src/components/estimates/EstimatePreviewPanel.tsx`
+   - Memoize `allAttachments` array
+   - Reduce post-poll delay
 
----
+2. `src/components/estimates/AttachmentPagesRenderer.tsx`
+   - Add module-level download cache
 
-## Expected Result After Fix
-
-1. **Cover page appears once** - no duplication
-2. **Attachments are captured correctly** - actual PDF pages, not "Loading..." spinner
-3. **Page count is accurate** - only real content pages are numbered
-
----
-
-## Testing Steps
-
-1. Open an estimate with attachments in Preview
-2. Wait for "Loading attachments..." to finish
-3. Click Export PDF
-4. Verify:
-   - Cover page appears exactly once
-   - All attachment pages are included
-   - No "Loading attachments..." page in final PDF
+3. `src/hooks/useMultiPagePDFGeneration.ts`
+   - Reduce scale from 3 to 2
+   - Reduce font delay
