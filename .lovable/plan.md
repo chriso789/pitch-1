@@ -1,160 +1,111 @@
 
-# Plan: Fix Pipeline Stages and Separate from Contact Statuses
+# Plan: Fix Pipeline Stage Key Mismatch
 
-## Problems Identified
+## Problem Identified
 
-### Problem 1: Pipeline Stages Not Connected to Kanban
+The Pipeline Stages in Settings don't match the Kanban because:
 
-The Pipeline Stage Manager successfully saves stages to the `pipeline_stages` table, but the **Kanban view ignores this table entirely**. It uses hardcoded `LEAD_STAGES` from `usePipelineData.ts`:
+| Component | Status Keys Used |
+|-----------|-----------------|
+| **Settings > Pipeline Stages** | Auto-generates keys from name: `new_lead`, `contacted`, `qualified`, etc. |
+| **Existing Pipeline Entries** | Use legacy hardcoded keys: `lead`, `contingency_signed`, `legal_review`, `project`, etc. |
+| **Kanban View** | Groups entries by status key - **no matches found** |
 
-```typescript
-// Current hardcoded stages (not customizable)
-export const LEAD_STAGES = [
-  { name: "New Lead", key: "lead", color: "bg-blue-500" },
-  { name: "Contingency Signed", key: "contingency_signed", color: "bg-yellow-500" },
-  // ... etc
-];
-```
+**Current Entry Status Distribution:**
+- `lead` - 267 entries
+- `contingency_signed` - 15 entries  
+- `legal_review` - 14 entries
+- `ready_for_approval` - 8 entries
+- `project` - 7 entries
+- `completed` - 3 entries
+- `closed` - 1 entry
 
-### Problem 2: Contact Statuses Mixed with Pipeline Statuses
+**Current Stage Keys (Generated):**
+- `new_lead`, `contacted`, `qualified`, `appointment_set`, `proposal_sent`, `negotiating`, `closed_won`, `closed_lost`, `estimate_sent`
 
-Currently there's confusion between:
-- **Contact Qualification Status** (`contacts.qualification_status`) - disposition like "qualified", "interested", "not_home"
-- **Pipeline Status** (`pipeline_entries.status`) - workflow stages like "lead", "contingency_signed", "project"
+**Result:** All 315 entries are "orphaned" and dumped into the first column.
 
-Some values overlap (e.g., `contingency_signed` appears in both), causing confusion.
+## Solution: Add Persistent Stage Keys
 
-## Solution Overview
+Add a `key` column to `pipeline_stages` table so administrators can explicitly set the status key that matches existing entries.
 
-### Part A: Connect Pipeline Stages to Kanban
+### Part 1: Database Migration
 
-Modify the Kanban to dynamically load stages from `pipeline_stages` table instead of using hardcoded `LEAD_STAGES`.
-
-### Part B: Create Separate Contact Status Manager
-
-Add a new "Contact Statuses" section in Settings to manage contact qualification statuses separately from pipeline stages.
-
-## Implementation Details
-
-### 1. Create Contact Statuses Table (Database Migration)
+Add `key` column to `pipeline_stages`:
 
 ```sql
-CREATE TABLE public.contact_statuses (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  key TEXT NOT NULL,
-  description TEXT,
-  color TEXT DEFAULT '#6b7280',
-  category TEXT NOT NULL DEFAULT 'disposition', -- 'disposition', 'interest', 'action'
-  status_order INTEGER NOT NULL DEFAULT 0,
-  is_active BOOLEAN NOT NULL DEFAULT true,
-  is_system BOOLEAN NOT NULL DEFAULT false, -- system statuses can't be deleted
-  created_at TIMESTAMPTZ DEFAULT now(),
-  updated_at TIMESTAMPTZ DEFAULT now(),
-  UNIQUE(tenant_id, key)
-);
+ALTER TABLE pipeline_stages 
+ADD COLUMN key TEXT;
 
--- Enable RLS
-ALTER TABLE public.contact_statuses ENABLE ROW LEVEL SECURITY;
+-- Add unique constraint per tenant
+ALTER TABLE pipeline_stages
+ADD CONSTRAINT pipeline_stages_tenant_key_unique 
+UNIQUE (tenant_id, key);
 
--- Add policies (same pattern as pipeline_stages)
+-- Update existing O'Brien stages to match their legacy keys
+UPDATE pipeline_stages SET key = 'lead' WHERE name = 'New Lead' AND tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
+UPDATE pipeline_stages SET key = 'contingency_signed' WHERE name = 'Contacted' AND tenant_id = '14de934e-7964-4afd-940a-620d2ace125d';
+-- etc.
 ```
 
-### 2. Update usePipelineData Hook
+### Part 2: Update usePipelineStages Hook
+
+Use the database `key` column instead of auto-generating:
 
 ```typescript
-// Replace hardcoded LEAD_STAGES with dynamic fetch
-export function usePipelineData() {
-  // Fetch stages from pipeline_stages table
-  const stagesQuery = useQuery({
-    queryKey: ['pipeline-stages', profile?.tenant_id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('pipeline_stages')
-        .select('*')
-        .eq('tenant_id', profile?.tenant_id)
-        .eq('is_active', true)
-        .order('stage_order');
-      
-      if (error) throw error;
-      return data.map(stage => ({
-        name: stage.name,
-        key: stage.name.toLowerCase().replace(/\s+/g, '_'),
-        color: hexToTailwind(stage.color), // Convert hex to Tailwind class
-        id: stage.id
-      }));
-    }
-  });
+// Before
+key: generateStageKey(stage.name),  // "New Lead" → "new_lead"
 
-  // Use fetched stages instead of LEAD_STAGES
-  const stages = stagesQuery.data || LEAD_STAGES; // Fallback to hardcoded
-  
-  // ... rest of hook
-}
+// After  
+key: stage.key || generateStageKey(stage.name),  // Use DB key first, fallback to generated
 ```
 
-### 3. Update KanbanPipeline Component
+### Part 3: Update PipelineStageManager Component
 
-```typescript
-// Use dynamic stages from hook
-const { 
-  entries, 
-  groupedData, 
-  stages,  // NEW: dynamic stages
-  isLoading, 
-  // ...
-} = usePipelineData();
+Allow users to edit the stage key in the Settings UI:
+- Add a "Key" input field to the stage editor
+- Auto-populate from name if blank
+- Validate key uniqueness per tenant
+- Show warning if key change would orphan entries
 
-// Render stages dynamically
-{stages.map((stage) => (
-  <KanbanColumn
-    id={stage.key}
-    title={stage.name}
-    color={stage.color}
-    // ...
-  />
-))}
+### Part 4: Provide Migration UI
+
+Add a "Fix Orphaned Entries" tool that:
+1. Scans for entries with status values not matching any stage key
+2. Shows admin which entries would be affected
+3. Allows bulk update of entry statuses to new keys
+
+## Alternative Quick Fix
+
+If you want to fix this immediately without UI changes:
+
+**Option A:** Rename stages to match existing keys:
+- Rename "New Lead" → "Lead" (generates key `lead`)
+- Add "Contingency Signed" stage (generates key `contingency_signed`)
+- Add "Legal Review" stage (generates key `legal_review`)
+- etc.
+
+**Option B:** Bulk update existing entries to new keys:
+```sql
+UPDATE pipeline_entries SET status = 'new_lead' WHERE status = 'lead';
+UPDATE pipeline_entries SET status = 'contacted' WHERE status = 'contingency_signed';
+-- etc.
 ```
 
-### 4. Create Contact Status Manager Component
+## Recommended Approach
 
-New component at `src/components/settings/ContactStatusManager.tsx` similar to `PipelineStageManager.tsx` but for managing contact disposition statuses.
+1. Add `key` column to `pipeline_stages` table
+2. Update Settings UI to allow key editing
+3. Update O'Brien's existing stages with correct keys
+4. Update `usePipelineStages` to use database key
 
-### 5. Update Settings Page
+This gives full control over stage-to-status mapping without losing existing data.
 
-Add two separate sub-tabs under General or a new "Workflow" tab:
-- **Pipeline Stages** - for managing Kanban pipeline stages
-- **Contact Statuses** - for managing contact qualification dispositions
+## Files to Modify
 
-### 6. Seed Default Statuses for New Tenants
-
-Create a trigger or initialization function to seed default contact statuses when a new tenant is created:
-- Not Home
-- Interested
-- Not Interested
-- Qualified
-- Follow Up
-- Do Not Contact
-
-## Technical Summary
-
-| Component | Current State | After Fix |
-|-----------|--------------|-----------|
-| Pipeline Stages in Settings | Saves to `pipeline_stages` but unused | Connected to Kanban view |
-| Kanban View | Uses hardcoded `LEAD_STAGES` | Dynamically loads from `pipeline_stages` |
-| Contact Status Management | None | New manager component |
-| Contact Qualification | Hardcoded options | Customizable from `contact_statuses` table |
-
-## Files to Create/Modify
-
-| File | Action |
+| File | Change |
 |------|--------|
-| `supabase/migrations/xxx.sql` | Create `contact_statuses` table + RLS |
-| `src/hooks/usePipelineData.ts` | Fetch stages dynamically |
-| `src/hooks/usePipelineStages.ts` | New hook for stage management |
-| `src/features/pipeline/components/KanbanPipeline.tsx` | Use dynamic stages |
-| `src/components/settings/ContactStatusManager.tsx` | New component |
-| `src/features/settings/components/Settings.tsx` | Add Contact Statuses tab |
-
-This will cleanly separate **Pipeline Workflow Stages** (for lead/job progression) from **Contact Disposition Statuses** (for qualification tracking), and make both fully customizable per company.
+| Database migration | Add `key` column to `pipeline_stages` |
+| `usePipelineStages.ts` | Use `stage.key` from DB |
+| `PipelineStageManager.tsx` | Add key field to edit form |
+| `Settings.tsx` | No change needed |
