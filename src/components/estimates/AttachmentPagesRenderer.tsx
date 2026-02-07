@@ -14,6 +14,9 @@ import { Loader2, FileWarning } from 'lucide-react';
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
 
+// Cache for downloaded PDF ArrayBuffers (persists across re-renders to prevent duplicate downloads)
+const downloadCache = new Map<string, ArrayBuffer>();
+
 interface TemplateAttachment {
   document_id: string;
   file_path: string;
@@ -74,22 +77,32 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
           const bucket = resolveStorageBucket('company_resource', att.file_path);
           console.log('[AttachmentPagesRenderer] Using bucket:', bucket);
           
-          // Download the PDF from storage
-          const { data: blob, error } = await supabase.storage
-            .from(bucket)
-            .download(att.file_path);
+          // Check download cache first to prevent duplicate downloads
+          const cacheKey = `${att.document_id}:${att.file_path}`;
+          let arrayBuffer = downloadCache.get(cacheKey);
 
-          if (isAborted) return;
+          if (!arrayBuffer) {
+            // Download the PDF from storage (not cached)
+            console.log('[AttachmentPagesRenderer] Downloading:', att.filename);
+            const { data: blob, error } = await supabase.storage
+              .from(bucket)
+              .download(att.file_path);
 
-          if (error || !blob) {
-            console.error('[AttachmentPagesRenderer] Download error:', error);
-            loadErrors.push(`Failed to fetch ${att.filename}`);
-            continue;
+            if (isAborted) return;
+
+            if (error || !blob) {
+              console.error('[AttachmentPagesRenderer] Download error:', error);
+              loadErrors.push(`Failed to fetch ${att.filename}`);
+              continue;
+            }
+
+            // Convert blob to ArrayBuffer and cache it
+            arrayBuffer = await blob.arrayBuffer();
+            downloadCache.set(cacheKey, arrayBuffer);
+            console.log('[AttachmentPagesRenderer] Downloaded & cached:', att.filename, 'size:', arrayBuffer.byteLength);
+          } else {
+            console.log('[AttachmentPagesRenderer] Using cached:', att.filename);
           }
-
-          // Convert blob to ArrayBuffer
-          const arrayBuffer = await blob.arrayBuffer();
-          console.log('[AttachmentPagesRenderer] Downloaded:', att.filename, 'size:', arrayBuffer.byteLength);
 
           if (isAborted) return;
 
