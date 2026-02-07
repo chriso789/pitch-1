@@ -103,11 +103,15 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
          </div>
  
         {/* Title Section */}
-        <div className="text-center space-y-2 my-8">
-          <h2 className="text-5xl font-bold text-gray-900 tracking-tight">
-            {estimateName || 'ROOFING ESTIMATE'}
-          </h2>
-          <div className="w-24 h-1 bg-primary mx-auto mt-4" />
+        <div className="text-center my-8">
+          <div className="inline-block">
+            <h2 
+              className="text-5xl font-bold text-gray-900 tracking-tight leading-tight pb-3 border-b-4 border-primary"
+              style={{ borderColor: 'hsl(var(--primary))' }}
+            >
+              {estimateName || 'ROOFING ESTIMATE'}
+            </h2>
+          </div>
         </div>
  
          {/* Customer Info Section */}

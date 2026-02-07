@@ -1117,8 +1117,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       };
 
       // Prepare PDF data and show template for capture
+      // Use robust fallback for estimate name: user-set display name > template name > default
+      const pdfEstimateName = estimateDisplayName || selectedTemplate?.name || 'ROOFING ESTIMATE';
       setPdfData({
         estimateNumber,
+        estimateName: pdfEstimateName,
         customerName,
         customerAddress,
         customerPhone: contact?.phone,
@@ -1415,8 +1418,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       (async () => {
         try {
           // Prepare PDF data and show template for capture
+          // Use robust fallback for estimate name
+          const pdfEstimateName = estimateDisplayName || selectedTemplate?.name || 'ROOFING ESTIMATE';
           setPdfData({
             estimateNumber: estimateNumberToUpdate,
+            estimateName: pdfEstimateName,
             customerName: customerInfo?.name,
             customerAddress: customerInfo?.address,
             companyInfo,
@@ -1695,15 +1701,19 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error('No tenant found');
 
-      // Generate estimate number for export
+      // Use correct estimate number: real number when editing, draft otherwise
       const timestamp = Date.now().toString(36).slice(-4);
-      const estimateNumber = existingEstimateId 
-        ? `EST-EXPORT-${timestamp}`
+      const estimateNumber = editingEstimateNumber 
+        ? editingEstimateNumber
         : `EST-DRAFT-${timestamp}`;
+
+      // Use robust fallback for estimate name: user-set display name > template name > default
+      const pdfEstimateName = estimateDisplayName || selectedTemplate?.name || 'ROOFING ESTIMATE';
 
       // Set up PDF data with company info and options for the paged document
       setPdfData({
         estimateNumber,
+        estimateName: pdfEstimateName,
         customerName: customerInfo?.name || 'Customer',
         customerAddress: customerInfo?.address || '',
         customerPhone: customerInfo?.phone,
@@ -2099,6 +2109,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         >
           <EstimatePDFDocument
             estimateNumber={pdfData.estimateNumber}
+            estimateName={pdfData.estimateName}
             customerName={pdfData.customerName}
             customerAddress={pdfData.customerAddress}
             customerPhone={pdfData.customerPhone}
@@ -2121,7 +2132,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       <EstimatePreviewPanel
         open={showPreviewPanel}
         onOpenChange={setShowPreviewPanel}
-        estimateNumber={existingEstimateId ? `EST-${existingEstimateId.slice(0, 8)}` : `EST-DRAFT-${Date.now().toString(36).slice(-4)}`}
+        estimateNumber={editingEstimateNumber || `EST-DRAFT-${Date.now().toString(36).slice(-4)}`}
         estimateDisplayName={estimateDisplayName}
         customerName={customerInfo?.name || 'Customer'}
         customerAddress={customerInfo?.address || ''}
