@@ -97,13 +97,14 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
           const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
           console.log('[AttachmentPagesRenderer] PDF loaded:', att.filename, 'pages:', pdf.numPages);
 
-          // Render each page to a data URL
+          // Render each page to a data URL, passing document_id for cache isolation
           for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
             if (isAborted) {
               pdf.destroy();
               return;
             }
-            const rendered = await renderPageToDataUrl(pdf, pageNum, 2); // Scale 2 for crisp rendering
+            // Pass document_id as pdfId to ensure each PDF's pages are cached separately
+            const rendered = await renderPageToDataUrl(pdf, pageNum, 2, att.document_id);
             allPages.push({
               ...rendered,
               documentId: att.document_id,
