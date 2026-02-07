@@ -1,148 +1,122 @@
 
-# Plan: Make Contact Kanban Board Match Jobs Pipeline Sizing
+# Plan: Improve Estimate Attachment File Loading Reliability
 
-## Problem
+## Investigation Summary
 
-The Contact Kanban board has larger cards and columns compared to the Jobs Pipeline:
+After extensive code review and database analysis, I found that:
 
-| Element | Contact Board | Jobs Pipeline | Fix To |
-|---------|---------------|---------------|--------|
-| **Column width** | 280-320px | No explicit width | Remove explicit width |
-| **Column header padding** | p-3 | p-2 | p-2 |
-| **Icon size** | w-5 h-5 | w-4 h-4 | w-4 h-4 |
-| **Header text** | text-sm | text-[10px] | text-[10px] |
-| **Card padding** | p-3 | p-1.5 | p-1.5 |
-| **Card height** | Unconstrained | min-h-[80px] max-h-[100px] | Add constraints |
-| **Card text** | text-xs/text-sm | text-[8px]/text-[10px] | Match sizes |
-| **Drop zone padding** | p-2 | p-1.5 | p-1.5 |
+1. **Code logic is correct** - The document picker correctly fetches files from the `documents` table, and the selected document's `file_path` is correctly passed through to the `AttachmentPagesRenderer` for download.
 
-## Solution
+2. **Console logs confirm correct fetching**:
+   - `OBC Workmanship Warranty.pdf` → `company-docs/1770439998989-OBC Workmanship Warranty.pdf`
+   - Files are downloading successfully from the correct bucket (`smartdoc-assets`)
 
-Update both `ContactKanbanColumn.tsx` and `ContactKanbanCard.tsx` to use the same compact sizing as the Jobs Pipeline components.
+3. **Potential issues identified**:
+   - State isn't reset when attachments change (could show stale pages briefly)
+   - No abort controller for cancelled requests (could cause race conditions)
+   - The preview might show "Lifetime Workmanship Warranty Certificate" which IS the warranty document
 
----
+## Root Cause Analysis
 
-## File Changes
+| Possible Cause | Evidence |
+|----------------|----------|
+| Wrong file_path in database | ❌ Database shows correct mappings |
+| Wrong bucket resolution | ❌ Console shows `smartdoc-assets` (correct) |
+| Wrong file content in storage | ⚠️ Cannot verify directly, but possible |
+| React state/cache issue | ⚠️ Possible - no state reset on attachment change |
+| Browser cache | ⚠️ Possible - user might need hard refresh |
 
-### 1. `src/features/contacts/components/ContactKanbanColumn.tsx`
+## Solution: Improve Attachment Loading Reliability
 
-**Current (lines 34-35)**:
-```tsx
-<div className="space-y-2 min-w-[280px] max-w-[320px] flex-shrink-0">
+### Part 1: Reset State When Attachments Change
+
+Ensure pages are cleared immediately when attachments change to prevent stale data:
+
+**File**: `src/components/estimates/AttachmentPagesRenderer.tsx`
+
+```typescript
+useEffect(() => {
+  // Reset state immediately when attachments change
+  setPages([]);
+  setErrors([]);
+  setLoading(true);
+  
+  if (!attachments || attachments.length === 0) {
+    setLoading(false);
+    return;
+  }
+  
+  // ... rest of loading logic
+}, [attachments]);
 ```
 
-**Change to**:
-```tsx
-<div className="space-y-2">
+### Part 2: Add Abort Controller for Race Conditions
+
+Prevent race conditions when attachments change quickly:
+
+```typescript
+useEffect(() => {
+  const abortController = new AbortController();
+  
+  setPages([]);
+  setErrors([]);
+  setLoading(true);
+  
+  // ... loading with abort check
+  
+  return () => {
+    abortController.abort();
+  };
+}, [attachments]);
 ```
 
-**Current header (lines 37-53)**:
-- `p-3` padding
-- `w-5 h-5` icon
-- `text-sm` title
+### Part 3: Add Unique Key for Attachment Identification
 
-**Change to match Jobs Pipeline**:
-- `p-2` padding
-- `w-4 h-4` icon with `h-2.5 w-2.5` inner icon
-- `text-[10px]` title
-- Add count styling `text-[9px]`
+Add a stable key based on document_id for better debugging and rendering:
 
-**Current drop zone (lines 58-65)**:
-- `p-2` padding
-
-**Change to**:
-- `p-1.5` padding
-
----
-
-### 2. `src/features/contacts/components/ContactKanbanCard.tsx`
-
-**Current card (lines 74-77)**:
-```tsx
-<Card className={cn(
-  "p-3 cursor-grab active:cursor-grabbing shadow-soft hover:shadow-medium transition-all",
-  "border border-border/50 bg-card"
-)}>
+```typescript
+// When building pages, include document_id
+allPages.push({
+  ...rendered,
+  documentId: att.document_id, // Add this
+  attachmentFilename: att.filename,
+  pageNumber: pageNum,
+  totalPages: pdf.numPages,
+});
 ```
 
-**Change to match Jobs Pipeline**:
-```tsx
-<Card className={cn(
-  "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
-  "shadow-soft border-0 hover:shadow-medium transition-smooth",
-  "cursor-pointer relative group overflow-hidden bg-card",
-  isDragging && "shadow-2xl scale-105 border-2 border-primary"
-)}>
-  <CardContent className="p-1.5 h-full flex flex-col justify-between">
+### Part 4: Enhanced Logging for Debugging
+
+Add more detailed logging to help identify issues:
+
+```typescript
+console.log('[AttachmentPagesRenderer] Attachment data:', {
+  document_id: att.document_id,
+  filename: att.filename,
+  file_path: att.file_path,
+});
 ```
 
-**Text size changes**:
-- Contact number: `text-xs` → `text-[8px]`
-- Name: `text-sm` → `text-[10px]`
-- Contact info (phone/email/address): Keep hidden in compact mode
-- Lead score: `text-xs` → `text-[8px]`
-- Lead source badge: `text-[10px]` → hide or keep small
-- Action buttons: `h-7` → `h-5`, smaller icons
-
-**Simplify card content** to show only:
-- Row 1: Contact number + lead score badge
-- Row 2: Contact name (centered, truncated)
-- Row 3: View / Call / Email buttons (compact)
-
----
-
-## Visual Comparison
-
-```text
-BEFORE (Contact Board):
-┌──────────────────────────────────────┐
-│ Not Interested              10       │  ← Wide header
-├──────────────────────────────────────┤
-│ ┌────────────────────────────────┐   │
-│ │ 85                           0 │   │
-│ │ mes Miudo                      │   │  ← Large card
-│ │ 4013685969                     │   │
-│ │ michael@obriencontractingusa   │   │
-│ │ 4686 Nw 99th Ave, Sunrise, FL  │   │
-│ │ ┌────────┐                     │   │
-│ │ │csv imp │                     │   │
-│ │ └────────┘                     │   │
-│ │ View          📞   ✉️          │   │
-│ └────────────────────────────────┘   │
-└──────────────────────────────────────┘
-
-AFTER (Matches Jobs Pipeline):
-┌──────────────┐
-│ Not Interested│  ← Compact header
-│     10       │
-├──────────────┤
-│┌────────────┐│
-││ C085      0 ││
-││  mes Miudo  ││  ← Compact card (80-100px height)
-││ 👁️  📞  ✉️ ││
-│└────────────┘│
-│┌────────────┐│
-││ ...        ││
-│└────────────┘│
-└──────────────┘
-```
-
----
-
-## Implementation Summary
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `ContactKanbanColumn.tsx` | Remove explicit widths, use `p-2` header, `w-4 h-4` icon, `text-[10px]` title, `p-1.5` drop zone |
-| `ContactKanbanCard.tsx` | Add `min-h-[80px] max-h-[100px]`, use `p-1.5`, compact text sizes `text-[8px]`/`text-[10px]`, hide verbose contact details, compact action buttons |
+| `src/components/estimates/AttachmentPagesRenderer.tsx` | Reset state, add abort controller, improve logging |
 
----
-
-## Verification
+## Verification Steps
 
 After implementation:
-1. Navigate to Contacts → confirm Board view displays
-2. Compare column/card sizing to Jobs Pipeline page
-3. Verify drag-and-drop still works
-4. Check that contact name and key info is still readable
-5. Test on mobile to ensure horizontal scroll works
+1. Open an estimate with attachments
+2. Check console logs show correct document IDs and file paths
+3. Remove an attachment → verify it disappears immediately
+4. Add a different attachment → verify correct content shows
+5. Hard refresh the page and verify attachments load correctly
+
+## Additional Recommendation
+
+If the issue persists after these code changes, the problem is likely that the **actual PDF file in Supabase Storage** contains different content than expected. In that case:
+
+1. Go to **Supabase Dashboard → Storage → smartdoc-assets**
+2. Navigate to `company-docs/1770439998989-OBC Workmanship Warranty.pdf`
+3. Download the file and verify its content matches what you expect
+4. If wrong, re-upload the correct Workmanship Warranty PDF file
