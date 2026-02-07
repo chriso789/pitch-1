@@ -205,6 +205,8 @@ serve(async (req: Request) => {
       ? `${trackingLink.contacts.first_name} ${trackingLink.contacts.last_name}`
       : trackingLink.recipient_name || 'A customer';
 
+    const viewCount = (trackingLink.view_count || 0) + 1;
+
     await supabase
       .from("user_notifications")
       .insert({
@@ -223,13 +225,55 @@ serve(async (req: Request) => {
         }
       });
 
+    // Send SMS notification to rep on EVERY view
+    try {
+      const { data: repProfile } = await supabase
+        .from("profiles")
+        .select("phone, first_name")
+        .eq("id", trackingLink.sent_by)
+        .single();
+
+      if (repProfile?.phone) {
+        const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
+        const estimateNum = trackingLink.estimates?.estimate_number || 'your quote';
+        const locationText = geo.city ? ` From ${geo.city}` : '';
+        
+        const smsMessage = `🔔 ${contactName} ${viewText} quote #${estimateNum}!${locationText}`;
+
+        // Call telnyx-send-sms internally using service role
+        const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            to: repProfile.phone,
+            message: smsMessage,
+          })
+        });
+
+        if (smsResponse.ok) {
+          console.log(`SMS notification sent to rep ${repProfile.first_name} at ${repProfile.phone}`);
+        } else {
+          const smsError = await smsResponse.text();
+          console.error('Failed to send SMS notification:', smsError);
+        }
+      } else {
+        console.log('Rep has no phone number configured, skipping SMS notification');
+      }
+    } catch (smsError) {
+      // Don't fail the whole request if SMS fails
+      console.error('Error sending SMS notification:', smsError);
+    }
+
     console.log(`Quote viewed: ${trackingLink.id} by ${contactName} from ${geo.city || clientIp}`);
 
     return new Response(
       JSON.stringify({
         success: true,
         session_id: newSessionId,
-        view_count: (trackingLink.view_count || 0) + 1
+        view_count: viewCount
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
