@@ -14,8 +14,6 @@ import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { AutomationManager } from "@/components/AutomationManager";
-import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
-import { DynamicTagManager } from "@/components/DynamicTagManager";
 import { ApprovalManager } from "@/components/ApprovalManager";
 import * as LucideIcons from "lucide-react";
 import { MaterialCatalogManager } from "@/components/MaterialCatalogManager";
@@ -312,24 +310,7 @@ export const Settings = () => {
       case "reports":
         return <EnhancedErrorReportsManager />;
       case "automations":
-        return (
-          <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-            <TabsList>
-              <TabsTrigger value="automations">Automations</TabsTrigger>
-              <TabsTrigger value="templates">Smart Documents</TabsTrigger>
-              <TabsTrigger value="tags">Dynamic Tags</TabsTrigger>
-            </TabsList>
-            <TabsContent value="automations">
-              <AutomationManager />
-            </TabsContent>
-            <TabsContent value="templates">
-              <SmartDocumentEditor />
-            </TabsContent>
-            <TabsContent value="tags">
-              <DynamicTagManager />
-            </TabsContent>
-          </Tabs>
-        );
+        return <AutomationManager />;
       case "health":
         return <SystemHealthCheck />;
       case "developer":
