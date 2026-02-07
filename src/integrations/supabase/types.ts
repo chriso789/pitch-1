@@ -25805,7 +25805,7 @@ export type Database = {
             foreignKeyName: "quote_tracking_links_estimate_id_fkey"
             columns: ["estimate_id"]
             isOneToOne: false
-            referencedRelation: "estimates"
+            referencedRelation: "enhanced_estimates"
             referencedColumns: ["id"]
           },
           {
