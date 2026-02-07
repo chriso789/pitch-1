@@ -471,6 +471,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         setFixedPrice(estimate.fixed_selling_price);
       }
 
+      // Load display name and pricing tier from the estimate
+      if (estimate.display_name) {
+        setEstimateDisplayName(estimate.display_name);
+      }
+      if (estimate.pricing_tier) {
+        setEstimatePricingTier(estimate.pricing_tier);
+      }
+
       toast({
         title: 'Estimate Loaded',
         description: `${estimate.estimate_number} is ready for editing`
