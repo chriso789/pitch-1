@@ -47,7 +47,9 @@ import {
   MessageSquare,
   Plus,
   CheckCircle2,
-  Upload
+  Upload,
+  LayoutGrid,
+  List
 } from "lucide-react";
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { FloatingChatWidget } from "@/components/messaging/FloatingChatWidget";
@@ -66,7 +68,10 @@ import EnhancedLeadCreationDialog from "@/components/EnhancedLeadCreationDialog"
 import PermanentDeleteDialog from "@/components/PermanentDeleteDialog";
 import TaskAssignmentDialog from "@/components/TaskAssignmentDialog";
 import { ContactBulkImport } from "./ContactBulkImport";
+import { ContactKanbanBoard } from "./ContactKanbanBoard";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
+
+type DisplayMode = 'table' | 'kanban';
 
 interface Contact {
   id: string;
@@ -171,6 +176,9 @@ export const EnhancedClientList = () => {
   
   // Import dialog state
   const [showImportDialog, setShowImportDialog] = useState(false);
+  
+  // Display mode state (table vs kanban) - only for contacts view
+  const [displayMode, setDisplayMode] = useState<DisplayMode>('table');
 
   // Refetch data when location changes
   useEffect(() => {
@@ -1082,6 +1090,28 @@ export const EnhancedClientList = () => {
                   </SelectItem>
                 </SelectContent>
               </Select>
+              
+              {/* Display Mode Toggle - Only for Contacts */}
+              {activeView === 'contacts' && (
+                <div className="flex items-center border rounded-md">
+                  <Button
+                    variant={displayMode === 'table' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="rounded-r-none"
+                    onClick={() => setDisplayMode('table')}
+                  >
+                    <List className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={displayMode === 'kanban' ? 'secondary' : 'ghost'}
+                    size="sm"
+                    className="rounded-l-none"
+                    onClick={() => setDisplayMode('kanban')}
+                  >
+                    <LayoutGrid className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Search */}
@@ -1246,7 +1276,32 @@ export const EnhancedClientList = () => {
         </CardContent>
       </Card>
 
-      {/* Main Data Table */}
+      {/* Kanban View for Contacts */}
+      {activeView === 'contacts' && displayMode === 'kanban' && (
+        <Card className="shadow-medium">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Contacts by Status ({contacts.length})
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ContactKanbanBoard
+              contacts={contacts}
+              onContactUpdated={fetchData}
+              onCall={(contact) => navigate(`/?section=dialer&contact=${contact.id}`)}
+              onEmail={(contact) => setActiveEmailContact({
+                id: contact.id,
+                name: `${contact.first_name} ${contact.last_name}`,
+                email: contact.email || ''
+              })}
+            />
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Main Data Table - Show when table mode or jobs view */}
+      {(activeView === 'jobs' || displayMode === 'table') && (
       <Card className="shadow-medium">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -1568,6 +1623,7 @@ export const EnhancedClientList = () => {
           )}
         </CardContent>
       </Card>
+      )}
 
       <PermanentDeleteDialog
         open={deleteDialog.open}
