@@ -3,9 +3,8 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { FileText, Download, Phone, Mail, CheckCircle, Loader2, ExternalLink } from "lucide-react";
+import { FileText, Download, Phone, Mail, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { MobilePDFViewer } from "@/components/ui/MobilePDFViewer";
-import { isMobileDevice } from "@/utils/mobileDetection";
 
 interface QuoteData {
   estimate_number: string;
@@ -188,8 +187,21 @@ export default function ViewQuote() {
               </div>
             ) : (
               <div className="bg-muted rounded-lg p-12 text-center mb-6">
-                <FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground">Quote document will be displayed here.</p>
+                <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Document Unavailable</h3>
+                <p className="text-muted-foreground mb-4">
+                  We couldn't load the quote document at this time. Please contact us for assistance.
+                </p>
+                <div className="flex justify-center gap-3">
+                  <Button variant="outline" size="sm">
+                    <Phone className="w-4 h-4 mr-2" />
+                    Call Us
+                  </Button>
+                  <Button variant="outline" size="sm">
+                    <Mail className="w-4 h-4 mr-2" />
+                    Email Us
+                  </Button>
+                </div>
               </div>
             )}
 
