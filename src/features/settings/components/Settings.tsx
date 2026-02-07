@@ -57,6 +57,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
 import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
+import { PipelineStageManager } from "@/components/settings/PipelineStageManager";
 
 interface SettingsTab {
   id: string;
@@ -234,14 +235,18 @@ export const Settings = () => {
       case "general":
         return (
           <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-            <TabsList>
+            <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="settings">General Settings</TabsTrigger>
+              <TabsTrigger value="pipeline-stages">Pipeline Stages</TabsTrigger>
               <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
               <TabsTrigger value="approval-requirements">Approval Requirements</TabsTrigger>
               <TabsTrigger value="estimate-pdf">Estimate PDF</TabsTrigger>
             </TabsList>
             <TabsContent value="settings">
               <GeneralSettings />
+            </TabsContent>
+            <TabsContent value="pipeline-stages">
+              <PipelineStageManager />
             </TabsContent>
             <TabsContent value="lead-sources">
               <LeadSources />
