@@ -1,40 +1,67 @@
 
-# Fix Quote Email Link to Use Correct App URL
-
-## The Problem
-When you send a quote email, the "View Your Quote" button links to the wrong domain (`alxelfrbjzkmtnsulcei.lovable.app`) instead of your actual app (`pitch-1.lovable.app`). The current link shows a Lovable placeholder page because it's pointing to the Supabase project's preview domain.
+# Fix: Cover Page Shows "ROOFING ESTIMATE" Instead of Actual Estimate Name
 
 ## Root Cause
-The edge function is incorrectly building the quote URL by trying to convert the Supabase database URL:
-```javascript
-// Current (WRONG):
-const viewQuoteUrl = `${supabaseUrl.replace('.supabase.co', '.lovable.app')}/view-quote/${trackingToken}`;
-// This produces: https://alxelfrbjzkmtnsulcei.lovable.app/view-quote/...
+
+When you edit a saved estimate like "5V Mill Finish", the system loads the estimate data but **never populates the `estimateDisplayName` state variable** from the database field. 
+
+The PDF export uses this fallback chain:
+```typescript
+const pdfEstimateName = estimateDisplayName || selectedTemplate?.name || 'ROOFING ESTIMATE';
 ```
+
+Since `estimateDisplayName` is empty (cleared on line 388 but never repopulated), it falls through to the template name or ultimately "ROOFING ESTIMATE".
+
+---
+
+## What's Happening Step-by-Step
+
+1. You click "Edit" on the saved estimate "5V Mill Finish"
+2. The code at line 388 **clears** `estimateDisplayName` to an empty string
+3. `loadEstimateForEditing()` fetches the estimate from the database (which has `display_name: "5V Mill Finish"`)
+4. The function sets template ID, line items, pricing config... but **never** calls `setEstimateDisplayName(estimate.display_name)`
+5. When you export PDF, `estimateDisplayName` is still empty → falls back to "ROOFING ESTIMATE"
+
+---
 
 ## The Fix
-Use the `APP_URL` environment variable (already configured in your secrets) to build the link correctly:
-```javascript
-// Fixed:
-const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
-const viewQuoteUrl = `${appUrl}/view-quote/${trackingToken}`;
-// This produces: https://pitch-1.lovable.app/view-quote/...
+
+Update `loadEstimateForEditing()` in `MultiTemplateSelector.tsx` to populate the display name and pricing tier from the loaded estimate.
+
+### File: `src/components/estimates/MultiTemplateSelector.tsx`
+
+**Location:** Inside `loadEstimateForEditing()` function, after loading line items (around line 460)
+
+**Add these lines:**
+```typescript
+// Load display name and pricing tier from the estimate
+if (estimate.display_name) {
+  setEstimateDisplayName(estimate.display_name);
+}
+if (estimate.pricing_tier) {
+  setEstimatePricingTier(estimate.pricing_tier);
+}
 ```
 
-## What Will Change
+This ensures that when editing an existing estimate:
+- The display name input field shows the saved name
+- The PDF cover page uses the correct estimate name
+- The pricing tier badge displays correctly
 
-### File: `supabase/functions/send-quote-email/index.ts`
-1. Add `APP_URL` environment variable with fallback to published domain
-2. Replace the broken URL construction with the correct pattern
-3. The email will now link to `https://pitch-1.lovable.app/view-quote/{token}`
+---
 
-## After the Fix
-- The "View Your Quote" button will open your actual app
-- The quote viewing page will load correctly with the quote data
-- View tracking and SMS notifications will work as expected
+## Summary
 
-## Testing
-After the fix is deployed:
-1. Send a new quote email
-2. Open the email and click "View Your Quote"
-3. Verify it opens `pitch-1.lovable.app/view-quote/...` and displays the quote
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Cover page shows "ROOFING ESTIMATE" | `estimateDisplayName` not loaded from database | Add `setEstimateDisplayName(estimate.display_name)` in `loadEstimateForEditing()` |
+| Pricing tier not shown when editing | `estimatePricingTier` not loaded from database | Add `setEstimatePricingTier(estimate.pricing_tier)` in `loadEstimateForEditing()` |
+
+---
+
+## Testing After Fix
+
+1. Open an existing estimate (like "5V Mill Finish") for editing
+2. Verify the "Estimate Display Name" input field shows "5V Mill Finish"
+3. Export the PDF
+4. Verify the cover page title shows "5V Mill Finish" instead of "ROOFING ESTIMATE"
