@@ -1142,11 +1142,33 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         config,
         finePrintContent,
         options: pdfOptions,
+        templateAttachments,
       });
       setShowPDFTemplate(true);
 
-      // Wait for render (increased delay for reliable capture)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Wait for attachments to fully render before capturing
+      const maxWaitMs = 15000;
+      const pollIntervalMs = 200;
+      let waited = 0;
+
+      while (waited < maxWaitMs) {
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        waited += pollIntervalMs;
+        
+        const container = document.getElementById('estimate-pdf-pages');
+        if (!container) continue;
+        
+        const loadingIndicators = container.querySelectorAll('.animate-spin');
+        const pageCount = container.querySelectorAll('[data-report-page]').length;
+        
+        if (loadingIndicators.length === 0 && pageCount > 0) {
+          console.log(`[PDF] Attachments ready after ${waited}ms, ${pageCount} pages found`);
+          break;
+        }
+      }
+
+      // Final delay for render stability
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Generate PDF using multi-page generator with correct element ID
       toast({ title: 'Generating PDF...', description: 'Please wait while we create your estimate document.' });
@@ -1441,11 +1463,33 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             config,
             finePrintContent,
             options: pdfOptions,
+            templateAttachments,
           });
           setShowPDFTemplate(true);
 
-          // Wait for render
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Wait for attachments to fully render before capturing
+          const maxWaitMs = 15000;
+          const pollIntervalMs = 200;
+          let waited = 0;
+
+          while (waited < maxWaitMs) {
+            await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+            waited += pollIntervalMs;
+            
+            const container = document.getElementById('estimate-pdf-pages');
+            if (!container) continue;
+            
+            const loadingIndicators = container.querySelectorAll('.animate-spin');
+            const pageCount = container.querySelectorAll('[data-report-page]').length;
+            
+            if (loadingIndicators.length === 0 && pageCount > 0) {
+              console.log(`[PDF Background] Attachments ready after ${waited}ms, ${pageCount} pages found`);
+              break;
+            }
+          }
+
+          // Final delay for render stability
+          await new Promise(resolve => setTimeout(resolve, 300));
 
           // Generate PDF
           let pdfBlob: Blob | null = null;
@@ -1735,11 +1779,33 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         finePrintContent: options.showCustomFinePrint ? finePrintContent : undefined,
         options,
         measurementSummary,
+        templateAttachments,
       });
       setShowPDFTemplate(true);
 
-      // Wait for render of all pages
-      await new Promise(resolve => setTimeout(resolve, 800));
+      // Wait for attachments to fully render before capturing
+      const maxWaitMs = 15000;
+      const pollIntervalMs = 200;
+      let waited = 0;
+
+      while (waited < maxWaitMs) {
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        waited += pollIntervalMs;
+        
+        const container = document.getElementById('estimate-pdf-pages');
+        if (!container) continue;
+        
+        const loadingIndicators = container.querySelectorAll('.animate-spin');
+        const pageCount = container.querySelectorAll('[data-report-page]').length;
+        
+        if (loadingIndicators.length === 0 && pageCount > 0) {
+          console.log(`[PDF Export] Attachments ready after ${waited}ms, ${pageCount} pages found`);
+          break;
+        }
+      }
+
+      // Final delay for render stability
+      await new Promise(resolve => setTimeout(resolve, 300));
 
       // Use multi-page PDF generation for proper pagination
       const result = await downloadMultiPagePDF('estimate-pdf-pages', 1, {
@@ -2131,6 +2197,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             finePrintContent={pdfData.finePrintContent}
             options={pdfData.options}
             measurementSummary={pdfData.measurementSummary}
+            templateAttachments={pdfData.templateAttachments}
           />
         </div>
       )}
