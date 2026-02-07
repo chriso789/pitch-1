@@ -112,7 +112,7 @@ serve(async (req: Request) => {
     if (body.estimate_id) {
       const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pdf_url")
         .eq("id", body.estimate_id)
         .single();
       
@@ -129,7 +129,7 @@ serve(async (req: Request) => {
     if (!estimate && body.pipeline_entry_id) {
       const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id")
+        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pdf_url")
         .eq("pipeline_entry_id", body.pipeline_entry_id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -235,7 +235,7 @@ serve(async (req: Request) => {
         estimate_id: estimate.id,
         contact_id: body.contact_id,
         pipeline_entry_id: estimate.pipeline_entry_id,
-        pdf_url: body.pdf_url,
+        pdf_url: body.pdf_url || estimate.pdf_url,
         recipient_email: body.recipient_email,
         recipient_name: body.recipient_name,
         sent_by: user.id,
@@ -309,12 +309,6 @@ serve(async (req: Request) => {
                         <td style="color: #6b7280; font-size: 14px;">Quote Number</td>
                         <td style="text-align: right; color: #111827; font-weight: 600; font-size: 14px;">${estimate.estimate_number}</td>
                       </tr>
-                      ${estimate.selling_price ? `
-                      <tr>
-                        <td style="color: #6b7280; font-size: 14px; padding-top: 12px;">Total Amount</td>
-                        <td style="text-align: right; color: ${primaryColor}; font-weight: 700; font-size: 20px; padding-top: 12px;">$${Number(estimate.selling_price).toLocaleString()}</td>
-                      </tr>
-                      ` : ''}
                     </table>
                   </td>
                 </tr>
