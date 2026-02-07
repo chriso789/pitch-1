@@ -1,118 +1,137 @@
 
-## Goals
-1. Add/update the **Master** user’s phone number to **7708420812** (stored in a usable format for Telnyx, ideally E.164).
-2. Fix **public quote/estimate sharing** so opening `/view-quote/:token` reliably shows the PDF instead of the Storage `{"statusCode":404,"error":"not_found","message":"Object not found"}` response.
+# Implementation: Fix Share Link PDF + Add Master Phone Number
 
-## What’s happening (root causes)
-### A) Phone number
-- `track-quote-view` only sends SMS notifications if `profiles.phone` is present.
-- Your Settings UI currently doesn’t expose a clear “My phone number” field, so Master’s `profiles.phone` stays null.
-
-### B) Share link PDF failing
-- Estimate PDFs are uploaded to **Supabase Storage bucket `documents`** using paths like:
-  `"{pipelineEntryId}/estimates/{estimateNumber}.pdf"` (see `saveEstimatePdf`).
-- That bucket is **private** (`public = false` in migrations), so building a **public URL** and embedding it in `<object data="...">` returns **404 Object not found** even when the file exists.
-- The edge function `track-quote-view` currently does:
-  - `getPublicUrl(storagePath)` for estimate PDFs, which is not valid for a private bucket.
-- Result: the quote page loads the “shell” (company + pricing) but the PDF viewer renders the Storage 404 JSON.
-
-## Implementation plan (code changes)
-### 1) Add “My Profile” phone editor (so Master can set 7708420812)
-**Where**
-- `src/components/settings/GeneralSettings.tsx` (add a new “Your Profile” card near the top)
-
-**What**
-- Load the current user’s profile (at minimum: `id, first_name, last_name, email, phone`).
-- Add an input for phone number and a “Save” button.
-- On save:
-  - Normalize the phone (simple sanitizer: remove non-digits; if 10 digits → `+1${digits}`; if already starts with `+` keep; otherwise validate and show error).
-  - `supabase.from('profiles').update({ phone: normalized }).eq('id', user.id)`
-  - Show toast success/error.
-  - Trigger a profile refresh (use `useCurrentUser().refetch()` or invalidate whatever query/context backs `useUserProfile`).
-
-**Why this solves it**
-- Master can immediately set `7708420812` (stored as `+17708420812`), and all quote view SMS notifications will start sending.
-
-**Acceptance checks**
-- After saving, the UI shows the stored phone.
-- Trigger a quote view → `track-quote-view` logs “SMS notification sent …” (and you receive the SMS).
+## Summary
+Two issues need to be fixed:
+1. **Master user has no phone** → SMS notifications for quote views aren't being sent
+2. **PDF 404 error on share links** → Using `getPublicUrl()` on a private storage bucket fails
 
 ---
 
-### 2) Fix `/view-quote/:token` PDF URL generation for private Storage
-**Where**
-- `supabase/functions/track-quote-view/index.ts`
+## Changes to Implement
 
-**What**
-- Replace the `getPublicUrl()` logic with **signed URL generation** for Storage paths in private buckets.
-- Implement a small helper inside the function:
+### 1. Update Master's Phone Number (Database)
+**Direct database update:**
+```sql
+UPDATE profiles 
+SET phone = '+17708420812' 
+WHERE id = '0a56229d-1722-4ea0-90ec-c42fdac6fcc9';
+```
 
-  - If `pdf_url` value is:
-    - `null` → return `null`
-    - starts with `http://` or `https://` → treat as already usable URL and return as-is
-    - otherwise treat as a Storage path and call:
-      - `supabase.storage.from('documents').createSignedUrl(path, 60 * 60)` (1 hour)
-      - if that errors, log and return `null` (and optionally include a friendly error string)
-
-- Apply this helper to:
-  1) `trackingLink.pdf_url` (if present)
-  2) fallback `trackingLink.enhanced_estimates.pdf_url` (which is actually a Storage path in your system)
-
-**Why this solves it**
-- The public quote page will always receive a **real, accessible URL** for the PDF even though the bucket is private.
-
-**Acceptance checks**
-- Open a sent link in an incognito window:
-  - PDF renders inside the viewer (no 404 JSON)
-  - Download button works
-- Edge logs show signed-url creation success (no storage errors)
+This enables SMS notifications when quotes are viewed.
 
 ---
 
-### 3) Make the ViewQuote page resilient if PDF is missing/unavailable
-**Where**
-- `src/pages/ViewQuote.tsx`
+### 2. Fix PDF URL Generation (Edge Function)
+**File:** `supabase/functions/track-quote-view/index.ts`
 
-**What**
-- If `quote.pdf_url` is null/empty (or the viewer errors), show a clear fallback panel:
-  - “We couldn’t load the document. Please contact us.”
-  - Optionally show a “Open in new tab” button only when URL exists.
+**Problem:** Line 141-143 uses `getPublicUrl()` which doesn't work for private buckets.
 
-**Why**
-- Prevents a confusing “PDF box with raw JSON error” experience.
+**Solution:** Replace with `createSignedUrl()` that generates temporary access URLs.
 
-**Acceptance checks**
-- If Storage path is wrong/missing, the page shows a friendly error block rather than a broken embedded object.
+**Change (lines 126-165):**
+- Add a helper function `resolvePdfUrl()` that:
+  - Returns `null` if input is empty
+  - Returns the URL unchanged if it already starts with `http://` or `https://`
+  - Creates a 6-hour signed URL if it's a storage path
+- Apply this helper to both `trackingLink.pdf_url` and the fallback `enhanced_estimates.pdf_url`
+
+```typescript
+// Helper to resolve PDF URL - handles private bucket with signed URLs
+async function resolvePdfUrl(pdfValue: string | null | undefined): Promise<string | null> {
+  if (!pdfValue) return null;
+  
+  // If it's already a full URL, return as-is
+  if (pdfValue.startsWith('http://') || pdfValue.startsWith('https://')) {
+    return pdfValue;
+  }
+  
+  // Otherwise, treat as a storage path and create a signed URL
+  try {
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('documents')
+      .createSignedUrl(pdfValue, 60 * 60 * 6); // 6 hours expiry
+    
+    if (signedError) {
+      console.error("[track-quote-view] Failed to create signed URL:", signedError);
+      return null;
+    }
+    
+    console.log("[track-quote-view] Created signed URL for path:", pdfValue);
+    return signedData?.signedUrl || null;
+  } catch (err) {
+    console.error("[track-quote-view] Error creating signed URL:", err);
+    return null;
+  }
+}
+
+// Use the helper for both possible PDF sources
+let pdfUrl = await resolvePdfUrl(trackingLink.pdf_url);
+if (!pdfUrl && trackingLink.enhanced_estimates?.pdf_url) {
+  pdfUrl = await resolvePdfUrl(trackingLink.enhanced_estimates.pdf_url);
+}
+```
 
 ---
 
-## Data update for Master (7708420812)
-After the profile phone editor is added:
-- Go to **Settings → General → Your Profile**
-- Enter `7708420812`
-- Save → it will store as `+17708420812` for best Telnyx compatibility.
+### 3. Improve ViewQuote Page Resilience
+**File:** `src/pages/ViewQuote.tsx`
 
-(If you prefer, we can also add a small “Format as US (+1)” hint in the UI.)
+**Changes:**
+- Remove unused `isMobileDevice` import
+- Add `AlertCircle` icon import
+- When no PDF URL is available, show a user-friendly message with contact options instead of a generic placeholder
+
+**Before:**
+```tsx
+<FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+<p className="text-muted-foreground">Quote document will be displayed here.</p>
+```
+
+**After:**
+```tsx
+<AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+<h3 className="text-lg font-semibold mb-2">Document Unavailable</h3>
+<p className="text-muted-foreground mb-4">
+  We couldn't load the quote document at this time. Please contact us for assistance.
+</p>
+<div className="flex justify-center gap-3">
+  <Button variant="outline" size="sm">
+    <Phone className="w-4 h-4 mr-2" />
+    Call Us
+  </Button>
+  <Button variant="outline" size="sm">
+    <Mail className="w-4 h-4 mr-2" />
+    Email Us
+  </Button>
+</div>
+```
 
 ---
 
-## Testing plan (end-to-end)
-1. In-app: set phone to `7708420812` → confirm saved.
-2. Send a quote email (creates tracking link).
-3. Open the link externally/incognito:
-   - PDF loads
-   - Download works
-4. Open the same link again:
-   - `view_count` increments
-   - SMS notification is received on the Master number
+## Files Changed
+
+| File | Change |
+|------|--------|
+| Database | Set Master's phone to `+17708420812` |
+| `supabase/functions/track-quote-view/index.ts` | Replace `getPublicUrl()` with `createSignedUrl()` |
+| `src/pages/ViewQuote.tsx` | Better fallback UI when PDF unavailable |
 
 ---
 
-## Files to change
-- `src/components/settings/GeneralSettings.tsx` (add profile phone UI + save)
-- `supabase/functions/track-quote-view/index.ts` (signed URL generation for private bucket)
-- `src/pages/ViewQuote.tsx` (fallback UI for missing/unavailable PDFs)
+## Expected Results After Implementation
 
-## Notes / risks
-- Signed URLs expiring after 1 hour is fine because `ViewQuote` fetches a fresh one on page load. If you want long viewing sessions, we can raise TTL to e.g. 6 hours.
-- This approach keeps `documents` bucket private (good security) while still enabling controlled external access via signed URLs.
+1. **SMS notifications work** - When someone views a quote, Master receives an SMS at 770-842-0812
+2. **PDFs load correctly** - Share links now show the PDF document (signed URLs valid for 6 hours)
+3. **Better error handling** - If PDF is unavailable, customers see a helpful message with contact options
+
+---
+
+## Testing Plan
+
+1. Verify Master's phone is set in database
+2. Send a new quote email (creates tracking link)
+3. Open the link in incognito:
+   - PDF should load and display
+   - Download button should work
+4. Check SMS received at 770-842-0812 with view notification
