@@ -1,188 +1,190 @@
 
+# Plan: Add Share Button with Tracked Email and SMS Notifications
 
-# Plan: Display Estimate Name on Cover Page
+## Overview
 
-## Problem
+Add a "Share" button to the Estimate Preview Panel that sends a trackable email to the customer. When the customer opens and views the estimate, the sales rep receives an SMS text notification to their phone - both on initial open AND every subsequent reopen.
 
-The estimate cover page currently shows:
-```
-PROFESSIONAL
-ROOFING ESTIMATE
-```
+---
 
-The user wants:
-1. Remove the "PROFESSIONAL" label above the title
-2. Replace "ROOFING ESTIMATE" with the actual estimate name/type (e.g., "Owens Corning Duration", "Standing Seam Painted")
-
-## Current Data Flow
+## Architecture
 
 ```text
-┌─────────────────────────────────────┐
-│ MultiTemplateSelector               │
-│ └── estimateDisplayName ────────────┼───┐
-│     (user-editable input field)     │   │
-└─────────────────────────────────────┘   │
-                                          ▼
-┌─────────────────────────────────────┐
-│ EstimatePreviewPanel                │
-│ └── estimateDisplayName             │
-│     ├── used for PDF filename ✓     │
-│     └── NOT passed to PDF document ✗│
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│ EstimatePDFDocument                 │
-│ └── NO estimate name prop exists    │
-└─────────────────────────────────────┘
-                  │
-                  ▼
-┌─────────────────────────────────────┐
-│ EstimateCoverPage                   │
-│ └── Shows hardcoded "ROOFING        │
-│     ESTIMATE" text                  │
-└─────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           SHARE ESTIMATE FLOW                                   │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+  [Rep clicks "Share"]           [Customer opens link]          [Rep gets SMS]
+         │                              │                              │
+         ▼                              ▼                              ▼
+┌─────────────────┐            ┌─────────────────┐            ┌─────────────────┐
+│ ShareEstimate   │            │ /view-quote/:id │            │ telnyx-send-sms │
+│ Dialog          │            │ Public page     │            │ (to rep's phone)│
+│                 │            │                 │            │                 │
+│ • Recipient     │   EMAIL    │ • Tracks view   │   TRIGGER  │ • Instant alert │
+│   email/name    │ ─────────► │ • Records event │ ─────────► │ • Every view    │
+│ • Custom msg    │            │ • Logs duration │            │ • View count    │
+└─────────────────┘            └─────────────────┘            └─────────────────┘
+         │                              │
+         ▼                              ▼
+┌─────────────────┐            ┌─────────────────┐
+│ send-quote-email│            │ track-quote-view│
+│                 │            │ (enhanced)      │
+│ • Creates       │            │                 │
+│   tracking_link │            │ + SMS to rep    │
+│ • Sends Resend  │            │ + Rep phone     │
+│   email         │            │   lookup        │
+└─────────────────┘            └─────────────────┘
 ```
-
-## Solution
-
-Pass the estimate name through the component chain and display it on the cover page.
 
 ---
 
 ## Technical Implementation
 
-### 1. Update EstimateCoverPage Props
+### 1. Create ShareEstimateDialog Component
 
-**File:** `src/components/estimates/EstimateCoverPage.tsx`
+**New File:** `src/components/estimates/ShareEstimateDialog.tsx`
 
-Add new optional prop `estimateName` to the interface and use it in the title section:
+A dialog that collects:
+- Recipient email (pre-filled from contact if available)
+- Recipient name (pre-filled from contact)
+- Custom email message (optional)
+- Email subject (optional, with smart default)
 
-```typescript
-interface EstimateCoverPageProps {
-  // ... existing props
-  estimateName?: string;  // NEW: e.g., "Owens Corning Duration"
-}
-```
+On submit, invokes `send-quote-email` edge function which:
+- Creates a tracking link in `quote_tracking_links`
+- Sends a branded email via Resend with "View Your Quote" button
+- Logs to `communication_history`
 
-Update the title section (lines 103-110):
-
-**Before:**
-```tsx
-{/* Title Section */}
-<div className="text-center space-y-2 my-8">
-  <p className="text-sm uppercase tracking-widest text-gray-500">Professional</p>
-  <h2 className="text-5xl font-bold text-gray-900 tracking-tight">
-    ROOFING ESTIMATE
-  </h2>
-  <div className="w-24 h-1 bg-primary mx-auto mt-4" />
-</div>
-```
-
-**After:**
-```tsx
-{/* Title Section */}
-<div className="text-center space-y-2 my-8">
-  <h2 className="text-5xl font-bold text-gray-900 tracking-tight">
-    {estimateName || 'ROOFING ESTIMATE'}
-  </h2>
-  <div className="w-24 h-1 bg-primary mx-auto mt-4" />
-</div>
-```
-
-### 2. Update EstimatePDFDocument Props
-
-**File:** `src/components/estimates/EstimatePDFDocument.tsx`
-
-Add `estimateName` to the props interface and pass it to EstimateCoverPage.
-
-**Interface update (around line 79):**
-```typescript
-interface EstimatePDFDocumentProps {
-  // ... existing props
-  estimateName?: string;  // NEW
-}
-```
-
-**Pass to EstimateCoverPage (around line 409):**
-```tsx
-<EstimateCoverPage
-  key="cover-page"
-  companyInfo={companyInfo}
-  companyLogo={companyLogo}
-  companyName={companyName}
-  customerName={customerName}
-  customerAddress={customerAddress}
-  estimateNumber={estimateNumber}
-  createdAt={createdAt}
-  propertyPhoto={opts.coverPagePropertyPhoto}
-  estimateName={estimateName}  // NEW
-/>
-```
-
-### 3. Update EstimatePreviewPanel
+### 2. Add Share Button to EstimatePreviewPanel
 
 **File:** `src/components/estimates/EstimatePreviewPanel.tsx`
 
-Pass `estimateDisplayName` to `EstimatePDFDocument`:
+Add to the Bottom Actions section (alongside Export PDF):
+- Share icon button that opens the ShareEstimateDialog
+- Pass required props: estimateId, contactId, customerEmail, customerName
 
-**Around line 576-594:**
-```tsx
-<EstimatePDFDocument
-  estimateNumber={estimateNumber}
-  estimateName={estimateDisplayName}  // NEW
-  customerName={customerName}
-  // ... rest of props
-/>
+**UI Change:**
 ```
+┌────────────────────────────────────┐
+│ [Reset Defaults]                   │
+│ [Share]  [Export PDF]              │  ← Two buttons side by side
+└────────────────────────────────────┘
+```
+
+### 3. Update EstimatePreviewPanel Props
+
+Need to add these props to enable sharing:
+- `estimateId: string` - The database estimate ID
+- `contactId?: string` - The associated contact ID
+- `pipelineEntryId?: string` - For logging
+
+### 4. Enhance track-quote-view Edge Function for SMS
+
+**File:** `supabase/functions/track-quote-view/index.ts`
+
+Add SMS notification logic after creating the view event:
+
+```typescript
+// Get rep's phone number
+const { data: repProfile } = await supabase
+  .from("profiles")
+  .select("phone, first_name")
+  .eq("id", trackingLink.sent_by)
+  .single();
+
+// Send SMS notification if rep has phone
+if (repProfile?.phone) {
+  const viewCount = (trackingLink.view_count || 0) + 1;
+  const viewText = viewCount === 1 ? "just opened" : `viewed again (${viewCount}x)`;
+  
+  const smsMessage = `🔔 ${contactName} ${viewText} your quote #${estimate_number}!${geo.city ? ` From ${geo.city}` : ''}`;
+  
+  // Call telnyx-send-sms internally
+  await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${supabaseServiceKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      to: repProfile.phone,
+      message: smsMessage,
+      // Use service account context for internal calls
+    })
+  });
+}
+```
+
+**Key Feature:** SMS sent on EVERY view (not just first), with view count included.
 
 ---
 
-## Visual Result
+## Database Requirements
 
-**Before:**
-```
-┌────────────────────────────────────────────────┐
-│                  O'BRIEN LOGO                  │
-│                                                │
-│                 PROFESSIONAL                   │
-│             ROOFING ESTIMATE                   │
-│               ────────────                     │
-│                                                │
-│                 PREPARED FOR                   │
-│               Nicole Walker                    │
-└────────────────────────────────────────────────┘
-```
-
-**After:**
-```
-┌────────────────────────────────────────────────┐
-│                  O'BRIEN LOGO                  │
-│                                                │
-│          Owens Corning Duration                │
-│               ────────────                     │
-│                                                │
-│                 PREPARED FOR                   │
-│               Nicole Walker                    │
-└────────────────────────────────────────────────┘
-```
-
-If no estimate name is set, falls back to "ROOFING ESTIMATE".
+No new tables needed - uses existing:
+- `quote_tracking_links` - Stores tracking tokens and view counts
+- `quote_view_events` - Records each view with device/location info
+- `communication_history` - Logs outbound emails
+- `user_notifications` - In-app notifications (existing behavior)
 
 ---
+
+## Files to Create
+
+| File | Purpose |
+|------|---------|
+| `src/components/estimates/ShareEstimateDialog.tsx` | Share dialog with email form |
 
 ## Files to Modify
 
-| File | Change |
-|------|--------|
-| `src/components/estimates/EstimateCoverPage.tsx` | Add `estimateName` prop, remove "Professional" label, use prop for title |
-| `src/components/estimates/EstimatePDFDocument.tsx` | Add `estimateName` prop, pass to EstimateCoverPage |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Pass `estimateDisplayName` to EstimatePDFDocument |
+| File | Changes |
+|------|---------|
+| `src/components/estimates/EstimatePreviewPanel.tsx` | Add Share button, import dialog, add props |
+| `supabase/functions/track-quote-view/index.ts` | Add SMS notification to rep on view |
 
 ---
 
-## Fallback Behavior
+## Props Flow Update
 
-- If `estimateDisplayName` is empty → Shows "ROOFING ESTIMATE"
-- Estimate name is displayed in title case as entered by user
+Since `EstimatePreviewPanel` doesn't currently receive `estimateId` or `contactId`, we need to update the component hierarchy:
 
+**MultiTemplateSelector.tsx** already has:
+- `pipelineEntryId` 
+- Access to saved estimate ID
+
+Need to pass down:
+- `estimateId` (from saved estimate)
+- `contactId` (from pipeline_entry contact lookup)
+
+---
+
+## User Experience
+
+1. **Rep creates/views estimate preview**
+2. **Clicks "Share" button** → Dialog opens
+3. **Enters recipient email** (pre-filled if contact has email)
+4. **Clicks "Send"** → Email dispatched with tracking link
+5. **Customer receives email** → Clicks "View Your Quote"
+6. **Customer views estimate** → Rep instantly gets SMS: 
+   > "🔔 Nicole Walker just opened your quote #EST-2026-001! From Dallas, TX"
+7. **Customer reopens later** → Rep gets another SMS:
+   > "🔔 Nicole Walker viewed again (3x) your quote #EST-2026-001!"
+
+---
+
+## Security Considerations
+
+- Tracking tokens are UUID-based and hashed in database
+- SMS only sent to verified rep phone in their profile
+- Email sent via Resend with proper authentication
+- View tracking respects link expiration (30 days default)
+
+---
+
+## Expected Outcome
+
+- Reps get instant SMS alerts when customers engage with quotes
+- Enables timely follow-up calls while customer is actively reviewing
+- View count shows customer interest level
+- All communication logged for audit trail
