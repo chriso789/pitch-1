@@ -119,17 +119,19 @@ export async function loadPDFFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<
 export async function renderPageToDataUrl(
   pdf: PDFDocumentProxy,
   pageNum: number,
-  scale: number = 1.5
+  scale: number = 1.5,
+  pdfId?: string
 ): Promise<RenderedPage> {
-  const cacheKey = `${pageNum}-${scale}`;
+  // Use pdfId if provided, otherwise skip cache for safety
+  const cacheKey = pdfId ? `${pdfId}-${pageNum}-${scale}` : null;
   
-  // Check cache first
-  if (pageCache.has(cacheKey)) {
+  // Check cache first (only if we have a valid cache key)
+  if (cacheKey && pageCache.has(cacheKey)) {
     console.log('[PDF] Page', pageNum, 'served from cache');
     return pageCache.get(cacheKey)!;
   }
 
-  console.log('[PDF] Rendering page', pageNum, 'at scale', scale);
+  console.log('[PDF] Rendering page', pageNum, 'at scale', scale, pdfId ? `for ${pdfId}` : '');
   
   const page = await pdf.getPage(pageNum);
   const viewport = page.getViewport({ scale });
@@ -159,8 +161,10 @@ export async function renderPageToDataUrl(
     height: viewport.height,
   };
 
-  // Cache the result
-  pageCache.set(cacheKey, result);
+  // Cache the result only if we have a valid cache key
+  if (cacheKey) {
+    pageCache.set(cacheKey, result);
+  }
   
   console.log('[PDF] ✅ Page', pageNum, 'rendered successfully:', result.width, 'x', result.height);
 
