@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Loader2, Send, Mail, CheckCircle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface ShareEstimateDialogProps {
   open: boolean;
@@ -43,6 +44,7 @@ export function ShareEstimateDialog({
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
 
   // Reset form when dialog opens
   React.useEffect(() => {
@@ -92,6 +94,7 @@ export function ShareEstimateDialog({
         body: {
           estimate_id: estimateId || undefined,
           pipeline_entry_id: pipelineEntryId || undefined,  // Fallback for finding estimate
+          tenant_id: effectiveTenantId || undefined,  // Hint for multi-tenant users
           contact_id: contactId || null,
           recipient_email: recipientEmail.trim(),
           recipient_name: recipientName.trim(),
