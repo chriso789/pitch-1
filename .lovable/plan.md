@@ -1,137 +1,158 @@
 
-# Implementation: Fix Share Link PDF + Add Master Phone Number
+# Fix Plan: Quote Email, PDF Display, and SMS Notifications
 
-## Summary
-Two issues need to be fixed:
-1. **Master user has no phone** → SMS notifications for quote views aren't being sent
-2. **PDF 404 error on share links** → Using `getPublicUrl()` on a private storage bucket fails
+## Summary of Issues
+
+Based on my investigation, I found three distinct problems:
+
+1. **Email shows the price** - The customer sees "$40,800" before clicking, reducing motivation to open
+2. **PDF not loading** - Shows "Quote document will be displayed here" because the PDF path is never passed to the tracking link
+3. **SMS notification not sent** - The SMS function rejects the service-to-service call due to user authentication requirements
 
 ---
 
-## Changes to Implement
+## Root Cause Analysis
 
-### 1. Update Master's Phone Number (Database)
-**Direct database update:**
-```sql
-UPDATE profiles 
-SET phone = '+17708420812' 
-WHERE id = '0a56229d-1722-4ea0-90ec-c42fdac6fcc9';
+### Issue 1: Price in Email
+- **Location**: `supabase/functions/send-quote-email/index.ts` (lines 311-317)
+- **Problem**: The email template includes a "Total Amount" section showing `selling_price`
+
+### Issue 2: PDF Not Loading
+- **Location**: `src/components/estimates/ShareEstimateDialog.tsx` (lines 93-103)
+- **Problem**: The `pdf_url` is NOT passed to `send-quote-email` function
+- **Evidence**: Database query shows `quote_tracking_links.pdf_url = NULL` for all recent links
+- **The estimate HAS a pdf_url**: `d77c963c-163d-49b2-b457-8d9f730e7a28/estimates/OBR-00026-yjwz.pdf`
+
+### Issue 3: SMS Not Sent
+- **Location**: `supabase/functions/telnyx-send-sms/index.ts` (lines 52-71)
+- **Log Evidence**: `Failed to send SMS notification: {"success":false,"error":"Unauthorized"}`
+- **Problem**: The SMS function validates user auth via `supabase.auth.getUser()`, but `track-quote-view` calls it with the service role key (not a user token), so auth fails
+
+---
+
+## Detailed Fix Plan
+
+### Fix 1: Remove Price from Email Template
+**File**: `supabase/functions/send-quote-email/index.ts`
+
+Remove the conditional block that displays the selling price:
+
+**Before** (lines 311-317):
+```html
+${estimate.selling_price ? `
+<tr>
+  <td style="color: #6b7280; font-size: 14px; padding-top: 12px;">Total Amount</td>
+  <td style="text-align: right; color: ${primaryColor}; font-weight: 700; font-size: 20px; padding-top: 12px;">$${Number(estimate.selling_price).toLocaleString()}</td>
+</tr>
+` : ''}
 ```
 
-This enables SMS notifications when quotes are viewed.
+**After**: Remove these lines entirely, keeping only the Quote Number row
 
 ---
 
-### 2. Fix PDF URL Generation (Edge Function)
-**File:** `supabase/functions/track-quote-view/index.ts`
+### Fix 2: Pass PDF URL to Tracking Link
+**File**: `src/components/estimates/ShareEstimateDialog.tsx`
 
-**Problem:** Line 141-143 uses `getPublicUrl()` which doesn't work for private buckets.
+Add a prop for `pdfUrl` and pass it to the edge function:
 
-**Solution:** Replace with `createSignedUrl()` that generates temporary access URLs.
+1. Add `pdfUrl?: string;` to the interface (line 26)
+2. Include `pdf_url: pdfUrl` in the function body (around line 103)
 
-**Change (lines 126-165):**
-- Add a helper function `resolvePdfUrl()` that:
-  - Returns `null` if input is empty
-  - Returns the URL unchanged if it already starts with `http://` or `https://`
-  - Creates a 6-hour signed URL if it's a storage path
-- Apply this helper to both `trackingLink.pdf_url` and the fallback `enhanced_estimates.pdf_url`
+**Also Required**: `supabase/functions/send-quote-email/index.ts`
 
+Currently the edge function reads `body.pdf_url` but the dialog doesn't send it. The edge function already supports it (line 238):
 ```typescript
-// Helper to resolve PDF URL - handles private bucket with signed URLs
-async function resolvePdfUrl(pdfValue: string | null | undefined): Promise<string | null> {
-  if (!pdfValue) return null;
-  
-  // If it's already a full URL, return as-is
-  if (pdfValue.startsWith('http://') || pdfValue.startsWith('https://')) {
-    return pdfValue;
-  }
-  
-  // Otherwise, treat as a storage path and create a signed URL
-  try {
-    const { data: signedData, error: signedError } = await supabase.storage
-      .from('documents')
-      .createSignedUrl(pdfValue, 60 * 60 * 6); // 6 hours expiry
-    
-    if (signedError) {
-      console.error("[track-quote-view] Failed to create signed URL:", signedError);
-      return null;
-    }
-    
-    console.log("[track-quote-view] Created signed URL for path:", pdfValue);
-    return signedData?.signedUrl || null;
-  } catch (err) {
-    console.error("[track-quote-view] Error creating signed URL:", err);
-    return null;
-  }
+pdf_url: body.pdf_url,
+```
+
+So we just need the frontend to pass it.
+
+**Alternative Approach** (more reliable): Have the edge function fetch the `pdf_url` from `enhanced_estimates` when saving the tracking link, instead of relying on frontend:
+
+In `send-quote-email/index.ts`, change line 238 from:
+```typescript
+pdf_url: body.pdf_url,
+```
+to:
+```typescript
+pdf_url: body.pdf_url || estimate.pdf_url,
+```
+
+This way if frontend doesn't pass it, we fall back to the estimate's stored PDF path.
+
+But wait - we need to fetch `pdf_url` in the estimate query. Currently (line 116):
+```typescript
+.select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id")
+```
+Add `pdf_url` to both estimate queries.
+
+---
+
+### Fix 3: Allow Service-to-Service SMS Calls
+**File**: `supabase/functions/telnyx-send-sms/index.ts`
+
+The function currently requires user authentication. For internal service-to-service calls (like from `track-quote-view`), we need to allow the service role key to bypass user auth.
+
+**Solution**: Check if the Authorization header contains the service role key, and if so, skip user authentication:
+
+Add this logic after line 55:
+```typescript
+const authHeader = req.headers.get('Authorization');
+if (!authHeader) {
+  throw new Error('Missing authorization header');
 }
 
-// Use the helper for both possible PDF sources
-let pdfUrl = await resolvePdfUrl(trackingLink.pdf_url);
-if (!pdfUrl && trackingLink.enhanced_estimates?.pdf_url) {
-  pdfUrl = await resolvePdfUrl(trackingLink.enhanced_estimates.pdf_url);
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+const token = authHeader.replace('Bearer ', '');
+
+// Allow service-to-service calls with service role key
+const isServiceCall = token === supabaseServiceKey;
+
+if (!isServiceCall) {
+  // Regular user authentication
+  const supabaseClient = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    { global: { headers: { Authorization: authHeader } } }
+  );
+
+  const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+  if (authError || !user) {
+    throw new Error('Unauthorized');
+  }
+  // ... continue with user-based tenant lookup
+} else {
+  // Service call - expect tenant context in body or skip tenant checks
+  console.log('Service-to-service call detected, skipping user auth');
 }
 ```
 
----
-
-### 3. Improve ViewQuote Page Resilience
-**File:** `src/pages/ViewQuote.tsx`
-
-**Changes:**
-- Remove unused `isMobileDevice` import
-- Add `AlertCircle` icon import
-- When no PDF URL is available, show a user-friendly message with contact options instead of a generic placeholder
-
-**Before:**
-```tsx
-<FileText className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-<p className="text-muted-foreground">Quote document will be displayed here.</p>
-```
-
-**After:**
-```tsx
-<AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-<h3 className="text-lg font-semibold mb-2">Document Unavailable</h3>
-<p className="text-muted-foreground mb-4">
-  We couldn't load the quote document at this time. Please contact us for assistance.
-</p>
-<div className="flex justify-center gap-3">
-  <Button variant="outline" size="sm">
-    <Phone className="w-4 h-4 mr-2" />
-    Call Us
-  </Button>
-  <Button variant="outline" size="sm">
-    <Mail className="w-4 h-4 mr-2" />
-    Email Us
-  </Button>
-</div>
-```
+For service calls, we can accept the tenant info in the request body or simplify the from-number resolution.
 
 ---
 
-## Files Changed
+## Files to Modify
 
-| File | Change |
-|------|--------|
-| Database | Set Master's phone to `+17708420812` |
-| `supabase/functions/track-quote-view/index.ts` | Replace `getPublicUrl()` with `createSignedUrl()` |
-| `src/pages/ViewQuote.tsx` | Better fallback UI when PDF unavailable |
-
----
-
-## Expected Results After Implementation
-
-1. **SMS notifications work** - When someone views a quote, Master receives an SMS at 770-842-0812
-2. **PDFs load correctly** - Share links now show the PDF document (signed URLs valid for 6 hours)
-3. **Better error handling** - If PDF is unavailable, customers see a helpful message with contact options
+| File | Changes |
+|------|---------|
+| `supabase/functions/send-quote-email/index.ts` | Remove price display, add `pdf_url` to estimate query, use estimate's pdf_url as fallback |
+| `supabase/functions/telnyx-send-sms/index.ts` | Allow service role key to bypass user auth for internal calls |
 
 ---
 
 ## Testing Plan
 
-1. Verify Master's phone is set in database
-2. Send a new quote email (creates tracking link)
-3. Open the link in incognito:
-   - PDF should load and display
-   - Download button should work
-4. Check SMS received at 770-842-0812 with view notification
+After implementation:
+
+1. **Email Test**: Send a new quote email and verify the price is NOT shown in the email
+2. **PDF Test**: Click the link in the email and verify the PDF loads in the viewer
+3. **SMS Test**: When the quote is opened, verify SMS is received at +17708420812
+
+---
+
+## Expected Behavior After Fix
+
+1. **Email**: Shows "Your Quote is Ready!" with quote number only - no price visible
+2. **View Page**: PDF displays immediately when link is clicked
+3. **SMS**: Sales rep receives text like "🔔 Nicole Walker just opened quote #OBR-00026-yjwz!"
