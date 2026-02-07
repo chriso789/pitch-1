@@ -56,6 +56,7 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
 import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
 import { PipelineStageManager } from "@/components/settings/PipelineStageManager";
+import { ContactStatusManager } from "@/components/settings/ContactStatusManager";
 
 interface SettingsTab {
   id: string;
@@ -236,6 +237,7 @@ export const Settings = () => {
             <TabsList className="flex-wrap h-auto">
               <TabsTrigger value="settings">General Settings</TabsTrigger>
               <TabsTrigger value="pipeline-stages">Pipeline Stages</TabsTrigger>
+              <TabsTrigger value="contact-statuses">Contact Statuses</TabsTrigger>
               <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
               <TabsTrigger value="approval-requirements">Approval Requirements</TabsTrigger>
               <TabsTrigger value="estimate-pdf">Estimate PDF</TabsTrigger>
@@ -245,6 +247,9 @@ export const Settings = () => {
             </TabsContent>
             <TabsContent value="pipeline-stages">
               <PipelineStageManager />
+            </TabsContent>
+            <TabsContent value="contact-statuses">
+              <ContactStatusManager />
             </TabsContent>
             <TabsContent value="lead-sources">
               <LeadSources />
