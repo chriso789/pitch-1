@@ -1322,6 +1322,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     if (!existingEstimateId || lineItems.length === 0) return;
     
     setSavingLineItems(true);
+    let saveSucceeded = false;
+    let tenantId: string | null = null;
+    let userId: string | null = null;
+    
     try {
       const lineItemsJson = {
         materials: materialItems.map(item => ({
@@ -1360,104 +1364,134 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       });
 
       if (error) throw error;
+      saveSucceeded = true;
 
-      // Get tenant info for PDF upload
+      // Get tenant info for PDF upload (needed for background task)
       const { data: { user } } = await supabase.auth.getUser();
+      userId = user?.id || null;
       const { data: profile } = await supabaseClient
         .from('profiles')
         .select('tenant_id, active_tenant_id')
         .eq('id', user?.id)
         .single();
-      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      tenantId = profile?.active_tenant_id || profile?.tenant_id;
 
-      // Prepare PDF data and show template for capture
-      setPdfData({
-        estimateNumber: editingEstimateNumber,
-        customerName: customerInfo?.name,
-        customerAddress: customerInfo?.address,
-        companyInfo,
-        companyLocations,
-        materialItems,
-        laborItems,
-        breakdown,
-        config,
-        finePrintContent,
-        options: pdfOptions,
-      });
-      setShowPDFTemplate(true);
-
-      // Wait for render
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      // Generate PDF
-      let pdfBlob: Blob | null = null;
-      try {
-        const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
-          filename: `${editingEstimateNumber}.pdf`,
-          format: 'letter',
-          orientation: 'portrait',
-        });
-        
-        if (pdfResult.success && pdfResult.blob) {
-          pdfBlob = pdfResult.blob;
-        }
-      } catch (pdfError) {
-        console.error('PDF regeneration failed:', pdfError);
-      }
-
-      // Hide PDF template
-      setShowPDFTemplate(false);
-      setPdfData(null);
-
-      // Upload new PDF to storage (replaces old via upsert)
-      if (pdfBlob && editingEstimateNumber && tenantId && user?.id) {
-        const result = await saveEstimatePdf({
-          pdfBlob,
-          pipelineEntryId,
-          tenantId,
-          estimateNumber: editingEstimateNumber,
-          description: `Updated estimate ${editingEstimateNumber}`,
-          userId: user.id,
-        });
-        
-        if (result.success && result.filePath) {
-          // Update pdf_url in database
-          await supabaseClient
-            .from('enhanced_estimates')
-            .update({ pdf_url: result.filePath })
-            .eq('id', existingEstimateId);
-        }
-      }
-
+      // Show success immediately after database save
       toast({
         title: 'Changes Saved',
-        description: 'Estimate and PDF updated successfully'
+        description: 'Estimate updated. Regenerating PDF...'
       });
 
-      // Invalidate queries to refresh the data
-      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
-      
-      // Reset override state since changes are now saved
-      resetToOriginal();
-      
-      // Exit editing mode and hide the estimate builder
-      setExistingEstimateId(null);
-      setEditingEstimateNumber(null);
-      setIsEditingLoadedEstimate(false);
-      setEditEstimateProcessed(false);
-      setSelectedTemplateId(null);
-      setLineItems([]);
     } catch (error) {
       console.error('Error saving line item changes:', error);
-      setShowPDFTemplate(false);
-      setPdfData(null);
       toast({
         title: 'Error',
         description: 'Failed to save line item changes',
         variant: 'destructive'
       });
     } finally {
+      // ALWAYS reset saving state immediately after database operation
       setSavingLineItems(false);
+    }
+
+    // If save succeeded, regenerate PDF in background (non-blocking)
+    if (saveSucceeded && editingEstimateNumber && tenantId && userId) {
+      const estimateIdToUpdate = existingEstimateId;
+      const estimateNumberToUpdate = editingEstimateNumber;
+      const tenantIdForPdf = tenantId;
+      const userIdForPdf = userId;
+      
+      // Reset UI state immediately - don't wait for PDF
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      resetToOriginal();
+      setExistingEstimateId(null);
+      setEditingEstimateNumber(null);
+      setIsEditingLoadedEstimate(false);
+      setEditEstimateProcessed(false);
+      setSelectedTemplateId(null);
+      setLineItems([]);
+
+      // Fire-and-forget PDF regeneration
+      (async () => {
+        try {
+          // Prepare PDF data and show template for capture
+          setPdfData({
+            estimateNumber: estimateNumberToUpdate,
+            customerName: customerInfo?.name,
+            customerAddress: customerInfo?.address,
+            companyInfo,
+            companyLocations,
+            materialItems,
+            laborItems,
+            breakdown,
+            config,
+            finePrintContent,
+            options: pdfOptions,
+          });
+          setShowPDFTemplate(true);
+
+          // Wait for render
+          await new Promise(resolve => setTimeout(resolve, 500));
+
+          // Generate PDF
+          let pdfBlob: Blob | null = null;
+          try {
+            const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
+              filename: `${estimateNumberToUpdate}.pdf`,
+              format: 'letter',
+              orientation: 'portrait',
+            });
+            
+            if (pdfResult.success && pdfResult.blob) {
+              pdfBlob = pdfResult.blob;
+            }
+          } catch (pdfError) {
+            console.error('PDF regeneration failed:', pdfError);
+          }
+
+          // Hide PDF template
+          setShowPDFTemplate(false);
+          setPdfData(null);
+
+          // Upload new PDF to storage (replaces old via upsert)
+          if (pdfBlob) {
+            const result = await saveEstimatePdf({
+              pdfBlob,
+              pipelineEntryId,
+              tenantId: tenantIdForPdf,
+              estimateNumber: estimateNumberToUpdate,
+              description: `Updated estimate ${estimateNumberToUpdate}`,
+              userId: userIdForPdf,
+            });
+            
+            if (result.success && result.filePath) {
+              // Update pdf_url in database
+              await supabaseClient
+                .from('enhanced_estimates')
+                .update({ pdf_url: result.filePath })
+                .eq('id', estimateIdToUpdate);
+            }
+          }
+        } catch (err) {
+          console.warn('Background PDF regeneration failed:', err);
+          setShowPDFTemplate(false);
+          setPdfData(null);
+          toast({
+            title: 'PDF Update Note',
+            description: 'Estimate saved but PDF could not be updated',
+          });
+        }
+      })();
+    } else if (saveSucceeded) {
+      // Save succeeded but missing info for PDF - still reset UI
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      resetToOriginal();
+      setExistingEstimateId(null);
+      setEditingEstimateNumber(null);
+      setIsEditingLoadedEstimate(false);
+      setEditEstimateProcessed(false);
+      setSelectedTemplateId(null);
+      setLineItems([]);
     }
   };
 
