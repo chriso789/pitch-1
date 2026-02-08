@@ -294,30 +294,16 @@ const TemplateManager: React.FC = () => {
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label>Labor Rate per Square</Label>
-                  <Input
-                    type="number"
-                    value={templateForm.labor.rate_per_square}
-                    onChange={(e) => setTemplateForm({
-                      ...templateForm,
-                      labor: { ...templateForm.labor, rate_per_square: parseFloat(e.target.value) }
-                    })}
-                  />
-                </div>
-                <div>
-                  <Label>Overhead Percentage</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={templateForm.overhead.percent}
-                    onChange={(e) => setTemplateForm({
-                      ...templateForm,
-                      overhead: { ...templateForm.overhead, percent: parseFloat(e.target.value) }
-                    })}
-                  />
-                </div>
+              <div>
+                <Label>Labor Rate per Square</Label>
+                <Input
+                  type="number"
+                  value={templateForm.labor.rate_per_square}
+                  onChange={(e) => setTemplateForm({
+                    ...templateForm,
+                    labor: { ...templateForm.labor, rate_per_square: parseFloat(e.target.value) }
+                  })}
+                />
               </div>
 
               <div className="flex justify-end space-x-2">
@@ -356,12 +342,9 @@ const TemplateManager: React.FC = () => {
               </div>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-3 gap-4 text-sm">
+              <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="font-medium">Labor Rate:</span> ${template.labor?.rate_per_square || 0}/sq
-                </div>
-                <div>
-                  <span className="font-medium">Overhead:</span> {(template.overhead?.percent * 100) || 0}%
                 </div>
                 <div>
                   <span className="font-medium">Created:</span> {new Date(template.created_at).toLocaleDateString()}
