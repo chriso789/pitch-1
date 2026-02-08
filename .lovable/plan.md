@@ -1,151 +1,86 @@
 
-# Plan: Fix Material Autocomplete for Labor + Add Note Button for Line Items
+Goal
+- Restore “Preview Estimate” modal usability:
+  1) Toggle switches (and other right-aligned controls) must be fully visible (not clipped).
+  2) “Share” button must be enabled when sharing is actually possible (e.g., when we have an estimateId OR a pipelineEntryId fallback).
 
-## Problems Identified
+What’s happening (root causes)
+1) Toggles/buttons are getting visually clipped on the right
+- In `EstimatePreviewPanel.tsx`, the ScrollArea content wrapper is:
+  - `w-full` plus padding (`p-4 pr-5`)
+- In CSS, `width: 100%` applies to the content box. Padding is added on top of that, making the element’s total rendered width exceed the viewport.
+- Result: the right-most content (Switches) overflows beyond the ScrollArea viewport and gets cut off, and/or sits under the ScrollArea scrollbar.
 
-### 1. Labor Items Don't Show Catalog Autocomplete
-When clicking "Add Labor Item", the form uses a plain text input instead of the `MaterialAutocomplete` component. This means users can't search and select from cataloged items when adding labor.
+2) “Share” is greyed out and not clickable
+- In `EstimatePreviewPanel.tsx` the Share button is disabled when `!estimateId`:
+  - `disabled={!estimateId}`
+- But `ShareEstimateDialog` already supports a fallback flow using `pipelineEntryId` to find the estimate in the edge function (`send-quote-email`), so disabling purely on `estimateId` is too strict.
+- In your lead flow (`/lead/...?...tab=estimate`), it’s common to have `pipelineEntryId` available even if `estimateId` is undefined in the UI state.
 
-**Current code (line 384-389):**
-```tsx
-<Input
-  value={newItem.item_name}
-  onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
-  placeholder="Item name"
-  autoFocus
-/>
-```
+Files I will inspect/adjust
+- `src/components/estimates/EstimatePreviewPanel.tsx` (main fixes)
+- (Verify only) `src/components/estimates/MultiTemplateSelector.tsx` (ensure `pipelineEntryId` is being passed; it is)
 
-**Should be:**
-```tsx
-<MaterialAutocomplete
-  value={newItem.item_name}
-  onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
-  onSelectMaterial={(material) => {
-    onNewItemChange({
-      ...newItem,
-      item_name: material.name,
-      unit: material.uom,
-      unit_cost: material.base_cost,
-      material_id: material.id,
-    });
-  }}
-  placeholder="Search items..."
-  autoFocus
-/>
-```
+Implementation plan (code changes)
+A) Fix the clipped toggles/switches (layout)
+1. Update the ScrollArea inner content wrapper to use border-box sizing so padding does not increase total width:
+   - Add Tailwind `box-border`
+   - Keep `w-full` (now safe), and adjust right padding to account for scrollbar + switch width
+2. Remove any unnecessary `max-w-full` (often redundant once `box-border` is used) and ensure the wrapper does not force overflow.
+3. Make the right-aligned switch container consistently visible:
+   - Keep `Switch` as `shrink-0`
+   - Ensure the row container does not overflow: `min-w-0` already on Label; we’ll also ensure the row wrapper isn’t inadvertently wider than its parent.
 
-### 2. No Way to Add Notes to Existing Line Items
-Currently, notes can only be added when creating a new item. Once an item is on the estimate, there's no way to add or edit notes/color specifications.
+Concrete change (high level)
+- Change:
+  - `className="p-4 pr-5 space-y-4 w-full max-w-full"`
+- To something like:
+  - `className="box-border w-full p-4 pr-10 space-y-4"`
+  (The exact `pr-*` may be tuned; `pr-10` is a safe starting point so the scrollbar never covers the switches.)
 
----
+B) Fix “Share” being disabled incorrectly
+1. Change Share button disabled logic from:
+   - `disabled={!estimateId}`
+   to:
+   - `disabled={!(estimateId || pipelineEntryId)}`
+2. Update the tooltip/title copy to reflect both possibilities:
+   - If neither exists: “Save the estimate first to share”
+   - If pipelineEntryId exists (even without estimateId): “Share via email”
+3. Keep the existing `ShareEstimateDialog` invocation as-is (it already passes `estimateId` and `pipelineEntryId`), ensuring the edge function can use whichever is present.
 
-## Solution
+C) Guard against “buttons not clickable” regressions (pointer-events/overlays)
+Even though the screenshot mostly shows a disabled Share (expected with current logic), we’ll also prevent accidental overlay/click issues:
+1. Confirm the left panel bottom actions are not covered by the ScrollArea scrollbar by ensuring:
+   - Bottom actions container stays outside ScrollArea (already true)
+   - No absolute overlays exist inside the dialog
+2. If we still see click issues after A+B, we’ll add a targeted fix:
+   - Ensure bottom actions container has `relative z-10 pointer-events-auto`
+   This is a safe “belt and suspenders” if a scrollbar/overlay is intercepting clicks in some browsers.
 
-### Part 1: Use MaterialAutocomplete for Labor Items
-Replace the plain `<Input>` in the labor section with `MaterialAutocomplete` so users can search catalog items for both materials and labor.
+Verification checklist (what you will test after I implement)
+1) Toggle visibility
+- Open a lead → Estimate tab → “Preview Estimate”
+- Confirm every switch is fully visible (thumb + track), not clipped.
+- Scroll the left panel and ensure switches remain visible in all sections.
+- Test at:
+  - Narrow window
+  - Normal desktop width
+  - If you use it: mobile viewport
 
-### Part 2: Add Note Button to Each Line Item Row
-Add a "note" icon button next to each item name that:
-- Shows a small popover or inline edit field
-- Allows adding/editing notes (color, specs, etc.)
-- Displays a visual indicator when notes exist
+2) Share button behavior
+- Case A: estimateId exists → Share enabled
+- Case B: estimateId missing but pipelineEntryId exists → Share enabled
+- Case C: both missing → Share disabled with “Save first” tooltip
+- Click Share and confirm the Share dialog opens and accepts inputs.
 
----
+3) No UI regressions
+- Export PDF still works
+- No new horizontal scrolling inside the left panel
+- Scrollbar does not overlap controls
 
-## Implementation Details
+If the Share dialog opens but sending fails
+- Next step will be to check the edge function `send-quote-email` logs and confirm it properly resolves an estimate from `pipeline_entry_id` (this is backend-side behavior and separate from the UI enable/disable issue).
 
-### File: `src/components/estimates/SectionedLineItemsTable.tsx`
-
-**Change 1: Import additional components**
-- Add `Popover`, `PopoverTrigger`, `PopoverContent` from Radix
-- Add `StickyNote` or `MessageSquare` icon from Lucide
-
-**Change 2: Replace Labor Input with MaterialAutocomplete**
-- Lines 383-390: Change from `<Input>` to `<MaterialAutocomplete>`
-
-**Change 3: Add Note Button to Item Row**
-- Add a note icon button in the item name cell
-- Icon shows as filled/highlighted if notes exist
-- Clicking opens a popover with a text input
-- Changes save via `onUpdateItem(id, { notes: newValue })`
-
----
-
-## Visual Preview
-
-**Before (item row):**
-```
-| Polyglass MTS [Modified]          | 28 | $125.00 | $3,500.00 | [Delete] |
-```
-
-**After (item row):**
-```
-| Polyglass MTS [Modified] [Note📝] | 28 | $125.00 | $3,500.00 | [Delete] |
-  Color/Specs: Charcoal
-```
-
-The note icon will:
-- Be visible on hover (or always visible if notes exist)
-- Be tinted amber/yellow when notes are present
-- Open a popover for editing
-
----
-
-## Files to Modify
-
-| File | Change |
-|------|--------|
-| `src/components/estimates/SectionedLineItemsTable.tsx` | 1. Replace labor `<Input>` with `<MaterialAutocomplete>` 2. Add note button/popover to item rows |
-
----
-
-## Technical Details
-
-### Note Button Component (inline in file)
-
-```tsx
-// Inside renderItemRow function, in the item name cell
-<div className="flex items-center gap-1">
-  <span>{item.item_name}</span>
-  {editable && (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={`h-5 w-5 ${item.notes ? 'text-amber-500' : 'opacity-0 group-hover:opacity-50'}`}
-          title="Add note"
-        >
-          <StickyNote className="h-3 w-3" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-64">
-        <Label>Color / Notes</Label>
-        <Textarea
-          value={noteValue}
-          onChange={(e) => setNoteValue(e.target.value)}
-          placeholder="e.g. Charcoal, 26 gauge"
-        />
-        <Button size="sm" onClick={() => onUpdateItem(item.id, { notes: noteValue })}>
-          Save
-        </Button>
-      </PopoverContent>
-    </Popover>
-  )}
-</div>
-```
-
-### State Management
-A local state for the editing note will be managed within a sub-component or using a controlled popover pattern to track which item's note is being edited.
-
----
-
-## Expected Result
-
-After implementation:
-1. Clicking "Add Labor Item" shows the same autocomplete dropdown as materials
-2. Each line item has a small note icon next to the name
-3. Clicking the icon opens a popover to add/edit notes
-4. Notes are saved immediately and display below the item name
-5. Items with notes show a visible amber note icon
+Notes for you (plain-English)
+- The toggles are being cut off because the content area is effectively “wider than the sidebar” due to how padding + `w-full` interact.
+- The Share button is grey because the UI currently requires a specific ID (`estimateId`), but your system already supports sharing via the pipeline record too—so we’ll enable it when either ID exists.
