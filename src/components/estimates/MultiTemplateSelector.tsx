@@ -2223,6 +2223,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         onOpenChange={setShowPreviewPanel}
         estimateNumber={editingEstimateNumber || `EST-DRAFT-${Date.now().toString(36).slice(-4)}`}
         estimateDisplayName={estimateDisplayName}
+        templateName={templates.find(t => t.id === selectedTemplateId)?.name}
         customerName={customerInfo?.name || 'Customer'}
         customerAddress={customerInfo?.address || ''}
         customerPhone={customerInfo?.phone}
