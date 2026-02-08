@@ -17,7 +17,7 @@ import {
 } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Loader2, ArrowLeft, Plus, Save, Pencil } from 'lucide-react';
+import { Loader2, ArrowLeft, Plus, Save, Pencil, PackagePlus } from 'lucide-react';
 import { useCalcTemplateEditor, CalcTemplateItem, CalcTemplateGroup } from './hooks/useCalcTemplateEditor';
 import { CalcTemplateItemGroup } from './CalcTemplateItemGroup';
 import { CalcItemDetailsPanel } from './CalcItemDetailsPanel';
@@ -48,7 +48,11 @@ const CalcTemplateEditor: React.FC = () => {
     reorderGroups,
     reorderItems,
     saveItemToCatalog,
+    catalogAllItems,
+    uncatalogedCount,
   } = useCalcTemplateEditor(templateId);
+
+  const [cataloging, setCataloging] = useState(false);
 
   const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
@@ -164,6 +168,25 @@ const CalcTemplateEditor: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {uncatalogedCount > 0 && (
+            <Button 
+              variant="outline" 
+              onClick={async () => {
+                setCataloging(true);
+                await catalogAllItems();
+                setCataloging(false);
+              }}
+              disabled={cataloging}
+              className="text-warning border-warning/50 hover:bg-warning/10"
+            >
+              {cataloging ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <PackagePlus className="mr-2 h-4 w-4" />
+              )}
+              Catalog All ({uncatalogedCount})
+            </Button>
+          )}
           <Button variant="outline" onClick={() => setShowAddGroupDialog(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Add Group

@@ -572,6 +572,68 @@ export const useCalcTemplateEditor = (templateId?: string) => {
     }
   };
 
+  // Bulk catalog all uncataloged material items
+  const catalogAllItems = async (): Promise<number> => {
+    if (!template || !effectiveTenantId) {
+      toast({
+        title: 'Cannot catalog items',
+        description: 'Template or tenant information is missing',
+        variant: 'destructive',
+      });
+      return 0;
+    }
+
+    try {
+      const { data, error } = await supabase.rpc('api_bulk_sync_template_items_to_catalog', {
+        p_template_id: template.id,
+        p_tenant_id: effectiveTenantId,
+      });
+
+      if (error) {
+        console.error('Failed to bulk catalog items:', error);
+        toast({
+          title: 'Failed to catalog items',
+          description: error.message,
+          variant: 'destructive',
+        });
+        return 0;
+      }
+
+      const count = data as number;
+      
+      if (count > 0) {
+        // Refresh the template to get updated material_id links
+        await fetchTemplate();
+        toast({ 
+          title: `${count} item${count > 1 ? 's' : ''} added to company catalog`,
+          description: 'All "Not in catalog" badges have been removed',
+        });
+      } else {
+        toast({ 
+          title: 'All items already cataloged',
+          description: 'No uncataloged material items found',
+        });
+      }
+
+      return count;
+    } catch (error: any) {
+      console.error('Error bulk cataloging items:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to catalog items',
+        variant: 'destructive',
+      });
+      return 0;
+    }
+  };
+
+  // Count uncataloged material items
+  const uncatalogedCount = groups.reduce((count, group) => {
+    return count + group.items.filter(item => 
+      item.item_type === 'material' && !item.material_id
+    ).length;
+  }, 0);
+
   return {
     loading,
     saving,
@@ -588,6 +650,8 @@ export const useCalcTemplateEditor = (templateId?: string) => {
     reorderGroups,
     reorderItems,
     saveItemToCatalog,
+    catalogAllItems,
+    uncatalogedCount,
     refetch: fetchTemplate,
   };
 };
