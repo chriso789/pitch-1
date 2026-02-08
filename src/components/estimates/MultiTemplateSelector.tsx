@@ -390,7 +390,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       
       loadEstimateForEditing(editEstimateId);
       
-      // Clear the URL param after loading
+      // Clear the editEstimate URL param after loading (but keep showPreview for now)
       const newParams = new URLSearchParams(searchParams);
       newParams.delete('editEstimate');
       const newUrl = `${window.location.pathname}?${newParams.toString()}`;
@@ -398,6 +398,26 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, existingEstimateId]);
+
+  // Handle showPreview URL parameter to auto-open Preview Estimate panel after loading
+  useEffect(() => {
+    const showPreview = searchParams.get('showPreview');
+    
+    // Open preview if:
+    // 1. showPreview=true is in URL
+    // 2. An estimate is loaded (existingEstimateId is set)
+    // 3. Preview panel isn't already open
+    if (showPreview === 'true' && existingEstimateId && !showPreviewPanel) {
+      setShowPreviewPanel(true);
+      
+      // Clear the showPreview URL param after opening
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('showPreview');
+      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, existingEstimateId, showPreviewPanel]);
 
   // NOTE: Auto-load of saved estimates on page mount is DISABLED.
   // Users must explicitly select a template from the dropdown to see content.
