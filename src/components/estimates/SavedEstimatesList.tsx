@@ -48,6 +48,7 @@ interface SavedEstimatesListProps {
   selectedEstimateId?: string | null;
   onEstimateSelect?: (estimateId: string) => void;
   onEditEstimate?: (estimateId: string) => void;
+  onShareEstimate?: (estimateId: string) => void;
   currentEditingId?: string | null;
   hasUnsavedChanges?: boolean;
   onSaveAndSwitch?: () => Promise<void>;
@@ -60,6 +61,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   selectedEstimateId: externalSelectedId,
   onEstimateSelect,
   onEditEstimate,
+  onShareEstimate,
   currentEditingId,
   hasUnsavedChanges = false,
   onSaveAndSwitch,
@@ -434,17 +436,18 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
-                {estimate.pdf_url && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => handleViewPDF(estimate.pdf_url!)}
-                    className="h-8 px-2"
-                    title="View PDF"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onShareEstimate?.(estimate.id);
+                  }}
+                  className="h-8 px-2"
+                  title="Share Estimate"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                </Button>
               </div>
             </div>
           );

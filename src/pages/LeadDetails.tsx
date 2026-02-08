@@ -584,6 +584,10 @@ const LeadDetails = () => {
               onEditEstimate={(estimateId) => {
                 navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
               }}
+              onShareEstimate={(estimateId) => {
+                // Navigate to estimate in edit mode AND trigger preview panel to open
+                navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}&showPreview=true`);
+              }}
               hasUnsavedChanges={estimateHasUnsavedChanges}
               currentEditingName={currentEditingEstimateName}
               onSaveAndSwitch={handleSaveAndSwitch}
