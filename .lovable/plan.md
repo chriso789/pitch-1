@@ -1,190 +1,81 @@
 
-# Fix: Quote View Page - Full Page PDF, SMS Notification, and Accept Quote Signature
+Goal
+- Make the “Preview Estimate” action always visible so you never have to hunt/scroll for it again (especially in the Estimate tab flow on `/lead/:id?tab=estimate`).
+- Also ensure the action buttons inside the Preview Estimate modal (Reset / Share / Export) cannot be pushed off-screen on shorter viewports.
 
-## Issues Identified
+What I found in the code (current behavior)
+1) The “Preview” button you click from the Lead → Estimate tab lives in:
+- `src/components/estimates/MultiTemplateSelector.tsx` (around lines ~2095–2164)
+- It is rendered as part of a normal “Action Buttons” section in the page flow:
+  - This means it scrolls away as you work further down the estimate, which matches the repeated “can’t find it” pain.
 
-### Issue 1: PDF is displayed in a sub-window (not full page)
-**Current State:** The `ViewQuote.tsx` page shows the PDF inside a `MobilePDFViewer` component which is embedded within a card, constrained to a small viewport (50-70vh height) with zoom controls and toolbars.
+2) Inside the Preview Estimate modal:
+- `src/components/estimates/EstimatePreviewPanel.tsx`
+- The footer buttons are in a “Bottom Actions” block (lines ~579–619) in the left panel.
+- They are currently outside the ScrollArea (good), but on shorter heights they can still feel “not always visible” depending on viewport and internal layout constraints.
 
-**Root Cause:** The design wraps the PDF in multiple containers (`Card > CardContent > MobilePDFViewer`) with max-width constraints and internal height limits.
+Proposed solution (make it impossible to miss)
+A) Add a persistent, always-visible “Preview Estimate” floating button while editing an estimate (Lead → Estimate tab)
+File: `src/components/estimates/MultiTemplateSelector.tsx`
 
-**Fix:** Redesign the layout to make the PDF viewer full-page/full-height with company header pinned at the top and action buttons pinned at the bottom.
+Implementation approach
+- Add a floating action button (FAB) that is `position: fixed` (not sticky) so it is always visible regardless of scroll position.
+- Show it only when it actually makes sense:
+  - `shouldShowTemplateContent && lineItems.length > 0`
+  - and only when the preview modal is not already open (`!showPreviewPanel`)
+- Clicking it will do the exact same thing as your existing Preview button:
+  - `setShowPreviewPanel(true)`
 
----
+UI details
+- Desktop/tablet: bottom-right floating button (high visibility, minimal layout disruption).
+- Mobile: same button, but larger touch target and raised above safe area.
+- Add a subtle shadow + primary styling so it is unmissable.
 
-### Issue 2: SMS not sent when quote is opened
-**Current State:** The edge function logs show:
-```
-Failed to send SMS notification: {"success":false,"error":"Invalid source number..."}
-```
+Layout/safety
+- Because it’s fixed, it won’t disappear. To avoid blocking important content, I’ll:
+  - keep it in the bottom-right corner (instead of a full-width bar)
+  - add safe-area spacing for iOS (`bottom-[calc(1rem+env(safe-area-inset-bottom))]` pattern)
 
-**Root Cause:** The `track-quote-view` edge function calls `telnyx-send-sms` but:
-1. It doesn't pass the `tenant_id` to the SMS function (required to look up location phone numbers)
-2. Without `tenant_id`, the SMS function can't find a valid from number
+Optional (recommended)
+- Keep your existing inline action buttons where they are (Save Selection / Preview / Export / Create Estimate), but the new floating “Preview Estimate” becomes the always-available shortcut.
 
-**Fix:** Update `track-quote-view` to pass `tenant_id` in the SMS request body so `telnyx-send-sms` can resolve the correct outbound phone number.
+B) Make the Preview Estimate modal footer actions “always visible” (never clipped)
+File: `src/components/estimates/EstimatePreviewPanel.tsx`
 
----
+Implementation approach
+- Turn the Bottom Actions area into a pinned/sticky footer within the left panel so it cannot be pushed out of view:
+  - Add `sticky bottom-0 z-20`
+  - Add `bg-muted/30 backdrop-blur border-t`
+  - Add safe-area padding on the bottom for mobile
+  - Add `pointer-events-auto` / `relative` to prevent any overlay/scrollbar click interception edge cases
+- Add bottom padding to the ScrollArea content wrapper so the last toggles don’t end up hidden behind the sticky footer:
+  - current inner wrapper: `className="box-border w-full p-4 pr-10 space-y-4"`
+  - update to include something like `pb-28` (exact value tuned to footer height)
 
-### Issue 3: "Accept Quote" button does nothing
-**Current State:** The button is rendered but has no `onClick` handler:
-```tsx
-<Button size="lg" ... >
-  <CheckCircle className="w-5 h-5 mr-2" />
-  Accept Quote
-</Button>
-```
+Why both A + B
+- A guarantees the “Preview Estimate” action is always visible on the Lead → Estimate screen (where you’re likely losing it repeatedly).
+- B guarantees the modal’s key actions (Reset / Share / Export) are always visible once you’re inside Preview (so you don’t have to scroll around inside the left panel to find “Share/Export”).
 
-**Root Cause:** No functionality implemented to:
-1. Create a signature envelope for this quote
-2. Redirect to the signature capture page
+Verification checklist (so we don’t burn more credits on repeats)
+1) Lead → Estimate tab
+- Scroll anywhere on the estimate screen: confirm a “Preview Estimate” floating button is always visible.
+- Click it: Preview modal opens every time.
 
-**Fix:** Implement a flow that:
-1. On click, calls an edge function to create a signature envelope for the estimate
-2. Redirects the customer to `/sign/{access_token}` for digital signature capture
+2) Preview Estimate modal
+- On a short viewport (small laptop window height) and on mobile:
+  - Reset / Share / Export are visible without scrolling.
+  - Toggle list can scroll behind the footer without hiding controls permanently.
 
----
+3) Regression checks
+- Confirm the existing inline action buttons still work (Save Selection, Export PDF, Create Estimate).
+- Confirm the floating button does not appear when the modal is open.
 
-## Implementation Plan
+Files to change
+- `src/components/estimates/MultiTemplateSelector.tsx`
+  - Add fixed floating “Preview Estimate” button (conditional render)
+- `src/components/estimates/EstimatePreviewPanel.tsx`
+  - Make footer sticky/pinned and add ScrollArea bottom padding so content doesn’t hide behind it
 
-### File 1: `src/pages/ViewQuote.tsx`
-
-**Changes:**
-1. **Full-page PDF layout:**
-   - Remove Card wrapper around PDF
-   - Make PDF viewer take full available height (using CSS calc and flexbox)
-   - Pin header at top, action buttons at bottom
-   - Use a cleaner, more immersive viewing experience
-
-2. **Accept Quote functionality:**
-   - Add state for signature flow (`isCreatingSignature`, `signatureUrl`)
-   - Add `handleAcceptQuote` function that:
-     - Calls new edge function `request-quote-signature`
-     - Creates signature envelope for the estimate
-     - Returns signing URL
-     - Navigates to signing page or shows inline signature capture
-
-3. **UI improvements:**
-   - Make the "Accept Quote" button trigger the signature flow
-   - Show loading state while creating signature request
-   - Optional: Show inline signature capture component instead of redirect
-
-### File 2: `supabase/functions/track-quote-view/index.ts`
-
-**Changes:**
-- Add `tenant_id` to the SMS request body:
-```typescript
-body: JSON.stringify({
-  to: repProfile.phone,
-  message: smsMessage,
-  tenant_id: trackingLink.tenant_id,  // ADD THIS
-  sent_by: trackingLink.sent_by,      // ADD THIS for logging
-})
-```
-
-### File 3: `supabase/functions/request-quote-signature/index.ts` (NEW)
-
-**Purpose:** Create a signature envelope for a quote and return the signing URL
-
-**Flow:**
-1. Accept `token` (quote tracking token)
-2. Validate token and get estimate data
-3. Create signature envelope using existing `create-signature-envelope` logic
-4. Return signing access token/URL
-
----
-
-## Technical Details
-
-### Updated ViewQuote Layout Structure
-```tsx
-<div className="min-h-screen flex flex-col">
-  {/* Pinned Header */}
-  <header className="...">Company branding</header>
-  
-  {/* Full-height PDF Container */}
-  <main className="flex-1 flex flex-col overflow-hidden">
-    <MobilePDFViewer 
-      className="flex-1 min-h-0"
-      // Remove height constraints, let it fill available space
-    />
-  </main>
-  
-  {/* Pinned Actions */}
-  <footer className="sticky bottom-0 bg-background p-4 border-t">
-    <Button onClick={handleAcceptQuote}>Accept Quote</Button>
-    <Button>Download PDF</Button>
-  </footer>
-</div>
-```
-
-### Accept Quote Handler
-```typescript
-const handleAcceptQuote = async () => {
-  setIsCreatingSignature(true);
-  try {
-    const { data, error } = await supabase.functions.invoke('request-quote-signature', {
-      body: { token }
-    });
-    
-    if (error) throw error;
-    
-    // Redirect to signature page
-    window.location.href = `/sign/${data.access_token}`;
-  } catch (err) {
-    toast.error('Failed to prepare signature request');
-  } finally {
-    setIsCreatingSignature(false);
-  }
-};
-```
-
-### SMS Fix in track-quote-view
-```typescript
-// Line ~281 in track-quote-view/index.ts
-const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${supabaseServiceKey}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    to: repProfile.phone,
-    message: smsMessage,
-    tenant_id: trackingLink.tenant_id,  // NEW - enables location phone lookup
-    sent_by: trackingLink.sent_by        // NEW - for audit logging
-  })
-});
-```
-
----
-
-## Files to Create/Modify
-
-| File | Action | Description |
-|------|--------|-------------|
-| `src/pages/ViewQuote.tsx` | Modify | Full-page PDF layout + Accept Quote handler |
-| `supabase/functions/track-quote-view/index.ts` | Modify | Add tenant_id to SMS request |
-| `supabase/functions/request-quote-signature/index.ts` | Create | New function to create signature envelope from quote token |
-
----
-
-## Expected Results
-
-After implementation:
-1. **Full-page PDF:** Customer sees the quote PDF filling most of the screen, with header and action buttons pinned
-2. **SMS notifications work:** Sales rep receives text when quote is opened (requires valid Telnyx number configured for the tenant's location)
-3. **Accept Quote works:** Clicking the button creates a signature envelope and redirects to the digital signature page
-4. **Complete flow:** Customer can view quote → Accept → Sign digitally → Estimate marked as "signed"
-
----
-
-## Verification Steps
-
-1. **PDF Layout:** Open a quote link and verify PDF fills the viewport with minimal wrappers
-2. **SMS:** Open a quote and check edge function logs for successful SMS delivery (requires Telnyx phone configured)
-3. **Signature Flow:**
-   - Click "Accept Quote"
-   - Verify redirect to signature page
-   - Complete signature
-   - Verify estimate status updates to "signed"
+Notes / edge cases
+- If your LeadDetails page (or a parent container) ever uses a transform on a wrapping element, it can affect fixed positioning. If that happens, I’ll switch the FAB to render via a portal to `document.body` (still fully within React, no library needed).
+- If you also want “Export PDF” always visible, we can include a second small button next to the floating Preview, but I’ll start with just Preview since that’s the main pain point you called out repeatedly.
