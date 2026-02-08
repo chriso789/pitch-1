@@ -152,9 +152,17 @@ export function useMultiPagePDFGeneration() {
 
         setProgress(((i + 0.5) / pageElements.length) * 90 + 5);
 
-        // Capture page to canvas with enhanced settings
+        // Detect if this is an attachment page (image-only content)
+        // Attachment pages have full-bleed images with object-fit: contain
+        const isAttachmentPage = pageElement.querySelector('img[style*="object-fit"]') !== null;
+        
+        // Use lower scale for attachment pages (already images, don't need double resolution)
+        // This cuts pixel count by 75% for attachments while maintaining text clarity
+        const captureScale = isAttachmentPage ? 1.0 : 2.0;
+
+        // Capture page to canvas with adaptive settings
         const canvas = await html2canvas(pageElement, {
-          scale: 2, // Reduced from 3 to 2 for faster generation while maintaining quality
+          scale: captureScale, // Dynamic: 1.0 for attachments, 2.0 for text
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
@@ -174,17 +182,14 @@ export function useMultiPagePDFGeneration() {
         if (i > 0) {
           pdf.addPage();
         }
-
-        // Smart format detection: Use JPEG for attachment pages (image-heavy), PNG for text pages
-        // Attachment pages have full-bleed images with object-fit: contain
-        const isAttachmentPage = pageElement.querySelector('img[style*="object-fit"]') !== null;
         
         const xOffset = 10;
         const yOffset = 10;
         
-        // Use JPEG at 0.85 quality for attachments (much smaller), PNG for text clarity
+        // Use JPEG at 0.65 quality for attachments (aggressive compression)
+        // PNG for text pages to maintain sharpness
         const imageData = isAttachmentPage
-          ? canvas.toDataURL('image/jpeg', 0.85)
+          ? canvas.toDataURL('image/jpeg', 0.65)
           : canvas.toDataURL('image/png');
         
         pdf.addImage(
