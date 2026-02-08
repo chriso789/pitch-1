@@ -1,85 +1,137 @@
 
 
-## Plan: Remove Overhead from Templates
+# Plan: Bulk Catalog All Template Items
 
-### Summary
-Remove the `overhead_percentage` column display from the Estimate Templates table and legacy Template Manager. The overhead calculation will be sourced exclusively from the **rep's profile** (`personal_overhead_rate`), which is set under Company Settings → Team Management.
+## Problem
+Your template shows 11 items with "Not in catalog" badges because:
+- These items were created before the catalog linking feature was added
+- The only current option is to click "Save to Catalog" on each item individually
 
----
-
-## What Changes
-
-### 1. Remove "Overhead" Column from Template List Table
-**File**: `src/components/settings/EstimateTemplateList.tsx`
-
-- Remove "Overhead" column header from the table
-- Remove the `{template.overhead_percentage}%` cell display
-- Remove the column from loading skeletons
-
-**Lines affected**: ~346, 359, ~395-396, 416
-
-### 2. Remove Overhead from Legacy TemplateManager
-**File**: `src/components/templates/TemplateManager.tsx`
-
-- Remove "Overhead Percentage" input field from the create template dialog
-- Remove overhead display from template cards
-- Clean up the `overhead` object from the form state
-
-**Lines affected**: ~309-320 (form input), ~364 (card display), ~47-65 (form state)
+## Solution
+Add a **"Catalog All Items"** button to the template editor that:
+1. Scans all material items without a `material_id`
+2. Creates them in the materials catalog (tenant-scoped)
+3. Links them back to the template items
+4. Removes all "Not in catalog" badges in one click
 
 ---
 
-## No Database Changes Required
+## What Will Be Built
 
-The `overhead_percentage` column will remain in the database for backward compatibility, but:
-- The UI will no longer display or edit it
-- The estimate calculation engine already uses the **rep's `personal_overhead_rate`** as the source of truth (per existing logic in `ProfitCenterPanel.tsx` and `EstimateHyperlinkBar.tsx`)
+### 1. "Catalog All" Button in Header
+**Location**: Template Editor header (next to "Add Group" button)
+
+- Only shows when there are uncataloged items
+- Shows count: "Catalog All (11 items)"
+- One-click to sync everything
+
+### 2. Bulk Sync Database Function
+**New Function**: `api_bulk_sync_template_items_to_catalog`
+
+- Accepts `template_id` and `tenant_id`
+- Finds all items where `material_id IS NULL` and `item_type = 'material'`
+- Creates materials in the catalog with proper tenant scoping
+- Links back to template items
+- Returns count of items processed
+
+### 3. Frontend Hook Enhancement
+**File**: `src/components/templates/hooks/useCalcTemplateEditor.ts`
+
+- Add `catalogAllItems()` function
+- Calls the bulk RPC
+- Updates local state to refresh all badges
 
 ---
 
-## How Overhead Works After This Change
+## Technical Implementation
 
-| Source | Field | Usage |
-|--------|-------|-------|
-| Rep's Profile | `personal_overhead_rate` | Primary source (set in Team Management) |
-| Rep's Profile | `overhead_rate` | Fallback if personal rate is 0 |
-| Default | 10% | Final fallback if neither is set |
-
-This follows the existing hierarchy documented in the codebase:
+### Database Migration
+```sql
+CREATE OR REPLACE FUNCTION api_bulk_sync_template_items_to_catalog(
+  p_template_id UUID,
+  p_tenant_id UUID
+) RETURNS INTEGER AS $$
+DECLARE
+  v_count INTEGER := 0;
+  v_item RECORD;
+  v_material_id UUID;
+BEGIN
+  FOR v_item IN 
+    SELECT * FROM estimate_calc_template_items 
+    WHERE calc_template_id = p_template_id 
+      AND item_type = 'material'
+      AND material_id IS NULL
+  LOOP
+    -- Create or update material in catalog
+    INSERT INTO materials (code, name, uom, base_cost, tenant_id, description)
+    VALUES (
+      COALESCE(v_item.sku_pattern, LOWER(REPLACE(v_item.item_name, ' ', '-'))),
+      v_item.item_name,
+      v_item.unit,
+      v_item.unit_cost,
+      p_tenant_id,
+      v_item.description
+    )
+    ON CONFLICT (code, COALESCE(tenant_id, '00000000-...')) DO UPDATE SET
+      base_cost = EXCLUDED.base_cost,
+      updated_at = NOW()
+    RETURNING id INTO v_material_id;
+    
+    -- Link template item
+    UPDATE estimate_calc_template_items 
+    SET material_id = v_material_id
+    WHERE id = v_item.id;
+    
+    v_count := v_count + 1;
+  END LOOP;
+  
+  RETURN v_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 ```
-effectiveOverheadRate = personal_overhead_rate > 0 ? personal_overhead_rate : (overhead_rate ?? 10)
+
+### Frontend Changes
+
+**File**: `src/components/templates/hooks/useCalcTemplateEditor.ts`
+- Add `catalogAllItems()` function that calls the RPC
+- Update local state to set `material_id` on all synced items
+
+**File**: `src/components/templates/CalcTemplateEditor.tsx`
+- Add button in header showing uncataloged count
+- Call `catalogAllItems()` on click
+- Refresh the template after sync
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
+|------|--------|
+| `supabase/migrations/[timestamp]_bulk_catalog_sync.sql` | Create bulk sync function |
+| `src/components/templates/hooks/useCalcTemplateEditor.ts` | Add `catalogAllItems()` |
+| `src/components/templates/CalcTemplateEditor.tsx` | Add "Catalog All" button |
+
+---
+
+## Visual Preview
+
+**Before**: 
+```
+[Back] Template Name         [Add Group] [Save Template]
+```
+
+**After**:
+```
+[Back] Template Name         [Catalog All (11)] [Add Group] [Save Template]
 ```
 
 ---
 
-## Visual Changes
+## Expected Result
 
-### Before (Template List)
-| Template Name | Type | Category | Items | Overhead | Profit | Status |
-|---------------|------|----------|-------|----------|--------|--------|
-| GAF Timberline | Shingle | Premium | 19 | 15% | 30% | Active |
-
-### After (Template List)
-| Template Name | Type | Category | Items | Profit | Status |
-|---------------|------|----------|-------|--------|--------|
-| GAF Timberline | Shingle | Premium | 19 | 30% | Active |
-
----
-
-## Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/components/settings/EstimateTemplateList.tsx` | Remove Overhead column from table header, body, and skeleton |
-| `src/components/templates/TemplateManager.tsx` | Remove Overhead input and display from legacy manager |
-
----
-
-## Testing
-
-After implementation:
-1. Navigate to Settings → Estimates tab
-2. Verify the template list no longer shows an "Overhead" column
-3. Create a new estimate and verify overhead is pulled from the rep's profile settings
-4. Check that the Profit Center still calculates overhead correctly from the rep's rate
+After clicking "Catalog All (11)":
+1. All 11 items are added to your company's material catalog
+2. All "Not in catalog" badges disappear immediately
+3. Toast confirms: "11 items added to company catalog"
+4. These materials are now available for other templates
 
