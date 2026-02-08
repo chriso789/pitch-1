@@ -300,9 +300,9 @@ export function EstimatePreviewPanel({
 
         <div className="flex h-[calc(95vh-120px)]">
           {/* Left Panel - Toggle Controls */}
-          <div className="w-80 border-r flex flex-col bg-muted/30 overflow-hidden">
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-4">
+          <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden">
+            <ScrollArea className="flex-1 w-full">
+              <div className="p-4 pr-5 space-y-4 w-full max-w-full">
               {/* View Mode Tabs */}
               <Tabs value={viewMode} onValueChange={(v) => handleViewModeChange(v as PDFViewMode)} className="mb-4">
                 <TabsList className="grid w-full grid-cols-2">
@@ -685,8 +685,8 @@ function ToggleRow({
   disabled?: boolean;
 }) {
   return (
-    <div className={`flex items-center justify-between gap-2 ${disabled ? 'opacity-50' : ''}`}>
-      <Label className="text-sm flex items-center gap-1.5 cursor-pointer min-w-0">
+    <div className={`flex items-center justify-between gap-3 w-full ${disabled ? 'opacity-50' : ''}`}>
+      <Label className="text-sm flex items-center gap-1.5 cursor-pointer min-w-0 flex-1">
         <span className="truncate">{label}</span>
         {badge && (
           <Badge variant="outline" className="text-[10px] py-0 px-1 shrink-0">
@@ -698,7 +698,7 @@ function ToggleRow({
         checked={checked}
         onCheckedChange={onChange}
         disabled={disabled}
-        className="scale-90 shrink-0"
+        className="shrink-0"
       />
     </div>
   );
