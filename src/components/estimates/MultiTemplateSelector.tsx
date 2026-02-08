@@ -2163,6 +2163,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Button>
       </div>
 
+      {/* Always-visible Preview Estimate shortcut */}
+      {shouldShowTemplateContent && lineItems.length > 0 && !showPreviewPanel && (
+        <div className="fixed right-4 bottom-[calc(1rem+env(safe-area-inset-bottom))] z-50">
+          <Button
+            size="lg"
+            onClick={() => setShowPreviewPanel(true)}
+            className="rounded-full shadow-lg"
+          >
+            <Eye className="mr-2 h-4 w-4" />
+            Preview Estimate
+          </Button>
+        </div>
+      )}
+
       {/* PDF Export Dialog */}
       <PDFExportDialog
         open={showExportDialog}

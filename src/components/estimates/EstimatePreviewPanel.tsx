@@ -298,11 +298,11 @@ export function EstimatePreviewPanel({
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex h-[calc(95vh-120px)]">
+        <div className="flex h-[calc(95vh-120px)] min-h-0">
           {/* Left Panel - Toggle Controls */}
-          <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden">
-            <ScrollArea className="flex-1 w-full">
-              <div className="box-border w-full p-4 pr-10 space-y-4">
+          <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden min-h-0">
+            <ScrollArea className="flex-1 w-full min-h-0">
+              <div className="box-border w-full p-4 pr-10 pb-32 space-y-4">
               {/* View Mode Tabs */}
               <Tabs value={viewMode} onValueChange={(v) => handleViewModeChange(v as PDFViewMode)} className="mb-4">
                 <TabsList className="grid w-full grid-cols-2">
@@ -577,7 +577,7 @@ export function EstimatePreviewPanel({
             </ScrollArea>
 
             {/* Bottom Actions */}
-            <div className="p-4 border-t space-y-2">
+            <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
               <Button
                 variant="ghost"
                 size="sm"
