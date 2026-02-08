@@ -1,58 +1,81 @@
 
+## Fix: Email Should Show Quote Name, Not Quote Number
 
-## ✅ COMPLETED: Attachments Not Appearing in Shared Quote Email
-
-### Problem Summary
-When a user views their quote from the email link, the PDF doesn't include the attachments they added in the Preview Panel. The customer sees only 2-3 pages instead of the full document with attachments.
+### Problem
+The email shows **"Quote Number: OBR-00027-jahv"** but you want it to display the **quote name** (custom display name) that you set when creating the estimate.
 
 ### Root Cause
-The **Share** button in the Preview Panel sends the customer the **stored** PDF from the database (`pdf_url` in `enhanced_estimates`). This PDF is only updated when the estimate is **saved**, not when the user adds attachments in the preview and clicks Share.
+In `supabase/functions/send-quote-email/index.ts`:
 
-### Solution Implemented
-**Regenerate and upload the PDF before sending the share email.** This ensures the customer always receives the current preview configuration including all attachments.
+1. **Line 115**: Only fetches `estimate_number`, not the `display_name` column:
+   ```typescript
+   .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pdf_url")
+   ```
 
-### Technical Changes Made
+2. **Lines 309-310**: Hardcodes "Quote Number" label and uses `estimate_number`:
+   ```html
+   <td style="...">Quote Number</td>
+   <td style="...">${estimate.estimate_number}</td>
+   ```
 
-#### 1. Updated `EstimatePreviewPanel.tsx`
+### Solution
+Update the edge function to:
+1. Fetch `display_name` from the database
+2. Show "Quote" label with the display name (falling back to estimate number if no name is set)
 
-- Added `tenantId` and `userId` props to the interface
-- Added import for `supabase` client
-- Created `handlePrepareAndShare()` function that:
-  1. Polls for attachments to finish loading
-  2. Generates fresh PDF with all pages/attachments
-  3. Uploads to storage with `upsert: true`
-  4. Updates `pdf_url` in `enhanced_estimates` table
-  5. Opens the share dialog
-- Updated Share button to use `handlePrepareAndShare` with loading state
+---
 
-#### 2. Updated `MultiTemplateSelector.tsx`
+## Technical Changes
 
-- Added `currentTenantId` and `currentUserId` state variables
-- Updated `fetchCompanyAndEstimateSettings()` to store user context
-- Passed `tenantId` and `userId` to EstimatePreviewPanel
+### File: `supabase/functions/send-quote-email/index.ts`
 
-### User Flow After Fix
+**Change 1 - Add `display_name` to select (Lines 115 & 132):**
 
-1. User opens Preview Panel
-2. User adds attachments
-3. User clicks "Share" → shows "Preparing..." spinner
-4. System regenerates PDF with all current attachments
-5. System uploads fresh PDF to storage
-6. System updates `pdf_url` in database
-7. ShareEstimateDialog opens
-8. User sends email
-9. Customer receives email and clicks link
-10. **Customer sees full PDF with all attachments**
+```typescript
+// Line 115 - Lookup by estimate_id
+.select("id, estimate_number, display_name, selling_price, pipeline_entry_id, tenant_id, pdf_url")
 
-### Files Modified
+// Line 132 - Lookup by pipeline_entry_id
+.select("id, estimate_number, display_name, selling_price, pipeline_entry_id, tenant_id, pdf_url")
+```
+
+**Change 2 - Update email HTML (Lines 309-310):**
+
+```html
+<!-- Before -->
+<td style="color: #6b7280; font-size: 14px;">Quote Number</td>
+<td style="text-align: right; color: #111827; font-weight: 600; font-size: 14px;">${estimate.estimate_number}</td>
+
+<!-- After -->
+<td style="color: #6b7280; font-size: 14px;">Quote</td>
+<td style="text-align: right; color: #111827; font-weight: 600; font-size: 14px;">${estimate.display_name || estimate.estimate_number}</td>
+```
+
+**Change 3 - Update email subject (Line 358):**
+
+```typescript
+// Before
+subject: body.subject || `Your Quote from ${companyName} - #${estimate.estimate_number}`
+
+// After
+subject: body.subject || `Your Quote from ${companyName} - ${estimate.display_name || estimate.estimate_number}`
+```
+
+---
+
+## Expected Result
+
+| Before | After |
+|--------|-------|
+| **Quote Number**: OBR-00027-jahv | **Quote**: Nicole's Roofing Project |
+| Subject: Your Quote from O'Brien - #OBR-00027-jahv | Subject: Your Quote from O'Brien - Nicole's Roofing Project |
+
+If no display name is set, it gracefully falls back to showing the estimate number.
+
+---
+
+## Files to Modify
 
 | File | Changes |
 |------|---------|
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Added `tenantId`/`userId` props, created `handlePrepareAndShare()` function, updated Share button with loading state |
-| `src/components/estimates/MultiTemplateSelector.tsx` | Added state for user context, stored tenant/user IDs on load, passed to EstimatePreviewPanel |
-
-### Benefits
-- Attachments always appear in shared quotes
-- No extra user action required (auto-regenerates on share)
-- Existing Export PDF functionality unchanged
-- Same PDF generation logic reused (consistent quality)
+| `supabase/functions/send-quote-email/index.ts` | Add `display_name` to select, update email HTML label and content, update subject line |
