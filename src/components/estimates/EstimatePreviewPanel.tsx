@@ -78,6 +78,7 @@ interface EstimatePreviewPanelProps {
   onOpenChange: (open: boolean) => void;
   estimateNumber: string;
   estimateDisplayName?: string;
+  templateName?: string;
   customerName: string;
   customerAddress: string;
   customerPhone?: string | null;
@@ -121,6 +122,7 @@ export function EstimatePreviewPanel({
   onOpenChange,
   estimateNumber,
   estimateDisplayName,
+  templateName,
   customerName,
   customerAddress,
   customerPhone,
@@ -206,19 +208,21 @@ export function EstimatePreviewPanel({
     setRemovedTemplateIds(new Set());
   };
 
-  // Generate safe filename from display name or estimate number
+  // Generate safe filename from display name, template name, or estimate number
   const getFilename = useCallback(() => {
-    if (estimateDisplayName?.trim()) {
+    // Priority: user-set display name > template name > estimate number
+    const displaySource = estimateDisplayName?.trim() || templateName?.trim();
+    
+    if (displaySource) {
       // Sanitize: remove special chars, limit length
-      const sanitized = estimateDisplayName
-        .trim()
+      const sanitized = displaySource
         .replace(/[^a-zA-Z0-9\s-]/g, '')
         .replace(/\s+/g, '_')
         .slice(0, 50);
       return `${sanitized}.pdf`;
     }
     return `${estimateNumber}.pdf`;
-  }, [estimateDisplayName, estimateNumber]);
+  }, [estimateDisplayName, templateName, estimateNumber]);
 
   const handleExportPDF = async () => {
     setIsExporting(true);
