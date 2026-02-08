@@ -135,6 +135,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   const [estimatePricingTier, setEstimatePricingTier] = useState<'good' | 'better' | 'best' | ''>('');
   
+  // User context for sharing
+  const [currentTenantId, setCurrentTenantId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  
    // Template attachments state (e.g., product flyers for metal roofs)
    const [templateAttachments, setTemplateAttachments] = useState<Array<{
      document_id: string;
@@ -614,6 +618,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      // Store user ID for sharing
+      setCurrentUserId(user.id);
+
       const { data: profile } = await supabaseClient
         .from('profiles')
         .select('tenant_id, active_tenant_id')
@@ -622,6 +629,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) return;
+
+      // Store tenant ID for sharing
+      setCurrentTenantId(tenantId);
 
       // Fetch tenant info for company branding
       const { data: tenant } = await supabaseClient
@@ -2259,6 +2269,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         estimateId={existingEstimateId || undefined}
         pipelineEntryId={pipelineEntryId || undefined}
         contactId={contactId || undefined}
+        tenantId={currentTenantId || undefined}
+        userId={currentUserId || undefined}
       />
     </div>
   );

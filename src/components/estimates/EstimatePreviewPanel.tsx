@@ -37,6 +37,7 @@ import {
   Layers,
   Share2,
 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   type PDFComponentOptions,
   type PDFViewMode,
@@ -115,6 +116,9 @@ interface EstimatePreviewPanelProps {
   estimateId?: string;
   pipelineEntryId?: string;
   contactId?: string;
+  // For PDF regeneration before sharing
+  tenantId?: string;
+  userId?: string;
 }
 
 export function EstimatePreviewPanel({
@@ -139,6 +143,8 @@ export function EstimatePreviewPanel({
   estimateId,
   pipelineEntryId,
   contactId,
+  tenantId,
+  userId,
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -290,6 +296,89 @@ export function EstimatePreviewPanel({
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Regenerate PDF with current attachments before sharing
+  const handlePrepareAndShare = async () => {
+    // If no estimate ID, just open share dialog (can't regenerate)
+    if (!estimateId) {
+      setShowShareDialog(true);
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      // Wait for any attachments to finish rendering
+      const container = document.getElementById('estimate-preview-template');
+      if (!container) throw new Error('Preview template not found');
+      
+      // Poll for attachment loading completion (max 10 seconds)
+      const maxWaitMs = 10000;
+      const pollIntervalMs = 200;
+      let waited = 0;
+      
+      while (waited < maxWaitMs) {
+        const loadingIndicators = container.querySelectorAll('.animate-spin');
+        const pageCount = container.querySelectorAll('[data-report-page]').length;
+        
+        if (loadingIndicators.length === 0 && pageCount > 0) {
+          console.log(`[Share] Ready after ${waited}ms, ${pageCount} pages found`);
+          break;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        waited += pollIntervalMs;
+      }
+      
+      // Small delay for final render stability
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      // Count actual pages
+      const pageCount = container.querySelectorAll('[data-report-page]').length;
+      console.log(`[Share] Generating PDF with ${pageCount} pages including attachments`);
+      
+      // Generate multi-page PDF (captures each [data-report-page] separately)
+      const result = await generateMultiPagePDF('estimate-preview-template', pageCount, {
+        filename: `${estimateNumber}.pdf`,
+        format: 'letter',
+        orientation: 'portrait',
+      });
+
+      if (result.success && result.blob && pipelineEntryId) {
+        // Upload fresh PDF to storage
+        const pdfPath = `${pipelineEntryId}/estimates/${estimateNumber}.pdf`;
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(pdfPath, result.blob, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (uploadError) {
+          console.error('[Share] PDF upload failed:', uploadError);
+        } else {
+          // Update pdf_url in database
+          const { error: updateError } = await supabase
+            .from('enhanced_estimates')
+            .update({ pdf_url: pdfPath })
+            .eq('id', estimateId);
+
+          if (updateError) {
+            console.error('[Share] PDF URL update failed:', updateError);
+          } else {
+            console.log('[Share] PDF regenerated with attachments before sharing');
+          }
+        }
+      }
+    } catch (err) {
+      console.error('[Share] PDF regeneration failed:', err);
+      // Continue with share anyway - will use existing PDF
+    } finally {
+      setIsExporting(false);
+    }
+    
+    // Open share dialog
+    setShowShareDialog(true);
   };
 
   return (
@@ -595,13 +684,22 @@ export function EstimatePreviewPanel({
               <div className="flex gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => setShowShareDialog(true)}
-                  disabled={!(estimateId || pipelineEntryId)}
+                  onClick={handlePrepareAndShare}
+                  disabled={isExporting || isGeneratingPDF || !(estimateId || pipelineEntryId)}
                   className="flex-1"
                   title={!(estimateId || pipelineEntryId) ? 'Save the estimate first to share' : 'Share via email'}
                 >
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share
+                  {isExporting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Preparing...
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share
+                    </>
+                  )}
                 </Button>
                 <Button
                   onClick={handleExportPDF}
