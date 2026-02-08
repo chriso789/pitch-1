@@ -1,134 +1,68 @@
 
-# Fix Plan: Quote Email, PDF Display, and SMS Notifications
 
-## Summary of Issues
+## Plan: Remove Overhead from Templates
 
-Based on my investigation, I found three distinct problems:
-
-1. **Email shows the price** - The customer sees "$40,800" before clicking, reducing motivation to open
-2. **PDF not loading** - Shows "Quote document will be displayed here" because the PDF path is never passed to the tracking link
-3. **SMS notification not sent** - The SMS function rejects the service-to-service call due to user authentication requirements
+### Summary
+Remove the `overhead_percentage` column display from the Estimate Templates table and legacy Template Manager. The overhead calculation will be sourced exclusively from the **rep's profile** (`personal_overhead_rate`), which is set under Company Settings → Team Management.
 
 ---
 
-## Root Cause Analysis
+## What Changes
 
-### Issue 1: Price in Email
-- **Location**: `supabase/functions/send-quote-email/index.ts` (lines 311-317)
-- **Problem**: The email template includes a "Total Amount" section showing `selling_price`
+### 1. Remove "Overhead" Column from Template List Table
+**File**: `src/components/settings/EstimateTemplateList.tsx`
 
-### Issue 2: PDF Not Loading
-- **Location**: `src/components/estimates/ShareEstimateDialog.tsx` (lines 93-103)
-- **Problem**: The `pdf_url` is NOT passed to `send-quote-email` function
-- **Evidence**: Database query shows `quote_tracking_links.pdf_url = NULL` for all recent links
-- **The estimate HAS a pdf_url**: `d77c963c-163d-49b2-b457-8d9f730e7a28/estimates/OBR-00026-yjwz.pdf`
+- Remove "Overhead" column header from the table
+- Remove the `{template.overhead_percentage}%` cell display
+- Remove the column from loading skeletons
 
-### Issue 3: SMS Not Sent
-- **Location**: `supabase/functions/telnyx-send-sms/index.ts` (lines 52-71)
-- **Log Evidence**: `Failed to send SMS notification: {"success":false,"error":"Unauthorized"}`
-- **Problem**: The SMS function validates user auth via `supabase.auth.getUser()`, but `track-quote-view` calls it with the service role key (not a user token), so auth fails
+**Lines affected**: ~346, 359, ~395-396, 416
 
----
+### 2. Remove Overhead from Legacy TemplateManager
+**File**: `src/components/templates/TemplateManager.tsx`
 
-## Detailed Fix Plan
+- Remove "Overhead Percentage" input field from the create template dialog
+- Remove overhead display from template cards
+- Clean up the `overhead` object from the form state
 
-### Fix 1: Remove Price from Email Template
-**File**: `supabase/functions/send-quote-email/index.ts`
-
-Remove the conditional block that displays the selling price:
-
-**Before** (lines 311-317):
-```html
-${estimate.selling_price ? `
-<tr>
-  <td style="color: #6b7280; font-size: 14px; padding-top: 12px;">Total Amount</td>
-  <td style="text-align: right; color: ${primaryColor}; font-weight: 700; font-size: 20px; padding-top: 12px;">$${Number(estimate.selling_price).toLocaleString()}</td>
-</tr>
-` : ''}
-```
-
-**After**: Remove these lines entirely, keeping only the Quote Number row
+**Lines affected**: ~309-320 (form input), ~364 (card display), ~47-65 (form state)
 
 ---
 
-### Fix 2: Pass PDF URL to Tracking Link
-**File**: `src/components/estimates/ShareEstimateDialog.tsx`
+## No Database Changes Required
 
-Add a prop for `pdfUrl` and pass it to the edge function:
-
-1. Add `pdfUrl?: string;` to the interface (line 26)
-2. Include `pdf_url: pdfUrl` in the function body (around line 103)
-
-**Also Required**: `supabase/functions/send-quote-email/index.ts`
-
-Currently the edge function reads `body.pdf_url` but the dialog doesn't send it. The edge function already supports it (line 238):
-```typescript
-pdf_url: body.pdf_url,
-```
-
-So we just need the frontend to pass it.
-
-**Alternative Approach** (more reliable): Have the edge function fetch the `pdf_url` from `enhanced_estimates` when saving the tracking link, instead of relying on frontend:
-
-In `send-quote-email/index.ts`, change line 238 from:
-```typescript
-pdf_url: body.pdf_url,
-```
-to:
-```typescript
-pdf_url: body.pdf_url || estimate.pdf_url,
-```
-
-This way if frontend doesn't pass it, we fall back to the estimate's stored PDF path.
-
-But wait - we need to fetch `pdf_url` in the estimate query. Currently (line 116):
-```typescript
-.select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id")
-```
-Add `pdf_url` to both estimate queries.
+The `overhead_percentage` column will remain in the database for backward compatibility, but:
+- The UI will no longer display or edit it
+- The estimate calculation engine already uses the **rep's `personal_overhead_rate`** as the source of truth (per existing logic in `ProfitCenterPanel.tsx` and `EstimateHyperlinkBar.tsx`)
 
 ---
 
-### Fix 3: Allow Service-to-Service SMS Calls
-**File**: `supabase/functions/telnyx-send-sms/index.ts`
+## How Overhead Works After This Change
 
-The function currently requires user authentication. For internal service-to-service calls (like from `track-quote-view`), we need to allow the service role key to bypass user auth.
+| Source | Field | Usage |
+|--------|-------|-------|
+| Rep's Profile | `personal_overhead_rate` | Primary source (set in Team Management) |
+| Rep's Profile | `overhead_rate` | Fallback if personal rate is 0 |
+| Default | 10% | Final fallback if neither is set |
 
-**Solution**: Check if the Authorization header contains the service role key, and if so, skip user authentication:
-
-Add this logic after line 55:
-```typescript
-const authHeader = req.headers.get('Authorization');
-if (!authHeader) {
-  throw new Error('Missing authorization header');
-}
-
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
-const token = authHeader.replace('Bearer ', '');
-
-// Allow service-to-service calls with service role key
-const isServiceCall = token === supabaseServiceKey;
-
-if (!isServiceCall) {
-  // Regular user authentication
-  const supabaseClient = createClient(
-    Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-    { global: { headers: { Authorization: authHeader } } }
-  );
-
-  const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-  if (authError || !user) {
-    throw new Error('Unauthorized');
-  }
-  // ... continue with user-based tenant lookup
-} else {
-  // Service call - expect tenant context in body or skip tenant checks
-  console.log('Service-to-service call detected, skipping user auth');
-}
+This follows the existing hierarchy documented in the codebase:
+```
+effectiveOverheadRate = personal_overhead_rate > 0 ? personal_overhead_rate : (overhead_rate ?? 10)
 ```
 
-For service calls, we can accept the tenant info in the request body or simplify the from-number resolution.
+---
+
+## Visual Changes
+
+### Before (Template List)
+| Template Name | Type | Category | Items | Overhead | Profit | Status |
+|---------------|------|----------|-------|----------|--------|--------|
+| GAF Timberline | Shingle | Premium | 19 | 15% | 30% | Active |
+
+### After (Template List)
+| Template Name | Type | Category | Items | Profit | Status |
+|---------------|------|----------|-------|--------|--------|
+| GAF Timberline | Shingle | Premium | 19 | 30% | Active |
 
 ---
 
@@ -136,23 +70,16 @@ For service calls, we can accept the tenant info in the request body or simplify
 
 | File | Changes |
 |------|---------|
-| `supabase/functions/send-quote-email/index.ts` | Remove price display, add `pdf_url` to estimate query, use estimate's pdf_url as fallback |
-| `supabase/functions/telnyx-send-sms/index.ts` | Allow service role key to bypass user auth for internal calls |
+| `src/components/settings/EstimateTemplateList.tsx` | Remove Overhead column from table header, body, and skeleton |
+| `src/components/templates/TemplateManager.tsx` | Remove Overhead input and display from legacy manager |
 
 ---
 
-## Testing Plan
+## Testing
 
 After implementation:
+1. Navigate to Settings → Estimates tab
+2. Verify the template list no longer shows an "Overhead" column
+3. Create a new estimate and verify overhead is pulled from the rep's profile settings
+4. Check that the Profit Center still calculates overhead correctly from the rep's rate
 
-1. **Email Test**: Send a new quote email and verify the price is NOT shown in the email
-2. **PDF Test**: Click the link in the email and verify the PDF loads in the viewer
-3. **SMS Test**: When the quote is opened, verify SMS is received at +17708420812
-
----
-
-## Expected Behavior After Fix
-
-1. **Email**: Shows "Your Quote is Ready!" with quote number only - no price visible
-2. **View Page**: PDF displays immediately when link is clicked
-3. **SMS**: Sales rep receives text like "🔔 Nicole Walker just opened quote #OBR-00026-yjwz!"
