@@ -235,7 +235,9 @@ export function enhanceDocument(
   // 2. Mode-specific processing
   let afterMode: Uint8ClampedArray;
   if (options.mode === 'bw') {
-    afterMode = sauvolaBinarization(afterShadow, width, height);
+    // Apply binarization then clean up noise
+    const binarized = sauvolaBinarization(afterShadow, width, height);
+    afterMode = removeNoiseFromBW(binarized, width, height);
   } else if (options.mode === 'grayscale') {
     afterMode = convertToGrayscale(afterShadow);
   } else {
@@ -320,15 +322,16 @@ function adaptiveShadowRemoval(
 /**
  * Sauvola binarization for crisp B&W output
  * Handles shadows and uneven lighting better than simple thresholding
+ * Improved parameters for better document text readability
  */
 function sauvolaBinarization(
-  data: Uint8ClampedArray, 
-  width: number, 
+  data: Uint8ClampedArray,
+  width: number,
   height: number,
-  k: number = 0.2
+  k: number = 0.15 // Lower k = more black pixels = better for faint text
 ): Uint8ClampedArray {
   const result = new Uint8ClampedArray(data.length);
-  const windowSize = 15;
+  const windowSize = 25; // Larger window for more stable local statistics
   const halfWindow = Math.floor(windowSize / 2);
   const R = 128; // Dynamic range
   
@@ -394,11 +397,55 @@ function sauvolaBinarization(
 }
 
 /**
+ * Remove small noise spots from B&W image
+ * Uses median filter logic: isolated black/white pixels are removed
+ */
+function removeNoiseFromBW(
+  data: Uint8ClampedArray,
+  width: number,
+  height: number
+): Uint8ClampedArray {
+  const result = new Uint8ClampedArray(data.length);
+  result.set(data);
+
+  // Remove isolated black pixels (noise in white areas)
+  // and isolated white pixels (holes in text)
+  for (let y = 1; y < height - 1; y++) {
+    for (let x = 1; x < width - 1; x++) {
+      const idx = (y * width + x) * 4;
+      const current = data[idx]; // 0 = black, 255 = white
+
+      // Count neighbors of same color
+      let sameColorCount = 0;
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dx = -1; dx <= 1; dx++) {
+          if (dx === 0 && dy === 0) continue;
+          const nidx = ((y + dy) * width + (x + dx)) * 4;
+          if (data[nidx] === current) {
+            sameColorCount++;
+          }
+        }
+      }
+
+      // If pixel is isolated (less than 2 neighbors of same color), flip it
+      if (sameColorCount < 2) {
+        const newValue = current === 0 ? 255 : 0;
+        result[idx] = newValue;
+        result[idx + 1] = newValue;
+        result[idx + 2] = newValue;
+      }
+    }
+  }
+
+  return result;
+}
+
+/**
  * Convert to grayscale
  */
 function convertToGrayscale(data: Uint8ClampedArray): Uint8ClampedArray {
   const result = new Uint8ClampedArray(data.length);
-  
+
   for (let i = 0; i < data.length; i += 4) {
     const gray = Math.round(0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2]);
     result[i] = gray;
@@ -406,7 +453,7 @@ function convertToGrayscale(data: Uint8ClampedArray): Uint8ClampedArray {
     result[i + 2] = gray;
     result[i + 3] = 255;
   }
-  
+
   return result;
 }
 
