@@ -15,7 +15,8 @@ import {
   Loader2,
   Package,
   Hammer,
-  TrendingUp
+  TrendingUp,
+  Eye
 } from 'lucide-react';
 
 interface PipelineToJobConverterProps {
@@ -165,7 +166,11 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
             };
 
             return (
-              <div key={entry.id} className="flex items-center justify-between p-4 bg-background rounded-lg border hover:shadow-soft transition-smooth">
+              <div 
+                key={entry.id} 
+                className="flex items-center justify-between p-4 bg-background rounded-lg border hover:shadow-soft transition-smooth cursor-pointer"
+                onClick={() => navigate(`/lead/${entry.id}`)}
+              >
                 <div className="flex-1 min-w-0 mr-4">
                   <div className="flex items-center gap-2 mb-2">
                     <Home className="h-4 w-4 text-muted-foreground flex-shrink-0" />
@@ -225,14 +230,30 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
                   )}
                 </div>
                 
-                <Button 
-                  size="sm" 
-                  className="gradient-primary flex-shrink-0"
-                  onClick={() => navigate(`/pipeline-entry/${entry.id}/review`)}
-                >
-                  <ArrowRight className="h-4 w-4 mr-2" />
-                  Convert to Job
-                </Button>
+                <div className="flex gap-2 flex-shrink-0">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/lead/${entry.id}`);
+                    }}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="gradient-primary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate(`/pipeline-entry/${entry.id}/review`);
+                    }}
+                  >
+                    <ArrowRight className="h-4 w-4 mr-2" />
+                    Convert to Job
+                  </Button>
+                </div>
               </div>
             );
           })}
