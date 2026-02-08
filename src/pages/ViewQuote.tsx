@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FileText, Download, Phone, Mail, CheckCircle, Loader2, AlertCircle } from "lucide-react";
 import { MobilePDFViewer } from "@/components/ui/MobilePDFViewer";
+import { toast } from "sonner";
 
 interface QuoteData {
   estimate_number: string;
@@ -32,6 +33,7 @@ export default function ViewQuote() {
   const [quote, setQuote] = useState<QuoteData | null>(null);
   const [company, setCompany] = useState<CompanyData | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [isCreatingSignature, setIsCreatingSignature] = useState(false);
   const startTimeRef = useRef<number>(Date.now());
   const heartbeatIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -101,6 +103,38 @@ export default function ViewQuote() {
     }
   };
 
+  const handleAcceptQuote = async () => {
+    if (!token) return;
+
+    setIsCreatingSignature(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("request-quote-signature", {
+        body: { token }
+      });
+
+      if (error) {
+        console.error("Signature request error:", error);
+        throw new Error(error.message || "Failed to create signature request");
+      }
+
+      if (!data?.success) {
+        throw new Error(data?.error || "Failed to create signature request");
+      }
+
+      // Redirect to signature page
+      if (data.access_token) {
+        window.location.href = `/sign/${data.access_token}`;
+      } else {
+        throw new Error("No signing URL returned");
+      }
+    } catch (err: any) {
+      console.error("Accept quote error:", err);
+      toast.error(err.message || "Failed to prepare signature request. Please try again.");
+    } finally {
+      setIsCreatingSignature(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-background to-muted flex items-center justify-center">
@@ -129,126 +163,115 @@ export default function ViewQuote() {
   const primaryColor = company?.primary_color || "#f97316";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background to-muted">
-      {/* Header */}
+    <div className="min-h-screen flex flex-col bg-background">
+      {/* Pinned Header */}
       <header
-        className="py-6 px-4"
+        className="shrink-0 py-4 px-4 shadow-md"
         style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #1a1a2e 100%)` }}
       >
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="max-w-6xl mx-auto flex items-center justify-between">
+          <div className="flex items-center gap-3">
             {company?.logo_url && (
-              <img src={company.logo_url} alt={company.name} className="h-10 rounded" />
+              <img src={company.logo_url} alt={company.name} className="h-8 rounded" />
             )}
             <div>
-              <h1 className="text-white font-semibold">{company?.name || "Your Quote"}</h1>
-              <p className="text-white/70 text-sm">Quote #{quote?.estimate_number}</p>
+              <h1 className="text-white font-semibold text-sm md:text-base">{company?.name || "Your Quote"}</h1>
+              <p className="text-white/70 text-xs">Quote #{quote?.estimate_number}</p>
             </div>
           </div>
+          {quote?.selling_price && (
+            <div className="text-right">
+              <p className="text-white/70 text-xs">Total Investment</p>
+              <p className="text-white font-bold text-lg">${Number(quote.selling_price).toLocaleString()}</p>
+            </div>
+          )}
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="max-w-4xl mx-auto p-4 -mt-4">
-        <Card className="shadow-2xl">
-          <CardContent className="p-6">
-            {/* Welcome Message */}
-            <div className="text-center mb-8">
-              <h2 className="text-2xl font-bold mb-2">
-                Hi {quote?.recipient_name?.split(" ")[0] || "there"}!
-              </h2>
-              <p className="text-muted-foreground">
-                Thank you for your interest. Here's your personalized quote.
+      {/* Full-height PDF Container */}
+      <main className="flex-1 flex flex-col min-h-0 overflow-hidden">
+        {quote?.pdf_url ? (
+          <div className="flex-1 min-h-0">
+            <MobilePDFViewer
+              url={quote.pdf_url}
+              title={`Quote #${quote.estimate_number}`}
+              filename={`quote-${quote.estimate_number}.pdf`}
+              className="h-full w-full"
+            />
+          </div>
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="bg-muted rounded-lg p-12 text-center max-w-md">
+              <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">Document Unavailable</h3>
+              <p className="text-muted-foreground mb-4">
+                We couldn't load the quote document at this time. Please contact us for assistance.
               </p>
-            </div>
-
-            {/* Quote Summary */}
-            {quote?.selling_price && (
-              <div
-                className="rounded-xl p-6 mb-6 text-center"
-                style={{ background: `linear-gradient(135deg, ${primaryColor}20 0%, ${primaryColor}10 100%)` }}
-              >
-                <p className="text-sm text-muted-foreground mb-1">Total Investment</p>
-                <p className="text-4xl font-bold" style={{ color: primaryColor }}>
-                  ${Number(quote.selling_price).toLocaleString()}
-                </p>
-              </div>
-            )}
-
-            {/* PDF Viewer - Mobile Optimized */}
-            {quote?.pdf_url ? (
-              <div className="mb-6">
-                <MobilePDFViewer
-                  url={quote.pdf_url}
-                  title={`Quote #${quote.estimate_number}`}
-                  filename={`quote-${quote.estimate_number}.pdf`}
-                  className="rounded-lg border min-h-[50vh] md:min-h-[60vh]"
-                />
-              </div>
-            ) : (
-              <div className="bg-muted rounded-lg p-12 text-center mb-6">
-                <AlertCircle className="w-16 h-16 text-amber-500 mx-auto mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Document Unavailable</h3>
-                <p className="text-muted-foreground mb-4">
-                  We couldn't load the quote document at this time. Please contact us for assistance.
-                </p>
-                <div className="flex justify-center gap-3">
-                  <Button variant="outline" size="sm">
-                    <Phone className="w-4 h-4 mr-2" />
-                    Call Us
-                  </Button>
-                  <Button variant="outline" size="sm">
-                    <Mail className="w-4 h-4 mr-2" />
-                    Email Us
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Button
-                size="lg"
-                className="h-14 text-lg"
-                style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #ea580c 100%)` }}
-              >
-                <CheckCircle className="w-5 h-5 mr-2" />
-                Accept Quote
-              </Button>
-              {quote?.pdf_url && (
-                <Button variant="outline" size="lg" className="h-14 text-lg" asChild>
-                  <a href={quote.pdf_url} download>
-                    <Download className="w-5 h-5 mr-2" />
-                    Download PDF
-                  </a>
-                </Button>
-              )}
-            </div>
-
-            {/* Contact Info */}
-            <div className="mt-8 pt-6 border-t text-center">
-              <p className="text-sm text-muted-foreground mb-4">
-                Have questions? We're here to help!
-              </p>
-              <div className="flex justify-center gap-4">
-                <Button variant="ghost" size="sm">
+              <div className="flex justify-center gap-3">
+                <Button variant="outline" size="sm">
                   <Phone className="w-4 h-4 mr-2" />
                   Call Us
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button variant="outline" size="sm">
                   <Mail className="w-4 h-4 mr-2" />
                   Email Us
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
-
-        {/* Footer */}
-        <footer className="text-center py-8 text-sm text-muted-foreground">
-          <p>Powered by PITCH CRM</p>
-        </footer>
+          </div>
+        )}
       </main>
+
+      {/* Pinned Action Footer */}
+      <footer className="shrink-0 bg-background border-t p-4 shadow-lg">
+        <div className="max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <Button
+              size="lg"
+              className="h-14 text-lg font-semibold"
+              style={{ background: `linear-gradient(135deg, ${primaryColor} 0%, #ea580c 100%)` }}
+              onClick={handleAcceptQuote}
+              disabled={isCreatingSignature}
+            >
+              {isCreatingSignature ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Preparing...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  Accept Quote
+                </>
+              )}
+            </Button>
+            {quote?.pdf_url && (
+              <Button variant="outline" size="lg" className="h-14 text-lg" asChild>
+                <a href={quote.pdf_url} download>
+                  <Download className="w-5 h-5 mr-2" />
+                  Download PDF
+                </a>
+              </Button>
+            )}
+          </div>
+
+          {/* Contact Row */}
+          <div className="mt-3 flex justify-center gap-4 text-sm">
+            <Button variant="ghost" size="sm" className="text-muted-foreground">
+              <Phone className="w-4 h-4 mr-1" />
+              Call Us
+            </Button>
+            <Button variant="ghost" size="sm" className="text-muted-foreground">
+              <Mail className="w-4 h-4 mr-1" />
+              Email Us
+            </Button>
+          </div>
+
+          <p className="text-center text-xs text-muted-foreground mt-2">
+            Powered by PITCH CRM
+          </p>
+        </div>
+      </footer>
     </div>
   );
 }
