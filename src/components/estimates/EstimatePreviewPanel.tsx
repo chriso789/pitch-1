@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -305,8 +305,9 @@ export function EstimatePreviewPanel({
         <div className="flex h-[calc(95vh-120px)] min-h-0">
           {/* Left Panel - Toggle Controls */}
           <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden min-h-0">
-            <ScrollArea className="flex-1 w-full min-h-0">
-              <div className="box-border w-full p-4 pr-10 pb-32 space-y-4">
+            {/* Native scroll container - avoids Radix ScrollArea overlay clipping issues */}
+            <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
+              <div className="p-4 pr-5 pb-32 space-y-4">
               {/* View Mode Tabs */}
               <Tabs value={viewMode} onValueChange={(v) => handleViewModeChange(v as PDFViewMode)} className="mb-4">
                 <TabsList className="grid w-full grid-cols-2">
@@ -578,7 +579,7 @@ export function EstimatePreviewPanel({
                 </div>
               </div>
               </div>
-            </ScrollArea>
+            </div>
 
             {/* Bottom Actions */}
             <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
@@ -674,7 +675,7 @@ export function EstimatePreviewPanel({
   );
 }
 
-// Toggle Row Component
+// Toggle Row Component - uses CSS grid for bulletproof layout
 function ToggleRow({
   label,
   checked,
@@ -688,9 +689,15 @@ function ToggleRow({
   badge?: string;
   disabled?: boolean;
 }) {
+  // Generate stable id from label for accessibility
+  const switchId = `toggle-${label.toLowerCase().replace(/[^a-z0-9]/g, '-')}`;
+  
   return (
-    <div className={`flex items-center justify-between gap-3 w-full ${disabled ? 'opacity-50' : ''}`}>
-      <Label className="text-sm flex items-center gap-1.5 cursor-pointer min-w-0 flex-1">
+    <div className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 w-full ${disabled ? 'opacity-50' : ''}`}>
+      <Label 
+        htmlFor={switchId}
+        className="text-sm flex items-center gap-1.5 cursor-pointer min-w-0"
+      >
         <span className="truncate">{label}</span>
         {badge && (
           <Badge variant="outline" className="text-[10px] py-0 px-1 shrink-0">
@@ -699,6 +706,7 @@ function ToggleRow({
         )}
       </Label>
       <Switch
+        id={switchId}
         checked={checked}
         onCheckedChange={onChange}
         disabled={disabled}
