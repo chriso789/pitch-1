@@ -1,86 +1,190 @@
 
-Goal
-- Restore “Preview Estimate” modal usability:
-  1) Toggle switches (and other right-aligned controls) must be fully visible (not clipped).
-  2) “Share” button must be enabled when sharing is actually possible (e.g., when we have an estimateId OR a pipelineEntryId fallback).
+# Fix: Quote View Page - Full Page PDF, SMS Notification, and Accept Quote Signature
 
-What’s happening (root causes)
-1) Toggles/buttons are getting visually clipped on the right
-- In `EstimatePreviewPanel.tsx`, the ScrollArea content wrapper is:
-  - `w-full` plus padding (`p-4 pr-5`)
-- In CSS, `width: 100%` applies to the content box. Padding is added on top of that, making the element’s total rendered width exceed the viewport.
-- Result: the right-most content (Switches) overflows beyond the ScrollArea viewport and gets cut off, and/or sits under the ScrollArea scrollbar.
+## Issues Identified
 
-2) “Share” is greyed out and not clickable
-- In `EstimatePreviewPanel.tsx` the Share button is disabled when `!estimateId`:
-  - `disabled={!estimateId}`
-- But `ShareEstimateDialog` already supports a fallback flow using `pipelineEntryId` to find the estimate in the edge function (`send-quote-email`), so disabling purely on `estimateId` is too strict.
-- In your lead flow (`/lead/...?...tab=estimate`), it’s common to have `pipelineEntryId` available even if `estimateId` is undefined in the UI state.
+### Issue 1: PDF is displayed in a sub-window (not full page)
+**Current State:** The `ViewQuote.tsx` page shows the PDF inside a `MobilePDFViewer` component which is embedded within a card, constrained to a small viewport (50-70vh height) with zoom controls and toolbars.
 
-Files I will inspect/adjust
-- `src/components/estimates/EstimatePreviewPanel.tsx` (main fixes)
-- (Verify only) `src/components/estimates/MultiTemplateSelector.tsx` (ensure `pipelineEntryId` is being passed; it is)
+**Root Cause:** The design wraps the PDF in multiple containers (`Card > CardContent > MobilePDFViewer`) with max-width constraints and internal height limits.
 
-Implementation plan (code changes)
-A) Fix the clipped toggles/switches (layout)
-1. Update the ScrollArea inner content wrapper to use border-box sizing so padding does not increase total width:
-   - Add Tailwind `box-border`
-   - Keep `w-full` (now safe), and adjust right padding to account for scrollbar + switch width
-2. Remove any unnecessary `max-w-full` (often redundant once `box-border` is used) and ensure the wrapper does not force overflow.
-3. Make the right-aligned switch container consistently visible:
-   - Keep `Switch` as `shrink-0`
-   - Ensure the row container does not overflow: `min-w-0` already on Label; we’ll also ensure the row wrapper isn’t inadvertently wider than its parent.
+**Fix:** Redesign the layout to make the PDF viewer full-page/full-height with company header pinned at the top and action buttons pinned at the bottom.
 
-Concrete change (high level)
-- Change:
-  - `className="p-4 pr-5 space-y-4 w-full max-w-full"`
-- To something like:
-  - `className="box-border w-full p-4 pr-10 space-y-4"`
-  (The exact `pr-*` may be tuned; `pr-10` is a safe starting point so the scrollbar never covers the switches.)
+---
 
-B) Fix “Share” being disabled incorrectly
-1. Change Share button disabled logic from:
-   - `disabled={!estimateId}`
-   to:
-   - `disabled={!(estimateId || pipelineEntryId)}`
-2. Update the tooltip/title copy to reflect both possibilities:
-   - If neither exists: “Save the estimate first to share”
-   - If pipelineEntryId exists (even without estimateId): “Share via email”
-3. Keep the existing `ShareEstimateDialog` invocation as-is (it already passes `estimateId` and `pipelineEntryId`), ensuring the edge function can use whichever is present.
+### Issue 2: SMS not sent when quote is opened
+**Current State:** The edge function logs show:
+```
+Failed to send SMS notification: {"success":false,"error":"Invalid source number..."}
+```
 
-C) Guard against “buttons not clickable” regressions (pointer-events/overlays)
-Even though the screenshot mostly shows a disabled Share (expected with current logic), we’ll also prevent accidental overlay/click issues:
-1. Confirm the left panel bottom actions are not covered by the ScrollArea scrollbar by ensuring:
-   - Bottom actions container stays outside ScrollArea (already true)
-   - No absolute overlays exist inside the dialog
-2. If we still see click issues after A+B, we’ll add a targeted fix:
-   - Ensure bottom actions container has `relative z-10 pointer-events-auto`
-   This is a safe “belt and suspenders” if a scrollbar/overlay is intercepting clicks in some browsers.
+**Root Cause:** The `track-quote-view` edge function calls `telnyx-send-sms` but:
+1. It doesn't pass the `tenant_id` to the SMS function (required to look up location phone numbers)
+2. Without `tenant_id`, the SMS function can't find a valid from number
 
-Verification checklist (what you will test after I implement)
-1) Toggle visibility
-- Open a lead → Estimate tab → “Preview Estimate”
-- Confirm every switch is fully visible (thumb + track), not clipped.
-- Scroll the left panel and ensure switches remain visible in all sections.
-- Test at:
-  - Narrow window
-  - Normal desktop width
-  - If you use it: mobile viewport
+**Fix:** Update `track-quote-view` to pass `tenant_id` in the SMS request body so `telnyx-send-sms` can resolve the correct outbound phone number.
 
-2) Share button behavior
-- Case A: estimateId exists → Share enabled
-- Case B: estimateId missing but pipelineEntryId exists → Share enabled
-- Case C: both missing → Share disabled with “Save first” tooltip
-- Click Share and confirm the Share dialog opens and accepts inputs.
+---
 
-3) No UI regressions
-- Export PDF still works
-- No new horizontal scrolling inside the left panel
-- Scrollbar does not overlap controls
+### Issue 3: "Accept Quote" button does nothing
+**Current State:** The button is rendered but has no `onClick` handler:
+```tsx
+<Button size="lg" ... >
+  <CheckCircle className="w-5 h-5 mr-2" />
+  Accept Quote
+</Button>
+```
 
-If the Share dialog opens but sending fails
-- Next step will be to check the edge function `send-quote-email` logs and confirm it properly resolves an estimate from `pipeline_entry_id` (this is backend-side behavior and separate from the UI enable/disable issue).
+**Root Cause:** No functionality implemented to:
+1. Create a signature envelope for this quote
+2. Redirect to the signature capture page
 
-Notes for you (plain-English)
-- The toggles are being cut off because the content area is effectively “wider than the sidebar” due to how padding + `w-full` interact.
-- The Share button is grey because the UI currently requires a specific ID (`estimateId`), but your system already supports sharing via the pipeline record too—so we’ll enable it when either ID exists.
+**Fix:** Implement a flow that:
+1. On click, calls an edge function to create a signature envelope for the estimate
+2. Redirects the customer to `/sign/{access_token}` for digital signature capture
+
+---
+
+## Implementation Plan
+
+### File 1: `src/pages/ViewQuote.tsx`
+
+**Changes:**
+1. **Full-page PDF layout:**
+   - Remove Card wrapper around PDF
+   - Make PDF viewer take full available height (using CSS calc and flexbox)
+   - Pin header at top, action buttons at bottom
+   - Use a cleaner, more immersive viewing experience
+
+2. **Accept Quote functionality:**
+   - Add state for signature flow (`isCreatingSignature`, `signatureUrl`)
+   - Add `handleAcceptQuote` function that:
+     - Calls new edge function `request-quote-signature`
+     - Creates signature envelope for the estimate
+     - Returns signing URL
+     - Navigates to signing page or shows inline signature capture
+
+3. **UI improvements:**
+   - Make the "Accept Quote" button trigger the signature flow
+   - Show loading state while creating signature request
+   - Optional: Show inline signature capture component instead of redirect
+
+### File 2: `supabase/functions/track-quote-view/index.ts`
+
+**Changes:**
+- Add `tenant_id` to the SMS request body:
+```typescript
+body: JSON.stringify({
+  to: repProfile.phone,
+  message: smsMessage,
+  tenant_id: trackingLink.tenant_id,  // ADD THIS
+  sent_by: trackingLink.sent_by,      // ADD THIS for logging
+})
+```
+
+### File 3: `supabase/functions/request-quote-signature/index.ts` (NEW)
+
+**Purpose:** Create a signature envelope for a quote and return the signing URL
+
+**Flow:**
+1. Accept `token` (quote tracking token)
+2. Validate token and get estimate data
+3. Create signature envelope using existing `create-signature-envelope` logic
+4. Return signing access token/URL
+
+---
+
+## Technical Details
+
+### Updated ViewQuote Layout Structure
+```tsx
+<div className="min-h-screen flex flex-col">
+  {/* Pinned Header */}
+  <header className="...">Company branding</header>
+  
+  {/* Full-height PDF Container */}
+  <main className="flex-1 flex flex-col overflow-hidden">
+    <MobilePDFViewer 
+      className="flex-1 min-h-0"
+      // Remove height constraints, let it fill available space
+    />
+  </main>
+  
+  {/* Pinned Actions */}
+  <footer className="sticky bottom-0 bg-background p-4 border-t">
+    <Button onClick={handleAcceptQuote}>Accept Quote</Button>
+    <Button>Download PDF</Button>
+  </footer>
+</div>
+```
+
+### Accept Quote Handler
+```typescript
+const handleAcceptQuote = async () => {
+  setIsCreatingSignature(true);
+  try {
+    const { data, error } = await supabase.functions.invoke('request-quote-signature', {
+      body: { token }
+    });
+    
+    if (error) throw error;
+    
+    // Redirect to signature page
+    window.location.href = `/sign/${data.access_token}`;
+  } catch (err) {
+    toast.error('Failed to prepare signature request');
+  } finally {
+    setIsCreatingSignature(false);
+  }
+};
+```
+
+### SMS Fix in track-quote-view
+```typescript
+// Line ~281 in track-quote-view/index.ts
+const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${supabaseServiceKey}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    to: repProfile.phone,
+    message: smsMessage,
+    tenant_id: trackingLink.tenant_id,  // NEW - enables location phone lookup
+    sent_by: trackingLink.sent_by        // NEW - for audit logging
+  })
+});
+```
+
+---
+
+## Files to Create/Modify
+
+| File | Action | Description |
+|------|--------|-------------|
+| `src/pages/ViewQuote.tsx` | Modify | Full-page PDF layout + Accept Quote handler |
+| `supabase/functions/track-quote-view/index.ts` | Modify | Add tenant_id to SMS request |
+| `supabase/functions/request-quote-signature/index.ts` | Create | New function to create signature envelope from quote token |
+
+---
+
+## Expected Results
+
+After implementation:
+1. **Full-page PDF:** Customer sees the quote PDF filling most of the screen, with header and action buttons pinned
+2. **SMS notifications work:** Sales rep receives text when quote is opened (requires valid Telnyx number configured for the tenant's location)
+3. **Accept Quote works:** Clicking the button creates a signature envelope and redirects to the digital signature page
+4. **Complete flow:** Customer can view quote → Accept → Sign digitally → Estimate marked as "signed"
+
+---
+
+## Verification Steps
+
+1. **PDF Layout:** Open a quote link and verify PDF fills the viewport with minimal wrappers
+2. **SMS:** Open a quote and check edge function logs for successful SMS delivery (requires Telnyx phone configured)
+3. **Signature Flow:**
+   - Click "Accept Quote"
+   - Verify redirect to signature page
+   - Complete signature
+   - Verify estimate status updates to "signed"
