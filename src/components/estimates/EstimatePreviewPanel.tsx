@@ -302,7 +302,7 @@ export function EstimatePreviewPanel({
           {/* Left Panel - Toggle Controls */}
           <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden">
             <ScrollArea className="flex-1 w-full">
-              <div className="p-4 pr-5 space-y-4 w-full max-w-full">
+              <div className="box-border w-full p-4 pr-10 space-y-4">
               {/* View Mode Tabs */}
               <Tabs value={viewMode} onValueChange={(v) => handleViewModeChange(v as PDFViewMode)} className="mb-4">
                 <TabsList className="grid w-full grid-cols-2">
@@ -591,9 +591,9 @@ export function EstimatePreviewPanel({
                 <Button
                   variant="outline"
                   onClick={() => setShowShareDialog(true)}
-                  disabled={!estimateId}
+                  disabled={!(estimateId || pipelineEntryId)}
                   className="flex-1"
-                  title={!estimateId ? 'Save the estimate first to share' : 'Share via email'}
+                  title={!(estimateId || pipelineEntryId) ? 'Save the estimate first to share' : 'Share via email'}
                 >
                   <Share2 className="h-4 w-4 mr-2" />
                   Share
