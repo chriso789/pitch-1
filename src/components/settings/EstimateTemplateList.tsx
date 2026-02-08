@@ -339,11 +339,10 @@ export function EstimateTemplateList() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[300px]">Template Name</TableHead>
+              <TableHead className="w-[300px]">Template Name</TableHead>
                 <TableHead>Type</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-center">Items</TableHead>
-                <TableHead className="text-right">Overhead</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
@@ -356,7 +355,6 @@ export function EstimateTemplateList() {
                   <TableCell><Skeleton className="h-5 w-16" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-20" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
-                  <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-16 mx-auto" /></TableCell>
                   <TableCell><Skeleton className="h-5 w-8" /></TableCell>
@@ -392,7 +390,6 @@ export function EstimateTemplateList() {
                 <TableHead>Type</TableHead>
                 <TableHead>Category</TableHead>
                 <TableHead className="text-center">Items</TableHead>
-                <TableHead className="text-right">Overhead</TableHead>
                 <TableHead className="text-right">Profit</TableHead>
                 <TableHead className="text-center">Status</TableHead>
                 <TableHead className="w-[60px]"></TableHead>
@@ -413,7 +410,6 @@ export function EstimateTemplateList() {
                   </TableCell>
                   <TableCell className="capitalize">{template.template_category || 'standard'}</TableCell>
                   <TableCell className="text-center">{template.item_count}</TableCell>
-                  <TableCell className="text-right">{template.overhead_percentage}%</TableCell>
                   <TableCell className="text-right">{template.target_profit_percentage}%</TableCell>
                   <TableCell className="text-center">
                     <Badge 
