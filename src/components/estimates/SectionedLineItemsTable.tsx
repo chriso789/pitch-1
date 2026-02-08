@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { 
   Package, 
   Hammer, 
@@ -21,7 +23,8 @@ import {
   RotateCcw,
   Trash2,
   Receipt,
-  Plus
+  Plus,
+  StickyNote
 } from 'lucide-react';
 import type { LineItem } from '@/hooks/useEstimatePricing';
 import { MaterialAutocomplete } from './MaterialAutocomplete';
@@ -166,19 +169,73 @@ export function SectionedLineItemsTable({
     );
   };
 
+  // Component for note editing popover
+  const NoteEditor = ({ item }: { item: LineItem }) => {
+    const [noteValue, setNoteValue] = useState(item.notes || '');
+    const [open, setOpen] = useState(false);
+    
+    const handleSave = () => {
+      onUpdateItem(item.id, { notes: noteValue });
+      setOpen(false);
+    };
+
+    return (
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className={`h-5 w-5 shrink-0 ${
+              item.notes 
+                ? 'text-amber-500 opacity-100' 
+                : 'opacity-0 group-hover:opacity-50'
+            }`}
+            title={item.notes ? 'Edit note' : 'Add note'}
+          >
+            <StickyNote className="h-3 w-3" />
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-64" align="start">
+          <div className="space-y-2">
+            <Label className="text-xs font-medium">Color / Notes</Label>
+            <Textarea
+              value={noteValue}
+              onChange={(e) => setNoteValue(e.target.value)}
+              placeholder="e.g. Charcoal, 26 gauge"
+              className="min-h-[60px] text-sm"
+            />
+            <div className="flex justify-end gap-1">
+              <Button size="sm" variant="ghost" onClick={() => setOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={handleSave}>
+                Save
+              </Button>
+            </div>
+          </div>
+        </PopoverContent>
+      </Popover>
+    );
+  };
+
   const renderItemRow = (item: LineItem) => (
     <TableRow key={item.id} className="group">
       <TableCell className="font-medium">
-        <div>
-          {item.item_name}
-          {item.is_override && (
-            <Badge variant="outline" className="ml-2 text-xs">Modified</Badge>
-          )}
-          {item.notes && (
-            <p className="text-xs text-muted-foreground mt-0.5">
-              <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
-            </p>
-          )}
+        <div className="flex items-start gap-1">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1">
+              <span className="truncate">{item.item_name}</span>
+              {item.is_override && (
+                <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
+              )}
+              {editable && <NoteEditor item={item} />}
+            </div>
+            {item.notes && (
+              <p className="text-xs text-muted-foreground mt-0.5">
+                <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
+              </p>
+            )}
+          </div>
         </div>
       </TableCell>
       <TableCell className="text-right">
@@ -382,10 +439,19 @@ export function SectionedLineItemsTable({
                 <div className="flex items-end gap-2 flex-wrap">
                   <div className="flex-1 min-w-[180px]">
                     <Label className="text-xs">Item Name</Label>
-                    <Input
+                    <MaterialAutocomplete
                       value={newItem.item_name}
-                      onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
-                      placeholder="Item name"
+                      onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                      onSelectMaterial={(material) => {
+                        onNewItemChange({
+                          ...newItem,
+                          item_name: material.name,
+                          unit: material.uom,
+                          unit_cost: material.base_cost,
+                          material_id: material.id,
+                        });
+                      }}
+                      placeholder="Search items..."
                       autoFocus
                     />
                   </div>
