@@ -37591,6 +37591,10 @@ export type Database = {
         Args: { p_materials: Json }
         Returns: number
       }
+      api_bulk_sync_template_items_to_catalog: {
+        Args: { p_template_id: string; p_tenant_id: string }
+        Returns: number
+      }
       api_capout_refresh: { Args: { p_job_id: string }; Returns: Json }
       api_create_material_order_from_estimate: {
         Args: {
