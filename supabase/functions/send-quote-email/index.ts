@@ -112,7 +112,7 @@ serve(async (req: Request) => {
     if (body.estimate_id) {
       const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pdf_url")
+        .select("id, estimate_number, display_name, selling_price, pipeline_entry_id, tenant_id, pdf_url")
         .eq("id", body.estimate_id)
         .single();
       
@@ -129,7 +129,7 @@ serve(async (req: Request) => {
     if (!estimate && body.pipeline_entry_id) {
       const { data, error } = await supabase
         .from("enhanced_estimates")
-        .select("id, estimate_number, selling_price, pipeline_entry_id, tenant_id, pdf_url")
+        .select("id, estimate_number, display_name, selling_price, pipeline_entry_id, tenant_id, pdf_url")
         .eq("pipeline_entry_id", body.pipeline_entry_id)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -306,8 +306,8 @@ serve(async (req: Request) => {
                   <td style="padding: 24px;">
                     <table width="100%" cellpadding="0" cellspacing="0">
                       <tr>
-                        <td style="color: #6b7280; font-size: 14px;">Quote Number</td>
-                        <td style="text-align: right; color: #111827; font-weight: 600; font-size: 14px;">${estimate.estimate_number}</td>
+                        <td style="color: #6b7280; font-size: 14px;">Quote</td>
+                        <td style="text-align: right; color: #111827; font-weight: 600; font-size: 14px;">${estimate.display_name || estimate.estimate_number}</td>
                       </tr>
                     </table>
                   </td>
@@ -355,7 +355,7 @@ serve(async (req: Request) => {
       from: `${fromName} <${fromEmail}>`,
       to: [body.recipient_email],
       reply_to: replyTo,
-      subject: body.subject || `Your Quote from ${companyName} - #${estimate.estimate_number}`,
+      subject: body.subject || `Your Quote from ${companyName} - ${estimate.display_name || estimate.estimate_number}`,
       html: emailHtml
     });
 
