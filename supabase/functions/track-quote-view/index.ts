@@ -278,6 +278,7 @@ serve(async (req: Request) => {
         const smsMessage = `🔔 ${contactName} ${viewText} quote #${estimateNum}!${locationText}`;
 
         // Call telnyx-send-sms internally using service role
+        // Pass tenant_id to enable location-based phone number lookup
         const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
           method: 'POST',
           headers: {
@@ -287,6 +288,8 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             to: repProfile.phone,
             message: smsMessage,
+            tenant_id: trackingLink.tenant_id,
+            sent_by: trackingLink.sent_by,
           })
         });
 
