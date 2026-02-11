@@ -1,104 +1,98 @@
 
-## Fix: Reduce Quote PDF File Sizes
 
-### Problem
-Your quote PDFs are coming out at **27+ MB** - too large for email (Gmail limit is 25MB). The screenshot shows Gmail blocking the attachments.
+## AI Agent Settings Enhancement: Configurable Qualification Questions + Test Call
 
-### Root Cause Analysis
-The PDF generation pipeline has these issues:
+### What This Does
 
-| Stage | Current Setting | Problem |
-|-------|-----------------|---------|
-| Attachment page rendering | `scale: 1.5`, JPEG 0.85 | Reasonable |
-| html2canvas capture | `scale: 2` for ALL pages | Too high for attachments |
-| Attachment JPEG export | Quality 0.85 | Could be lower |
+Adds two key features to your existing AI Agent Settings page (`/settings/ai-agent`):
 
-**Key insight**: Attachment pages are already compressed images. Capturing them through html2canvas at `scale: 2` and JPEG 0.85 doubles the work and inflates file size without quality benefit.
+1. **Qualification Questions tab** -- Configure which questions the AI asks callers (currently hardcoded as name, phone, service, roof age, insurance claim, timeline, budget)
+2. **Test Call button** -- Trigger a test call from the UI to verify the full flow works end-to-end
 
-### Solution
-Implement **adaptive compression** based on page type:
+---
 
-| Page Type | html2canvas Scale | Export Format | Quality | Target Size |
-|-----------|-------------------|---------------|---------|-------------|
-| Text content (estimate) | 2.0 | PNG | N/A | ~200KB/page |
-| Attachment pages | 1.0 | JPEG | 0.65 | ~150KB/page |
+### Changes Overview
 
-### Technical Changes
+| Area | What Changes |
+|------|-------------|
+| Settings UI | Add "Qualification" tab with drag-to-reorder question builder |
+| Settings UI | Add "Test Call" section with phone number input + call button |
+| Database | Add `qualification_questions` JSONB column to `ai_answering_config` |
+| Edge Function | Update `telnyx-ai-answering` to read questions from config instead of hardcoded |
+| Edge Function | Create `test-ai-call` function to initiate an outbound test call |
 
-#### File: `src/hooks/useMultiPagePDFGeneration.ts`
+---
 
-**1. Detect attachment pages BEFORE capture (around line 134)**
+### 1. Database: Add qualification_questions column
+
+Add a `qualification_questions` JSONB column to `ai_answering_config` that stores an array of configurable questions:
+
+```sql
+ALTER TABLE ai_answering_config 
+ADD COLUMN IF NOT EXISTS qualification_questions JSONB DEFAULT '[
+  {"key": "name", "label": "Caller Name", "description": "Full name of the caller", "type": "string", "required": true, "enabled": true},
+  {"key": "service_needed", "label": "Service Needed", "description": "What service they need", "type": "string", "required": true, "enabled": true},
+  {"key": "callback_number", "label": "Callback Number", "description": "Best phone number to reach them", "type": "string", "required": true, "enabled": true},
+  {"key": "address", "label": "Property Address", "description": "Property address where service is needed", "type": "string", "required": false, "enabled": true},
+  {"key": "roof_age", "label": "Roof Age", "description": "Approximate age of the roof", "type": "string", "required": false, "enabled": false},
+  {"key": "has_insurance_claim", "label": "Insurance Claim", "description": "Whether they have an insurance claim", "type": "boolean", "required": false, "enabled": false},
+  {"key": "timeline", "label": "Timeline", "description": "When they want the work done", "type": "string", "required": false, "enabled": false},
+  {"key": "budget_range", "label": "Budget Range", "description": "Approximate budget if mentioned", "type": "string", "required": false, "enabled": false}
+]';
+```
+
+### 2. Settings UI: Qualification Questions Tab
+
+Add a new "Qualification" tab to the existing settings page with:
+
+- List of qualification questions with toggle switches (enable/disable)
+- Each question shows: label, description, required checkbox
+- "Add Custom Question" form at the bottom (key, label, description, type, required)
+- Delete button for custom questions (built-in ones can only be toggled)
+
+### 3. Settings UI: Test Call Section
+
+Add a card at the top of the settings page (below the enable toggle) with:
+
+- Phone number input field
+- "Make Test Call" button that calls the `test-ai-call` edge function
+- Status indicator showing call progress (initiating, ringing, answered, completed)
+- Note explaining this will call the entered number and run the AI agent
+
+### 4. Edge Function: Update telnyx-ai-answering
+
+Modify the `gather_using_ai` parameters section to dynamically build the `properties` and `required` arrays from the `qualification_questions` config instead of hardcoded values:
+
 ```typescript
-const pageElement = pageElements[i] as HTMLElement;
+// Instead of hardcoded properties...
+// Build from config
+const questions = tenantConfig.qualification_questions || defaultQuestions;
+const properties: Record<string, any> = {};
+const required: string[] = [];
 
-// Detect if this is an attachment page (image-only content)
-const isAttachmentPage = pageElement.querySelector('img[style*="object-fit"]') !== null;
-
-// Use lower scale for attachment pages (already images, don't need double resolution)
-const captureScale = isAttachmentPage ? 1.0 : 2.0;
+for (const q of questions) {
+  if (!q.enabled) continue;
+  properties[q.key] = { description: q.description, type: q.type };
+  if (q.required) required.push(q.key);
+}
 ```
 
-**2. Update html2canvas call (line 156)**
-```typescript
-const canvas = await html2canvas(pageElement, {
-  scale: captureScale, // Dynamic: 1.0 for attachments, 2.0 for text
-  useCORS: true,
-  allowTaint: true,
-  backgroundColor: '#ffffff',
-  logging: false,
-  imageTimeout: 5000,
-  onclone: (_clonedDoc, clonedElement) => {
-    applyPDFStyles(clonedElement);
-  },
-});
-```
+### 5. Edge Function: test-ai-call
 
-**3. Lower JPEG quality for attachments (line 187)**
-```typescript
-// Use JPEG at 0.65 quality for attachments (aggressive compression)
-// This provides significant file size reduction with acceptable visual quality
-const imageData = isAttachmentPage
-  ? canvas.toDataURL('image/jpeg', 0.65)  // Changed from 0.85
-  : canvas.toDataURL('image/png');
-```
+New edge function that initiates an outbound call to a test number using the tenant's Telnyx number, then triggers the same AI gather flow. This lets you verify the greeting, voice, and questions without needing an external caller.
 
-#### File: `src/lib/pdfRenderer.ts` (Optional - further optimization)
+---
 
-**4. Also reduce initial attachment render quality (line 121 in AttachmentPagesRenderer)**
-```typescript
-// Render at 1.0 scale instead of 1.5, quality 0.70 instead of 0.85
-const rendered = await renderPageToDataUrl(pdf, pageNum, 1.0, att.document_id, true, 0.70);
-```
+### Technical Details
 
-### Expected Results
+**Files to create:**
+- `supabase/functions/test-ai-call/index.ts` -- Initiates outbound test call via Telnyx API
 
-| Before | After | Reduction |
-|--------|-------|-----------|
-| ~27MB per quote | ~3-5MB per quote | **80-85%** |
-| Gmail blocked | Email delivers | ✅ |
+**Files to modify:**
+- `src/pages/settings/AIAgentSettingsPage.tsx` -- Add Qualification tab + Test Call section
+- `supabase/functions/telnyx-ai-answering/index.ts` -- Read qualification_questions from config
+- `supabase/config.toml` -- Add test-ai-call function entry
 
-**Why this works:**
-- Attachment pages are mostly images of product brochures
-- Human eyes can't distinguish JPEG 0.65 from 0.85 at normal viewing distance
-- Reducing scale from 2.0 to 1.0 cuts pixel count by 75%
-- Combined effect: (1/4 pixels) × (lower quality) = massive size reduction
+**Database migration:**
+- Add `qualification_questions` JSONB column to `ai_answering_config`
 
-### Visual Quality Comparison (for reference)
-
-```text
-JPEG Quality Settings:
-- 0.95 = Archival quality, nearly lossless
-- 0.85 = High quality (current) - professional photos
-- 0.70 = Good quality - web images
-- 0.65 = Acceptable quality (proposed) - document attachments
-- 0.50 = Noticeable artifacts
-```
-
-For product flyers viewed on screen or printed once, 0.65 quality is absolutely acceptable and customers won't notice the difference.
-
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/hooks/useMultiPagePDFGeneration.ts` | Adaptive scale (1.0 vs 2.0), lower JPEG quality (0.65) |
-| `src/components/estimates/AttachmentPagesRenderer.tsx` | Optional: reduce initial render scale to 1.0 |
