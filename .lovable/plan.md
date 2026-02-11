@@ -1,68 +1,79 @@
 
 
-## Fix: Mobile Header Layout and Usability
+## Add Call Transcript History Viewer to AI Agent Dashboard
 
-### Problems Identified
+### What This Does
 
-From the screenshot, three issues make the app unusable on mobile:
+Adds a new "Transcripts" tab to the AI Agent Dashboard (`/ai-agent`) that lets you browse and review past AI call conversations -- what the AI said, what the caller said, and the gathered qualification data.
 
-1. **Search bar is too narrow** -- squeezed between the hamburger menu (pl-14) and the notification + company switcher buttons, leaving barely any room. The search dropdown is equally narrow, truncating all results to "Contac..."
-2. **No location switcher accessible** -- it's buried inside the sidebar drawer, requiring two taps to reach. No quick way to change locations from the main view.
-3. **Header is overcrowded** -- all controls (search, notifications, company switcher) compete for a single 14px-high row on mobile.
+### Current State
+
+- The **AI Agent Settings page** (`/settings/ai-agent`) with greeting, voice, business hours, qualification questions, and test call is already built.
+- The **Live Calls tab** shows real-time transcripts for active calls only -- once the call ends, there's no way to review it.
+- The `ai_call_transcripts` table stores call summaries (caller number, gathered data, sentiment, duration) but not individual transcript lines.
+- The `call_transcripts` table stores line-by-line transcript entries (speaker, text, timestamp) linked by `call_id`.
 
 ### Solution
 
-Restructure the mobile header into **two rows** and make the search dropdown full-width on mobile:
+Add a 4th tab **"Transcripts"** to the AI Agent Dashboard that:
+1. Lists recent AI calls from `ai_call_transcripts` (caller number, date, duration, sentiment)
+2. When you click a call, loads the full conversation from `call_transcripts` and displays it in a chat-bubble view
+3. Shows the gathered qualification data (name, service needed, etc.) in a sidebar panel
 
-```text
-Row 1: [hamburger] [Location Badge] [spacer] [Notification] [Company]
-Row 2: [========== Full-width Search Bar ==========]
-```
+---
 
 ### Changes
 
-#### 1. GlobalLayout.tsx -- Two-row mobile header
+#### 1. New Component: `src/components/ai-agent/CallTranscriptViewer.tsx`
 
-Split the mobile header into two rows:
-- **Top row**: Menu button space, location indicator, notification bell, company switcher
-- **Bottom row**: Full-width search bar spanning the entire width
+A two-panel layout:
+- **Left panel**: List of recent AI calls, showing caller number, date, duration, and sentiment badge. Clickable rows.
+- **Right panel**: When a call is selected, display:
+  - Call metadata (caller, duration, date)
+  - Full transcript in chat-bubble format (AI messages left, caller messages right) -- reusing the same visual style as `LiveCallTranscript`
+  - Gathered data card showing each qualification answer (name, service, callback number, etc.)
+  - If no transcript entries exist for the call, show the gathered data summary only
 
-On desktop, keep the current single-row layout unchanged.
+Data flow:
+```text
+ai_call_transcripts (call list)
+  --> click a call
+  --> call_transcripts WHERE call_id = selected.telnyx_call_control_id
+  --> render conversation + gathered_data
+```
 
-#### 2. CLJSearchBar.tsx -- Full-width dropdown on mobile
+#### 2. Update: `src/pages/AIAgentDashboardPage.tsx`
 
-Change the search dropdown from inheriting the input width to being **fixed to viewport edges** on mobile:
-- Use `fixed left-3 right-3` positioning on mobile so the dropdown spans nearly the full screen width
-- Keep the current `absolute` positioning on desktop
-- This ensures search results are readable and tappable
+Add the 4th tab:
 
-#### 3. Add QuickLocationSwitcher to mobile header
+| Tab | Icon | Component |
+|-----|------|-----------|
+| Analytics | BarChart3 | CallAnalyticsDashboard |
+| Live Calls | Phone | LiveCallTranscript |
+| Transcripts | FileText | CallTranscriptViewer (new) |
+| Campaigns | MessageSquare | OutboundCampaignBuilder |
 
-Import and render the `QuickLocationSwitcher` component in the top row of the mobile header so users can change locations without opening the sidebar drawer.
+Update `TabsList` from `grid-cols-3` to `grid-cols-4`.
 
 ---
 
 ### Technical Details
 
-**File: `src/shared/components/layout/GlobalLayout.tsx`**
+**Files to create:**
 
-Restructure the header for mobile into two stacked rows:
-- Row 1: Location switcher (compact), notification center, company switcher
-- Row 2: Full-width CLJSearchBar
-- Desktop remains a single row (no visual change)
-
-**File: `src/components/CLJSearchBar.tsx`**
-
-Update the dropdown container (line 164) to use fixed positioning on mobile:
-```
-className="fixed left-3 right-3 top-[7.5rem] md:absolute md:top-full md:left-0 md:right-0 mt-1 bg-popover border rounded-md shadow-lg z-[60] max-h-[60vh] md:max-h-[400px] overflow-y-auto"
-```
-
-This makes the dropdown nearly full-screen-width on phones while keeping desktop behavior identical.
+| File | Purpose |
+|------|---------|
+| `src/components/ai-agent/CallTranscriptViewer.tsx` | Browse and review past AI call transcripts |
 
 **Files to modify:**
+
 | File | Change |
 |------|--------|
-| `src/shared/components/layout/GlobalLayout.tsx` | Two-row mobile header with location switcher |
-| `src/components/CLJSearchBar.tsx` | Full-width fixed dropdown on mobile |
+| `src/pages/AIAgentDashboardPage.tsx` | Add Transcripts tab with new component |
+
+**Database queries used (no schema changes needed):**
+- `ai_call_transcripts` -- list of AI calls with gathered_data, sentiment, duration
+- `call_transcripts` -- line-by-line transcript entries joined by call_id
+
+**No database migrations required** -- all tables already exist.
 
