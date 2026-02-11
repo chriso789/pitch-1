@@ -1,98 +1,68 @@
 
 
-## AI Agent Settings Enhancement: Configurable Qualification Questions + Test Call
+## Fix: Mobile Header Layout and Usability
 
-### What This Does
+### Problems Identified
 
-Adds two key features to your existing AI Agent Settings page (`/settings/ai-agent`):
+From the screenshot, three issues make the app unusable on mobile:
 
-1. **Qualification Questions tab** -- Configure which questions the AI asks callers (currently hardcoded as name, phone, service, roof age, insurance claim, timeline, budget)
-2. **Test Call button** -- Trigger a test call from the UI to verify the full flow works end-to-end
+1. **Search bar is too narrow** -- squeezed between the hamburger menu (pl-14) and the notification + company switcher buttons, leaving barely any room. The search dropdown is equally narrow, truncating all results to "Contac..."
+2. **No location switcher accessible** -- it's buried inside the sidebar drawer, requiring two taps to reach. No quick way to change locations from the main view.
+3. **Header is overcrowded** -- all controls (search, notifications, company switcher) compete for a single 14px-high row on mobile.
 
----
+### Solution
 
-### Changes Overview
+Restructure the mobile header into **two rows** and make the search dropdown full-width on mobile:
 
-| Area | What Changes |
-|------|-------------|
-| Settings UI | Add "Qualification" tab with drag-to-reorder question builder |
-| Settings UI | Add "Test Call" section with phone number input + call button |
-| Database | Add `qualification_questions` JSONB column to `ai_answering_config` |
-| Edge Function | Update `telnyx-ai-answering` to read questions from config instead of hardcoded |
-| Edge Function | Create `test-ai-call` function to initiate an outbound test call |
-
----
-
-### 1. Database: Add qualification_questions column
-
-Add a `qualification_questions` JSONB column to `ai_answering_config` that stores an array of configurable questions:
-
-```sql
-ALTER TABLE ai_answering_config 
-ADD COLUMN IF NOT EXISTS qualification_questions JSONB DEFAULT '[
-  {"key": "name", "label": "Caller Name", "description": "Full name of the caller", "type": "string", "required": true, "enabled": true},
-  {"key": "service_needed", "label": "Service Needed", "description": "What service they need", "type": "string", "required": true, "enabled": true},
-  {"key": "callback_number", "label": "Callback Number", "description": "Best phone number to reach them", "type": "string", "required": true, "enabled": true},
-  {"key": "address", "label": "Property Address", "description": "Property address where service is needed", "type": "string", "required": false, "enabled": true},
-  {"key": "roof_age", "label": "Roof Age", "description": "Approximate age of the roof", "type": "string", "required": false, "enabled": false},
-  {"key": "has_insurance_claim", "label": "Insurance Claim", "description": "Whether they have an insurance claim", "type": "boolean", "required": false, "enabled": false},
-  {"key": "timeline", "label": "Timeline", "description": "When they want the work done", "type": "string", "required": false, "enabled": false},
-  {"key": "budget_range", "label": "Budget Range", "description": "Approximate budget if mentioned", "type": "string", "required": false, "enabled": false}
-]';
+```text
+Row 1: [hamburger] [Location Badge] [spacer] [Notification] [Company]
+Row 2: [========== Full-width Search Bar ==========]
 ```
 
-### 2. Settings UI: Qualification Questions Tab
+### Changes
 
-Add a new "Qualification" tab to the existing settings page with:
+#### 1. GlobalLayout.tsx -- Two-row mobile header
 
-- List of qualification questions with toggle switches (enable/disable)
-- Each question shows: label, description, required checkbox
-- "Add Custom Question" form at the bottom (key, label, description, type, required)
-- Delete button for custom questions (built-in ones can only be toggled)
+Split the mobile header into two rows:
+- **Top row**: Menu button space, location indicator, notification bell, company switcher
+- **Bottom row**: Full-width search bar spanning the entire width
 
-### 3. Settings UI: Test Call Section
+On desktop, keep the current single-row layout unchanged.
 
-Add a card at the top of the settings page (below the enable toggle) with:
+#### 2. CLJSearchBar.tsx -- Full-width dropdown on mobile
 
-- Phone number input field
-- "Make Test Call" button that calls the `test-ai-call` edge function
-- Status indicator showing call progress (initiating, ringing, answered, completed)
-- Note explaining this will call the entered number and run the AI agent
+Change the search dropdown from inheriting the input width to being **fixed to viewport edges** on mobile:
+- Use `fixed left-3 right-3` positioning on mobile so the dropdown spans nearly the full screen width
+- Keep the current `absolute` positioning on desktop
+- This ensures search results are readable and tappable
 
-### 4. Edge Function: Update telnyx-ai-answering
+#### 3. Add QuickLocationSwitcher to mobile header
 
-Modify the `gather_using_ai` parameters section to dynamically build the `properties` and `required` arrays from the `qualification_questions` config instead of hardcoded values:
-
-```typescript
-// Instead of hardcoded properties...
-// Build from config
-const questions = tenantConfig.qualification_questions || defaultQuestions;
-const properties: Record<string, any> = {};
-const required: string[] = [];
-
-for (const q of questions) {
-  if (!q.enabled) continue;
-  properties[q.key] = { description: q.description, type: q.type };
-  if (q.required) required.push(q.key);
-}
-```
-
-### 5. Edge Function: test-ai-call
-
-New edge function that initiates an outbound call to a test number using the tenant's Telnyx number, then triggers the same AI gather flow. This lets you verify the greeting, voice, and questions without needing an external caller.
+Import and render the `QuickLocationSwitcher` component in the top row of the mobile header so users can change locations without opening the sidebar drawer.
 
 ---
 
 ### Technical Details
 
-**Files to create:**
-- `supabase/functions/test-ai-call/index.ts` -- Initiates outbound test call via Telnyx API
+**File: `src/shared/components/layout/GlobalLayout.tsx`**
+
+Restructure the header for mobile into two stacked rows:
+- Row 1: Location switcher (compact), notification center, company switcher
+- Row 2: Full-width CLJSearchBar
+- Desktop remains a single row (no visual change)
+
+**File: `src/components/CLJSearchBar.tsx`**
+
+Update the dropdown container (line 164) to use fixed positioning on mobile:
+```
+className="fixed left-3 right-3 top-[7.5rem] md:absolute md:top-full md:left-0 md:right-0 mt-1 bg-popover border rounded-md shadow-lg z-[60] max-h-[60vh] md:max-h-[400px] overflow-y-auto"
+```
+
+This makes the dropdown nearly full-screen-width on phones while keeping desktop behavior identical.
 
 **Files to modify:**
-- `src/pages/settings/AIAgentSettingsPage.tsx` -- Add Qualification tab + Test Call section
-- `supabase/functions/telnyx-ai-answering/index.ts` -- Read qualification_questions from config
-- `supabase/config.toml` -- Add test-ai-call function entry
-
-**Database migration:**
-- Add `qualification_questions` JSONB column to `ai_answering_config`
+| File | Change |
+|------|--------|
+| `src/shared/components/layout/GlobalLayout.tsx` | Two-row mobile header with location switcher |
+| `src/components/CLJSearchBar.tsx` | Full-width fixed dropdown on mobile |
 
