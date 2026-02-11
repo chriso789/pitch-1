@@ -475,6 +475,9 @@ verify_jwt = true
 [functions.telnyx-ai-agent-enhanced]
 verify_jwt = false
 
+[functions.test-ai-call]
+verify_jwt = true
+
 [functions.telnyx-ai-outbound]
 verify_jwt = true
 

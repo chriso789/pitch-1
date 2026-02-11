@@ -536,6 +536,7 @@ export type Database = {
           greeting_text: string | null
           id: string
           is_enabled: boolean | null
+          qualification_questions: Json | null
           required_fields: string[] | null
           temperature: number | null
           tenant_id: string | null
@@ -551,6 +552,7 @@ export type Database = {
           greeting_text?: string | null
           id?: string
           is_enabled?: boolean | null
+          qualification_questions?: Json | null
           required_fields?: string[] | null
           temperature?: number | null
           tenant_id?: string | null
@@ -566,6 +568,7 @@ export type Database = {
           greeting_text?: string | null
           id?: string
           is_enabled?: boolean | null
+          qualification_questions?: Json | null
           required_fields?: string[] | null
           temperature?: number | null
           tenant_id?: string | null
