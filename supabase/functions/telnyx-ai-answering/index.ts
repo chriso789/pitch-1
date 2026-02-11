@@ -81,11 +81,12 @@ serve(async (req) => {
       }
 
       // Get AI answering config for tenant
-      let config = {
+      let config: any = {
         greeting_text: "Hi, thanks for calling O'Brien Contracting. I'll ask a few questions to better assist you.",
         ai_voice: 'en-US-Wavenet-D',
         ai_model: 'gpt-3.5-turbo',
         temperature: 0.2,
+        qualification_questions: null,
       };
 
       if (tenantId) {
@@ -102,6 +103,7 @@ serve(async (req) => {
             ai_voice: tenantConfig.ai_voice || config.ai_voice,
             ai_model: tenantConfig.ai_model || config.ai_model,
             temperature: tenantConfig.temperature || config.temperature,
+            qualification_questions: tenantConfig.qualification_questions || null,
           };
         }
       }
@@ -161,11 +163,12 @@ serve(async (req) => {
       const stateTenantId = clientState.tenant_id || tenantId;
 
       // Get config
-      let config = {
+      let config: any = {
         greeting_text: "Hi, thanks for calling. I'll ask a few questions to better assist you.",
         ai_voice: 'en-US-Wavenet-D',
         ai_model: 'gpt-3.5-turbo',
         temperature: 0.2,
+        qualification_questions: null,
       };
 
       if (stateTenantId) {
@@ -182,6 +185,7 @@ serve(async (req) => {
             ai_voice: tenantConfig.ai_voice || config.ai_voice,
             ai_model: tenantConfig.ai_model || config.ai_model,
             temperature: tenantConfig.temperature || config.temperature,
+            qualification_questions: tenantConfig.qualification_questions || null,
           };
         }
       }
@@ -202,31 +206,41 @@ serve(async (req) => {
         console.warn('[AI Answering] Noise suppression failed (non-critical):', e);
       }
 
-      // 3. Start AI gather
-      console.log('[AI Answering] Starting AI gather...');
+      // 3. Build AI gather parameters from qualification_questions config
+      const defaultProperties: Record<string, any> = {
+        name: { description: 'Full name of the caller', type: 'string' },
+        service: { description: 'Service needed (e.g., roof repair, inspection, replacement, storm damage, estimate)', type: 'string' },
+        callback_number: { description: 'Best phone number to reach the caller for a callback', type: 'string' },
+        address: { description: 'Property address where service is needed', type: 'string' },
+      };
+      const defaultRequired = ['name', 'service', 'callback_number'];
+
+      let gatherProperties: Record<string, any> = defaultProperties;
+      let gatherRequired: string[] = defaultRequired;
+
+      if (config.qualification_questions && Array.isArray(config.qualification_questions)) {
+        gatherProperties = {};
+        gatherRequired = [];
+        for (const q of config.qualification_questions) {
+          if (!q.enabled) continue;
+          gatherProperties[q.key] = { description: q.description, type: q.type || 'string' };
+          if (q.required) gatherRequired.push(q.key);
+        }
+        // Ensure at least one property
+        if (Object.keys(gatherProperties).length === 0) {
+          gatherProperties = defaultProperties;
+          gatherRequired = defaultRequired;
+        }
+      }
+
+      console.log('[AI Answering] Using gather properties:', Object.keys(gatherProperties));
+
       const gatherBody = {
         greeting: config.greeting_text,
         parameters: {
           type: 'object',
-          properties: {
-            name: {
-              description: 'Full name of the caller',
-              type: 'string',
-            },
-            service: {
-              description: 'Service needed (e.g., roof repair, inspection, replacement, storm damage, estimate)',
-              type: 'string',
-            },
-            callback_number: {
-              description: 'Best phone number to reach the caller for a callback',
-              type: 'string',
-            },
-            address: {
-              description: 'Property address where service is needed',
-              type: 'string',
-            },
-          },
-          required: ['name', 'service', 'callback_number'],
+          properties: gatherProperties,
+          required: gatherRequired,
         },
         voice: config.ai_voice,
         model: config.ai_model,
