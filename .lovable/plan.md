@@ -1,42 +1,63 @@
 
-## Add AI Agent to Settings Sidebar + Main Navigation
 
-### Problem
-The AI Agent Settings page (`/settings/ai-agent`) and Dashboard (`/ai-agent-dashboard`) exist but are completely hidden -- there's no link to them from the Settings page sidebar or the main app sidebar.
+## Add Phone Number Selection to AI Agent Settings + Fix Test Call
+
+### Problems
+
+1. **Test Call fails** with "Invalid value for connection_id" -- the `test-ai-call` edge function reads `TELNYX_CONNECTION_ID` from environment variables (which is blank) instead of using the location's stored `telnyx_voice_app_id`.
+2. **No way to pick which number the AI answers** -- the settings page has no UI to select a location/phone number for the AI agent.
 
 ### Solution
 
-Two changes to make the AI Agent accessible:
+#### 1. Add a "Phone Number" selector to the AI Agent Settings page
 
-#### 1. Add "AI Agent" tab to Settings page sidebar
+At the top of the settings page (below the enable toggle), add a dropdown that lists all locations with a provisioned Telnyx phone number. The user picks which location's number the AI agent should answer. The selected `location_id` is saved to the `ai_answering_config` table.
 
-Insert a new entry in the `settings_tabs` database table so it appears under the **Communications** category alongside Voice Assistant, Email, and Integrations.
+- Query `locations` where `telnyx_phone_number IS NOT NULL` for the tenant
+- Show a Select dropdown: "West Coast -- +1 (941) 541-0117" etc.
+- Save the chosen `location_id` alongside the other config
 
-**Database insert:**
-- `tab_key`: `ai-agent`
-- `label`: `AI Agent`  
-- `icon_name`: `Bot`
-- Category mapping: Communications
+#### 2. Add `location_id` column to `ai_answering_config`
 
-Then wire up the `ai-agent` tab in `Settings.tsx` to either render the AI Agent settings inline or navigate to `/settings/ai-agent`.
+A migration to add `location_id UUID REFERENCES locations(id)` to the `ai_answering_config` table so the selected phone number persists.
 
-#### 2. Add "AI Agent" to the main app sidebar
+#### 3. Fix the `test-ai-call` edge function
 
-Add a sidebar navigation item (under the Communications section or as a standalone item) that links to `/ai-agent-dashboard`.
+Instead of reading `TELNYX_CONNECTION_ID` from env, use the location's `telnyx_voice_app_id` as the `connection_id` for the Telnyx API call. This is already queried but not used.
 
 ---
 
 ### Technical Details
 
 **Database migration:**
-- Insert `ai-agent` row into `settings_tabs` with `order_index: 26` (after Voice Assistant at 25)
+```sql
+ALTER TABLE ai_answering_config
+ADD COLUMN location_id UUID REFERENCES locations(id) ON DELETE SET NULL;
+```
 
-**File: `src/features/settings/components/Settings.tsx`**
-- Add `"ai-agent": "communications"` to `TAB_TO_CATEGORY` mapping (line ~100)
-- Add a `case "ai-agent":` in `renderTabContent()` that either:
-  - Renders the AI Agent settings page content inline, or
-  - Redirects to `/settings/ai-agent` (simpler approach -- just render a link/button card that takes you there, similar to how "portals" works)
-- Better approach: import the `AIAgentSettingsPage` content and render it directly
+**File: `supabase/functions/test-ai-call/index.ts`**
 
-**File: `src/shared/components/layout/Sidebar.tsx`**
-- Add an "AI Agent" nav item linking to `/ai-agent-dashboard` in the sidebar navigation
+Change line 58 from:
+```typescript
+const connectionId = Deno.env.get('TELNYX_CONNECTION_ID') || '';
+```
+to:
+```typescript
+const connectionId = location.telnyx_voice_app_id || Deno.env.get('TELNYX_CONNECTION_ID') || '';
+```
+
+Also update the query to accept an optional `location_id` parameter so the test call uses the specific location selected in settings. If `location_id` is provided, query that specific location; otherwise fall back to the first available.
+
+**File: `src/pages/settings/AIAgentSettingsPage.tsx`**
+
+- Add state for locations list and selected location
+- Fetch locations with `telnyx_phone_number IS NOT NULL` on mount
+- Add a Card below the enable toggle with a Select dropdown for choosing the answering number
+- Include `location_id` in the config state and save/load it from `ai_answering_config`
+- Pass `location_id` to the `test-ai-call` function invoke so it uses the correct number
+
+| File | Change |
+|------|--------|
+| New migration | Add `location_id` column to `ai_answering_config` |
+| `supabase/functions/test-ai-call/index.ts` | Use `telnyx_voice_app_id` as connection_id, accept `location_id` param |
+| `src/pages/settings/AIAgentSettingsPage.tsx` | Add phone number/location selector, pass location_id to test call |
