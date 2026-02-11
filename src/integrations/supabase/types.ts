@@ -536,6 +536,7 @@ export type Database = {
           greeting_text: string | null
           id: string
           is_enabled: boolean | null
+          location_id: string | null
           qualification_questions: Json | null
           required_fields: string[] | null
           temperature: number | null
@@ -552,6 +553,7 @@ export type Database = {
           greeting_text?: string | null
           id?: string
           is_enabled?: boolean | null
+          location_id?: string | null
           qualification_questions?: Json | null
           required_fields?: string[] | null
           temperature?: number | null
@@ -568,6 +570,7 @@ export type Database = {
           greeting_text?: string | null
           id?: string
           is_enabled?: boolean | null
+          location_id?: string | null
           qualification_questions?: Json | null
           required_fields?: string[] | null
           temperature?: number | null
@@ -575,6 +578,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "ai_answering_config_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "ai_answering_config_tenant_id_fkey"
             columns: ["tenant_id"]

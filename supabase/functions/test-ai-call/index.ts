@@ -21,7 +21,7 @@ serve(async (req) => {
   );
 
   try {
-    const { phone_number, tenant_id } = await req.json();
+    const { phone_number, tenant_id, location_id } = await req.json();
 
     if (!phone_number || !tenant_id) {
       return new Response(JSON.stringify({ error: 'phone_number and tenant_id required' }), {
@@ -39,13 +39,17 @@ serve(async (req) => {
     }
 
     // Get the tenant's Telnyx phone number from locations
-    const { data: location } = await supabase
+    let locationQuery = supabase
       .from('locations')
       .select('telnyx_phone_number, telnyx_voice_app_id')
       .eq('tenant_id', tenant_id)
-      .not('telnyx_phone_number', 'is', null)
-      .limit(1)
-      .single();
+      .not('telnyx_phone_number', 'is', null);
+
+    if (location_id) {
+      locationQuery = locationQuery.eq('id', location_id);
+    }
+
+    const { data: location } = await locationQuery.limit(1).single();
 
     if (!location?.telnyx_phone_number) {
       return new Response(JSON.stringify({ error: 'No Telnyx phone number configured for this tenant. Set up a location with a phone number first.' }), {
@@ -54,8 +58,8 @@ serve(async (req) => {
       });
     }
 
-    // Get connection ID from env or location
-    const connectionId = Deno.env.get('TELNYX_CONNECTION_ID') || '';
+    // Use location's voice app ID as connection, fall back to env
+    const connectionId = location.telnyx_voice_app_id || Deno.env.get('TELNYX_CONNECTION_ID') || '';
 
     // Normalize destination phone
     let toNumber = phone_number.replace(/\D/g, '');
