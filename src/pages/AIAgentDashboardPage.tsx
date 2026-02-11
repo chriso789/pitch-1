@@ -3,10 +3,11 @@ import { useNavigate } from 'react-router-dom';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Settings, BarChart3, Phone, MessageSquare, FileText } from 'lucide-react';
 import { CallAnalyticsDashboard } from '@/components/ai-agent/CallAnalyticsDashboard';
 import { LiveCallTranscript } from '@/components/ai-agent/LiveCallTranscript';
 import { OutboundCampaignBuilder } from '@/components/ai-agent/OutboundCampaignBuilder';
+import { CallTranscriptViewer } from '@/components/ai-agent/CallTranscriptViewer';
 
 export default function AIAgentDashboardPage() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ export default function AIAgentDashboardPage() {
         </div>
 
         <Tabs defaultValue="analytics" className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-3">
+          <TabsList className="grid w-full max-w-lg grid-cols-4">
             <TabsTrigger value="analytics" className="flex items-center gap-2">
               <BarChart3 className="h-4 w-4" />
               Analytics
@@ -41,6 +42,10 @@ export default function AIAgentDashboardPage() {
             <TabsTrigger value="live" className="flex items-center gap-2">
               <Phone className="h-4 w-4" />
               Live Calls
+            </TabsTrigger>
+            <TabsTrigger value="transcripts" className="flex items-center gap-2">
+              <FileText className="h-4 w-4" />
+              Transcripts
             </TabsTrigger>
             <TabsTrigger value="campaigns" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
@@ -72,6 +77,10 @@ export default function AIAgentDashboardPage() {
                 </div>
               </div>
             </div>
+          </TabsContent>
+
+          <TabsContent value="transcripts">
+            <CallTranscriptViewer />
           </TabsContent>
 
           <TabsContent value="campaigns">
