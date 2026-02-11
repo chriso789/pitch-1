@@ -1,79 +1,42 @@
 
+## Add AI Agent to Settings Sidebar + Main Navigation
 
-## Add Call Transcript History Viewer to AI Agent Dashboard
-
-### What This Does
-
-Adds a new "Transcripts" tab to the AI Agent Dashboard (`/ai-agent`) that lets you browse and review past AI call conversations -- what the AI said, what the caller said, and the gathered qualification data.
-
-### Current State
-
-- The **AI Agent Settings page** (`/settings/ai-agent`) with greeting, voice, business hours, qualification questions, and test call is already built.
-- The **Live Calls tab** shows real-time transcripts for active calls only -- once the call ends, there's no way to review it.
-- The `ai_call_transcripts` table stores call summaries (caller number, gathered data, sentiment, duration) but not individual transcript lines.
-- The `call_transcripts` table stores line-by-line transcript entries (speaker, text, timestamp) linked by `call_id`.
+### Problem
+The AI Agent Settings page (`/settings/ai-agent`) and Dashboard (`/ai-agent-dashboard`) exist but are completely hidden -- there's no link to them from the Settings page sidebar or the main app sidebar.
 
 ### Solution
 
-Add a 4th tab **"Transcripts"** to the AI Agent Dashboard that:
-1. Lists recent AI calls from `ai_call_transcripts` (caller number, date, duration, sentiment)
-2. When you click a call, loads the full conversation from `call_transcripts` and displays it in a chat-bubble view
-3. Shows the gathered qualification data (name, service needed, etc.) in a sidebar panel
+Two changes to make the AI Agent accessible:
 
----
+#### 1. Add "AI Agent" tab to Settings page sidebar
 
-### Changes
+Insert a new entry in the `settings_tabs` database table so it appears under the **Communications** category alongside Voice Assistant, Email, and Integrations.
 
-#### 1. New Component: `src/components/ai-agent/CallTranscriptViewer.tsx`
+**Database insert:**
+- `tab_key`: `ai-agent`
+- `label`: `AI Agent`  
+- `icon_name`: `Bot`
+- Category mapping: Communications
 
-A two-panel layout:
-- **Left panel**: List of recent AI calls, showing caller number, date, duration, and sentiment badge. Clickable rows.
-- **Right panel**: When a call is selected, display:
-  - Call metadata (caller, duration, date)
-  - Full transcript in chat-bubble format (AI messages left, caller messages right) -- reusing the same visual style as `LiveCallTranscript`
-  - Gathered data card showing each qualification answer (name, service, callback number, etc.)
-  - If no transcript entries exist for the call, show the gathered data summary only
+Then wire up the `ai-agent` tab in `Settings.tsx` to either render the AI Agent settings inline or navigate to `/settings/ai-agent`.
 
-Data flow:
-```text
-ai_call_transcripts (call list)
-  --> click a call
-  --> call_transcripts WHERE call_id = selected.telnyx_call_control_id
-  --> render conversation + gathered_data
-```
+#### 2. Add "AI Agent" to the main app sidebar
 
-#### 2. Update: `src/pages/AIAgentDashboardPage.tsx`
-
-Add the 4th tab:
-
-| Tab | Icon | Component |
-|-----|------|-----------|
-| Analytics | BarChart3 | CallAnalyticsDashboard |
-| Live Calls | Phone | LiveCallTranscript |
-| Transcripts | FileText | CallTranscriptViewer (new) |
-| Campaigns | MessageSquare | OutboundCampaignBuilder |
-
-Update `TabsList` from `grid-cols-3` to `grid-cols-4`.
+Add a sidebar navigation item (under the Communications section or as a standalone item) that links to `/ai-agent-dashboard`.
 
 ---
 
 ### Technical Details
 
-**Files to create:**
+**Database migration:**
+- Insert `ai-agent` row into `settings_tabs` with `order_index: 26` (after Voice Assistant at 25)
 
-| File | Purpose |
-|------|---------|
-| `src/components/ai-agent/CallTranscriptViewer.tsx` | Browse and review past AI call transcripts |
+**File: `src/features/settings/components/Settings.tsx`**
+- Add `"ai-agent": "communications"` to `TAB_TO_CATEGORY` mapping (line ~100)
+- Add a `case "ai-agent":` in `renderTabContent()` that either:
+  - Renders the AI Agent settings page content inline, or
+  - Redirects to `/settings/ai-agent` (simpler approach -- just render a link/button card that takes you there, similar to how "portals" works)
+- Better approach: import the `AIAgentSettingsPage` content and render it directly
 
-**Files to modify:**
-
-| File | Change |
-|------|--------|
-| `src/pages/AIAgentDashboardPage.tsx` | Add Transcripts tab with new component |
-
-**Database queries used (no schema changes needed):**
-- `ai_call_transcripts` -- list of AI calls with gathered_data, sentiment, duration
-- `call_transcripts` -- line-by-line transcript entries joined by call_id
-
-**No database migrations required** -- all tables already exist.
-
+**File: `src/shared/components/layout/Sidebar.tsx`**
+- Add an "AI Agent" nav item linking to `/ai-agent-dashboard` in the sidebar navigation
