@@ -55,6 +55,12 @@ interface QualificationQuestion {
   isBuiltIn?: boolean;
 }
 
+interface TelnyxLocation {
+  id: string;
+  name: string;
+  telnyx_phone_number: string;
+}
+
 interface AIConfig {
   is_enabled: boolean;
   greeting_text: string;
@@ -63,6 +69,7 @@ interface AIConfig {
   ai_model: string;
   temperature: number;
   escalation_keywords: string[];
+  location_id: string | null;
   business_hours: {
     start: string;
     end: string;
@@ -105,6 +112,7 @@ export default function AIAgentSettingsPage() {
     ai_model: 'gpt-4',
     temperature: 0.3,
     escalation_keywords: ['manager', 'supervisor', 'human', 'person', 'representative'],
+    location_id: null,
     business_hours: {
       start: '08:00',
       end: '18:00',
@@ -113,6 +121,7 @@ export default function AIAgentSettingsPage() {
     qualification_questions: DEFAULT_QUESTIONS,
   });
 
+  const [telnyxLocations, setTelnyxLocations] = useState<TelnyxLocation[]>([]);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [newFaq, setNewFaq] = useState({ question: '', answer: '' });
   const [isSaving, setIsSaving] = useState(false);
@@ -129,8 +138,18 @@ export default function AIAgentSettingsPage() {
     if (tenantId) {
       loadConfig();
       loadFAQs();
+      loadTelnyxLocations();
     }
   }, [tenantId]);
+
+  const loadTelnyxLocations = async () => {
+    const { data } = await supabase
+      .from('locations')
+      .select('id, name, telnyx_phone_number')
+      .eq('tenant_id', tenantId)
+      .not('telnyx_phone_number', 'is', null);
+    if (data) setTelnyxLocations(data as TelnyxLocation[]);
+  };
 
   const loadConfig = async () => {
     const { data } = await supabase
@@ -156,6 +175,7 @@ export default function AIAgentSettingsPage() {
         ai_model: data.ai_model || config.ai_model,
         temperature: data.temperature || config.temperature,
         escalation_keywords: data.escalation_keywords || config.escalation_keywords,
+        location_id: (data as any).location_id || null,
         business_hours: (data.business_hours as any) || config.business_hours,
         qualification_questions: questions,
       });
@@ -193,6 +213,7 @@ export default function AIAgentSettingsPage() {
           ai_model: config.ai_model,
           temperature: config.temperature,
           escalation_keywords: config.escalation_keywords,
+          location_id: config.location_id,
           business_hours: config.business_hours,
           qualification_questions: config.qualification_questions as any,
         } as any, {
@@ -300,7 +321,7 @@ export default function AIAgentSettingsPage() {
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       const response = await supabase.functions.invoke('test-ai-call', {
-        body: { phone_number: testPhoneNumber, tenant_id: tenantId },
+        body: { phone_number: testPhoneNumber, tenant_id: tenantId, location_id: config.location_id },
       });
 
       if (response.error) throw new Error(response.error.message || 'Failed to initiate test call');
@@ -367,6 +388,42 @@ export default function AIAgentSettingsPage() {
               onCheckedChange={(checked) => setConfig({ ...config, is_enabled: checked })}
             />
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Phone Number Selection */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Phone className="h-5 w-5" />
+            Answering Number
+          </CardTitle>
+          <CardDescription>
+            Select which phone number the AI agent should answer
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {telnyxLocations.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No locations with Telnyx phone numbers found. Set up a location with a phone number first.
+            </p>
+          ) : (
+            <Select
+              value={config.location_id || ''}
+              onValueChange={(value) => setConfig({ ...config, location_id: value || null })}
+            >
+              <SelectTrigger className="max-w-md">
+                <SelectValue placeholder="Select a phone number..." />
+              </SelectTrigger>
+              <SelectContent>
+                {telnyxLocations.map((loc) => (
+                  <SelectItem key={loc.id} value={loc.id}>
+                    {loc.name} — {loc.telnyx_phone_number}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </CardContent>
       </Card>
 
