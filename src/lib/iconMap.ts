@@ -1,4 +1,5 @@
 import {
+  Bot,
   FileText,
   DollarSign,
   Package,
@@ -47,6 +48,7 @@ import {
 
 // Map of icon name strings to Lucide icon components
 export const iconMap: Record<string, LucideIcon> = {
+  Bot,
   FileText,
   DollarSign,
   Package,

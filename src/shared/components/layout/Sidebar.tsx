@@ -501,6 +501,19 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                     <PhoneCall className="h-3.5 w-3.5" />
                     <span className="text-sm">Call Center</span>
                   </Link>
+                  <Link
+                    to="/ai-agent-dashboard"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/ai-agent-dashboard'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <Bot className="h-3.5 w-3.5" />
+                    <span className="text-sm">AI Agent</span>
+                  </Link>
                 </div>
               )}
             </div>

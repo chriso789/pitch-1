@@ -97,6 +97,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   estimates: "products",
   pricing: "products",
   "voice-assistant": "communications",
+  "ai-agent": "communications",
   integrations: "communications",
   email: "communications",
   developer: "system",
@@ -355,6 +356,56 @@ export const Settings = () => {
         return <EmailDomainSettings />;
       case "roof-training":
         return <RoofTrainingLab />;
+      case "ai-agent":
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LucideIcons.Bot className="h-5 w-5" />
+                AI Agent Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Configure your AI call answering agent, manage voice settings, and view the AI agent dashboard.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Card 
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => window.location.href = '/settings/ai-agent'}
+                >
+                  <CardContent className="p-6 flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <LucideIcons.Settings className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Agent Configuration</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Greeting, voice, hours & qualification
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card 
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => window.location.href = '/ai-agent-dashboard'}
+                >
+                  <CardContent className="p-6 flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <LucideIcons.BarChart3 className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">AI Agent Dashboard</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Analytics, live calls & transcripts
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        );
       case "portals":
         return (
           <Card>
