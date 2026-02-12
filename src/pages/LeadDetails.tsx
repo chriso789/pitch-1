@@ -41,7 +41,10 @@ import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog'
 import { FloatingEmailComposer, type EmailDocument } from '@/components/messaging/FloatingEmailComposer';
 import { BackButton } from '@/shared/components/BackButton';
 import { useSendSMS } from '@/hooks/useSendSMS';
-import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/useLeadDetails';
+import { useLeadDetails, LeadDetailsData, ApprovalRequirements, type ProjectData } from '@/hooks/useLeadDetails';
+import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
+import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
+import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
 import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
 import { TransitionReasonDialog } from '@/components/pipeline/TransitionReasonDialog';
@@ -224,6 +227,163 @@ const ProfitSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
   );
 };
 
+// Project Financial Sections - shown when lead status is 'project'
+const ProjectFinancialSections = ({ projectData, onRefetch }: { projectData: ProjectData; onRefetch: () => void }) => {
+  const [activeProjectTab, setActiveProjectTab] = useState('financial');
+  const { project, budgetItems, commission, estimate, costs, budgetSnapshot } = projectData;
+
+  const totalCosts = costs.reduce((sum: number, cost: any) => sum + Number(cost.total_cost || 0), 0);
+  const totalBudgetedCosts = budgetItems.reduce((sum: number, item: any) => sum + Number(item.budgeted_total_cost || 0), 0);
+  const totalActualCosts = budgetItems.reduce((sum: number, item: any) => sum + Number(item.actual_total_cost || 0), 0);
+  const budgetVariance = totalActualCosts - totalBudgetedCosts;
+  const budgetVariancePercent = totalBudgetedCosts > 0 ? (budgetVariance / totalBudgetedCosts) * 100 : 0;
+  const grossProfit = estimate ? Number(estimate.selling_price || 0) - totalCosts - totalActualCosts : 0;
+  const netProfit = commission ? commission.net_profit || 0 : grossProfit;
+
+  return (
+    <div className="space-y-4">
+      {/* Financial Stats Grid */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Contract Value</p>
+            <p className="text-lg font-bold">
+              {estimate ? `$${Number(estimate.selling_price).toLocaleString()}` : 'N/A'}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Total Costs</p>
+            <p className="text-lg font-bold">${totalCosts.toLocaleString()}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Gross Profit</p>
+            <p className={`text-lg font-bold ${grossProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+              ${grossProfit.toLocaleString()}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Net Profit</p>
+            <p className={`text-lg font-bold ${netProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+              ${netProfit.toLocaleString()}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Budget Variance</p>
+            <p className={`text-lg font-bold ${budgetVariance <= 0 ? 'text-success' : 'text-warning'}`}>
+              {budgetVariance >= 0 ? '+' : ''}${budgetVariance.toLocaleString()}
+            </p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Est. Completion</p>
+            <p className="text-sm font-medium">
+              {project.estimated_completion_date 
+                ? new Date(project.estimated_completion_date).toLocaleDateString()
+                : 'TBD'}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Project Tabs */}
+      <Tabs value={activeProjectTab} onValueChange={setActiveProjectTab}>
+        <div className="relative">
+          <TabsList className="flex overflow-x-auto w-full justify-start bg-muted p-1 rounded-md">
+            <TabsTrigger value="financial" className="flex-shrink-0">Budget</TabsTrigger>
+            <TabsTrigger value="cost-verification" className="flex-shrink-0">Cost Verification</TabsTrigger>
+            <TabsTrigger value="commission" className="flex-shrink-0">Commission</TabsTrigger>
+            <TabsTrigger value="costs" className="flex-shrink-0">Project Costs</TabsTrigger>
+          </TabsList>
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none rounded-r-md" />
+        </div>
+
+        <TabsContent value="financial">
+          <BudgetTracker projectId={project.id} budgetItems={budgetItems} onRefresh={onRefetch} />
+        </TabsContent>
+
+        <TabsContent value="cost-verification" className="space-y-4">
+          <CostReconciliationPanel projectId={project.id} />
+          <InvoiceUploadCard projectId={project.id} invoiceType="material" />
+        </TabsContent>
+
+        <TabsContent value="commission">
+          {commission ? (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Commission Breakdown</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-muted-foreground">Contract Value</p>
+                    <p className="font-medium">${Number(commission.contract_value || 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Commission Rate</p>
+                    <p className="font-medium">{commission.commission_rate || 0}%</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Commission Amount</p>
+                    <p className="font-bold text-primary">${Number(commission.commission_amount || 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <p className="text-muted-foreground">Company Profit</p>
+                    <p className="font-medium">${Number(commission.company_profit || 0).toLocaleString()}</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardContent className="p-6 text-center text-muted-foreground">
+                No commission data available. Assign a sales rep to calculate.
+              </CardContent>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="costs">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Project Costs</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {costs.length > 0 ? (
+                <div className="space-y-2">
+                  {costs.map((cost: any) => (
+                    <div key={cost.id} className="flex items-center justify-between py-2 border-b last:border-0">
+                      <div>
+                        <p className="font-medium text-sm">{cost.description || cost.category}</p>
+                        <p className="text-xs text-muted-foreground">{cost.vendor_name}</p>
+                      </div>
+                      <p className="font-medium">${Number(cost.total_cost || 0).toLocaleString()}</p>
+                    </div>
+                  ))}
+                  <div className="flex items-center justify-between pt-2 font-bold">
+                    <span>Total</span>
+                    <span>${totalCosts.toLocaleString()}</span>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-center text-muted-foreground py-4">No costs recorded yet</p>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+};
+
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
   const { stages } = usePipelineStages();
@@ -262,10 +422,12 @@ const LeadDetails = () => {
     photos, 
     productionStage, 
     salesReps: availableSalesReps,
+    projectData,
     isLoading: loading,
     refetchRequirements,
     refetchPhotos,
-    refetchLead
+    refetchLead,
+    refetchProjectData
   } = useLeadDetails(id);
   
   // Fetch measurement data
@@ -1251,6 +1413,14 @@ const LeadDetails = () => {
           margin_percent: 30
         }}
       />
+
+      {/* Project-Specific Financial Sections - Only when status is 'project' */}
+      {lead.status === 'project' && projectData && (
+        <ProjectFinancialSections 
+          projectData={projectData} 
+          onRefetch={refetchProjectData}
+        />
+      )}
 
       {/* Dynamic Content Sections */}
       <div ref={estimateSectionRef} className="space-y-6">{renderActiveSection()}</div>
