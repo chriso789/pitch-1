@@ -3,7 +3,7 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Phone, Mail, Eye, Star } from "lucide-react";
+import { Phone, Mail, Eye, Star, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useNavigate } from 'react-router-dom';
 
@@ -20,6 +20,8 @@ interface Contact {
   lead_score: number | null;
   qualification_status: string | null;
   lead_source: string | null;
+  assigned_to?: string | null;
+  assigned_rep?: { first_name: string; last_name: string } | null;
 }
 
 interface ContactKanbanCardProps {
@@ -90,6 +92,16 @@ export const ContactKanbanCard: React.FC<ContactKanbanCardProps> = ({
           <h4 className="font-medium text-[10px] truncate text-center py-0.5">
             {contact.first_name} {contact.last_name}
           </h4>
+
+          {/* Assigned Rep */}
+          {contact.assigned_rep && (
+            <div className="flex items-center justify-center gap-0.5 text-muted-foreground">
+              <UserCheck className="h-2 w-2" />
+              <span className="text-[7px] truncate">
+                {contact.assigned_rep.first_name} {contact.assigned_rep.last_name}
+              </span>
+            </div>
+          )}
 
           {/* Actions Row */}
           <div className="flex items-center justify-center gap-0.5 pt-0.5">
