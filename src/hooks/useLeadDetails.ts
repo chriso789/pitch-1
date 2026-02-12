@@ -304,6 +304,66 @@ async function fetchSalesReps(tenantId: string | null, locationId?: string | nul
   );
 }
 
+// Fetch project data when status is 'project'
+async function fetchProjectData(pipelineEntryId: string) {
+  // First find the project linked to this pipeline entry
+  const { data: project, error: projErr } = await supabase
+    .from('projects')
+    .select(`
+      *,
+      estimates(*),
+      project_costs(*),
+      project_budget_snapshots(*)
+    `)
+    .eq('pipeline_entry_id', pipelineEntryId)
+    .maybeSingle();
+
+  if (projErr || !project) return null;
+
+  // Fetch budget items and commission in parallel
+  const [budgetItemsResult, commissionResult] = await Promise.all([
+    supabase
+      .from('project_budget_items')
+      .select('*')
+      .eq('project_id', project.id)
+      .order('category, item_name'),
+    (async () => {
+      // Get the sales rep from pipeline entry for commission calc
+      const { data: entry } = await supabase
+        .from('pipeline_entries')
+        .select('assigned_to')
+        .eq('id', pipelineEntryId)
+        .maybeSingle();
+      
+      if (!entry?.assigned_to) return null;
+      
+      const { data } = await supabase.rpc('calculate_enhanced_rep_commission', {
+        project_id_param: project.id,
+        sales_rep_id_param: entry.assigned_to
+      });
+      return data;
+    })()
+  ]);
+
+  return {
+    project,
+    budgetItems: budgetItemsResult.data || [],
+    commission: commissionResult,
+    estimate: project.estimates?.[0] || null,
+    costs: project.project_costs || [],
+    budgetSnapshot: project.project_budget_snapshots?.[0] || null,
+  };
+}
+
+export interface ProjectData {
+  project: any;
+  budgetItems: any[];
+  commission: any;
+  estimate: any;
+  costs: any[];
+  budgetSnapshot: any;
+}
+
 // Main hook - fetches ALL data in PARALLEL with caching
 export function useLeadDetails(id: string | undefined) {
   const queryClient = useQueryClient();
@@ -317,6 +377,7 @@ export function useLeadDetails(id: string | undefined) {
   });
 
   const tenantId = leadQuery.data?.tenant_id;
+  const leadStatus = leadQuery.data?.status;
 
   // Dynamic requirements - fetched after we have tenant_id
   const dynamicRequirementsQuery = useQuery({
@@ -351,10 +412,19 @@ export function useLeadDetails(id: string | undefined) {
     staleTime: 300000,
   });
 
+  // Project data - only fetch when status is 'project'
+  const projectDataQuery = useQuery({
+    queryKey: ['lead-project-data', id],
+    queryFn: () => fetchProjectData(id!),
+    enabled: !!id && leadStatus === 'project',
+    staleTime: 30000,
+  });
+
   // Refetch functions
   const refetchRequirements = () => dynamicRequirementsQuery.refetch();
   const refetchPhotos = () => photosQuery.refetch();
   const refetchLead = () => leadQuery.refetch();
+  const refetchProjectData = () => projectDataQuery.refetch();
 
   // Check if any critical data is still loading
   const isLoading = leadQuery.isLoading;
@@ -376,6 +446,8 @@ export function useLeadDetails(id: string | undefined) {
     photos: photosQuery.data || [],
     productionStage: productionStageQuery.data,
     salesReps: salesRepsQuery.data || [],
+    // Project data (null if not in project status)
+    projectData: projectDataQuery.data as ProjectData | null | undefined,
 
     // Loading states
     isLoading,
@@ -383,16 +455,19 @@ export function useLeadDetails(id: string | undefined) {
     isLoadingLead: leadQuery.isLoading,
     isLoadingRequirements: dynamicRequirementsQuery.isLoading,
     isLoadingPhotos: photosQuery.isLoading,
+    isLoadingProjectData: projectDataQuery.isLoading,
     
     // Refetch functions
     refetchRequirements,
     refetchPhotos,
     refetchLead,
+    refetchProjectData,
     refetchAll: () => {
       refetchLead();
       refetchRequirements();
       refetchPhotos();
       productionStageQuery.refetch();
+      if (leadStatus === 'project') projectDataQuery.refetch();
     }
   };
 }
