@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BackButton } from "@/shared/components/BackButton";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
@@ -28,15 +29,18 @@ import {
   Briefcase,
   MessageSquare,
   Activity,
-  CheckCircle
+  CheckCircle,
+  UserCheck
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useActiveTenantId } from "@/hooks/useActiveTenantId";
 
 const ContactProfile = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { activeTenantId } = useActiveTenantId();
   const [contact, setContact] = useState<any>(null);
   const [pipelineEntry, setPipelineEntry] = useState<any>(null);
   const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
@@ -45,7 +49,8 @@ const ContactProfile = () => {
   const [activeTab, setActiveTab] = useState("details");
   const [selectedPipelineEntry, setSelectedPipelineEntry] = useState<any>(null);
   const [triggerEditCounter, setTriggerEditCounter] = useState(0);
-
+  const [teamMembers, setTeamMembers] = useState<any[]>([]);
+  const [assigningRep, setAssigningRep] = useState(false);
   // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
     if (id === 'new' || !id) {
@@ -64,6 +69,42 @@ const ContactProfile = () => {
       fetchContactData();
     }
   }, [id]);
+
+  // Fetch team members for assign rep dropdown
+  useEffect(() => {
+    if (!activeTenantId) return;
+    const fetchTeam = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, role')
+        .eq('tenant_id', activeTenantId)
+        .order('first_name');
+      if (data) setTeamMembers(data);
+    };
+    fetchTeam();
+  }, [activeTenantId]);
+
+  const handleAssignRep = async (value: string) => {
+    const newAssignedTo = value === 'unassigned' ? null : value;
+    setAssigningRep(true);
+    const { error } = await supabase
+      .from('contacts')
+      .update({ assigned_to: newAssignedTo })
+      .eq('id', id);
+    setAssigningRep(false);
+    if (error) {
+      toast({ title: "Error", description: "Failed to assign rep", variant: "destructive" });
+    } else {
+      setContact((prev: any) => ({ ...prev, assigned_to: newAssignedTo }));
+      const repName = newAssignedTo
+        ? teamMembers.find(m => m.id === newAssignedTo)
+        : null;
+      toast({
+        title: "Rep Assigned",
+        description: repName ? `Assigned to ${repName.first_name} ${repName.last_name}` : "Unassigned",
+      });
+    }
+  };
 
   const fetchContactData = async () => {
     try {
@@ -216,6 +257,24 @@ const ContactProfile = () => {
                 contactId={id!} 
                 onComplete={fetchContactData}
               />
+              <Select
+                value={contact.assigned_to || 'unassigned'}
+                onValueChange={handleAssignRep}
+                disabled={assigningRep}
+              >
+                <SelectTrigger className="w-[180px] shadow-soft">
+                  <UserCheck className="h-4 w-4 mr-2 shrink-0" />
+                  <SelectValue placeholder="Assign Rep" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {teamMembers.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.first_name} {member.last_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
               <Button
                 variant="outline"
                 className="shadow-soft"
@@ -230,7 +289,7 @@ const ContactProfile = () => {
               <LeadCreationDialog 
                 contact={contact}
                 onLeadCreated={() => {
-                  fetchContactData(); // Refresh to get updated pipeline data
+                  fetchContactData();
                 }}
                 trigger={
                   <Button className="shadow-soft">
