@@ -9,6 +9,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { GripVertical, X, ArrowRight, MoreVertical, FileText, Mail, Phone, MessageSquare, MessageCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
+import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CLJBadge } from '@/components/CLJBadge';
@@ -395,7 +397,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         className={cn(
           "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
           "shadow-soft border-0 hover:shadow-medium transition-smooth",
-          "cursor-pointer",
+          "cursor-pointer touch-manipulation",
           "relative group overflow-hidden",
           "bg-card",
           isDragging || isSortableDragging ? 'shadow-2xl scale-105 border-2 border-primary rotate-2 animate-pulse z-50' : '',
@@ -411,15 +413,24 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         <CardContent className="p-1.5 h-full flex flex-col justify-between">
           {/* Row 1: Days Badge + Job Number + Comm Badge */}
           <div className="flex items-center justify-between w-full mb-0.5">
-            {/* Days in Status Badge */}
-            <Badge 
-              className={cn(
-                "text-[8px] px-1 py-0.5 border font-medium leading-none",
-                getStatusBadgeColor()
-              )}
-            >
-              {daysInStatus}d
-            </Badge>
+            {/* Days in Status Badge with Tooltip */}
+            <TooltipProvider delayDuration={300}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge 
+                    className={cn(
+                      "text-[8px] px-1 py-0.5 border font-medium leading-none",
+                      getStatusBadgeColor()
+                    )}
+                  >
+                    {daysInStatus}d
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  Last updated: {format(new Date(entry.updated_at || entry.created_at), "MMM d, yyyy 'at' h:mm a")}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
             {/* Display Number - Centered */}
             <div 
@@ -440,7 +451,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-5 px-1 py-0.5 text-[8px] bg-muted/10 text-muted-foreground border border-muted/20 flex items-center gap-0.5 hover:bg-primary/10 hover:text-primary"
+                  className="h-8 w-8 md:h-5 md:w-auto px-1 py-0.5 text-[8px] bg-muted/10 text-muted-foreground border border-muted/20 flex items-center gap-0.5 hover:bg-primary/10 hover:text-primary"
                   onClick={(e) => e.stopPropagation()}
                   onPointerDown={(e) => e.stopPropagation()}
                   title="Quick contact options"
