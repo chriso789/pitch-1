@@ -326,26 +326,25 @@ const JobDetails = () => {
     <GlobalLayout>
       <div className="max-w-7xl mx-auto space-y-6">
       {/* Header with Contact Card */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center space-x-4 flex-1">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => {
-              // Navigate back to contact if we have contact info, otherwise go back
-              if (job?.contact?.id) {
-                navigate(`/contact/${job.contact.id}`);
-              } else {
-                navigate(-1);
-              }
-            }}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Contact
-          </Button>
-          <div className="flex-1">
-            <div className="flex items-center space-x-3">
-              <h1 className="text-3xl font-bold">{job.name}</h1>
+      <div className="space-y-2">
+        <Button 
+          variant="ghost" 
+          size="sm" 
+          onClick={() => {
+            if (job?.contact?.id) {
+              navigate(`/contact/${job.contact.id}`);
+            } else {
+              navigate(-1);
+            }
+          }}
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Contact
+        </Button>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold truncate" title={job.name}>{job.name}</h1>
               <Badge className={getStatusColor(job.status)}>
                 {job.status.replace('_', ' ')}
               </Badge>
@@ -362,7 +361,6 @@ const JobDetails = () => {
               )}
             </div>
           </div>
-        </div>
 
         {/* Minimized Contact Card */}
         {job.contact && (
@@ -443,6 +441,7 @@ const JobDetails = () => {
             )}
             Save & Exit
           </Button>
+        </div>
         </div>
       </div>
 
