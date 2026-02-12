@@ -1,68 +1,51 @@
 
 
-## Deduplicate Search Results: Show Latest Pipeline Stage Only
+## Move Project Financial Data Into the Profit Tab
 
-### Problem
-When a lead is converted to a project, the search shows **three results** for the same entity: the Contact, the Lead, AND the Job/Project. The user wants to see only the **most advanced stage** -- if a lead became a project, show only the Contact + Project, not the Lead.
+### What's Happening Now
 
-### Rules
-1. If a lead has been converted to a project: show **Contact + Project** (hide the lead)
-2. If a lead has NOT been converted: show **Contact + Lead** (no project exists)
-3. If a contact has multiple leads at different addresses, show each lead/project separately
-4. Always show the Contact entry itself
+The Lead Details page currently shows TWO separate financial areas when a lead becomes a project:
 
-### Root Cause
-The `search_contacts_and_jobs` RPC function (line 60-88) returns ALL pipeline_entries as "lead" results regardless of whether a project already exists for that entry. It also returns the project separately (line 92-121). This creates duplicate results.
+1. **Profit tab** (in the EstimateHyperlinkBar) -- renders `ProfitCenterPanel` with selling price, cost comparison (original vs actual), invoices, commission breakdown
+2. **ProjectFinancialSections** (below the hyperlink bar) -- a 6-card stats grid + 4 tabs (Budget, Cost Verification, Commission, Project Costs)
 
-### Solution
-Modify the SQL RPC function to **exclude leads that have a linked project**. The `projects` table has a `pipeline_entry_id` column -- if a project exists for a pipeline entry, that lead should be skipped in the Leads section.
+These overlap significantly: both show contract value, costs, gross profit, net profit, and commission. The estimate window already provides the reference data needed.
 
-### Change
+### Plan
 
-**New migration file** -- Update `search_contacts_and_jobs` RPC:
+**File: `src/pages/LeadDetails.tsx`**
 
-In the **LEADS** section (pipeline_entries query), add a filter:
+1. **Remove the `ProjectFinancialSections` component entirely** (lines 230-385) -- delete the component definition and its rendering block (lines 1417-1423)
 
-```sql
--- LEADS: exclude entries that have been converted to projects
-AND NOT EXISTS (
-  SELECT 1 FROM projects proj 
-  WHERE proj.pipeline_entry_id = pe.id
-)
-```
+2. **Remove the standalone `ProfitSection` wrapper** (lines 223-228) since it just wraps `ProfitCenterPanel`
 
-This single addition ensures:
-- Leads that became projects are excluded from the "Leads" group
-- The project still appears in the "Jobs" group
-- Leads without projects still appear normally
-- Contacts with multiple leads show each one correctly (only those without projects)
+3. **Enhance the `profit` case in `renderActiveSection()`** (line 806-807) to include the merged content:
+   - When `lead.status === 'project'` and `projectData` exists: render `ProfitCenterPanel` (existing) PLUS additional project-only tabs for **Budget** (`BudgetTracker`) and **Cost Verification** (`CostReconciliationPanel` + `InvoiceUploadCard`)
+   - When NOT a project: render `ProfitCenterPanel` only (same as today)
 
-### Also: Fix Job navigation route
+**File: `src/components/estimates/ProfitCenterPanel.tsx`**
 
-In `CLJSearchBar.tsx` line 130, jobs currently navigate to `/project/:id` which now redirects to `/lead/:id` via the ProjectDetails redirect. Update the job route to navigate directly to `/lead/:pipeline_entry_id` using the pipeline_entry_id from the project, avoiding the redirect hop. This requires the RPC to return `pipeline_entry_id` for job results.
+4. **Add a `projectId` optional prop** to `ProfitCenterPanel` so it can conditionally render the Budget and Cost Verification tabs alongside the existing Summary/Invoices/Details tabs
 
-**Updated RPC for Jobs section:**
-```sql
--- PROJECTS: return pipeline_entry_id as entity_id so navigation goes directly to /lead/:id
-SELECT 
-  'job'::text AS entity_type,
-  pe.id AS entity_id,  -- Use pipeline_entry_id instead of project id
-  ...
-```
+5. **Merge the commission tab content** from `ProjectFinancialSections` into the existing "Details" breakdown tab in `ProfitCenterPanel` (it already shows commission -- just ensure the data matches)
 
-**Updated CLJSearchBar.tsx line 128-131:**
-```typescript
-const routes: Record<string, string> = {
-  contact: `/contact/${result.entity_id}`,
-  lead: `/lead/${result.entity_id}`,
-  job: `/lead/${result.entity_id}`  // Now points to pipeline entry directly
-};
-```
+6. **Add a compact financial stats summary row** at the top of ProfitCenterPanel when projectId is present -- showing Contract Value, Total Costs, Gross Profit, Net Profit inline (replacing the separate 6-card grid)
 
-### Summary of Changes
+### Result
 
-| File | Change |
-|------|--------|
-| New migration SQL | Add `NOT EXISTS` clause to leads query; change jobs query to return `pipeline_entry_id` as `entity_id` |
-| `src/components/CLJSearchBar.tsx` | Update job route from `/project/` to `/lead/` (line 130) |
+- Clicking "Profit" in the EstimateHyperlinkBar shows everything: profit breakdown, invoices, commission, and (for projects) budget tracking and cost verification
+- No more duplicate financial sections floating below the hyperlink bar
+- The estimate tab stays focused on measurements, materials, labor -- the creation workflow
+- The profit tab becomes the single destination for all financial tracking during and after project completion
 
+### Technical Details
+
+| Change | Location | Detail |
+|--------|----------|--------|
+| Delete `ProjectFinancialSections` | LeadDetails.tsx lines 230-385, 1417-1423 | Remove component + render call |
+| Delete `ProfitSection` wrapper | LeadDetails.tsx lines 223-228 | Inline `ProfitCenterPanel` directly |
+| Add `projectId` prop | ProfitCenterPanel.tsx | Optional prop, when present adds Budget + Cost Verification tabs |
+| Expand TabsList | ProfitCenterPanel.tsx | From 3 tabs (Summary, Invoices, Details) to 5 tabs when project (+ Budget, Cost Verification) |
+| Add stats row | ProfitCenterPanel.tsx | Compact 4-value summary at top when projectId present |
+| Import BudgetTracker | ProfitCenterPanel.tsx | For budget tab content |
+| Import CostReconciliationPanel | ProfitCenterPanel.tsx | For cost verification tab content |
