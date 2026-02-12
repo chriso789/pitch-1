@@ -32,7 +32,7 @@ export const ContactKanbanColumn: React.FC<ContactKanbanColumnProps> = ({
     : {};
 
   return (
-    <div className="space-y-1.5">
+    <div className="min-w-[250px] w-[250px] flex-shrink-0 space-y-1.5">
       {/* Column Header */}
       <Card className="shadow-soft border-0">
         <CardHeader className="p-2">
