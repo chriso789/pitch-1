@@ -1,37 +1,69 @@
 
 
-## Fix Contacts Kanban Board Scrolling (Both Directions)
+## Fix Pipeline Search Autopopulate + Speed Up Pipeline
 
-### Problem
+### 1. Fix Search Autopopulate Bug (PipelineSearch.tsx)
 
-The kanban board container at line 180 of `ContactKanbanBoard.tsx` has `overflow-x-auto`, but:
-1. The parent `CardContent` constrains the board width, preventing horizontal scroll from activating properly
-2. Columns have no max-height or vertical overflow -- they just grow infinitely tall, making the whole page stretch instead of scrolling within the column
+The suggestions filter accesses the wrong field paths. The pipeline entries have contact data nested under `contacts`, but the search looks at the top level.
 
-### Changes
+**File: `src/features/pipeline/components/PipelineSearch.tsx` (lines 54-58)**
 
-**File: `src/features/contacts/components/ContactKanbanBoard.tsx`**
+Change:
+```
+entry.first_name -> entry.contacts?.first_name
+entry.last_name -> entry.contacts?.last_name
+entry.address_street -> entry.contacts?.address_street
+entry.address_city -> entry.contacts?.address_city
+entry.address_state -> entry.contacts?.address_state
+```
 
-- Replace the board wrapper `div` (line 180) with a dedicated scroll container that has:
-  - `overflow-x-auto` for horizontal scrolling
-  - `overscroll-behavior-x: contain` to prevent browser back/forward gestures
-  - A calculated max-height (`max-h-[calc(100vh-280px)]`) so the board fits the viewport
+Also fix the display (lines 117-120):
+```
+entry.first_name -> entry.contacts?.first_name
+entry.last_name -> entry.contacts?.last_name
+entry.address_city -> entry.contacts?.address_city
+entry.address_state -> entry.contacts?.address_state
+```
 
-**File: `src/features/contacts/components/ContactKanbanColumn.tsx`**
+### 2. Speed Up Pipeline Loading (Pipeline.tsx)
 
-- Add vertical scrolling to the drop zone area:
-  - Set `max-h-[calc(100vh-340px)]` and `overflow-y-auto` on the drop zone div (line 58)
-  - This keeps columns scrollable independently within the viewport
+**Problem**: `fetchPipelineData` runs 4 sequential queries (auth user, profile, reps, locations, then pipeline data). Each waits for the previous one.
 
-**File: `src/features/contacts/components/EnhancedClientList.tsx`**
+**Fix**: Run independent queries in parallel using `Promise.all`:
 
-- On the wrapping `CardContent` (line 1332), add `overflow-hidden` to prevent it from clipping the inner scroll container, and remove any padding that fights the board's own spacing
+```text
+Before (sequential):
+  getUser() -> 300ms
+  getProfile() -> 200ms
+  getReps() -> 200ms
+  getLocations() -> 200ms
+  getPipelineEntries() -> 300ms
+  Total: ~1200ms
 
-### Summary
+After (parallel where possible):
+  getUser() -> 300ms
+  getProfile() -> 200ms
+  [getReps(), getLocations(), getPipelineEntries()] -> 300ms (parallel)
+  Total: ~800ms
+```
+
+**File: `src/features/pipeline/components/Pipeline.tsx` (lines 177-360)**
+
+- After getting the profile/tenant ID, run the reps query, locations query, and pipeline entries query in parallel with `Promise.all`
+- Cache `effectiveTenantId` so `fetchUserRole` and `fetchPipelineData` don't both query the profile separately
+
+### 3. Throttle Realtime Refetches (Pipeline.tsx)
+
+**Problem**: The realtime subscription (lines 118-138) calls `fetchPipelineData()` on every single `postgres_changes` event with no debounce. If 5 entries change quickly, it fires 5 full refetches.
+
+**Fix**: Debounce the realtime handler to batch rapid changes into a single refetch (500ms window).
+
+### Technical Summary
 
 | File | Change |
 |------|--------|
-| `ContactKanbanBoard.tsx` | Add `overscroll-behavior-x: contain` and viewport-aware max-height to the flex container |
-| `ContactKanbanColumn.tsx` | Add `max-h` + `overflow-y-auto` to column drop zones for vertical scroll |
-| `EnhancedClientList.tsx` | Ensure `CardContent` doesn't block overflow |
+| `PipelineSearch.tsx` | Fix field paths: `entry.first_name` to `entry.contacts?.first_name` (and similar for all contact fields) |
+| `Pipeline.tsx` | Parallelize independent queries with `Promise.all` |
+| `Pipeline.tsx` | Debounce realtime subscription handler (500ms) |
+| `Pipeline.tsx` | Remove duplicate profile fetch (reuse from `fetchUserRole`) |
 
