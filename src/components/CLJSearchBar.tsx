@@ -127,7 +127,7 @@ export const CLJSearchBar = () => {
     const routes: Record<string, string> = {
       contact: `/contact/${result.entity_id}`,
       lead: `/lead/${result.entity_id}`,
-      job: `/project/${result.entity_id}`
+      job: `/lead/${result.entity_id}`
     };
 
     navigate(routes[result.entity_type]);
