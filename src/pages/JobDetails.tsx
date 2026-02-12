@@ -349,7 +349,9 @@ const JobDetails = () => {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-2xl font-bold truncate" title={job.name}>{job.name}</h1>
+              <h1 className="text-2xl font-bold truncate" title={job.contact ? `${job.contact.first_name} ${job.contact.last_name}` : job.name}>
+                {job.contact ? `${job.contact.first_name} ${job.contact.last_name}` : job.name}
+              </h1>
               <Badge className={getStatusColor(job.status)}>
                 {job.status.replace('_', ' ')}
               </Badge>
@@ -359,10 +361,16 @@ const JobDetails = () => {
                 </Badge>
               )}
             </div>
-            <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
+            <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1 flex-wrap">
               <span className="font-mono">{job.job_number}</span>
               {job.project && (
                 <span>Project: {job.project.project_number}</span>
+              )}
+              {job.contact?.address_street && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="h-3 w-3" />
+                  {job.contact.address_street}, {job.contact.address_city}, {job.contact.address_state} {job.contact.address_zip}
+                </span>
               )}
             </div>
           </div>
@@ -564,52 +572,55 @@ const JobDetails = () => {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="flex w-full overflow-x-auto justify-start">
-          <TabsTrigger value="overview" className="flex items-center space-x-1">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Overview</span>
-          </TabsTrigger>
-          <TabsTrigger value="activity" className="flex items-center space-x-1">
-            <Clock className="h-4 w-4" />
-            <span className="hidden sm:inline">Activity</span>
-          </TabsTrigger>
-          <TabsTrigger value="budget" className="flex items-center space-x-1">
-            <DollarSign className="h-4 w-4" />
-            <span className="hidden sm:inline">Budget</span>
-          </TabsTrigger>
-          <TabsTrigger value="payments" className="flex items-center space-x-1">
-            <CreditCard className="h-4 w-4" />
-            <span className="hidden sm:inline">Payments</span>
-          </TabsTrigger>
-          <TabsTrigger value="communication" className="flex items-center space-x-1">
-            <Phone className="h-4 w-4" />
-            <span className="hidden sm:inline">Comms</span>
-          </TabsTrigger>
-          <TabsTrigger value="invoices" className="flex items-center space-x-1">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Invoices</span>
-          </TabsTrigger>
-          <TabsTrigger value="quickbooks" className="flex items-center space-x-1">
-            <DollarSign className="h-4 w-4" />
-            <span className="hidden sm:inline">QBO</span>
-          </TabsTrigger>
-          <TabsTrigger value="photos" className="flex items-center space-x-1">
-            <Camera className="h-4 w-4" />
-            <span className="hidden sm:inline">Photos</span>
-          </TabsTrigger>
-          <TabsTrigger value="documents" className="flex items-center space-x-1">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Documents</span>
-          </TabsTrigger>
-          <TabsTrigger value="timeline" className="flex items-center space-x-1">
-            <Clock className="h-4 w-4" />
-            <span className="hidden sm:inline">Timeline</span>
-          </TabsTrigger>
-          <TabsTrigger value="audit" className="flex items-center space-x-1">
-            <FileText className="h-4 w-4" />
-            <span className="hidden sm:inline">Audit</span>
-          </TabsTrigger>
-        </TabsList>
+        <div className="relative">
+          <TabsList className="flex w-full overflow-x-auto justify-start scrollbar-thin scrollbar-thumb-muted-foreground/20 pb-1">
+            <TabsTrigger value="overview" className="flex-shrink-0 flex items-center space-x-1">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Overview</span>
+            </TabsTrigger>
+            <TabsTrigger value="activity" className="flex-shrink-0 flex items-center space-x-1">
+              <Clock className="h-4 w-4" />
+              <span className="hidden sm:inline">Activity</span>
+            </TabsTrigger>
+            <TabsTrigger value="budget" className="flex-shrink-0 flex items-center space-x-1">
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">Budget</span>
+            </TabsTrigger>
+            <TabsTrigger value="payments" className="flex-shrink-0 flex items-center space-x-1">
+              <CreditCard className="h-4 w-4" />
+              <span className="hidden sm:inline">Payments</span>
+            </TabsTrigger>
+            <TabsTrigger value="communication" className="flex-shrink-0 flex items-center space-x-1">
+              <Phone className="h-4 w-4" />
+              <span className="hidden sm:inline">Comms</span>
+            </TabsTrigger>
+            <TabsTrigger value="invoices" className="flex-shrink-0 flex items-center space-x-1">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Invoices</span>
+            </TabsTrigger>
+            <TabsTrigger value="quickbooks" className="flex-shrink-0 flex items-center space-x-1">
+              <DollarSign className="h-4 w-4" />
+              <span className="hidden sm:inline">QBO</span>
+            </TabsTrigger>
+            <TabsTrigger value="photos" className="flex-shrink-0 flex items-center space-x-1">
+              <Camera className="h-4 w-4" />
+              <span className="hidden sm:inline">Photos</span>
+            </TabsTrigger>
+            <TabsTrigger value="documents" className="flex-shrink-0 flex items-center space-x-1">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Documents</span>
+            </TabsTrigger>
+            <TabsTrigger value="timeline" className="flex-shrink-0 flex items-center space-x-1">
+              <Clock className="h-4 w-4" />
+              <span className="hidden sm:inline">Timeline</span>
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="flex-shrink-0 flex items-center space-x-1">
+              <FileText className="h-4 w-4" />
+              <span className="hidden sm:inline">Audit</span>
+            </TabsTrigger>
+          </TabsList>
+          <div className="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none" />
+        </div>
 
         <TabsContent value="overview" className="space-y-6">
           {/* QuickBooks Invoice Card */}
