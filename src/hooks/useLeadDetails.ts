@@ -51,6 +51,7 @@ export interface LeadDetailsData {
   };
   secondary_assigned_to?: string;
   primary_rep_split_percent?: number;
+  location_id?: string;
   created_at: string;
   updated_at: string;
 }
@@ -255,21 +256,52 @@ async function fetchProductionStage(id: string): Promise<string | null> {
   return workflow?.current_stage || null;
 }
 
-// Fetch sales reps for a specific tenant
-async function fetchSalesReps(tenantId: string | null) {
+// Fetch sales reps for a specific tenant, filtered by location
+async function fetchSalesReps(tenantId: string | null, locationId?: string | null) {
   if (!tenantId) return [];
-  
-  const { data, error } = await supabase
+
+  const elevatedRoles = ['owner', 'corporate', 'office_admin'] as const;
+  const allRoles = ['owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'] as const;
+
+  // If no locationId, fall back to showing all tenant reps (current behavior)
+  if (!locationId) {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('id, first_name, last_name, role')
+      .eq('tenant_id', tenantId)
+      .in('role', allRoles)
+      .eq('is_active', true)
+      .neq('role', 'master')
+      .order('first_name');
+    if (error) throw error;
+    return data || [];
+  }
+
+  // Get user IDs assigned to this location
+  const { data: assignments, error: assignError } = await supabase
+    .from('user_location_assignments')
+    .select('user_id')
+    .eq('location_id', locationId);
+
+  if (assignError) throw assignError;
+  const locationUserIds = (assignments || []).map(a => a.user_id);
+
+  // Fetch all reps in tenant with qualifying roles
+  const { data: allReps, error } = await supabase
     .from('profiles')
     .select('id, first_name, last_name, role')
     .eq('tenant_id', tenantId)
-    .in('role', ['owner', 'corporate', 'regional_manager', 'sales_manager', 'project_manager'])
+    .in('role', allRoles)
     .eq('is_active', true)
     .neq('role', 'master')
     .order('first_name');
 
   if (error) throw error;
-  return data || [];
+
+  // Filter: include if elevated role OR assigned to this location
+  return (allReps || []).filter(rep =>
+    (elevatedRoles as readonly string[]).includes(rep.role) || locationUserIds.includes(rep.id)
+  );
 }
 
 // Main hook - fetches ALL data in PARALLEL with caching
@@ -310,10 +342,11 @@ export function useLeadDetails(id: string | undefined) {
     staleTime: 30000,
   });
 
-  // Sales reps - fetch based on lead's tenant
+  // Sales reps - fetch based on lead's tenant AND location
+  const locationId = leadQuery.data?.location_id;
   const salesRepsQuery = useQuery({
-    queryKey: ['sales-reps', tenantId],
-    queryFn: () => fetchSalesReps(tenantId || null),
+    queryKey: ['sales-reps', tenantId, locationId],
+    queryFn: () => fetchSalesReps(tenantId || null, locationId),
     enabled: !!tenantId,
     staleTime: 300000,
   });
