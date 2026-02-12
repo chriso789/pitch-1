@@ -1,56 +1,49 @@
 
 
-## Fix Pipeline Card Issues: Dropdown, Day Counter, and Mobile Button
+## Add Pipeline-Specific Autocomplete Search
 
-### Issue 1: Status Dropdown Empty on Lead Details Page
+### What Changes
 
-**Root cause:** The Lead Details page imports the static `LEAD_STAGES` from `usePipelineData`, which contains default stage keys (`new_lead`, `contacted`, `qualified`, etc.). But the actual pipeline entries use the real database keys (`lead`, `contingency_signed`, `legal_review`, etc.). When the dropdown filters stages by `getAvailableStatuses()`, none match because the stage keys are completely different.
+Replace the plain text search input in the pipeline with an autocomplete dropdown that shows matching **leads/projects** (pipeline entries) as you type — not contacts.
 
-**Fix:** Replace the static `LEAD_STAGES` import with the dynamic `usePipelineStages()` hook, which fetches the real stages from the database. Update both the dropdown options and the status badge display to use the dynamic stages.
+### Current Behavior
+- The search bar filters the kanban columns in real-time but shows no dropdown suggestions
+- The `AutocompleteSearch` component elsewhere queries the **contacts** table directly
 
-### Issue 2: Day Counter Shows Age, Not Last Activity
-
-**Root cause:** The `getDaysInStatus()` function in `KanbanCard.tsx` calculates days since `created_at` (when the pipeline entry was first created). The user wants it to show days since the last action/activity in the system. The card already has `daysSinceLastComm` which tracks last communication -- the "days in status" badge should use `updated_at` instead of `created_at` to reflect the last time there was any action.
-
-**Fix:** Change `getDaysInStatus()` to use the pipeline entry's `updated_at` field instead of `created_at`. This requires:
-- Adding `updated_at` to the pipeline entry type and query in `usePipelineData.ts`
-- Updating the calculation in `KanbanCard.tsx` to use `updated_at`
-
-### Issue 3: Details Button Too Small and Invisible on Mobile
-
-**Root cause:** The "View Details" arrow button is:
-- Only 14x14px (`h-3.5 w-3.5`) -- far below the 44x44px touch target minimum
-- Hidden by default (`opacity-0`) and only appears on hover (`group-hover:opacity-100`), which doesn't trigger on mobile touch devices
-- Positioned at the absolute bottom-left corner with no padding
-
-**Fix:** Make the button always visible on mobile, increase touch target size, and make the entire card tappable to navigate to details (instead of relying on the tiny arrow). Specifically:
-- Change the card's `onClick` (`handleCardClick`) to navigate to the lead details page directly
-- Make the arrow button always visible (not just on hover) with a larger touch target on mobile
-- Keep the drag handle and other interactions working via pointer event handling
-
----
+### New Behavior
+- As you type 2+ characters, a dropdown appears showing matching pipeline entries
+- Each suggestion shows the CLJ number, contact name, status badge, and address
+- Clicking a suggestion navigates to that lead's details page
+- The kanban columns still filter in real-time as you type (existing behavior preserved)
 
 ### Technical Details
 
+**File: `src/features/pipeline/components/Pipeline.tsx`**
+
+Replace the plain `<Input>` search (lines 1079-1096) with a new `PipelineSearch` component that:
+- Uses the existing `pipelineData` (already loaded) to find matches client-side — no extra database queries needed
+- Searches across all stages by contact name, CLJ number, and address
+- Shows a dropdown with up to 8 matching entries
+- Each dropdown item displays:
+  - CLJ number (e.g., `C3076-L1-J0`)
+  - Contact name
+  - Current stage as a small badge
+  - Address snippet
+- Clicking a result navigates to `/lead/{entry.id}`
+- Typing still filters the kanban board in real-time (keep `setSearchQuery`)
+- The X button to clear search remains
+
+**New File: `src/features/pipeline/components/PipelineSearch.tsx`**
+
+A self-contained autocomplete component that:
+- Accepts `pipelineData` (the grouped data object) and `stages` as props
+- Flattens all entries across stages for searching
+- Debounces input (300ms) before showing suggestions
+- Handles click-outside to dismiss dropdown
+- Uses the same search logic as `filterBySearch` (name, CLJ number, address)
+
 | File | Change |
 |------|--------|
-| `src/pages/LeadDetails.tsx` | Replace `LEAD_STAGES` import with `usePipelineStages()` hook; update dropdown and status badge to use dynamic stages |
-| `src/features/pipeline/components/KanbanCard.tsx` | Change `getDaysInStatus()` to use `updated_at`; make details button always visible and larger on mobile; make card tap navigate to details |
-| `src/hooks/usePipelineData.ts` | Add `updated_at` to `PipelineEntry` interface and to the query select |
-
-**LeadDetails.tsx changes:**
-- Remove: `import { LEAD_STAGES } from '@/hooks/usePipelineData'`
-- Add: `import { usePipelineStages } from '@/hooks/usePipelineStages'`
-- Add inside component: `const { stages } = usePipelineStages();`
-- Replace all references to `LEAD_STAGES` with `stages`
-- The `getAvailableStatuses` and `allStages` variables should also derive from the dynamic stages instead of hardcoded arrays
-
-**KanbanCard.tsx changes:**
-- Accept `updated_at` in the entry prop interface
-- Change `getDaysInStatus` to: `new Date(entry.updated_at || entry.created_at)`
-- Change the details button from `opacity-0 group-hover:opacity-100 h-3.5 w-3.5` to `opacity-100 h-8 w-8 md:h-6 md:w-6` so it's always visible and has a proper touch target
-- Make `handleCardClick` navigate to lead details instead of calling `onView`
-
-**usePipelineData.ts changes:**
-- Add `updated_at` to the select query and `PipelineEntry` interface
+| `src/features/pipeline/components/PipelineSearch.tsx` | New component — pipeline-specific autocomplete |
+| `src/features/pipeline/components/Pipeline.tsx` | Replace plain Input with PipelineSearch component |
 
