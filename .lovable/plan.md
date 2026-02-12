@@ -1,26 +1,37 @@
 
 
-## Show Assigned Rep on Contacts Kanban Board Cards
+## Fix Contacts Kanban Board Scrolling (Both Directions)
 
-The contact data already includes the joined `assigned_rep` (first_name, last_name) from the fetch query. We just need to pass it through and display it.
+### Problem
+
+The kanban board container at line 180 of `ContactKanbanBoard.tsx` has `overflow-x-auto`, but:
+1. The parent `CardContent` constrains the board width, preventing horizontal scroll from activating properly
+2. Columns have no max-height or vertical overflow -- they just grow infinitely tall, making the whole page stretch instead of scrolling within the column
 
 ### Changes
 
-**1. Update Contact interface in `ContactKanbanBoard.tsx` (lines 21-34)**
-- Add `assigned_to: string | null` and `assigned_rep: { first_name: string; last_name: string } | null` to the `Contact` interface
+**File: `src/features/contacts/components/ContactKanbanBoard.tsx`**
 
-**2. Update Contact interface in `ContactKanbanCard.tsx` (lines 10-23)**
-- Same interface update to include `assigned_rep`
+- Replace the board wrapper `div` (line 180) with a dedicated scroll container that has:
+  - `overflow-x-auto` for horizontal scrolling
+  - `overscroll-behavior-x: contain` to prevent browser back/forward gestures
+  - A calculated max-height (`max-h-[calc(100vh-280px)]`) so the board fits the viewport
 
-**3. Display rep name on `ContactKanbanCard.tsx`**
-- Below the contact name, show the assigned rep in small muted text (e.g. "Rep: John Smith")
-- Only display when `assigned_rep` is present
-- Use the `UserCheck` icon for visual consistency with the contact profile page
+**File: `src/features/contacts/components/ContactKanbanColumn.tsx`**
 
-### Files to Modify
+- Add vertical scrolling to the drop zone area:
+  - Set `max-h-[calc(100vh-340px)]` and `overflow-y-auto` on the drop zone div (line 58)
+  - This keeps columns scrollable independently within the viewport
+
+**File: `src/features/contacts/components/EnhancedClientList.tsx`**
+
+- On the wrapping `CardContent` (line 1332), add `overflow-hidden` to prevent it from clipping the inner scroll container, and remove any padding that fights the board's own spacing
+
+### Summary
 
 | File | Change |
 |------|--------|
-| `src/features/contacts/components/ContactKanbanBoard.tsx` | Add `assigned_to` and `assigned_rep` to Contact interface |
-| `src/features/contacts/components/ContactKanbanCard.tsx` | Add fields to interface + display rep name on card |
+| `ContactKanbanBoard.tsx` | Add `overscroll-behavior-x: contain` and viewport-aware max-height to the flex container |
+| `ContactKanbanColumn.tsx` | Add `max-h` + `overflow-y-auto` to column drop zones for vertical scroll |
+| `EnhancedClientList.tsx` | Ensure `CardContent` doesn't block overflow |
 
