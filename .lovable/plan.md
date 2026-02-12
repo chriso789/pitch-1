@@ -1,52 +1,45 @@
 
 
-## Fix: Contacts Board Not Filtering Properly
+## Fix: Remove Pipeline Stages from Contacts Board
 
-### Root Cause
+### Problem
 
-The board columns are defined by your custom `contact_statuses` table, but the actual `qualification_status` values stored on your 1,781 contacts don't match those column keys:
+The `contact_statuses` table (which drives the Contacts Board) now contains pipeline stage entries that don't belong there:
+- **Legal Review** -- this is a pipeline stage, not a contact disposition
+- **Project** -- this is a pipeline stage
+- **Contingency Signed** -- this is a pipeline stage
 
-| Status in Database | Count | Board Column Match? |
-|---|---|---|
-| unqualified | 1,055 | No column exists |
-| NULL (no status) | 424 | No column exists |
-| storm_damage | 234 | No -- board key has trailing underscore: storm_damage_ |
-| not_home | 18 | No column exists |
-| legal_review | 12 | No column exists |
-| not_interested | 10 | Yes |
-| contingency_signed | 8 | No column exists |
-| project | 8 | Yes |
+These were added by the previous migration. Additionally, 28 contacts have pipeline stage values stored in their `qualification_status` field (e.g., `legal_review`, `contingency_signed`, `project`, `ready_for_approval`, `completed`, `lead`, `new_lead`).
 
-So ~1,743 contacts silently fall into a hidden "Uncategorized" bucket at the far right of the board.
+The **Contacts Board** should only show contact disposition statuses (Not Home, Interested, Not Interested, Qualified, Storm Damage, Do Not Contact, etc.), while pipeline stages belong exclusively on the **Jobs Pipeline** board.
 
-### Fix (Two Parts)
+### Fix
 
-**Part 1: Fix the storm_damage key mismatch (database)**
+**Database migration:**
 
-Run a SQL migration to update the `contact_statuses` key from `storm_damage_` to `storm_damage` (removing the trailing underscore), so the 234 contacts with that value properly appear in the Storm Damage column.
+1. **Remove pipeline stages from `contact_statuses` table** -- delete the rows for `legal_review`, `contingency_signed`, and `project` from the contact_statuses table for this tenant.
 
-**Part 2: Add visible "New / Unassigned" column + show Uncategorized**
+2. **Reset contacts that have pipeline stage values** -- update the 28 contacts that have pipeline-stage values in their `qualification_status` field back to `NULL` so they appear in "New / Unassigned":
+   - `legal_review` (12 contacts)
+   - `contingency_signed` (8 contacts)  
+   - `project` (8 contacts)
+   - `ready_for_approval` (5 contacts)
+   - `completed` (3 contacts)
+   - `lead` (3 contacts)
+   - `new_lead` (1 contact)
 
-Update `ContactKanbanBoard.tsx` to always render the Uncategorized column prominently (not hidden at the end), renamed to "New / Unassigned" so it's clear these contacts haven't been dispositioned yet. This makes the 1,479 contacts with `unqualified` or `NULL` status visible and actionable.
+No code changes needed -- the board component already handles these correctly once the data is fixed.
 
-Additionally, add a "Not Home" status column to the board since 18 contacts have that value and it was in the original default statuses.
+### After Fix
 
-### Technical Details
+The Contacts Board will show only disposition columns:
+- New / Unassigned (1,507 contacts)
+- Qualified
+- Not Home (18)
+- Interested
+- Old Roof - Marketing
+- Storm Damage (234)
+- Not Interested (10)
+- Do Not Contact
 
-**File: ContactKanbanBoard.tsx**
-- Move the "uncategorized" column to the FIRST position (before other columns) so new/unassigned contacts are immediately visible
-- Rename it from "Uncategorized" to "New / Unassigned"
-- Show the count prominently so users know how many contacts need disposition
-
-**Database: contact_statuses table**
-- Update the `storm_damage_` key to `storm_damage` to match existing data
-- Optionally add a "Not Home" status and an "Unqualified" status so those contacts have proper columns
-
-**Database: contacts table**
-- Update contacts with `qualification_status = 'unqualified'` to `NULL` (since "unqualified" is not a meaningful disposition -- these are just new contacts that haven't been categorized)
-- OR add an "Unqualified" column to the board -- whichever you prefer
-
-### Result
-
-All 1,781 contacts will be visible and properly distributed across the board columns instead of being hidden in an invisible bucket.
-
+Pipeline stages (Legal Review, Contingency Signed, Project, etc.) will only appear on the Jobs Pipeline board where they belong.
