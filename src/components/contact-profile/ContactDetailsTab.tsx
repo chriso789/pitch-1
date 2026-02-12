@@ -57,7 +57,7 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
   triggerEdit = 0
 }) => {
   const [isEditing, setIsEditing] = useState(false);
-  const prevTriggerEdit = useRef(triggerEdit);
+  const prevTriggerEdit = useRef(0);
 
   useEffect(() => {
     if (triggerEdit > 0 && triggerEdit !== prevTriggerEdit.current) {
