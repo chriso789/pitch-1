@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -371,6 +372,7 @@ export default function AIAgentSettingsPage() {
   };
 
   return (
+    <GlobalLayout>
     <div className="container max-w-4xl py-6 space-y-6">
       <div className="flex items-center gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate(-1)}>
@@ -896,5 +898,6 @@ export default function AIAgentSettingsPage() {
         </TabsContent>
       </Tabs>
     </div>
+    </GlobalLayout>
   );
 }
