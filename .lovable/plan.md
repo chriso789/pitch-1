@@ -1,63 +1,68 @@
 
 
-## Add Phone Number Selection to AI Agent Settings + Fix Test Call
+## Add Phone Number Setup to AI Agent Settings Page
 
-### Problems
+### Problem
 
-1. **Test Call fails** with "Invalid value for connection_id" -- the `test-ai-call` edge function reads `TELNYX_CONNECTION_ID` from environment variables (which is blank) instead of using the location's stored `telnyx_voice_app_id`.
-2. **No way to pick which number the AI answers** -- the settings page has no UI to select a location/phone number for the AI agent.
+The "Answering Number" dropdown only shows locations that already have a Telnyx phone number provisioned. If no locations have numbers set up, the user sees "No locations with Telnyx phone numbers found" with no way to fix it. The user needs to be able to search for, purchase, or manually enter a phone number right from this page.
 
 ### Solution
 
-#### 1. Add a "Phone Number" selector to the AI Agent Settings page
+Enhance the "Answering Number" section to include:
 
-At the top of the settings page (below the enable toggle), add a dropdown that lists all locations with a provisioned Telnyx phone number. The user picks which location's number the AI agent should answer. The selected `location_id` is saved to the `ai_answering_config` table.
+1. **Keep the existing dropdown** for selecting a pre-provisioned location number
+2. **Add a "Set Up New Number" button** that opens the existing `PhoneSetupWizard` in a dialog, letting the user search for and purchase a new Telnyx number or port an existing one -- all without leaving the AI Agent settings page
+3. **Show the selected number's status** (active, porting, etc.) with a badge so the user knows if it's ready
+4. **Add a link to Phone Provisioning settings** as a secondary action for users who want the full phone management experience
 
-- Query `locations` where `telnyx_phone_number IS NOT NULL` for the tenant
-- Show a Select dropdown: "West Coast -- +1 (941) 541-0117" etc.
-- Save the chosen `location_id` alongside the other config
+### Changes
 
-#### 2. Add `location_id` column to `ai_answering_config`
+#### File: `src/pages/settings/AIAgentSettingsPage.tsx`
 
-A migration to add `location_id UUID REFERENCES locations(id)` to the `ai_answering_config` table so the selected phone number persists.
+**Answering Number card updates:**
 
-#### 3. Fix the `test-ai-call` edge function
+- Import `Dialog`, `DialogContent`, `DialogTrigger` and `PhoneSetupWizard`
+- Add a state variable `isSetupWizardOpen` and `setupLocationId` (to track which location is being set up)
+- When `telnyxLocations` is empty, show both the "no numbers" message AND a "Set Up Phone Number" button that opens the `PhoneSetupWizard` dialog
+- When locations exist, show the dropdown plus a "Add Another Number" or "Manage Numbers" link
+- After the wizard completes, re-fetch `telnyxLocations` and auto-select the newly provisioned number
+- Below the dropdown, show the selected location's phone number and status as a confirmation badge
 
-Instead of reading `TELNYX_CONNECTION_ID` from env, use the location's `telnyx_voice_app_id` as the `connection_id` for the Telnyx API call. This is already queried but not used.
+**Location selection for wizard:**
+- The `PhoneSetupWizard` requires a `locationId`. Add a location selector step: if the tenant has locations without numbers, let them pick one; if all locations already have numbers or there's only one without, auto-select it.
+- If no locations exist at all, show a message directing to Location Management settings.
 
 ---
 
 ### Technical Details
 
-**Database migration:**
-```sql
-ALTER TABLE ai_answering_config
-ADD COLUMN location_id UUID REFERENCES locations(id) ON DELETE SET NULL;
-```
-
-**File: `supabase/functions/test-ai-call/index.ts`**
-
-Change line 58 from:
-```typescript
-const connectionId = Deno.env.get('TELNYX_CONNECTION_ID') || '';
-```
-to:
-```typescript
-const connectionId = location.telnyx_voice_app_id || Deno.env.get('TELNYX_CONNECTION_ID') || '';
-```
-
-Also update the query to accept an optional `location_id` parameter so the test call uses the specific location selected in settings. If `location_id` is provided, query that specific location; otherwise fall back to the first available.
-
-**File: `src/pages/settings/AIAgentSettingsPage.tsx`**
-
-- Add state for locations list and selected location
-- Fetch locations with `telnyx_phone_number IS NOT NULL` on mount
-- Add a Card below the enable toggle with a Select dropdown for choosing the answering number
-- Include `location_id` in the config state and save/load it from `ai_answering_config`
-- Pass `location_id` to the `test-ai-call` function invoke so it uses the correct number
-
 | File | Change |
 |------|--------|
-| New migration | Add `location_id` column to `ai_answering_config` |
-| `supabase/functions/test-ai-call/index.ts` | Use `telnyx_voice_app_id` as connection_id, accept `location_id` param |
-| `src/pages/settings/AIAgentSettingsPage.tsx` | Add phone number/location selector, pass location_id to test call |
+| `src/pages/settings/AIAgentSettingsPage.tsx` | Add PhoneSetupWizard dialog, location picker for setup, status display, manage numbers link |
+
+**No new files needed** -- reuses existing `PhoneSetupWizard` component.
+
+**No database changes needed.**
+
+**Data flow:**
+```text
+1. User opens AI Agent Settings
+2. Locations with telnyx_phone_number loaded into dropdown
+3. If none found --> "Set Up Phone Number" button shown
+4. Button opens PhoneSetupWizard dialog (user picks location first if multiple exist)
+5. Wizard searches/purchases number via existing edge functions
+6. On complete --> re-fetch locations, auto-select new number
+7. User saves config with selected location_id
+```
+
+**Imports to add:**
+- `Dialog, DialogContent` from `@/components/ui/dialog`
+- `PhoneSetupWizard` from `@/components/settings/PhoneSetupWizard`
+
+**New state:**
+- `isSetupOpen: boolean` -- controls wizard dialog
+- `locationsWithoutNumbers: TelnyxLocation[]` -- locations eligible for setup (fetched alongside existing query)
+
+**Modified query in `loadTelnyxLocations`:**
+- Also fetch locations WITHOUT phone numbers so we can offer them in the setup wizard
+- Store both lists: `telnyxLocations` (have numbers) and `unsetupLocations` (no numbers)
