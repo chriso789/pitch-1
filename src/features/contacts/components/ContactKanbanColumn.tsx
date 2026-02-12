@@ -58,7 +58,7 @@ export const ContactKanbanColumn: React.FC<ContactKanbanColumnProps> = ({
         <div
           ref={setNodeRef}
           className={cn(
-            "min-h-[400px] p-1.5 rounded-lg transition-colors",
+            "min-h-[400px] max-h-[calc(100vh-340px)] overflow-y-auto p-1.5 rounded-lg transition-colors",
             isOver 
               ? "bg-primary/10 border-2 border-primary border-dashed" 
               : "bg-muted/20 border-2 border-transparent"

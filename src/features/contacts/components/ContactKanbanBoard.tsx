@@ -177,7 +177,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="flex gap-4 overflow-x-auto pb-4">
+        <div className="flex gap-4 overflow-x-auto pb-4 max-h-[calc(100vh-280px)]" style={{ overscrollBehaviorX: 'contain' }}>
           {/* New / Unassigned column FIRST — always visible */}
           <ContactKanbanColumn
             id="uncategorized"
