@@ -21,6 +21,7 @@ interface KanbanCardProps {
     clj_formatted_number: string;
     status: string;
     created_at: string;
+    updated_at: string;
     contact_id: string;
     assigned_to?: string;
     contacts: {
@@ -127,12 +128,13 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
   const contact = entry.contacts;
 
-  // Calculate days in status (based on created_at)
+  // Calculate days since last action (based on updated_at)
   const getDaysInStatus = () => {
-    if (entry.created_at) {
-      const created = new Date(entry.created_at);
+    const dateStr = entry.updated_at || entry.created_at;
+    if (dateStr) {
+      const lastAction = new Date(dateStr);
       const now = new Date();
-      const diffTime = Math.abs(now.getTime() - created.getTime());
+      const diffTime = Math.abs(now.getTime() - lastAction.getTime());
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       return diffDays;
     }
@@ -211,11 +213,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
-    // Don't trigger view if dragging or if clicking on a button
-    if (isSortableDragging || (e.target as HTMLElement).closest('button')) {
+    // Don't trigger view if dragging or if clicking on a button/dropdown
+    if (isSortableDragging || (e.target as HTMLElement).closest('button, [role="menu"], [data-radix-collection-item]')) {
       return;
     }
-    onView(entry.contact_id);
+    // Navigate directly to lead details
+    navigate(`/lead/${entry.id}`, { state: { from: '/pipeline' } });
   };
 
   const handleGeneratePDF = async (e: React.MouseEvent) => {
@@ -494,16 +497,16 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             </div>
           </div>
 
-          {/* Lead Details Button (bottom left) */}
+          {/* Lead Details Button (bottom left) - always visible, large touch target on mobile */}
           <Button
             variant="ghost"
             size="sm"
-            className="absolute bottom-0 left-0 h-3.5 w-3.5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
+            className="absolute bottom-0 left-0 h-8 w-8 md:h-5 md:w-5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center"
             onClick={handleLeadDetailsClick}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label={`View lead details for ${displayNumber}`}
           >
-            <ArrowRight className="h-2.5 w-2.5" />
+            <ArrowRight className="h-4 w-4 md:h-3 md:w-3" />
           </Button>
 
           {/* Quick Actions Menu (top right, next to drag handle) */}
