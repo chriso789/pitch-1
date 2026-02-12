@@ -1,51 +1,32 @@
 
 
-## Move Project Financial Data Into the Profit Tab
+## Fix: Budget and Cost Verification Tabs Not Appearing
 
-### What's Happening Now
+### Problem
+The Budget and Cost Verification tabs inside the Profit Center panel are not showing because the code checks `lead?.status === 'project'` before passing the `projectId` prop. However, leads that have been converted to projects can have other statuses like `completed`, `legal_review`, `ready_for_approval`, etc. Your current lead has status `completed`, so the check fails and `projectId` is never passed.
 
-The Lead Details page currently shows TWO separate financial areas when a lead becomes a project:
+### Fix
 
-1. **Profit tab** (in the EstimateHyperlinkBar) -- renders `ProfitCenterPanel` with selling price, cost comparison (original vs actual), invoices, commission breakdown
-2. **ProjectFinancialSections** (below the hyperlink bar) -- a 6-card stats grid + 4 tabs (Budget, Cost Verification, Commission, Project Costs)
+**File: `src/pages/LeadDetails.tsx` (line 645)**
 
-These overlap significantly: both show contract value, costs, gross profit, net profit, and commission. The estimate window already provides the reference data needed.
+Change the condition from checking for a specific status string to simply checking if `projectData` exists (which already confirms a project record is linked):
 
-### Plan
+```typescript
+// Before (broken):
+projectId={lead?.status === 'project' && projectData ? projectData.project.id : undefined}
 
-**File: `src/pages/LeadDetails.tsx`**
+// After (fixed):
+projectId={projectData?.project?.id}
+```
 
-1. **Remove the `ProjectFinancialSections` component entirely** (lines 230-385) -- delete the component definition and its rendering block (lines 1417-1423)
-
-2. **Remove the standalone `ProfitSection` wrapper** (lines 223-228) since it just wraps `ProfitCenterPanel`
-
-3. **Enhance the `profit` case in `renderActiveSection()`** (line 806-807) to include the merged content:
-   - When `lead.status === 'project'` and `projectData` exists: render `ProfitCenterPanel` (existing) PLUS additional project-only tabs for **Budget** (`BudgetTracker`) and **Cost Verification** (`CostReconciliationPanel` + `InvoiceUploadCard`)
-   - When NOT a project: render `ProfitCenterPanel` only (same as today)
-
-**File: `src/components/estimates/ProfitCenterPanel.tsx`**
-
-4. **Add a `projectId` optional prop** to `ProfitCenterPanel` so it can conditionally render the Budget and Cost Verification tabs alongside the existing Summary/Invoices/Details tabs
-
-5. **Merge the commission tab content** from `ProjectFinancialSections` into the existing "Details" breakdown tab in `ProfitCenterPanel` (it already shows commission -- just ensure the data matches)
-
-6. **Add a compact financial stats summary row** at the top of ProfitCenterPanel when projectId is present -- showing Contract Value, Total Costs, Gross Profit, Net Profit inline (replacing the separate 6-card grid)
+This is a one-line fix. If `projectData` exists, the project tabs show. If not, they don't. No need to check the status string at all.
 
 ### Result
-
-- Clicking "Profit" in the EstimateHyperlinkBar shows everything: profit breakdown, invoices, commission, and (for projects) budget tracking and cost verification
-- No more duplicate financial sections floating below the hyperlink bar
-- The estimate tab stays focused on measurements, materials, labor -- the creation workflow
-- The profit tab becomes the single destination for all financial tracking during and after project completion
+The Budget and Cost Verification tabs will appear for any lead that has been converted to a project, regardless of the pipeline status.
 
 ### Technical Details
 
-| Change | Location | Detail |
-|--------|----------|--------|
-| Delete `ProjectFinancialSections` | LeadDetails.tsx lines 230-385, 1417-1423 | Remove component + render call |
-| Delete `ProfitSection` wrapper | LeadDetails.tsx lines 223-228 | Inline `ProfitCenterPanel` directly |
-| Add `projectId` prop | ProfitCenterPanel.tsx | Optional prop, when present adds Budget + Cost Verification tabs |
-| Expand TabsList | ProfitCenterPanel.tsx | From 3 tabs (Summary, Invoices, Details) to 5 tabs when project (+ Budget, Cost Verification) |
-| Add stats row | ProfitCenterPanel.tsx | Compact 4-value summary at top when projectId present |
-| Import BudgetTracker | ProfitCenterPanel.tsx | For budget tab content |
-| Import CostReconciliationPanel | ProfitCenterPanel.tsx | For cost verification tab content |
+| File | Line | Change |
+|------|------|--------|
+| `src/pages/LeadDetails.tsx` | 645 | Replace `lead?.status === 'project' && projectData ? projectData.project.id : undefined` with `projectData?.project?.id` |
+
