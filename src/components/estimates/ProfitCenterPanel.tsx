@@ -6,16 +6,19 @@ import { Separator } from '@/components/ui/separator';
 import { 
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
-  ArrowUpRight, ArrowDownRight, Minus
+  ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
+import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
+import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
 import { format } from 'date-fns';
 
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
+  projectId?: string;
   className?: string;
 }
 
@@ -41,6 +44,7 @@ interface InvoiceData {
 
 const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   pipelineEntryId,
+  projectId,
   className
 }) => {
   const queryClient = useQueryClient();
@@ -60,7 +64,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     };
   }, [pipelineEntryId, queryClient]);
 
-  // Fetch sales rep's commission settings (use both overhead_rate and personal_overhead_rate)
+  // Fetch sales rep's commission settings
   const { data: salesRepData, isLoading: isLoadingRep } = useQuery({
     queryKey: ['sales-rep-commission', pipelineEntryId],
     queryFn: async () => {
@@ -114,6 +118,20 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Fetch budget items when projectId is present
+  const { data: budgetItems } = useQuery({
+    queryKey: ['project-budget-items', projectId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('project_budget_items')
+        .select('*')
+        .eq('project_id', projectId!);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!projectId,
+  });
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -125,8 +143,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
-  // Get rates from sales rep profile (with proper fallback logic)
-  // Use effectiveOverheadRate: prefer personal_overhead_rate > 0, else overhead_rate, else default 10
   const personalOverhead = salesRepData?.personal_overhead_rate ?? 0;
   const baseOverhead = (salesRepData as any)?.overhead_rate ?? 10;
   const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
@@ -153,7 +169,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     .filter(inv => inv.invoice_type === 'overhead')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
 
-  // Use actual if invoices exist, otherwise use original
   const hasActualMaterial = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
   const hasActualOverhead = actualOverheadCost > 0;
@@ -161,11 +176,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const effectiveMaterialCost = hasActualMaterial ? actualMaterialCost : originalMaterialCost;
   const effectiveLaborCost = hasActualLabor ? actualLaborCost : originalLaborCost;
 
-  // Calculate variances
   const materialVariance = actualMaterialCost - originalMaterialCost;
   const laborVariance = actualLaborCost - originalLaborCost;
 
-  // Calculate breakdown using effective costs (include overhead invoices in total cost)
   const totalCost = effectiveMaterialCost + effectiveLaborCost + actualOverheadCost;
   const overheadAmount = sellingPrice * (overheadRate / 100);
   const grossProfit = sellingPrice - totalCost;
@@ -174,7 +187,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const companyNet = netProfit - repCommission;
   const profitMargin = sellingPrice > 0 ? (netProfit / sellingPrice) * 100 : 0;
 
-  // Invoice counts
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
   const overheadInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'overhead').length;
@@ -217,6 +229,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     );
   }
 
+  // Determine tab count based on whether projectId is present
+  const isProject = !!projectId;
+  const tabCount = isProject ? 5 : 3;
+
   return (
     <Card className={cn("border-primary/20", className)}>
       <CardHeader className="pb-2">
@@ -245,23 +261,71 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           </p>
         )}
       </CardHeader>
+
+      {/* Compact Financial Stats Row - Only for projects */}
+      {isProject && hasValidData && (
+        <div className="px-6 pb-2">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-muted/50 rounded-lg p-2.5">
+              <p className="text-xs text-muted-foreground">Contract Value</p>
+              <p className="text-sm font-bold">{formatCurrency(sellingPrice)}</p>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-2.5">
+              <p className="text-xs text-muted-foreground">Total Costs</p>
+              <p className="text-sm font-bold">{formatCurrency(totalCost)}</p>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-2.5">
+              <p className="text-xs text-muted-foreground">Gross Profit</p>
+              <p className={cn("text-sm font-bold", grossProfit >= 0 ? "text-green-600" : "text-red-600")}>
+                {formatCurrency(grossProfit)}
+              </p>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-2.5">
+              <p className="text-xs text-muted-foreground">Net Profit</p>
+              <p className={cn("text-sm font-bold", netProfit >= 0 ? "text-green-600" : "text-red-600")}>
+                {formatCurrency(netProfit)}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
       
       <CardContent className="pt-0">
         <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-3 mb-4">
-            <TabsTrigger value="summary" className="text-xs">
-              <Calculator className="h-3 w-3 mr-1" />
-              Summary
-            </TabsTrigger>
-            <TabsTrigger value="invoices" className="text-xs">
-              <Upload className="h-3 w-3 mr-1" />
-              Invoices
-            </TabsTrigger>
-            <TabsTrigger value="breakdown" className="text-xs">
-              <Receipt className="h-3 w-3 mr-1" />
-              Details
-            </TabsTrigger>
-          </TabsList>
+          <div className="relative">
+            <TabsList className={cn(
+              "flex overflow-x-auto w-full justify-start mb-4",
+              isProject ? "bg-muted p-1 rounded-md" : "grid w-full grid-cols-3"
+            )}>
+              <TabsTrigger value="summary" className="text-xs flex-shrink-0">
+                <Calculator className="h-3 w-3 mr-1" />
+                Summary
+              </TabsTrigger>
+              <TabsTrigger value="invoices" className="text-xs flex-shrink-0">
+                <Upload className="h-3 w-3 mr-1" />
+                Invoices
+              </TabsTrigger>
+              <TabsTrigger value="breakdown" className="text-xs flex-shrink-0">
+                <Receipt className="h-3 w-3 mr-1" />
+                Details
+              </TabsTrigger>
+              {isProject && (
+                <>
+                  <TabsTrigger value="budget" className="text-xs flex-shrink-0">
+                    <BarChart3 className="h-3 w-3 mr-1" />
+                    Budget
+                  </TabsTrigger>
+                  <TabsTrigger value="cost-verification" className="text-xs flex-shrink-0">
+                    <ClipboardCheck className="h-3 w-3 mr-1" />
+                    Cost Verification
+                  </TabsTrigger>
+                </>
+              )}
+            </TabsList>
+            {isProject && (
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none rounded-r-md" />
+            )}
+          </div>
 
           <TabsContent value="summary" className="space-y-4 mt-0">
             {!hasValidData ? (
@@ -472,7 +536,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   <div className="flex justify-between items-center py-2 bg-primary/10 rounded-md px-3 -mx-3">
                     <div className="flex items-center gap-2">
                       <DollarSign className="h-4 w-4 text-primary" />
-                      <span className="font-medium">Rep Commission</span>
+                      <span className="font-medium">Rep Commission ({commissionRate}%)</span>
                     </div>
                     <span className="font-bold text-xl text-primary">
                       {formatCurrency(repCommission)}
@@ -496,6 +560,23 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               </>
             )}
           </TabsContent>
+
+          {/* Budget Tab - Project only */}
+          {isProject && (
+            <TabsContent value="budget" className="mt-0">
+              <BudgetTracker projectId={projectId!} budgetItems={budgetItems || []} onRefresh={() => {
+                queryClient.invalidateQueries({ queryKey: ['project-budget-items', projectId] });
+              }} />
+            </TabsContent>
+          )}
+
+          {/* Cost Verification Tab - Project only */}
+          {isProject && (
+            <TabsContent value="cost-verification" className="space-y-4 mt-0">
+              <CostReconciliationPanel projectId={projectId!} />
+              <InvoiceUploadCard projectId={projectId!} invoiceType="material" />
+            </TabsContent>
+          )}
         </Tabs>
       </CardContent>
     </Card>
