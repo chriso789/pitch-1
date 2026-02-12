@@ -1,25 +1,34 @@
 
 
-## Fix: Contacts Board Left-Scroll Issue
+## Fix: Contact Import Statement Timeout
 
 ### Problem
 
-The kanban board scrolls right to show later columns but won't scroll back left to reveal the "New / Unassigned" column. This happens because:
-1. The columns have no fixed `min-width`, so the browser collapses or shifts them
-2. The scroll container (`overflow-x-auto` div) may initialize with a non-zero scroll position
-3. The `CardContent` wrapper adds padding that can interfere with the scroll boundary
+The batch size logic on line 1562 of `ContactBulkImport.tsx`:
 
-### Changes
+```
+const batchSize = length > 500 ? 25 : length > 100 ? 50 : 100;
+```
 
-**File: `src/features/contacts/components/ContactKanbanBoard.tsx`**
+For 86 contacts, the batch size is **100**, meaning all 86 contacts are inserted in one query. This single large insert triggers a database statement timeout because of RLS policy checks, triggers, and pipeline entry creation per contact.
 
-- Add a fixed `min-w-[250px]` to each column wrapper so columns don't collapse and the scroll container properly accounts for all columns
-- Wrap the scrollable area in a container that ensures it starts scrolled to the left (scroll position 0)
+### Fix
 
-**File: `src/features/contacts/components/ContactKanbanColumn.tsx`**
+**File: `src/features/contacts/components/ContactBulkImport.tsx` (line 1562)**
 
-- Add `min-w-[250px] w-[250px] flex-shrink-0` to the column root div so every column has a consistent fixed width and won't be collapsed by the flex container
+Reduce the default batch size so even small imports are batched:
+
+```
+const batchSize = length > 500 ? 10 : length > 100 ? 20 : 25;
+```
+
+This ensures:
+- 86 contacts = 4 batches of ~22 each
+- 200 contacts = 10 batches of 20
+- 1000 contacts = 100 batches of 10
+
+Also increase the inter-batch delay (line 1626-1628) from 150ms to 300ms, and apply it for all imports (remove the `> 100` threshold) to give the database breathing room.
 
 ### Result
 
-All columns will have a consistent width, the scroll container will properly allow scrolling in both directions, and the "New / Unassigned" column will always be visible at the left edge when the board loads.
+The 86-contact import will succeed by splitting into manageable batches that complete within the database statement timeout.
