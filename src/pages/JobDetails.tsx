@@ -301,24 +301,28 @@ const JobDetails = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading job details...</span>
+      <GlobalLayout>
+        <div className="flex items-center justify-center min-h-[60vh]">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Loading job details...</span>
+          </div>
         </div>
-      </div>
+      </GlobalLayout>
     );
   }
 
   if (!job) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen space-y-4">
-        <h2 className="text-2xl font-bold">Job not found</h2>
-        <Button onClick={() => navigate(-1)}>
-          <ArrowLeft className="h-4 w-4 mr-2" />
-          Go back
-        </Button>
-      </div>
+      <GlobalLayout>
+        <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-4">
+          <h2 className="text-2xl font-bold">Job not found</h2>
+          <Button onClick={() => navigate(-1)}>
+            <ArrowLeft className="h-4 w-4 mr-2" />
+            Go back
+          </Button>
+        </div>
+      </GlobalLayout>
     );
   }
 
@@ -341,9 +345,10 @@ const JobDetails = () => {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Contact
         </Button>
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3">
+        {/* Row 2: Title + badges (left) | Action buttons (right) */}
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3 flex-wrap">
               <h1 className="text-2xl font-bold truncate" title={job.name}>{job.name}</h1>
               <Badge className={getStatusColor(job.status)}>
                 {job.status.replace('_', ' ')}
@@ -362,87 +367,73 @@ const JobDetails = () => {
             </div>
           </div>
 
-        {/* Minimized Contact Card */}
+          {/* Action Buttons */}
+          <div className="flex flex-wrap gap-2">
+            <Button 
+              onClick={() => setShowCostConfirmation(true)}
+              variant="outline"
+              size="sm"
+              title="Record material/labor costs"
+            >
+              <Receipt className="h-4 w-4 mr-2" />
+              Confirm Cost
+            </Button>
+            <Button 
+              onClick={() => setShowSmartDocs(true)}
+              variant="outline"
+              size="sm"
+              title="Generate and manage photo reports"
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Generate Report
+            </Button>
+            <Button 
+              onClick={handleSaveAndExit}
+              size="sm"
+              className="bg-success hover:bg-success/90 text-success-foreground"
+              disabled={loading}
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Settings className="h-4 w-4 mr-2" />
+              )}
+              Save & Exit
+            </Button>
+          </div>
+        </div>
+
+        {/* Row 3: Compact Contact Bar */}
         {job.contact && (
-          <Card className="w-80 shadow-soft border-primary/20">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  <User className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium text-primary">Contact</span>
-                </div>
-                <Button 
-                  variant="ghost" 
-                  size="sm"
-                  onClick={() => navigate(`/contact/${job.contact?.id}`)}
-                  title="View Contact Profile"
-                >
-                  <ExternalLink className="h-3 w-3" />
-                </Button>
-              </div>
-              <div className="space-y-2">
-                <p className="font-semibold">
-                  {job.contact.first_name} {job.contact.last_name}
-                </p>
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  {job.contact.phone && (
-                    <div className="flex items-center space-x-2">
-                      <Phone className="h-3 w-3" />
-                      <span>{job.contact.phone}</span>
-                    </div>
-                  )}
-                  {job.contact.email && (
-                    <div className="flex items-center space-x-2">
-                      <Mail className="h-3 w-3" />
-                      <span>{job.contact.email}</span>
-                    </div>
-                  )}
-                  {job.contact.address_street && (
-                    <div className="flex items-center space-x-2">
-                      <MapPin className="h-3 w-3" />
-                      <span className="text-xs">
-                        {job.contact.address_street}, {job.contact.address_city}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-        
-        {/* Action Buttons */}
-        <div className="flex gap-2">
-          <Button 
-            onClick={() => setShowCostConfirmation(true)}
-            variant="outline"
-            title="Record material/labor costs"
-          >
-            <Receipt className="h-4 w-4 mr-2" />
-            Confirm Cost
-          </Button>
-          <Button 
-            onClick={() => setShowSmartDocs(true)}
-            variant="outline"
-            title="Generate and manage photo reports"
-          >
-            <Sparkles className="h-4 w-4 mr-2" />
-            Generate Report
-          </Button>
-          <Button 
-            onClick={handleSaveAndExit}
-            className="bg-success hover:bg-success/90 text-success-foreground"
-            disabled={loading}
-          >
-            {loading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Settings className="h-4 w-4 mr-2" />
+          <div className="flex items-center gap-4 flex-wrap rounded-lg border bg-muted/30 px-4 py-2.5 text-sm">
+            <button 
+              onClick={() => navigate(`/contact/${job.contact?.id}`)}
+              className="flex items-center gap-2 font-medium hover:text-primary transition-colors"
+            >
+              <User className="h-4 w-4 text-primary" />
+              {job.contact.first_name} {job.contact.last_name}
+              <ExternalLink className="h-3 w-3 text-muted-foreground" />
+            </button>
+            {job.contact.phone && (
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Phone className="h-3 w-3" />
+                {job.contact.phone}
+              </span>
             )}
-            Save & Exit
-          </Button>
-        </div>
-        </div>
+            {job.contact.email && (
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <Mail className="h-3 w-3" />
+                {job.contact.email}
+              </span>
+            )}
+            {job.contact.address_street && (
+              <span className="flex items-center gap-1.5 text-muted-foreground">
+                <MapPin className="h-3 w-3" />
+                {job.contact.address_street}, {job.contact.address_city}, {job.contact.address_state} {job.contact.address_zip}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <ProfessionalTemplatesDialog
@@ -573,7 +564,7 @@ const JobDetails = () => {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-10">
+        <TabsList className="flex w-full overflow-x-auto justify-start">
           <TabsTrigger value="overview" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
