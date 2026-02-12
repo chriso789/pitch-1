@@ -8,7 +8,7 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
-import { ScrollArea } from '@/components/ui/scroll-area';
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Plus, Edit, Trash2, ArrowUp, ArrowDown, Loader2, AlertTriangle, Palette, Users } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -448,12 +448,11 @@ export const ContactStatusManager: React.FC = () => {
           <CardHeader>
             <CardTitle>Status List</CardTitle>
             <CardDescription>
-              These statuses are used for contact qualification (e.g., "Interested", "Not Home"). 
-              They are separate from pipeline workflow stages.
+              These statuses power the Contacts board columns. Changes here are reflected immediately on the Contacts Kanban view.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <ScrollArea className="max-h-[500px]">
+            <div className="overflow-y-auto max-h-[calc(100vh-360px)]">
               <div className="space-y-2">
                 {statuses.map((status, index) => (
                   <div
@@ -557,7 +556,7 @@ export const ContactStatusManager: React.FC = () => {
                   </div>
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </CardContent>
         </Card>
       )}
