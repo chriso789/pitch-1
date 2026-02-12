@@ -1,68 +1,27 @@
 
 
-## Fix: Contacts Page Slow Loading (N+1 Query Problem)
+## Add Edit Button to Contact Details Page Header
 
-### Root Cause
+### What's Changing
 
-The `fetchData` function in `EnhancedClientList.tsx` has two N+1 query patterns that fire hundreds of individual database queries:
-
-1. **Jobs contact lookup (lines 473-495)**: For every job, a separate query fetches the contact details. With 50 jobs, that's 50 queries.
-
-2. **Pipeline entry communication lookup (lines 530-539)**: For every pipeline entry, a separate query checks the last communication date. With 200+ pipeline entries, that's 200+ queries. The network logs clearly show this -- 20+ simultaneous `communication_history` requests.
-
-Together these can generate 250+ individual database queries on page load.
-
-### Fix
-
-**File: `src/features/contacts/components/EnhancedClientList.tsx`**
-
-#### Change 1: Batch job contact lookup
-
-Replace the `Promise.all` loop that fetches each job's contact individually with a single bulk query:
-
-```text
-Before (N queries):
-  For each job -> fetch contact by job.contact_id
-
-After (1 query):
-  Collect all unique contact_ids from jobs
-  -> Single query: SELECT ... FROM contacts WHERE id IN (all_ids)
-  -> Map results back to jobs in memory
-```
-
-#### Change 2: Batch pipeline communication lookup
-
-Replace the `Promise.all` loop that fetches each pipeline entry's last communication individually with a single bulk query using a Supabase RPC or a grouped query:
-
-```text
-Before (N queries):
-  For each pipeline entry -> fetch last communication by contact_id
-
-After (1 query):
-  Collect all unique contact_ids from pipeline entries
-  -> Single query with DISTINCT ON or aggregate
-  -> Map results back to pipeline entries in memory
-```
-
-#### Change 3: Remove redundant profile fetch
-
-The `fetchData` function fetches the user profile again (line 382-386) even though `loadUserPreferences` already fetched it. We can skip the redundant fetch if `userProfile` is already set.
+Adding an "Edit" button next to the existing Call, Skip Trace, and Create Lead buttons in the contact profile header. Clicking it will scroll to the Details tab and activate the edit mode on the Contact Information card.
 
 ### Technical Details
 
-**Batch contact lookup for jobs:**
-- Extract unique `contact_id` values from all jobs
-- Single query: `supabase.from('contacts').select('id, first_name, last_name, email, phone, address_street, address_city, address_state, location_id').in('id', contactIds).eq('tenant_id', effectiveTenantId)`
-- Build a Map of `contact_id -> contact` for O(1) lookup
-- Map over jobs to attach contact data
+**File: `src/pages/ContactProfile.tsx`**
 
-**Batch communication lookup for pipeline entries:**
-- Extract unique `contact_id` values from all pipeline entries
-- Single query: `supabase.from('communication_history').select('contact_id, created_at').in('contact_id', contactIds).order('created_at', { ascending: false })`
-- Group by `contact_id` and take the latest per contact in JS
-- Map over pipeline entries to attach communication data
+1. Add a new `Edit` button in the header action buttons area (around line 205-230), styled consistently with the existing buttons
+2. When clicked, it will:
+   - Switch to the "details" tab (`setActiveTab("details")`)
+   - Set a new state flag `triggerEdit` to `true`
+3. Pass `triggerEdit` as a prop to `ContactDetailsTab`
+4. Reset `triggerEdit` after it's consumed
+
+**File: `src/components/contact-profile/ContactDetailsTab.tsx`**
+
+1. Accept a new optional prop `triggerEdit?: boolean`
+2. Add a `useEffect` that watches `triggerEdit` -- when it becomes `true`, set `isEditing` to `true` (activating the inline edit form)
 
 ### Result
 
-The page will go from 250+ queries down to approximately 5-6 total queries, reducing load time from 10+ seconds to under 2 seconds.
-
+Users will see an Edit button prominently in the contact header. Clicking it switches to the Details tab and immediately opens the edit form for the contact's information.
