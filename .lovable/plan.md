@@ -1,30 +1,27 @@
 
 
-## Fix: Deleted Pipeline Entry Still Showing on Contact Profile
+## Fix: Job Details Page Header Layout Broken by Long Name
 
-### Root Cause
+### Problem
 
-The pipeline entry for this contact (ID: `be2da4f5-...`) has `is_deleted: true` in the database. The Pipeline Kanban board correctly filters these out with `.eq('is_deleted', false)`, but the **Contact Profile page** does not apply this filter. That's why:
-
-- The contact profile shows "Contingency Signed" with a pipeline card
-- The Pipeline board does not show this entry
-
-This is not a sync issue -- the entry was soft-deleted but the contact profile page never checks the `is_deleted` flag.
+The job name (`h1`) is set to `text-3xl font-bold` inside a flex container, but there are no width constraints or text overflow handling. When the job name is long (e.g., includes the full address), the text wraps across many lines and pushes the entire header layout out of shape.
 
 ### Fix
 
-**File: `src/pages/ContactProfile.tsx` (line ~93)**
+**File: `src/pages/JobDetails.tsx`**
 
-Add `.eq('is_deleted', false)` to the pipeline entries query so deleted entries are excluded from the contact profile, matching the pipeline board behavior:
+1. **Add `min-w-0` to the flex-1 container** (line 346) -- this is required for flex children to allow text truncation/overflow to work properly.
 
-```typescript
-const { data: pipelineData } = await supabase
-  .from('pipeline_entries')
-  .select('*')
-  .eq('contact_id', id)
-  .eq('is_deleted', false)  // ADD THIS LINE
-  .order('created_at', { ascending: false });
-```
+2. **Truncate the h1 heading** (line 348) -- add `truncate` class so long names are cut off with an ellipsis instead of wrapping endlessly. Also reduce from `text-3xl` to `text-2xl` for a more reasonable header size.
 
-This single-line change ensures the contact profile page and the pipeline kanban board show consistent data. If an entry is soft-deleted, it won't appear in either place.
+3. **Add a tooltip or title attribute** on the h1 so the full name is still accessible on hover.
+
+4. **Restructure the header flex layout** (line 329) -- change from `flex items-start justify-between` to a layout that keeps the "Back to Contact" button on its own row above the header, preventing it from being pushed down by the tall text block:
+   - Move the back button outside the flex row
+   - Use `flex items-start gap-4` between the name/badges and the contact card
+   - Add `min-w-0` to the name container so truncation works
+
+### Result
+
+The header will show a clean, single-line job name with ellipsis for overflow, the contact card stays aligned to the right, and the back button sits cleanly above.
 
