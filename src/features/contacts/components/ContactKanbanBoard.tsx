@@ -31,6 +31,8 @@ interface Contact {
   lead_score: number | null;
   qualification_status: string | null;
   lead_source: string | null;
+  assigned_to?: string | null;
+  assigned_rep?: { first_name: string; last_name: string } | null;
 }
 
 interface ContactKanbanBoardProps {
