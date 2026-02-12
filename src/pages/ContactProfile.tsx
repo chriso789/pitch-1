@@ -91,6 +91,7 @@ const ContactProfile = () => {
         .from('pipeline_entries')
         .select('*')
         .eq('contact_id', id)
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
       if (pipelineData && pipelineData.length > 0) {
