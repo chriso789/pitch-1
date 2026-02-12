@@ -1,24 +1,30 @@
 
 
-## Fix Scrolling and Clarify Status Congruence
+## Fix: Deleted Pipeline Entry Still Showing on Contact Profile
 
-### Issue 1: Status List Not Scrollable
+### Root Cause
 
-The Status List uses Radix UI's `ScrollArea` component which has known issues with clipping and wheel events in nested flex containers (this has caused problems before in the Pipeline Stage Manager). The fix is to replace `ScrollArea` with a native CSS overflow container.
+The pipeline entry for this contact (ID: `be2da4f5-...`) has `is_deleted: true` in the database. The Pipeline Kanban board correctly filters these out with `.eq('is_deleted', false)`, but the **Contact Profile page** does not apply this filter. That's why:
 
-### Issue 2: Status Congruence with Contacts Pipeline
+- The contact profile shows "Contingency Signed" with a pipeline card
+- The Pipeline board does not show this entry
 
-The Contact Kanban board and this Settings page **already share the same data source** (the `contact_statuses` table via the `useContactStatuses` hook). Any status you add, edit, or reorder here will immediately reflect on the Contacts Kanban board. To make this clearer, the description text will be updated to explicitly state this connection.
+This is not a sync issue -- the entry was soft-deleted but the contact profile page never checks the `is_deleted` flag.
 
-### Technical Details
+### Fix
 
-**File: `src/components/settings/ContactStatusManager.tsx`**
+**File: `src/pages/ContactProfile.tsx` (line ~93)**
 
-1. **Replace ScrollArea with native overflow** (line 456):
-   - Remove: `<ScrollArea className="max-h-[500px]">`
-   - Replace with: `<div className="overflow-y-auto max-h-[calc(100vh-360px)]">`
-   - This matches the proven pattern used in the Pipeline Stage Manager
+Add `.eq('is_deleted', false)` to the pipeline entries query so deleted entries are excluded from the contact profile, matching the pipeline board behavior:
 
-2. **Update description text** (lines 450-453) to clarify these statuses are the same ones used on the Contacts Kanban board:
-   - Change to: "These statuses power the Contacts board columns. Changes here are reflected immediately on the Contacts Kanban view."
+```typescript
+const { data: pipelineData } = await supabase
+  .from('pipeline_entries')
+  .select('*')
+  .eq('contact_id', id)
+  .eq('is_deleted', false)  // ADD THIS LINE
+  .order('created_at', { ascending: false });
+```
+
+This single-line change ensures the contact profile page and the pipeline kanban board show consistent data. If an entry is soft-deleted, it won't appear in either place.
 
