@@ -1559,7 +1559,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
 
           // Batch insert with smaller batches for large imports to prevent timeout
           // Use smaller batches for large imports to avoid statement timeout
-          const batchSize = contactsWithOriginal.length > 500 ? 25 : contactsWithOriginal.length > 100 ? 50 : 100;
+          const batchSize = contactsWithOriginal.length > 500 ? 10 : contactsWithOriginal.length > 100 ? 20 : 25;
           let successCount = 0;
           let failedCount = 0;
           let pipelineEntriesCreated = 0;
@@ -1623,8 +1623,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             }
             
             // Add delay between batches for large imports to prevent overwhelming the DB
-            if (contactsWithOriginal.length > 100 && i + batchSize < contactsWithOriginal.length) {
-              await new Promise(resolve => setTimeout(resolve, 150));
+            if (i + batchSize < contactsWithOriginal.length) {
+              await new Promise(resolve => setTimeout(resolve, 300));
             }
           }
           
