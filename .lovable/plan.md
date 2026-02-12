@@ -1,32 +1,26 @@
 
 
-## Add "Assign Rep" Dropdown to Contact Profile Page
+## Show Assigned Rep on Contacts Kanban Board Cards
 
-The `contacts` table already has an `assigned_to` column (UUID, FK to `profiles`), so no database changes are needed.
+The contact data already includes the joined `assigned_rep` (first_name, last_name) from the fetch query. We just need to pass it through and display it.
 
 ### Changes
 
-**File: `src/pages/ContactProfile.tsx`**
+**1. Update Contact interface in `ContactKanbanBoard.tsx` (lines 21-34)**
+- Add `assigned_to: string | null` and `assigned_rep: { first_name: string; last_name: string } | null` to the `Contact` interface
 
-Add an "Assigned Rep" dropdown in the contact header area (next to the Edit/Create Lead buttons). It will:
+**2. Update Contact interface in `ContactKanbanCard.tsx` (lines 10-23)**
+- Same interface update to include `assigned_rep`
 
-1. Fetch the list of team members from the `profiles` table (filtered by the current user's `tenant_id`)
-2. Display a `Select` dropdown showing the currently assigned rep (or "Unassigned")
-3. On selection change, update the `contacts.assigned_to` column in Supabase and refresh the local state
-4. Show a toast on success/failure
+**3. Display rep name on `ContactKanbanCard.tsx`**
+- Below the contact name, show the assigned rep in small muted text (e.g. "Rep: John Smith")
+- Only display when `assigned_rep` is present
+- Use the `UserCheck` icon for visual consistency with the contact profile page
 
-**Implementation details:**
-- Use the existing `Select` / `SelectTrigger` / `SelectContent` / `SelectItem` components from `@/components/ui/select`
-- Place the dropdown between the status badges row and the action buttons, or inline with the action buttons for a clean layout
-- Fetch profiles with `supabase.from('profiles').select('id, first_name, last_name, role')` filtered by tenant
-- Include an "Unassigned" option that sets `assigned_to` to `null`
-- Show the rep's name in the trigger when assigned, "Assign Rep" when not
-- Style it with the `User` icon to match the page design
+### Files to Modify
 
-### Visual placement
+| File | Change |
+|------|--------|
+| `src/features/contacts/components/ContactKanbanBoard.tsx` | Add `assigned_to` and `assigned_rep` to Contact interface |
+| `src/features/contacts/components/ContactKanbanCard.tsx` | Add fields to interface + display rep name on card |
 
-The dropdown will appear in the action buttons row alongside "Call", "Skip Trace", "Edit", and "Create Lead" -- keeping all actions together in one row.
-
-### No database migration needed
-
-The `contacts.assigned_to` column and its FK to `profiles` already exist.
