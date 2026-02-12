@@ -1,44 +1,40 @@
 
 
-## Fix Job Details Page Layout
+## Fix Job Details Page Layout (Final)
 
-The Job Details page header is broken because everything (job title, contact card, and action buttons) is crammed into one `flex items-start justify-between` row on line 344. This causes elements to overlap and get cut off, especially on smaller screens. The rest of the page also has issues: the tabs bar has 11 tabs forced into a `grid-cols-10`, and the loading state doesn't use `GlobalLayout`.
+### Issues from Screenshot
+
+1. **Title overflow**: The job name "Cesar Yax - 9160 Fountain Road, ..." is truncated. The name combines contact + address, which gets too long.
+2. **Tabs cut off**: 11 tabs overflow the container. `overflow-x-auto` is applied but there's no visual scroll indicator, so users don't know more tabs exist (Timeline, Audit are hidden).
+3. **Overall spacing/structure**: The header area needs tighter organization matching other pages.
 
 ### Changes
 
 **File: `src/pages/JobDetails.tsx`**
 
-**1. Fix loading/error states to use GlobalLayout**
-- Wrap the loading spinner (lines 302-311) and "not found" state (lines 313-323) inside `<GlobalLayout>` so the sidebar and header remain visible during loading.
+**1. Fix the title display (lines 350-367)**
+- Show the contact name and address on separate lines instead of one combined truncated title
+- Title line: Just the contact name (e.g., "Cesar Yax") with status badges
+- Subtitle line: Full address + job number + project number
+- This prevents truncation and keeps all info visible
 
-**2. Restructure header layout (lines 329-446)**
+**2. Fix the tabs to be scrollable with visual cues (line 567)**
+- Add `scrollbar-thin` and padding/gradient fade hints so users can see there are more tabs
+- Wrap in a relative container with a right-side fade gradient to indicate scrollability
+- Ensure `flex-shrink-0` on each TabsTrigger so they don't compress
 
-Replace the current cramped single-row layout with a clean stacked layout:
+**3. Clean up the contact bar (lines 407-436)**
+- The address currently duplicates city: "9160 Fountain Road, Wellington, FL 33467-4736 US, Wellington," -- this is a data issue but the display should handle it gracefully by not repeating
+- Add `truncate` on the address span with a `max-w` to prevent it from stretching the layout
 
-```text
-Row 1: Back button (standalone)
-Row 2: Job title + status badges (left) | Action buttons (right)
-Row 3: Job number + project number (subtitle)
-Row 4: Contact card (full-width, compact horizontal layout)
-```
+**4. Ensure consistent indentation of main content inside GlobalLayout (lines 331-744)**
+- The opening `div` at line 331 and closing at line 744 have inconsistent nesting -- fix the indentation so the whole page body is properly inside `max-w-7xl`
 
-Specific changes:
-- Move the "Back to Contact" button to its own row (already done, just ensure separation)
-- Put the job title, badges, and action buttons in a flex row with `flex-wrap` so buttons wrap on mobile instead of overflowing
-- Convert the contact card from a `w-80` fixed-width card into a compact horizontal bar with contact info inline (name, phone, address all in one row), saving vertical space
-- Remove the contact card from inside the title flex row
+### Technical Summary
 
-**3. Fix tabs grid (line 576)**
-- Change `grid-cols-10` to use a scrollable flex layout instead, since there are 11 tab triggers (Overview, Activity, Budget, Payments, Comms, Invoices, QBO, Photos, Documents, Timeline, Audit) but only 10 columns defined
-- Use `flex overflow-x-auto` on TabsList for proper horizontal scrolling
-
-### Technical Details
-
-| Location | Issue | Fix |
-|----------|-------|-----|
-| Lines 302-311 | Loading state has no sidebar/nav | Wrap in `GlobalLayout` |
-| Lines 313-323 | Error state has no sidebar/nav | Wrap in `GlobalLayout` |
-| Lines 344-445 | Title, contact card, buttons all in one row | Stack into separate rows |
-| Line 367 | Contact card `w-80` fixed width in flex row | Convert to full-width compact bar |
-| Line 576 | `grid-cols-10` but 11 tabs | Use scrollable flex layout |
-
+| Area | Problem | Fix |
+|------|---------|-----|
+| Title (line 352) | Combined name+address truncates | Split into name (h1) and address (subtitle) |
+| Tabs (line 567) | 11 tabs overflow with no scroll indicator | Add fade gradient hint + `flex-shrink-0` on triggers |
+| Contact bar (line 432) | Address duplicates city name | Trim trailing duplicate + add max-width |
+| Structure (lines 331-744) | Minor indentation inconsistency | Clean up nesting |
