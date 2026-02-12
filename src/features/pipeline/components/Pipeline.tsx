@@ -114,8 +114,10 @@ const Pipeline = () => {
     return () => window.removeEventListener('location-changed', handleLocationChange);
   }, []);
 
-  // Set up real-time listener for pipeline_entries changes
+  // Set up real-time listener for pipeline_entries changes (debounced)
   useEffect(() => {
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    
     const channel = supabase
       .channel('pipeline-entries-changes')
       .on(
@@ -126,13 +128,17 @@ const Pipeline = () => {
           table: 'pipeline_entries'
         },
         () => {
-          // Refetch data when any pipeline entry changes
-          fetchPipelineData();
+          // Debounce: batch rapid changes into a single refetch
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(() => {
+            fetchPipelineData();
+          }, 500);
         }
       )
       .subscribe();
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
   }, [filters]);
@@ -184,108 +190,116 @@ const Pipeline = () => {
       
       const { data: currentProfile } = await supabase
         .from('profiles')
-        .select('tenant_id, active_tenant_id')
+        .select('tenant_id, active_tenant_id, role')
         .eq('id', user.id)
         .maybeSingle();
       
       // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
       const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
       
-      // Load sales reps for assignment - FILTERED BY LOCATION
-      const effectiveLocationId = currentLocationId;
+      // Also set user role from the same profile fetch (avoid duplicate query)
+      if (currentProfile?.role) {
+        setUserRole(currentProfile.role);
+        setIsManager(['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(currentProfile.role));
+      }
       
-      // Use valid app_role enum values (sales_rep doesn't exist in enum)
-      let repsQuery = supabase
-        .from('profiles')
-        .select('id, first_name, last_name, role, tenant_id')
-        .eq('tenant_id', effectiveTenantId)
-        .in('role', ['project_manager', 'sales_manager', 'regional_manager', 'office_admin', 'corporate', 'owner'])
-        .eq('is_active', true);
+      // --- Run reps, locations, and pipeline queries in PARALLEL ---
       
-      // If we have a location, filter by location assignments
-      if (effectiveLocationId) {
-        const { data: locationAssignments } = await supabase
-          .from('user_location_assignments')
-          .select('user_id')
-          .eq('location_id', effectiveLocationId)
+      // Build reps query (needs location assignments first if location is set)
+      const fetchReps = async () => {
+        let repsQuery = supabase
+          .from('profiles')
+          .select('id, first_name, last_name, role, tenant_id')
+          .eq('tenant_id', effectiveTenantId)
+          .in('role', ['project_manager', 'sales_manager', 'regional_manager', 'office_admin', 'corporate', 'owner'])
           .eq('is_active', true);
         
-        if (locationAssignments && locationAssignments.length > 0) {
-          const assignedUserIds = locationAssignments.map(a => a.user_id);
-          repsQuery = repsQuery.in('id', assignedUserIds);
-        }
-      }
-      
-      const { data: repsData, error: repsError } = await repsQuery;
-      
-      if (repsError) {
-        console.error('Error fetching sales reps:', repsError);
-      }
-      
-      if (repsData) {
-        // Filter out master users from other companies
-        const filteredReps = repsData.filter(rep => {
-          if (rep.role === 'master') {
-            return rep.tenant_id === effectiveTenantId;
+        if (currentLocationId) {
+          const { data: locationAssignments } = await supabase
+            .from('user_location_assignments')
+            .select('user_id')
+            .eq('location_id', currentLocationId)
+            .eq('is_active', true);
+          
+          if (locationAssignments && locationAssignments.length > 0) {
+            repsQuery = repsQuery.in('id', locationAssignments.map(a => a.user_id));
           }
-          return true;
-        });
+        }
         
-        setSalesReps(filteredReps.map(rep => ({
-          id: rep.id,
-          name: `${rep.first_name} ${rep.last_name}`
-        })));
-      }
+        return repsQuery;
+      };
       
-      // Load locations for filter dropdown
-      const { data: locationsData } = await supabase
+      // Build pipeline query
+      const fetchPipeline = () => {
+        let query = supabase
+          .from('pipeline_entries')
+          .select(`
+            *,
+            contacts (
+              first_name,
+              last_name,
+              email,
+              phone,
+              address_street,
+              address_city,
+              address_state,
+              address_zip
+            ),
+            profiles!pipeline_entries_assigned_to_fkey (
+              id,
+              first_name,
+              last_name
+            )
+          `)
+          .eq('is_deleted', false);
+
+        if (currentLocationId) {
+          query = query.eq('location_id', currentLocationId);
+        }
+        if (filters.dateFrom) {
+          query = query.gte('created_at', filters.dateFrom);
+        }
+        if (filters.dateTo) {
+          query = query.lte('created_at', filters.dateTo + 'T23:59:59');
+        }
+
+        return query.order('created_at', { ascending: false });
+      };
+      
+      // Fetch locations query
+      const fetchLocations = () => supabase
         .from('business_locations')
         .select('id, name')
         .eq('tenant_id', effectiveTenantId)
         .eq('status', 'active')
         .order('name');
       
-      if (locationsData) {
-        setLocations(locationsData);
+      // Execute all three in parallel
+      const [repsResult, locationsResult, pipelineResult] = await Promise.all([
+        fetchReps(),
+        fetchLocations(),
+        fetchPipeline(),
+      ]);
+      
+      // Process reps
+      if (repsResult.data) {
+        const filteredReps = repsResult.data.filter(rep => {
+          if (rep.role === 'master') return rep.tenant_id === effectiveTenantId;
+          return true;
+        });
+        setSalesReps(filteredReps.map(rep => ({
+          id: rep.id,
+          name: `${rep.first_name} ${rep.last_name}`
+        })));
       }
       
-      // Build query with filters
-      let query = supabase
-        .from('pipeline_entries')
-        .select(`
-          *,
-          contacts (
-            first_name,
-            last_name,
-            email,
-            phone,
-            address_street,
-            address_city,
-            address_state,
-            address_zip
-          ),
-          profiles!pipeline_entries_assigned_to_fkey (
-            id,
-            first_name,
-            last_name
-          )
-        `)
-        .eq('is_deleted', false);
-
-      // Filter by current location if selected
-      if (currentLocationId) {
-        query = query.eq('location_id', currentLocationId);
+      // Process locations
+      if (locationsResult.data) {
+        setLocations(locationsResult.data);
       }
-
-      // Apply date filters
-      if (filters.dateFrom) {
-        query = query.gte('created_at', filters.dateFrom);
-      }
-      if (filters.dateTo) {
-        query = query.lte('created_at', filters.dateTo + 'T23:59:59');
-      }
-
-      const { data, error } = await query.order('created_at', { ascending: false });
+      
+      // Process pipeline
+      const { data, error } = pipelineResult;
 
       if (error) {
         console.error('Error fetching pipeline data:', error);
