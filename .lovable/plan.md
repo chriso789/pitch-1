@@ -1,27 +1,40 @@
 
 
-## Add Edit Button to Contact Details Page Header
+## Fix: Edit Button Not Working
 
-### What's Changing
+### Root Cause
 
-Adding an "Edit" button next to the existing Call, Skip Trace, and Create Lead buttons in the contact profile header. Clicking it will scroll to the Details tab and activate the edit mode on the Contact Information card.
+There's a race condition between two `useEffect` hooks in `ContactDetailsTab.tsx`:
 
-### Technical Details
+1. The **triggerEdit** effect (line 63) sets `isEditing = true`
+2. The **contact reset** effect (line 122-128) sets `isEditing = false` whenever the contact is present
 
-**File: `src/pages/ContactProfile.tsx`**
+Both run when the component mounts/re-renders after the tab switch, and the reset effect wins, immediately turning off edit mode.
 
-1. Add a new `Edit` button in the header action buttons area (around line 205-230), styled consistently with the existing buttons
-2. When clicked, it will:
-   - Switch to the "details" tab (`setActiveTab("details")`)
-   - Set a new state flag `triggerEdit` to `true`
-3. Pass `triggerEdit` as a prop to `ContactDetailsTab`
-4. Reset `triggerEdit` after it's consumed
+### Fix
 
-**File: `src/components/contact-profile/ContactDetailsTab.tsx`**
+**File: `src/components/contact-profile/ContactDetailsTab.tsx` (line 122-128)**
 
-1. Accept a new optional prop `triggerEdit?: boolean`
-2. Add a `useEffect` that watches `triggerEdit` -- when it becomes `true`, set `isEditing` to `true` (activating the inline edit form)
+Modify the contact reset effect to only reset `isEditing` when the contact ID actually *changes* (not on initial mount or re-render with the same contact):
+
+```typescript
+const prevContactId = useRef(contact?.id);
+
+useEffect(() => {
+  if (contact) {
+    form.reset(getFormDefaults(contact));
+    // Only reset editing state when contact actually changes
+    if (prevContactId.current !== contact.id) {
+      setIsEditing(false);
+      prevContactId.current = contact.id;
+    }
+  }
+}, [contact?.id]);
+```
+
+This ensures the reset only fires when navigating between contacts, not when switching tabs on the same contact.
 
 ### Result
 
-Users will see an Edit button prominently in the contact header. Clicking it switches to the Details tab and immediately opens the edit form for the contact's information.
+Clicking the Edit button will reliably switch to the Details tab and activate the inline edit form.
+
