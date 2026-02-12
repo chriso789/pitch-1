@@ -1,49 +1,24 @@
 
 
-## Add Pipeline-Specific Autocomplete Search
+## Fix Scrolling and Clarify Status Congruence
 
-### What Changes
+### Issue 1: Status List Not Scrollable
 
-Replace the plain text search input in the pipeline with an autocomplete dropdown that shows matching **leads/projects** (pipeline entries) as you type — not contacts.
+The Status List uses Radix UI's `ScrollArea` component which has known issues with clipping and wheel events in nested flex containers (this has caused problems before in the Pipeline Stage Manager). The fix is to replace `ScrollArea` with a native CSS overflow container.
 
-### Current Behavior
-- The search bar filters the kanban columns in real-time but shows no dropdown suggestions
-- The `AutocompleteSearch` component elsewhere queries the **contacts** table directly
+### Issue 2: Status Congruence with Contacts Pipeline
 
-### New Behavior
-- As you type 2+ characters, a dropdown appears showing matching pipeline entries
-- Each suggestion shows the CLJ number, contact name, status badge, and address
-- Clicking a suggestion navigates to that lead's details page
-- The kanban columns still filter in real-time as you type (existing behavior preserved)
+The Contact Kanban board and this Settings page **already share the same data source** (the `contact_statuses` table via the `useContactStatuses` hook). Any status you add, edit, or reorder here will immediately reflect on the Contacts Kanban board. To make this clearer, the description text will be updated to explicitly state this connection.
 
 ### Technical Details
 
-**File: `src/features/pipeline/components/Pipeline.tsx`**
+**File: `src/components/settings/ContactStatusManager.tsx`**
 
-Replace the plain `<Input>` search (lines 1079-1096) with a new `PipelineSearch` component that:
-- Uses the existing `pipelineData` (already loaded) to find matches client-side — no extra database queries needed
-- Searches across all stages by contact name, CLJ number, and address
-- Shows a dropdown with up to 8 matching entries
-- Each dropdown item displays:
-  - CLJ number (e.g., `C3076-L1-J0`)
-  - Contact name
-  - Current stage as a small badge
-  - Address snippet
-- Clicking a result navigates to `/lead/{entry.id}`
-- Typing still filters the kanban board in real-time (keep `setSearchQuery`)
-- The X button to clear search remains
+1. **Replace ScrollArea with native overflow** (line 456):
+   - Remove: `<ScrollArea className="max-h-[500px]">`
+   - Replace with: `<div className="overflow-y-auto max-h-[calc(100vh-360px)]">`
+   - This matches the proven pattern used in the Pipeline Stage Manager
 
-**New File: `src/features/pipeline/components/PipelineSearch.tsx`**
-
-A self-contained autocomplete component that:
-- Accepts `pipelineData` (the grouped data object) and `stages` as props
-- Flattens all entries across stages for searching
-- Debounces input (300ms) before showing suggestions
-- Handles click-outside to dismiss dropdown
-- Uses the same search logic as `filterBySearch` (name, CLJ number, address)
-
-| File | Change |
-|------|--------|
-| `src/features/pipeline/components/PipelineSearch.tsx` | New component — pipeline-specific autocomplete |
-| `src/features/pipeline/components/Pipeline.tsx` | Replace plain Input with PipelineSearch component |
+2. **Update description text** (lines 450-453) to clarify these statuses are the same ones used on the Contacts Kanban board:
+   - Change to: "These statuses power the Contacts board columns. Changes here are reflected immediately on the Contacts Kanban view."
 
