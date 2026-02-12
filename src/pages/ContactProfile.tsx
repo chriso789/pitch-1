@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,7 @@ const ContactProfile = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("details");
   const [selectedPipelineEntry, setSelectedPipelineEntry] = useState<any>(null);
-  const [triggerEdit, setTriggerEdit] = useState(false);
+  const [triggerEditCounter, setTriggerEditCounter] = useState(0);
 
   // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
@@ -221,7 +221,7 @@ const ContactProfile = () => {
                 className="shadow-soft"
                 onClick={() => {
                   setActiveTab("details");
-                  setTriggerEdit(true);
+                  setTriggerEditCounter(c => c + 1);
                 }}
               >
                 <Edit className="h-4 w-4 mr-2" />
@@ -334,8 +334,7 @@ const ContactProfile = () => {
               key={contact.id}
               contact={contact} 
               onContactUpdate={handleContactUpdate}
-              triggerEdit={triggerEdit}
-              onTriggerEditConsumed={() => setTriggerEdit(false)}
+              triggerEdit={triggerEditCounter}
             />
           </TabsContent>
 
