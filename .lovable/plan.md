@@ -1,41 +1,32 @@
 
 
-## Fix: Edit Button Still Not Working
+## Add "Assign Rep" Dropdown to Contact Profile Page
 
-### Root Cause
+The `contacts` table already has an `assigned_to` column (UUID, FK to `profiles`), so no database changes are needed.
 
-Radix UI `TabsContent` **unmounts** the tab component when it's not active. When the user clicks "Edit" from another tab:
+### Changes
 
-1. `triggerEditCounter` increments to e.g. `3`
-2. Tab switches to "details", causing `ContactDetailsTab` to **mount fresh**
-3. On mount, the ref initializes as `useRef(triggerEdit)` which equals `3`
-4. The effect compares `triggerEdit (3) !== prevTriggerEdit.current (3)` -- they match, so nothing happens
+**File: `src/pages/ContactProfile.tsx`**
 
-The ref starts with the same value as the prop, so the effect never fires on mount.
+Add an "Assigned Rep" dropdown in the contact header area (next to the Edit/Create Lead buttons). It will:
 
-### Fix
+1. Fetch the list of team members from the `profiles` table (filtered by the current user's `tenant_id`)
+2. Display a `Select` dropdown showing the currently assigned rep (or "Unassigned")
+3. On selection change, update the `contacts.assigned_to` column in Supabase and refresh the local state
+4. Show a toast on success/failure
 
-**File: `src/components/contact-profile/ContactDetailsTab.tsx` (line 60)**
+**Implementation details:**
+- Use the existing `Select` / `SelectTrigger` / `SelectContent` / `SelectItem` components from `@/components/ui/select`
+- Place the dropdown between the status badges row and the action buttons, or inline with the action buttons for a clean layout
+- Fetch profiles with `supabase.from('profiles').select('id, first_name, last_name, role')` filtered by tenant
+- Include an "Unassigned" option that sets `assigned_to` to `null`
+- Show the rep's name in the trigger when assigned, "Assign Rep" when not
+- Style it with the `User` icon to match the page design
 
-Change the ref initialization from `useRef(triggerEdit)` to `useRef(0)`:
+### Visual placement
 
-```typescript
-// Before
-const prevTriggerEdit = useRef(triggerEdit);
+The dropdown will appear in the action buttons row alongside "Call", "Skip Trace", "Edit", and "Create Lead" -- keeping all actions together in one row.
 
-// After  
-const prevTriggerEdit = useRef(0);
-```
+### No database migration needed
 
-This way, when the component mounts fresh after a tab switch with `triggerEdit = 3`, the effect sees `3 !== 0` and correctly activates edit mode.
-
-### Why This Is Safe
-
-- On initial page load, `triggerEdit` starts at `0` and the ref starts at `0` -- they match, so edit mode won't activate unexpectedly
-- When the user clicks Edit, the counter increments to `1+`, the component mounts, and the ref (at `0`) won't match -- edit mode activates correctly
-- Subsequent clicks continue incrementing, always differing from the ref until it's updated
-
-### Single Line Change
-
-Only one line needs to change in `src/components/contact-profile/ContactDetailsTab.tsx`.
-
+The `contacts.assigned_to` column and its FK to `profiles` already exist.
