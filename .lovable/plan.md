@@ -1,63 +1,68 @@
 
 
-## Merge Project Page Into Lead Page
+## Deduplicate Search Results: Show Latest Pipeline Stage Only
 
-### Concept
+### Problem
+When a lead is converted to a project, the search shows **three results** for the same entity: the Contact, the Lead, AND the Job/Project. The user wants to see only the **most advanced stage** -- if a lead became a project, show only the Contact + Project, not the Lead.
 
-Once a lead passes "Ready for Approval" and becomes a "Project," there should be no separate Project Details page. The Lead Details page already handles this status -- it shows the `project` status badge and production stage. The fix is to **redirect the `/project/:id` route to the Lead Details page** using the pipeline entry ID, so there is only ONE detail page for the entire lead-to-project lifecycle.
+### Rules
+1. If a lead has been converted to a project: show **Contact + Project** (hide the lead)
+2. If a lead has NOT been converted: show **Contact + Lead** (no project exists)
+3. If a contact has multiple leads at different addresses, show each lead/project separately
+4. Always show the Contact entry itself
 
-The project-specific content (financial stats, budget, cost verification, commission, costs) will be added as additional sections/tabs within the Lead Details page when the status is `project`.
+### Root Cause
+The `search_contacts_and_jobs` RPC function (line 60-88) returns ALL pipeline_entries as "lead" results regardless of whether a project already exists for that entry. It also returns the project separately (line 92-121). This creates duplicate results.
 
-### What Changes
+### Solution
+Modify the SQL RPC function to **exclude leads that have a linked project**. The `projects` table has a `pipeline_entry_id` column -- if a project exists for a pipeline entry, that lead should be skipped in the Leads section.
 
-**1. Route redirect (`src/pages/ProjectDetails.tsx`)**
-- Instead of rendering the old `ProjectDetails` component, look up the project's `pipeline_entry_id` and redirect to `/lead/{pipeline_entry_id}`
-- This ensures every link to `/project/:id` lands on the unified Lead/Project page
+### Change
 
-**2. Add project-specific sections to Lead Details (`src/pages/LeadDetails.tsx`)**
-- When the lead status is `project`, add new tabs/sections to the EstimateHyperlinkBar or below it:
-  - **Financial Stats Grid** (6-card summary: Contract Value, Total Costs, Gross Profit, Net Profit, Budget Variance, Est. Completion)
-  - **Budget** tab (BudgetTracker component)
-  - **Cost Verification** tab (CostReconciliationPanel + InvoiceUploadCard)
-  - **Commission** tab (existing commission breakdown)
-  - **Costs** tab (project costs list)
-  - **QBO Sync** button in the header actions area
-- These sections only appear when `lead.status === 'project'` and a linked project record exists
+**New migration file** -- Update `search_contacts_and_jobs` RPC:
 
-**3. Fetch project data conditionally (`src/hooks/useLeadDetails.ts`)**
-- Add a conditional query: when the pipeline entry has a linked project (via `projects` table), fetch `project_budget_items`, `project_costs`, `project_budget_snapshots`, and `estimates` for the financial calculations
-- Add commission calculation via the existing `calculate_enhanced_rep_commission` RPC
-- Expose this data through the hook so the Lead Details page can render the project sections
+In the **LEADS** section (pipeline_entries query), add a filter:
 
-**4. Update navigation links**
-- Anywhere in the app that links to `/project/:id` will still work because the route now redirects
-- The pipeline board, contact profile, and any other places linking to projects will seamlessly land on the unified page
+```sql
+-- LEADS: exclude entries that have been converted to projects
+AND NOT EXISTS (
+  SELECT 1 FROM projects proj 
+  WHERE proj.pipeline_entry_id = pe.id
+)
+```
 
-### What Stays the Same
+This single addition ensures:
+- Leads that became projects are excluded from the "Leads" group
+- The project still appears in the "Jobs" group
+- Leads without projects still appear normally
+- Contacts with multiple leads show each one correctly (only those without projects)
 
-- The Lead Details page layout (header, status dropdown, address, metadata, sales rep, contact card, internal notes, approval requirements, communication hub, estimate system) -- all unchanged
-- The `projects` table and data model -- unchanged
-- Pre-approval leads look exactly the same as today
+### Also: Fix Job navigation route
 
-### Technical Details
+In `CLJSearchBar.tsx` line 130, jobs currently navigate to `/project/:id` which now redirects to `/lead/:id` via the ProjectDetails redirect. Update the job route to navigate directly to `/lead/:pipeline_entry_id` using the pipeline_entry_id from the project, avoiding the redirect hop. This requires the RPC to return `pipeline_entry_id` for job results.
+
+**Updated RPC for Jobs section:**
+```sql
+-- PROJECTS: return pipeline_entry_id as entity_id so navigation goes directly to /lead/:id
+SELECT 
+  'job'::text AS entity_type,
+  pe.id AS entity_id,  -- Use pipeline_entry_id instead of project id
+  ...
+```
+
+**Updated CLJSearchBar.tsx line 128-131:**
+```typescript
+const routes: Record<string, string> = {
+  contact: `/contact/${result.entity_id}`,
+  lead: `/lead/${result.entity_id}`,
+  job: `/lead/${result.entity_id}`  // Now points to pipeline entry directly
+};
+```
+
+### Summary of Changes
 
 | File | Change |
 |------|--------|
-| `src/pages/ProjectDetails.tsx` | Replace component body with a redirect: query project's `pipeline_entry_id`, then `navigate(/lead/{id}, { replace: true })` |
-| `src/pages/LeadDetails.tsx` | Add project-specific sections (financial stats, budget, cost verification, commission, costs) gated by `lead.status === 'project'` |
-| `src/hooks/useLeadDetails.ts` | Add conditional project data query (budget items, costs, snapshots, commission) when status is `project` |
-| `src/features/projects/components/ProjectDetails.tsx` | No longer used for the main view (kept for now but unused after redirect) |
-
-### Data Flow
-
-The project record is linked to a pipeline entry via `projects.pipeline_entry_id`. When the Lead Details page detects `status === 'project'`, it queries:
-
-1. `projects` table for the project record (project_number, dates, etc.)
-2. `project_budget_items` for budget tracking
-3. `project_costs` for cost records
-4. `project_budget_snapshots` for budget baseline
-5. `estimates` for contract value
-6. `calculate_enhanced_rep_commission` RPC for commission data
-
-All of this data powers the additional financial sections that appear only in the project phase.
+| New migration SQL | Add `NOT EXISTS` clause to leads query; change jobs query to return `pipeline_entry_id` as `entity_id` |
+| `src/components/CLJSearchBar.tsx` | Update job route from `/project/` to `/lead/` (line 130) |
 
