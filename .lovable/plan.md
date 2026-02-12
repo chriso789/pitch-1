@@ -1,45 +1,25 @@
 
 
-## Fix: Remove Pipeline Stages from Contacts Board
+## Fix: Contacts Board Left-Scroll Issue
 
 ### Problem
 
-The `contact_statuses` table (which drives the Contacts Board) now contains pipeline stage entries that don't belong there:
-- **Legal Review** -- this is a pipeline stage, not a contact disposition
-- **Project** -- this is a pipeline stage
-- **Contingency Signed** -- this is a pipeline stage
+The kanban board scrolls right to show later columns but won't scroll back left to reveal the "New / Unassigned" column. This happens because:
+1. The columns have no fixed `min-width`, so the browser collapses or shifts them
+2. The scroll container (`overflow-x-auto` div) may initialize with a non-zero scroll position
+3. The `CardContent` wrapper adds padding that can interfere with the scroll boundary
 
-These were added by the previous migration. Additionally, 28 contacts have pipeline stage values stored in their `qualification_status` field (e.g., `legal_review`, `contingency_signed`, `project`, `ready_for_approval`, `completed`, `lead`, `new_lead`).
+### Changes
 
-The **Contacts Board** should only show contact disposition statuses (Not Home, Interested, Not Interested, Qualified, Storm Damage, Do Not Contact, etc.), while pipeline stages belong exclusively on the **Jobs Pipeline** board.
+**File: `src/features/contacts/components/ContactKanbanBoard.tsx`**
 
-### Fix
+- Add a fixed `min-w-[250px]` to each column wrapper so columns don't collapse and the scroll container properly accounts for all columns
+- Wrap the scrollable area in a container that ensures it starts scrolled to the left (scroll position 0)
 
-**Database migration:**
+**File: `src/features/contacts/components/ContactKanbanColumn.tsx`**
 
-1. **Remove pipeline stages from `contact_statuses` table** -- delete the rows for `legal_review`, `contingency_signed`, and `project` from the contact_statuses table for this tenant.
+- Add `min-w-[250px] w-[250px] flex-shrink-0` to the column root div so every column has a consistent fixed width and won't be collapsed by the flex container
 
-2. **Reset contacts that have pipeline stage values** -- update the 28 contacts that have pipeline-stage values in their `qualification_status` field back to `NULL` so they appear in "New / Unassigned":
-   - `legal_review` (12 contacts)
-   - `contingency_signed` (8 contacts)  
-   - `project` (8 contacts)
-   - `ready_for_approval` (5 contacts)
-   - `completed` (3 contacts)
-   - `lead` (3 contacts)
-   - `new_lead` (1 contact)
+### Result
 
-No code changes needed -- the board component already handles these correctly once the data is fixed.
-
-### After Fix
-
-The Contacts Board will show only disposition columns:
-- New / Unassigned (1,507 contacts)
-- Qualified
-- Not Home (18)
-- Interested
-- Old Roof - Marketing
-- Storm Damage (234)
-- Not Interested (10)
-- Do Not Contact
-
-Pipeline stages (Legal Review, Contingency Signed, Project, etc.) will only appear on the Jobs Pipeline board where they belong.
+All columns will have a consistent width, the scroll container will properly allow scrolling in both directions, and the "New / Unassigned" column will always be visible at the left edge when the board loads.
