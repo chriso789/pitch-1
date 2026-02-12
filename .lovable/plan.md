@@ -1,69 +1,44 @@
 
 
-## Fix Pipeline Search Autopopulate + Speed Up Pipeline
+## Fix Job Details Page Layout
 
-### 1. Fix Search Autopopulate Bug (PipelineSearch.tsx)
+The Job Details page header is broken because everything (job title, contact card, and action buttons) is crammed into one `flex items-start justify-between` row on line 344. This causes elements to overlap and get cut off, especially on smaller screens. The rest of the page also has issues: the tabs bar has 11 tabs forced into a `grid-cols-10`, and the loading state doesn't use `GlobalLayout`.
 
-The suggestions filter accesses the wrong field paths. The pipeline entries have contact data nested under `contacts`, but the search looks at the top level.
+### Changes
 
-**File: `src/features/pipeline/components/PipelineSearch.tsx` (lines 54-58)**
+**File: `src/pages/JobDetails.tsx`**
 
-Change:
-```
-entry.first_name -> entry.contacts?.first_name
-entry.last_name -> entry.contacts?.last_name
-entry.address_street -> entry.contacts?.address_street
-entry.address_city -> entry.contacts?.address_city
-entry.address_state -> entry.contacts?.address_state
-```
+**1. Fix loading/error states to use GlobalLayout**
+- Wrap the loading spinner (lines 302-311) and "not found" state (lines 313-323) inside `<GlobalLayout>` so the sidebar and header remain visible during loading.
 
-Also fix the display (lines 117-120):
-```
-entry.first_name -> entry.contacts?.first_name
-entry.last_name -> entry.contacts?.last_name
-entry.address_city -> entry.contacts?.address_city
-entry.address_state -> entry.contacts?.address_state
-```
+**2. Restructure header layout (lines 329-446)**
 
-### 2. Speed Up Pipeline Loading (Pipeline.tsx)
-
-**Problem**: `fetchPipelineData` runs 4 sequential queries (auth user, profile, reps, locations, then pipeline data). Each waits for the previous one.
-
-**Fix**: Run independent queries in parallel using `Promise.all`:
+Replace the current cramped single-row layout with a clean stacked layout:
 
 ```text
-Before (sequential):
-  getUser() -> 300ms
-  getProfile() -> 200ms
-  getReps() -> 200ms
-  getLocations() -> 200ms
-  getPipelineEntries() -> 300ms
-  Total: ~1200ms
-
-After (parallel where possible):
-  getUser() -> 300ms
-  getProfile() -> 200ms
-  [getReps(), getLocations(), getPipelineEntries()] -> 300ms (parallel)
-  Total: ~800ms
+Row 1: Back button (standalone)
+Row 2: Job title + status badges (left) | Action buttons (right)
+Row 3: Job number + project number (subtitle)
+Row 4: Contact card (full-width, compact horizontal layout)
 ```
 
-**File: `src/features/pipeline/components/Pipeline.tsx` (lines 177-360)**
+Specific changes:
+- Move the "Back to Contact" button to its own row (already done, just ensure separation)
+- Put the job title, badges, and action buttons in a flex row with `flex-wrap` so buttons wrap on mobile instead of overflowing
+- Convert the contact card from a `w-80` fixed-width card into a compact horizontal bar with contact info inline (name, phone, address all in one row), saving vertical space
+- Remove the contact card from inside the title flex row
 
-- After getting the profile/tenant ID, run the reps query, locations query, and pipeline entries query in parallel with `Promise.all`
-- Cache `effectiveTenantId` so `fetchUserRole` and `fetchPipelineData` don't both query the profile separately
+**3. Fix tabs grid (line 576)**
+- Change `grid-cols-10` to use a scrollable flex layout instead, since there are 11 tab triggers (Overview, Activity, Budget, Payments, Comms, Invoices, QBO, Photos, Documents, Timeline, Audit) but only 10 columns defined
+- Use `flex overflow-x-auto` on TabsList for proper horizontal scrolling
 
-### 3. Throttle Realtime Refetches (Pipeline.tsx)
+### Technical Details
 
-**Problem**: The realtime subscription (lines 118-138) calls `fetchPipelineData()` on every single `postgres_changes` event with no debounce. If 5 entries change quickly, it fires 5 full refetches.
-
-**Fix**: Debounce the realtime handler to batch rapid changes into a single refetch (500ms window).
-
-### Technical Summary
-
-| File | Change |
-|------|--------|
-| `PipelineSearch.tsx` | Fix field paths: `entry.first_name` to `entry.contacts?.first_name` (and similar for all contact fields) |
-| `Pipeline.tsx` | Parallelize independent queries with `Promise.all` |
-| `Pipeline.tsx` | Debounce realtime subscription handler (500ms) |
-| `Pipeline.tsx` | Remove duplicate profile fetch (reuse from `fetchUserRole`) |
+| Location | Issue | Fix |
+|----------|-------|-----|
+| Lines 302-311 | Loading state has no sidebar/nav | Wrap in `GlobalLayout` |
+| Lines 313-323 | Error state has no sidebar/nav | Wrap in `GlobalLayout` |
+| Lines 344-445 | Title, contact card, buttons all in one row | Stack into separate rows |
+| Line 367 | Contact card `w-80` fixed width in flex row | Convert to full-width compact bar |
+| Line 576 | `grid-cols-10` but 11 tabs | Use scrollable flex layout |
 
