@@ -1,50 +1,50 @@
 
 
-## Filter Sales Rep Dropdown by Location
+## Standardize Project Details Page to Match Lead/Job Page Protocol
 
-### Problem
-The Sales Rep dropdown on the Lead Details page shows ALL reps across the entire company (both East Coast and West Coast). Patricia Stevenson is a West Coast lead (Sarasota, FL) but the dropdown shows East Coast reps like Jared Janacek, Michael Grosso, Taylor Johnston, and Uri Kaweblum alongside West Coast reps.
+The Project Details page (`src/features/projects/components/ProjectDetails.tsx`) was built separately and never aligned with the layout standards used by the Lead Details and Job Details pages. Here are the specific problems and fixes.
 
-### Root Cause
-In `src/hooks/useLeadDetails.ts`, the `fetchSalesReps` function (line 259) only filters by `tenant_id` -- it does not consider the lead's `location_id`. The Pipeline page already does location-based rep filtering correctly using `user_location_assignments`, but this pattern was never applied to the Lead Details page.
+### Problems Found
 
-### Solution
-Update `fetchSalesReps` to accept the lead's `location_id` and filter reps through the `user_location_assignments` table. Elevated roles (master, owner, corporate, office_admin) should still appear regardless of location assignment since they have cross-location visibility.
+| Issue | Lead/Job Page | Project Page |
+|-------|--------------|--------------|
+| Sidebar + top nav | Uses GlobalLayout | No GlobalLayout -- missing sidebar entirely |
+| Content container | max-w-7xl mx-auto | No max-width -- stretches full screen |
+| Header structure | Name on line 1, address + badges below, contact bar | Everything crammed in one row, gradient text |
+| Back button | "Back to Contact" linking to contact | "Back to Dashboard" hardcoded |
+| Loading state | Wrapped in GlobalLayout with spinner | Plain "Loading..." text |
+| Tab navigation | Scrollable flex with fade gradient | flex-wrap (breaks on many tabs) |
 
 ### Changes
 
-**File: `src/hooks/useLeadDetails.ts`**
+**File 1: `src/pages/ProjectDetails.tsx`**
+- Wrap `ProjectDetails` in `GlobalLayout` so the sidebar and top nav are always visible (same pattern as LeadDetailsPage)
 
-1. **Update `fetchSalesReps` signature** (line 259): Accept `locationId` as a second parameter
-2. **Add location filtering logic**: 
-   - Query `user_location_assignments` for the lead's `location_id` to get user IDs assigned to that location
-   - Filter reps to only those assigned to the lead's location
-   - Always include elevated roles (owner, corporate, office_admin) regardless of location -- these are managers with company-wide permission
-   - If no `location_id` on the lead, fall back to showing all tenant reps (current behavior)
-3. **Update the query call** (line 316): Pass `location_id` from the lead data to the query, and add it to the query key for proper cache invalidation
+**File 2: `src/features/projects/components/ProjectDetails.tsx`**
 
-```text
-Before:
-  fetchSalesReps(tenantId)
-  -> SELECT * FROM profiles WHERE tenant_id = X
-  -> Returns ALL reps in company
+1. **Wrap content in `max-w-7xl mx-auto`** to constrain width and match other detail pages
 
-After:
-  fetchSalesReps(tenantId, locationId)
-  -> SELECT user_id FROM user_location_assignments WHERE location_id = Y
-  -> SELECT * FROM profiles WHERE tenant_id = X AND (id IN location_users OR role IN elevated_roles)
-  -> Returns only location-specific reps + managers
-```
+2. **Fix loading/error states** -- show proper centered spinner with message instead of plain text
+
+3. **Restructure the header** to match the Job Details pattern:
+   - Row 1: Back button (navigating to the contact, not hardcoded to dashboard)
+   - Row 2: Contact name (plain text, not gradient) + status badge + action buttons
+   - Row 3: Subtitle with project number, address, and job info
+   - Row 4: Compact contact info bar (same as Job Details page)
+
+4. **Fix tabs** to use scrollable flex layout with `overflow-x-auto`, `flex-shrink-0` on triggers, and a right-side fade gradient -- matching the Job Details page exactly
+
+5. **Remove the gradient text styling** on the title (`gradient-primary bg-clip-text text-transparent`) to use a standard `text-2xl font-bold` like other pages
 
 ### Technical Details
 
-| Item | Detail |
-|------|--------|
-| File | `src/hooks/useLeadDetails.ts` |
-| Function | `fetchSalesReps` (lines 258-273) |
-| Query key update | Line 315: add `locationId` to cache key |
-| Query call update | Line 316: pass `leadQuery.data?.location_id` |
-| Elevated roles (always visible) | owner, corporate, office_admin |
-| Location-bound roles (filtered) | regional_manager, sales_manager, project_manager |
-| Fallback | If lead has no `location_id`, show all tenant reps (current behavior) |
+| Location | Current | Fix |
+|----------|---------|-----|
+| `ProjectDetails.tsx` line 226 | `<div className="space-y-6">` | Add `max-w-7xl mx-auto` |
+| `ProjectDetails.tsx` line 202 | Plain text loading | Centered Loader2 spinner |
+| `ProjectDetails.tsx` line 227 | BackButton to "/dashboard" | Back to contact with contact ID |
+| `ProjectDetails.tsx` line 236 | Gradient text h1 | Standard `text-2xl font-bold` matching Job page |
+| `ProjectDetails.tsx` line 361 | `<TabsList className="flex-wrap">` | `flex overflow-x-auto` with fade gradient |
+| `ProjectDetails.tsx` lines 376-440 | Customer/Project info as overview tab only | Add compact contact bar in header (always visible) |
+| `ProjectDetailsPage.tsx` line 16 | No GlobalLayout | Wrap in GlobalLayout |
 
