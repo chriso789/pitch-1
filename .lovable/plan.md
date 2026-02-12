@@ -1,63 +1,41 @@
 
 
-## Plan: Pipeline Card Enhancements + Edit Button Fix
+## Fix: Edit Button Still Not Working
 
-This plan addresses four items: the broken Edit button on the contact page, adding a "last activity" tooltip on the days counter badge, improving mobile UX on pipeline cards, and ensuring overall pipeline functionality.
+### Root Cause
 
----
+Radix UI `TabsContent` **unmounts** the tab component when it's not active. When the user clicks "Edit" from another tab:
 
-### 1. Fix: Edit Button on Contact Page (Still Not Working)
+1. `triggerEditCounter` increments to e.g. `3`
+2. Tab switches to "details", causing `ContactDetailsTab` to **mount fresh**
+3. On mount, the ref initializes as `useRef(triggerEdit)` which equals `3`
+4. The effect compares `triggerEdit (3) !== prevTriggerEdit.current (3)` -- they match, so nothing happens
 
-**Root Cause:** The `triggerEdit` effect has `onTriggerEditConsumed` in its dependency array. Since `onTriggerEditConsumed` is an inline arrow function (`() => setTriggerEdit(false)`) that creates a new reference every render, this can cause unpredictable effect timing. Additionally, when the tab content unmounts/remounts (Radix TabsContent behavior), React's effect ordering can cause the contact-reset effect to interfere.
+The ref starts with the same value as the prop, so the effect never fires on mount.
 
-**Fix (two changes):**
+### Fix
 
-**File: `src/pages/ContactProfile.tsx`**
-- Wrap `onTriggerEditConsumed` in `useCallback` to stabilize the function reference
-- Change `triggerEdit` from a boolean to a counter (number) that increments on each click -- this guarantees the effect always fires even on rapid repeated clicks
+**File: `src/components/contact-profile/ContactDetailsTab.tsx` (line 60)**
 
-**File: `src/components/contact-profile/ContactDetailsTab.tsx`**
-- Remove `onTriggerEditConsumed` from the effect dependency array (use only `triggerEdit`)
-- Change the effect to respond to the counter value changing (compare with a ref) rather than checking a boolean
-- This eliminates the race condition entirely
+Change the ref initialization from `useRef(triggerEdit)` to `useRef(0)`:
 
----
+```typescript
+// Before
+const prevTriggerEdit = useRef(triggerEdit);
 
-### 2. Add "Last Activity" Tooltip on Days Counter Badge
+// After  
+const prevTriggerEdit = useRef(0);
+```
 
-**File: `src/features/pipeline/components/KanbanCard.tsx`**
+This way, when the component mounts fresh after a tab switch with `triggerEdit = 3`, the effect sees `3 !== 0` and correctly activates edit mode.
 
-Wrap the days-in-status Badge (line 415-422) with a Tooltip component that shows:
-- The exact date of the last action (formatted as "Jan 15, 2026 at 3:42 PM")
-- A label: "Last updated: [date]"
+### Why This Is Safe
 
-Implementation:
-- Import `Tooltip, TooltipTrigger, TooltipContent, TooltipProvider` from the existing UI components
-- Format `entry.updated_at` using `date-fns` `format()` function
-- Wrap the Badge in `TooltipTrigger` with the formatted date in `TooltipContent`
+- On initial page load, `triggerEdit` starts at `0` and the ref starts at `0` -- they match, so edit mode won't activate unexpectedly
+- When the user clicks Edit, the counter increments to `1+`, the component mounts, and the ref (at `0`) won't match -- edit mode activates correctly
+- Subsequent clicks continue incrementing, always differing from the ref until it's updated
 
----
+### Single Line Change
 
-### 3. Mobile UX Improvements on Pipeline Cards
-
-**File: `src/features/pipeline/components/KanbanCard.tsx`**
-
-The current implementation already has good mobile support:
-- Details button is `h-8 w-8` on mobile (line 504) -- already enlarged
-- Communication dropdown uses `onPointerDown={(e) => e.stopPropagation()}` to avoid interfering with drag
-- Details button also uses `onPointerDown` stop propagation
-
-Minor improvements to make:
-- Increase the communication dropdown trigger touch target on mobile from `h-5` to `h-8 w-8` on mobile (matching the details button pattern)
-- Add `touch-action: manipulation` to the card to prevent double-tap zoom interference with drag
-
----
-
-### 4. Files to Modify
-
-| File | Changes |
-|------|---------|
-| `src/pages/ContactProfile.tsx` | Stabilize `triggerEdit` with counter + `useCallback` |
-| `src/components/contact-profile/ContactDetailsTab.tsx` | Fix effect to use ref-based counter comparison |
-| `src/features/pipeline/components/KanbanCard.tsx` | Add tooltip to days badge, improve mobile touch targets |
+Only one line needs to change in `src/components/contact-profile/ContactDetailsTab.tsx`.
 
