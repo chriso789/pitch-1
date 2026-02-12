@@ -176,6 +176,24 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
         onDragEnd={handleDragEnd}
       >
         <div className="flex gap-4 overflow-x-auto pb-4">
+          {/* New / Unassigned column FIRST — always visible */}
+          <ContactKanbanColumn
+            id="uncategorized"
+            title="New / Unassigned"
+            color="#f59e0b"
+            count={groupedContacts['uncategorized']?.length || 0}
+            items={groupedContacts['uncategorized']?.map(c => c.id) || []}
+          >
+            {groupedContacts['uncategorized']?.map((contact) => (
+              <ContactKanbanCard
+                key={contact.id}
+                contact={contact}
+                onCall={onCall}
+                onEmail={onEmail}
+              />
+            ))}
+          </ContactKanbanColumn>
+
           {statuses.map((status) => (
             <ContactKanbanColumn
               key={status.key}
@@ -195,26 +213,6 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
               ))}
             </ContactKanbanColumn>
           ))}
-
-          {/* Uncategorized column if there are contacts without status */}
-          {groupedContacts['uncategorized']?.length > 0 && (
-            <ContactKanbanColumn
-              id="uncategorized"
-              title="Uncategorized"
-              color="#94a3b8"
-              count={groupedContacts['uncategorized'].length}
-              items={groupedContacts['uncategorized'].map(c => c.id)}
-            >
-              {groupedContacts['uncategorized'].map((contact) => (
-                <ContactKanbanCard
-                  key={contact.id}
-                  contact={contact}
-                  onCall={onCall}
-                  onEmail={onEmail}
-                />
-              ))}
-            </ContactKanbanColumn>
-          )}
         </div>
 
         <DragOverlay>
