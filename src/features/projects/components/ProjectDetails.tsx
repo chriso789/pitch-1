@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { CostReconciliationPanel } from "@/components/production/CostReconciliationPanel";
 import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
+import { Loader2 } from "lucide-react";
 import { 
   DollarSign, 
   FileText, 
@@ -145,7 +146,6 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
     try {
       setLoading(true);
       
-      // Fetch project with related data
       const [projectResult, budgetItemsResult] = await Promise.all([
         supabase
           .from('projects')
@@ -178,7 +178,6 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
       setProject(projectResult.data);
       setBudgetItems(budgetItemsResult.data || []);
 
-      // Calculate commission if there's a sales rep using enhanced function
       const salesRep = projectResult.data?.pipeline_entries?.profiles;
       if (salesRep) {
         const { data: commissionData } = await supabase.rpc('calculate_enhanced_rep_commission', {
@@ -200,11 +199,20 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   };
 
   if (loading) {
-    return <div className="p-6">Loading project details...</div>;
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-3 text-muted-foreground">Loading project details...</span>
+      </div>
+    );
   }
 
   if (!project) {
-    return <div className="p-6">Project not found</div>;
+    return (
+      <div className="flex items-center justify-center py-20 text-muted-foreground">
+        Project not found
+      </div>
+    );
   }
 
   const contact = project.pipeline_entries?.contacts;
@@ -222,46 +230,92 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const netProfit = commission ? commission.net_profit || 0 : grossProfit;
   const companyProfit = commission ? commission.company_profit || 0 : grossProfit;
 
+  const contactId = contact?.id;
+  const contactName = contact ? `${contact.first_name} ${contact.last_name}` : '';
+  const contactAddress = contact
+    ? [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(', ')
+    : '';
+
   return (
-    <div className="space-y-6 pb-32 md:pb-16">
+    <div className="max-w-7xl mx-auto space-y-6 pb-32 md:pb-16">
+      {/* Back Button */}
       <BackButton 
-        label="Back to Dashboard"
-        fallbackPath="/dashboard"
-        respectHistory={false}
+        label={contactId ? "Back to Contact" : "Back"}
+        fallbackPath={contactId ? `/lead/${contactId}` : "/dashboard"}
+        respectHistory={true}
       />
       
-      {/* Project Header */}
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            {project.name}
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Project #{project.project_number}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="bg-status-project text-white">
-            {project.status}
-          </Badge>
-          {qboConnection && (
-            <Button 
-              onClick={handleSyncToQBO}
-              disabled={syncingToQBO}
-              variant="outline"
-              size="sm"
-            >
-              {syncingToQBO ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Syncing...
-                </>
-              ) : (
-                "Sync to QBO"
+      {/* Project Header - Restructured to match Lead/Job page */}
+      <div className="space-y-3">
+        {/* Row 1: Title + Status + Actions */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold truncate" title={project.name}>
+                {project.name}
+              </h1>
+              <Badge variant="outline" className="bg-status-project text-white flex-shrink-0">
+                {project.status}
+              </Badge>
+            </div>
+            <p className="text-muted-foreground mt-1 text-sm">
+              Project #{project.project_number}
+              {project.start_date && (
+                <> · Started {new Date(project.start_date).toLocaleDateString()}</>
               )}
-            </Button>
-          )}
+              {project.estimated_completion_date && (
+                <> · Est. completion {new Date(project.estimated_completion_date).toLocaleDateString()}</>
+              )}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {qboConnection && (
+              <Button 
+                onClick={handleSyncToQBO}
+                disabled={syncingToQBO}
+                variant="outline"
+                size="sm"
+              >
+                {syncingToQBO ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Syncing...
+                  </>
+                ) : (
+                  "Sync to QBO"
+                )}
+              </Button>
+            )}
+          </div>
         </div>
+
+        {/* Row 2: Compact contact info bar */}
+        {contact && (
+          <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground border-b pb-3">
+            <div className="flex items-center gap-1.5">
+              <User className="h-3.5 w-3.5" />
+              <span>{contactName}</span>
+            </div>
+            {contactAddress && (
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3.5 w-3.5" />
+                <span>{contactAddress}</span>
+              </div>
+            )}
+            {contact.phone && (
+              <div className="flex items-center gap-1.5">
+                <Phone className="h-3.5 w-3.5" />
+                <span>{contact.phone}</span>
+              </div>
+            )}
+            {contact.email && (
+              <div className="flex items-center gap-1.5">
+                <Mail className="h-3.5 w-3.5" />
+                <span>{contact.email}</span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Quick Stats */}
@@ -356,26 +410,28 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
         </Card>
       </div>
 
-      {/* Detailed Tabs */}
+      {/* Detailed Tabs - Scrollable like Job Details */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList className="flex-wrap">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="budget">Budget</TabsTrigger>
-          <TabsTrigger value="cost-verification" className="flex items-center gap-1">
-            <ClipboardCheck className="h-3 w-3" />
-            Cost Verification
-          </TabsTrigger>
-          <TabsTrigger value="estimate">Estimate</TabsTrigger>
-          <TabsTrigger value="commission">Commission</TabsTrigger>
-          <TabsTrigger value="costs">Costs</TabsTrigger>
-          <TabsTrigger value="timeline">Timeline</TabsTrigger>
-          <TabsTrigger value="photos">Photos</TabsTrigger>
-          <TabsTrigger value="documents">Documents</TabsTrigger>
-        </TabsList>
+        <div className="relative">
+          <TabsList className="flex overflow-x-auto w-full justify-start bg-muted p-1 rounded-md">
+            <TabsTrigger value="overview" className="flex-shrink-0">Overview</TabsTrigger>
+            <TabsTrigger value="budget" className="flex-shrink-0">Budget</TabsTrigger>
+            <TabsTrigger value="cost-verification" className="flex-shrink-0 flex items-center gap-1">
+              <ClipboardCheck className="h-3 w-3" />
+              Cost Verification
+            </TabsTrigger>
+            <TabsTrigger value="estimate" className="flex-shrink-0">Estimate</TabsTrigger>
+            <TabsTrigger value="commission" className="flex-shrink-0">Commission</TabsTrigger>
+            <TabsTrigger value="costs" className="flex-shrink-0">Costs</TabsTrigger>
+            <TabsTrigger value="timeline" className="flex-shrink-0">Timeline</TabsTrigger>
+            <TabsTrigger value="photos" className="flex-shrink-0">Photos</TabsTrigger>
+            <TabsTrigger value="documents" className="flex-shrink-0">Documents</TabsTrigger>
+          </TabsList>
+          <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-background to-transparent pointer-events-none rounded-r-md" />
+        </div>
 
         <TabsContent value="overview" className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Customer Information */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -409,7 +465,6 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               </CardContent>
             </Card>
 
-            {/* Project Information */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
