@@ -10,6 +10,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { LeadForm } from "@/features/contacts/components/LeadForm";
 import { KanbanCard } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
+import { PipelineSearch } from './PipelineSearch';
 import { TransitionReasonDialog } from '@/components/pipeline/TransitionReasonDialog';
 import { 
   ArrowRight, 
@@ -1076,25 +1077,12 @@ const Pipeline = () => {
       <Card className="shadow-soft border-0">
         <CardContent className="p-4">
           <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-            <div className="relative flex-1 w-full">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search jobs by name, job number, or address..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-              {searchQuery && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
-                  onClick={() => setSearchQuery('')}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
+            <PipelineSearch
+              pipelineData={pipelineData}
+              jobStages={jobStages}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
             
             <div className="flex gap-2 w-full sm:w-auto">
               <Button
