@@ -379,19 +379,21 @@ export const EnhancedClientList = () => {
         return;
       }
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .maybeSingle();
-
+      // Reuse existing profile if already loaded, otherwise fetch
+      let profile = userProfile;
       if (!profile) {
-        console.log("No profile found for user");
-        return;
+        const { data: fetchedProfile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .maybeSingle();
+        profile = fetchedProfile;
+        if (!profile) {
+          console.log("No profile found for user");
+          return;
+        }
+        setUserProfile(profile);
       }
-
-      console.log("User profile:", profile);
-      setUserProfile(profile);
 
       // Query contacts with proper tenant filtering - ALWAYS filter by active company
       console.log("Fetching contacts...");
@@ -469,30 +471,26 @@ export const EnhancedClientList = () => {
       console.log("Jobs fetched:", jobsData?.length || 0);
       console.log("Raw jobs data:", jobsData);
 
-      // Enhance jobs with contact information
-      const enhancedJobs = await Promise.all(
-        (jobsData || []).map(async (job) => {
-          console.log(`Fetching contact for job ${job.job_number}, contact_id:`, job.contact_id);
-          const { data: contactData, error: contactError } = await supabase
-            .from("contacts")
-            .select("first_name, last_name, email, phone, address_street, address_city, address_state, location_id")
-            .eq("id", job.contact_id)
-            .eq('tenant_id', effectiveTenantId)
-            .maybeSingle();
+      // Batch fetch contacts for all jobs (1 query instead of N)
+      const jobContactIds = [...new Set((jobsData || []).map(j => j.contact_id).filter(Boolean))];
+      let jobContactMap: Record<string, any> = {};
+      if (jobContactIds.length > 0) {
+        const { data: jobContacts } = await supabase
+          .from("contacts")
+          .select("id, first_name, last_name, email, phone, address_street, address_city, address_state, location_id")
+          .in("id", jobContactIds)
+          .eq('tenant_id', effectiveTenantId);
+        (jobContacts || []).forEach(c => { jobContactMap[c.id] = c; });
+      }
 
-          if (contactError) {
-            console.error(`Error fetching contact for job ${job.job_number}:`, contactError);
-          }
-
-          console.log(`Contact data for job ${job.job_number}:`, contactData);
-
-          return {
-            ...job,
-            contact: contactData || null,
-            name: job.name || (contactData ? `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim() : 'Unnamed Job')
-          };
-        })
-      );
+      const enhancedJobs = (jobsData || []).map(job => {
+        const contactData = jobContactMap[job.contact_id] || null;
+        return {
+          ...job,
+          contact: contactData,
+          name: job.name || (contactData ? `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim() : 'Unnamed Job')
+        };
+      });
 
       console.log("Enhanced jobs:", enhancedJobs);
 
@@ -526,23 +524,29 @@ export const EnhancedClientList = () => {
 
       console.log("Pipeline entries fetched:", pipelineData?.length || 0);
 
-      // Enhance pipeline entries with communication data and calculations
-      const enhancedPipelineData = await Promise.all(
-        (pipelineData || []).map(async (pe) => {
-          // Get last communication date
-          const { data: lastComm } = await supabase
-            .from('communication_history')
-            .select('created_at')
-            .eq('contact_id', pe.contact_id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
+      // Batch fetch last communication dates for all pipeline contacts (1 query instead of N)
+      const pipelineContactIds = [...new Set((pipelineData || []).map(pe => pe.contact_id).filter(Boolean))];
+      let lastCommMap: Record<string, string> = {};
+      if (pipelineContactIds.length > 0) {
+        const { data: commData } = await supabase
+          .from('communication_history')
+          .select('contact_id, created_at')
+          .in('contact_id', pipelineContactIds)
+          .order('created_at', { ascending: false });
+        // Keep only the latest per contact_id
+        (commData || []).forEach(c => {
+          if (!lastCommMap[c.contact_id]) {
+            lastCommMap[c.contact_id] = c.created_at;
+          }
+        });
+      }
 
-          const daysSinceComm = lastComm 
-            ? Math.floor((Date.now() - new Date(lastComm.created_at).getTime()) / (1000 * 60 * 60 * 24))
+      const enhancedPipelineData = (pipelineData || []).map((pe) => {
+          const lastCommDate = lastCommMap[pe.contact_id];
+          const daysSinceComm = lastCommDate 
+            ? Math.floor((Date.now() - new Date(lastCommDate).getTime()) / (1000 * 60 * 60 * 24))
             : null;
 
-          // Calculate days since lead was created (this shows how long the lead has been active)
           const daysInStatus = Math.floor((Date.now() - new Date(pe.created_at).getTime()) / (1000 * 60 * 60 * 24));
 
           return {
@@ -550,8 +554,7 @@ export const EnhancedClientList = () => {
             days_since_communication: daysSinceComm,
             days_in_status: daysInStatus
           };
-        })
-      );
+      });
 
       // Filter active leads for the sales rep (lead, contingency, legal, ready_for_approval)
       const leadStatuses = ['lead', 'contingency', 'legal', 'ready_for_approval'];
