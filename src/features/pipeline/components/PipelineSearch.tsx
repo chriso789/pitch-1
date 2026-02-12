@@ -52,9 +52,9 @@ export const PipelineSearch = ({
     const q = debouncedQuery.toLowerCase();
     return allEntries
       .filter(entry => {
-        const name = `${entry.first_name || ""} ${entry.last_name || ""}`.toLowerCase();
+        const name = `${entry.contacts?.first_name || ""} ${entry.contacts?.last_name || ""}`.toLowerCase();
         const clj = (entry.clj_formatted_number || "").toLowerCase();
-        const addr = `${entry.address_street || ""} ${entry.address_city || ""} ${entry.address_state || ""}`.toLowerCase();
+        const addr = `${entry.contacts?.address_street || ""} ${entry.contacts?.address_city || ""} ${entry.contacts?.address_state || ""}`.toLowerCase();
         return name.includes(q) || clj.includes(q) || addr.includes(q);
       })
       .slice(0, 8);
@@ -114,8 +114,8 @@ export const PipelineSearch = ({
         >
           {suggestions.map((entry) => {
             const stage = stageMap[entry.status];
-            const name = `${entry.first_name || ""} ${entry.last_name || ""}`.trim();
-            const addr = [entry.address_city, entry.address_state]
+            const name = `${entry.contacts?.first_name || ""} ${entry.contacts?.last_name || ""}`.trim();
+            const addr = [entry.contacts?.address_city, entry.contacts?.address_state]
               .filter(Boolean)
               .join(", ");
             return (
