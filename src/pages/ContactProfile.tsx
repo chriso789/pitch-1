@@ -44,6 +44,7 @@ const ContactProfile = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("details");
   const [selectedPipelineEntry, setSelectedPipelineEntry] = useState<any>(null);
+  const [triggerEdit, setTriggerEdit] = useState(false);
 
   // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
@@ -215,6 +216,17 @@ const ContactProfile = () => {
                 contactId={id!} 
                 onComplete={fetchContactData}
               />
+              <Button
+                variant="outline"
+                className="shadow-soft"
+                onClick={() => {
+                  setActiveTab("details");
+                  setTriggerEdit(true);
+                }}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Edit
+              </Button>
               <LeadCreationDialog 
                 contact={contact}
                 onLeadCreated={() => {
@@ -322,6 +334,8 @@ const ContactProfile = () => {
               key={contact.id}
               contact={contact} 
               onContactUpdate={handleContactUpdate}
+              triggerEdit={triggerEdit}
+              onTriggerEditConsumed={() => setTriggerEdit(false)}
             />
           </TabsContent>
 

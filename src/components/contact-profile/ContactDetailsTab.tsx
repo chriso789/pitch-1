@@ -29,6 +29,8 @@ import { HomeownerPortalAccess } from "./HomeownerPortalAccess";
 interface ContactDetailsTabProps {
   contact: any;
   onContactUpdate: (updatedContact: any) => void;
+  triggerEdit?: boolean;
+  onTriggerEditConsumed?: () => void;
 }
 
 interface FormData {
@@ -52,9 +54,18 @@ interface FormData {
 
 export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({ 
   contact, 
-  onContactUpdate 
+  onContactUpdate,
+  triggerEdit,
+  onTriggerEditConsumed
 }) => {
   const [isEditing, setIsEditing] = useState(false);
+
+  useEffect(() => {
+    if (triggerEdit) {
+      setIsEditing(true);
+      onTriggerEditConsumed?.();
+    }
+  }, [triggerEdit, onTriggerEditConsumed]);
   const [jobCount, setJobCount] = useState(0);
   const { toast } = useToast();
   
