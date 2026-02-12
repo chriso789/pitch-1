@@ -642,7 +642,7 @@ const LeadDetails = () => {
           </Card>
         );
       case 'profit':
-        return <ProfitCenterPanel pipelineEntryId={id!} projectId={lead?.status === 'project' && projectData ? projectData.project.id : undefined} />;
+        return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} />;
       case 'total':
         return (
           <Card>
