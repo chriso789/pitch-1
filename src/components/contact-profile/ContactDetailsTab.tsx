@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -120,10 +120,14 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
   });
 
   // Reset form when contact changes to prevent stale data
+  const prevContactId = useRef(contact?.id);
   useEffect(() => {
     if (contact) {
       form.reset(getFormDefaults(contact));
-      setIsEditing(false);
+      if (prevContactId.current !== contact.id) {
+        setIsEditing(false);
+        prevContactId.current = contact.id;
+      }
     }
   }, [contact?.id]);
 
