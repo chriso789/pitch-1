@@ -8,6 +8,8 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { PhoneSetupWizard } from '@/components/settings/PhoneSetupWizard';
 import { 
   Bot, 
   MessageSquare, 
@@ -24,6 +26,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  ExternalLink,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
@@ -59,6 +62,12 @@ interface TelnyxLocation {
   id: string;
   name: string;
   telnyx_phone_number: string;
+  phone_porting_status?: string | null;
+}
+
+interface UnsetupLocation {
+  id: string;
+  name: string;
 }
 
 interface AIConfig {
@@ -122,6 +131,9 @@ export default function AIAgentSettingsPage() {
   });
 
   const [telnyxLocations, setTelnyxLocations] = useState<TelnyxLocation[]>([]);
+  const [unsetupLocations, setUnsetupLocations] = useState<UnsetupLocation[]>([]);
+  const [isSetupOpen, setIsSetupOpen] = useState(false);
+  const [setupLocationId, setSetupLocationId] = useState<string | null>(null);
   const [faqs, setFaqs] = useState<FAQ[]>([]);
   const [newFaq, setNewFaq] = useState({ question: '', answer: '' });
   const [isSaving, setIsSaving] = useState(false);
@@ -143,12 +155,21 @@ export default function AIAgentSettingsPage() {
   }, [tenantId]);
 
   const loadTelnyxLocations = async () => {
-    const { data } = await supabase
+    // Fetch locations WITH numbers
+    const { data: withNumbers } = await supabase
       .from('locations')
-      .select('id, name, telnyx_phone_number')
+      .select('id, name, telnyx_phone_number, phone_porting_status')
       .eq('tenant_id', tenantId)
       .not('telnyx_phone_number', 'is', null);
-    if (data) setTelnyxLocations(data as TelnyxLocation[]);
+    if (withNumbers) setTelnyxLocations(withNumbers as TelnyxLocation[]);
+
+    // Fetch locations WITHOUT numbers (for setup wizard)
+    const { data: withoutNumbers } = await supabase
+      .from('locations')
+      .select('id, name')
+      .eq('tenant_id', tenantId)
+      .is('telnyx_phone_number', null);
+    if (withoutNumbers) setUnsetupLocations(withoutNumbers as UnsetupLocation[]);
   };
 
   const loadConfig = async () => {
@@ -402,30 +423,154 @@ export default function AIAgentSettingsPage() {
             Select which phone number the AI agent should answer
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          {telnyxLocations.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              No locations with Telnyx phone numbers found. Set up a location with a phone number first.
-            </p>
-          ) : (
-            <Select
-              value={config.location_id || ''}
-              onValueChange={(value) => setConfig({ ...config, location_id: value || null })}
-            >
-              <SelectTrigger className="max-w-md">
-                <SelectValue placeholder="Select a phone number..." />
-              </SelectTrigger>
-              <SelectContent>
-                {telnyxLocations.map((loc) => (
-                  <SelectItem key={loc.id} value={loc.id}>
-                    {loc.name} — {loc.telnyx_phone_number}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+        <CardContent className="space-y-4">
+          {telnyxLocations.length > 0 && (
+            <div className="space-y-3">
+              <Select
+                value={config.location_id || ''}
+                onValueChange={(value) => setConfig({ ...config, location_id: value || null })}
+              >
+                <SelectTrigger className="max-w-md">
+                  <SelectValue placeholder="Select a phone number..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {telnyxLocations.map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.name} — {loc.telnyx_phone_number}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              {/* Status badge for selected number */}
+              {config.location_id && (() => {
+                const selected = telnyxLocations.find(l => l.id === config.location_id);
+                if (!selected) return null;
+                const status = selected.phone_porting_status || 'active';
+                return (
+                  <div className="flex items-center gap-2 text-sm">
+                    <Badge variant={status === 'active' ? 'default' : 'secondary'}>
+                      {status === 'active' ? 'Active' : status}
+                    </Badge>
+                    <span className="text-muted-foreground">{selected.telnyx_phone_number}</span>
+                  </div>
+                );
+              })()}
+            </div>
           )}
+
+          {telnyxLocations.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No locations with phone numbers found. Set up a number to get started.
+            </p>
+          )}
+
+          {/* Setup / Manage actions */}
+          <div className="flex items-center gap-3 flex-wrap">
+            {unsetupLocations.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  // Auto-select if only one location without a number
+                  if (unsetupLocations.length === 1) {
+                    setSetupLocationId(unsetupLocations[0].id);
+                  } else {
+                    setSetupLocationId(null);
+                  }
+                  setIsSetupOpen(true);
+                }}
+              >
+                <Plus className="h-4 w-4 mr-2" />
+                Set Up New Number
+              </Button>
+            )}
+            {unsetupLocations.length === 0 && telnyxLocations.length === 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate('/settings/locations')}
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Create a Location First
+              </Button>
+            )}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => navigate('/settings/phone-provisioning')}
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Manage All Numbers
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Phone Setup Wizard Dialog */}
+      <Dialog open={isSetupOpen} onOpenChange={setIsSetupOpen}>
+        <DialogContent className="sm:max-w-lg p-0 overflow-hidden [&>button]:hidden">
+          {isSetupOpen && (
+            <>
+              {/* Location picker when multiple unsetup locations exist */}
+              {!setupLocationId && unsetupLocations.length > 1 ? (
+                <div className="p-6 space-y-4">
+                  <h3 className="text-lg font-semibold">Choose a Location</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Select which location should get a new phone number.
+                  </p>
+                  <div className="space-y-2">
+                    {unsetupLocations.map((loc) => (
+                      <Button
+                        key={loc.id}
+                        variant="outline"
+                        className="w-full justify-start"
+                        onClick={() => setSetupLocationId(loc.id)}
+                      >
+                        {loc.name}
+                      </Button>
+                    ))}
+                  </div>
+                  <Button variant="ghost" className="w-full" onClick={() => setIsSetupOpen(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              ) : setupLocationId ? (
+                <div className="p-0 [&>div]:border-0 [&>div]:shadow-none">
+                  <PhoneSetupWizard
+                    locationId={setupLocationId}
+                    tenantId={tenantId!}
+                    locationName={
+                      unsetupLocations.find(l => l.id === setupLocationId)?.name || 'Location'
+                    }
+                    onComplete={() => {
+                      setIsSetupOpen(false);
+                      setSetupLocationId(null);
+                      loadTelnyxLocations();
+                      // Auto-select newly provisioned number
+                      setTimeout(async () => {
+                        const { data } = await supabase
+                          .from('locations')
+                          .select('id')
+                          .eq('id', setupLocationId)
+                          .not('telnyx_phone_number', 'is', null)
+                          .single();
+                        if (data) {
+                          setConfig(prev => ({ ...prev, location_id: data.id }));
+                        }
+                      }, 500);
+                    }}
+                    onCancel={() => {
+                      setIsSetupOpen(false);
+                      setSetupLocationId(null);
+                    }}
+                  />
+                </div>
+              ) : null}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Test Call Section */}
       <Card>
