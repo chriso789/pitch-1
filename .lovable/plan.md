@@ -1,40 +1,50 @@
 
 
-## Fix Job Details Page Layout (Final)
+## Filter Sales Rep Dropdown by Location
 
-### Issues from Screenshot
+### Problem
+The Sales Rep dropdown on the Lead Details page shows ALL reps across the entire company (both East Coast and West Coast). Patricia Stevenson is a West Coast lead (Sarasota, FL) but the dropdown shows East Coast reps like Jared Janacek, Michael Grosso, Taylor Johnston, and Uri Kaweblum alongside West Coast reps.
 
-1. **Title overflow**: The job name "Cesar Yax - 9160 Fountain Road, ..." is truncated. The name combines contact + address, which gets too long.
-2. **Tabs cut off**: 11 tabs overflow the container. `overflow-x-auto` is applied but there's no visual scroll indicator, so users don't know more tabs exist (Timeline, Audit are hidden).
-3. **Overall spacing/structure**: The header area needs tighter organization matching other pages.
+### Root Cause
+In `src/hooks/useLeadDetails.ts`, the `fetchSalesReps` function (line 259) only filters by `tenant_id` -- it does not consider the lead's `location_id`. The Pipeline page already does location-based rep filtering correctly using `user_location_assignments`, but this pattern was never applied to the Lead Details page.
+
+### Solution
+Update `fetchSalesReps` to accept the lead's `location_id` and filter reps through the `user_location_assignments` table. Elevated roles (master, owner, corporate, office_admin) should still appear regardless of location assignment since they have cross-location visibility.
 
 ### Changes
 
-**File: `src/pages/JobDetails.tsx`**
+**File: `src/hooks/useLeadDetails.ts`**
 
-**1. Fix the title display (lines 350-367)**
-- Show the contact name and address on separate lines instead of one combined truncated title
-- Title line: Just the contact name (e.g., "Cesar Yax") with status badges
-- Subtitle line: Full address + job number + project number
-- This prevents truncation and keeps all info visible
+1. **Update `fetchSalesReps` signature** (line 259): Accept `locationId` as a second parameter
+2. **Add location filtering logic**: 
+   - Query `user_location_assignments` for the lead's `location_id` to get user IDs assigned to that location
+   - Filter reps to only those assigned to the lead's location
+   - Always include elevated roles (owner, corporate, office_admin) regardless of location -- these are managers with company-wide permission
+   - If no `location_id` on the lead, fall back to showing all tenant reps (current behavior)
+3. **Update the query call** (line 316): Pass `location_id` from the lead data to the query, and add it to the query key for proper cache invalidation
 
-**2. Fix the tabs to be scrollable with visual cues (line 567)**
-- Add `scrollbar-thin` and padding/gradient fade hints so users can see there are more tabs
-- Wrap in a relative container with a right-side fade gradient to indicate scrollability
-- Ensure `flex-shrink-0` on each TabsTrigger so they don't compress
+```text
+Before:
+  fetchSalesReps(tenantId)
+  -> SELECT * FROM profiles WHERE tenant_id = X
+  -> Returns ALL reps in company
 
-**3. Clean up the contact bar (lines 407-436)**
-- The address currently duplicates city: "9160 Fountain Road, Wellington, FL 33467-4736 US, Wellington," -- this is a data issue but the display should handle it gracefully by not repeating
-- Add `truncate` on the address span with a `max-w` to prevent it from stretching the layout
+After:
+  fetchSalesReps(tenantId, locationId)
+  -> SELECT user_id FROM user_location_assignments WHERE location_id = Y
+  -> SELECT * FROM profiles WHERE tenant_id = X AND (id IN location_users OR role IN elevated_roles)
+  -> Returns only location-specific reps + managers
+```
 
-**4. Ensure consistent indentation of main content inside GlobalLayout (lines 331-744)**
-- The opening `div` at line 331 and closing at line 744 have inconsistent nesting -- fix the indentation so the whole page body is properly inside `max-w-7xl`
+### Technical Details
 
-### Technical Summary
+| Item | Detail |
+|------|--------|
+| File | `src/hooks/useLeadDetails.ts` |
+| Function | `fetchSalesReps` (lines 258-273) |
+| Query key update | Line 315: add `locationId` to cache key |
+| Query call update | Line 316: pass `leadQuery.data?.location_id` |
+| Elevated roles (always visible) | owner, corporate, office_admin |
+| Location-bound roles (filtered) | regional_manager, sales_manager, project_manager |
+| Fallback | If lead has no `location_id`, show all tenant reps (current behavior) |
 
-| Area | Problem | Fix |
-|------|---------|-----|
-| Title (line 352) | Combined name+address truncates | Split into name (h1) and address (subtitle) |
-| Tabs (line 567) | 11 tabs overflow with no scroll indicator | Add fade gradient hint + `flex-shrink-0` on triggers |
-| Contact bar (line 432) | Address duplicates city name | Trim trailing duplicate + add max-width |
-| Structure (lines 331-744) | Minor indentation inconsistency | Clean up nesting |
