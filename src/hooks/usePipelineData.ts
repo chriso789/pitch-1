@@ -11,6 +11,7 @@ export interface PipelineEntry {
   contact_id: string;
   status: string;
   created_at: string;
+  updated_at: string;
   location_id?: string;
   contacts: {
     id: string;
@@ -42,6 +43,7 @@ async function fetchPipelineEntries(locationId: string | null): Promise<Pipeline
       contact_id,
       status,
       created_at,
+      updated_at,
       location_id,
       contacts!inner (
         id,
@@ -79,6 +81,7 @@ async function fetchPipelineEntries(locationId: string | null): Promise<Pipeline
     contact_id: entry.contact_id,
     status: entry.status,
     created_at: entry.created_at,
+    updated_at: entry.updated_at,
     location_id: entry.location_id,
     contacts: Array.isArray(entry.contacts) ? entry.contacts[0] : entry.contacts,
     project: entry.projects ? (Array.isArray(entry.projects) ? entry.projects[0] : entry.projects) : undefined

@@ -956,6 +956,7 @@ const Pipeline = () => {
       clj_formatted_number: pipelineEntry.clj_formatted_number || `CLJ-${pipelineEntry.id.slice(-4)}`,
       status: pipelineEntry.status,
       created_at: pipelineEntry.created_at || new Date().toISOString(),
+      updated_at: pipelineEntry.updated_at || pipelineEntry.created_at || new Date().toISOString(),
       contact_id: pipelineEntry.contact_id,
       assigned_to: pipelineEntry.assigned_to,
       contacts: {

@@ -28,7 +28,7 @@ import { MultiTemplateSelector } from '@/components/estimates/MultiTemplateSelec
 import { DocumentsTab } from '@/components/DocumentsTab';
 import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelector';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
-import { LEAD_STAGES } from '@/hooks/usePipelineData';
+import { usePipelineStages } from '@/hooks/usePipelineStages';
 import { LinearFeaturesPanel } from '@/components/measurements/LinearFeaturesPanel';
 import { PullMeasurementsButton } from '@/components/measurements/PullMeasurementsButton';
 import { ImportReportButton } from '@/components/measurements/ImportReportButton';
@@ -226,6 +226,7 @@ const ProfitSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
+  const { stages } = usePipelineStages();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'estimate');
@@ -429,8 +430,8 @@ const LeadDetails = () => {
   // Terminal statuses always available
   const terminalStatuses = ['lost', 'canceled'];
 
-  // All possible stages for manager override
-  const allStages = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval', 'project', 'completed', 'closed'];
+  // All possible stages for manager override - derived from dynamic stages
+  const allStages = stages.map(s => s.key);
 
   // Get available statuses based on user role and current status
   const getAvailableStatuses = (currentStatus: string) => {
@@ -730,7 +731,7 @@ const LeadDetails = () => {
                   <SelectContent>
                     {(() => {
                       const availableStatuses = getAvailableStatuses(lead.status);
-                      const filteredStages = LEAD_STAGES.filter(stage => 
+                      const filteredStages = stages.filter(stage => 
                         availableStatuses.includes(stage.key) || stage.key === lead.status
                       );
                       
@@ -750,9 +751,9 @@ const LeadDetails = () => {
                   className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors"
                   onClick={() => setIsEditingStatus(true)}
                 >
-                  <div className={`w-2 h-2 rounded-full ${LEAD_STAGES.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
+                  <div className={`w-2 h-2 rounded-full ${stages.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
                   <span className="text-sm font-medium capitalize">
-                    {LEAD_STAGES.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
+                    {stages.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
                   </span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </div>
