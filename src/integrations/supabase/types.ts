@@ -16415,6 +16415,7 @@ export type Database = {
         Row: {
           address_street: string | null
           assigned_to: string | null
+          canvass_property_id: string | null
           contact_id: string
           created_at: string
           created_by: string | null
@@ -16431,12 +16432,14 @@ export type Database = {
           project_id: string | null
           roof_type: string | null
           status: Database["public"]["Enums"]["job_status"]
+          storm_event_id: string | null
           tenant_id: string
           updated_at: string
         }
         Insert: {
           address_street?: string | null
           assigned_to?: string | null
+          canvass_property_id?: string | null
           contact_id: string
           created_at?: string
           created_by?: string | null
@@ -16453,12 +16456,14 @@ export type Database = {
           project_id?: string | null
           roof_type?: string | null
           status?: Database["public"]["Enums"]["job_status"]
+          storm_event_id?: string | null
           tenant_id: string
           updated_at?: string
         }
         Update: {
           address_street?: string | null
           assigned_to?: string | null
+          canvass_property_id?: string | null
           contact_id?: string
           created_at?: string
           created_by?: string | null
@@ -16475,6 +16480,7 @@ export type Database = {
           project_id?: string | null
           roof_type?: string | null
           status?: Database["public"]["Enums"]["job_status"]
+          storm_event_id?: string | null
           tenant_id?: string
           updated_at?: string
         }
@@ -37751,6 +37757,24 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvass_area_roi: {
+        Row: {
+          area_id: string | null
+          jobs_won: number | null
+          revenue: number | null
+          storm_event_id: string | null
+          tenant_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_area_properties_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_areas"
             referencedColumns: ["id"]
           },
         ]

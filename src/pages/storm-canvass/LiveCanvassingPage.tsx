@@ -16,6 +16,8 @@ import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhoto
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import PropertyLoadingIndicator from '@/components/storm-canvass/PropertyLoadingIndicator';
 import TerritoryBoundaryAlert from '@/components/storm-canvass/TerritoryBoundaryAlert';
+import CanvassModeToggle from '@/components/storm-canvass/CanvassModeToggle';
+import DropPinDialog from '@/components/storm-canvass/DropPinDialog';
 import { useAssignedArea } from '@/hooks/useAssignedArea';
 import { locationService } from '@/services/locationService';
 import { gpsTrailService } from '@/services/gpsTrailService';
@@ -71,6 +73,8 @@ export default function LiveCanvassingPage() {
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<any>(null);
   const [showPropertyPanel, setShowPropertyPanel] = useState(false);
+  const [canvassMode, setCanvassMode] = useState(false);
+  const [dropPinCoords, setDropPinCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destination, setDestination] = useState<{
     lat: number;
     lng: number;
@@ -357,6 +361,7 @@ export default function LiveCanvassingPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <CanvassModeToggle enabled={canvassMode} onToggle={setCanvassMode} />
             <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex text-xs">
               {isTracking ? 'Tracking' : 'Not Tracking'}
             </Badge>
@@ -401,8 +406,9 @@ export default function LiveCanvassingPage() {
           onLoadingChange={setRawIsLoading}
           onPropertiesLoaded={setRawLoadedCount}
           refreshKey={markersRefreshKey}
-          areaPropertyIds={areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
+          areaPropertyIds={!canvassMode && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
           areaPolygon={areaPolygon}
+          onMapClick={canvassMode ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         
@@ -435,6 +441,22 @@ export default function LiveCanvassingPage() {
         {/* GPS Acquiring Overlay - show while waiting for real GPS */}
         {!hasGPS && <GPSAcquiringOverlay />}
       </div>
+
+      {/* Drop Pin Dialog */}
+      {dropPinCoords && profile?.tenant_id && profile?.id && (
+        <DropPinDialog
+          open={!!dropPinCoords}
+          onOpenChange={(open) => { if (!open) setDropPinCoords(null); }}
+          lat={dropPinCoords.lat}
+          lng={dropPinCoords.lng}
+          tenantId={profile.tenant_id}
+          userId={profile.id}
+          onSuccess={() => {
+            setDropPinCoords(null);
+            setMarkersRefreshKey(prev => prev + 1);
+          }}
+        />
+      )}
 
       {/* Mobile Disposition Panel (for contacts) */}
       <MobileDispositionPanel

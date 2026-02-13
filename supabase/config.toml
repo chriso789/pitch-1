@@ -1089,3 +1089,12 @@ verify_jwt = false
 
 [functions.canvass-area-build-membership]
 verify_jwt = false
+
+[functions.canvass-drop-pin]
+verify_jwt = false
+
+[functions.canvass-area-build-heatmap]
+verify_jwt = false
+
+[functions.canvass-area-auto-split]
+verify_jwt = false

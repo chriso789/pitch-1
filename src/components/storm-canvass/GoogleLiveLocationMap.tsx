@@ -19,7 +19,8 @@ interface GoogleLiveLocationMapProps {
   onPropertiesLoaded?: (count: number) => void;
   refreshKey?: number;
   areaPropertyIds?: string[];
-  areaPolygon?: any; // GeoJSON polygon to render as overlay
+  areaPolygon?: any;
+  onMapClick?: (lat: number, lng: number) => void;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
@@ -40,6 +41,7 @@ export default function GoogleLiveLocationMap({
   refreshKey,
   areaPropertyIds,
   areaPolygon,
+  onMapClick,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -111,6 +113,21 @@ export default function GoogleLiveLocationMap({
       setMapReady(false);
     };
   }, [apiKey]);
+
+  // Map click listener for canvass mode
+  useEffect(() => {
+    if (!map.current || !mapReady || !onMapClick) return;
+
+    const listener = map.current.addListener('click', (e: google.maps.MapMouseEvent) => {
+      if (e.latLng) {
+        onMapClick(e.latLng.lat(), e.latLng.lng());
+      }
+    });
+
+    return () => {
+      google.maps.event.removeListener(listener);
+    };
+  }, [mapReady, onMapClick]);
 
   // Update map style when changed
   useEffect(() => {
