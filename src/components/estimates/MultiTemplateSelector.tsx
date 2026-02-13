@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { ALL_TRADES, matchesTradeCategory } from '@/lib/trades';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
@@ -77,13 +78,8 @@ interface Template {
   template_category?: string;
 }
 
-const AVAILABLE_TRADES = [
-  { value: 'roofing', label: 'Roofing', icon: '🏠', default: true },
-  { value: 'gutters', label: 'Gutters', icon: '🔧' },
-  { value: 'siding', label: 'Siding', icon: '🧱' },
-  { value: 'interior', label: 'Interior Trades', icon: '🏗️' },
-  { value: 'exterior', label: 'Exterior Trades', icon: '🔨' },
-] as const;
+// Use shared trade constants from lib/trades.ts
+const AVAILABLE_TRADES = ALL_TRADES;
 
 interface TradeSection {
   id: string;
@@ -207,6 +203,27 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const queryClient = useQueryClient();
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [searchParams] = useSearchParams();
+
+  // Load enabled trades for this company
+  const [enabledTrades, setEnabledTrades] = useState<string[]>(['roofing']);
+  useEffect(() => {
+    if (!currentTenantId) return;
+    const loadEnabledTrades = async () => {
+      const { data } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('tenant_id', currentTenantId)
+        .eq('setting_key', 'enabled_estimate_trades')
+        .maybeSingle();
+      if (data?.setting_value) {
+        try {
+          const parsed = JSON.parse(data.setting_value as string);
+          if (Array.isArray(parsed) && parsed.length > 0) setEnabledTrades(parsed);
+        } catch {}
+      }
+    };
+    loadEnabledTrades();
+  }, [currentTenantId]);
 
   // Use the pricing hook - pass rep rates as initial config when available
   const {
@@ -1948,9 +1965,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           {/* Trade Sections */}
           {tradeSections.map((trade, index) => {
             const tradeConfig = AVAILABLE_TRADES.find(t => t.value === trade.tradeType);
-            const filteredTemplates = trade.tradeType === 'roofing' 
-              ? templates 
-              : templates.filter(t => t.template_category === trade.tradeType);
+            const filteredTemplates = templates.filter(t => matchesTradeCategory(t.template_category, trade.tradeType));
             
             return (
               <Collapsible 
@@ -2080,7 +2095,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           {/* Add Trade Button */}
           {(() => {
             const addedTradeTypes = tradeSections.map(t => t.tradeType);
-            const availableTrades = AVAILABLE_TRADES.filter(t => !addedTradeTypes.includes(t.value));
+            const availableTrades = AVAILABLE_TRADES.filter(t => 
+              !addedTradeTypes.includes(t.value) && enabledTrades.includes(t.value)
+            );
             
             if (availableTrades.length === 0) return null;
             
