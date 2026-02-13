@@ -69,7 +69,25 @@ export function useAssignedArea(): AssignedAreaData {
       setAssignedArea({ id: area.id, name: area.name, color: area.color });
       setAreaPolygon(area.polygon_geojson);
 
-      // 3. Load property IDs for the area
+      // 3. Check for per-rep split assignments first
+      const { data: splitRows } = await (supabase
+        .from('canvass_area_property_assignments' as any)
+        .select('property_id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('area_id', areaId)
+        .eq('user_id', profile.id) as any);
+
+      if (!mounted) return;
+
+      if (splitRows && splitRows.length > 0) {
+        // Split mode: rep sees only their assigned properties
+        const ids = splitRows.map((r: any) => r.property_id).filter(Boolean) as string[];
+        setPropertyIds(ids);
+        setLoading(false);
+        return;
+      }
+
+      // 4. Fallback: all area properties (pre-split / unsplit mode)
       const { data: memberRows } = await supabase
         .from('canvass_area_properties')
         .select('property_id')
