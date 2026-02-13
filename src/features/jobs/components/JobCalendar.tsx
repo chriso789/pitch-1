@@ -19,8 +19,10 @@ import {
   Clock,
   Plus,
   Filter,
-  ExternalLink
+  ExternalLink,
+  CloudSun
 } from "lucide-react";
+import { WeatherWidget } from "@/components/production/WeatherWidget";
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from "date-fns";
 
 interface CalendarEvent {
@@ -332,6 +334,9 @@ const JobCalendar = ({ onBack }: JobCalendarProps) => {
           </Dialog>
         </div>
       </div>
+
+      {/* Weather Widget */}
+      <WeatherWidget />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Filters */}
