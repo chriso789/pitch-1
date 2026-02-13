@@ -15,6 +15,8 @@ import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapt
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import PropertyLoadingIndicator from '@/components/storm-canvass/PropertyLoadingIndicator';
+import TerritoryBoundaryAlert from '@/components/storm-canvass/TerritoryBoundaryAlert';
+import { useAssignedArea } from '@/hooks/useAssignedArea';
 import { locationService } from '@/services/locationService';
 import { gpsTrailService } from '@/services/gpsTrailService';
 import { useToast } from '@/hooks/use-toast';
@@ -56,6 +58,7 @@ export default function LiveCanvassingPage() {
   const { getDispositions } = useStormCanvass();
   const { profile } = useUserProfile();
   const layout = useDeviceLayout();
+  const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
   // Start with default location for instant map load
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(DEFAULT_LOCATION);
   const [hasGPS, setHasGPS] = useState(false);
@@ -389,7 +392,6 @@ export default function LiveCanvassingPage() {
           currentAddress={currentAddress}
           onContactSelect={setSelectedContact}
           onParcelSelect={(property) => {
-            // Open bottom sheet instead of navigating
             setSelectedProperty(property);
             setShowPropertyPanel(true);
           }}
@@ -399,8 +401,15 @@ export default function LiveCanvassingPage() {
           onLoadingChange={setRawIsLoading}
           onPropertiesLoaded={setRawLoadedCount}
           refreshKey={markersRefreshKey}
+          areaPropertyIds={areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
+          areaPolygon={areaPolygon}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
+        
+        {/* Territory Boundary Alert */}
+        {assignedArea && areaPolygon && (
+          <TerritoryBoundaryAlert userLocation={userLocation} areaPolygon={areaPolygon} />
+        )}
         
         {/* Property Loading Indicator */}
         <PropertyLoadingIndicator
