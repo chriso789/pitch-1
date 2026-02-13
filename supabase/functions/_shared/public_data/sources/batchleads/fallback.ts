@@ -1,9 +1,10 @@
 // supabase/functions/_shared/public_data/sources/batchleads/fallback.ts
 
 import { PublicPropertyResult, NormalizedLocation } from "../../types.ts";
+import { retry } from "../../../utils/retry.ts";
 
 /**
- * BatchLeads fallback enrichment.
+ * BatchLeads fallback enrichment with retry logic.
  * Only called when confidence < 70 or owner/mailing data is missing.
  * Requires BATCHLEADS_API_KEY secret.
  * Never overwrites validated public data (merge handles priority).
@@ -15,19 +16,28 @@ export async function batchLeadsFallback(input: {
   const apiKey = Deno.env.get("BATCHLEADS_API_KEY");
   if (!apiKey) return null;
 
+  return retry(
+    () => fetchBatchLeads(apiKey, input.loc, input.timeoutMs),
+    { retries: 3, baseDelay: 500 },
+  );
+}
+
+async function fetchBatchLeads(
+  apiKey: string,
+  loc: NormalizedLocation,
+  timeoutMs: number,
+): Promise<Partial<PublicPropertyResult> | null> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), input.timeoutMs);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch("https://api.batchleads.io/v1/property/lookup", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({
-        address: input.loc.normalized_address,
-      }),
+      body: JSON.stringify({ address: loc.normalized_address }),
       signal: controller.signal,
     });
 
@@ -45,7 +55,7 @@ export async function batchLeadsFallback(input: {
     };
   } catch (e) {
     console.error("[BatchLeads fallback error]", e);
-    return null;
+    throw e; // let retry handle it
   } finally {
     clearTimeout(timeout);
   }

@@ -1077,3 +1077,12 @@ verify_jwt = false
 
 [functions.storm-polygon-worker]
 verify_jwt = false
+
+[functions.storm-intel-score]
+verify_jwt = false
+
+[functions.storm-intel-batch-score]
+verify_jwt = false
+
+[functions.canvass-route-plan]
+verify_jwt = false

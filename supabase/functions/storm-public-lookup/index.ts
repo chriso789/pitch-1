@@ -49,7 +49,11 @@ Deno.serve(async (req) => {
 
     if (cached && cached.confidence_score >= 40) {
       const age = Date.now() - new Date(cached.updated_at).getTime();
-      if (age < 30 * 24 * 60 * 60 * 1000) {
+      // BatchLeads-enriched records use shorter 7-day TTL; public-only get 30 days
+      const maxAgeMs = cached.used_batchleads
+        ? 7 * 24 * 60 * 60 * 1000
+        : 30 * 24 * 60 * 60 * 1000;
+      if (age < maxAgeMs) {
         return new Response(JSON.stringify({ success: true, result: cached, cached: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -68,6 +72,9 @@ Deno.serve(async (req) => {
       includeTax: body.include_tax ?? true,
       includeClerk: body.include_clerk ?? true,
       timeoutMs,
+      stormEventId: storm_event_id,
+      polygonId: polygon_id,
+      tenantId: tenant_id,
     });
 
     // 5) Upsert to storm_properties_public

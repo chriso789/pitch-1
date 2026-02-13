@@ -2397,6 +2397,44 @@ export type Database = {
         }
         Relationships: []
       }
+      batchleads_usage: {
+        Row: {
+          cost: number
+          created_at: string
+          id: string
+          normalized_address_key: string | null
+          polygon_id: string | null
+          storm_event_id: string
+          tenant_id: string
+        }
+        Insert: {
+          cost?: number
+          created_at?: string
+          id?: string
+          normalized_address_key?: string | null
+          polygon_id?: string | null
+          storm_event_id: string
+          tenant_id: string
+        }
+        Update: {
+          cost?: number
+          created_at?: string
+          id?: string
+          normalized_address_key?: string | null
+          polygon_id?: string | null
+          storm_event_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "batchleads_usage_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       blocked_email_domains: {
         Row: {
           created_at: string | null
@@ -3593,6 +3631,53 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      canvass_routes: {
+        Row: {
+          created_at: string
+          id: string
+          metrics: Json
+          name: string | null
+          planned_stops: Json
+          start_lat: number | null
+          start_lng: number | null
+          storm_event_id: string
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          metrics?: Json
+          name?: string | null
+          planned_stops?: Json
+          start_lat?: number | null
+          start_lng?: number | null
+          storm_event_id: string
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          metrics?: Json
+          name?: string | null
+          planned_stops?: Json
+          start_lat?: number | null
+          start_lng?: number | null
+          storm_event_id?: string
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_routes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -31700,6 +31785,59 @@ export type Database = {
           },
         ]
       }
+      storm_events: {
+        Row: {
+          created_at: string
+          end_at: string | null
+          hail_max_in: number | null
+          hail_prob: number | null
+          hazard_type: string | null
+          id: string
+          max_wind_mph: number | null
+          name: string | null
+          polygon_geojson: Json | null
+          start_at: string | null
+          tenant_id: string
+          wind_prob: number | null
+        }
+        Insert: {
+          created_at?: string
+          end_at?: string | null
+          hail_max_in?: number | null
+          hail_prob?: number | null
+          hazard_type?: string | null
+          id: string
+          max_wind_mph?: number | null
+          name?: string | null
+          polygon_geojson?: Json | null
+          start_at?: string | null
+          tenant_id: string
+          wind_prob?: number | null
+        }
+        Update: {
+          created_at?: string
+          end_at?: string | null
+          hail_max_in?: number | null
+          hail_prob?: number | null
+          hazard_type?: string | null
+          id?: string
+          max_wind_mph?: number | null
+          name?: string | null
+          polygon_geojson?: Json | null
+          start_at?: string | null
+          tenant_id?: string
+          wind_prob?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storm_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       storm_lookup_queue: {
         Row: {
           address: string | null
@@ -31862,6 +32000,65 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "storm_properties_public_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      storm_property_intel: {
+        Row: {
+          claim_factors: Json
+          claim_likelihood_score: number
+          created_at: string
+          damage_factors: Json
+          damage_score: number
+          equity_factors: Json
+          equity_score: number
+          id: string
+          normalized_address_key: string
+          priority_score: number
+          property_id: string | null
+          property_snapshot: Json
+          storm_event_id: string
+          tenant_id: string
+        }
+        Insert: {
+          claim_factors?: Json
+          claim_likelihood_score?: number
+          created_at?: string
+          damage_factors?: Json
+          damage_score?: number
+          equity_factors?: Json
+          equity_score?: number
+          id?: string
+          normalized_address_key: string
+          priority_score?: number
+          property_id?: string | null
+          property_snapshot?: Json
+          storm_event_id: string
+          tenant_id: string
+        }
+        Update: {
+          claim_factors?: Json
+          claim_likelihood_score?: number
+          created_at?: string
+          damage_factors?: Json
+          damage_score?: number
+          equity_factors?: Json
+          equity_score?: number
+          id?: string
+          normalized_address_key?: string
+          priority_score?: number
+          property_id?: string | null
+          property_snapshot?: Json
+          storm_event_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storm_property_intel_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
