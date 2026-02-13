@@ -76,10 +76,45 @@ Deno.serve(async (req) => {
     if (FIRECRAWL_API_KEY) {
       try {
         const state = property.address?.state?.toLowerCase();
-        const countyUrls: Record<string, string> = {
+      const countyUrls: Record<string, string> = {
+          // Florida
           'hillsborough': 'https://www.hcpafl.org',
           'pinellas': 'https://www.pcpao.org',
-          'orange': 'https://www.ocpafl.org'
+          'orange': 'https://www.ocpafl.org',
+          'miami-dade': 'https://www.miamidade.gov/pa',
+          'broward': 'https://web.bcpa.net',
+          'palm beach': 'https://www.pbcgov.com/papa',
+          'duval': 'https://www.coj.net/departments/property-appraiser',
+          'lee': 'https://www.leepa.org',
+          'brevard': 'https://www.bcpao.us',
+          'sarasota': 'https://www.sc-pa.com',
+          'manatee': 'https://www.manateepao.com',
+          'polk': 'https://www.polkpa.org',
+          'osceola': 'https://www.property-appraiser.org',
+          'seminole': 'https://www.scpafl.org',
+          'pasco': 'https://www.pascopa.com',
+          'lake': 'https://www.lakecopropappr.com',
+          'collier': 'https://www.collierappraiser.com',
+          'charlotte': 'https://www.ccappraiser.com',
+          'volusia': 'https://www.volusia.org/services/growth-and-resource-management/property-appraiser',
+          // Texas
+          'harris': 'https://www.hcad.org',
+          'dallas': 'https://www.dallascad.org',
+          'tarrant': 'https://www.tad.org',
+          'bexar': 'https://www.bcad.org',
+          'travis': 'https://www.traviscad.org',
+          // Georgia
+          'fulton': 'https://www.fultoncountyga.gov/property',
+          'gwinnett': 'https://www.gwinnettcounty.com/taxcommissioner',
+          'cobb': 'https://www.cobbassessor.org',
+          // North Carolina
+          'mecklenburg': 'https://meckcama.co.mecklenburg.nc.us',
+          'wake': 'https://services.wakegov.com/realestate',
+          // Colorado
+          'denver': 'https://www.denvergov.org/property',
+          'el paso': 'https://assessor.elpasoco.com',
+          // Arizona
+          'maricopa': 'https://mcassessor.maricopa.gov',
         };
 
         const county = property.address?.county?.toLowerCase();

@@ -342,41 +342,17 @@ function formatOSMAddress(tags: Record<string, string>): string | undefined {
 }
 
 // =========================================================================
-// PREMIUM DATA FLAG - For when users explicitly request Regrid quality
+// PUBLIC DATA ONLY - No premium/paid APIs
 // =========================================================================
 
-export interface PremiumPropertyResult extends FreePropertyResult {
-  premiumAvailable: boolean;
-  premiumCost?: string;
-}
-
 /**
- * Check if premium (Regrid) data should be fetched
- * Returns free data by default, with option to upgrade
+ * Fetch property data from public sources only
+ * No Regrid, no paid parcel APIs
  */
-export async function fetchPropertyDataWithPremiumOption(
+export async function fetchPropertyDataPublicOnly(
   lat: number,
   lng: number,
-  options?: {
-    address?: string;
-    usePremium?: boolean;
-    regridApiKey?: string;
-  }
-): Promise<PremiumPropertyResult> {
-  // Always try free sources first
-  const freeResult = await fetchFreePropertyData(lat, lng, { address: options?.address });
-  
-  const result: PremiumPropertyResult = {
-    ...freeResult,
-    premiumAvailable: !!options?.regridApiKey,
-    premiumCost: '$0.03-0.10',
-  };
-  
-  // Only use premium if explicitly requested AND API key exists
-  if (options?.usePremium && options?.regridApiKey) {
-    console.log('🔓 Premium (Regrid) data requested - would call Regrid API here');
-    // In production: result.data = await fetchRegridPropertyData(lat, lng, options.regridApiKey);
-  }
-  
-  return result;
+  options?: { address?: string; timeout?: number }
+): Promise<FreePropertyResult> {
+  return fetchFreePropertyData(lat, lng, options);
 }

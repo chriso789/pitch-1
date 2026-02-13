@@ -1068,3 +1068,6 @@ verify_jwt = true
 
 [functions.xactimate-exporter]
 verify_jwt = true
+
+[functions.storm-public-lookup]
+verify_jwt = false
