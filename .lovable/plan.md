@@ -1,191 +1,185 @@
 
 
-## Production Hardening: Caching, Retry, Cost Analytics, Intel Scoring, and Route Optimization
+## Tenant Config Table + "Why This Score?" Panel + Manager Map Areas with Rep Assignments
 
 ### Overview
 
-This adds 5 production-grade layers on top of the existing public data engine:
-1. Retry utility with exponential backoff
-2. BatchLeads cost analytics tracking (batchleads_usage table)
-3. Smart fallback rules (absentee-only, homestead skip, per-storm cap)
-4. Storm Intelligence scoring (damage, equity, claim likelihood, priority)
-5. Canvass route optimization (cluster + nearest neighbor + 2-opt)
+Three features built on the existing StormCanvass intelligence engine:
 
-### Important Note: BATCHLEADS_API_KEY
+1. **Tenant config tables** -- make scoring weights and county $/sqft configurable per tenant instead of hardcoded
+2. **"Why This Score?" explainability panel** -- renders `storm_property_intel` factors as a visual breakdown (similar to TradeDecisionPanel pattern)
+3. **Manager-drawn map areas** with rep assignments, precomputed property membership, and live counters (total + contacted)
 
-The `BATCHLEADS_API_KEY` secret does **not** appear in the current project secrets list. It will need to be added before the BatchLeads fallback can activate. The system will still work without it -- it just skips the fallback gracefully.
+The map pin dataset is **`canvassiq_properties`** (confirmed from `GooglePropertyMarkersLayer.tsx`). All area membership joins use that table.
 
-### Database Migrations (4 new tables)
+---
 
-**Table 1: `batchleads_usage`** -- tracks every BatchLeads API call for cost visibility
+### 1. Database Migration
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | uuid PK | Auto-generated |
-| tenant_id | uuid | Tenant reference |
-| storm_event_id | text | Storm event reference |
-| polygon_id | text | Polygon reference |
-| normalized_address_key | text | Property key |
-| cost | numeric | Per-lookup cost (default 0.15) |
-| created_at | timestamptz | Timestamp |
+**Table: `storm_intel_tenant_config`** -- per-tenant global scoring defaults
 
-**Table 2: `storm_events`** -- storm metadata for intel scoring
+| Column | Type | Default | Description |
+|--------|------|---------|-------------|
+| tenant_id | uuid PK | -- | Tenant reference |
+| default_ppsf | numeric | 220 | Default price per sqft for equity model |
+| w_damage / w_equity / w_claim | numeric | 0.30 / 0.15 / 0.55 | Priority blend weights |
+| claim_w_damage / claim_w_equity | numeric | 0.55 / 0.20 | Claim model internal weights |
+| claim_absentee_bonus | int | 10 | Points added for absentee |
+| claim_homestead_low_damage_penalty | int | 8 | Penalty when homestead + low damage |
+| claim_homestead_high_damage_bonus | int | 6 | Bonus when homestead + high damage |
+| hail_points_per_inch / hail_cap | numeric/int | 18 / 45 | Damage model hail config |
+| wind_points_per_3mph / wind_cap | numeric/int | 1 / 35 | Damage model wind config |
+| age_points_per_2yrs / age_cap | numeric/int | 1 / 20 | Damage model age config |
+| min_priority_to_route | int | 60 | Minimum score for route inclusion |
+| min_confidence_for_public_only | int | 70 | Skip BatchLeads threshold |
 
-| Column | Type | Description |
-|--------|------|-------------|
-| id | text PK | e.g. "2026-03-Helene" |
-| tenant_id | uuid | Tenant reference |
-| name | text | Display name |
-| start_at / end_at | timestamptz | Storm window |
-| hazard_type | text | hail/wind/tornado/hurricane |
-| max_wind_mph | int | Peak wind speed |
-| hail_max_in | numeric | Max hail size |
-| hail_prob / wind_prob | numeric | Probability 0-1 |
-| polygon_geojson | jsonb | Storm polygon |
-
-**Table 3: `storm_property_intel`** -- per-property intelligence scores
+**Table: `storm_intel_county_config`** -- per-county $/sqft and LTV overrides
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid PK | Auto-generated |
 | tenant_id | uuid | Tenant reference |
-| storm_event_id | text | FK to storm_events |
-| property_id | uuid | Optional FK to storm_properties_public |
-| normalized_address_key | text | Property key |
-| property_snapshot | jsonb | Frozen property data |
-| damage_score | int | 0-100 |
-| equity_score | int | 0-100 |
-| claim_likelihood_score | int | 0-100 |
-| damage_factors / equity_factors / claim_factors | jsonb | Explainability |
-| priority_score | int | 0-100 weighted blend |
+| state | text | e.g. "FL" |
+| county | text | e.g. "Sarasota" |
+| zip | text (nullable) | Optional zip override |
+| ppsf | numeric | County-specific price per sqft |
+| ltv_recent / ltv_5yr / ltv_10yr / ltv_older | numeric | LTV bands by purchase recency |
 
-Unique on `(tenant_id, storm_event_id, normalized_address_key)`.
+Unique on `(tenant_id, state, county, zip)`.
 
-**Table 4: `canvass_routes`** -- optimized door-knock routes
+**Table: `canvass_areas`** -- manager-drawn polygons
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | uuid PK | Auto-generated |
 | tenant_id | uuid | Tenant reference |
-| storm_event_id | text | Storm event |
+| name | text | Area display name |
+| description | text | Optional description |
+| polygon_geojson | jsonb | GeoJSON polygon |
+| color | text | Display color (default #3b82f6) |
+| created_by | uuid | Manager who created |
+
+**Table: `canvass_area_assignments`** -- rep-to-area mapping
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | Auto-generated |
+| tenant_id | uuid | Tenant reference |
+| area_id | uuid FK | References canvass_areas |
 | user_id | uuid | Assigned rep |
-| name | text | Route name |
-| start_lat / start_lng | double precision | Start point |
-| planned_stops | jsonb | Ordered stop list |
-| metrics | jsonb | Distance/time stats |
+| is_active | boolean | Default true |
+
+Unique on `(tenant_id, area_id, user_id)`.
+
+**Table: `canvass_area_properties`** -- precomputed membership
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | Auto-generated |
+| tenant_id | uuid | Tenant reference |
+| area_id | uuid FK | References canvass_areas |
+| property_id | uuid | FK to canvassiq_properties |
+| lat / lng | double precision | Property coordinates |
+
+Unique on `(tenant_id, area_id, property_id)`.
+
+**View: `canvass_area_stats`** -- live counter aggregation
+
+Joins `canvass_area_properties` with `canvassiq_visits` to produce `total_properties` and `contacted_properties` per area. Uses `security_invoker = true` to respect RLS.
 
 All tables get RLS policies for tenant isolation.
 
-### New Shared Modules
+---
 
-**`_shared/utils/retry.ts`** -- Generic exponential backoff utility
-- Configurable retries, base delay, factor
-- Used by BatchLeads fallback, Overpass, county scrapers
+### 2. Update Scoring Modules to Use Config
 
-**`_shared/intel/damage.ts`** -- Predictive storm damage scoring
-- Inputs: storm hail/wind intensity, roof age proxy (year_built)
-- Hail: up to 45pts (1 inch = ~18pts), Wind: up to 35pts, Age: up to 20pts
+**`_shared/intel/damage.ts`** -- Accept optional config parameter with hail/wind/age weights. Falls back to current hardcoded values if no config passed.
 
-**`_shared/intel/equity.ts`** -- Equity estimation model
-- Estimated value: living_sqft x configurable $/sqft (default $220)
-- Mortgage proxy: last_sale_amount x LTV band based on years since purchase
-- Score: equity percentage mapped to 0-100
+**`_shared/intel/equity.ts`** -- Accept optional config for `ppsf` and LTV bands instead of hardcoded `220` and `0.9/0.8/0.7/0.6`.
 
-**`_shared/intel/claim.ts`** -- Claim likelihood scoring
-- 55% weight on damage score, 20% weight on equity
-- +10 for absentee owners, homestead adjustments
-- Identifies properties most likely to engage
+**`_shared/intel/claim.ts`** -- Accept optional config for claim weights, absentee bonus, homestead adjustments.
 
-**`_shared/intel/priority.ts`** -- Single sortable priority
-- Weighted blend: 55% claim + 30% damage + 15% equity
+**`_shared/intel/priority.ts`** -- Accept optional config for `w_damage`, `w_equity`, `w_claim` blend weights.
 
-**`_shared/routing/haversine.ts`** -- Distance calculation
+**`storm-intel-score/index.ts`** -- Load tenant config + county config from DB before scoring. Pass config to all scoring functions. Single DB fetch at start, cached for the request.
 
-**`_shared/routing/routePlanner.ts`** -- Route optimization
-- Grid clustering (~1km cells) to prevent zig-zag
-- Nearest neighbor within clusters (priority-weighted)
-- 2-opt improvement passes (up to 80 iterations)
-- No paid routing API needed
+---
 
-### Pipeline Updates
+### 3. "Why This Score?" Panel
 
-**`publicLookupPipeline.ts`** -- Add smart fallback rules:
-- Only trigger BatchLeads for absentee owners (mailing != property address)
-- Skip if homestead=true AND confidence >= 60
-- Skip if land_use is not residential
-- Log every BatchLeads call to `batchleads_usage` table
-- Per-storm cap of 150 BatchLeads calls
+**New file: `src/components/storm-canvass/StormScoreWhyPanel.tsx`**
 
-**`sources/batchleads/fallback.ts`** -- Add retry wrapper:
-- 3 retries with 500ms base delay, exponential backoff
+A slide-out or inline panel that fetches from `storm_property_intel` and renders:
 
-**`overpass.ts`** -- Add retry wrapper:
-- 2 retries with 700ms base delay
+- **Header**: Property address + owner name + county
+- **Priority badge**: Large score number with color coding (green >= 70, yellow >= 40, red < 40)
+- **Signal pills**: Badges for key factors (Absentee Owner, Homestead, Older Home, High Damage Risk, High Equity)
+- **Three score bars** with progress indicators:
+  - Damage Score (0-100) with factors: hail size + points, wind speed + points, roof age + points
+  - Equity Score (0-100) with factors: estimated value, mortgage, equity percentage
+  - Claim Likelihood (0-100) with factors: damage weight, equity weight, absentee status, homestead adjustment
+- **Explanation line**: "Priority is a weighted blend of Claim (55%) + Damage (30%) + Equity (15%) -- configurable by your admin."
 
-### New Edge Functions
+Integrated into `PropertyInfoPanel.tsx` as a new tab or expandable section, visible when `storm_property_intel` data exists for the current property.
 
-**`storm-intel-score`** -- Score a single property
-- Fetches storm event + property data
-- Runs damage, equity, claim models
-- Computes priority score
-- Upserts to `storm_property_intel`
+---
 
-**`storm-intel-batch-score`** -- Batch score all properties for a storm
-- Pulls properties from `storm_properties_public` for a storm event
-- Invokes `storm-intel-score` per property with controlled concurrency
+### 4. Manager Territory Map
 
-**`canvass-route-plan`** -- Build optimized canvass route
-- Selects top N properties by priority_score (default 80, min priority 60)
-- Runs cluster + nearest neighbor + 2-opt
-- Saves route to `canvass_routes`
-- Returns ordered stops with distance metrics
+**New file: `src/components/storm-canvass/TerritoryManagerMap.tsx`**
 
-### Caching Strategy
+Manager-facing component with:
+- Google Maps with polygon drawing tools (using Google Maps Drawing Library)
+- Save drawn polygon to `canvass_areas` with name/color
+- Rep assignment multi-select dropdown per area
+- Calls `canvass-area-build-membership` edge function after saving polygon
+- Displays area stats overlay: "128 properties | 42 contacted (33%)"
+- Color-coded area fills with opacity
 
-The existing `storm_properties_public` table already serves as the cache layer (the current `storm-public-lookup` checks it with a 30-day TTL and confidence >= 40 threshold). No separate cache table is needed -- the current implementation is sufficient. BatchLeads-enriched records use a shorter effective TTL (7 days) by checking the `used_batchleads` flag during freshness evaluation.
+**New file: `src/components/storm-canvass/AreaStatsBadge.tsx`**
 
-### Config Updates
+Compact counter component showing total/contacted with a progress bar. Used in both manager and rep views.
+
+**Update: `PropertyInfoPanel.tsx`** -- Add "Score Intel" tab that renders `StormScoreWhyPanel` when intel data is available for the property.
+
+---
+
+### 5. New Edge Function: `canvass-area-build-membership`
+
+Accepts `{ tenant_id, area_id }`:
+1. Loads polygon from `canvass_areas`
+2. Computes bbox from polygon
+3. Queries `canvassiq_properties` within bbox
+4. Runs point-in-polygon filter (using existing `geo.ts` utilities)
+5. Upserts matching properties into `canvass_area_properties`
+6. Returns `{ inserted, total_in_area }`
+
+---
+
+### 6. Config Updates
 
 Add to `supabase/config.toml`:
 ```
-[functions.storm-intel-score]
-verify_jwt = false
-
-[functions.storm-intel-batch-score]
-verify_jwt = false
-
-[functions.canvass-route-plan]
+[functions.canvass-area-build-membership]
 verify_jwt = false
 ```
+
+---
 
 ### Files Created/Modified
 
 | File | Action |
 |------|--------|
-| Database migration | CREATE `batchleads_usage`, `storm_events`, `storm_property_intel`, `canvass_routes` with RLS |
-| `supabase/functions/_shared/utils/retry.ts` | CREATE |
-| `supabase/functions/_shared/intel/damage.ts` | CREATE |
-| `supabase/functions/_shared/intel/equity.ts` | CREATE |
-| `supabase/functions/_shared/intel/claim.ts` | CREATE |
-| `supabase/functions/_shared/intel/priority.ts` | CREATE |
-| `supabase/functions/_shared/routing/haversine.ts` | CREATE |
-| `supabase/functions/_shared/routing/routePlanner.ts` | CREATE |
-| `supabase/functions/storm-intel-score/index.ts` | CREATE |
-| `supabase/functions/storm-intel-batch-score/index.ts` | CREATE |
-| `supabase/functions/canvass-route-plan/index.ts` | CREATE |
-| `supabase/functions/_shared/public_data/publicLookupPipeline.ts` | UPDATE -- smart fallback rules + BatchLeads usage logging |
-| `supabase/functions/_shared/public_data/sources/batchleads/fallback.ts` | UPDATE -- add retry wrapper |
-| `supabase/functions/storm-public-lookup/index.ts` | UPDATE -- differentiated cache TTL for BatchLeads records |
-| `supabase/config.toml` | ADD 3 function entries |
-
-### Cost Control Summary
-
-| Control | Implementation |
-|---------|---------------|
-| Absentee-only fallback | Only trigger BatchLeads when mailing address differs from property address |
-| Homestead skip | Skip fallback if homestead=true AND confidence >= 60 |
-| Non-residential skip | Skip fallback if land_use is not residential |
-| Per-storm cap | Max 150 BatchLeads calls per storm_event_id |
-| Usage tracking | Every call logged to `batchleads_usage` with $0.15 cost |
-| Retry backoff | 3 attempts with exponential delays (500ms, 1s, 2s) |
+| Database migration | CREATE 5 tables + 1 view, RLS policies |
+| `supabase/functions/_shared/intel/damage.ts` | UPDATE -- accept config param |
+| `supabase/functions/_shared/intel/equity.ts` | UPDATE -- accept config param |
+| `supabase/functions/_shared/intel/claim.ts` | UPDATE -- accept config param |
+| `supabase/functions/_shared/intel/priority.ts` | UPDATE -- accept config param |
+| `supabase/functions/storm-intel-score/index.ts` | UPDATE -- load config from DB |
+| `supabase/functions/canvass-area-build-membership/index.ts` | CREATE |
+| `src/components/storm-canvass/StormScoreWhyPanel.tsx` | CREATE |
+| `src/components/storm-canvass/TerritoryManagerMap.tsx` | CREATE |
+| `src/components/storm-canvass/AreaStatsBadge.tsx` | CREATE |
+| `src/components/storm-canvass/PropertyInfoPanel.tsx` | UPDATE -- add Score Intel tab |
+| `supabase/config.toml` | ADD 1 entry |
 
