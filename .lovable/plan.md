@@ -1,96 +1,93 @@
 
 
-# Build Estimate -- Multi-Trade System
+# Multi-Trade Template Tabs in Settings
+
+## Overview
+
+Add a tabbed interface to the Estimate Templates settings page so each trade (Roofing, Gutters, Siding, etc.) has its own tab with isolated templates. Companies can also manage which trades are available to them via a configuration panel.
 
 ## What Changes
 
-The current "Select Estimate Template" card will be redesigned into a "Build Estimate" section that supports multiple trades per estimate. Instead of a single template dropdown, there will be:
+### 1. Refactor `EstimateTemplateList.tsx` to use trade tabs
 
-1. A **"Roofing" trade** shown by default with its own template dropdown
-2. An **"Add Trade" button** to add additional trade sections (Gutters, Siding, Interior Trades, Exterior Trades)
-3. Each trade section gets its own template dropdown, line items, and subtotals
-4. A combined total across all trades at the bottom
+The current flat list of templates will be wrapped in a `Tabs` component. Each tab corresponds to a trade category:
 
-## Visual Layout
+- **Roofing** (default, always present) -- filters by `template_category = 'roofing'` (or legacy `'standard'`)
+- **Gutters** -- filters by `template_category = 'gutters'`
+- **Siding** -- filters by `template_category = 'siding'`
+- **Interior Trades** -- filters by `template_category = 'interior'`
+- **Exterior Trades** -- filters by `template_category = 'exterior'`
 
-```text
-+------------------------------------------+
-|  Build Estimate                          |
-+------------------------------------------+
-|                                          |
-|  [Roofing]                     [x remove]|
-|  [ Select Roofing Template...  v ]       |
-|  (line items for roofing appear here)    |
-|                                          |
-|  [Gutters]                     [x remove]|
-|  [ Select Gutters Template...  v ]       |
-|  (line items for gutters appear here)    |
-|                                          |
-|  [+ Add Trade]                           |
-|  Options: Gutters, Siding, Interior,     |
-|           Exterior Trades                |
-|                                          |
-+------------------------------------------+
-```
+Only tabs for trades the company has enabled will be shown.
+
+The "New Template" dialog will automatically set `template_category` to match the currently active trade tab, so templates are created in the correct category.
+
+For the Roofing tab, the existing `roof_type` filter (Shingle/Metal/Tile/Flat) remains. For other trade tabs, the `roof_type` selector is hidden (not relevant).
+
+### 2. Company Trade Configuration
+
+Add a small settings gear/button on the Estimate Templates page header that opens a dialog for managing which trades the company offers. This stores the enabled trades list in the `app_settings` table using the existing pattern:
+
+- **Key:** `enabled_estimate_trades`
+- **Value:** `["roofing", "gutters", "siding"]` (JSON array)
+- **Scope:** `(user_id, tenant_id, setting_key)` with the company admin's context
+
+Default if no setting exists: `["roofing"]` only.
+
+### 3. Wire the `template_category` on creation
+
+When creating a new template from a non-roofing trade tab:
+- Set `template_category` to the active trade value (e.g., `'gutters'`)
+- For roofing templates, keep existing behavior (`template_category = 'standard'` or `'roofing'`)
+
+### 4. Update `MultiTemplateSelector` filtering
+
+The Build Estimate trade sections already filter by `template_category`. Ensure they also match `'standard'` as equivalent to `'roofing'` for backward compatibility with legacy templates.
 
 ## Technical Details
 
+### File: `src/components/settings/EstimateTemplateList.tsx`
+
+**Changes:**
+- Add a `Tabs` wrapper around the template table
+- Add state for `activeTrade` (default: `'roofing'`)
+- Load enabled trades from `app_settings` via a query
+- Filter `filteredTemplates` by `template_category` matching `activeTrade`
+- In the "New Template" dialog, auto-set `template_category` to `activeTrade`
+- For roofing tab, keep the `roof_type` sub-filter; hide it for other trades
+- Add a "Manage Trades" button that opens a dialog with checkboxes for available trades
+
+### New Component: `src/components/settings/CompanyTradeSettings.tsx`
+
+A small dialog component with:
+- Checkboxes for each possible trade (Roofing is always on and cannot be removed)
+- Save button that upserts to `app_settings` table with key `enabled_estimate_trades`
+- Used by `EstimateTemplateList` and also consumed by `MultiTemplateSelector` to know which trades to offer in the "Add Trade" dropdown
+
 ### File: `src/components/estimates/MultiTemplateSelector.tsx`
 
-**Changes to the Card at line ~1904-1988:**
+**Minor change:**
+- Load the company's `enabled_estimate_trades` from `app_settings`
+- Filter the `AVAILABLE_TRADES` constant to only show trades the company has enabled
+- Treat `template_category = 'standard'` as equivalent to `'roofing'` when filtering templates
 
-1. Rename the `CardTitle` from "Select Estimate Template" to "Build Estimate"
-2. Introduce a **trades state array** to track multiple active trades. Each trade entry holds:
-   - `tradeType` (e.g., "roofing", "gutters", "siding", "interior", "exterior")
-   - `templateId` (selected template for that trade)
-   - `lineItems` (calculated line items for that trade)
-3. Initialize with one default trade: `{ tradeType: "roofing", templateId: "" }`
-4. The existing `TemplateCombobox` becomes scoped per trade -- filter templates by `template_category` or `roof_type` matching the trade
-5. Add an **"Add Trade" button** below the trade sections with a dropdown/popover listing available trades:
-   - Gutters
-   - Siding
-   - Interior Trades
-   - Exterior Trades
-6. Each trade section shows as a collapsible sub-card with the trade name as header and a remove button (except the default roofing trade which stays but can be cleared)
-7. Line items from all trades combine for the final estimate total
+### Database
 
-### New Trade Types Constant
+No migration needed. The existing `template_category` text column on `estimate_calculation_templates` and the `app_settings` table are sufficient.
+
+### Trade Constants (shared)
+
+Create a small shared constant file `src/lib/trades.ts`:
 
 ```typescript
-const AVAILABLE_TRADES = [
-  { value: 'roofing', label: 'Roofing', default: true },
-  { value: 'gutters', label: 'Gutters' },
-  { value: 'siding', label: 'Siding' },
-  { value: 'interior', label: 'Interior Trades' },
-  { value: 'exterior', label: 'Exterior Trades' },
+export const ALL_TRADES = [
+  { value: 'roofing', label: 'Roofing', icon: 'Home', locked: true },
+  { value: 'gutters', label: 'Gutters', icon: 'Wrench' },
+  { value: 'siding', label: 'Siding', icon: 'PanelLeft' },
+  { value: 'interior', label: 'Interior Trades', icon: 'Paintbrush' },
+  { value: 'exterior', label: 'Exterior Trades', icon: 'TreePine' },
 ];
 ```
 
-### Trade State Interface
+Both `EstimateTemplateList` and `MultiTemplateSelector` will import from this shared source of truth.
 
-```typescript
-interface TradeSection {
-  id: string;          // unique key for React
-  tradeType: string;   // 'roofing' | 'gutters' | 'siding' | 'interior' | 'exterior'
-  templateId: string;  // selected template ID
-  label: string;       // display name
-}
-```
-
-### Template Filtering
-
-When rendering the `TemplateCombobox` for a trade, filter the templates list to show only templates matching that trade's `template_category`. For "roofing", show all roof-type templates (current behavior). For other trades, filter by `template_category` matching the trade value.
-
-### Add Trade Button
-
-A `DropdownMenu` or `Popover` with the list of trades not yet added. Once a trade is added, it's removed from the available list.
-
-### Combining Line Items
-
-The existing pricing hook (`useEstimatePricing`) will continue to receive all line items combined from all trade sections. Each trade's line items will be tagged with a `trade` field so they can be grouped in the `SectionedLineItemsTable`.
-
-### Backward Compatibility
-
-- Existing saved estimates (single-template) will load as a single "Roofing" trade
-- The `selectedTemplateId` state maps to the first (roofing) trade for backward compat
-- Save/load logic continues to work with the existing `enhanced_estimates` table
