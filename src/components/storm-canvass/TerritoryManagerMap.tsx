@@ -9,9 +9,13 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, MapPin, Users } from "lucide-react";
+import { Loader2, Plus, Trash2, MapPin, Users, ChevronDown, Flame } from "lucide-react";
 import LiveAreaStatsBadge from "./LiveAreaStatsBadge";
+import AreaLeaderboard from "./AreaLeaderboard";
+import AreaROIPanel from "./AreaROIPanel";
+import AutoSplitButton from "./AutoSplitButton";
 import { cn } from "@/lib/utils";
 
 interface CanvassArea {
@@ -336,7 +340,7 @@ export default function TerritoryManagerMap() {
                       />
                     )}
 
-                    {/* Rep assignment */}
+                    {/* Auto Split + Rep assignment */}
                     <div className="flex items-center gap-1 flex-wrap">
                       {assignees.map(uid => {
                         const member = teamMembers.find(m => m.id === uid);
@@ -377,12 +381,64 @@ export default function TerritoryManagerMap() {
                           </div>
                         </PopoverContent>
                       </Popover>
+
+                      <AutoSplitButton
+                        tenantId={activeTenantId!}
+                        areaId={area.id}
+                        areaName={area.name}
+                        teamMembers={teamMembers}
+                      />
                     </div>
+
+                    {/* Leaderboard (collapsible) */}
+                    {activeTenantId && (
+                      <Collapsible>
+                        <CollapsibleTrigger asChild>
+                          <Button variant="ghost" size="sm" className="w-full justify-between text-[10px] h-6 px-1">
+                            <span>Leaderboard</span>
+                            <ChevronDown className="h-3 w-3" />
+                          </Button>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <AreaLeaderboard tenantId={activeTenantId} areaId={area.id} />
+                        </CollapsibleContent>
+                      </Collapsible>
+                    )}
+
+                    {/* Build Heatmap button */}
+                    {activeTenantId && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-[10px] h-6 gap-1 w-full"
+                        onClick={async () => {
+                          try {
+                            await supabase.functions.invoke("canvass-area-build-heatmap", {
+                              body: { tenant_id: activeTenantId, area_id: area.id },
+                            });
+                            toast.success("Heatmap rebuilt");
+                          } catch {
+                            toast.error("Failed to rebuild heatmap");
+                          }
+                        }}
+                      >
+                        <Flame className="h-3 w-3" />
+                        Rebuild Heatmap
+                      </Button>
+                    )}
                   </div>
                 );
               })}
             </div>
           </ScrollArea>
+
+          {/* Area ROI Panel */}
+          {activeTenantId && areas.length > 0 && (
+            <AreaROIPanel
+              tenantId={activeTenantId}
+              areaId={areas[0].id}
+            />
+          )}
         </CardContent>
       </Card>
     </div>

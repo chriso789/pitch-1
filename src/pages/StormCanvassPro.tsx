@@ -212,6 +212,30 @@ export default function StormCanvassPro() {
             </Button>
           </CardContent>
         </Card>
+        {/* Territory Manager */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Map className="h-5 w-5 text-primary" />
+              </div>
+              <CardTitle className="text-lg">Territory Manager</CardTitle>
+            </div>
+            <CardDescription>
+              Draw territories, assign reps, auto-split areas, and track ROI
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              className="w-full" 
+              size="lg"
+              onClick={() => navigate('/storm-canvass/territories')}
+            >
+              <Map className="h-4 w-4 mr-2" />
+              Manage Territories
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
