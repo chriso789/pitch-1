@@ -605,7 +605,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
               <ContactSearchSelect
                 selectedContact={selectedContact}
                 onContactSelect={handleContactSelect}
-                tenantId={userProfile?.tenant_id}
+                tenantId={userProfile?.active_tenant_id || userProfile?.tenant_id}
               />
               <Separator className="my-4" />
             </div>
