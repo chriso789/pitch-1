@@ -1,36 +1,27 @@
 
-## Upgrade: Wire Per-Rep Property Assignments into Rep Filtering
+## Fix: Contact Search Not Finding Existing Contacts
 
-### What Already Exists (fully built)
-- `canvass-area-build-heatmap` edge function with grid cell bucketing
-- `canvass-area-auto-split` edge function with k-means clustering + balancing
-- `AreaHeatmapOverlay.tsx` rendering heat cells as Google Maps circles (zoom-aware)
-- `AutoSplitButton.tsx` with rep selection dialog
-- `AreaLeaderboard.tsx` + `AreaROIPanel.tsx` in TerritoryManagerMap sidebar
-- `LiveAreaStatsBadge.tsx` with realtime subscription
-- `TerritoryManagerMap.tsx` with draw/save/delete/assign/split/heatmap/leaderboard/ROI
+### Root Cause
 
-### The Gap
+The "Link to Contact" search in the Add Lead dialog uses `userProfile?.tenant_id` to filter contacts. However, when you've switched companies (e.g., to "Under One Roof"), the active company is stored in `active_tenant_id`, not `tenant_id`. So the search queries the wrong company's contacts and returns "No contacts found."
 
-After a manager runs "Auto Split", property assignments are written to `canvass_area_property_assignments` (per user_id + property_id). However, the `useAssignedArea` hook currently only queries `canvass_area_properties` (all area properties), so reps still see every property in the area -- not just their assigned slice.
+The sales reps loader already handles this correctly (line 292: `active_tenant_id || tenant_id`), but the contact search prop does not.
 
-### Change Required
+### Fix
 
-**File: `src/hooks/useAssignedArea.ts`** -- UPDATE
+**File: `src/components/EnhancedLeadCreationDialog.tsx`** -- line 608
 
-After loading the area assignment, check if `canvass_area_property_assignments` has rows for this user + area. If yes, use those property IDs (the rep's personal split). If no split assignments exist, fall back to `canvass_area_properties` (all area properties).
+Change the `tenantId` prop from:
+```
+tenantId={userProfile?.tenant_id}
+```
+to:
+```
+tenantId={userProfile?.active_tenant_id || userProfile?.tenant_id}
+```
 
-Logic:
-1. Fetch area assignment from `canvass_area_assignments` (unchanged)
-2. Load area details from `canvass_areas` (unchanged)
-3. NEW: Query `canvass_area_property_assignments` for `(tenant_id, area_id, user_id)`
-4. If rows exist, use those property IDs (split mode)
-5. If no rows, fall back to `canvass_area_properties` (pre-split / unsplit mode)
+This is a one-line fix. No other files need changes -- the `ContactSearchSelect` component already correctly applies the `tenant_id` filter when the prop is provided.
 
-This is a single file change (~10 lines added). No other files need modification -- `GooglePropertyMarkersLayer` already accepts `areaPropertyIds` and filters accordingly.
+### Verification
 
-### Files Modified
-
-| File | Action |
-|------|--------|
-| `src/hooks/useAssignedArea.ts` | UPDATE -- prefer per-rep assignments over all-area membership |
+After this fix, searching "fred" in the Add Lead dialog while switched to "Under One Roof" will find "Fred Lester" (confirmed present in database).
