@@ -7,9 +7,11 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
-import { Loader2, Plus, Trash2, MapPin } from "lucide-react";
-import AreaStatsBadge from "./AreaStatsBadge";
+import { Loader2, Plus, Trash2, MapPin, Users } from "lucide-react";
+import LiveAreaStatsBadge from "./LiveAreaStatsBadge";
 import { cn } from "@/lib/utils";
 
 interface CanvassArea {
@@ -19,16 +21,23 @@ interface CanvassArea {
   polygon_geojson: any;
 }
 
-interface AreaStat {
+interface TeamMember {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+}
+
+interface AreaAssignment {
   area_id: string;
-  total_properties: number;
-  contacted_properties: number;
+  user_id: string;
 }
 
 export default function TerritoryManagerMap() {
   const { activeTenantId, profile } = useActiveTenantId();
   const [areas, setAreas] = useState<CanvassArea[]>([]);
-  const [stats, setStats] = useState<Record<string, AreaStat>>({});
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
+  const [assignments, setAssignments] = useState<AreaAssignment[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [newAreaName, setNewAreaName] = useState("");
@@ -41,29 +50,30 @@ export default function TerritoryManagerMap() {
   const polygonOverlaysRef = useRef<google.maps.Polygon[]>([]);
   const drawnOverlayRef = useRef<google.maps.Polygon | null>(null);
 
-  // Load areas + stats
+  // Load areas + team + assignments
   const fetchData = useCallback(async () => {
     if (!activeTenantId) return;
     setLoading(true);
 
-    const [areasRes, statsRes] = await Promise.all([
+    const [areasRes, teamRes, assignRes] = await Promise.all([
       supabase
         .from("canvass_areas")
         .select("id, name, color, polygon_geojson")
         .eq("tenant_id", activeTenantId),
       supabase
-        .from("canvass_area_stats")
-        .select("area_id, total_properties, contacted_properties")
+        .from("profiles")
+        .select("id, first_name, last_name, email")
         .eq("tenant_id", activeTenantId),
+      supabase
+        .from("canvass_area_assignments")
+        .select("area_id, user_id")
+        .eq("tenant_id", activeTenantId)
+        .eq("is_active", true),
     ]);
 
     setAreas((areasRes.data as CanvassArea[]) || []);
-
-    const statsMap: Record<string, AreaStat> = {};
-    for (const s of (statsRes.data || []) as AreaStat[]) {
-      statsMap[s.area_id] = s;
-    }
-    setStats(statsMap);
+    setTeamMembers((teamRes.data as TeamMember[]) || []);
+    setAssignments((assignRes.data as AreaAssignment[]) || []);
     setLoading(false);
   }, [activeTenantId]);
 
@@ -98,7 +108,6 @@ export default function TerritoryManagerMap() {
     drawingManagerRef.current = dm;
 
     google.maps.event.addListener(dm, "polygoncomplete", (polygon: google.maps.Polygon) => {
-      // Remove previous drawn polygon
       if (drawnOverlayRef.current) drawnOverlayRef.current.setMap(null);
       drawnOverlayRef.current = polygon;
 
@@ -108,7 +117,6 @@ export default function TerritoryManagerMap() {
         const p = path.getAt(i);
         coords.push([p.lng(), p.lat()]);
       }
-      // Close ring
       if (coords.length > 0) coords.push(coords[0]);
       setDrawnPolygon({ type: "Polygon", coordinates: [coords] });
       dm.setDrawingMode(null);
@@ -120,7 +128,6 @@ export default function TerritoryManagerMap() {
     const map = googleMapRef.current;
     if (!map) return;
 
-    // Clear old
     polygonOverlaysRef.current.forEach((p) => p.setMap(null));
     polygonOverlaysRef.current = [];
 
@@ -138,19 +145,9 @@ export default function TerritoryManagerMap() {
         map,
       });
 
-      // Info window with stats
-      const stat = stats[area.id];
-      const info = new google.maps.InfoWindow({
-        content: `<div style="font-size:12px"><strong>${area.name}</strong><br/>${stat ? `${stat.contacted_properties}/${stat.total_properties} contacted` : "Loading..."}</div>`,
-      });
-      poly.addListener("click", (e: any) => {
-        info.setPosition(e.latLng);
-        info.open(map);
-      });
-
       polygonOverlaysRef.current.push(poly);
     }
-  }, [areas, stats]);
+  }, [areas]);
 
   const startDrawing = () => {
     if (drawnOverlayRef.current) {
@@ -183,7 +180,6 @@ export default function TerritoryManagerMap() {
 
       if (error) throw error;
 
-      // Build membership
       await supabase.functions.invoke("canvass-area-build-membership", {
         body: { tenant_id: activeTenantId, area_id: created.id },
       });
@@ -213,6 +209,40 @@ export default function TerritoryManagerMap() {
       toast.success("Area deleted");
       fetchData();
     }
+  };
+
+  const toggleRepAssignment = async (areaId: string, userId: string, currentlyAssigned: boolean) => {
+    if (!activeTenantId) return;
+
+    if (currentlyAssigned) {
+      await supabase
+        .from("canvass_area_assignments")
+        .delete()
+        .eq("tenant_id", activeTenantId)
+        .eq("area_id", areaId)
+        .eq("user_id", userId);
+    } else {
+      await supabase
+        .from("canvass_area_assignments")
+        .upsert({
+          tenant_id: activeTenantId,
+          area_id: areaId,
+          user_id: userId,
+          is_active: true,
+        }, { onConflict: "tenant_id,area_id,user_id" });
+    }
+
+    // Refresh assignments
+    const { data } = await supabase
+      .from("canvass_area_assignments")
+      .select("area_id, user_id")
+      .eq("tenant_id", activeTenantId)
+      .eq("is_active", true);
+    setAssignments((data as AreaAssignment[]) || []);
+  };
+
+  const getAreaAssignees = (areaId: string): string[] => {
+    return assignments.filter(a => a.area_id === areaId).map(a => a.user_id);
   };
 
   return (
@@ -276,7 +306,7 @@ export default function TerritoryManagerMap() {
                 <p className="text-xs text-muted-foreground text-center py-4">No areas yet</p>
               )}
               {areas.map((area) => {
-                const stat = stats[area.id];
+                const assignees = getAreaAssignees(area.id);
                 return (
                   <div key={area.id} className="border rounded-md p-2 space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -296,11 +326,58 @@ export default function TerritoryManagerMap() {
                         <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
-                    <AreaStatsBadge
-                      total={stat?.total_properties ?? 0}
-                      contacted={stat?.contacted_properties ?? 0}
-                      compact
-                    />
+
+                    {/* Live stats */}
+                    {activeTenantId && (
+                      <LiveAreaStatsBadge
+                        tenantId={activeTenantId}
+                        areaId={area.id}
+                        compact
+                      />
+                    )}
+
+                    {/* Rep assignment */}
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {assignees.map(uid => {
+                        const member = teamMembers.find(m => m.id === uid);
+                        return (
+                          <Badge key={uid} variant="secondary" className="text-[10px] px-1.5 py-0">
+                            {member?.first_name || 'Rep'}
+                          </Badge>
+                        );
+                      })}
+
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-5 w-5">
+                            <Users className="h-3 w-3" />
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-56 p-2 z-[200] bg-popover" align="start">
+                          <p className="text-xs font-medium mb-2">Assign Reps</p>
+                          <div className="space-y-1 max-h-48 overflow-y-auto">
+                            {teamMembers.map(member => {
+                              const isAssigned = assignees.includes(member.id);
+                              return (
+                                <label
+                                  key={member.id}
+                                  className="flex items-center gap-2 p-1 rounded hover:bg-muted cursor-pointer text-xs"
+                                >
+                                  <Checkbox
+                                    checked={isAssigned}
+                                    onCheckedChange={() => toggleRepAssignment(area.id, member.id, isAssigned)}
+                                  />
+                                  <span className="truncate">{[member.first_name, member.last_name].filter(Boolean).join(' ') || member.email || 'Unknown'}</span>
+                                </label>
+                              );
+                            })}
+                            {teamMembers.length === 0 && (
+                              <p className="text-xs text-muted-foreground py-2 text-center">No team members</p>
+                            )}
+                          </div>
+                        </PopoverContent>
+                      </Popover>
+                    </div>
                   </div>
                 );
               })}

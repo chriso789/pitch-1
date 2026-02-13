@@ -10,6 +10,7 @@ interface GooglePropertyMarkersLayerProps {
   onLoadingChange?: (isLoading: boolean) => void;
   onPropertiesLoaded?: (count: number) => void;
   refreshKey?: number;
+  areaPropertyIds?: string[];
 }
 
 interface CanvassiqProperty {
@@ -160,6 +161,7 @@ export default function GooglePropertyMarkersLayer({
   onLoadingChange,
   onPropertiesLoaded,
   refreshKey,
+  areaPropertyIds,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
   // Map-based marker tracking for incremental updates (prevents flickering)
@@ -336,15 +338,43 @@ export default function GooglePropertyMarkersLayer({
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
       
-      const { data: rawProperties, error } = await supabase
-        .from('canvassiq_properties')
-        .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
-        .eq('tenant_id', profile.tenant_id)
-        .gte('lat', sw.lat())
-        .lte('lat', ne.lat())
-        .gte('lng', sw.lng())
-        .lte('lng', ne.lng())
-        .limit(limit);
+      let rawProperties: any[] | null = null;
+      let error: any = null;
+
+      if (areaPropertyIds && areaPropertyIds.length > 0) {
+        // Area-filtered mode: only load properties within assigned territory
+        // Chunk .in() queries to avoid URL length limits
+        const allResults: any[] = [];
+        const CHUNK_SIZE = 100;
+        for (let i = 0; i < areaPropertyIds.length; i += CHUNK_SIZE) {
+          const chunk = areaPropertyIds.slice(i, i + CHUNK_SIZE);
+          const { data: chunkData, error: chunkErr } = await supabase
+            .from('canvassiq_properties')
+            .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+            .eq('tenant_id', profile.tenant_id)
+            .in('id', chunk)
+            .gte('lat', sw.lat())
+            .lte('lat', ne.lat())
+            .gte('lng', sw.lng())
+            .lte('lng', ne.lng());
+          if (chunkErr) { error = chunkErr; break; }
+          if (chunkData) allResults.push(...chunkData);
+        }
+        rawProperties = allResults;
+      } else {
+        // Default mode: load all properties in viewport
+        const res = await supabase
+          .from('canvassiq_properties')
+          .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
+          .eq('tenant_id', profile.tenant_id)
+          .gte('lat', sw.lat())
+          .lte('lat', ne.lat())
+          .gte('lng', sw.lng())
+          .lte('lng', ne.lng())
+          .limit(limit);
+        rawProperties = res.data;
+        error = res.error;
+      }
       
       // Client-side deduplication to handle any remaining duplicates
       const properties = rawProperties ? deduplicateProperties(rawProperties as CanvassiqProperty[]) : [];

@@ -17,7 +17,9 @@ interface GoogleLiveLocationMapProps {
   mapStyle: MapStyle;
   onLoadingChange?: (isLoading: boolean) => void;
   onPropertiesLoaded?: (count: number) => void;
-  refreshKey?: number; // Incremented to force marker refresh
+  refreshKey?: number;
+  areaPropertyIds?: string[];
+  areaPolygon?: any; // GeoJSON polygon to render as overlay
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
@@ -36,10 +38,13 @@ export default function GoogleLiveLocationMap({
   onLoadingChange,
   onPropertiesLoaded,
   refreshKey,
+  areaPropertyIds,
+  areaPolygon,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
   const userMarker = useRef<google.maps.Marker | null>(null);
+  const areaOverlayRef = useRef<google.maps.Polygon | null>(null);
   const [mapReady, setMapReady] = useState(false);
   const { apiKey, loading: tokenLoading, error: tokenError } = useGoogleMapsToken();
 
@@ -146,6 +151,41 @@ export default function GoogleLiveLocationMap({
     }
   }, [userLocation, mapReady]);
 
+  // Render area polygon overlay
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+
+    // Remove previous overlay
+    if (areaOverlayRef.current) {
+      areaOverlayRef.current.setMap(null);
+      areaOverlayRef.current = null;
+    }
+
+    if (!areaPolygon) return;
+
+    const coords = areaPolygon?.coordinates?.[0] || areaPolygon?.geometry?.coordinates?.[0];
+    if (!coords || coords.length < 3) return;
+
+    const path = coords.map((c: number[]) => ({ lat: c[1], lng: c[0] }));
+    areaOverlayRef.current = new google.maps.Polygon({
+      paths: path,
+      fillColor: '#3b82f6',
+      fillOpacity: 0.08,
+      strokeColor: '#3b82f6',
+      strokeWeight: 2,
+      strokeOpacity: 0.6,
+      map: map.current,
+      clickable: false,
+    });
+
+    return () => {
+      if (areaOverlayRef.current) {
+        areaOverlayRef.current.setMap(null);
+        areaOverlayRef.current = null;
+      }
+    };
+  }, [areaPolygon, mapReady]);
+
   if (tokenLoading) {
     return (
       <div className="absolute inset-0 flex items-center justify-center bg-background">
@@ -178,6 +218,7 @@ export default function GoogleLiveLocationMap({
             onPropertyClick={onParcelSelect}
             onLoadingChange={onLoadingChange}
             onPropertiesLoaded={onPropertiesLoaded}
+            areaPropertyIds={areaPropertyIds}
           />
           {routeData?.polyline && destination && (
             <GoogleRouteVisualization
