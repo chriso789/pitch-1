@@ -1,87 +1,98 @@
 
 
-# Batch 2 Completion: Survey Dashboard + Referral Management
+# Fix "Add Trade" Button + Homeowner-Friendly Descriptions
 
-## Status of Requested Phases
+## Issue 1: Missing "Add Trade" Button
 
-- **Phase 12 (SMS Auto-Response)** -- Already complete. Full config UI in Settings with keyword triggers, business hours, test tool.
-- **Phase 13 (Invoice System)** -- Already complete. `JobInvoiceTracker` with CRUD on `project_cost_invoices`, plus cost reconciliation approval flow.
-- **Phase 15 (Customer Satisfaction)** -- Partially complete. NPS survey form and edge function exist, but **no admin dashboard** to view/analyze results.
-- **Phase 16 (Referral Management)** -- Backend complete (4 tables + edge function), but **no UI dashboard** exists.
+**Root Cause:** When no company has configured trades in `app_settings`, the code defaults to `['roofing']` only. Since roofing is already added, the filter `AVAILABLE_TRADES.filter(t => !addedTradeTypes.includes(t.value) && enabledTrades.includes(t.value))` returns an empty array, hiding the button entirely.
 
-## What Will Be Built
+**Fix in `src/components/estimates/MultiTemplateSelector.tsx` (line 240):**
 
-### 1. Customer Satisfaction Survey Dashboard (Phase 15)
+Change the default from `['roofing']` to include all trade values:
+```typescript
+// Before
+const [enabledTrades, setEnabledTrades] = useState<string[]>(['roofing']);
 
-**New file: `src/pages/SurveyDashboard.tsx`**
+// After
+const [enabledTrades, setEnabledTrades] = useState<string[]>(
+  ALL_TRADES.map(t => t.value)
+);
+```
 
-A full-page dashboard accessible from the sidebar showing:
-- **NPS Score summary cards**: Overall NPS, Promoters/Passives/Detractors counts, response rate
-- **Score distribution chart** (Recharts bar chart, 0-10)
-- **Survey responses table** with columns: Contact Name, Project, NPS Score, Sentiment badge, Feedback comment, Date
-- **Filters**: Date range, survey type, score range
-- **Send Survey button**: Opens dialog to select a contact + project and trigger the `send-review-request` edge function
-- Data sourced from `satisfaction_surveys` table joined with `contacts` and `jobs`
+This means all trades are available by default until a company explicitly configures their preferences. Companies can still narrow it down via the "Manage Trades" settings dialog.
 
-**New file: `src/features/reviews/components/SurveyAnalytics.tsx`**
+---
 
-Reusable analytics component with:
-- NPS calculation: `((promoters - detractors) / total) * 100`
-- Trend line over time (monthly NPS)
-- Breakdown by survey_type
+## Issue 2: More Explanatory Descriptions for Homeowners
 
-### 2. Referral Management Dashboard (Phase 16)
+**Root Cause:** The `generateDynamicDescription` function (line 104-133) produces contractor shorthand like "32.5 squares" or "120 LF ridge line". Homeowners don't know what "SQ", "LF", or "squares" mean in roofing context.
 
-**New file: `src/pages/ReferralDashboard.tsx`**
+**Fix in `src/components/estimates/MultiTemplateSelector.tsx` (lines 103-133):**
 
-A full-page dashboard with tabbed sections:
+Rewrite the function to produce plain-English, homeowner-friendly descriptions that explain **what** and **why**:
 
-**Tab 1 - Overview:**
-- Summary cards: Total Referral Codes, Total Conversions, Total Rewards Paid, Conversion Rate
-- Recent conversions table from `referral_conversions` joined with contacts
-- Top referrers leaderboard
+```typescript
+function generateDynamicDescription(
+  item: TemplateLineItem,
+  computedQty: number
+): string {
+  if (item.description) return item.description;
 
-**Tab 2 - Referral Codes:**
-- Table of all `referral_codes` with: Code, Customer Name, Reward Type/Value, Uses/Max, Status, Expiry
-- "Create Code" dialog: select customer, set reward type (discount/cash/credit), value, max uses, expiry
-- Toggle active/inactive
-- Uses the existing `referral-manager` edge function (`create_code` action)
+  const formula = item.qty_formula || '';
+  const name = (item.item_name || '').toLowerCase();
 
-**Tab 3 - Conversions:**
-- Table of `referral_conversions` with: Referrer, Referred Contact, Code Used, Job, Conversion Value, Date
-- "Record Conversion" dialog for manual entry
+  // Shingles / main roofing material
+  if (formula.includes('surface_squares')) {
+    let desc = `Covers ${computedQty.toFixed(1)} squares of your roof area`;
+    if (formula.includes('1.15')) desc += ', includes 15% extra for waste and cuts';
+    else if (formula.includes('1.10')) desc += ', includes 10% extra for waste and cuts';
+    return desc;
+  }
 
-**Tab 4 - Rewards:**
-- Table of `referral_rewards` with: Recipient, Type, Value, Status (pending/paid/expired), Payout Method, Paid Date
-- Mark as paid action
+  // Ridge-related items
+  if (formula.includes('ridge')) {
+    return `Protects the ${computedQty.toFixed(0)} linear feet along the peak of your roof where two slopes meet`;
+  }
 
-### 3. Route + Sidebar Integration
+  // Valley items
+  if (formula.includes('valley')) {
+    return `Waterproofs the ${computedQty.toFixed(0)} linear feet of valleys where two roof slopes channel rainwater`;
+  }
 
-**File: `src/App.tsx`**
-- Add route `/surveys` pointing to `SurveyDashboard`
-- Add route `/referrals` pointing to `ReferralDashboard`
+  // Hip items
+  if (formula.includes('hip')) {
+    return `Covers ${computedQty.toFixed(0)} linear feet along the angled edges where roof planes meet`;
+  }
 
-**File: `src/shared/components/layout/SidebarNavigation.tsx`** (or equivalent sidebar config)
-- Add "Surveys" link under a CX/Reviews section with a Star icon
-- Add "Referrals" link under the same section with a Gift icon
+  // Rake / gable edge
+  if (formula.includes('rake')) {
+    return `Finishes and seals ${computedQty.toFixed(0)} linear feet along the sloped edges of your roof`;
+  }
 
-### 4. No Database Migrations Needed
+  // Eave / perimeter / drip edge
+  if (formula.includes('eave') || formula.includes('perimeter')) {
+    return `Installed along ${computedQty.toFixed(0)} linear feet of your roof's outer edge to direct water into gutters`;
+  }
 
-All required tables already exist:
-- `satisfaction_surveys` (nps_score, feedback, contact_id, project_id, survey_type, sentiment, completed_at)
-- `referral_codes` (code, customer_id, reward_type, reward_value, max_uses, current_uses, is_active, expires_at)
-- `referral_conversions` (referral_code_id, referrer_contact_id, referred_contact_id, job_id, conversion_value)
-- `referral_rewards` (referral_conversion_id, recipient_contact_id, reward_type, reward_value, status, paid_at)
+  // General area coverage
+  if (formula.includes('surface_area')) {
+    return `Covers ${computedQty.toFixed(0)} square feet of roof surface area`;
+  }
 
-All required edge functions already exist:
-- `send-review-request` -- sends survey emails/SMS
-- `referral-manager` -- create codes, validate, record conversions, get stats
+  return '';
+}
+```
 
-## Technical Approach
+This produces descriptions like:
+- **Before:** "32.5 squares (incl. 10% waste)"
+- **After:** "Covers 32.5 squares of your roof area, includes 10% extra for waste and cuts"
+- **Before:** "120 LF ridge line"
+- **After:** "Protects the 120 linear feet along the peak of your roof where two slopes meet"
 
-- Both dashboards use `useQuery` with tenant-scoped queries via `useActiveTenantId`
-- Charts use Recharts (already installed)
-- Tables use the existing shadcn Table components
-- Dialogs use the existing Dialog/Form patterns
-- Both pages wrapped in `GlobalLayout` with `ProtectedRoute`
+---
 
+## Files Modified
+
+1. **`src/components/estimates/MultiTemplateSelector.tsx`**
+   - Line 240: Change default `enabledTrades` from `['roofing']` to all trades
+   - Lines 103-133: Rewrite `generateDynamicDescription` with homeowner-friendly language
