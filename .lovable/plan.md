@@ -1,94 +1,26 @@
 
 
-# Dynamic Descriptions for Estimate Line Items
+# Fix Mobile Menu Button Positioning
 
 ## Problem
-Currently, the `description` field exists on template line items (`estimate_calc_template_items.description`) and on the `LineItem` interface, but it is never displayed in the `SectionedLineItemsTable`. Many items have null or generic descriptions. Users need meaningful, auto-generated descriptions that reflect the actual quantities and context.
+
+The mobile hamburger menu button is positioned at `top-3` (12px from the top of the viewport), which places it directly under the iOS status bar / safe area. On devices with notches or dynamic islands, this makes the button unreachable or very difficult to tap.
 
 ## Solution
 
-### 1. Add description display to `SectionedLineItemsTable`
+Move the menu button down to respect the safe area and align it with the header row. Two changes needed:
 
-**File: `src/components/estimates/SectionedLineItemsTable.tsx`**
+### File: `src/components/ui/collapsible-sidebar.tsx` (line 48)
 
-In `renderItemRow` (line ~223-239), add the `description` field below `item_name`:
+Change the button class from `fixed top-3 left-3` to use safe-area-aware positioning. Since the GlobalLayout header row starts after `pt-14` (56px), and the first header row is `h-12`, the menu button should sit vertically centered with that first row.
 
-```
-Item Name [Modified badge] [Note icon]
-Description text here (gray, smaller)
-Color/Specs: notes text (amber)
-```
+- Change `top-3` to `top-[3.75rem]` (60px) so it aligns with the header content row (which starts at `pt-14` = 56px)
+- This positions the button inside the header area, not behind the status bar
 
-- Show `item.description` in a `text-xs text-muted-foreground` paragraph below the item name
-- Only render if `item.description` is truthy and different from `item_name`
+### File: `src/shared/components/layout/GlobalLayout.tsx` (line 25)
 
-### 2. Make description editable inline
+Adjust the mobile top padding from `pt-14` to `pt-0` since the button will now sit inside the sticky header, not above it. The `pl-14` on the header row already reserves space for the button.
 
-Add the description to the editable cell system:
-- Click on description text to edit inline (similar to notes but as a simple text input)
-- Or add description editing to the existing NoteEditor popover as a second field
+Alternatively (simpler approach): just move the button from `top-3` to `top-[env(safe-area-inset-top,0px)_+_12px]` or simply use a larger top value like `top-[3.5rem]` that clears the status bar on all devices, keeping the existing `pt-14` padding intact.
 
-### 3. Auto-generate dynamic descriptions from template data
-
-**File: `src/components/estimates/MultiTemplateSelector.tsx`**
-
-When template line items are loaded and quantities are calculated (around line ~808-850 where `fetchTemplateItems` processes items), generate descriptions dynamically:
-
-For each line item, build a description from:
-- The template's static `description` if it exists (e.g., "Remove existing roofing")
-- Append computed context: quantity and unit (e.g., "32.5 SQ with 10% waste factor")
-- For formula-based items, include the measurement source (e.g., "Based on 3,250 SF roof area")
-
-**Description generation logic:**
-
-```typescript
-function generateDynamicDescription(
-  item: TemplateLineItem,
-  computedQty: number,
-  measurements: Record<string, number>
-): string {
-  // Start with static description if available
-  let desc = item.description || '';
-  
-  // Parse the formula to determine measurement source
-  const formula = item.qty_formula || '';
-  if (formula.includes('surface_squares')) {
-    desc = desc || `${computedQty.toFixed(1)} squares`;
-    if (formula.includes('1.10')) desc += ' (incl. 10% waste)';
-    if (formula.includes('1.15')) desc += ' (incl. 15% waste)';
-  } else if (formula.includes('ridge')) {
-    desc = desc || `${computedQty.toFixed(0)} LF ridge line`;
-  } else if (formula.includes('valley')) {
-    desc = desc || `${computedQty.toFixed(0)} LF valley`;
-  } else if (formula.includes('perimeter')) {
-    desc = desc || `${computedQty.toFixed(0)} LF perimeter`;
-  } else if (formula.includes('surface_area')) {
-    desc = desc || `${computedQty.toFixed(0)} SF coverage area`;
-  }
-  
-  return desc;
-}
-```
-
-### 4. Persist description on save
-
-When estimates are saved to `enhanced_estimates` (the JSON line items blob), include the `description` field so it persists and shows on reload and in PDFs.
-
-**File: `src/hooks/useEstimatePricing.ts`** — No changes needed; `description` is already on the `LineItem` interface.
-
-### 5. Show description in PDF output
-
-**File: `src/components/estimates/EstimatePDFDocument.tsx`** and **`EstimatePDFTemplate.tsx`**
-
-Add the description below the item name in the PDF line items table, matching the same layout as the on-screen table.
-
-## Files Modified
-
-1. **`src/components/estimates/SectionedLineItemsTable.tsx`** — Display description below item_name, add inline edit capability
-2. **`src/components/estimates/MultiTemplateSelector.tsx`** — Generate dynamic descriptions when loading template items and calculating quantities
-3. **`src/components/estimates/EstimatePDFDocument.tsx`** — Show description in PDF output
-4. **`src/components/estimates/EstimatePDFTemplate.tsx`** — Show description in PDF template
-
-## No database migration needed
-
-The `description` column already exists on `estimate_calc_template_items` and the `LineItem` interface already has `description?: string`.
+**Simplest fix:** Change the button's `top-3` to `top-[3.6rem]` so it vertically centers with the sticky header's first row (which has `pl-14` already reserving the left space for it). No other files need changes.
