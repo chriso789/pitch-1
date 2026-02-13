@@ -509,11 +509,50 @@ export default function PropertyInfoPanel({
                 <SheetTitle className="flex items-center gap-2 text-lg">
                   <User className="h-5 w-5 text-primary" />
                   {ownerName}
+                  {/* Confidence badge from public data */}
+                  {property.property_data?.confidence_score != null && (
+                    <Badge 
+                      variant="outline"
+                      className={cn(
+                        "text-[10px] ml-1",
+                        property.property_data.confidence_score >= 80 && "bg-green-100 text-green-700 border-green-300",
+                        property.property_data.confidence_score >= 60 && property.property_data.confidence_score < 80 && "bg-yellow-100 text-yellow-700 border-yellow-300",
+                        property.property_data.confidence_score < 60 && "bg-red-100 text-red-700 border-red-300"
+                      )}
+                    >
+                      {property.property_data.confidence_score >= 80 ? '✓' : property.property_data.confidence_score >= 60 ? '⚠' : '✗'} {property.property_data.confidence_score}%
+                    </Badge>
+                  )}
                 </SheetTitle>
                 <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
                   <MapPin className="h-3.5 w-3.5" />
                   {fullAddress}
                 </p>
+                {/* Property Intelligence Row */}
+                {property.property_data?.parcel_id && (
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {property.property_data.parcel_id && (
+                      <Badge variant="outline" className="text-[9px] font-normal">APN: {property.property_data.parcel_id}</Badge>
+                    )}
+                    {property.property_data.living_sqft && (
+                      <Badge variant="outline" className="text-[9px] font-normal">{property.property_data.living_sqft.toLocaleString()} sqft</Badge>
+                    )}
+                    {property.property_data.year_built && (
+                      <Badge variant="outline" className="text-[9px] font-normal">Built {property.property_data.year_built}</Badge>
+                    )}
+                    {property.property_data.homestead && (
+                      <Badge variant="outline" className="text-[9px] font-normal bg-blue-50 text-blue-700 border-blue-200">Homestead ✓</Badge>
+                    )}
+                  </div>
+                )}
+                {/* Source verification */}
+                {property.property_data?.sources && (
+                  <div className="flex gap-1 mt-1">
+                    {property.property_data.sources.map((src: string) => (
+                      <span key={src} className="text-[8px] text-green-600">✔ {src}</span>
+                    ))}
+                  </div>
+                )}
                 {/* Distance Verification Badge */}
                 <Badge 
                   variant={verification.badgeVariant} 

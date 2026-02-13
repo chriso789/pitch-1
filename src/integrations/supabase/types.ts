@@ -31700,6 +31700,113 @@ export type Database = {
           },
         ]
       }
+      storm_properties_public: {
+        Row: {
+          assessed_value: number | null
+          canvassiq_property_id: string | null
+          confidence_score: number | null
+          county: string | null
+          county_fips: string | null
+          created_at: string | null
+          homestead: boolean | null
+          id: string
+          land_use: string | null
+          last_sale_amount: number | null
+          last_sale_date: string | null
+          lat: number | null
+          living_sqft: number | null
+          lng: number | null
+          lot_size: string | null
+          mortgage_lender: string | null
+          owner_mailing_address: string | null
+          owner_name: string | null
+          parcel_id: string | null
+          property_address: string | null
+          raw_data: Json | null
+          source_appraiser: string | null
+          source_clerk: string | null
+          source_esri: boolean | null
+          source_osm: boolean | null
+          source_tax: string | null
+          state: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          year_built: number | null
+        }
+        Insert: {
+          assessed_value?: number | null
+          canvassiq_property_id?: string | null
+          confidence_score?: number | null
+          county?: string | null
+          county_fips?: string | null
+          created_at?: string | null
+          homestead?: boolean | null
+          id?: string
+          land_use?: string | null
+          last_sale_amount?: number | null
+          last_sale_date?: string | null
+          lat?: number | null
+          living_sqft?: number | null
+          lng?: number | null
+          lot_size?: string | null
+          mortgage_lender?: string | null
+          owner_mailing_address?: string | null
+          owner_name?: string | null
+          parcel_id?: string | null
+          property_address?: string | null
+          raw_data?: Json | null
+          source_appraiser?: string | null
+          source_clerk?: string | null
+          source_esri?: boolean | null
+          source_osm?: boolean | null
+          source_tax?: string | null
+          state?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          year_built?: number | null
+        }
+        Update: {
+          assessed_value?: number | null
+          canvassiq_property_id?: string | null
+          confidence_score?: number | null
+          county?: string | null
+          county_fips?: string | null
+          created_at?: string | null
+          homestead?: boolean | null
+          id?: string
+          land_use?: string | null
+          last_sale_amount?: number | null
+          last_sale_date?: string | null
+          lat?: number | null
+          living_sqft?: number | null
+          lng?: number | null
+          lot_size?: string | null
+          mortgage_lender?: string | null
+          owner_mailing_address?: string | null
+          owner_name?: string | null
+          parcel_id?: string | null
+          property_address?: string | null
+          raw_data?: Json | null
+          source_appraiser?: string | null
+          source_clerk?: string | null
+          source_esri?: boolean | null
+          source_osm?: boolean | null
+          source_tax?: string | null
+          state?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          year_built?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storm_properties_public_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       street_view_pitch_analysis: {
         Row: {
           aerial_pitch: string | null
