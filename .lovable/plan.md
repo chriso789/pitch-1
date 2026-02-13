@@ -1,93 +1,94 @@
 
 
-# Multi-Trade Template Tabs in Settings
+# Dynamic Descriptions for Estimate Line Items
 
-## Overview
+## Problem
+Currently, the `description` field exists on template line items (`estimate_calc_template_items.description`) and on the `LineItem` interface, but it is never displayed in the `SectionedLineItemsTable`. Many items have null or generic descriptions. Users need meaningful, auto-generated descriptions that reflect the actual quantities and context.
 
-Add a tabbed interface to the Estimate Templates settings page so each trade (Roofing, Gutters, Siding, etc.) has its own tab with isolated templates. Companies can also manage which trades are available to them via a configuration panel.
+## Solution
 
-## What Changes
+### 1. Add description display to `SectionedLineItemsTable`
 
-### 1. Refactor `EstimateTemplateList.tsx` to use trade tabs
+**File: `src/components/estimates/SectionedLineItemsTable.tsx`**
 
-The current flat list of templates will be wrapped in a `Tabs` component. Each tab corresponds to a trade category:
+In `renderItemRow` (line ~223-239), add the `description` field below `item_name`:
 
-- **Roofing** (default, always present) -- filters by `template_category = 'roofing'` (or legacy `'standard'`)
-- **Gutters** -- filters by `template_category = 'gutters'`
-- **Siding** -- filters by `template_category = 'siding'`
-- **Interior Trades** -- filters by `template_category = 'interior'`
-- **Exterior Trades** -- filters by `template_category = 'exterior'`
-
-Only tabs for trades the company has enabled will be shown.
-
-The "New Template" dialog will automatically set `template_category` to match the currently active trade tab, so templates are created in the correct category.
-
-For the Roofing tab, the existing `roof_type` filter (Shingle/Metal/Tile/Flat) remains. For other trade tabs, the `roof_type` selector is hidden (not relevant).
-
-### 2. Company Trade Configuration
-
-Add a small settings gear/button on the Estimate Templates page header that opens a dialog for managing which trades the company offers. This stores the enabled trades list in the `app_settings` table using the existing pattern:
-
-- **Key:** `enabled_estimate_trades`
-- **Value:** `["roofing", "gutters", "siding"]` (JSON array)
-- **Scope:** `(user_id, tenant_id, setting_key)` with the company admin's context
-
-Default if no setting exists: `["roofing"]` only.
-
-### 3. Wire the `template_category` on creation
-
-When creating a new template from a non-roofing trade tab:
-- Set `template_category` to the active trade value (e.g., `'gutters'`)
-- For roofing templates, keep existing behavior (`template_category = 'standard'` or `'roofing'`)
-
-### 4. Update `MultiTemplateSelector` filtering
-
-The Build Estimate trade sections already filter by `template_category`. Ensure they also match `'standard'` as equivalent to `'roofing'` for backward compatibility with legacy templates.
-
-## Technical Details
-
-### File: `src/components/settings/EstimateTemplateList.tsx`
-
-**Changes:**
-- Add a `Tabs` wrapper around the template table
-- Add state for `activeTrade` (default: `'roofing'`)
-- Load enabled trades from `app_settings` via a query
-- Filter `filteredTemplates` by `template_category` matching `activeTrade`
-- In the "New Template" dialog, auto-set `template_category` to `activeTrade`
-- For roofing tab, keep the `roof_type` sub-filter; hide it for other trades
-- Add a "Manage Trades" button that opens a dialog with checkboxes for available trades
-
-### New Component: `src/components/settings/CompanyTradeSettings.tsx`
-
-A small dialog component with:
-- Checkboxes for each possible trade (Roofing is always on and cannot be removed)
-- Save button that upserts to `app_settings` table with key `enabled_estimate_trades`
-- Used by `EstimateTemplateList` and also consumed by `MultiTemplateSelector` to know which trades to offer in the "Add Trade" dropdown
-
-### File: `src/components/estimates/MultiTemplateSelector.tsx`
-
-**Minor change:**
-- Load the company's `enabled_estimate_trades` from `app_settings`
-- Filter the `AVAILABLE_TRADES` constant to only show trades the company has enabled
-- Treat `template_category = 'standard'` as equivalent to `'roofing'` when filtering templates
-
-### Database
-
-No migration needed. The existing `template_category` text column on `estimate_calculation_templates` and the `app_settings` table are sufficient.
-
-### Trade Constants (shared)
-
-Create a small shared constant file `src/lib/trades.ts`:
-
-```typescript
-export const ALL_TRADES = [
-  { value: 'roofing', label: 'Roofing', icon: 'Home', locked: true },
-  { value: 'gutters', label: 'Gutters', icon: 'Wrench' },
-  { value: 'siding', label: 'Siding', icon: 'PanelLeft' },
-  { value: 'interior', label: 'Interior Trades', icon: 'Paintbrush' },
-  { value: 'exterior', label: 'Exterior Trades', icon: 'TreePine' },
-];
+```
+Item Name [Modified badge] [Note icon]
+Description text here (gray, smaller)
+Color/Specs: notes text (amber)
 ```
 
-Both `EstimateTemplateList` and `MultiTemplateSelector` will import from this shared source of truth.
+- Show `item.description` in a `text-xs text-muted-foreground` paragraph below the item name
+- Only render if `item.description` is truthy and different from `item_name`
 
+### 2. Make description editable inline
+
+Add the description to the editable cell system:
+- Click on description text to edit inline (similar to notes but as a simple text input)
+- Or add description editing to the existing NoteEditor popover as a second field
+
+### 3. Auto-generate dynamic descriptions from template data
+
+**File: `src/components/estimates/MultiTemplateSelector.tsx`**
+
+When template line items are loaded and quantities are calculated (around line ~808-850 where `fetchTemplateItems` processes items), generate descriptions dynamically:
+
+For each line item, build a description from:
+- The template's static `description` if it exists (e.g., "Remove existing roofing")
+- Append computed context: quantity and unit (e.g., "32.5 SQ with 10% waste factor")
+- For formula-based items, include the measurement source (e.g., "Based on 3,250 SF roof area")
+
+**Description generation logic:**
+
+```typescript
+function generateDynamicDescription(
+  item: TemplateLineItem,
+  computedQty: number,
+  measurements: Record<string, number>
+): string {
+  // Start with static description if available
+  let desc = item.description || '';
+  
+  // Parse the formula to determine measurement source
+  const formula = item.qty_formula || '';
+  if (formula.includes('surface_squares')) {
+    desc = desc || `${computedQty.toFixed(1)} squares`;
+    if (formula.includes('1.10')) desc += ' (incl. 10% waste)';
+    if (formula.includes('1.15')) desc += ' (incl. 15% waste)';
+  } else if (formula.includes('ridge')) {
+    desc = desc || `${computedQty.toFixed(0)} LF ridge line`;
+  } else if (formula.includes('valley')) {
+    desc = desc || `${computedQty.toFixed(0)} LF valley`;
+  } else if (formula.includes('perimeter')) {
+    desc = desc || `${computedQty.toFixed(0)} LF perimeter`;
+  } else if (formula.includes('surface_area')) {
+    desc = desc || `${computedQty.toFixed(0)} SF coverage area`;
+  }
+  
+  return desc;
+}
+```
+
+### 4. Persist description on save
+
+When estimates are saved to `enhanced_estimates` (the JSON line items blob), include the `description` field so it persists and shows on reload and in PDFs.
+
+**File: `src/hooks/useEstimatePricing.ts`** — No changes needed; `description` is already on the `LineItem` interface.
+
+### 5. Show description in PDF output
+
+**File: `src/components/estimates/EstimatePDFDocument.tsx`** and **`EstimatePDFTemplate.tsx`**
+
+Add the description below the item name in the PDF line items table, matching the same layout as the on-screen table.
+
+## Files Modified
+
+1. **`src/components/estimates/SectionedLineItemsTable.tsx`** — Display description below item_name, add inline edit capability
+2. **`src/components/estimates/MultiTemplateSelector.tsx`** — Generate dynamic descriptions when loading template items and calculating quantities
+3. **`src/components/estimates/EstimatePDFDocument.tsx`** — Show description in PDF output
+4. **`src/components/estimates/EstimatePDFTemplate.tsx`** — Show description in PDF template
+
+## No database migration needed
+
+The `description` column already exists on `estimate_calc_template_items` and the `LineItem` interface already has `description?: string`.
