@@ -313,7 +313,12 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             <tbody>
               {materialItems.map((item, idx) => (
                 <tr key={item.id || idx} className="border-b border-gray-100">
-                  <td className="py-1.5 text-gray-900">{item.item_name}</td>
+                  <td className="py-1.5">
+                    <div className="text-gray-900">{item.item_name}</div>
+                    {item.description && item.description !== item.item_name && (
+                      <div className="text-[10px] text-gray-500 leading-snug">{item.description}</div>
+                    )}
+                  </td>
                   {opts.showLineItemQuantities && (
                     <>
                       <td className="py-1.5 text-right text-gray-700">{item.qty.toFixed(2)}</td>
@@ -377,7 +382,12 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             <tbody>
               {laborItems.map((item, idx) => (
                 <tr key={item.id || idx} className="border-b border-gray-100">
-                  <td className="py-1.5 text-gray-900">{item.item_name}</td>
+                  <td className="py-1.5">
+                    <div className="text-gray-900">{item.item_name}</div>
+                    {item.description && item.description !== item.item_name && (
+                      <div className="text-[10px] text-gray-500 leading-snug">{item.description}</div>
+                    )}
+                  </td>
                   {opts.showLineItemQuantities && (
                     <>
                       <td className="py-1.5 text-right text-gray-700">{item.qty.toFixed(2)}</td>

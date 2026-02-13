@@ -218,6 +218,63 @@ export function SectionedLineItemsTable({
     );
   };
 
+  // Inline description editor
+  const DescriptionEditor = ({ item }: { item: LineItem }) => {
+    const [descValue, setDescValue] = useState(item.description || '');
+    const [editing, setEditing] = useState(false);
+
+    if (editing) {
+      return (
+        <div className="flex items-center gap-1 mt-0.5">
+          <Input
+            value={descValue}
+            onChange={(e) => setDescValue(e.target.value)}
+            className="h-6 text-xs py-0"
+            autoFocus
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                onUpdateItem(item.id, { description: descValue });
+                setEditing(false);
+              } else if (e.key === 'Escape') {
+                setEditing(false);
+              }
+            }}
+          />
+          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { onUpdateItem(item.id, { description: descValue }); setEditing(false); }}>
+            <Check className="h-3 w-3 text-green-600" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setEditing(false)}>
+            <X className="h-3 w-3 text-red-600" />
+          </Button>
+        </div>
+      );
+    }
+
+    if (item.description && item.description !== item.item_name) {
+      return (
+        <p
+          className="text-xs text-muted-foreground mt-0.5 cursor-pointer hover:text-foreground"
+          onClick={() => editable && setEditing(true)}
+        >
+          {item.description}
+        </p>
+      );
+    }
+
+    if (editable) {
+      return (
+        <p
+          className="text-xs text-muted-foreground/50 mt-0.5 cursor-pointer hover:text-muted-foreground opacity-0 group-hover:opacity-100 italic"
+          onClick={() => setEditing(true)}
+        >
+          + Add description
+        </p>
+      );
+    }
+
+    return null;
+  };
+
   const renderItemRow = (item: LineItem) => (
     <TableRow key={item.id} className="group">
       <TableCell className="font-medium">
@@ -230,6 +287,7 @@ export function SectionedLineItemsTable({
               )}
               {editable && <NoteEditor item={item} />}
             </div>
+            <DescriptionEditor item={item} />
             {item.notes && (
               <p className="text-xs text-muted-foreground mt-0.5">
                 <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
