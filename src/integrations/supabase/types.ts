@@ -3507,6 +3507,112 @@ export type Database = {
         }
         Relationships: []
       }
+      canvass_area_assignments: {
+        Row: {
+          area_id: string
+          assigned_at: string | null
+          id: string
+          is_active: boolean | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          area_id: string
+          assigned_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          area_id?: string
+          assigned_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_area_assignments_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvass_area_properties: {
+        Row: {
+          area_id: string
+          created_at: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          property_id: string
+          tenant_id: string
+        }
+        Insert: {
+          area_id: string
+          created_at?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          property_id: string
+          tenant_id: string
+        }
+        Update: {
+          area_id?: string
+          created_at?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          property_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_area_properties_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvass_areas: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          polygon_geojson: Json
+          tenant_id: string
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          polygon_geojson: Json
+          tenant_id: string
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          polygon_geojson?: Json
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       canvass_competitions: {
         Row: {
           auto_enroll: boolean
@@ -31838,6 +31944,114 @@ export type Database = {
           },
         ]
       }
+      storm_intel_county_config: {
+        Row: {
+          county: string
+          id: string
+          ltv_10yr: number
+          ltv_5yr: number
+          ltv_older: number
+          ltv_recent: number
+          ppsf: number
+          state: string
+          tenant_id: string
+          updated_at: string | null
+          zip: string | null
+        }
+        Insert: {
+          county: string
+          id?: string
+          ltv_10yr?: number
+          ltv_5yr?: number
+          ltv_older?: number
+          ltv_recent?: number
+          ppsf: number
+          state: string
+          tenant_id: string
+          updated_at?: string | null
+          zip?: string | null
+        }
+        Update: {
+          county?: string
+          id?: string
+          ltv_10yr?: number
+          ltv_5yr?: number
+          ltv_older?: number
+          ltv_recent?: number
+          ppsf?: number
+          state?: string
+          tenant_id?: string
+          updated_at?: string | null
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      storm_intel_tenant_config: {
+        Row: {
+          age_cap: number
+          age_points_per_2yrs: number
+          claim_absentee_bonus: number
+          claim_homestead_high_damage_bonus: number
+          claim_homestead_low_damage_penalty: number
+          claim_w_damage: number
+          claim_w_equity: number
+          default_ppsf: number
+          hail_cap: number
+          hail_points_per_inch: number
+          min_confidence_for_public_only: number
+          min_priority_to_route: number
+          tenant_id: string
+          updated_at: string | null
+          w_claim: number
+          w_damage: number
+          w_equity: number
+          wind_cap: number
+          wind_points_per_3mph: number
+        }
+        Insert: {
+          age_cap?: number
+          age_points_per_2yrs?: number
+          claim_absentee_bonus?: number
+          claim_homestead_high_damage_bonus?: number
+          claim_homestead_low_damage_penalty?: number
+          claim_w_damage?: number
+          claim_w_equity?: number
+          default_ppsf?: number
+          hail_cap?: number
+          hail_points_per_inch?: number
+          min_confidence_for_public_only?: number
+          min_priority_to_route?: number
+          tenant_id: string
+          updated_at?: string | null
+          w_claim?: number
+          w_damage?: number
+          w_equity?: number
+          wind_cap?: number
+          wind_points_per_3mph?: number
+        }
+        Update: {
+          age_cap?: number
+          age_points_per_2yrs?: number
+          claim_absentee_bonus?: number
+          claim_homestead_high_damage_bonus?: number
+          claim_homestead_low_damage_penalty?: number
+          claim_w_damage?: number
+          claim_w_equity?: number
+          default_ppsf?: number
+          hail_cap?: number
+          hail_points_per_inch?: number
+          min_confidence_for_public_only?: number
+          min_priority_to_route?: number
+          tenant_id?: string
+          updated_at?: string | null
+          w_claim?: number
+          w_damage?: number
+          w_equity?: number
+          wind_cap?: number
+          wind_points_per_3mph?: number
+        }
+        Relationships: []
+      }
       storm_lookup_queue: {
         Row: {
           address: string | null
@@ -37537,6 +37751,23 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvass_area_stats: {
+        Row: {
+          area_id: string | null
+          contacted_properties: number | null
+          tenant_id: string | null
+          total_properties: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_area_properties_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_areas"
             referencedColumns: ["id"]
           },
         ]

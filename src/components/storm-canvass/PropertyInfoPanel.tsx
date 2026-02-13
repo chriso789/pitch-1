@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
-  Cloud, Sun, Compass, Calculator, FileText, Camera, CalendarPlus,
+  Cloud, Sun, Compass, Calculator, FileText, Camera, CalendarPlus, BarChart3,
   History, StickyNote, UserPlus, Loader2, Sparkles, ShieldCheck, ShieldAlert
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
+import StormScoreWhyPanel from './StormScoreWhyPanel';
 import { 
   calculateDistanceMeters, 
   getVerificationStatus, 
@@ -706,9 +707,13 @@ export default function PropertyInfoPanel({
 
           {/* Tools / Add New Tabs */}
           <Tabs value={activeTab} onValueChange={setActiveTab} className="mb-4">
-            <TabsList className="grid w-full grid-cols-2 h-9">
+            <TabsList className="grid w-full grid-cols-3 h-9">
               <TabsTrigger value="tools" className="text-xs">Tools</TabsTrigger>
               <TabsTrigger value="add_new" className="text-xs">Add New</TabsTrigger>
+              <TabsTrigger value="score_intel" className="text-xs">
+                <BarChart3 className="h-3 w-3 mr-1" />
+                Score
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="tools" className="mt-2">
               <div className="grid grid-cols-4 gap-2">
@@ -765,6 +770,19 @@ export default function PropertyInfoPanel({
                   <span className="text-[10px]">Follow-up</span>
                 </Button>
               </div>
+            </TabsContent>
+            <TabsContent value="score_intel" className="mt-2">
+              {profile?.tenant_id && property?.normalized_address_key && property?.storm_event_id ? (
+                <StormScoreWhyPanel
+                  tenantId={profile.tenant_id}
+                  stormEventId={property.storm_event_id}
+                  normalizedAddressKey={property.normalized_address_key}
+                />
+              ) : (
+                <div className="text-xs text-muted-foreground text-center py-4">
+                  No storm intel available for this property.
+                </div>
+              )}
             </TabsContent>
           </Tabs>
 
