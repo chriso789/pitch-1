@@ -100,6 +100,38 @@ interface TemplateLineItem {
   sort_order: number;
 }
 
+/** Generate a human-readable description from template formula + computed qty */
+function generateDynamicDescription(
+  item: TemplateLineItem,
+  computedQty: number
+): string {
+  // Use the static description from the template if it exists
+  if (item.description) return item.description;
+
+  const formula = item.qty_formula || '';
+  let desc = '';
+
+  if (formula.includes('surface_squares')) {
+    desc = `${computedQty.toFixed(1)} squares`;
+    if (formula.includes('1.15')) desc += ' (incl. 15% waste)';
+    else if (formula.includes('1.10')) desc += ' (incl. 10% waste)';
+  } else if (formula.includes('ridge')) {
+    desc = `${computedQty.toFixed(0)} LF ridge line`;
+  } else if (formula.includes('valley')) {
+    desc = `${computedQty.toFixed(0)} LF valley`;
+  } else if (formula.includes('hip')) {
+    desc = `${computedQty.toFixed(0)} LF hip`;
+  } else if (formula.includes('rake')) {
+    desc = `${computedQty.toFixed(0)} LF rake`;
+  } else if (formula.includes('eave') || formula.includes('perimeter')) {
+    desc = `${computedQty.toFixed(0)} LF perimeter`;
+  } else if (formula.includes('surface_area')) {
+    desc = `${computedQty.toFixed(0)} SF coverage area`;
+  }
+
+  return desc;
+}
+
 interface TemplateCalculation {
   template_id: string;
   template_name: string;
@@ -817,10 +849,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           ? evaluateFormula(item.qty_formula, measurementContext) 
           : 0;
         const lineTotal = calculatedQty * item.unit_cost;
+        const description = generateDynamicDescription(item, calculatedQty);
         
         return {
           id: item.id,
           item_name: item.item_name,
+          description,
           item_type: item.item_type as 'material' | 'labor',
           qty: calculatedQty,
           qty_original: calculatedQty,
