@@ -104,35 +104,52 @@ serve(async (req) => {
 
     // Insert properties using UPSERT
     if (properties.length > 0) {
-      const { data: inserted, error: insertError } = await supabase
-        .from('canvassiq_properties')
-        .upsert(properties, { 
-          onConflict: 'tenant_id,normalized_address_key',
-          ignoreDuplicates: true 
-        })
-        .select('id, lat, lng, address, disposition');
+      // Insert in small batches, skipping duplicates individually
+      let allInserted: any[] = [];
+      const insertBatchSize = 20;
+      
+      for (let i = 0; i < properties.length; i += insertBatchSize) {
+        const batch = properties.slice(i, i + insertBatchSize);
+        const { data: inserted, error: insertError } = await supabase
+          .from('canvassiq_properties')
+          .upsert(batch, { 
+            onConflict: 'tenant_id,normalized_address_key',
+            ignoreDuplicates: true 
+          })
+          .select('id, lat, lng, address, disposition');
 
-      if (insertError) {
-        console.error('[canvassiq-load-parcels] Insert error:', insertError);
-        return new Response(
-          JSON.stringify({ error: 'Failed to insert properties', details: insertError.message }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        if (insertError) {
+          // If upsert fails (constraint mismatch), fall back to individual inserts
+          console.warn('[canvassiq-load-parcels] Batch upsert failed, inserting individually:', insertError.message);
+          for (const prop of batch) {
+            const { data: single, error: singleErr } = await supabase
+              .from('canvassiq_properties')
+              .insert(prop)
+              .select('id, lat, lng, address, disposition')
+              .maybeSingle();
+            if (single) allInserted.push(single);
+            else if (singleErr && !singleErr.message.includes('duplicate key')) {
+              console.error('[canvassiq-load-parcels] Non-duplicate insert error:', singleErr.message);
+            }
+          }
+        } else if (inserted) {
+          allInserted = allInserted.concat(inserted);
+        }
       }
 
-      console.log(`[canvassiq-load-parcels] Upserted ${inserted?.length || 0} properties`);
+      console.log(`[canvassiq-load-parcels] Upserted ${allInserted.length} properties`);
 
       // Fire storm-public-lookup for owner enrichment in background batches
-      if (inserted && inserted.length > 0) {
-        enrichPropertiesInBackground(supabaseUrl, supabaseKey, inserted, tenant_id);
+      if (allInserted.length > 0) {
+        enrichPropertiesInBackground(supabaseUrl, supabaseKey, allInserted, tenant_id);
       }
 
       return new Response(
         JSON.stringify({ 
           success: true, 
-          properties: inserted,
+          properties: allInserted,
           message: 'Properties loaded and enrichment started',
-          count: inserted?.length || 0
+          count: allInserted.length
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
