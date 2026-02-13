@@ -1,130 +1,202 @@
 
 
-## Wire Territory System End-to-End: Area Filtering, Rep Assignment, GPS Enforcement, Live Counters
+## Canvass Mode, Heatmap, Auto-Split, Leaderboard, Area ROI, and Performance Optimization
 
-### What Already Exists (no changes needed)
-- `canvass_areas`, `canvass_area_assignments`, `canvass_area_properties` tables with RLS
-- `canvass_area_stats` view joining properties to visits
-- `canvass-area-build-membership` edge function (point-in-polygon on `canvassiq_properties`)
-- `TerritoryManagerMap.tsx` with draw/save/delete
-- `AreaStatsBadge.tsx` presentational component
-- `PropertyInfoPanel.tsx` with Score tab
+### Overview
 
-### Changes Required
+Six features wired into the existing canvass workflow:
 
----
-
-#### 1. Rep Assignment UI in TerritoryManagerMap
-
-**File:** `src/components/storm-canvass/TerritoryManagerMap.tsx` -- UPDATE
-
-Add a multi-select dropdown for each area in the sidebar list. When reps are selected, upsert into `canvass_area_assignments`. Load team members from `profiles` table filtered by tenant.
-
-- Fetch profiles (tenant team members) on mount
-- For each area card, show assigned reps as small avatars/badges
-- "Assign" button opens a popover with checkboxes for each team member
-- On change, upsert/delete `canvass_area_assignments` rows
+1. **Canvass Mode** -- free-pan map with address search and manual pin drops
+2. **Area Heatmap** -- precomputed grid of uncontacted property density for manager view
+3. **Auto-Split Area** -- evenly partition area properties among N reps by geography
+4. **Rep Performance Leaderboard** -- ranked view per area (contacts, appointments, contracts)
+5. **Area ROI per Storm** -- link jobs to canvass properties and track revenue by area
+6. **10K+ Property Performance** -- indexes, zoom-dependent rendering, precomputed membership
 
 ---
 
-#### 2. Live Area Stats with Realtime Subscription
+### Database Migration
 
-**File:** `src/components/storm-canvass/LiveAreaStatsBadge.tsx` -- CREATE
+**ALTER `canvassiq_properties`** -- add 2 columns:
+- `manual_pin boolean DEFAULT false`
+- `source text DEFAULT 'system'`
 
-A wrapper around `AreaStatsBadge` that:
-- Accepts `tenantId` and `areaId`
-- Fetches from `canvass_area_stats` view on mount
-- Subscribes to Supabase realtime on `canvassiq_visits` table (INSERT events)
-- Re-fetches stats when a new visit is logged
-- Passes `total` and `contacted` to the existing `AreaStatsBadge`
+(`created_by` already exists.)
 
-Replace the inline stats fetch in `TerritoryManagerMap` with this component.
+**ALTER `jobs`** -- add 2 columns:
+- `canvass_property_id uuid` (nullable FK-style reference)
+- `storm_event_id text` (nullable, links job to a storm)
 
----
+**CREATE `canvass_area_heat_cells`** -- precomputed heatmap grid:
 
-#### 3. Area-Filtered Property Loading for Reps
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | Auto |
+| tenant_id | uuid | Tenant |
+| area_id | uuid | Area reference |
+| cell_key | text | Lat/lng bucket key |
+| center_lat / center_lng | double precision | Cell center |
+| total_properties / contacted_properties / uncontacted_properties | int | Counts |
+| updated_at | timestamptz | Last computed |
 
-**File:** `src/hooks/useAssignedArea.ts` -- CREATE
+Unique on `(tenant_id, area_id, cell_key)`.
 
-A hook that:
-- Fetches from `canvass_area_assignments` where `user_id = profile.id` and `is_active = true`
-- Loads the matching `canvass_areas` polygon
-- Loads `canvass_area_properties` IDs for that area
-- Returns `{ assignedArea, areaPolygon, propertyIds, loading }`
+**CREATE `canvass_area_property_assignments`** -- per-rep property splits:
 
-**File:** `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` -- UPDATE
+| Column | Type | Description |
+|--------|------|-------------|
+| id | uuid PK | Auto |
+| tenant_id | uuid | Tenant |
+| area_id | uuid | Area reference |
+| user_id | uuid | Assigned rep |
+| property_id | uuid | Property reference |
 
-Add optional prop `areaPropertyIds?: string[]`. When provided:
-- Instead of querying all `canvassiq_properties` in viewport bounds, filter with `.in('id', areaPropertyIds)` (chunked if > 100 IDs)
-- This restricts the rep to only see pins within their assigned territory
+Unique on `(tenant_id, area_id, property_id)`.
 
-**File:** `src/components/storm-canvass/GoogleLiveLocationMap.tsx` -- UPDATE
+**CREATE VIEW `canvass_area_leaderboard`** -- aggregates visits per area per rep:
+- `contacted_properties` (distinct property_id count)
+- `total_touchpoints` (total visits)
+- `appts` (disposition in 'appointment_set', 'inspection_scheduled')
+- `contracts` (disposition = 'contract_signed')
 
-Pass `areaPropertyIds` through to `GooglePropertyMarkersLayer`.
+**CREATE VIEW `canvass_area_roi`** -- joins `canvass_area_properties` to `jobs` via `canvass_property_id`:
+- `jobs_won` (count)
+- `revenue` (sum of `estimated_value`)
+- Grouped by `tenant_id, area_id, storm_event_id`
 
-**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx` -- UPDATE
+**ADD INDEXES:**
+- `canvassiq_properties(tenant_id, lat, lng)`
+- `canvassiq_properties(tenant_id, normalized_address_key)`
 
-- Import and use `useAssignedArea` hook
-- Pass `areaPropertyIds` to `GoogleLiveLocationMap`
-- If no area assigned, show all properties (manager/admin behavior)
-
----
-
-#### 4. GPS Territory Enforcement
-
-**File:** `src/components/storm-canvass/TerritoryBoundaryAlert.tsx` -- CREATE
-
-A floating banner component that:
-- Accepts `userLocation` and `areaPolygon` (GeoJSON)
-- Runs client-side point-in-polygon check on user's GPS
-- Shows a red alert banner "You are outside your assigned territory" when outside
-- Shows a green "In Territory" badge when inside
-- Uses the same ray-casting algorithm from the edge function
-
-**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx` -- UPDATE
-
-- Render `TerritoryBoundaryAlert` in the map overlay area
-- Pass `userLocation` and `areaPolygon` from `useAssignedArea`
+All new tables get RLS for tenant isolation.
 
 ---
 
-#### 5. Area Polygon Overlay on Live Map
+### New Edge Functions
 
-**File:** `src/components/storm-canvass/GoogleLiveLocationMap.tsx` -- UPDATE
+**`canvass-drop-pin`** -- manual property creation:
+- Accepts `{ tenant_id, user_id, lat, lng, label?, run_enrichment? }`
+- Reverse-geocodes via the existing `locationResolver`
+- Upserts into `canvassiq_properties` with `manual_pin=true, source='manual_pin'`
+- Optionally fire-and-forget calls `storm-public-lookup` for enrichment
+- Returns the created property
 
-Add optional `areaPolygon` prop. When provided, render the assigned territory boundary as a semi-transparent polygon overlay on the Google Map so the rep can see their area visually.
+**`canvass-area-build-heatmap`** -- precompute density grid:
+- Accepts `{ tenant_id, area_id, cell_size_deg? }`
+- Loads area membership from `canvass_area_properties`
+- Joins to `canvassiq_visits` for contacted status
+- Buckets into grid cells (~0.005 deg, roughly 500m)
+- Upserts into `canvass_area_heat_cells`
+- Returns cell count
+
+**`canvass-area-auto-split`** -- evenly split among reps:
+- Accepts `{ tenant_id, area_id, user_ids: string[] }`
+- Loads all area properties with lat/lng
+- Runs k-means-style geographic clustering (k = user count)
+- Balances property counts across clusters (swap edge points)
+- Writes `canvass_area_property_assignments`
+- Returns counts per rep
 
 ---
 
-### Technical Details
+### New React Components
 
-**Point-in-polygon (client-side):**
-```text
-Reuse ray-casting algorithm from canvass-area-build-membership.
-GeoJSON coordinates are [lng, lat] format.
-```
+**`src/components/storm-canvass/CanvassModeToggle.tsx`**
+- A toggle switch in the LiveCanvassingPage header
+- When ON: enables map click to drop pin (with confirmation dialog), search is emphasized
+- When OFF: reverts to assigned territory filtering
 
-**Area property filtering strategy:**
-- For areas with < 500 properties: use `.in('id', ids)` filter
-- For areas with > 500 properties: use bbox from polygon + viewport intersection (already built into the layer)
+**`src/components/storm-canvass/DropPinDialog.tsx`**
+- Confirmation dialog after map click in canvass mode
+- Shows reverse-geocoded address
+- Option to run enrichment
+- Calls `canvass-drop-pin` edge function
+- Refreshes markers on success
 
-**Realtime subscription pattern:**
-```text
-supabase.channel('area-visits')
-  .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'canvassiq_visits' }, refetchStats)
-  .subscribe()
-```
+**`src/components/storm-canvass/AreaHeatmapOverlay.tsx`**
+- Renders precomputed heat cells as colored circles/rectangles on Google Map
+- Color gradient: green (all contacted) to red (high uncontacted density)
+- Only visible at zoom < 16 (individual pins shown at higher zoom)
+- Fetches from `canvass_area_heat_cells`
 
-### Files Created/Modified
+**`src/components/storm-canvass/AreaLeaderboard.tsx`**
+- Table/ranked list from `canvass_area_leaderboard` view
+- Shows: Rep name, properties contacted, touchpoints, appointments, contracts
+- Sortable columns
+- Used in manager dashboard and territory manager sidebar
+
+**`src/components/storm-canvass/AreaROIPanel.tsx`**
+- Card showing area ROI from `canvass_area_roi` view
+- Jobs won, revenue, cost per lead (if batchleads_usage available)
+- Per storm breakdown
+
+**`src/components/storm-canvass/AutoSplitButton.tsx`**
+- Button in TerritoryManagerMap sidebar per area
+- Opens dialog to select which reps to split among
+- Calls `canvass-area-auto-split` edge function
+- Shows results (counts per rep)
+
+---
+
+### Updated Files
+
+**`src/pages/storm-canvass/LiveCanvassingPage.tsx`**
+- Add `canvassMode` state toggle
+- When canvass mode ON: pass `onMapClick` handler to GoogleLiveLocationMap
+- Remove area filtering when canvass mode is active (show all pins in viewport)
+- Render `CanvassModeToggle` in header
+- Render `DropPinDialog` when map is clicked
+
+**`src/components/storm-canvass/GoogleLiveLocationMap.tsx`**
+- Add optional `onMapClick` prop
+- When provided, attach click listener to map that fires with lat/lng
+
+**`src/components/storm-canvass/TerritoryManagerMap.tsx`**
+- Add `AutoSplitButton` per area in sidebar
+- Add `AreaLeaderboard` expandable section per area
+- Add `AreaROIPanel` in sidebar
+- Add button to rebuild heatmap per area
+- Render `AreaHeatmapOverlay` on map for selected area
+
+**`src/pages/StormCanvassPro.tsx`**
+- Add "Territory Manager" card linking to the territory management view
+
+**`supabase/config.toml`**
+- Add entries for `canvass-drop-pin`, `canvass-area-build-heatmap`, `canvass-area-auto-split`
+
+---
+
+### Performance Strategy for 10K+ Territories
+
+| Strategy | Implementation |
+|----------|---------------|
+| Viewport-only loading | Already in place -- bbox query on `canvassiq_properties` |
+| DB indexes | Add composite indexes on `(tenant_id, lat, lng)` and `(tenant_id, normalized_address_key)` |
+| Precomputed membership | `canvass_area_properties` already avoids runtime point-in-polygon |
+| Zoom-dependent rendering | Zoom < 14: heatmap cells only. Zoom 14-16: clustered pins. Zoom > 16: individual pins with street numbers |
+| Chunked .in() queries | Already implemented in GooglePropertyMarkersLayer (100-item chunks) |
+| Grid cell loading | Already tracks loaded cells to avoid redundant fetches |
+| Heatmap precomputation | `canvass_area_heat_cells` computed once per area update, not per request |
+
+---
+
+### Files Summary
 
 | File | Action |
 |------|--------|
-| `src/hooks/useAssignedArea.ts` | CREATE -- hook for rep's assigned area + property IDs |
-| `src/components/storm-canvass/LiveAreaStatsBadge.tsx` | CREATE -- realtime stats wrapper |
-| `src/components/storm-canvass/TerritoryBoundaryAlert.tsx` | CREATE -- GPS enforcement banner |
-| `src/components/storm-canvass/TerritoryManagerMap.tsx` | UPDATE -- add rep assignment UI |
-| `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` | UPDATE -- accept areaPropertyIds filter |
-| `src/components/storm-canvass/GoogleLiveLocationMap.tsx` | UPDATE -- pass areaPropertyIds + render area polygon |
-| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | UPDATE -- integrate useAssignedArea + territory alert |
+| Database migration | ALTER 2 tables, CREATE 2 tables + 2 views + 2 indexes, RLS |
+| `supabase/functions/canvass-drop-pin/index.ts` | CREATE |
+| `supabase/functions/canvass-area-build-heatmap/index.ts` | CREATE |
+| `supabase/functions/canvass-area-auto-split/index.ts` | CREATE |
+| `src/components/storm-canvass/CanvassModeToggle.tsx` | CREATE |
+| `src/components/storm-canvass/DropPinDialog.tsx` | CREATE |
+| `src/components/storm-canvass/AreaHeatmapOverlay.tsx` | CREATE |
+| `src/components/storm-canvass/AreaLeaderboard.tsx` | CREATE |
+| `src/components/storm-canvass/AreaROIPanel.tsx` | CREATE |
+| `src/components/storm-canvass/AutoSplitButton.tsx` | CREATE |
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | UPDATE -- canvass mode + drop pin |
+| `src/components/storm-canvass/GoogleLiveLocationMap.tsx` | UPDATE -- onMapClick prop |
+| `src/components/storm-canvass/TerritoryManagerMap.tsx` | UPDATE -- auto-split + leaderboard + heatmap |
+| `src/pages/StormCanvassPro.tsx` | UPDATE -- add Territory Manager card |
+| `supabase/config.toml` | ADD 3 function entries |
 
-No database changes needed -- all tables and views already exist.
