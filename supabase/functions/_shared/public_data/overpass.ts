@@ -1,5 +1,7 @@
 // supabase/functions/_shared/public_data/overpass.ts
 
+import { retry } from "../utils/retry.ts";
+
 export async function fetchOverpassAddressesInPolygon(geojson: any, timeoutMs: number) {
   const poly = toOverpassPolyString(geojson);
 
@@ -16,7 +18,10 @@ export async function fetchOverpassAddressesInPolygon(geojson: any, timeoutMs: n
     out center tags;
   `;
 
-  const res = await fetchText("https://overpass-api.de/api/interpreter", timeoutMs, query);
+  const res = await retry(
+    () => fetchText("https://overpass-api.de/api/interpreter", timeoutMs, query),
+    { retries: 2, baseDelay: 700 },
+  );
   const json = JSON.parse(res);
 
   const out: Array<{ lat: number; lng: number; house_number?: string; road?: string; formatted?: string }> = [];

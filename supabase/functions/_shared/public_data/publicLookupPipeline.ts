@@ -5,6 +5,22 @@ import { pickAppraiser, pickTax, pickClerk } from "./registry.ts";
 import { scoreConfidence } from "./score.ts";
 import { mergeResults } from "./merge.ts";
 import { batchLeadsFallback } from "./sources/batchleads/fallback.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+function normalize(s: string) {
+  return (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+}
+
+function isAbsentee(merged: Partial<PublicPropertyResult>) {
+  if (!merged.owner_mailing_address || !merged.property_address) return false;
+  return normalize(merged.owner_mailing_address) !== normalize(merged.property_address);
+}
+
+function isResidential(landUse?: string) {
+  if (!landUse) return true; // assume residential if unknown
+  const lu = landUse.toLowerCase();
+  return lu.includes("resid") || lu.includes("single") || lu.includes("family") || lu.includes("condo") || lu.includes("town");
+}
 
 export async function lookupPropertyPublic(input: {
   loc: NormalizedLocation;
@@ -12,6 +28,9 @@ export async function lookupPropertyPublic(input: {
   includeTax: boolean;
   includeClerk: boolean;
   timeoutMs: number;
+  stormEventId?: string;
+  polygonId?: string;
+  tenantId?: string;
 }): Promise<PublicPropertyResult> {
   const { loc, county, includeTax, includeClerk, timeoutMs } = input;
 
@@ -61,37 +80,80 @@ export async function lookupPropertyPublic(input: {
   let merged = mergeResults(loc, [appraiserRes, taxRes, clerkRes]);
   let confidence = scoreConfidence({ loc, merged, appraiserRes, taxRes, clerkRes });
 
-  // 5) BatchLeads fallback (only when confidence < 70 or missing critical fields)
+  // 5) Smart BatchLeads fallback with cost controls
   let batchRes: Partial<PublicPropertyResult> | null = null;
   let usedBatchleads = false;
 
-  if (confidence < 70 || !merged.owner_name || !merged.owner_mailing_address) {
-    batchRes = await batchLeadsFallback({ loc, timeoutMs }).catch((e) => {
-      raw.batchleads_error = String(e);
-      return null;
-    });
+  const shouldFallback =
+    (confidence < 70 || !merged.owner_name || !merged.owner_mailing_address) &&
+    isResidential(merged.land_use) &&
+    !(merged.homestead === true && confidence >= 60) &&
+    (isAbsentee(merged) || !merged.owner_mailing_address);
 
-    if (batchRes) {
-      usedBatchleads = true;
-      sources.batchleads = true;
-      raw.batchleads = batchRes;
+  if (shouldFallback) {
+    // Per-storm cap check (max 150 BatchLeads calls per storm)
+    let withinCap = true;
+    if (input.stormEventId && input.tenantId) {
+      try {
+        const supabase = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+        const { count } = await supabase
+          .from("batchleads_usage")
+          .select("id", { count: "exact", head: true })
+          .eq("tenant_id", input.tenantId)
+          .eq("storm_event_id", input.stormEventId);
+        withinCap = (count ?? 0) < 150;
+      } catch { /* proceed if check fails */ }
+    }
 
-      // Re-merge with batchleads (lowest priority — won't overwrite existing)
-      merged = mergeResults(loc, [appraiserRes, taxRes, clerkRes, batchRes]);
-
-      // Check if only batchleads provided owner
-      const onlyBatchleadsProvidedOwner =
-        !appraiserRes?.owner_name && !taxRes?.owner_name && !clerkRes?.owner_name && !!batchRes.owner_name;
-
-      confidence = scoreConfidence({
-        loc,
-        merged,
-        appraiserRes,
-        taxRes,
-        clerkRes,
-        batchleadsRes: batchRes,
-        onlyBatchleadsProvidedOwner,
+    if (withinCap) {
+      batchRes = await batchLeadsFallback({ loc, timeoutMs }).catch((e) => {
+        raw.batchleads_error = String(e);
+        return null;
       });
+
+      if (batchRes) {
+        usedBatchleads = true;
+        sources.batchleads = true;
+        raw.batchleads = batchRes;
+
+        // Log usage for cost tracking
+        if (input.tenantId) {
+          try {
+            const supabase = createClient(
+              Deno.env.get("SUPABASE_URL")!,
+              Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+            );
+            await supabase.from("batchleads_usage").insert({
+              tenant_id: input.tenantId,
+              storm_event_id: input.stormEventId ?? "unknown",
+              polygon_id: input.polygonId ?? null,
+              normalized_address_key: loc.normalized_address_key,
+              cost: 0.15,
+            });
+          } catch (e) {
+            console.error("[batchleads_usage log error]", e);
+          }
+        }
+
+        // Re-merge (lowest priority — won't overwrite existing)
+        merged = mergeResults(loc, [appraiserRes, taxRes, clerkRes, batchRes]);
+
+        const onlyBatchleadsProvidedOwner =
+          !appraiserRes?.owner_name && !taxRes?.owner_name && !clerkRes?.owner_name && !!batchRes.owner_name;
+
+        confidence = scoreConfidence({
+          loc,
+          merged,
+          appraiserRes,
+          taxRes,
+          clerkRes,
+          batchleadsRes: batchRes,
+          onlyBatchleadsProvidedOwner,
+        });
+      }
     }
   }
 
