@@ -1071,3 +1071,9 @@ verify_jwt = true
 
 [functions.storm-public-lookup]
 verify_jwt = false
+
+[functions.storm-polygon-batch]
+verify_jwt = false
+
+[functions.storm-polygon-worker]
+verify_jwt = false

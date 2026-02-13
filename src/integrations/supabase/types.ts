@@ -31700,9 +31700,63 @@ export type Database = {
           },
         ]
       }
+      storm_lookup_queue: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          error: string | null
+          id: string
+          lat: number
+          lng: number
+          polygon_id: string
+          result: Json | null
+          status: string
+          storm_event_id: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          lat: number
+          lng: number
+          polygon_id: string
+          result?: Json | null
+          status?: string
+          storm_event_id: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          error?: string | null
+          id?: string
+          lat?: number
+          lng?: number
+          polygon_id?: string
+          result?: Json | null
+          status?: string
+          storm_event_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "storm_lookup_queue_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       storm_properties_public: {
         Row: {
           assessed_value: number | null
+          batchleads_payload: Json | null
           canvassiq_property_id: string | null
           confidence_score: number | null
           county: string | null
@@ -31718,6 +31772,7 @@ export type Database = {
           lng: number | null
           lot_size: string | null
           mortgage_lender: string | null
+          normalized_address_key: string | null
           owner_mailing_address: string | null
           owner_name: string | null
           parcel_id: string | null
@@ -31731,10 +31786,12 @@ export type Database = {
           state: string | null
           tenant_id: string | null
           updated_at: string | null
+          used_batchleads: boolean | null
           year_built: number | null
         }
         Insert: {
           assessed_value?: number | null
+          batchleads_payload?: Json | null
           canvassiq_property_id?: string | null
           confidence_score?: number | null
           county?: string | null
@@ -31750,6 +31807,7 @@ export type Database = {
           lng?: number | null
           lot_size?: string | null
           mortgage_lender?: string | null
+          normalized_address_key?: string | null
           owner_mailing_address?: string | null
           owner_name?: string | null
           parcel_id?: string | null
@@ -31763,10 +31821,12 @@ export type Database = {
           state?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          used_batchleads?: boolean | null
           year_built?: number | null
         }
         Update: {
           assessed_value?: number | null
+          batchleads_payload?: Json | null
           canvassiq_property_id?: string | null
           confidence_score?: number | null
           county?: string | null
@@ -31782,6 +31842,7 @@ export type Database = {
           lng?: number | null
           lot_size?: string | null
           mortgage_lender?: string | null
+          normalized_address_key?: string | null
           owner_mailing_address?: string | null
           owner_name?: string | null
           parcel_id?: string | null
@@ -31795,6 +31856,7 @@ export type Database = {
           state?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          used_batchleads?: boolean | null
           year_built?: number | null
         }
         Relationships: [
