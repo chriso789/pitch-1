@@ -1086,3 +1086,6 @@ verify_jwt = false
 
 [functions.canvass-route-plan]
 verify_jwt = false
+
+[functions.canvass-area-build-membership]
+verify_jwt = false

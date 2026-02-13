@@ -30,10 +30,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Fetch storm + property
-    const [stormRes, propRes] = await Promise.all([
+    // Fetch storm + property + tenant config + county config in parallel
+    const [stormRes, propRes, tenantCfgRes] = await Promise.all([
       supabase.from("storm_events").select("*").eq("id", storm_event_id).eq("tenant_id", tenant_id).single(),
       supabase.from("storm_properties_public").select("*").eq("tenant_id", tenant_id).eq("normalized_address_key", normalized_address_key).single(),
+      supabase.from("storm_intel_tenant_config").select("*").eq("tenant_id", tenant_id).maybeSingle(),
     ]);
 
     if (!stormRes.data || !propRes.data) {
@@ -45,6 +46,34 @@ Deno.serve(async (req) => {
 
     const storm = stormRes.data;
     const prop = propRes.data;
+    const tc = tenantCfgRes.data; // may be null
+
+    // Try county config (zip-level first, then county-level)
+    let countyConfig: any = null;
+    if (prop.county && prop.state) {
+      const { data: zipCfg } = await supabase
+        .from("storm_intel_county_config")
+        .select("*")
+        .eq("tenant_id", tenant_id)
+        .eq("state", prop.state)
+        .eq("county", prop.county)
+        .eq("zip", prop.zip_code ?? "")
+        .maybeSingle();
+
+      if (zipCfg) {
+        countyConfig = zipCfg;
+      } else {
+        const { data: countyCfg } = await supabase
+          .from("storm_intel_county_config")
+          .select("*")
+          .eq("tenant_id", tenant_id)
+          .eq("state", prop.state)
+          .eq("county", prop.county)
+          .is("zip", null)
+          .maybeSingle();
+        countyConfig = countyCfg;
+      }
+    }
 
     const propertySnapshot = {
       property_address: prop.property_address,
@@ -63,10 +92,42 @@ Deno.serve(async (req) => {
       lng: prop.lng,
     };
 
-    const damage = scoreDamage({ storm, prop: propertySnapshot });
-    const equity = scoreEquity({ prop: propertySnapshot });
-    const claim = scoreClaimLikelihood({ prop: propertySnapshot, damage, equity });
-    const priority = computePriority({ damage, equity, claim });
+    // Build config objects from tenant + county configs
+    const damageConfig = tc ? {
+      hail_points_per_inch: Number(tc.hail_points_per_inch),
+      hail_cap: tc.hail_cap,
+      wind_points_per_3mph: Number(tc.wind_points_per_3mph),
+      wind_cap: tc.wind_cap,
+      age_points_per_2yrs: Number(tc.age_points_per_2yrs),
+      age_cap: tc.age_cap,
+    } : undefined;
+
+    const equityConfig = {
+      ppsf: countyConfig ? Number(countyConfig.ppsf) : (tc ? Number(tc.default_ppsf) : undefined),
+      ltv_recent: countyConfig ? Number(countyConfig.ltv_recent) : undefined,
+      ltv_5yr: countyConfig ? Number(countyConfig.ltv_5yr) : undefined,
+      ltv_10yr: countyConfig ? Number(countyConfig.ltv_10yr) : undefined,
+      ltv_older: countyConfig ? Number(countyConfig.ltv_older) : undefined,
+    };
+
+    const claimConfig = tc ? {
+      claim_w_damage: Number(tc.claim_w_damage),
+      claim_w_equity: Number(tc.claim_w_equity),
+      claim_absentee_bonus: tc.claim_absentee_bonus,
+      claim_homestead_low_damage_penalty: tc.claim_homestead_low_damage_penalty,
+      claim_homestead_high_damage_bonus: tc.claim_homestead_high_damage_bonus,
+    } : undefined;
+
+    const priorityConfig = tc ? {
+      w_damage: Number(tc.w_damage),
+      w_equity: Number(tc.w_equity),
+      w_claim: Number(tc.w_claim),
+    } : undefined;
+
+    const damage = scoreDamage({ storm, prop: propertySnapshot, config: damageConfig });
+    const equity = scoreEquity({ prop: propertySnapshot, config: equityConfig });
+    const claim = scoreClaimLikelihood({ prop: propertySnapshot, damage, equity, config: claimConfig });
+    const priority = computePriority({ damage, equity, claim, config: priorityConfig });
 
     const row = {
       tenant_id,
