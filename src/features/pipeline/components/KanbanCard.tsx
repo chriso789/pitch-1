@@ -512,7 +512,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           <Button
             variant="ghost"
             size="sm"
-            className="absolute bottom-0 left-0 h-8 w-8 md:h-5 md:w-5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity flex items-center justify-center"
+            className="absolute bottom-0 left-0 h-8 w-8 p-0 text-primary hover:text-primary hover:bg-primary/10 bg-primary/5 rounded-tr-md opacity-100 transition-opacity flex items-center justify-center z-10"
             onClick={handleLeadDetailsClick}
             onPointerDown={(e) => e.stopPropagation()}
             aria-label={`View lead details for ${displayNumber}`}
