@@ -53,6 +53,7 @@ import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplat
 import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
 import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
+import { UnifiedCommunicationsTimeline } from '@/components/timeline/UnifiedCommunicationsTimeline';
 import { LeadNotesSection } from '@/components/lead-details/LeadNotesSection';
 import { InternalNotesSection } from '@/components/lead-details/InternalNotesSection';
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
@@ -1116,6 +1117,10 @@ const LeadDetails = () => {
                 <FileText className="h-3 w-3 mr-1" />
                 Activity
               </TabsTrigger>
+              <TabsTrigger value="timeline" className="text-xs h-7 px-3">
+                <Phone className="h-3 w-3 mr-1" />
+                Timeline
+              </TabsTrigger>
             </TabsList>
           </CardHeader>
 
@@ -1225,6 +1230,15 @@ const LeadDetails = () => {
               <LeadActivityTimeline 
                 pipelineEntryId={id!}
                 contactId={lead.contact?.id}
+              />
+            </TabsContent>
+
+            <TabsContent value="timeline" className="mt-0">
+              <UnifiedCommunicationsTimeline 
+                pipelineEntryId={id!}
+                contactId={lead.contact?.id}
+                maxItems={30}
+                showFilters={true}
               />
             </TabsContent>
           </CardContent>
