@@ -9,7 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye, Edit, X, CheckCircle, AlertCircle, MapPin, ArrowRight, Check, Plus } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye, Edit, X, CheckCircle, AlertCircle, MapPin, ArrowRight, Check, Plus, ChevronDown, ChevronRight, Trash2, Hammer } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
@@ -70,6 +77,22 @@ interface Template {
   template_category?: string;
 }
 
+const AVAILABLE_TRADES = [
+  { value: 'roofing', label: 'Roofing', icon: '🏠', default: true },
+  { value: 'gutters', label: 'Gutters', icon: '🔧' },
+  { value: 'siding', label: 'Siding', icon: '🧱' },
+  { value: 'interior', label: 'Interior Trades', icon: '🏗️' },
+  { value: 'exterior', label: 'Exterior Trades', icon: '🔨' },
+] as const;
+
+interface TradeSection {
+  id: string;
+  tradeType: string;
+  templateId: string;
+  label: string;
+  isCollapsed: boolean;
+}
+
 interface TemplateLineItem {
   id: string;
   item_name: string;
@@ -121,6 +144,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [existingEstimateId, setExistingEstimateId] = useState<string | null>(null);
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  
+  // Multi-trade state
+  const [tradeSections, setTradeSections] = useState<TradeSection[]>([
+    { id: crypto.randomUUID(), tradeType: 'roofing', templateId: '', label: 'Roofing', isCollapsed: false }
+  ]);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
@@ -1901,74 +1929,191 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </div>
       )}
 
-      {/* Template Selection Dropdown */}
+      {/* Build Estimate - Multi-Trade System */}
       <Card>
         <CardHeader>
-          <CardTitle>Select Estimate Template</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Hammer className="h-5 w-5" />
+              Build Estimate
+            </CardTitle>
+            {tradeSections.length > 0 && (
+              <Badge variant="secondary" className="text-xs">
+                {tradeSections.length} {tradeSections.length === 1 ? 'trade' : 'trades'}
+              </Badge>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <TemplateCombobox
-            templates={templates}
-            value={selectedTemplateId}
-            onValueChange={handleTemplateSelect}
-            placeholder="Select Template"
-            disabled={isEditingLoadedEstimate}
-          />
+          {/* Trade Sections */}
+          {tradeSections.map((trade, index) => {
+            const tradeConfig = AVAILABLE_TRADES.find(t => t.value === trade.tradeType);
+            const filteredTemplates = trade.tradeType === 'roofing' 
+              ? templates 
+              : templates.filter(t => t.template_category === trade.tradeType);
+            
+            return (
+              <Collapsible 
+                key={trade.id} 
+                open={!trade.isCollapsed}
+                onOpenChange={(open) => {
+                  setTradeSections(prev => prev.map(t => 
+                    t.id === trade.id ? { ...t, isCollapsed: !open } : t
+                  ));
+                }}
+              >
+                <div className="border rounded-lg bg-muted/30">
+                  <CollapsibleTrigger asChild>
+                    <div className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/50 rounded-t-lg">
+                      <div className="flex items-center gap-2">
+                        {trade.isCollapsed ? (
+                          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                        )}
+                        <span className="text-sm">{tradeConfig?.icon}</span>
+                        <span className="font-medium text-sm">{trade.label}</span>
+                        {trade.templateId && (
+                          <Badge variant="outline" className="text-xs">
+                            Template selected
+                          </Badge>
+                        )}
+                      </div>
+                      {/* Allow removing any trade except the last one */}
+                      {tradeSections.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTradeSections(prev => prev.filter(t => t.id !== trade.id));
+                            // If this was the active roofing trade, clear selectedTemplateId
+                            if (trade.tradeType === 'roofing' && trade.templateId === selectedTemplateId) {
+                              setSelectedTemplateId('');
+                            }
+                          }}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      )}
+                    </div>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="px-3 pb-3 space-y-3">
+                      <TemplateCombobox
+                        templates={filteredTemplates.length > 0 ? filteredTemplates : templates}
+                        value={trade.tradeType === 'roofing' ? selectedTemplateId : trade.templateId}
+                        onValueChange={(templateId) => {
+                          setTradeSections(prev => prev.map(t =>
+                            t.id === trade.id ? { ...t, templateId } : t
+                          ));
+                          // For roofing trade, maintain backward compat with selectedTemplateId
+                          if (trade.tradeType === 'roofing') {
+                            handleTemplateSelect(templateId);
+                          }
+                        }}
+                        placeholder={`Select ${trade.label} Template...`}
+                        disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
+                      />
 
-          {/* Show note when editing + options to recalculate or create new */}
-          {isEditingLoadedEstimate && selectedTemplateId && (
-            <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
-              <p className="text-sm text-muted-foreground">
-                Viewing saved estimate. Select an action below.
-              </p>
-              <div className="flex gap-2">
-                <Button 
-                  variant="outline" 
-                  size="sm"
-                  onClick={() => {
-                    setIsEditingLoadedEstimate(false);
-                    fetchLineItems(selectedTemplateId);
-                    toast({
-                      title: 'Recalculating',
-                      description: 'Line items recalculated from template measurements',
-                    });
-                  }}
-                >
-                  <RotateCcw className="h-4 w-4 mr-1" />
-                  Recalculate
-                </Button>
-                <Button 
-                  variant="default" 
-                  size="sm"
-                  onClick={() => {
-                    // Clear everything and enable new estimate creation
-                    setIsCreatingNewEstimate(true);
-                    setIsEditingLoadedEstimate(false);
-                    setSelectedTemplateId('');
-                    setLineItems([]);
-                    setExistingEstimateId(null);
-                    setEditingEstimateNumber(null);
-                    toast({
-                      title: 'Ready for New Estimate',
-                      description: 'Select a template to create a new estimate',
-                    });
-                  }}
-                >
-                  <Plus className="h-4 w-4 mr-1" />
-                  Create New Estimate
-                </Button>
-              </div>
-            </div>
-          )}
+                      {/* Show note when editing roofing trade */}
+                      {trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
+                        <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
+                          <p className="text-sm text-muted-foreground">
+                            Viewing saved estimate. Select an action below.
+                          </p>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                setIsEditingLoadedEstimate(false);
+                                fetchLineItems(selectedTemplateId);
+                                toast({
+                                  title: 'Recalculating',
+                                  description: 'Line items recalculated from template measurements',
+                                });
+                              }}
+                            >
+                              <RotateCcw className="h-4 w-4 mr-1" />
+                              Recalculate
+                            </Button>
+                            <Button 
+                              variant="default" 
+                              size="sm"
+                              onClick={() => {
+                                setIsCreatingNewEstimate(true);
+                                setIsEditingLoadedEstimate(false);
+                                setSelectedTemplateId('');
+                                setLineItems([]);
+                                setExistingEstimateId(null);
+                                setEditingEstimateNumber(null);
+                                toast({
+                                  title: 'Ready for New Estimate',
+                                  description: 'Select a template to create a new estimate',
+                                });
+                              }}
+                            >
+                              <Plus className="h-4 w-4 mr-1" />
+                              Create New Estimate
+                            </Button>
+                          </div>
+                        </div>
+                      )}
 
-          {/* Hint when dropdown is unlocked and ready for new estimate */}
-          {!isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
-            <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
-              <p className="text-sm text-primary">
-                Select a template above to create a new estimate option for this project.
-              </p>
-            </div>
-          )}
+                      {/* Hint for roofing when creating new */}
+                      {trade.tradeType === 'roofing' && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
+                        <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
+                          <p className="text-sm text-primary">
+                            Select a template above to create a new estimate option for this project.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </CollapsibleContent>
+                </div>
+              </Collapsible>
+            );
+          })}
+
+          {/* Add Trade Button */}
+          {(() => {
+            const addedTradeTypes = tradeSections.map(t => t.tradeType);
+            const availableTrades = AVAILABLE_TRADES.filter(t => !addedTradeTypes.includes(t.value));
+            
+            if (availableTrades.length === 0) return null;
+            
+            return (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-full border-dashed">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Trade
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-56">
+                  {availableTrades.map(trade => (
+                    <DropdownMenuItem
+                      key={trade.value}
+                      onClick={() => {
+                        setTradeSections(prev => [...prev, {
+                          id: crypto.randomUUID(),
+                          tradeType: trade.value,
+                          templateId: '',
+                          label: trade.label,
+                          isCollapsed: false,
+                        }]);
+                      }}
+                    >
+                      <span className="mr-2">{trade.icon}</span>
+                      {trade.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            );
+          })()}
 
           {templates.length === 0 && (
             <div className="text-center py-4 space-y-3">
