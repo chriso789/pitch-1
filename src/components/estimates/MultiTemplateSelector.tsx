@@ -105,31 +105,42 @@ function generateDynamicDescription(
   item: TemplateLineItem,
   computedQty: number
 ): string {
-  // Use the static description from the template if it exists
   if (item.description) return item.description;
 
   const formula = item.qty_formula || '';
-  let desc = '';
 
   if (formula.includes('surface_squares')) {
-    desc = `${computedQty.toFixed(1)} squares`;
-    if (formula.includes('1.15')) desc += ' (incl. 15% waste)';
-    else if (formula.includes('1.10')) desc += ' (incl. 10% waste)';
-  } else if (formula.includes('ridge')) {
-    desc = `${computedQty.toFixed(0)} LF ridge line`;
-  } else if (formula.includes('valley')) {
-    desc = `${computedQty.toFixed(0)} LF valley`;
-  } else if (formula.includes('hip')) {
-    desc = `${computedQty.toFixed(0)} LF hip`;
-  } else if (formula.includes('rake')) {
-    desc = `${computedQty.toFixed(0)} LF rake`;
-  } else if (formula.includes('eave') || formula.includes('perimeter')) {
-    desc = `${computedQty.toFixed(0)} LF perimeter`;
-  } else if (formula.includes('surface_area')) {
-    desc = `${computedQty.toFixed(0)} SF coverage area`;
+    let desc = `Covers ${computedQty.toFixed(1)} squares of your roof area`;
+    if (formula.includes('1.15')) desc += ', includes 15% extra for waste and cuts';
+    else if (formula.includes('1.10')) desc += ', includes 10% extra for waste and cuts';
+    return desc;
   }
 
-  return desc;
+  if (formula.includes('ridge')) {
+    return `Protects the ${computedQty.toFixed(0)} linear feet along the peak of your roof where two slopes meet`;
+  }
+
+  if (formula.includes('valley')) {
+    return `Waterproofs the ${computedQty.toFixed(0)} linear feet of valleys where two roof slopes channel rainwater`;
+  }
+
+  if (formula.includes('hip')) {
+    return `Covers ${computedQty.toFixed(0)} linear feet along the angled edges where roof planes meet`;
+  }
+
+  if (formula.includes('rake')) {
+    return `Finishes and seals ${computedQty.toFixed(0)} linear feet along the sloped edges of your roof`;
+  }
+
+  if (formula.includes('eave') || formula.includes('perimeter')) {
+    return `Installed along ${computedQty.toFixed(0)} linear feet of your roof's outer edge to direct water into gutters`;
+  }
+
+  if (formula.includes('surface_area')) {
+    return `Covers ${computedQty.toFixed(0)} square feet of roof surface area`;
+  }
+
+  return '';
 }
 
 interface TemplateCalculation {
@@ -237,7 +248,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [searchParams] = useSearchParams();
 
   // Load enabled trades for this company
-  const [enabledTrades, setEnabledTrades] = useState<string[]>(['roofing']);
+  const [enabledTrades, setEnabledTrades] = useState<string[]>(ALL_TRADES.map(t => t.value));
   useEffect(() => {
     if (!currentTenantId) return;
     const loadEnabledTrades = async () => {
