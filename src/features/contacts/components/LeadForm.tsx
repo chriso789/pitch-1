@@ -12,6 +12,7 @@ import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { AddressAutocomplete } from "@/components/AddressAutocomplete";
 
 interface LeadFormProps {
   open: boolean;
@@ -364,11 +365,16 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
 
           <div>
             <Label htmlFor="street">Street Address</Label>
-            <Input
-              id="street"
+            <AddressAutocomplete
               value={formData.street}
-              onChange={(e) => handleInputChange('street', e.target.value)}
-              placeholder="Enter street address"
+              onChange={(value) => handleInputChange('street', value)}
+              onAddressSelect={(address) => {
+                handleInputChange('street', address.address_line1);
+                handleInputChange('city', address.city);
+                handleInputChange('state', address.state);
+                handleInputChange('zipCode', address.zip_code);
+              }}
+              placeholder="Start typing an address..."
             />
           </div>
 
