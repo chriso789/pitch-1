@@ -134,6 +134,8 @@ import Privacy from "./pages/legal/Privacy";
 import Terms from "./pages/legal/Terms";
 import Security from "./pages/legal/Security";
 import PermitExpediter from "./pages/PermitExpediter";
+import SurveyDashboard from "./pages/SurveyDashboard";
+import ReferralDashboard from "./pages/ReferralDashboard";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
@@ -330,6 +332,8 @@ const AppContent = () => {
         <Route path="/storm-canvass/config" element={<ProtectedRoute><StormCanvassConfig /></ProtectedRoute>} />
         <Route path="/storm-canvass/photos" element={<ProtectedRoute><StormCanvassPhotos /></ProtectedRoute>} />
         <Route path="/report-import" element={<ProtectedRoute><ReportImportDashboard /></ProtectedRoute>} />
+        <Route path="/surveys" element={<ProtectedRoute><SurveyDashboard /></ProtectedRoute>} />
+        <Route path="/referrals" element={<ProtectedRoute><ReferralDashboard /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
