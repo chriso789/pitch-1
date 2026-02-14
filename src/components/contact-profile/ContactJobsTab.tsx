@@ -330,7 +330,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
   };
 
   // Helper constants for Lead vs Job distinction
-  const LEAD_STATUSES = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval'];
+  const LEAD_STATUSES = ['lead', 'estimate_sent', 'contingency_signed', 'legal_review', 'ready_for_approval'];
   const JOB_STATUSES = ['project', 'completed', 'closed'];
   const TERMINAL_STATUSES = ['lost', 'canceled', 'duplicate'];
 

@@ -98,8 +98,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
   const pipelineStatuses = [
     { value: "lead", label: "Lead" },
-    { value: "legal", label: "Legal Review" },
+    { value: "estimate_sent", label: "Estimate Sent" },
     { value: "contingency_signed", label: "Contingency Signed" },
+    { value: "legal", label: "Legal Review" },
     { value: "project", label: "Project" },
   ];
 

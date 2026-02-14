@@ -557,7 +557,7 @@ export const EnhancedClientList = () => {
       });
 
       // Filter active leads for the sales rep (lead, contingency, legal, ready_for_approval)
-      const leadStatuses = ['lead', 'contingency', 'legal', 'ready_for_approval'];
+      const leadStatuses = ['lead', 'estimate_sent', 'contingency', 'legal', 'ready_for_approval'];
       const userPipelineLeads = enhancedPipelineData.filter(pe => 
         leadStatuses.includes(pe.status)
       );

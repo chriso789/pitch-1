@@ -171,7 +171,7 @@ export const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         const statusTotals: any = {};
         
         // Initialize all statuses
-        const allStatuses = ['lead', 'legal', 'contingency_signed', 'project', 'completed', 'closed'];
+        const allStatuses = ['lead', 'estimate_sent', 'legal', 'contingency_signed', 'project', 'completed', 'closed'];
         allStatuses.forEach(status => {
           groupedEntries[status] = [];
           statusCounts[status] = 0;

@@ -61,8 +61,9 @@ serve(async (req) => {
 
     // Define valid status transitions for regular users
     const validTransitions: Record<string, string[]> = {
-      'lead': ['contingency_signed', 'lost', 'canceled', 'duplicate'],
-      'contingency_signed': ['legal_review', 'lead', 'lost', 'canceled'],
+      'lead': ['estimate_sent', 'contingency_signed', 'lost', 'canceled', 'duplicate'],
+      'estimate_sent': ['contingency_signed', 'lead', 'lost', 'canceled'],
+      'contingency_signed': ['legal_review', 'estimate_sent', 'lead', 'lost', 'canceled'],
       'legal_review': ['ready_for_approval', 'contingency_signed', 'lost', 'canceled'],
       'ready_for_approval': ['project', 'legal_review', 'lost', 'canceled'],
       'project': ['completed', 'ready_for_approval', 'lost', 'canceled'],
@@ -74,7 +75,7 @@ serve(async (req) => {
     };
 
     // All valid statuses for manager override
-    const allStatuses = ['lead', 'contingency_signed', 'legal_review', 'ready_for_approval', 'project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'];
+    const allStatuses = ['lead', 'estimate_sent', 'contingency_signed', 'legal_review', 'ready_for_approval', 'project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'];
 
     const currentStatus = currentEntry.status;
     const allowedStatuses = validTransitions[currentStatus] || [];
