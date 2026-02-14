@@ -416,8 +416,9 @@ const LeadDetails = () => {
 
   // Define valid transitions for status changes
   const strictTransitions: Record<string, string[]> = {
-    'lead': ['contingency_signed'],
-    'contingency_signed': ['legal_review', 'lead'],
+    'lead': ['estimate_sent', 'contingency_signed'],
+    'estimate_sent': ['contingency_signed', 'lead'],
+    'contingency_signed': ['legal_review', 'estimate_sent', 'lead'],
     'legal_review': ['ready_for_approval', 'contingency_signed'],
     'ready_for_approval': ['project', 'legal_review'],
     'project': ['completed', 'ready_for_approval'],
