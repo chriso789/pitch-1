@@ -1,98 +1,83 @@
 
 
-# Fix "Add Trade" Button + Homeowner-Friendly Descriptions
+# Fix Duplicate Leads in Pipeline
 
-## Issue 1: Missing "Add Trade" Button
+## Root Cause
 
-**Root Cause:** When no company has configured trades in `app_settings`, the code defaults to `['roofing']` only. Since roofing is already added, the filter `AVAILABLE_TRADES.filter(t => !addedTradeTypes.includes(t.value) && enabledTrades.includes(t.value))` returns an empty array, hiding the button entirely.
+The pipeline isn't showing the same lead twice -- it's showing **separate leads tied to duplicate contact records**. For example:
+- Henry Germann has 6 contact records in the database (all same phone/address), with 2 active pipeline entries
+- Irina Gorovits has 8+ contact records, with 3 active pipeline entries
 
-**Fix in `src/components/estimates/MultiTemplateSelector.tsx` (line 240):**
+The lead creation functions (`create-lead-with-contact` and `external-lead-webhook`) create a **new contact every time** without checking if one already exists with the same phone number or email.
 
-Change the default from `['roofing']` to include all trade values:
-```typescript
-// Before
-const [enabledTrades, setEnabledTrades] = useState<string[]>(['roofing']);
+## Solution: Two-Part Fix
 
-// After
-const [enabledTrades, setEnabledTrades] = useState<string[]>(
-  ALL_TRADES.map(t => t.value)
-);
+### Part 1: Prevent Future Duplicates
+
+**File: `supabase/functions/create-lead-with-contact/index.ts`**
+
+Before creating a new contact, check for existing contacts matching by phone number (primary identifier in construction CRM) within the same tenant:
+
+```
+-- Lookup logic (pseudocode):
+1. Normalize incoming phone number
+2. Query contacts WHERE tenant_id = X AND phone = normalized_phone
+3. If match found, use existing contact_id instead of creating new
+4. Still create the pipeline entry linked to the existing contact
 ```
 
-This means all trades are available by default until a company explicitly configures their preferences. Companies can still narrow it down via the "Manage Trades" settings dialog.
+**File: `supabase/functions/external-lead-webhook/index.ts`**
 
----
+Same deduplication check before contact creation -- match on phone or email within the tenant.
 
-## Issue 2: More Explanatory Descriptions for Homeowners
+### Part 2: Clean Up Existing Duplicates
 
-**Root Cause:** The `generateDynamicDescription` function (line 104-133) produces contractor shorthand like "32.5 squares" or "120 LF ridge line". Homeowners don't know what "SQ", "LF", or "squares" mean in roofing context.
+Provide a SQL cleanup approach to merge duplicate contacts:
+1. Identify duplicates by matching phone number within each tenant
+2. Keep the oldest contact record (lowest contact_number) as the primary
+3. Re-link pipeline entries from duplicate contacts to the primary contact
+4. Soft-delete the duplicate contact records
 
-**Fix in `src/components/estimates/MultiTemplateSelector.tsx` (lines 103-133):**
+This will be done carefully with a review query first so you can verify before any data changes.
 
-Rewrite the function to produce plain-English, homeowner-friendly descriptions that explain **what** and **why**:
+## Technical Details
 
-```typescript
-function generateDynamicDescription(
-  item: TemplateLineItem,
-  computedQty: number
-): string {
-  if (item.description) return item.description;
+### Edge Function Changes
 
-  const formula = item.qty_formula || '';
-  const name = (item.item_name || '').toLowerCase();
+**`create-lead-with-contact/index.ts`** (around line 300-380):
 
-  // Shingles / main roofing material
-  if (formula.includes('surface_squares')) {
-    let desc = `Covers ${computedQty.toFixed(1)} squares of your roof area`;
-    if (formula.includes('1.15')) desc += ', includes 15% extra for waste and cuts';
-    else if (formula.includes('1.10')) desc += ', includes 10% extra for waste and cuts';
-    return desc;
-  }
+Add contact lookup before the insert block:
+- Normalize phone (strip non-digits)
+- Query `contacts` table for matching `phone` + `tenant_id`
+- If found, skip contact creation and use existing `contact_id`
+- Optionally update the existing contact with any new info (email, address) that wasn't previously set
 
-  // Ridge-related items
-  if (formula.includes('ridge')) {
-    return `Protects the ${computedQty.toFixed(0)} linear feet along the peak of your roof where two slopes meet`;
-  }
+**`external-lead-webhook/index.ts`** (around line 240-310):
 
-  // Valley items
-  if (formula.includes('valley')) {
-    return `Waterproofs the ${computedQty.toFixed(0)} linear feet of valleys where two roof slopes channel rainwater`;
-  }
+Same pattern -- check for existing contact by phone/email before inserting a new one.
 
-  // Hip items
-  if (formula.includes('hip')) {
-    return `Covers ${computedQty.toFixed(0)} linear feet along the angled edges where roof planes meet`;
-  }
+### Data Cleanup Query (run manually)
 
-  // Rake / gable edge
-  if (formula.includes('rake')) {
-    return `Finishes and seals ${computedQty.toFixed(0)} linear feet along the sloped edges of your roof`;
-  }
-
-  // Eave / perimeter / drip edge
-  if (formula.includes('eave') || formula.includes('perimeter')) {
-    return `Installed along ${computedQty.toFixed(0)} linear feet of your roof's outer edge to direct water into gutters`;
-  }
-
-  // General area coverage
-  if (formula.includes('surface_area')) {
-    return `Covers ${computedQty.toFixed(0)} square feet of roof surface area`;
-  }
-
-  return '';
-}
+Step 1 -- Review duplicates (read-only):
+```sql
+SELECT phone, tenant_id, COUNT(*) as dupes,
+       array_agg(id ORDER BY created_at) as contact_ids
+FROM contacts
+WHERE phone IS NOT NULL AND phone != ''
+GROUP BY phone, tenant_id
+HAVING COUNT(*) > 1;
 ```
 
-This produces descriptions like:
-- **Before:** "32.5 squares (incl. 10% waste)"
-- **After:** "Covers 32.5 squares of your roof area, includes 10% extra for waste and cuts"
-- **Before:** "120 LF ridge line"
-- **After:** "Protects the 120 linear feet along the peak of your roof where two slopes meet"
-
----
+Step 2 -- After review, re-link pipeline entries to the primary (oldest) contact and soft-delete duplicates. This will be provided as a safe, reversible migration.
 
 ## Files Modified
 
-1. **`src/components/estimates/MultiTemplateSelector.tsx`**
-   - Line 240: Change default `enabledTrades` from `['roofing']` to all trades
-   - Lines 103-133: Rewrite `generateDynamicDescription` with homeowner-friendly language
+1. `supabase/functions/create-lead-with-contact/index.ts` -- Add contact dedup lookup
+2. `supabase/functions/external-lead-webhook/index.ts` -- Add contact dedup lookup
+
+## Impact
+
+- Prevents new duplicate contacts from being created
+- Existing duplicates cleaned up via SQL
+- Pipeline will show each real person only once per property/lead
+
