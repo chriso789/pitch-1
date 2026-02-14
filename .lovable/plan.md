@@ -1,83 +1,67 @@
 
 
-# Fix Duplicate Leads in Pipeline
+# Add "Estimate Sent" Stage + Fix Missing Roof Templates
 
-## Root Cause
+## Two Issues Found
 
-The pipeline isn't showing the same lead twice -- it's showing **separate leads tied to duplicate contact records**. For example:
-- Henry Germann has 6 contact records in the database (all same phone/address), with 2 active pipeline entries
-- Irina Gorovits has 8+ contact records, with 3 active pipeline entries
+### Issue 1: "Estimate Sent" pipeline stage exists in the database but is missing from hardcoded transition maps
 
-The lead creation functions (`create-lead-with-contact` and `external-lead-webhook`) create a **new contact every time** without checking if one already exists with the same phone number or email.
+The `pipeline_stages` table has `estimate_sent` (stage_order 2, between Leads and Contingency Signed) for your tenant. However, several files have **hardcoded** status transition lists that don't include it:
 
-## Solution: Two-Part Fix
+**Files to update:**
 
-### Part 1: Prevent Future Duplicates
+1. **`supabase/functions/pipeline-status/index.ts`** (lines 63-77)
+   - Add `estimate_sent` to `validTransitions` map:
+     - `lead` can transition to `estimate_sent`
+     - `estimate_sent` can transition to `contingency_signed` or back to `lead`
+   - Add `estimate_sent` to the `allStatuses` array
 
-**File: `supabase/functions/create-lead-with-contact/index.ts`**
+2. **`src/pages/LeadDetails.tsx`** (lines 418-429)
+   - Add `estimate_sent` to `strictTransitions`:
+     - `lead` -> `['estimate_sent', 'contingency_signed']`
+     - `estimate_sent` -> `['contingency_signed', 'lead']`
 
-Before creating a new contact, check for existing contacts matching by phone number (primary identifier in construction CRM) within the same tenant:
+3. **`src/components/LeadCreationDialog.tsx`** (lines 99-104)
+   - Add `{ value: "estimate_sent", label: "Estimate Sent" }` to `pipelineStatuses`
 
+4. **`src/components/contact-profile/ContactJobsTab.tsx`** (line 333)
+   - Add `estimate_sent` to `LEAD_STATUSES` array
+
+5. **`src/features/dashboard/components/EnhancedDashboard.tsx`** (line 174)
+   - Add `estimate_sent` to `allStatuses` array
+
+6. **`src/features/contacts/components/EnhancedClientList.tsx`** (line 560)
+   - Add `estimate_sent` to `leadStatuses` array
+
+### Issue 2: "Premium" roof templates missing from template picker
+
+The database has 17 active `estimate_calculation_templates`, but the template picker only shows templates where `template_category` is `'standard'` or `'roofing'`. Templates categorized as `'premium'` (GAF Timberline HDZ, Owens Corning Duration, SnapLok Painted, Worthouse panels) are filtered out.
+
+**Root cause in `src/lib/trades.ts`** (line 18):
 ```
--- Lookup logic (pseudocode):
-1. Normalize incoming phone number
-2. Query contacts WHERE tenant_id = X AND phone = normalized_phone
-3. If match found, use existing contact_id instead of creating new
-4. Still create the pipeline entry linked to the existing contact
-```
-
-**File: `supabase/functions/external-lead-webhook/index.ts`**
-
-Same deduplication check before contact creation -- match on phone or email within the tenant.
-
-### Part 2: Clean Up Existing Duplicates
-
-Provide a SQL cleanup approach to merge duplicate contacts:
-1. Identify duplicates by matching phone number within each tenant
-2. Keep the oldest contact record (lowest contact_number) as the primary
-3. Re-link pipeline entries from duplicate contacts to the primary contact
-4. Soft-delete the duplicate contact records
-
-This will be done carefully with a review query first so you can verify before any data changes.
-
-## Technical Details
-
-### Edge Function Changes
-
-**`create-lead-with-contact/index.ts`** (around line 300-380):
-
-Add contact lookup before the insert block:
-- Normalize phone (strip non-digits)
-- Query `contacts` table for matching `phone` + `tenant_id`
-- If found, skip contact creation and use existing `contact_id`
-- Optionally update the existing contact with any new info (email, address) that wasn't previously set
-
-**`external-lead-webhook/index.ts`** (around line 240-310):
-
-Same pattern -- check for existing contact by phone/email before inserting a new one.
-
-### Data Cleanup Query (run manually)
-
-Step 1 -- Review duplicates (read-only):
-```sql
-SELECT phone, tenant_id, COUNT(*) as dupes,
-       array_agg(id ORDER BY created_at) as contact_ids
-FROM contacts
-WHERE phone IS NOT NULL AND phone != ''
-GROUP BY phone, tenant_id
-HAVING COUNT(*) > 1;
+if (tradeValue === 'roofing') {
+  return cat === 'roofing' || cat === 'standard';  // Missing 'premium'!
+}
 ```
 
-Step 2 -- After review, re-link pipeline entries to the primary (oldest) contact and soft-delete duplicates. This will be provided as a safe, reversible migration.
+**Fix:** Update `matchesTradeCategory` to also match `'premium'` for the `'roofing'` trade:
+```typescript
+if (tradeValue === 'roofing') {
+  return cat === 'roofing' || cat === 'standard' || cat === 'premium';
+}
+```
 
-## Files Modified
+This will restore all 17 roofing templates (Shingle: 4, Metal: 5, Tile: 8) in the template picker dropdown, grouped by roof_type as before.
 
-1. `supabase/functions/create-lead-with-contact/index.ts` -- Add contact dedup lookup
-2. `supabase/functions/external-lead-webhook/index.ts` -- Add contact dedup lookup
+## Summary of All File Changes
 
-## Impact
-
-- Prevents new duplicate contacts from being created
-- Existing duplicates cleaned up via SQL
-- Pipeline will show each real person only once per property/lead
+| File | Change |
+|------|--------|
+| `src/lib/trades.ts` | Add `'premium'` to roofing category match |
+| `supabase/functions/pipeline-status/index.ts` | Add `estimate_sent` transitions + deploy |
+| `src/pages/LeadDetails.tsx` | Add `estimate_sent` to strict transitions |
+| `src/components/LeadCreationDialog.tsx` | Add `estimate_sent` option |
+| `src/components/contact-profile/ContactJobsTab.tsx` | Add to LEAD_STATUSES |
+| `src/features/dashboard/components/EnhancedDashboard.tsx` | Add to allStatuses |
+| `src/features/contacts/components/EnhancedClientList.tsx` | Add to leadStatuses |
 
