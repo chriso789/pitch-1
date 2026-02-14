@@ -270,33 +270,72 @@ serve(async (req: Request) => {
 
     // Create contact if not provided
     if (!contactId) {
-      console.log("[create-lead-with-contact] Creating new contact...");
+      console.log("[create-lead-with-contact] Checking for existing contact...");
       
-      // Check for existing contact at same address to prevent duplicates
-      if (addressComponents.street) {
-        const { data: existingContact } = await supabase
+      // --- DEDUP: Check by phone number first (primary identifier) ---
+      if (body.phone) {
+        const normalizedPhone = body.phone.replace(/\D/g, '').slice(-10);
+        if (normalizedPhone.length >= 7) {
+          const { data: phoneMatch } = await supabase
+            .from("contacts")
+            .select("id, first_name, last_name, assigned_to")
+            .eq("tenant_id", tenantId)
+            .eq("is_deleted", false)
+            .or(`phone.ilike.%${normalizedPhone}`)
+            .limit(1)
+            .maybeSingle();
+
+          if (phoneMatch) {
+            console.log("[create-lead-with-contact] Found existing contact by phone:", phoneMatch.id);
+            contactId = phoneMatch.id;
+          }
+        }
+      }
+
+      // --- DEDUP: Fallback to email match ---
+      if (!contactId && body.email) {
+        const { data: emailMatch } = await supabase
           .from("contacts")
           .select("id, first_name, last_name, assigned_to")
           .eq("tenant_id", tenantId)
-          .eq("address_street", addressComponents.street)
+          .eq("is_deleted", false)
+          .ilike("email", body.email)
+          .limit(1)
           .maybeSingle();
 
-        if (existingContact) {
-          console.log("[create-lead-with-contact] Found existing contact:", existingContact.id);
-          contactId = existingContact.id;
-          
-          // Sync assigned_to from lead to contact if a rep is selected
-          const selectedRep = body.salesReps?.[0];
-          if (selectedRep && existingContact.assigned_to !== selectedRep) {
-            console.log("[create-lead-with-contact] Updating contact assigned_to:", selectedRep);
-            const { error: updateError } = await supabase
-              .from("contacts")
-              .update({ assigned_to: selectedRep })
-              .eq("id", existingContact.id);
-            
-            if (updateError) {
-              console.error("[create-lead-with-contact] Failed to update contact assigned_to:", updateError);
-            }
+        if (emailMatch) {
+          console.log("[create-lead-with-contact] Found existing contact by email:", emailMatch.id);
+          contactId = emailMatch.id;
+        }
+      }
+
+      // --- DEDUP: Fallback to address match ---
+      if (!contactId && addressComponents.street) {
+        const { data: addressMatch } = await supabase
+          .from("contacts")
+          .select("id, first_name, last_name, assigned_to")
+          .eq("tenant_id", tenantId)
+          .eq("is_deleted", false)
+          .eq("address_street", addressComponents.street)
+          .limit(1)
+          .maybeSingle();
+
+        if (addressMatch) {
+          console.log("[create-lead-with-contact] Found existing contact by address:", addressMatch.id);
+          contactId = addressMatch.id;
+        }
+      }
+
+      // If we matched an existing contact, sync assigned_to
+      if (contactId) {
+        const selectedRep = body.salesReps?.[0];
+        if (selectedRep) {
+          const { error: updateError } = await supabase
+            .from("contacts")
+            .update({ assigned_to: selectedRep })
+            .eq("id", contactId);
+          if (updateError) {
+            console.error("[create-lead-with-contact] Failed to update contact assigned_to:", updateError);
           }
         }
       }
