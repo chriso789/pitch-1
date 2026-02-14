@@ -1,5 +1,5 @@
 // Debug Footprint Sources Edge Function
-// Diagnoses Mapbox, Regrid, and OSM footprint extraction for a given coordinate
+// Diagnoses Mapbox, Microsoft/Esri, Regrid, and OSM footprint extraction for a given coordinate
 // Returns detailed diagnostics for troubleshooting
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
@@ -54,6 +54,20 @@ interface FootprintDiagnostics {
       vertexCount: number;
       areaSqft: number;
       containsPoint: boolean;
+    };
+  };
+  microsoft: {
+    attempted: boolean;
+    success: boolean;
+    error?: string;
+    buildingsFound?: number;
+    selectedBuilding?: {
+      vertexCount: number;
+      areaM2: number;
+      areaSqft: number;
+      containsPoint: boolean;
+      distance: number;
+      confidence: number;
     };
   };
   recommendation: string;
@@ -379,6 +393,140 @@ async function testOSM(lat: number, lng: number): Promise<FootprintDiagnostics['
   return result;
 }
 
+// Test Microsoft/Esri Buildings API (free, no API key required)
+async function testMicrosoft(lat: number, lng: number): Promise<FootprintDiagnostics['microsoft']> {
+  const result: FootprintDiagnostics['microsoft'] = {
+    attempted: true,
+    success: false,
+  };
+
+  try {
+    // Calculate bounding box for 50m search radius
+    const radius = 50;
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos(lat * Math.PI / 180);
+    const latOffset = radius / metersPerDegLat;
+    const lngOffset = radius / metersPerDegLng;
+
+    const bbox = {
+      minLng: lng - lngOffset,
+      maxLng: lng + lngOffset,
+      minLat: lat - latOffset,
+      maxLat: lat + latOffset,
+    };
+
+    console.log(`🏢 Microsoft/Esri request: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+
+    // Use Esri USA Structures service (incorporates Microsoft Building Footprints)
+    const esriUrl = `https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Structures/FeatureServer/0/query?where=1%3D1&geometry=${bbox.minLng},${bbox.minLat},${bbox.maxLng},${bbox.maxLat}&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&outFields=*&f=geojson`;
+
+    const response = await fetch(esriUrl);
+
+    if (!response.ok) {
+      result.error = `API error: ${response.status}`;
+      return result;
+    }
+
+    const data = await response.json();
+    result.buildingsFound = data.features?.length || 0;
+
+    if (!data.features || data.features.length === 0) {
+      result.error = 'No buildings found';
+      return result;
+    }
+
+    // Extract polygons and find best match
+    type Candidate = {
+      ring: [number, number][];
+      distance: number;
+      containsPoint: boolean;
+      areaM2: number;
+    };
+
+    const candidates: Candidate[] = [];
+    const targetPoint: [number, number] = [lng, lat];
+
+    for (const feature of data.features) {
+      const geom = feature.geometry;
+
+      if (geom?.type === 'Polygon' && geom.coordinates?.[0]?.length >= 4) {
+        const ring = geom.coordinates[0] as [number, number][];
+        const centroid = [
+          ring.reduce((s, c) => s + c[0], 0) / ring.length,
+          ring.reduce((s, c) => s + c[1], 0) / ring.length,
+        ];
+        const distance = Math.sqrt(
+          Math.pow((centroid[0] - lng) * metersPerDegLng, 2) +
+          Math.pow((centroid[1] - lat) * metersPerDegLat, 2)
+        );
+
+        candidates.push({
+          ring,
+          distance,
+          containsPoint: pointInPolygon(targetPoint, ring),
+          areaM2: calculatePolygonAreaM2(ring),
+        });
+      } else if (geom?.type === 'MultiPolygon') {
+        for (const polygonCoords of geom.coordinates) {
+          if (polygonCoords?.[0]?.length >= 4) {
+            const ring = polygonCoords[0] as [number, number][];
+            const centroid = [
+              ring.reduce((s, c) => s + c[0], 0) / ring.length,
+              ring.reduce((s, c) => s + c[1], 0) / ring.length,
+            ];
+            const distance = Math.sqrt(
+              Math.pow((centroid[0] - lng) * metersPerDegLng, 2) +
+              Math.pow((centroid[1] - lat) * metersPerDegLat, 2)
+            );
+
+            candidates.push({
+              ring,
+              distance,
+              containsPoint: pointInPolygon(targetPoint, ring),
+              areaM2: calculatePolygonAreaM2(ring),
+            });
+          }
+        }
+      }
+    }
+
+    if (candidates.length === 0) {
+      result.error = 'No polygon buildings found';
+      return result;
+    }
+
+    // Sort: containing point first, then by distance
+    candidates.sort((a, b) => {
+      if (a.containsPoint !== b.containsPoint) return a.containsPoint ? -1 : 1;
+      return a.distance - b.distance;
+    });
+
+    const best = candidates[0];
+
+    let confidence = 0.88;
+    if (!best.containsPoint) confidence -= 0.1;
+    if (best.distance > 15) confidence -= 0.1;
+    if (best.areaM2 < 50) confidence -= 0.15;
+    confidence = Math.max(0.5, Math.min(0.95, confidence));
+
+    result.selectedBuilding = {
+      vertexCount: best.ring.length,
+      areaM2: Math.round(best.areaM2),
+      areaSqft: Math.round(best.areaM2 * 10.764),
+      containsPoint: best.containsPoint,
+      distance: Math.round(best.distance * 10) / 10,
+      confidence: Math.round(confidence * 100) / 100,
+    };
+
+    result.success = true;
+
+  } catch (err) {
+    result.error = String(err);
+  }
+
+  return result;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -397,19 +545,24 @@ Deno.serve(async (req) => {
     console.log(`🔍 Debugging footprint sources for ${lat}, ${lng}`);
     
     // Run all tests in parallel
-    const [mapbox, regrid, osm] = await Promise.all([
+    const [mapbox, microsoft, regrid, osm] = await Promise.all([
       testMapbox(lat, lng),
+      testMicrosoft(lat, lng),
       testRegrid(lat, lng),
       testOSM(lat, lng),
     ]);
-    
+
     // Determine best source and recommendation
+    // Priority: Mapbox (if polygons) > Microsoft/Esri > Regrid > OSM
     let bestSource: string | null = null;
     let recommendation = '';
-    
+
     if (mapbox.success && mapbox.selectedPolygon && mapbox.selectedPolygon.vertexCount > 4) {
       bestSource = 'mapbox';
       recommendation = `✅ Mapbox has good footprint with ${mapbox.selectedPolygon.vertexCount} vertices`;
+    } else if (microsoft.success && microsoft.selectedBuilding && microsoft.selectedBuilding.vertexCount >= 4) {
+      bestSource = 'microsoft';
+      recommendation = `✅ Microsoft/Esri has footprint with ${microsoft.selectedBuilding.vertexCount} vertices, ${microsoft.selectedBuilding.areaSqft} sqft`;
     } else if (regrid.success && regrid.vertexCount && regrid.vertexCount > 4) {
       bestSource = 'regrid';
       recommendation = `✅ Regrid has footprint with ${regrid.vertexCount} vertices`;
@@ -420,11 +573,12 @@ Deno.serve(async (req) => {
       bestSource = 'mapbox';
       recommendation = `⚠️ Only rectangular footprint available (4 vertices) from Mapbox`;
     } else {
-      recommendation = `❌ No footprint sources available. Errors: Mapbox: ${mapbox.error || mapbox.fallbackReason}, Regrid: ${regrid.error}, OSM: ${osm.error}`;
+      recommendation = `❌ No footprint sources available. Errors: Mapbox: ${mapbox.error || mapbox.fallbackReason}, Microsoft: ${microsoft.error}, Regrid: ${regrid.error}, OSM: ${osm.error}`;
     }
-    
+
     const diagnostics: FootprintDiagnostics = {
       mapbox,
+      microsoft,
       regrid,
       osm,
       recommendation,

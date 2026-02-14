@@ -1668,7 +1668,7 @@ export function SchematicRoofDiagram({
         const facetCount = totals.facet_count || facets.length || 0;
         
         return (
-          <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur border rounded-lg p-3 shadow-sm text-[10px] max-w-[210px] z-10">
+          <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur border rounded-lg p-3 shadow-sm text-[10px] max-w-[210px] z-10">
             {/* Area Section - Primary Info */}
             <div className="mb-2">
               <div className="font-semibold text-xs text-muted-foreground uppercase tracking-wide mb-1">
