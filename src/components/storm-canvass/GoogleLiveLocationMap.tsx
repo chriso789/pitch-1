@@ -72,6 +72,8 @@ export default function GoogleLiveLocationMap({
           fullscreenControl: false,
           streetViewControl: false,
           zoomControl: false,
+          gestureHandling: 'greedy',
+          keyboardShortcuts: false,
           styles: mapStyle === 'lot-lines' ? [
             { featureType: 'poi', stylers: [{ visibility: 'off' }] },
             { featureType: 'transit', stylers: [{ visibility: 'off' }] },

@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GoogleLiveLocationMap from '@/components/storm-canvass/GoogleLiveLocationMap';
@@ -348,55 +346,9 @@ export default function LiveCanvassingPage() {
   }, []);
 
   return (
-    <div className="h-screen w-full flex flex-col bg-background">
-      {/* Header - Compact mobile-optimized */}
-      <Card className="rounded-none border-x-0 border-t-0">
-        <div className="p-3 md:p-4 flex items-center justify-between">
-          <div className="flex items-center gap-2 md:gap-3">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-9 w-9"
-              onClick={() => navigate('/storm-canvass')}
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-            <div className="min-w-0">
-              <h1 className="text-base md:text-lg font-semibold">Live Canvassing</h1>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
-            <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex text-xs">
-              {isTracking ? 'Tracking' : 'Not Tracking'}
-            </Badge>
-            <OfflinePhotoSyncManager compact className="cursor-pointer" />
-          </div>
-        </div>
-        
-        {/* Search Bar and Style Toggle - Full width on mobile */}
-        <div className="px-3 md:px-4 pb-3 md:pb-4 flex flex-col gap-2 md:gap-3">
-          <AddressSearchBar
-            userLocation={userLocation}
-            onAddressSelect={handleAddressSelect}
-          />
-          <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
-        </div>
-      </Card>
-
-      {/* Navigation Panel */}
-      {routeData && destination && (
-        <NavigationPanel
-          routeData={routeData}
-          destination={destination}
-          onStartNavigation={openDeviceNavigation}
-          onClearRoute={clearRoute}
-          onRecalculateRoute={() => calculateRoute(destination)}
-        />
-      )}
-
-      {/* Map Container - Always render map immediately */}
-      <div className="flex-1 relative">
+    <div className="h-[100dvh] w-full relative overflow-hidden bg-background" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      {/* Full-screen map */}
+      <div className="absolute inset-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
         <GoogleLiveLocationMap
           userLocation={userLocation}
           currentAddress={currentAddress}
@@ -413,37 +365,89 @@ export default function LiveCanvassingPage() {
           onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
           followUser={canvassMode === 'knock'}
         />
-        <LiveStatsOverlay distanceTraveled={distanceTraveled} />
-        
-        {/* Territory Boundary Alert */}
-        {assignedArea && areaPolygon && (
-          <TerritoryBoundaryAlert userLocation={userLocation} areaPolygon={areaPolygon} />
-        )}
-        
-        {/* Property Loading Indicator */}
-        <PropertyLoadingIndicator
-          state={stableLoadingState}
-          loadedCount={stableCount}
-        />
-        
-        {/* Camera Floating Action Button - Device adaptive positioning */}
-        <Button
-          size="lg"
-          className="fixed rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
-          style={{
-            bottom: layout.fabPosition.bottom,
-            right: layout.fabPosition.right,
-            width: layout.fabSize,
-            height: layout.fabSize,
-          }}
-          onClick={() => setShowPhotoCapture(true)}
-        >
-          <Camera className={layout.isTablet || layout.isDesktop ? 'h-7 w-7' : 'h-6 w-6'} />
-        </Button>
-        
-        {/* GPS Acquiring Overlay - show while waiting for real GPS */}
-        {!hasGPS && <GPSAcquiringOverlay />}
       </div>
+
+      {/* Overlaid Header Controls */}
+      <div className="absolute top-0 left-0 right-0 z-10 pointer-events-none" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+        {/* Top row: Back + Title + Mode Toggle */}
+        <div className="flex items-center justify-between px-2 pt-2 pointer-events-auto">
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-9 w-9 bg-background/80 backdrop-blur-sm shadow-md border border-border/50"
+              onClick={() => navigate('/storm-canvass')}
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <span className="text-sm font-semibold text-foreground bg-background/80 backdrop-blur-sm px-2.5 py-1.5 rounded-md shadow-md border border-border/50">
+              Live Canvassing
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
+            <OfflinePhotoSyncManager compact className="cursor-pointer" />
+          </div>
+        </div>
+
+        {/* Search bar */}
+        <div className="px-2 pt-2 pointer-events-auto">
+          <AddressSearchBar
+            userLocation={userLocation}
+            onAddressSelect={handleAddressSelect}
+          />
+        </div>
+
+        {/* Map style toggle */}
+        <div className="px-2 pt-2 pointer-events-auto w-fit">
+          <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
+        </div>
+      </div>
+
+      {/* Navigation Panel */}
+      {routeData && destination && (
+        <div className="absolute bottom-24 left-2 right-2 z-20">
+          <NavigationPanel
+            routeData={routeData}
+            destination={destination}
+            onStartNavigation={openDeviceNavigation}
+            onClearRoute={clearRoute}
+            onRecalculateRoute={() => calculateRoute(destination)}
+          />
+        </div>
+      )}
+
+      {/* Stats overlay */}
+      <LiveStatsOverlay distanceTraveled={distanceTraveled} />
+
+      {/* Territory Boundary Alert */}
+      {assignedArea && areaPolygon && (
+        <TerritoryBoundaryAlert userLocation={userLocation} areaPolygon={areaPolygon} />
+      )}
+
+      {/* Property Loading Indicator */}
+      <PropertyLoadingIndicator
+        state={stableLoadingState}
+        loadedCount={stableCount}
+      />
+
+      {/* Camera FAB */}
+      <Button
+        size="lg"
+        className="fixed rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
+        style={{
+          bottom: layout.fabPosition.bottom,
+          right: layout.fabPosition.right,
+          width: layout.fabSize,
+          height: layout.fabSize,
+        }}
+        onClick={() => setShowPhotoCapture(true)}
+      >
+        <Camera className={layout.isTablet || layout.isDesktop ? 'h-7 w-7' : 'h-6 w-6'} />
+      </Button>
+
+      {/* GPS Acquiring Overlay */}
+      {!hasGPS && <GPSAcquiringOverlay />}
 
       {/* Drop Pin Dialog */}
       {dropPinCoords && profile?.tenant_id && profile?.id && (
