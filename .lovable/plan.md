@@ -1,59 +1,41 @@
 
-# Fix Public Data Not Populating on Pin Details
 
-## Root Cause
+# Fix Three Issues: Post-Logout Buttons, Storm Canvas Mobile, Territory 404
 
-The edge function logs reveal the exact failure:
+## Issue 1: Buttons Not Working After Logout on Landing Page
 
-```
-ERROR [storm-public-lookup] upsert error {
-  code: "PGRST204",
-  message: "Could not find the 'polygon_id' column of 'storm_properties_public' in the schema cache"
-}
-```
+**Root Cause:** The `clearAllSessionData()` function in `src/services/sessionManager.ts` wipes ALL `pitch_*` prefixed localStorage keys (line 132). This deletes `pitch_consent` (the cookie consent preference), causing the ConsentBanner to reappear every time the user logs out. Additionally, it clears `sb-*` keys (Supabase auth tokens) BEFORE `supabase.auth.signOut()` completes in the Sidebar handler, which can cause the signOut call to fail silently and leave the app in a broken state where event handlers stop working.
 
-The `storm-public-lookup` edge function tries to write `polygon_id` and `storm_event_id` columns to `storm_properties_public`, but **those columns don't exist** in the table. The upsert fails silently, so:
-- No public data is ever saved to the cache table
-- The `canvassiq-skip-trace` function then finds nothing in `storm_properties_public`
-- Owner stays "Unknown Owner" and no property data fills in
+**Fix in `src/services/sessionManager.ts`:**
+- Preserve the `pitch_consent` key during cleanup (it's a site-wide preference, not a session artifact)
+- Preserve `pitch_remember_me` as it's also a UI preference
 
-## Fix (Two Parts)
+**Fix in `src/shared/components/layout/Sidebar.tsx`:**
+- Reorder: call `supabase.auth.signOut()` FIRST, then `clearAllSessionData()` after, so the sign-out API call completes before tokens are destroyed
+- Add navigation to `/login` instead of `/` to avoid the landing page auth-check redirect loop
 
-### Part 1: Add Missing Columns to `storm_properties_public`
+## Issue 2: Storm Canvas Stat Cards Too Large on Mobile
 
-Create a migration to add the two missing columns:
+**Root Cause:** The stat cards in `src/pages/StormCanvassPro.tsx` use a `md:grid-cols-4` grid, so on mobile they stack into a full-width vertical list with large `text-2xl` numbers, causing excessive scrolling before reaching the action buttons (Live Canvassing, Manage Territories, etc.).
 
-```sql
-ALTER TABLE storm_properties_public
-  ADD COLUMN IF NOT EXISTS storm_event_id TEXT,
-  ADD COLUMN IF NOT EXISTS polygon_id TEXT;
-```
+**Fix in `src/pages/StormCanvassPro.tsx`:**
+- Change the stats grid to `grid-cols-2 md:grid-cols-4` so stats show in a 2x2 grid on mobile
+- Reduce stat number size to `text-lg` on mobile (`text-lg md:text-2xl`)
+- Reduce card padding on mobile with `pb-1 md:pb-2` on CardHeader and compact CardContent
+- Make the header and badge more compact on mobile
 
-This is the critical fix -- once these columns exist, the upsert will succeed and public data will be cached.
+## Issue 3: "Manage Territories" Button Returns 404
 
-### Part 2: Update `storm-public-lookup` Edge Function
+**Root Cause:** The button in `StormCanvassPro.tsx` navigates to `/storm-canvass/territories` (line 232), but no such route exists in `App.tsx`. The Territory Map page is registered at `/storm-canvass/map` (line 253).
 
-The function also needs a small fix: even when the upsert fails, the result should still be returned to the caller (the skip-trace function). Currently it continues past the error, but the `canvassiq_properties` update on line 118 uses `property_id` which may not be passed from the skip-trace call path.
+**Fix in `src/pages/StormCanvassPro.tsx`:**
+- Change the navigate path from `/storm-canvass/territories` to `/storm-canvass/map`
 
-Additionally, remove the `polygon_id` and `storm_event_id` from the upsert row when they're null/undefined to avoid issues, or keep them since the columns will now exist.
-
-No edge function code changes needed -- just the migration.
-
-### Part 3: Redeploy `storm-public-lookup`
-
-Redeploy the function so it picks up the schema cache refresh after the migration runs.
-
-## Files Changed
+## Summary of All File Changes
 
 | File | Change |
 |------|--------|
-| New migration SQL | Add `storm_event_id` and `polygon_id` columns to `storm_properties_public` |
+| `src/services/sessionManager.ts` | Preserve `pitch_consent` and `pitch_remember_me` during session cleanup |
+| `src/shared/components/layout/Sidebar.tsx` | Reorder signOut before clearAllSessionData; navigate to `/login` |
+| `src/pages/StormCanvassPro.tsx` | Fix territory route to `/storm-canvass/map`; make stat cards compact on mobile (2-col grid, smaller text) |
 
-## Expected Result
-
-After this fix:
-1. Rep drops a pin or taps a property in live canvassing
-2. Auto-enrich triggers `canvassiq-skip-trace`
-3. Skip-trace calls `storm-public-lookup` which successfully resolves owner from county appraiser
-4. Public data upserts correctly to `storm_properties_public`
-5. Owner name, year built, assessed value, etc. populate in the pin detail panel
