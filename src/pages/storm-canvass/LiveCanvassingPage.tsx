@@ -73,7 +73,7 @@ export default function LiveCanvassingPage() {
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<any>(null);
   const [showPropertyPanel, setShowPropertyPanel] = useState(false);
-  const [canvassMode, setCanvassMode] = useState(false);
+  const [canvassMode, setCanvassMode] = useState<'knock' | 'canvas'>('knock');
   const [dropPinCoords, setDropPinCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [destination, setDestination] = useState<{
     lat: number;
@@ -366,7 +366,7 @@ export default function LiveCanvassingPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <CanvassModeToggle enabled={canvassMode} onToggle={setCanvassMode} />
+            <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
             <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex text-xs">
               {isTracking ? 'Tracking' : 'Not Tracking'}
             </Badge>
@@ -408,9 +408,10 @@ export default function LiveCanvassingPage() {
           onLoadingChange={setRawIsLoading}
           onPropertiesLoaded={setRawLoadedCount}
           refreshKey={markersRefreshKey}
-          areaPropertyIds={!canvassMode && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
+          areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
           areaPolygon={areaPolygon}
-          onMapClick={canvassMode ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
+          onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
+          followUser={canvassMode === 'knock'}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         

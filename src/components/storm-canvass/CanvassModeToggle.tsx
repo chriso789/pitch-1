@@ -1,25 +1,39 @@
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
-import { MapPinPlus } from "lucide-react";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { Footprints, Hand } from "lucide-react";
+
+export type CanvassMapMode = 'knock' | 'canvas';
 
 interface CanvassModeToggleProps {
-  enabled: boolean;
-  onToggle: (enabled: boolean) => void;
+  mode: CanvassMapMode;
+  onModeChange: (mode: CanvassMapMode) => void;
 }
 
-export default function CanvassModeToggle({ enabled, onToggle }: CanvassModeToggleProps) {
+export default function CanvassModeToggle({ mode, onModeChange }: CanvassModeToggleProps) {
   return (
-    <div className="flex items-center gap-2">
-      <MapPinPlus className="h-4 w-4 text-muted-foreground" />
-      <Label htmlFor="canvass-mode" className="text-xs font-medium cursor-pointer">
-        Canvass Mode
-      </Label>
-      <Switch
-        id="canvass-mode"
-        checked={enabled}
-        onCheckedChange={onToggle}
-        className="scale-90"
-      />
-    </div>
+    <ToggleGroup
+      type="single"
+      value={mode}
+      onValueChange={(val) => {
+        if (val) onModeChange(val as CanvassMapMode);
+      }}
+      className="bg-muted rounded-md p-0.5"
+    >
+      <ToggleGroupItem
+        value="knock"
+        aria-label="Knock Mode"
+        className="text-xs px-2.5 py-1 h-7 gap-1 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground rounded-sm"
+      >
+        <Footprints className="h-3.5 w-3.5" />
+        Knock
+      </ToggleGroupItem>
+      <ToggleGroupItem
+        value="canvas"
+        aria-label="Canvas Mode"
+        className="text-xs px-2.5 py-1 h-7 gap-1 data-[state=on]:bg-primary data-[state=on]:text-primary-foreground rounded-sm"
+      >
+        <Hand className="h-3.5 w-3.5" />
+        Canvas
+      </ToggleGroupItem>
+    </ToggleGroup>
   );
 }
