@@ -1,41 +1,81 @@
 
+# Fix Map Pins Constantly Refreshing (Disappearing and Reappearing)
 
-# Fix Three Issues: Post-Logout Buttons, Storm Canvas Mobile, Territory 404
+## Root Cause
 
-## Issue 1: Buttons Not Working After Logout on Landing Page
+The pins are flickering because an **unstable callback prop** causes a cascade of React hook re-creations, which re-attaches map event listeners and triggers a full marker reload cycle every render.
 
-**Root Cause:** The `clearAllSessionData()` function in `src/services/sessionManager.ts` wipes ALL `pitch_*` prefixed localStorage keys (line 132). This deletes `pitch_consent` (the cookie consent preference), causing the ConsentBanner to reappear every time the user logs out. Additionally, it clears `sb-*` keys (Supabase auth tokens) BEFORE `supabase.auth.signOut()` completes in the Sidebar handler, which can cause the signOut call to fail silently and leave the app in a broken state where event handlers stop working.
+The chain of events:
+1. GPS updates every 1-3 seconds, calling `setUserLocation({ lat, lng })` which re-renders `LiveCanvassingPage`
+2. On each render, `onParcelSelect` is defined as an **inline arrow function** (line 399), creating a new reference
+3. This new reference propagates through `GoogleLiveLocationMap` to `GooglePropertyMarkersLayer` as `onPropertyClick`
+4. `onPropertyClick` is a dependency of `updateMarkersIncrementally` (useCallback), which is a dependency of `loadProperties` (useCallback), which is a dependency of the main `useEffect` that attaches map listeners
+5. When that `useEffect` re-runs, it **clears all markers** on cleanup (line 488: `clearAllMarkers()`), then reloads them -- causing the visible flicker
 
-**Fix in `src/services/sessionManager.ts`:**
-- Preserve the `pitch_consent` key during cleanup (it's a site-wide preference, not a session artifact)
-- Preserve `pitch_remember_me` as it's also a UI preference
+## Fix (3 changes, 2 files)
 
-**Fix in `src/shared/components/layout/Sidebar.tsx`:**
-- Reorder: call `supabase.auth.signOut()` FIRST, then `clearAllSessionData()` after, so the sign-out API call completes before tokens are destroyed
-- Add navigation to `/login` instead of `/` to avoid the landing page auth-check redirect loop
+### File 1: `src/pages/storm-canvass/LiveCanvassingPage.tsx`
 
-## Issue 2: Storm Canvas Stat Cards Too Large on Mobile
+**Stabilize the `onParcelSelect` callback** by wrapping it in `useCallback`:
 
-**Root Cause:** The stat cards in `src/pages/StormCanvassPro.tsx` use a `md:grid-cols-4` grid, so on mobile they stack into a full-width vertical list with large `text-2xl` numbers, causing excessive scrolling before reaching the action buttons (Live Canvassing, Manage Territories, etc.).
+```typescript
+// Before (line 399): inline arrow = new ref every render
+onParcelSelect={(property) => {
+  setSelectedProperty(property);
+  setShowPropertyPanel(true);
+}}
 
-**Fix in `src/pages/StormCanvassPro.tsx`:**
-- Change the stats grid to `grid-cols-2 md:grid-cols-4` so stats show in a 2x2 grid on mobile
-- Reduce stat number size to `text-lg` on mobile (`text-lg md:text-2xl`)
-- Reduce card padding on mobile with `pb-1 md:pb-2` on CardHeader and compact CardContent
-- Make the header and badge more compact on mobile
+// After: stable callback with useCallback
+const handleParcelSelect = useCallback((property: any) => {
+  setSelectedProperty(property);
+  setShowPropertyPanel(true);
+}, []);
 
-## Issue 3: "Manage Territories" Button Returns 404
+// Then pass: onParcelSelect={handleParcelSelect}
+```
 
-**Root Cause:** The button in `StormCanvassPro.tsx` navigates to `/storm-canvass/territories` (line 232), but no such route exists in `App.tsx`. The Territory Map page is registered at `/storm-canvass/map` (line 253).
+### File 2: `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`
 
-**Fix in `src/pages/StormCanvassPro.tsx`:**
-- Change the navigate path from `/storm-canvass/territories` to `/storm-canvass/map`
+**Stabilize `onPropertyClick` usage** by using a ref so the callback identity never changes:
 
-## Summary of All File Changes
+```typescript
+// Use a ref for the click handler so marker listeners never go stale
+const onPropertyClickRef = useRef(onPropertyClick);
+onPropertyClickRef.current = onPropertyClick;
+```
+
+Then in `updateMarkersIncrementally`, use `onPropertyClickRef.current(property)` instead of `onPropertyClick(property)` directly, and remove `onPropertyClick` from the `useCallback` dependency array.
+
+**Remove `clearAllMarkers` from the main useEffect cleanup** since it causes the visible flicker. Markers should only be cleared on component unmount (via a separate effect), not when listener callbacks change:
+
+```typescript
+// Current (line 471-490):
+useEffect(() => {
+  // ... attach listeners
+  loadProperties();
+  return () => {
+    // ... remove listeners
+    clearAllMarkers();  // THIS causes flicker
+  };
+}, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearAllMarkers]);
+
+// Fixed: separate unmount cleanup from listener setup
+useEffect(() => {
+  return () => clearAllMarkers();
+}, []);  // Only on unmount
+
+useEffect(() => {
+  // ... attach listeners
+  loadProperties();
+  return () => {
+    // ... remove listeners only, no clearAllMarkers
+  };
+}, [map, loadProperties, ...]);
+```
+
+## Summary
 
 | File | Change |
 |------|--------|
-| `src/services/sessionManager.ts` | Preserve `pitch_consent` and `pitch_remember_me` during session cleanup |
-| `src/shared/components/layout/Sidebar.tsx` | Reorder signOut before clearAllSessionData; navigate to `/login` |
-| `src/pages/StormCanvassPro.tsx` | Fix territory route to `/storm-canvass/map`; make stat cards compact on mobile (2-col grid, smaller text) |
-
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Wrap `onParcelSelect` in `useCallback` |
+| `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` | Use ref for `onPropertyClick` to stabilize callback chain; separate `clearAllMarkers` into unmount-only effect |
