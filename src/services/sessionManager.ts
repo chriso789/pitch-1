@@ -127,9 +127,11 @@ export function clearAllSessionData(): void {
   });
 
   // Clear all pitch_ prefixed items from localStorage
+  // Preserve site-wide preferences that are NOT session artifacts
+  const preserveKeys = ['pitch_consent', 'pitch_remember_me'];
   const localStorageKeys = Object.keys(localStorage);
   localStorageKeys
-    .filter(key => key.startsWith('pitch_') || key.startsWith('sb-'))
+    .filter(key => (key.startsWith('pitch_') || key.startsWith('sb-')) && !preserveKeys.includes(key))
     .forEach(key => {
       localStorage.removeItem(key);
       console.log('[SessionManager] Removed localStorage:', key);
