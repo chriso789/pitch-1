@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -342,6 +342,11 @@ export default function LiveCanvassingPage() {
     window.open(navigationUrl, '_blank');
   };
 
+  const handleParcelSelect = useCallback((property: any) => {
+    setSelectedProperty(property);
+    setShowPropertyPanel(true);
+  }, []);
+
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       {/* Header - Compact mobile-optimized */}
@@ -396,10 +401,7 @@ export default function LiveCanvassingPage() {
           userLocation={userLocation}
           currentAddress={currentAddress}
           onContactSelect={setSelectedContact}
-          onParcelSelect={(property) => {
-            setSelectedProperty(property);
-            setShowPropertyPanel(true);
-          }}
+          onParcelSelect={handleParcelSelect}
           routeData={routeData}
           destination={destination}
           mapStyle={mapStyle}
