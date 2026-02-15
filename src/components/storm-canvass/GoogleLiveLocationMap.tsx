@@ -21,6 +21,7 @@ interface GoogleLiveLocationMapProps {
   areaPropertyIds?: string[];
   areaPolygon?: any;
   onMapClick?: (lat: number, lng: number) => void;
+  followUser?: boolean;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
@@ -42,6 +43,7 @@ export default function GoogleLiveLocationMap({
   areaPropertyIds,
   areaPolygon,
   onMapClick,
+  followUser = true,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -69,10 +71,7 @@ export default function GoogleLiveLocationMap({
           mapTypeControl: false,
           fullscreenControl: false,
           streetViewControl: false,
-          zoomControl: true,
-          zoomControlOptions: {
-            position: google.maps.ControlPosition.RIGHT_CENTER,
-          },
+          zoomControl: false,
           styles: mapStyle === 'lot-lines' ? [
             { featureType: 'poi', stylers: [{ visibility: 'off' }] },
             { featureType: 'transit', stylers: [{ visibility: 'off' }] },
@@ -154,19 +153,20 @@ export default function GoogleLiveLocationMap({
     const newPos = { lat: userLocation.lat, lng: userLocation.lng };
     userMarker.current.setPosition(newPos);
     
-    // Only pan if user is far from center
+    // Only pan to user in knock/follow mode
+    if (!followUser) return;
+    
     const center = map.current.getCenter();
     if (center) {
       const distance = google.maps.geometry.spherical.computeDistanceBetween(
         new google.maps.LatLng(center.lat(), center.lng()),
         new google.maps.LatLng(newPos.lat, newPos.lng)
       );
-      // If more than 50 meters away, pan to user
       if (distance > 50) {
         map.current.panTo(newPos);
       }
     }
-  }, [userLocation, mapReady]);
+  }, [userLocation, mapReady, followUser]);
 
   // Render area polygon overlay
   useEffect(() => {
