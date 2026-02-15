@@ -32134,6 +32134,7 @@ export type Database = {
           owner_mailing_address: string | null
           owner_name: string | null
           parcel_id: string | null
+          polygon_id: string | null
           property_address: string | null
           raw_data: Json | null
           source_appraiser: string | null
@@ -32142,6 +32143,7 @@ export type Database = {
           source_osm: boolean | null
           source_tax: string | null
           state: string | null
+          storm_event_id: string | null
           tenant_id: string | null
           updated_at: string | null
           used_batchleads: boolean | null
@@ -32169,6 +32171,7 @@ export type Database = {
           owner_mailing_address?: string | null
           owner_name?: string | null
           parcel_id?: string | null
+          polygon_id?: string | null
           property_address?: string | null
           raw_data?: Json | null
           source_appraiser?: string | null
@@ -32177,6 +32180,7 @@ export type Database = {
           source_osm?: boolean | null
           source_tax?: string | null
           state?: string | null
+          storm_event_id?: string | null
           tenant_id?: string | null
           updated_at?: string | null
           used_batchleads?: boolean | null
@@ -32204,6 +32208,7 @@ export type Database = {
           owner_mailing_address?: string | null
           owner_name?: string | null
           parcel_id?: string | null
+          polygon_id?: string | null
           property_address?: string | null
           raw_data?: Json | null
           source_appraiser?: string | null
@@ -32212,6 +32217,7 @@ export type Database = {
           source_osm?: boolean | null
           source_tax?: string | null
           state?: string | null
+          storm_event_id?: string | null
           tenant_id?: string | null
           updated_at?: string | null
           used_batchleads?: boolean | null
