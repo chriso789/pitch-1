@@ -129,22 +129,23 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
 
   const handleSignOut = async () => {
     try {
-      // Clear all session data (localStorage, sessionStorage, cookies)
+      // Sign out FIRST while auth tokens still exist
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      // THEN clear all session data (localStorage, sessionStorage, cookies)
       clearAllSessionData();
       
       // Clear React Query cache
       queryClient.clear();
-      
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
       
       toast({
         title: "Signed out successfully",
         description: "You have been logged out of the system.",
       });
       
-      // Navigate to landing page
-      navigate('/', { replace: true });
+      // Navigate to login page
+      navigate('/login', { replace: true });
     } catch (error: any) {
       console.error('Sign out error:', error);
       toast({
