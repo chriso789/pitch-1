@@ -164,6 +164,9 @@ export default function GooglePropertyMarkersLayer({
   areaPropertyIds,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
+  // Ref for onPropertyClick so marker listeners never go stale
+  const onPropertyClickRef = useRef(onPropertyClick);
+  onPropertyClickRef.current = onPropertyClick;
   // Map-based marker tracking for incremental updates (prevents flickering)
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const [currentZoom, setCurrentZoom] = useState(18);
@@ -303,14 +306,14 @@ export default function GooglePropertyMarkersLayer({
         });
         
         marker.addListener('click', () => {
-          onPropertyClick(property);
+          onPropertyClickRef.current(property);
         });
         
         markersRef.current.set(property.id, marker);
         propertiesCacheRef.current.set(property.id, property);
       }
     });
-  }, [map, createMarkerIcon, onPropertyClick]);
+  }, [map, createMarkerIcon]);
 
   // Clear all markers (only used on unmount or refreshKey change)
   const clearAllMarkers = useCallback(() => {
@@ -467,6 +470,14 @@ export default function GooglePropertyMarkersLayer({
     }
   }, [refreshKey, loadProperties]);
 
+  // Clean up all markers only on unmount
+  useEffect(() => {
+    return () => {
+      clearAllMarkers();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Set up map event listeners with debouncing
   useEffect(() => {
     if (!map) return;
@@ -484,10 +495,8 @@ export default function GooglePropertyMarkersLayer({
       }
       google.maps.event.removeListener(idleListener);
       google.maps.event.removeListener(zoomListener);
-      // Only clear all markers on unmount
-      clearAllMarkers();
     };
-  }, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearAllMarkers]);
+  }, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes]);
 
   // Notify parent of loading state changes
   useEffect(() => {
