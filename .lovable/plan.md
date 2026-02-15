@@ -1,81 +1,58 @@
 
-# Fix Map Pins Constantly Refreshing (Disappearing and Reappearing)
 
-## Root Cause
+# Fix Live Canvassing Layout: Full-Page Map with Compact Controls
 
-The pins are flickering because an **unstable callback prop** causes a cascade of React hook re-creations, which re-attaches map event listeners and triggers a full marker reload cycle every render.
+## Problems Identified
 
-The chain of events:
-1. GPS updates every 1-3 seconds, calling `setUserLocation({ lat, lng })` which re-renders `LiveCanvassingPage`
-2. On each render, `onParcelSelect` is defined as an **inline arrow function** (line 399), creating a new reference
-3. This new reference propagates through `GoogleLiveLocationMap` to `GooglePropertyMarkersLayer` as `onPropertyClick`
-4. `onPropertyClick` is a dependency of `updateMarkersIncrementally` (useCallback), which is a dependency of `loadProperties` (useCallback), which is a dependency of the main `useEffect` that attaches map listeners
-5. When that `useEffect` re-runs, it **clears all markers** on cleanup (line 488: `clearAllMarkers()`), then reloads them -- causing the visible flicker
+1. **Knock/Canvas toggle not visible** -- it's in the header row but gets pushed up behind the device status bar (battery/time area) since the page has no safe-area padding
+2. **Page extends past viewport** -- the Card header with search bar + map style toggle takes too much vertical space, forcing scrolling to see the full map
+3. **Google Maps default controls still showing** -- arrow/zoom buttons in bottom-left corner need to be hidden
 
-## Fix (3 changes, 2 files)
+## Solution
 
 ### File 1: `src/pages/storm-canvass/LiveCanvassingPage.tsx`
 
-**Stabilize the `onParcelSelect` callback** by wrapping it in `useCallback`:
+**Add safe-area top padding** so all controls sit below the device status bar:
+- Change the outer div from `h-screen` to `h-[100dvh]` (dynamic viewport height handles mobile browser chrome) and add `pt-[env(safe-area-inset-top)]`
 
-```typescript
-// Before (line 399): inline arrow = new ref every render
-onParcelSelect={(property) => {
-  setSelectedProperty(property);
-  setShowPropertyPanel(true);
-}}
+**Flatten the header** to reduce vertical space:
+- Merge the header, search bar, and map style toggle into a single compact overlay area positioned absolutely over the map instead of in a separate Card block
+- Remove the Card wrapper entirely -- place the back button, mode toggle, and search inline at the top of the map
+- Move MapStyleToggle to float on the map (like in the screenshot, it's already overlaid)
 
-// After: stable callback with useCallback
-const handleParcelSelect = useCallback((property: any) => {
-  setSelectedProperty(property);
-  setShowPropertyPanel(true);
-}, []);
+Specifically:
+- Remove the `<Card>` wrapper around the header
+- Make the header a compact absolute-positioned bar at the top with `safe-area-inset-top` padding
+- Put the search bar directly below with minimal padding
+- Put Satellite/Lot Lines toggle floating on the map (left side, below search)
+- Make the map container `flex-1` fill remaining space (it already does, but removing the Card frees space)
 
-// Then pass: onParcelSelect={handleParcelSelect}
+### File 2: `src/components/storm-canvass/GoogleLiveLocationMap.tsx`
+
+**Disable all remaining Google Maps UI controls** to prevent clutter:
+- Ensure `zoomControl: false` (already done)
+- Add `gestureHandling: 'greedy'` to prevent two-finger requirement on mobile
+- Add `keyboardShortcuts: false` to hide "Keyboard shortcuts" footer text
+
+## Layout After Fix
+
+```text
++----------------------------------+
+| [safe area: status bar]          |
+| [<] Live Canvassing  [Knock|Canvas] |
+| [Search for an address...]       |
+| [Satellite | Lot Lines]          |
+|                                  |
+|         FULL MAP                 |
+|    (no scrolling needed)         |
+|                                  |
+|                          [Camera]|
++----------------------------------+
 ```
 
-### File 2: `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`
-
-**Stabilize `onPropertyClick` usage** by using a ref so the callback identity never changes:
-
-```typescript
-// Use a ref for the click handler so marker listeners never go stale
-const onPropertyClickRef = useRef(onPropertyClick);
-onPropertyClickRef.current = onPropertyClick;
-```
-
-Then in `updateMarkersIncrementally`, use `onPropertyClickRef.current(property)` instead of `onPropertyClick(property)` directly, and remove `onPropertyClick` from the `useCallback` dependency array.
-
-**Remove `clearAllMarkers` from the main useEffect cleanup** since it causes the visible flicker. Markers should only be cleared on component unmount (via a separate effect), not when listener callbacks change:
-
-```typescript
-// Current (line 471-490):
-useEffect(() => {
-  // ... attach listeners
-  loadProperties();
-  return () => {
-    // ... remove listeners
-    clearAllMarkers();  // THIS causes flicker
-  };
-}, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearAllMarkers]);
-
-// Fixed: separate unmount cleanup from listener setup
-useEffect(() => {
-  return () => clearAllMarkers();
-}, []);  // Only on unmount
-
-useEffect(() => {
-  // ... attach listeners
-  loadProperties();
-  return () => {
-    // ... remove listeners only, no clearAllMarkers
-  };
-}, [map, loadProperties, ...]);
-```
-
-## Summary
+## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Wrap `onParcelSelect` in `useCallback` |
-| `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` | Use ref for `onPropertyClick` to stabilize callback chain; separate `clearAllMarkers` into unmount-only effect |
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Remove Card wrapper; use absolute-positioned compact header with safe-area padding; make map fill full viewport |
+| `src/components/storm-canvass/GoogleLiveLocationMap.tsx` | Add `gestureHandling: 'greedy'`, `keyboardShortcuts: false` to map options |
