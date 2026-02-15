@@ -239,7 +239,26 @@ export default function PropertyInfoPanel({
         property.searchbug_data = updatedProperty.searchbug_data;
       }
       
-      toast.success(data?.cached ? 'Using cached data' : 'Property enriched!');
+      const hasRealOwner = enrichmentData?.owners?.some(
+        (o: any) => o.name && o.name !== 'Unknown Owner' && o.name !== 'Unknown'
+      );
+      const hasPhones = enrichmentData?.phones?.length > 0;
+      const hasEmails = enrichmentData?.emails?.length > 0;
+      const hasUpdatedOwner = updatedProperty?.owner_name && 
+        updatedProperty.owner_name !== 'Unknown Owner' && 
+        updatedProperty.owner_name !== 'Unknown';
+      const hasUpdatedPhones = updatedProperty?.phone_numbers?.length > 0;
+      const hasUpdatedEmails = updatedProperty?.emails?.length > 0;
+
+      if (data?.cached) {
+        toast.success('Using cached data');
+      } else if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
+        toast.success('Property enriched!');
+      } else {
+        toast.warning('No owner data found for this property', {
+          description: 'Public records may not be available for this address.',
+        });
+      }
     } catch (err: any) {
       console.error('[handleEnrich] Error:', err?.message || err);
       toast.error(err?.message || 'Failed to enrich property');
