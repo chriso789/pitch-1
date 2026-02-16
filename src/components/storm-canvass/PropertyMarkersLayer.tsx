@@ -54,14 +54,7 @@ function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontS
   return { size: 10, showNumber: false, fontSize: 0 };
 }
 
-// Get radius based on zoom level (in miles)
-function getLoadRadius(zoom: number): number {
-  if (zoom >= 18) return 0.25;
-  if (zoom >= 16) return 0.5;
-  if (zoom >= 14) return 1;
-  if (zoom >= 12) return 2;
-  return 3;
-}
+// No longer needed - we use map.getBounds() directly
 
 export default function PropertyMarkersLayer({
   map,
@@ -253,22 +246,20 @@ export default function PropertyMarkersLayer({
     if (!profile?.tenant_id || !map) return;
     
     const zoom = map.getZoom();
-    const center = map.getCenter();
-    const radius = getLoadRadius(zoom);
     
-    // Create a bounds key to avoid reloading same area
-    const boundsKey = `${center.lat.toFixed(3)}_${center.lng.toFixed(3)}_${zoom.toFixed(0)}`;
+    // Use actual visible map bounds instead of radius calculation
+    const bounds = map.getBounds();
+    const minLat = bounds.getSouth();
+    const maxLat = bounds.getNorth();
+    const minLng = bounds.getWest();
+    const maxLng = bounds.getEast();
+    
+    // Create a bounds key from actual viewport corners
+    const boundsKey = `${minLat.toFixed(4)}_${maxLat.toFixed(4)}_${minLng.toFixed(4)}_${maxLng.toFixed(4)}`;
     if (loadedBoundsRef.current === boundsKey) return;
     loadedBoundsRef.current = boundsKey;
     
     clearMarkers();
-    
-    // Calculate bounding box based on dynamic radius
-    const radiusInDegrees = radius / 69;
-    const minLat = center.lat - radiusInDegrees;
-    const maxLat = center.lat + radiusInDegrees;
-    const minLng = center.lng - radiusInDegrees;
-    const maxLng = center.lng + radiusInDegrees;
     
     // Limit properties based on zoom
     const limit = zoom >= 16 ? 200 : zoom >= 14 ? 300 : 500;
@@ -292,7 +283,12 @@ export default function PropertyMarkersLayer({
       // If no properties exist around user location, try to load parcels
       if ((!properties || properties.length === 0) && zoom >= 14) {
         console.log('[PropertyMarkersLayer] No properties found, loading parcels...');
-        await loadParcelsFromEdgeFunction(center.lat, center.lng, radius);
+        const center = map.getCenter();
+        const radiusKm = Math.max(
+          (maxLat - minLat) * 111.32 / 2,
+          (maxLng - minLng) * 111.32 * Math.cos(center.lat * Math.PI / 180) / 2
+        );
+        await loadParcelsFromEdgeFunction(center.lat, center.lng, radiusKm * 0.621371);
         return;
       }
       
