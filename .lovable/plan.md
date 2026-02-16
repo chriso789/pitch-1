@@ -1,17 +1,22 @@
 
-# Move Knock/Canvas Toggle to Floating Map Button
 
-## Changes
+# Fix Mobile Menu Button Position
 
-### File 1: `src/components/storm-canvass/CanvassModeToggle.tsx`
-Add styling for a floating map control look -- add `shadow-lg`, `border`, and `bg-background/90 backdrop-blur-sm` to match other floating controls on the map.
+## Problem
+The hamburger menu button is positioned too high on mobile (`top-[3.6rem]`), sitting above the header content with visible gap between it and the location switcher row.
 
-### File 2: `src/pages/storm-canvass/LiveCanvassingPage.tsx`
-- **Remove** the `CanvassModeToggle` from the top header row (line 388)
-- **Add** it as a floating element positioned at the bottom-right of the map, above the Camera FAB button -- roughly `bottom-28 right-3 z-20` with `pointer-events-auto`
+## Fix
 
-### File 3: `src/components/storm-canvass/GoogleLiveLocationMap.tsx`
-- Ensure all default Google Maps UI controls remain disabled (`zoomControl: false`, `mapTypeControl: false`, `fullscreenControl: false`, `streetViewControl: false`) -- these are already set, just confirming no arrow/move buttons leak through
+### File: `src/components/ui/collapsible-sidebar.tsx`
+Change the menu button position from `top-[3.6rem]` to a value that vertically centers it within the first header row:
 
-## Result
-The Knock/Canvas toggle will float as a compact, minimal pill on the bottom-right of the map (above the camera button), replacing the space where Google's default controls used to appear. The top header becomes cleaner with just the back button, title, and sync indicator.
+- The main content area has `pt-14` (3.5rem) top padding
+- The sticky header sits at the top of that padded area
+- The first header row is `h-12` (3rem) tall
+- To center the `h-10` (2.5rem) button within that row, the top position should be approximately `top-[4.05rem]` (halfway through the row minus half the button height)
+
+This single CSS change moves the button down so it visually aligns with the "West Coast" location switcher row instead of floating alone near the status bar.
+
+| File | Change |
+|------|--------|
+| `src/components/ui/collapsible-sidebar.tsx` | Change `top-[3.6rem]` to `top-[4.05rem]` on the mobile menu button |
