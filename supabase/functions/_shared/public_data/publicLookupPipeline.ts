@@ -160,9 +160,11 @@ export async function lookupPropertyPublic(input: {
 
   // 6) People search for contact info (free via Firecrawl)
   let contactData: PeopleSearchResult | null = null;
-  if (merged.owner_name && merged.owner_name !== "Unknown" && merged.owner_name !== "Unknown Owner") {
+  const hasOwnerName = merged.owner_name && merged.owner_name !== "Unknown" && merged.owner_name !== "Unknown Owner";
+
+  if (hasOwnerName) {
     contactData = await peopleSearch({
-      ownerName: merged.owner_name,
+      ownerName: merged.owner_name!,
       city: loc.city,
       state: loc.state,
       timeoutMs,
@@ -173,6 +175,25 @@ export async function lookupPropertyPublic(input: {
     if (contactData) {
       sources.people_search = true;
       raw.people_search = contactData;
+    }
+  } else {
+    // Fallback: try people search by address when owner name is unavailable
+    const addrQuery = loc.street || loc.normalized_address;
+    if (addrQuery) {
+      console.log(`[pipeline] No owner name found, trying people search by address: "${addrQuery}"`);
+      contactData = await peopleSearch({
+        ownerName: addrQuery,
+        city: loc.city,
+        state: loc.state,
+        timeoutMs,
+      }).catch((e) => {
+        raw.people_search_address_error = String(e);
+        return null;
+      });
+      if (contactData) {
+        sources.people_search_by_address = true;
+        raw.people_search_by_address = contactData;
+      }
     }
   }
 
