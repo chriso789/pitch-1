@@ -45,7 +45,7 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
         <Button
           variant="ghost"
           size="icon"
-          className="fixed top-[3.6rem] left-3 z-50 h-10 w-10 bg-background/80 backdrop-blur-sm border shadow-md md:hidden"
+          className="fixed top-[4.05rem] left-3 z-50 h-10 w-10 bg-background/80 backdrop-blur-sm border shadow-md md:hidden"
           onClick={() => setIsMobileOpen(true)}
         >
           <Menu className="h-5 w-5" />
