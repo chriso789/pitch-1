@@ -1,51 +1,32 @@
 
 
-# Fix: Owner Data Not Updating in UI After Enrichment
+# Fix: Crash When Opening a Pin (null localProperty)
 
 ## Root Cause
 
-There are two issues preventing owner data from appearing after clicking "Enrich":
-
-### Issue 1: React State Not Updating (Frontend Bug)
-After `handleEnrich` succeeds and refetches updated data from `canvassiq_properties`, the code **directly mutates the `property` prop** (lines 238-241):
+On line 67 of `PropertyInfoPanel.tsx`, `localProperty` is initialized with:
 ```typescript
-property.phone_numbers = updatedProperty.phone_numbers;
-property.emails = updatedProperty.emails;
-property.owner_name = updatedProperty.owner_name;
+const [localProperty, setLocalProperty] = useState<any>(property);
 ```
-This does NOT trigger a React re-render. The UI stays stuck showing "Unknown Owner" and "No owner data found" even when the database has been updated with real data.
 
-### Issue 2: Appraiser Search Fails for Some Addresses (Backend)
-The edge function logs show that for addresses like "4083 Fonsica Avenue", the Firecrawl appraiser search returns **no results**. Without an owner name, the people search (phones/emails) is completely skipped. The pipeline returns empty-handed.
+When the component first mounts with `property = null`, `localProperty` is also `null`. The early return on line 135 checks `if (!property) return null;` but lines 146-165 access `localProperty.searchbug_data`, `localProperty.phone_numbers`, etc. -- which crashes because `localProperty` is still `null`.
 
-## Solution
+This is because React `useState` only uses its initial value on the **first render**. When `property` later becomes non-null, `localProperty` stays `null` until the `useEffect` on line 101 fires (which happens **after** the render attempt).
 
-### 1. Use Local State for Property Data (Frontend Fix)
+## Fix
+
 **File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-- Add a `localProperty` state initialized from the `property` prop
-- After enrichment refetch, update `localProperty` state (which triggers re-render)
-- Derive `ownerName`, `phoneNumbers`, `emails`, `displayOwners`, etc. from `localProperty` instead of the raw prop
-- Reset `localProperty` when `property.id` changes
+1. Expand the early return on line 135 to also check `localProperty`:
+```typescript
+if (!property || !localProperty) return null;
+```
 
-### 2. Improve Appraiser Search Resilience (Backend Fix)
-**File:** `supabase/functions/_shared/public_data/sources/universal/appraiser.ts`
+This is a one-line change that prevents the crash entirely. When `property` becomes available and `localProperty` syncs via the useEffect, the component will re-render with valid data.
 
-- When the quoted exact-address search fails, retry with a looser query (without quotes around the address) to catch partial matches on county appraiser sites
-- This fallback increases the chance of finding property records for less-indexed addresses
+## Why This is Safe
 
-### 3. Allow People Search Without Owner Name (Backend Fix)
-**File:** `supabase/functions/_shared/public_data/publicLookupPipeline.ts`
-
-- When no owner name is found from appraiser/tax sources, attempt a people search using just the property address instead of skipping entirely
-- This provides a path to get contact data even when the appraiser search fails
-
-## Changes Summary
-
-| What | File | Detail |
-|------|------|--------|
-| Local state for property data | `PropertyInfoPanel.tsx` | Replace prop mutation with `useState` + `useEffect` sync |
-| Appraiser search retry | `appraiser.ts` | Add unquoted fallback query when exact match fails |
-| Address-based people search | `publicLookupPipeline.ts` | Try people search by address when owner name is unavailable |
-| Redeploy edge function | `storm-public-lookup` | Deploy updated pipeline |
+- The `useEffect` on line 101 already syncs `localProperty` from `property` whenever `property.id` changes
+- On the very next render cycle after `property` becomes non-null, `localProperty` will also be non-null
+- All hooks are called before this early return (lines 57-132), so React's rules of hooks are satisfied
 
