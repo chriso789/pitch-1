@@ -133,8 +133,23 @@ Deno.serve(async (req) => {
 
     // 6) Update canvassiq_properties if property_id provided
     if (property_id && result.owner_name) {
+      const contactPhones = result.contact_phones || [];
+      const contactEmails = result.contact_emails || [];
+
       await supabase.from("canvassiq_properties").update({
         owner_name: result.owner_name,
+        phone_numbers: contactPhones.map((p: any) => p.number),
+        emails: contactEmails.map((e: any) => e.address),
+        searchbug_data: {
+          owners: [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }],
+          phones: contactPhones,
+          emails: contactEmails,
+          relatives: result.contact_relatives || [],
+          source: "firecrawl_people_search",
+          enriched_at: new Date().toISOString(),
+        },
+        enrichment_last_at: new Date().toISOString(),
+        enrichment_source: ["public_data", "firecrawl_people_search"],
         property_data: {
           source: "public_data_engine",
           confidence_score: result.confidence_score,
