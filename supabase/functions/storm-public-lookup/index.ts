@@ -131,25 +131,25 @@ Deno.serve(async (req) => {
 
     if (upsertErr) console.error("[storm-public-lookup] upsert error", upsertErr);
 
-    // 6) Update canvassiq_properties if property_id provided
-    if (property_id && result.owner_name) {
+    // 6) Update canvassiq_properties if property_id provided (no owner_name gate)
+    if (property_id) {
       const contactPhones = result.contact_phones || [];
       const contactEmails = result.contact_emails || [];
 
-      await supabase.from("canvassiq_properties").update({
-        owner_name: result.owner_name,
-        phone_numbers: contactPhones.map((p: any) => p.number),
-        emails: contactEmails.map((e: any) => e.address),
+      const updatePayload: Record<string, any> = {
+        enrichment_last_at: new Date().toISOString(),
+        enrichment_source: ["public_data", "firecrawl_people_search"],
+        updated_at: new Date().toISOString(),
         searchbug_data: {
-          owners: [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }],
+          owners: result.owner_name
+            ? [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }]
+            : [],
           phones: contactPhones,
           emails: contactEmails,
           relatives: result.contact_relatives || [],
           source: "firecrawl_people_search",
           enriched_at: new Date().toISOString(),
         },
-        enrichment_last_at: new Date().toISOString(),
-        enrichment_source: ["public_data", "firecrawl_people_search"],
         property_data: {
           source: "public_data_engine",
           confidence_score: result.confidence_score,
@@ -161,8 +161,14 @@ Deno.serve(async (req) => {
           sources: Object.keys(result.sources).filter(k => result.sources[k]),
           enriched_at: new Date().toISOString(),
         },
-        updated_at: new Date().toISOString(),
-      }).eq("id", property_id);
+      };
+
+      // Only write non-null values to avoid clobbering existing data
+      if (result.owner_name) updatePayload.owner_name = result.owner_name;
+      if (contactPhones.length > 0) updatePayload.phone_numbers = contactPhones.map((p: any) => p.number);
+      if (contactEmails.length > 0) updatePayload.emails = contactEmails.map((e: any) => e.address);
+
+      await supabase.from("canvassiq_properties").update(updatePayload).eq("id", property_id);
     }
 
     return new Response(

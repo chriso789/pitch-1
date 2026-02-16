@@ -117,7 +117,30 @@ export default function PropertyInfoPanel({
           is_primary: true,
         }]);
       }
+
+      // Update localProperty directly from pipeline response (don't rely solely on DB refetch)
+      setLocalProperty((prev: any) => ({
+        ...prev,
+        owner_name: pipelineResult?.owner_name || prev.owner_name,
+        phone_numbers: pipelineResult?.contact_phones?.length > 0
+          ? pipelineResult.contact_phones.map((p: any) => p.number)
+          : prev.phone_numbers,
+        emails: pipelineResult?.contact_emails?.length > 0
+          ? pipelineResult.contact_emails.map((e: any) => e.address)
+          : prev.emails,
+        searchbug_data: {
+          owners: pipelineResult?.owner_name
+            ? [{ id: '1', name: pipelineResult.owner_name, age: pipelineResult.contact_age, is_primary: true }]
+            : prev.searchbug_data?.owners || [],
+          phones: pipelineResult?.contact_phones || prev.searchbug_data?.phones || [],
+          emails: pipelineResult?.contact_emails || prev.searchbug_data?.emails || [],
+          relatives: pipelineResult?.contact_relatives || prev.searchbug_data?.relatives || [],
+          source: 'public_data_pipeline',
+          enriched_at: new Date().toISOString(),
+        },
+      }));
       
+      // Secondary DB refetch — merge only non-null values so we don't clobber pipeline data
       const { data: updatedProperty, error: fetchError } = await supabase
         .from('canvassiq_properties')
         .select('phone_numbers, emails, owner_name, searchbug_data')
@@ -129,10 +152,10 @@ export default function PropertyInfoPanel({
       } else if (updatedProperty) {
         setLocalProperty((prev: any) => ({
           ...prev,
-          phone_numbers: updatedProperty.phone_numbers,
-          emails: updatedProperty.emails,
-          owner_name: updatedProperty.owner_name,
-          searchbug_data: updatedProperty.searchbug_data,
+          phone_numbers: updatedProperty.phone_numbers?.length ? updatedProperty.phone_numbers : prev.phone_numbers,
+          emails: updatedProperty.emails?.length ? updatedProperty.emails : prev.emails,
+          owner_name: updatedProperty.owner_name || prev.owner_name,
+          searchbug_data: updatedProperty.searchbug_data || prev.searchbug_data,
         }));
       }
       
