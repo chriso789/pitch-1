@@ -1,120 +1,92 @@
 
+# Auto-Populate Free Public Data When Opening a Pin
 
-# Fix Public Data Enrichment — Universal Firecrawl Approach
+## Problem
+When you open a pin on the Live Canvass map, the system calls `canvassiq-skip-trace` which:
+1. Tries SearchBug API (paid -- you don't have a key configured)
+2. Falls back to `generateDemoContactData()` which creates **completely fake** random phone numbers and made-up emails
+3. The owner name comes from `storm-public-lookup` (Firecrawl) which IS working, but phone/email enrichment is broken
 
-## Problem Summary
-The current appraiser scraper is broken because:
-1. It hardcodes a Sarasota-specific URL path (`/search/real-property-search/`) and form selectors -- these fail with HTTP 400 on every other county site
-2. The Firecrawl `actions` (fill input, click submit) only match Sarasota's HTML structure
-3. Tax and Clerk adapters are empty stubs that always return null
-4. A `tenant_id: "test"` value is causing UUID parse errors on every upsert
+You're seeing fake data, not real data. And you shouldn't be paying for basic public record info.
 
-## Solution: Universal Search-then-Scrape
+## Solution
 
-Instead of maintaining 40+ county-specific URLs and form selectors, use a **two-step Firecrawl approach** that works for any address in any US county:
+### Step 1: Add a Free People Search to storm-public-lookup via Firecrawl
+Use Firecrawl SEARCH to find the homeowner's public contact info from free people-search sites (FastPeopleSearch, TruePeopleSearch, WhitePages, etc.) as a new step in the existing public data pipeline.
 
-```text
-Step 1: Firecrawl SEARCH
-  Query: "{street address} property appraiser {county} {state} owner"
-  -> Returns the direct property detail page URL from the county site
+**New file:** `supabase/functions/_shared/public_data/sources/universal/peopleSearch.ts`
 
-Step 2: Firecrawl SCRAPE (JSON extraction)
-  URL: the top result URL from Step 1
-  -> Extracts owner name, assessed value, year built, etc. using LLM prompt
-```
+- After the appraiser resolves the owner name, run a Firecrawl search: `"{Owner Name}" "{City, State}" phone email`
+- Scrape the top result with JSON extraction to pull: phone numbers, email addresses, age, relatives
+- This is FREE public data (no skip trace cost) -- just uses your existing Firecrawl subscription
+- Returns structured data: `{ phones: [{number, type}], emails: [{address}], age, relatives }`
 
-This eliminates all county-specific code. No URL maps, no CSS selectors, no form interactions. Works nationwide.
+### Step 2: Integrate into the Pipeline
+**Edit:** `supabase/functions/_shared/public_data/publicLookupPipeline.ts`
 
-## Changes
+- After appraiser/tax/clerk steps, if we have an owner name, call the new `peopleSearch` function
+- Merge phone/email results into the pipeline output
+- Add `contact_phones` and `contact_emails` fields to the result
 
-### 1. Replace Appraiser Adapter with Universal Version
-**File:** `supabase/functions/_shared/public_data/sources/universal/appraiser.ts` (new file)
+### Step 3: Update storm-public-lookup to Store Contact Data
+**Edit:** `supabase/functions/storm-public-lookup/index.ts`
 
-- Remove the 40+ county URL map and Sarasota-specific form actions
-- Implement a two-step flow:
-  - Call Firecrawl `/v1/search` with query like `"1234 Main St property appraiser Sarasota FL owner"`
-  - Take the top result URL, call Firecrawl `/v1/scrape` with `formats: ["json"]` and the same property schema
-- `supports()` returns true for all US counties (universal adapter)
-- Keep retry logic for 502/503 errors
-- Validate extracted data (reject "Unknown Owner" or empty values)
+- Save the phone/email data from the people search into `storm_properties_public` (the existing cache table)
+- Also push it directly to `canvassiq_properties.phone_numbers` and `canvassiq_properties.emails` when `property_id` is provided
 
-### 2. Add Universal Tax Adapter
-**File:** `supabase/functions/_shared/public_data/sources/universal/tax.ts` (new file)
+### Step 4: Remove Fake Data from canvassiq-skip-trace
+**Edit:** `supabase/functions/canvassiq-skip-trace/index.ts`
 
-- Same Search-then-Scrape pattern but query: `"{address} tax collector {county} {state} property tax"`
-- Extract: tax amount due, payment status, exemptions, assessed value
-- `supports()` returns true for all counties
+- Remove the `generateDemoContactData()` function entirely -- no more fake phones/emails
+- When SearchBug key is not configured, just use the data already populated by storm-public-lookup (which now includes phones/emails from Firecrawl people search)
+- Keep the SearchBug path as an optional premium upgrade, but the default path is free Firecrawl-based data
 
-### 3. Add Universal Clerk Adapter
-**File:** `supabase/functions/_shared/public_data/sources/universal/clerk.ts` (new file)
+### Step 5: Make the Auto-Enrich Flow Seamless
+**Edit:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-- Query: `"{owner name} {parcel id} clerk of court {county} {state} deed mortgage"`
-- Extract: last sale info, mortgage lender, deed book/page
-- `supports()` returns true for all counties
+- The auto-enrich on pin open already calls `canvassiq-skip-trace` (line 91-94)
+- Update the flow to first check if `storm-public-lookup` already populated the data (from when the pin was created)
+- If not, trigger `storm-public-lookup` directly instead of skip-trace -- it's the free path
+- Only fall back to skip-trace if the user explicitly wants premium SearchBug data
 
-### 4. Update Registry
-**File:** `supabase/functions/_shared/public_data/registry.ts`
-
-- Replace the Sarasota-only imports with the universal adapters
-- The universal adapters become the default for all counties
-- Keep the old Sarasota files but they become unused (can delete later)
-
-### 5. Fix tenant_id UUID Validation
-**File:** `supabase/functions/storm-public-lookup/index.ts`
-
-- Add UUID format validation for `tenant_id` before using it in queries
-- If invalid UUID, return 400 error instead of crashing the upsert
-
-### 6. Create Shared Firecrawl Helper
-**File:** `supabase/functions/_shared/public_data/sources/universal/firecrawlHelper.ts` (new file)
-
-- Shared utility for Firecrawl search and scrape calls
-- Handles API key loading, retry logic, timeout, and error handling in one place
-- Both appraiser, tax, and clerk adapters use this helper
-
-## How It Works Per Pin
+## Data Flow After Changes
 
 ```text
-User taps pin on map
+Pin created (drop or parcel load)
   |
   v
-storm-public-lookup edge function
+storm-public-lookup runs automatically
+  |
+  +-- Firecrawl SEARCH: appraiser site -> owner name, year built, value
+  +-- Firecrawl SEARCH: tax site -> tax amounts
+  +-- Firecrawl SEARCH: people search -> phones, emails, age  [NEW]
   |
   v
-Resolve address from lat/lng (Nominatim) -- already works
+All data cached in storm_properties_public + canvassiq_properties
   |
   v
-Resolve county (Census TIGER) -- already works
+User opens pin -> PropertyInfoPanel
   |
   v
-Universal Appraiser (Firecrawl search + scrape)
-  -> "1234 Oak Dr property appraiser Sarasota FL owner"
-  -> Finds sc-pa.com detail page, extracts owner, value, year built
+Data already there (owner, phones, emails, age) -- no extra API calls needed
   |
   v
-Universal Tax (Firecrawl search + scrape)
-  -> "1234 Oak Dr tax collector Sarasota FL property tax"
-  -> Finds tax page, extracts amounts and status
-  |
-  v
-Universal Clerk (Firecrawl search + scrape)
-  -> "John Smith 12345 clerk of court Sarasota FL deed"
-  -> Finds deed records, extracts sale info
-  |
-  v
-Merge + Score + Cache in storm_properties_public
+If data missing: re-trigger storm-public-lookup (free)
 ```
 
-## Cost Consideration
-Each pin lookup uses up to 3 Firecrawl search calls + 3 scrape calls = ~6 Firecrawl credits per pin. Results are cached in `storm_properties_public` for 30 days, so repeat lookups are free. The BatchLeads fallback remains as a safety net for low-confidence results.
-
-## Technical Details
+## Files to Change
 
 | File | Action |
 |------|--------|
-| `supabase/functions/_shared/public_data/sources/universal/firecrawlHelper.ts` | New shared Firecrawl search+scrape utility |
-| `supabase/functions/_shared/public_data/sources/universal/appraiser.ts` | New universal appraiser adapter |
-| `supabase/functions/_shared/public_data/sources/universal/tax.ts` | New universal tax adapter |
-| `supabase/functions/_shared/public_data/sources/universal/clerk.ts` | New universal clerk adapter |
-| `supabase/functions/_shared/public_data/registry.ts` | Swap to universal adapters |
-| `supabase/functions/storm-public-lookup/index.ts` | Add UUID validation for tenant_id |
+| `supabase/functions/_shared/public_data/sources/universal/peopleSearch.ts` | New -- Firecrawl-based free people search |
+| `supabase/functions/_shared/public_data/publicLookupPipeline.ts` | Add people search step after appraiser |
+| `supabase/functions/storm-public-lookup/index.ts` | Store phone/email data in cache + canvassiq_properties |
+| `supabase/functions/canvassiq-skip-trace/index.ts` | Remove fake data generation, use public data as default |
+| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Prefer storm-public-lookup over skip-trace for auto-enrich |
+
+## Cost Impact
+- Owner name, property data: Firecrawl credits (already paid)
+- Phone/email lookup: 1 additional Firecrawl search + 1 scrape = 2 more credits per pin
+- Total per pin: ~8 Firecrawl credits (cached 30 days)
+- SearchBug: $0 (optional premium, not needed)
+- No fake data anywhere in the system
