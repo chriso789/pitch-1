@@ -1,43 +1,60 @@
 
 
-# Fix Overlapping Same-Number Pins on Corner Properties
+# Fix: Only Show Pins Within Visible Map Viewport
 
-## Root Cause
+## Problem
 
-There are NO actual duplicate records in the database. The "duplicates" you see are **different properties on different streets** that share the same house number because they're at street intersections (corner lots):
+Two issues:
 
-- "4102 Cherokee Street" and "4102 Fonsica Avenue" (lat difference: 0.0001)
-- "4052 Cherokee Street" and "4052 Fonsica Avenue"
-- "4083 Cherokee Street" and "4083 Fonsica Avenue"
+1. **Pins loading outside the viewport**: `PropertyMarkersLayer` calculates a radius-based bounding box from the map center (`getLoadRadius`) instead of using the map's actual visible bounds. This loads and renders properties that are offscreen or outside the zoomed-in area.
 
-Since the marker only displays the house number (e.g., "4102"), two nearby pins with the same number look like duplicates -- but they aren't.
+2. **Incorrect street labels**: The `extractShortStreet` function may be pulling "Cherokee" from address data even when those properties are on different streets. The label extraction needs to work from the correct field.
 
 ## Solution
 
-Show the **street name** alongside the house number inside (or below) each marker so you can distinguish "4102 Cherokee" from "4102 Fonsica". Additionally, add client-side deduplication/clustering for pins that are extremely close together (within ~10 meters) to prevent visual overlap.
-
-## Changes
-
-### 1. Show Street Name on Markers
+### 1. Use actual map bounds instead of radius calculation
 **File:** `src/components/storm-canvass/PropertyMarkersLayer.tsx`
 
-- Update `getStreetNumber()` to also return a short street name (e.g., "Cherokee" from "Cherokee Street")
-- At zoom 17+, display the street name as a small label below the circle marker (using a container div with the circle on top and a text label below)
-- At zoom 15-16, keep showing just the house number (not enough space for street name)
-- This makes "4102 Cherokee" visually distinct from "4102 Fonsica"
+Replace the radius-based bounding box logic:
+```
+const radius = getLoadRadius(zoom);
+const radiusInDegrees = radius / 69;
+const minLat = center.lat - radiusInDegrees;
+// ...
+```
 
-### 2. Cluster Nearby Same-Number Pins
-**File:** `src/components/storm-canvass/PropertyMarkersLayer.tsx`
+With the actual visible bounds from Mapbox:
+```
+const bounds = map.getBounds();
+const minLat = bounds.getSouth();
+const maxLat = bounds.getNorth();
+const minLng = bounds.getWest();
+const maxLng = bounds.getEast();
+```
 
-- Before rendering markers, group properties that are within ~15 meters of each other AND share the same street number
-- For clustered groups, offset the markers slightly (stagger by a few pixels) so they don't perfectly overlap
-- This ensures both pins are always visible and tappable even at lower zoom levels
+This guarantees only properties within the visible viewport are queried and displayed.
 
-## Technical Details
+### 2. Remove the `getLoadRadius` function
+No longer needed since we use real bounds.
 
-| Change | File | Description |
-|--------|------|-------------|
-| Street name extraction | `PropertyMarkersLayer.tsx` | Parse street name from `address.street_name`, strip suffix (St/Ave/Dr), show abbreviated |
-| Label layout | `PropertyMarkersLayer.tsx` | At zoom 17+: div container with circle + text label below; at 15-16: number only |
-| Overlap offset | `PropertyMarkersLayer.tsx` | Detect pins within 15m with same number, offset by 8px left/right |
+### 3. Fix the bounds cache key
+Update `boundsKey` to use the actual bounds corners (not just center + zoom), so it properly detects when the user has panned to a new area:
+```
+const boundsKey = `${minLat.toFixed(4)}_${maxLat.toFixed(4)}_${minLng.toFixed(4)}_${maxLng.toFixed(4)}`;
+```
+
+### 4. Adjust property limit based on viewport area
+Instead of basing the limit on zoom alone, keep the zoom-based limit but it will naturally show fewer pins since the query area is now smaller (only what's visible).
+
+## Changes Summary
+
+| What | Where | Detail |
+|------|-------|--------|
+| Use `map.getBounds()` | `loadProperties()` | Replace radius calculation with actual viewport bounds |
+| Remove `getLoadRadius()` | Top of file | No longer needed |
+| Fix `boundsKey` | `loadProperties()` | Use bounds corners, not center + zoom |
+| Pass bounds to parcel loader | `loadParcelsFromEdgeFunction` | Use viewport bounds for parcel loading too |
+
+## Single File Change
+**`src/components/storm-canvass/PropertyMarkersLayer.tsx`** -- roughly 10 lines changed, 10 lines removed.
 
