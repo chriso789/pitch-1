@@ -78,6 +78,9 @@ Deno.serve(async (req) => {
     });
 
     // 5) Upsert to storm_properties_public
+    // Sanitize date fields - scrapers sometimes return "Not provided" or other non-date strings
+    const sanitizeDate = (v: any) => (v && !isNaN(Date.parse(v)) ? v : null);
+
     const row = {
       tenant_id,
       storm_event_id: storm_event_id ?? null,
@@ -93,7 +96,7 @@ Deno.serve(async (req) => {
       year_built: result.year_built ?? null,
       lot_size: result.lot_size ?? null,
       land_use: result.land_use ?? null,
-      last_sale_date: result.last_sale_date ?? null,
+      last_sale_date: sanitizeDate(result.last_sale_date),
       last_sale_amount: result.last_sale_amount ?? null,
       homestead: result.homestead ?? false,
       mortgage_lender: result.mortgage_lender ?? null,
