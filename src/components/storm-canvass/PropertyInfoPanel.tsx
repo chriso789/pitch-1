@@ -742,7 +742,7 @@ export default function PropertyInfoPanel({
               </TabsTrigger>
             </TabsList>
             <TabsContent value="tools" className="mt-2">
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -778,6 +778,15 @@ export default function PropertyInfoPanel({
                 >
                   <Calculator className="h-5 w-5 mb-1 text-purple-500" />
                   <span className="text-[10px]">Fast Est.</span>
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-col h-16 p-2"
+                  onClick={() => setShowPhotoCapture(true)}
+                >
+                  <Camera className="h-5 w-5 mb-1 text-orange-500" />
+                  <span className="text-[10px]">Add Photo</span>
                 </Button>
               </div>
             </TabsContent>
