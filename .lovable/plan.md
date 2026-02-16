@@ -1,34 +1,45 @@
 
 
-# Move Camera Button from Map to Property Info Panel
+# Fix: Overlapping Buttons + GPS Timeout on Live Canvass
 
-## What Changes
+## Issue 1: Overlapping Controls (Top-Left)
 
-### 1. Remove Camera FAB from Live Map
+The `LiveStatsOverlay` component uses `layout.statsPosition = { top: 16, left: 16 }` for absolute positioning, which places it directly on top of the Back button and "Live Canvassing" title.
+
+### Fix
+
+**File:** `src/components/storm-canvass/LiveStatsOverlay.tsx`
+
+Move the stats overlay below the header controls stack. Since the header has 3 rows (back button row, search bar, map style toggle), the stats badge needs to sit below all of them. The simplest fix is to remove the absolute `top/left` positioning from the overlay and instead render it inline within the header controls stack in `LiveCanvassingPage.tsx`.
+
 **File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
 
-- Delete the floating Camera FAB button (lines 438-451) that currently sits on the map
-- Keep the `CanvassPhotoCapture` component and `showPhotoCapture` state -- they'll now be triggered from the property panel instead
+- Remove the standalone `<LiveStatsOverlay>` from line 418 (currently outside the header controls div)
+- Move it inside the header controls div (after the MapStyleToggle), so it stacks naturally below search and toggle without overlap
 
-### 2. Wire "Add Photo" Button in Property Info Panel
-**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
+This keeps all top-left controls in a single vertical flow.
 
-- The "Add Photo" button already exists (line 791-794) in the "add_new" tab but currently does nothing
-- Add local state `showPhotoCapture` to toggle the photo capture dialog
-- Import and render `CanvassPhotoCapture` inside the panel, passing the selected property's address and the user's location
-- Wire the existing "Add Photo" button's `onClick` to open it
+---
 
-### 3. Pass Photo Capture to Property Panel
-**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
+## Issue 2: GPS Timeout Error
 
-- Since `CanvassPhotoCapture` is already rendered in `LiveCanvassingPage`, one approach is to move the dialog rendering into `PropertyInfoPanel` directly so it's self-contained when a pin is selected
-- Alternatively, pass `onTakePhoto` callback from `LiveCanvassingPage` to `PropertyInfoPanel` -- but self-contained is cleaner
+The geolocation `watchPosition` timeout is set to 10 seconds, which is too short for high-accuracy GPS acquisition in urban/indoor environments.
 
-## Summary
+### Fix
 
-| Change | File | Detail |
-|--------|------|--------|
-| Remove Camera FAB | `LiveCanvassingPage.tsx` | Delete the floating button (lines 438-451) |
-| Add photo capture state + dialog | `PropertyInfoPanel.tsx` | Import `CanvassPhotoCapture`, add state, wire "Add Photo" button |
-| Clean up unused state | `LiveCanvassingPage.tsx` | Remove `showPhotoCapture` state if no longer used elsewhere |
+**File:** `src/services/locationService.ts`
+
+- Increase the `watchLocation` timeout from `10000` (10s) to `30000` (30s)
+- Increase the `getCurrentLocation` timeout from `10000` to `20000` (20s)
+- These values give the device adequate time to acquire a high-accuracy GPS fix before falling back to error
+
+---
+
+## Changes Summary
+
+| What | File | Detail |
+|------|------|--------|
+| Move stats overlay into header stack | `LiveCanvassingPage.tsx` | Relocate `LiveStatsOverlay` inside the header controls div, after MapStyleToggle |
+| Remove absolute positioning | `LiveStatsOverlay.tsx` | Use relative positioning instead of absolute `top/left` so it flows naturally in the header stack |
+| Increase GPS timeouts | `locationService.ts` | `watchLocation` timeout to 30s, `getCurrentLocation` to 20s |
 
