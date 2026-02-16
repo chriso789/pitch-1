@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import NearbyPropertiesLayer from './NearbyPropertiesLayer';
 import RouteVisualization from './RouteVisualization';
 import PropertyMarkersLayer from './PropertyMarkersLayer';
 import { useMapboxToken } from '@/hooks/useMapboxToken';
@@ -27,7 +26,6 @@ interface Contact {
 interface LiveLocationMapProps {
   userLocation: { lat: number; lng: number };
   currentAddress: string;
-  onContactSelect: (contact: Contact) => void;
   onParcelSelect: (property: any) => void;
   routeData?: {
     distance: { distance: number; unit: string };
@@ -46,7 +44,6 @@ const MAP_STYLES = {
 export default function LiveLocationMap({
   userLocation,
   currentAddress,
-  onContactSelect,
   onParcelSelect,
   routeData,
   destination,
@@ -192,11 +189,6 @@ export default function LiveLocationMap({
       <div ref={mapContainer} className="absolute inset-0" />
       {mapReady && map.current && (
         <>
-          <NearbyPropertiesLayer
-            map={map.current}
-            userLocation={userLocation}
-            onContactSelect={onContactSelect}
-          />
           <PropertyMarkersLayer
             map={map.current}
             userLocation={userLocation}
