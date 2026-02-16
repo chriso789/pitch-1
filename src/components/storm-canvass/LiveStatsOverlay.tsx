@@ -74,11 +74,6 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
     return () => clearInterval(interval);
   }, [user]);
 
-  // Dynamic positioning based on device
-  const overlayStyle = {
-    top: layout.statsPosition.top,
-    left: layout.statsPosition.left,
-  };
 
   // Icon size based on device
   const iconContainerClass = layout.isTablet || layout.isDesktop
@@ -103,8 +98,7 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
           transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-          className="absolute z-10"
-          style={overlayStyle}
+          className="relative z-10"
         >
           <Button
             onClick={() => setIsExpanded(true)}
@@ -124,9 +118,8 @@ export default function LiveStatsOverlay({ distanceTraveled }: LiveStatsOverlayP
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: -8 }}
           transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-          className="absolute z-10 bg-background/95 backdrop-blur-sm rounded-xl shadow-lg border border-border p-3"
+          className="absolute top-full left-0 mt-2 z-10 bg-background/95 backdrop-blur-sm rounded-xl shadow-lg border border-border p-3"
           style={{
-            ...overlayStyle,
             minWidth: layout.isTablet || layout.isDesktop ? '280px' : '180px',
           }}
         >
