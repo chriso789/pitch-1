@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { 
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
@@ -67,6 +67,101 @@ export default function PropertyInfoPanel({
 
   // Local state for property data — drives UI re-renders after enrichment
   const [localProperty, setLocalProperty] = useState<any>(property);
+
+  // handleEnrich must be declared before the useEffect that calls it
+  const handleEnrich = useCallback(async () => {
+    if (!property?.id || !profile?.tenant_id) {
+      console.warn('[handleEnrich] Missing property_id or tenant_id');
+      toast.error('Missing property data');
+      return;
+    }
+    
+    setEnriching(true);
+    try {
+      let addr: any = {};
+      try {
+        addr = typeof property.address === 'string' 
+          ? JSON.parse(property.address) 
+          : (property.address || {});
+      } catch (parseErr) {
+        console.warn('[handleEnrich] Failed to parse address:', parseErr);
+        addr = { formatted: property.address };
+      }
+      
+      console.log('[handleEnrich] Calling storm-public-lookup (free) for:', property.id, addr);
+      
+      const { data, error } = await supabase.functions.invoke('storm-public-lookup', {
+        body: {
+          lat: property.lat || addr?.lat,
+          lng: property.lng || addr?.lng,
+          address: addr?.formatted || addr?.street || '',
+          tenant_id: profile.tenant_id,
+          property_id: property.id,
+        }
+      });
+
+      if (error) {
+        console.error('[handleEnrich] Edge function error:', error);
+        throw error;
+      }
+
+      console.log('[handleEnrich] Response:', JSON.stringify(data).slice(0, 500));
+
+      const pipelineResult = data?.pipeline || data?.result || data;
+      
+      if (pipelineResult?.owner_name && pipelineResult.owner_name !== 'Unknown Owner') {
+        setEnrichedOwners([{
+          id: '1',
+          name: pipelineResult.owner_name,
+          age: pipelineResult.contact_age || null,
+          is_primary: true,
+        }]);
+      }
+      
+      const { data: updatedProperty, error: fetchError } = await supabase
+        .from('canvassiq_properties')
+        .select('phone_numbers, emails, owner_name, searchbug_data')
+        .eq('id', property.id)
+        .single();
+      
+      if (fetchError) {
+        console.warn('[handleEnrich] Failed to refetch property:', fetchError);
+      } else if (updatedProperty) {
+        setLocalProperty((prev: any) => ({
+          ...prev,
+          phone_numbers: updatedProperty.phone_numbers,
+          emails: updatedProperty.emails,
+          owner_name: updatedProperty.owner_name,
+          searchbug_data: updatedProperty.searchbug_data,
+        }));
+      }
+      
+      const hasRealOwner = pipelineResult?.owner_name && 
+        pipelineResult.owner_name !== 'Unknown Owner' && pipelineResult.owner_name !== 'Unknown';
+      const hasPhones = pipelineResult?.contact_phones?.length > 0 || updatedProperty?.phone_numbers?.length > 0;
+      const hasEmails = pipelineResult?.contact_emails?.length > 0 || updatedProperty?.emails?.length > 0;
+      const hasUpdatedOwner = updatedProperty?.owner_name && 
+        updatedProperty.owner_name !== 'Unknown Owner' && 
+        updatedProperty.owner_name !== 'Unknown';
+      const hasUpdatedPhones = updatedProperty?.phone_numbers?.length > 0;
+      const hasUpdatedEmails = updatedProperty?.emails?.length > 0;
+
+      if (data?.cached) {
+        toast.success('Using cached data');
+      } else if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
+        toast.success('Property enriched!');
+      } else {
+        toast.warning('No owner data found for this property', {
+          description: 'Public records may not be available for this address.',
+        });
+      }
+    } catch (err: any) {
+      console.error('[handleEnrich] Error:', err?.message || err);
+      toast.error(err?.message || 'Failed to enrich property');
+    } finally {
+      setEnriching(false);
+    }
+  }, [property?.id, property?.address, property?.lat, profile?.tenant_id]);
 
   // Auto-enrich when panel opens and no enrichment data exists or owner is unknown
   useEffect(() => {
@@ -177,105 +272,7 @@ export default function PropertyInfoPanel({
           is_primary: true
         }];
 
-  const handleEnrich = async () => {
-    if (!property?.id || !profile?.tenant_id) {
-      console.warn('[handleEnrich] Missing property_id or tenant_id');
-      toast.error('Missing property data');
-      return;
-    }
-    
-    setEnriching(true);
-    try {
-      // Parse address if it's a string
-      let address: any = {};
-      try {
-        address = typeof property.address === 'string' 
-          ? JSON.parse(property.address) 
-          : (property.address || {});
-      } catch (parseErr) {
-        console.warn('[handleEnrich] Failed to parse address:', parseErr);
-        address = { formatted: property.address };
-      }
-      
-      console.log('[handleEnrich] Calling storm-public-lookup (free) for:', property.id, address);
-      
-      // First try free storm-public-lookup path
-      const { data, error } = await supabase.functions.invoke('storm-public-lookup', {
-        body: {
-          lat: property.lat || address?.lat,
-          lng: property.lng || address?.lng,
-          address: address?.formatted || address?.street || '',
-          tenant_id: profile.tenant_id,
-          property_id: property.id,
-        }
-      });
-
-      if (error) {
-        console.error('[handleEnrich] Edge function error:', error);
-        throw error;
-      }
-
-      console.log('[handleEnrich] Response:', JSON.stringify(data).slice(0, 500));
-
-      // Handle the response from storm-public-lookup
-      const pipelineResult = data?.pipeline || data?.result || data;
-      
-      // Build owners from pipeline result
-      if (pipelineResult?.owner_name && pipelineResult.owner_name !== 'Unknown Owner') {
-        setEnrichedOwners([{
-          id: '1',
-          name: pipelineResult.owner_name,
-          age: pipelineResult.contact_age || null,
-          is_primary: true,
-        }]);
-      }
-      
-      // Refetch property to get updated phone_numbers, emails, owner_name
-      const { data: updatedProperty, error: fetchError } = await supabase
-        .from('canvassiq_properties')
-        .select('phone_numbers, emails, owner_name, searchbug_data')
-        .eq('id', property.id)
-        .single();
-      
-      if (fetchError) {
-        console.warn('[handleEnrich] Failed to refetch property:', fetchError);
-      } else if (updatedProperty) {
-        // Update local state to trigger re-render
-        setLocalProperty((prev: any) => ({
-          ...prev,
-          phone_numbers: updatedProperty.phone_numbers,
-          emails: updatedProperty.emails,
-          owner_name: updatedProperty.owner_name,
-          searchbug_data: updatedProperty.searchbug_data,
-        }));
-      }
-      
-      const hasRealOwner = pipelineResult?.owner_name && 
-        pipelineResult.owner_name !== 'Unknown Owner' && pipelineResult.owner_name !== 'Unknown';
-      const hasPhones = pipelineResult?.contact_phones?.length > 0 || updatedProperty?.phone_numbers?.length > 0;
-      const hasEmails = pipelineResult?.contact_emails?.length > 0 || updatedProperty?.emails?.length > 0;
-      const hasUpdatedOwner = updatedProperty?.owner_name && 
-        updatedProperty.owner_name !== 'Unknown Owner' && 
-        updatedProperty.owner_name !== 'Unknown';
-      const hasUpdatedPhones = updatedProperty?.phone_numbers?.length > 0;
-      const hasUpdatedEmails = updatedProperty?.emails?.length > 0;
-
-      if (data?.cached) {
-        toast.success('Using cached data');
-      } else if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
-        toast.success('Property enriched!');
-      } else {
-        toast.warning('No owner data found for this property', {
-          description: 'Public records may not be available for this address.',
-        });
-      }
-    } catch (err: any) {
-      console.error('[handleEnrich] Error:', err?.message || err);
-      toast.error(err?.message || 'Failed to enrich property');
-    } finally {
-      setEnriching(false);
-    }
-  };
+  // handleEnrich is defined above (useCallback) before the useEffect that calls it
 
   const ownerName = localProperty.owner_name || homeowner?.name || 'Unknown Owner';
   const fullAddress = address?.formatted || 
