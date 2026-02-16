@@ -1,32 +1,34 @@
 
 
-# Fix: Crash When Opening a Pin (null localProperty)
+# Move Camera Button from Map to Property Info Panel
 
-## Root Cause
+## What Changes
 
-On line 67 of `PropertyInfoPanel.tsx`, `localProperty` is initialized with:
-```typescript
-const [localProperty, setLocalProperty] = useState<any>(property);
-```
+### 1. Remove Camera FAB from Live Map
+**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
 
-When the component first mounts with `property = null`, `localProperty` is also `null`. The early return on line 135 checks `if (!property) return null;` but lines 146-165 access `localProperty.searchbug_data`, `localProperty.phone_numbers`, etc. -- which crashes because `localProperty` is still `null`.
+- Delete the floating Camera FAB button (lines 438-451) that currently sits on the map
+- Keep the `CanvassPhotoCapture` component and `showPhotoCapture` state -- they'll now be triggered from the property panel instead
 
-This is because React `useState` only uses its initial value on the **first render**. When `property` later becomes non-null, `localProperty` stays `null` until the `useEffect` on line 101 fires (which happens **after** the render attempt).
-
-## Fix
-
+### 2. Wire "Add Photo" Button in Property Info Panel
 **File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-1. Expand the early return on line 135 to also check `localProperty`:
-```typescript
-if (!property || !localProperty) return null;
-```
+- The "Add Photo" button already exists (line 791-794) in the "add_new" tab but currently does nothing
+- Add local state `showPhotoCapture` to toggle the photo capture dialog
+- Import and render `CanvassPhotoCapture` inside the panel, passing the selected property's address and the user's location
+- Wire the existing "Add Photo" button's `onClick` to open it
 
-This is a one-line change that prevents the crash entirely. When `property` becomes available and `localProperty` syncs via the useEffect, the component will re-render with valid data.
+### 3. Pass Photo Capture to Property Panel
+**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
 
-## Why This is Safe
+- Since `CanvassPhotoCapture` is already rendered in `LiveCanvassingPage`, one approach is to move the dialog rendering into `PropertyInfoPanel` directly so it's self-contained when a pin is selected
+- Alternatively, pass `onTakePhoto` callback from `LiveCanvassingPage` to `PropertyInfoPanel` -- but self-contained is cleaner
 
-- The `useEffect` on line 101 already syncs `localProperty` from `property` whenever `property.id` changes
-- On the very next render cycle after `property` becomes non-null, `localProperty` will also be non-null
-- All hooks are called before this early return (lines 57-132), so React's rules of hooks are satisfied
+## Summary
+
+| Change | File | Detail |
+|--------|------|--------|
+| Remove Camera FAB | `LiveCanvassingPage.tsx` | Delete the floating button (lines 438-451) |
+| Add photo capture state + dialog | `PropertyInfoPanel.tsx` | Import `CanvassPhotoCapture`, add state, wire "Add Photo" button |
+| Clean up unused state | `LiveCanvassingPage.tsx` | Remove `showPhotoCapture` state if no longer used elsewhere |
 
