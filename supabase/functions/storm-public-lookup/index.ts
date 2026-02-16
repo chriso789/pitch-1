@@ -28,6 +28,13 @@ Deno.serve(async (req) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
+    // Validate tenant_id is a valid UUID
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!uuidRegex.test(tenant_id)) {
+      return new Response(JSON.stringify({ error: "tenant_id must be a valid UUID" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     if (!lat && !lng && !address) {
       return new Response(JSON.stringify({ error: "Provide lat/lng or address" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
