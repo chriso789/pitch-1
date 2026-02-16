@@ -1,45 +1,34 @@
 
+# Fix: "Cannot access handleEnrich before initialization" Crash
 
-# Fix: Overlapping Buttons + GPS Timeout on Live Canvass
+## Root Cause
 
-## Issue 1: Overlapping Controls (Top-Left)
+`handleEnrich` is defined as a `const` function on **line 180**, which is *after* the early return on **line 137**. However, the `useEffect` on **line 72** calls `handleEnrich()` on line 98. Due to JavaScript's temporal dead zone (TDZ), a `const` variable cannot be accessed before its declaration -- so when the effect fires, `handleEnrich` does not yet exist in scope, causing the crash.
 
-The `LiveStatsOverlay` component uses `layout.statsPosition = { top: 16, left: 16 }` for absolute positioning, which places it directly on top of the Back button and "Live Canvassing" title.
+## Fix
 
-### Fix
+**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-**File:** `src/components/storm-canvass/LiveStatsOverlay.tsx`
+Move the `handleEnrich` function definition (currently starting at line 180) to **before** the `useEffect` that calls it (line 72). Specifically, place it right after the state declarations and refs (after line 69), and wrap it in `useCallback` so the reference is stable:
 
-Move the stats overlay below the header controls stack. Since the header has 3 rows (back button row, search bar, map style toggle), the stats badge needs to sit below all of them. The simplest fix is to remove the absolute `top/left` positioning from the overlay and instead render it inline within the header controls stack in `LiveCanvassingPage.tsx`.
+1. Convert `handleEnrich` (lines 180-277) from a plain `const` function to a `useCallback` wrapped function
+2. Move it to just before line 72 (the auto-enrich useEffect)
+3. Add `handleEnrich` to the useEffect dependency array on line 100
 
-**File:** `src/pages/storm-canvass/LiveCanvassingPage.tsx`
+This ensures `handleEnrich` is declared before any code attempts to reference it, eliminating the TDZ crash entirely.
 
-- Remove the standalone `<LiveStatsOverlay>` from line 418 (currently outside the header controls div)
-- Move it inside the header controls div (after the MapStyleToggle), so it stacks naturally below search and toggle without overlap
+## Technical Details
 
-This keeps all top-left controls in a single vertical flow.
+```
+Before (broken ordering):
+  Line 69:  const [localProperty, ...] = useState(...)
+  Line 72:  useEffect(() => { handleEnrich(); })   <-- references handleEnrich
+  Line 137: if (!property) return null;             <-- early return
+  Line 180: const handleEnrich = async () => {...}  <-- defined AFTER the useEffect
 
----
-
-## Issue 2: GPS Timeout Error
-
-The geolocation `watchPosition` timeout is set to 10 seconds, which is too short for high-accuracy GPS acquisition in urban/indoor environments.
-
-### Fix
-
-**File:** `src/services/locationService.ts`
-
-- Increase the `watchLocation` timeout from `10000` (10s) to `30000` (30s)
-- Increase the `getCurrentLocation` timeout from `10000` to `20000` (20s)
-- These values give the device adequate time to acquire a high-accuracy GPS fix before falling back to error
-
----
-
-## Changes Summary
-
-| What | File | Detail |
-|------|------|--------|
-| Move stats overlay into header stack | `LiveCanvassingPage.tsx` | Relocate `LiveStatsOverlay` inside the header controls div, after MapStyleToggle |
-| Remove absolute positioning | `LiveStatsOverlay.tsx` | Use relative positioning instead of absolute `top/left` so it flows naturally in the header stack |
-| Increase GPS timeouts | `locationService.ts` | `watchLocation` timeout to 30s, `getCurrentLocation` to 20s |
-
+After (fixed ordering):
+  Line 69:  const [localProperty, ...] = useState(...)
+  Line 71:  const handleEnrich = useCallback(async () => {...}, [deps])
+  Line ~150: useEffect(() => { handleEnrich(); }, [open, property?.id, handleEnrich])
+  Line ~160: if (!property || !localProperty) return null;
+```
