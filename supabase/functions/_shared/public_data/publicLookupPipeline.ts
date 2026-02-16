@@ -5,6 +5,7 @@ import { pickAppraiser, pickTax, pickClerk } from "./registry.ts";
 import { scoreConfidence } from "./score.ts";
 import { mergeResults } from "./merge.ts";
 import { batchLeadsFallback } from "./sources/batchleads/fallback.ts";
+import { peopleSearch, type PeopleSearchResult } from "./sources/universal/peopleSearch.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 function normalize(s: string) {
@@ -157,10 +158,32 @@ export async function lookupPropertyPublic(input: {
     }
   }
 
+  // 6) People search for contact info (free via Firecrawl)
+  let contactData: PeopleSearchResult | null = null;
+  if (merged.owner_name && merged.owner_name !== "Unknown" && merged.owner_name !== "Unknown Owner") {
+    contactData = await peopleSearch({
+      ownerName: merged.owner_name,
+      city: loc.city,
+      state: loc.state,
+      timeoutMs,
+    }).catch((e) => {
+      raw.people_search_error = String(e);
+      return null;
+    });
+    if (contactData) {
+      sources.people_search = true;
+      raw.people_search = contactData;
+    }
+  }
+
   return {
     normalized_address_key: loc.normalized_address_key,
     property_address: merged.property_address ?? loc.normalized_address,
     ...merged,
+    contact_phones: contactData?.phones ?? [],
+    contact_emails: contactData?.emails ?? [],
+    contact_age: contactData?.age ?? null,
+    contact_relatives: contactData?.relatives ?? [],
     confidence_score: confidence,
     sources: { ...sources, used_batchleads: usedBatchleads },
     raw,

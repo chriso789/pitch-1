@@ -175,30 +175,56 @@ serve(async (req) => {
       enriched_at: new Date().toISOString(),
     };
 
-    if (searchBugApiKey && effectiveOwnerName) {
+    // Check if storm-public-lookup already populated contact data
+    const { data: publicRecord } = await supabase
+      .from('storm_properties_public')
+      .select('*')
+      .eq('tenant_id', tenant_id)
+      .gte('lat', existing?.lat ? existing.lat - 0.0001 : 0)
+      .lte('lat', existing?.lat ? existing.lat + 0.0001 : 0)
+      .gte('lng', existing?.lng ? existing.lng - 0.0001 : 0)
+      .lte('lng', existing?.lng ? existing.lng + 0.0001 : 0)
+      .maybeSingle();
+
+    const publicPhones = publicRecord?.raw_data?.people_search?.phones || [];
+    const publicEmails = publicRecord?.raw_data?.people_search?.emails || [];
+    const publicAge = publicRecord?.raw_data?.people_search?.age || null;
+
+    if (publicPhones.length > 0 || publicEmails.length > 0) {
+      console.log(`[canvassiq-skip-trace] Using free public data: ${publicPhones.length} phones, ${publicEmails.length} emails`);
+      enrichmentData = {
+        owners: [{ id: '1', name: effectiveOwnerName || publicRecord?.owner_name || 'Unknown Owner', age: publicAge, is_primary: true }],
+        phones: publicPhones,
+        emails: publicEmails,
+        relatives: publicRecord?.raw_data?.people_search?.relatives || [],
+        source: 'firecrawl_people_search',
+        enriched_at: new Date().toISOString(),
+      };
+    } else if (searchBugApiKey && effectiveOwnerName) {
+      // Premium SearchBug path (optional)
       console.log('[canvassiq-skip-trace] Attempting SearchBug API lookup for:', effectiveOwnerName);
       try {
         const searchResult = await callSearchBugAPI(searchBugApiKey, effectiveOwnerName, enrichedAddress);
         if (searchResult && searchResult.owners?.length > 0) {
           console.log(`[canvassiq-skip-trace] SearchBug returned ${searchResult.owners.length} owners`);
           enrichmentData = { ...enrichmentData, ...searchResult };
-        } else {
-          console.log('[canvassiq-skip-trace] SearchBug returned no results, generating contact demo data');
-          enrichmentData = generateDemoContactData(effectiveOwnerName);
         }
       } catch (apiError) {
         console.error('[canvassiq-skip-trace] SearchBug API error:', apiError);
-        enrichmentData = generateDemoContactData(effectiveOwnerName);
       }
     } else if (effectiveOwnerName) {
-      // No SearchBug key but have owner - generate demo contact data
-      console.log('[canvassiq-skip-trace] No SearchBug key, generating demo contact data');
-      enrichmentData = generateDemoContactData(effectiveOwnerName);
+      // No public data and no SearchBug — return owner with empty contacts (no fake data)
+      console.log('[canvassiq-skip-trace] No contact data available — returning owner only (no fake data)');
+      enrichmentData = {
+        owners: [{ id: '1', name: effectiveOwnerName, is_primary: true }],
+        phones: [],
+        emails: [],
+        enriched_at: new Date().toISOString(),
+      };
     } else {
-      // No owner at all - minimal data
       console.log('[canvassiq-skip-trace] No owner found from any source');
       enrichmentData = {
-        owners: [{ id: '1', name: 'Unknown Owner', gender: 'Unknown', credit_score: 'Unknown', is_primary: true }],
+        owners: [{ id: '1', name: 'Unknown Owner', is_primary: true }],
         phones: [],
         emails: [],
         enriched_at: new Date().toISOString(),
@@ -322,43 +348,4 @@ async function callSearchBugAPI(apiKey: string, name: string, address: any) {
   return { owners, phones, emails };
 }
 
-/**
- * Generate demo contact data (phones/emails only) - NO fake owner names
- */
-function generateDemoContactData(ownerName: string) {
-  const firstName = ownerName.split(' ')[0] || 'Owner';
-  const lastName = ownerName.split(' ').slice(1).join(' ') || '';
-  
-  return {
-    owners: [
-      {
-        id: '1',
-        name: ownerName,
-        gender: 'Unknown',
-        age: null,
-        credit_score: estimateCreditScore(),
-        is_primary: true,
-      },
-    ],
-    phones: [
-      { number: `(${Math.floor(Math.random() * 900) + 100}) ${Math.floor(Math.random() * 900) + 100}-${Math.floor(Math.random() * 9000) + 1000}`, type: 'mobile', score: 85 },
-      { number: `(${Math.floor(Math.random() * 900) + 100}) ${Math.floor(Math.random() * 900) + 100}-${Math.floor(Math.random() * 9000) + 1000}`, type: 'landline', score: 60 },
-    ],
-    emails: [
-      { address: `${firstName.toLowerCase()}.${lastName.toLowerCase()}@gmail.com`, type: 'personal' },
-    ],
-    enriched_at: new Date().toISOString(),
-  };
-}
-
-function estimateCreditScore(): string {
-  const scores = ['580-620', '620-660', '660-700', '700-740', '740-780', '780-820'];
-  const weights = [0.1, 0.15, 0.25, 0.25, 0.15, 0.1];
-  const random = Math.random();
-  let cumulative = 0;
-  for (let i = 0; i < weights.length; i++) {
-    cumulative += weights[i];
-    if (random < cumulative) return scores[i];
-  }
-  return scores[3];
-}
+// generateDemoContactData removed — no more fake phones/emails

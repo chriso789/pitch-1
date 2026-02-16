@@ -191,20 +191,16 @@ export default function PropertyInfoPanel({
         address = { formatted: property.address };
       }
       
-      console.log('[handleEnrich] Calling skip-trace for:', property.id, address);
+      console.log('[handleEnrich] Calling storm-public-lookup (free) for:', property.id, address);
       
-      const { data, error } = await supabase.functions.invoke('canvassiq-skip-trace', {
+      // First try free storm-public-lookup path
+      const { data, error } = await supabase.functions.invoke('storm-public-lookup', {
         body: {
-          property_id: property.id,
-          owner_name: property.owner_name || 'Unknown',
-          address: {
-            street: address?.street || '',
-            city: address?.city || '',
-            state: address?.state || '',
-            zip: address?.zip || '',
-            formatted: address?.formatted || '', // Include formatted for fallback parsing
-          },
+          lat: property.lat || address?.lat,
+          lng: property.lng || address?.lng,
+          address: address?.formatted || address?.street || '',
           tenant_id: profile.tenant_id,
+          property_id: property.id,
         }
       });
 
@@ -215,11 +211,17 @@ export default function PropertyInfoPanel({
 
       console.log('[handleEnrich] Response:', JSON.stringify(data).slice(0, 500));
 
-      // Handle the response - check both data.data and direct data formats
-      const enrichmentData = data?.data || data;
+      // Handle the response from storm-public-lookup
+      const pipelineResult = data?.pipeline || data?.result || data;
       
-      if (enrichmentData?.owners?.length > 0) {
-        setEnrichedOwners(enrichmentData.owners);
+      // Build owners from pipeline result
+      if (pipelineResult?.owner_name && pipelineResult.owner_name !== 'Unknown Owner') {
+        setEnrichedOwners([{
+          id: '1',
+          name: pipelineResult.owner_name,
+          age: pipelineResult.contact_age || null,
+          is_primary: true,
+        }]);
       }
       
       // Refetch property to get updated phone_numbers, emails, owner_name
@@ -239,11 +241,10 @@ export default function PropertyInfoPanel({
         property.searchbug_data = updatedProperty.searchbug_data;
       }
       
-      const hasRealOwner = enrichmentData?.owners?.some(
-        (o: any) => o.name && o.name !== 'Unknown Owner' && o.name !== 'Unknown'
-      );
-      const hasPhones = enrichmentData?.phones?.length > 0;
-      const hasEmails = enrichmentData?.emails?.length > 0;
+      const hasRealOwner = pipelineResult?.owner_name && 
+        pipelineResult.owner_name !== 'Unknown Owner' && pipelineResult.owner_name !== 'Unknown';
+      const hasPhones = pipelineResult?.contact_phones?.length > 0 || updatedProperty?.phone_numbers?.length > 0;
+      const hasEmails = pipelineResult?.contact_emails?.length > 0 || updatedProperty?.emails?.length > 0;
       const hasUpdatedOwner = updatedProperty?.owner_name && 
         updatedProperty.owner_name !== 'Unknown Owner' && 
         updatedProperty.owner_name !== 'Unknown';
