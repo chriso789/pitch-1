@@ -19,6 +19,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
+import { CanvassPhotoCapture } from './CanvassPhotoCapture';
 import StormScoreWhyPanel from './StormScoreWhyPanel';
 import { 
   calculateDistanceMeters, 
@@ -62,6 +63,7 @@ export default function PropertyInfoPanel({
   const [enrichedOwners, setEnrichedOwners] = useState<any[]>([]);
   const [showFastEstimate, setShowFastEstimate] = useState(false);
   const hasAutoEnrichedRef = useRef<string | null>(null);
+  const [showPhotoCapture, setShowPhotoCapture] = useState(false);
 
   // Local state for property data — drives UI re-renders after enrichment
   const [localProperty, setLocalProperty] = useState<any>(property);
@@ -788,7 +790,7 @@ export default function PropertyInfoPanel({
                   <StickyNote className="h-5 w-5 mb-1 text-amber-500" />
                   <span className="text-[10px]">Add Note</span>
                 </Button>
-                <Button variant="outline" size="sm" className="flex-col h-16 p-2">
+                <Button variant="outline" size="sm" className="flex-col h-16 p-2" onClick={() => setShowPhotoCapture(true)}>
                   <Camera className="h-5 w-5 mb-1 text-blue-500" />
                   <span className="text-[10px]">Add Photo</span>
                 </Button>
@@ -847,6 +849,12 @@ export default function PropertyInfoPanel({
           open={showFastEstimate}
           onOpenChange={setShowFastEstimate}
           property={property}
+        />
+        <CanvassPhotoCapture
+          open={showPhotoCapture}
+          onOpenChange={setShowPhotoCapture}
+          propertyAddress={property?.address?.street || property?.owner_address}
+          userLocation={userLocation}
         />
       </SheetContent>
     </Sheet>

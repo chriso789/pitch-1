@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Camera } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GoogleLiveLocationMap from '@/components/storm-canvass/GoogleLiveLocationMap';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
@@ -9,7 +9,6 @@ import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
 import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
-import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapture';
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import PropertyLoadingIndicator from '@/components/storm-canvass/PropertyLoadingIndicator';
@@ -68,7 +67,6 @@ export default function LiveCanvassingPage() {
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
   const [mapStyle, setMapStyle] = useState<MapStyle>('satellite');
-  const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [selectedProperty, setSelectedProperty] = useState<any>(null);
   const [showPropertyPanel, setShowPropertyPanel] = useState(false);
   const [canvassMode, setCanvassMode] = useState<'knock' | 'canvas'>('knock');
@@ -435,20 +433,6 @@ export default function LiveCanvassingPage() {
         <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
       </div>
 
-      {/* Camera FAB */}
-      <Button
-        size="lg"
-        className="fixed rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
-        style={{
-          bottom: layout.fabPosition.bottom,
-          right: layout.fabPosition.right,
-          width: layout.fabSize,
-          height: layout.fabSize,
-        }}
-        onClick={() => setShowPhotoCapture(true)}
-      >
-        <Camera className={layout.isTablet || layout.isDesktop ? 'h-7 w-7' : 'h-6 w-6'} />
-      </Button>
 
       {/* GPS Acquiring Overlay */}
       {!hasGPS && <GPSAcquiringOverlay />}
@@ -482,13 +466,6 @@ export default function LiveCanvassingPage() {
         onNavigate={handleNavigateToContact}
       />
 
-      {/* Photo Capture Dialog */}
-      <CanvassPhotoCapture
-        open={showPhotoCapture}
-        onOpenChange={setShowPhotoCapture}
-        propertyAddress={selectedContact?.address_street || selectedProperty?.address?.street}
-        userLocation={userLocation}
-      />
 
       {/* Property Info Panel (Bottom Sheet) */}
       <PropertyInfoPanel
