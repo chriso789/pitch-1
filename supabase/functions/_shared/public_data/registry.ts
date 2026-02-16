@@ -1,21 +1,21 @@
 // supabase/functions/_shared/public_data/registry.ts
 
 import { AppraiserAdapter, TaxAdapter, ClerkAdapter, CountyContext } from "./types.ts";
-import { flSarasotaAppraiser } from "./sources/fl/sarasota/appraiser.ts";
-import { flSarasotaTax } from "./sources/fl/sarasota/tax.ts";
-import { flSarasotaClerk } from "./sources/fl/sarasota/clerk.ts";
+import { universalAppraiser } from "./sources/universal/appraiser.ts";
+import { universalTax } from "./sources/universal/tax.ts";
+import { universalClerk } from "./sources/universal/clerk.ts";
 
-// Register adapters here. Add new counties by importing and appending.
+// Universal adapters work for any US county via Firecrawl search+scrape
 const APPRAISERS: AppraiserAdapter[] = [
-  flSarasotaAppraiser,
+  universalAppraiser,
 ];
 
 const TAX: TaxAdapter[] = [
-  flSarasotaTax,
+  universalTax,
 ];
 
 const CLERK: ClerkAdapter[] = [
-  flSarasotaClerk,
+  universalClerk,
 ];
 
 export function pickAppraiser(county: CountyContext): AppraiserAdapter | null {
