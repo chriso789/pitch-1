@@ -1,22 +1,37 @@
 
-
-# Fix Mobile Menu Button Position
+# Move Knock/Canvas Toggle to Bottom-Right Corner
 
 ## Problem
-The hamburger menu button is positioned too high on mobile (`top-[3.6rem]`), sitting above the header content with visible gap between it and the location switcher row.
+There's a crosshair/arrow button in the bottom-right corner of the map (a Google Maps default control that wasn't explicitly disabled). The user wants to remove it and place the Knock/Canvas toggle there instead.
 
-## Fix
+## Changes
 
-### File: `src/components/ui/collapsible-sidebar.tsx`
-Change the menu button position from `top-[3.6rem]` to a value that vertically centers it within the first header row:
+### File 1: `src/components/storm-canvass/GoogleLiveLocationMap.tsx`
+Disable all remaining default Google Maps controls by adding to the map options:
+- `rotateControl: false`
+- `scaleControl: false`
+- `clickableIcons: false`
 
-- The main content area has `pt-14` (3.5rem) top padding
-- The sticky header sits at the top of that padded area
-- The first header row is `h-12` (3rem) tall
-- To center the `h-10` (2.5rem) button within that row, the top position should be approximately `top-[4.05rem]` (halfway through the row minus half the button height)
+### File 2: `src/pages/storm-canvass/LiveCanvassingPage.tsx`
+Move the floating Knock/Canvas toggle from its current position (above Camera FAB) to the bottom-right corner of the screen, replacing the removed Google Maps control:
 
-This single CSS change moves the button down so it visually aligns with the "West Coast" location switcher row instead of floating alone near the status bar.
+**Current (line 433-436):**
+```
+<div className="fixed z-40 pointer-events-auto" style={{ bottom: `calc(${layout.fabPosition.bottom} + ${layout.fabSize} + 12px)`, right: layout.fabPosition.right }}>
+  <CanvassModeToggle ... />
+</div>
+```
+
+**New:** Position it at the very bottom-right, below the Camera FAB:
+```
+<div className="fixed z-40 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', right: '12px' }}>
+  <CanvassModeToggle ... />
+</div>
+```
+
+This places the compact Knock/Canvas pill at the bottom-right corner where the crosshair button was, keeping it minimal and out of the way.
 
 | File | Change |
 |------|--------|
-| `src/components/ui/collapsible-sidebar.tsx` | Change `top-[3.6rem]` to `top-[4.05rem]` on the mobile menu button |
+| `src/components/storm-canvass/GoogleLiveLocationMap.tsx` | Add `rotateControl: false`, `scaleControl: false`, `clickableIcons: false` to map options |
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Reposition Knock/Canvas toggle to bottom-right corner with safe-area padding |
