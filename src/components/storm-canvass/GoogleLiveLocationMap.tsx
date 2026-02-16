@@ -72,6 +72,9 @@ export default function GoogleLiveLocationMap({
           fullscreenControl: false,
           streetViewControl: false,
           zoomControl: false,
+          rotateControl: false,
+          scaleControl: false,
+          clickableIcons: false,
           gestureHandling: 'greedy',
           keyboardShortcuts: false,
           styles: mapStyle === 'lot-lines' ? [
