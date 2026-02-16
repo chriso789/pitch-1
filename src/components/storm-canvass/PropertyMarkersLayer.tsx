@@ -78,46 +78,108 @@ export default function PropertyMarkersLayer({
     return DISPOSITION_COLORS[disposition] || DISPOSITION_COLORS.default;
   };
 
-  const getStreetNumber = (address: any): string => {
-    if (!address) return '';
+  const getStreetInfo = (address: any): { number: string; streetName: string } => {
+    if (!address) return { number: '', streetName: '' };
     
     let parsed = address;
     if (typeof address === 'string') {
       try {
         parsed = JSON.parse(address);
       } catch {
-        // Try to extract number from raw string
-        const match = address.match(/^(\d+)/);
-        return match ? match[1] : '';
+        const match = address.match(/^(\d+)\s+(.*)/);
+        if (match) {
+          return { number: match[1], streetName: extractShortStreet(match[2]) };
+        }
+        const numMatch = address.match(/^(\d+)/);
+        return { number: numMatch ? numMatch[1] : '', streetName: '' };
       }
     }
     
-    // First check for explicit street_number field (from Google Geocoding)
+    let streetNumber = '';
+    let streetName = '';
+    
     if (parsed.street_number) {
-      return parsed.street_number;
+      streetNumber = parsed.street_number;
     }
     
-    // Fall back to extracting from street or formatted address
-    const street = parsed.street || parsed.formatted || parsed.address_line1 || '';
-    const match = street.match(/^(\d+)/);
-    return match ? match[1] : '';
+    // Extract street name from street_name or street field
+    const rawStreet = parsed.street_name || parsed.street || parsed.formatted || parsed.address_line1 || '';
+    
+    if (!streetNumber) {
+      const match = rawStreet.match(/^(\d+)\s+(.*)/);
+      if (match) {
+        streetNumber = match[1];
+        streetName = extractShortStreet(match[2]);
+      } else {
+        const numMatch = rawStreet.match(/^(\d+)/);
+        streetNumber = numMatch ? numMatch[1] : '';
+      }
+    } else {
+      streetName = extractShortStreet(rawStreet);
+    }
+    
+    return { number: streetNumber, streetName };
   };
 
+  // Strip suffixes like Street, Ave, Dr, Blvd etc. to get short name
+  const extractShortStreet = (street: string): string => {
+    if (!street) return '';
+    return street
+      .replace(/^\d+\s+/, '') // remove leading number
+      .replace(/\b(Street|St|Avenue|Ave|Drive|Dr|Boulevard|Blvd|Road|Rd|Lane|Ln|Court|Ct|Place|Pl|Way|Circle|Cir|Terrace|Ter)\b\.?$/i, '')
+      .trim();
+  };
+
+  // Detect nearby same-number properties and compute pixel offsets
+  const computeOffsets = useCallback((properties: any[]): Map<string, { x: number; y: number }> => {
+    const offsets = new Map<string, { x: number; y: number }>();
+    const DISTANCE_THRESHOLD = 0.00015; // ~15 meters in degrees
+
+    for (let i = 0; i < properties.length; i++) {
+      const a = properties[i];
+      if (!a.lat || !a.lng) continue;
+      const infoA = getStreetInfo(a.address);
+      if (!infoA.number) continue;
+
+      for (let j = i + 1; j < properties.length; j++) {
+        const b = properties[j];
+        if (!b.lat || !b.lng) continue;
+        const infoB = getStreetInfo(b.address);
+        if (infoA.number !== infoB.number) continue;
+
+        const dLat = Math.abs(a.lat - b.lat);
+        const dLng = Math.abs(a.lng - b.lng);
+        if (dLat < DISTANCE_THRESHOLD && dLng < DISTANCE_THRESHOLD) {
+          if (!offsets.has(a.id)) offsets.set(a.id, { x: -10, y: 0 });
+          if (!offsets.has(b.id)) offsets.set(b.id, { x: 10, y: 0 });
+        }
+      }
+    }
+    return offsets;
+  }, []);
+
   const createMarkerElement = useCallback((property: CanvassiqProperty, zoom: number): HTMLDivElement => {
-    const el = document.createElement('div');
+    const container = document.createElement('div');
     const color = getDispositionColor(property.disposition);
     const { size, showNumber, fontSize } = getMarkerSize(zoom);
-    const streetNumber = getStreetNumber(property.address);
+    const { number: streetNumber, streetName } = getStreetInfo(property.address);
     const isNotContacted = !property.disposition || property.disposition === 'not_contacted';
     const borderWidth = size >= 24 ? 3 : size >= 16 ? 2 : 1;
-    
-    el.className = 'property-marker';
-    
-    // Google Maps style - always show house number inside circle
-    // Yellow/gold outline for not contacted, filled color for contacted
+    const showStreetLabel = zoom >= 17 && streetName;
+
+    container.className = 'property-marker';
+    container.style.cssText = `
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      pointer-events: auto;
+      cursor: pointer;
+    `;
+
+    // Circle element
+    const circle = document.createElement('div');
     if (isNotContacted) {
-      // Google Maps style: white fill with yellow/gold border, dark text
-      el.style.cssText = `
+      circle.style.cssText = `
         width: ${size}px;
         height: ${size}px;
         background-color: #FFFFFF;
@@ -126,17 +188,14 @@ export default function PropertyMarkersLayer({
         display: flex;
         align-items: center;
         justify-content: center;
-        cursor: pointer;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-size: ${fontSize}px;
         font-weight: 600;
         color: #1F2937;
-        pointer-events: auto;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     } else {
-      // Filled circle for contacted properties with white text
-      el.style.cssText = `
+      circle.style.cssText = `
         width: ${size}px;
         height: ${size}px;
         background-color: ${color};
@@ -145,22 +204,44 @@ export default function PropertyMarkersLayer({
         display: flex;
         align-items: center;
         justify-content: center;
-        cursor: pointer;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-size: ${fontSize}px;
         font-weight: 600;
         color: white;
-        pointer-events: auto;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     }
-    
-    // Always show house number when showNumber is true
+
     if (showNumber && streetNumber) {
-      el.textContent = streetNumber;
+      circle.textContent = streetNumber;
     }
-    
-    return el;
+
+    container.appendChild(circle);
+
+    // Street name label below the circle at zoom 17+
+    if (showStreetLabel) {
+      const label = document.createElement('div');
+      label.textContent = streetName;
+      label.style.cssText = `
+        margin-top: 1px;
+        font-size: 8px;
+        font-weight: 600;
+        color: #1F2937;
+        background: rgba(255,255,255,0.85);
+        padding: 0px 3px;
+        border-radius: 2px;
+        white-space: nowrap;
+        max-width: 60px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        text-shadow: 0 0 2px white;
+        line-height: 1.2;
+      `;
+      container.appendChild(label);
+    }
+
+    return container;
   }, []);
 
   const clearMarkers = useCallback(() => {
@@ -215,18 +296,21 @@ export default function PropertyMarkersLayer({
         return;
       }
       
+      // Compute offsets for nearby same-number pins
+      const validProperties = (properties || []).filter((p: any) => p.lat && p.lng);
+      const offsets = computeOffsets(validProperties);
+
       // Create markers for each property
-      properties?.forEach((property: any) => {
-        if (!property.lat || !property.lng) return;
-        
+      validProperties.forEach((property: any) => {
         const el = createMarkerElement(property as CanvassiqProperty, zoom);
         
         el.addEventListener('click', (e) => {
           e.stopPropagation();
           onPropertyClick(property);
         });
-        
-        const marker = new mapboxgl.Marker({ element: el })
+
+        const offset = offsets.get(property.id);
+        const marker = new mapboxgl.Marker({ element: el, offset: offset ? [offset.x, offset.y] : undefined })
           .setLngLat([property.lng, property.lat])
           .addTo(map);
         
@@ -235,7 +319,7 @@ export default function PropertyMarkersLayer({
     } catch (err) {
       console.error('Error in loadProperties:', err);
     }
-  }, [profile?.tenant_id, map, onPropertyClick, clearMarkers, createMarkerElement]);
+  }, [profile?.tenant_id, map, onPropertyClick, clearMarkers, createMarkerElement, computeOffsets]);
 
   const loadParcelsFromEdgeFunction = async (lat: number, lng: number, radius: number) => {
     if (!profile?.tenant_id) return;
