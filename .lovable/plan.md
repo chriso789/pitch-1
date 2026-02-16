@@ -1,92 +1,42 @@
 
-# Auto-Populate Free Public Data When Opening a Pin
 
-## Problem
-When you open a pin on the Live Canvass map, the system calls `canvassiq-skip-trace` which:
-1. Tries SearchBug API (paid -- you don't have a key configured)
-2. Falls back to `generateDemoContactData()` which creates **completely fake** random phone numbers and made-up emails
-3. The owner name comes from `storm-public-lookup` (Firecrawl) which IS working, but phone/email enrichment is broken
+# Fix Duplicate Pins on Live Canvass Map
 
-You're seeing fake data, not real data. And you shouldn't be paying for basic public record info.
+## Root Cause
+
+The `LiveLocationMap` component renders **two independent marker layers** simultaneously:
+
+1. `NearbyPropertiesLayer` -- queries the `contacts` table for records with lat/lng within 1 mile
+2. `PropertyMarkersLayer` -- queries the `canvassiq_properties` table for records in the viewport
+
+When a property exists in both tables (which is common after pin sync or parcel loading), two markers appear at the same address. This is why you see doubled pins like "4102", "4083", "4052" in the screenshot.
 
 ## Solution
 
-### Step 1: Add a Free People Search to storm-public-lookup via Firecrawl
-Use Firecrawl SEARCH to find the homeowner's public contact info from free people-search sites (FastPeopleSearch, TruePeopleSearch, WhitePages, etc.) as a new step in the existing public data pipeline.
+Remove the `NearbyPropertiesLayer` from the Mapbox `LiveLocationMap`. The `PropertyMarkersLayer` already handles everything -- it loads properties, shows house numbers, color-codes by disposition, and handles click events. The `NearbyPropertiesLayer` is a legacy component that was created before `PropertyMarkersLayer` existed and is now redundant.
 
-**New file:** `supabase/functions/_shared/public_data/sources/universal/peopleSearch.ts`
+## Changes
 
-- After the appraiser resolves the owner name, run a Firecrawl search: `"{Owner Name}" "{City, State}" phone email`
-- Scrape the top result with JSON extraction to pull: phone numbers, email addresses, age, relatives
-- This is FREE public data (no skip trace cost) -- just uses your existing Firecrawl subscription
-- Returns structured data: `{ phones: [{number, type}], emails: [{address}], age, relatives }`
+### 1. Remove NearbyPropertiesLayer from LiveLocationMap
+**File:** `src/components/storm-canvass/LiveLocationMap.tsx`
 
-### Step 2: Integrate into the Pipeline
-**Edit:** `supabase/functions/_shared/public_data/publicLookupPipeline.ts`
+- Remove the `NearbyPropertiesLayer` import (line 4)
+- Remove the `<NearbyPropertiesLayer>` JSX element (lines 195-199)
+- Remove the `onContactSelect` prop since it was only used by `NearbyPropertiesLayer` (the `PropertyMarkersLayer` uses `onParcelSelect` instead, which routes through the same property info panel)
 
-- After appraiser/tax/clerk steps, if we have an owner name, call the new `peopleSearch` function
-- Merge phone/email results into the pipeline output
-- Add `contact_phones` and `contact_emails` fields to the result
+This is a simple deletion -- no new code needed. The `PropertyMarkersLayer` already provides all the functionality (and more) that `NearbyPropertiesLayer` was providing.
 
-### Step 3: Update storm-public-lookup to Store Contact Data
-**Edit:** `supabase/functions/storm-public-lookup/index.ts`
+## Why This Is Safe
 
-- Save the phone/email data from the people search into `storm_properties_public` (the existing cache table)
-- Also push it directly to `canvassiq_properties.phone_numbers` and `canvassiq_properties.emails` when `property_id` is provided
+| Feature | NearbyPropertiesLayer | PropertyMarkersLayer |
+|---------|----------------------|---------------------|
+| Shows markers on map | Yes (contacts table) | Yes (canvassiq_properties table) |
+| House numbers | First initial only | Full street number |
+| Color-coded by status | Yes | Yes (more granular) |
+| Click to open details | Yes | Yes |
+| Dynamic zoom sizing | No (fixed 32px) | Yes (responsive) |
+| Viewport-aware loading | No (1-mile radius only) | Yes (bounds-based) |
+| Parcel auto-loading | No | Yes |
 
-### Step 4: Remove Fake Data from canvassiq-skip-trace
-**Edit:** `supabase/functions/canvassiq-skip-trace/index.ts`
+The `PropertyMarkersLayer` is strictly superior. Removing `NearbyPropertiesLayer` eliminates all duplicate pins with no loss of functionality.
 
-- Remove the `generateDemoContactData()` function entirely -- no more fake phones/emails
-- When SearchBug key is not configured, just use the data already populated by storm-public-lookup (which now includes phones/emails from Firecrawl people search)
-- Keep the SearchBug path as an optional premium upgrade, but the default path is free Firecrawl-based data
-
-### Step 5: Make the Auto-Enrich Flow Seamless
-**Edit:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
-
-- The auto-enrich on pin open already calls `canvassiq-skip-trace` (line 91-94)
-- Update the flow to first check if `storm-public-lookup` already populated the data (from when the pin was created)
-- If not, trigger `storm-public-lookup` directly instead of skip-trace -- it's the free path
-- Only fall back to skip-trace if the user explicitly wants premium SearchBug data
-
-## Data Flow After Changes
-
-```text
-Pin created (drop or parcel load)
-  |
-  v
-storm-public-lookup runs automatically
-  |
-  +-- Firecrawl SEARCH: appraiser site -> owner name, year built, value
-  +-- Firecrawl SEARCH: tax site -> tax amounts
-  +-- Firecrawl SEARCH: people search -> phones, emails, age  [NEW]
-  |
-  v
-All data cached in storm_properties_public + canvassiq_properties
-  |
-  v
-User opens pin -> PropertyInfoPanel
-  |
-  v
-Data already there (owner, phones, emails, age) -- no extra API calls needed
-  |
-  v
-If data missing: re-trigger storm-public-lookup (free)
-```
-
-## Files to Change
-
-| File | Action |
-|------|--------|
-| `supabase/functions/_shared/public_data/sources/universal/peopleSearch.ts` | New -- Firecrawl-based free people search |
-| `supabase/functions/_shared/public_data/publicLookupPipeline.ts` | Add people search step after appraiser |
-| `supabase/functions/storm-public-lookup/index.ts` | Store phone/email data in cache + canvassiq_properties |
-| `supabase/functions/canvassiq-skip-trace/index.ts` | Remove fake data generation, use public data as default |
-| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Prefer storm-public-lookup over skip-trace for auto-enrich |
-
-## Cost Impact
-- Owner name, property data: Firecrawl credits (already paid)
-- Phone/email lookup: 1 additional Firecrawl search + 1 scrape = 2 more credits per pin
-- Total per pin: ~8 Firecrawl credits (cached 30 days)
-- SearchBug: $0 (optional premium, not needed)
-- No fake data anywhere in the system
