@@ -1,60 +1,51 @@
 
 
-# Fix: Only Show Pins Within Visible Map Viewport
+# Fix: Owner Data Not Updating in UI After Enrichment
 
-## Problem
+## Root Cause
 
-Two issues:
+There are two issues preventing owner data from appearing after clicking "Enrich":
 
-1. **Pins loading outside the viewport**: `PropertyMarkersLayer` calculates a radius-based bounding box from the map center (`getLoadRadius`) instead of using the map's actual visible bounds. This loads and renders properties that are offscreen or outside the zoomed-in area.
+### Issue 1: React State Not Updating (Frontend Bug)
+After `handleEnrich` succeeds and refetches updated data from `canvassiq_properties`, the code **directly mutates the `property` prop** (lines 238-241):
+```typescript
+property.phone_numbers = updatedProperty.phone_numbers;
+property.emails = updatedProperty.emails;
+property.owner_name = updatedProperty.owner_name;
+```
+This does NOT trigger a React re-render. The UI stays stuck showing "Unknown Owner" and "No owner data found" even when the database has been updated with real data.
 
-2. **Incorrect street labels**: The `extractShortStreet` function may be pulling "Cherokee" from address data even when those properties are on different streets. The label extraction needs to work from the correct field.
+### Issue 2: Appraiser Search Fails for Some Addresses (Backend)
+The edge function logs show that for addresses like "4083 Fonsica Avenue", the Firecrawl appraiser search returns **no results**. Without an owner name, the people search (phones/emails) is completely skipped. The pipeline returns empty-handed.
 
 ## Solution
 
-### 1. Use actual map bounds instead of radius calculation
-**File:** `src/components/storm-canvass/PropertyMarkersLayer.tsx`
+### 1. Use Local State for Property Data (Frontend Fix)
+**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-Replace the radius-based bounding box logic:
-```
-const radius = getLoadRadius(zoom);
-const radiusInDegrees = radius / 69;
-const minLat = center.lat - radiusInDegrees;
-// ...
-```
+- Add a `localProperty` state initialized from the `property` prop
+- After enrichment refetch, update `localProperty` state (which triggers re-render)
+- Derive `ownerName`, `phoneNumbers`, `emails`, `displayOwners`, etc. from `localProperty` instead of the raw prop
+- Reset `localProperty` when `property.id` changes
 
-With the actual visible bounds from Mapbox:
-```
-const bounds = map.getBounds();
-const minLat = bounds.getSouth();
-const maxLat = bounds.getNorth();
-const minLng = bounds.getWest();
-const maxLng = bounds.getEast();
-```
+### 2. Improve Appraiser Search Resilience (Backend Fix)
+**File:** `supabase/functions/_shared/public_data/sources/universal/appraiser.ts`
 
-This guarantees only properties within the visible viewport are queried and displayed.
+- When the quoted exact-address search fails, retry with a looser query (without quotes around the address) to catch partial matches on county appraiser sites
+- This fallback increases the chance of finding property records for less-indexed addresses
 
-### 2. Remove the `getLoadRadius` function
-No longer needed since we use real bounds.
+### 3. Allow People Search Without Owner Name (Backend Fix)
+**File:** `supabase/functions/_shared/public_data/publicLookupPipeline.ts`
 
-### 3. Fix the bounds cache key
-Update `boundsKey` to use the actual bounds corners (not just center + zoom), so it properly detects when the user has panned to a new area:
-```
-const boundsKey = `${minLat.toFixed(4)}_${maxLat.toFixed(4)}_${minLng.toFixed(4)}_${maxLng.toFixed(4)}`;
-```
-
-### 4. Adjust property limit based on viewport area
-Instead of basing the limit on zoom alone, keep the zoom-based limit but it will naturally show fewer pins since the query area is now smaller (only what's visible).
+- When no owner name is found from appraiser/tax sources, attempt a people search using just the property address instead of skipping entirely
+- This provides a path to get contact data even when the appraiser search fails
 
 ## Changes Summary
 
-| What | Where | Detail |
-|------|-------|--------|
-| Use `map.getBounds()` | `loadProperties()` | Replace radius calculation with actual viewport bounds |
-| Remove `getLoadRadius()` | Top of file | No longer needed |
-| Fix `boundsKey` | `loadProperties()` | Use bounds corners, not center + zoom |
-| Pass bounds to parcel loader | `loadParcelsFromEdgeFunction` | Use viewport bounds for parcel loading too |
-
-## Single File Change
-**`src/components/storm-canvass/PropertyMarkersLayer.tsx`** -- roughly 10 lines changed, 10 lines removed.
+| What | File | Detail |
+|------|------|--------|
+| Local state for property data | `PropertyInfoPanel.tsx` | Replace prop mutation with `useState` + `useEffect` sync |
+| Appraiser search retry | `appraiser.ts` | Add unquoted fallback query when exact match fails |
+| Address-based people search | `publicLookupPipeline.ts` | Try people search by address when owner name is unavailable |
+| Redeploy edge function | `storm-public-lookup` | Deploy updated pipeline |
 
