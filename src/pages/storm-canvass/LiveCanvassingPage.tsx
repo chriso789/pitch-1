@@ -385,7 +385,6 @@ export default function LiveCanvassingPage() {
             </span>
           </div>
           <div className="flex items-center gap-1.5">
-            <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
             <OfflinePhotoSyncManager compact className="cursor-pointer" />
           </div>
         </div>
@@ -430,6 +429,11 @@ export default function LiveCanvassingPage() {
         state={stableLoadingState}
         loadedCount={stableCount}
       />
+
+      {/* Floating Knock/Canvas Toggle */}
+      <div className="fixed z-40 pointer-events-auto" style={{ bottom: `calc(${layout.fabPosition.bottom} + ${layout.fabSize} + 12px)`, right: layout.fabPosition.right }}>
+        <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
+      </div>
 
       {/* Camera FAB */}
       <Button
