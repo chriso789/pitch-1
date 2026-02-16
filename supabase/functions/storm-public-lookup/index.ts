@@ -132,6 +132,13 @@ Deno.serve(async (req) => {
     if (upsertErr) console.error("[storm-public-lookup] upsert error", upsertErr);
 
     // 6) Update canvassiq_properties if property_id provided (no owner_name gate)
+    // Sanitize owner name — strip literal "null"/"unknown" strings
+    const cleanOwner = (v: any) => {
+      if (!v) return null;
+      const s = String(v).trim().toLowerCase();
+      return (s === 'null' || s === 'undefined' || s === 'unknown' || s === 'unknown owner') ? null : String(v).trim();
+    };
+
     if (property_id) {
       const contactPhones = result.contact_phones || [];
       const contactEmails = result.contact_emails || [];
@@ -163,8 +170,8 @@ Deno.serve(async (req) => {
         },
       };
 
-      // Only write non-null values to avoid clobbering existing data
-      if (result.owner_name) updatePayload.owner_name = result.owner_name;
+      // Only write non-null/non-junk values to avoid clobbering existing data
+      if (cleanOwner(result.owner_name)) updatePayload.owner_name = cleanOwner(result.owner_name);
       if (contactPhones.length > 0) updatePayload.phone_numbers = contactPhones.map((p: any) => p.number);
       if (contactEmails.length > 0) updatePayload.emails = contactEmails.map((e: any) => e.address);
 

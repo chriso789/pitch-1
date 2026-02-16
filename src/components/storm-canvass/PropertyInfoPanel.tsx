@@ -36,6 +36,13 @@ interface PropertyInfoPanelProps {
   onNavigate: (lat: number, lng: number, address: string) => void;
 }
 
+function validOwner(name: any): string | null {
+  if (!name) return null;
+  const s = String(name).trim().toLowerCase();
+  if (!s || s === 'null' || s === 'undefined' || s === 'unknown' || s === 'unknown owner') return null;
+  return String(name).trim();
+}
+
 const DISPOSITIONS = [
   { id: 'not_contacted', label: 'Not Contacted', icon: Home, color: 'border-yellow-500 text-yellow-600', bgColor: 'bg-yellow-500' },
   { id: 'new_roof', label: 'New Roof', icon: CheckCircle, color: 'border-amber-700 text-amber-700', bgColor: 'bg-amber-700' },
@@ -109,10 +116,10 @@ export default function PropertyInfoPanel({
 
       const pipelineResult = data?.pipeline || data?.result || data;
       
-      if (pipelineResult?.owner_name && pipelineResult.owner_name !== 'Unknown Owner') {
+      if (validOwner(pipelineResult?.owner_name)) {
         setEnrichedOwners([{
           id: '1',
-          name: pipelineResult.owner_name,
+          name: validOwner(pipelineResult.owner_name)!,
           age: pipelineResult.contact_age || null,
           is_primary: true,
         }]);
@@ -121,7 +128,7 @@ export default function PropertyInfoPanel({
       // Update localProperty directly from pipeline response (don't rely solely on DB refetch)
       setLocalProperty((prev: any) => ({
         ...prev,
-        owner_name: pipelineResult?.owner_name || prev.owner_name,
+        owner_name: validOwner(pipelineResult?.owner_name) || prev.owner_name,
         phone_numbers: pipelineResult?.contact_phones?.length > 0
           ? pipelineResult.contact_phones.map((p: any) => p.number)
           : prev.phone_numbers,
@@ -129,8 +136,8 @@ export default function PropertyInfoPanel({
           ? pipelineResult.contact_emails.map((e: any) => e.address)
           : prev.emails,
         searchbug_data: {
-          owners: pipelineResult?.owner_name
-            ? [{ id: '1', name: pipelineResult.owner_name, age: pipelineResult.contact_age, is_primary: true }]
+          owners: validOwner(pipelineResult?.owner_name)
+            ? [{ id: '1', name: validOwner(pipelineResult.owner_name)!, age: pipelineResult.contact_age, is_primary: true }]
             : prev.searchbug_data?.owners || [],
           phones: pipelineResult?.contact_phones || prev.searchbug_data?.phones || [],
           emails: pipelineResult?.contact_emails || prev.searchbug_data?.emails || [],
@@ -289,7 +296,7 @@ export default function PropertyInfoPanel({
       ? storedOwners 
       : [{ 
           id: '1', 
-          name: localProperty.owner_name || homeowner?.name || 'Primary Owner',
+          name: validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Primary Owner',
           gender: 'Unknown',
           credit_score: 'Unknown',
           is_primary: true
@@ -297,7 +304,7 @@ export default function PropertyInfoPanel({
 
   // handleEnrich is defined above (useCallback) before the useEffect that calls it
 
-  const ownerName = localProperty.owner_name || homeowner?.name || 'Unknown Owner';
+  const ownerName = validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Unknown Owner';
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
