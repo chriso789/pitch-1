@@ -395,9 +395,10 @@ export default function LiveCanvassingPage() {
           />
         </div>
 
-        {/* Map style toggle */}
-        <div className="px-2 pt-2 pointer-events-auto w-fit">
+        {/* Map style toggle + Stats */}
+        <div className="flex items-center gap-2 px-2 pt-2 pointer-events-auto">
           <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
+          <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         </div>
       </div>
 
@@ -414,8 +415,6 @@ export default function LiveCanvassingPage() {
         </div>
       )}
 
-      {/* Stats overlay */}
-      <LiveStatsOverlay distanceTraveled={distanceTraveled} />
 
       {/* Territory Boundary Alert */}
       {assignedArea && areaPolygon && (

@@ -30,7 +30,7 @@ class LocationService {
 
       const geoOptions = {
         enableHighAccuracy: true,
-        timeout: 10000,
+        timeout: 20000,
         maximumAge: 300000, // 5 minutes
       };
 
@@ -90,7 +90,7 @@ class LocationService {
 
     const options = {
       enableHighAccuracy: true,
-      timeout: 10000,
+      timeout: 30000,
       maximumAge: 60000, // 1 minute
     };
 
