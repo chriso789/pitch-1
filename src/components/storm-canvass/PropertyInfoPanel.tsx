@@ -132,7 +132,7 @@ export default function PropertyInfoPanel({
   }, [distanceMeters]);
 
   // Early return AFTER all hooks
-  if (!property) return null;
+  if (!property || !localProperty) return null;
 
   // Parse address and homeowner data — use localProperty for enriched fields
   const address = typeof property.address === 'string' 
