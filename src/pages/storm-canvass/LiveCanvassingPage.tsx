@@ -431,7 +431,7 @@ export default function LiveCanvassingPage() {
       />
 
       {/* Floating Knock/Canvas Toggle */}
-      <div className="fixed z-40 pointer-events-auto" style={{ bottom: `calc(${layout.fabPosition.bottom} + ${layout.fabSize} + 12px)`, right: layout.fabPosition.right }}>
+      <div className="fixed z-40 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', right: '12px' }}>
         <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
       </div>
 
