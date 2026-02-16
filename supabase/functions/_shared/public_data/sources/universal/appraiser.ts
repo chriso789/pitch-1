@@ -57,9 +57,17 @@ export const universalAppraiser: AppraiserAdapter = {
     console.log(`[universal_appraiser] searching: "${query}"`);
 
     // Step 1: Search for the property detail page
-    const results = await firecrawlSearch(query, 5);
+    let results = await firecrawlSearch(query, 5);
+
+    // Fallback: retry without quotes if exact match fails
     if (!results.length) {
-      console.warn("[universal_appraiser] no search results");
+      const looseQuery = `${addr} ${cityZip} property appraiser ${county.county_name} county ${county.state} owner parcel`;
+      console.log(`[universal_appraiser] exact search failed, retrying loose: "${looseQuery}"`);
+      results = await firecrawlSearch(looseQuery, 5);
+    }
+
+    if (!results.length) {
+      console.warn("[universal_appraiser] no search results (even after fallback)");
       return null;
     }
 

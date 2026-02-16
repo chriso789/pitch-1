@@ -63,6 +63,9 @@ export default function PropertyInfoPanel({
   const [showFastEstimate, setShowFastEstimate] = useState(false);
   const hasAutoEnrichedRef = useRef<string | null>(null);
 
+  // Local state for property data — drives UI re-renders after enrichment
+  const [localProperty, setLocalProperty] = useState<any>(property);
+
   // Auto-enrich when panel opens and no enrichment data exists or owner is unknown
   useEffect(() => {
     if (!open || !property?.id || !profile?.tenant_id) return;
@@ -94,9 +97,10 @@ export default function PropertyInfoPanel({
     }
   }, [open, property?.id]);
 
-  // Reset enriched data when property changes
+  // Sync localProperty when property prop changes
   useEffect(() => {
     if (property?.id) {
+      setLocalProperty(property);
       setEnrichedOwners([]);
       setSelectedOwner(null);
       setNotes('');
@@ -130,7 +134,7 @@ export default function PropertyInfoPanel({
   // Early return AFTER all hooks
   if (!property) return null;
 
-  // Parse address and homeowner data
+  // Parse address and homeowner data — use localProperty for enriched fields
   const address = typeof property.address === 'string' 
     ? JSON.parse(property.address) 
     : property.address;
@@ -138,24 +142,24 @@ export default function PropertyInfoPanel({
     ? JSON.parse(property.homeowner)
     : property.homeowner;
   
-  // Parse enriched data from searchbug_data
-  const searchbugData = typeof property.searchbug_data === 'string'
-    ? JSON.parse(property.searchbug_data || '{}')
-    : (property.searchbug_data || {});
+  // Parse enriched data from searchbug_data (use localProperty for up-to-date data)
+  const searchbugData = typeof localProperty.searchbug_data === 'string'
+    ? JSON.parse(localProperty.searchbug_data || '{}')
+    : (localProperty.searchbug_data || {});
   
   // Get phone numbers from either searchbug_data or direct column
   const phoneNumbers = searchbugData.phones?.length > 0 
     ? searchbugData.phones 
-    : (typeof property.phone_numbers === 'string'
-        ? JSON.parse(property.phone_numbers || '[]')
-        : (property.phone_numbers || []));
+    : (typeof localProperty.phone_numbers === 'string'
+        ? JSON.parse(localProperty.phone_numbers || '[]')
+        : (localProperty.phone_numbers || []));
   
   // Get emails from either searchbug_data or direct column
   const emails = searchbugData.emails?.length > 0
     ? searchbugData.emails
-    : (typeof property.emails === 'string'
-        ? JSON.parse(property.emails || '[]')
-        : (property.emails || []));
+    : (typeof localProperty.emails === 'string'
+        ? JSON.parse(localProperty.emails || '[]')
+        : (localProperty.emails || []));
 
   // Use enriched owners from API response, then searchbug_data, then fallback
   const storedOwners = searchbugData.owners || [];
@@ -165,7 +169,7 @@ export default function PropertyInfoPanel({
       ? storedOwners 
       : [{ 
           id: '1', 
-          name: property.owner_name || homeowner?.name || 'Primary Owner',
+          name: localProperty.owner_name || homeowner?.name || 'Primary Owner',
           gender: 'Unknown',
           credit_score: 'Unknown',
           is_primary: true
@@ -234,11 +238,14 @@ export default function PropertyInfoPanel({
       if (fetchError) {
         console.warn('[handleEnrich] Failed to refetch property:', fetchError);
       } else if (updatedProperty) {
-        // Merge updated data into local property reference
-        property.phone_numbers = updatedProperty.phone_numbers;
-        property.emails = updatedProperty.emails;
-        property.owner_name = updatedProperty.owner_name;
-        property.searchbug_data = updatedProperty.searchbug_data;
+        // Update local state to trigger re-render
+        setLocalProperty((prev: any) => ({
+          ...prev,
+          phone_numbers: updatedProperty.phone_numbers,
+          emails: updatedProperty.emails,
+          owner_name: updatedProperty.owner_name,
+          searchbug_data: updatedProperty.searchbug_data,
+        }));
       }
       
       const hasRealOwner = pipelineResult?.owner_name && 
@@ -268,7 +275,7 @@ export default function PropertyInfoPanel({
     }
   };
 
-  const ownerName = property.owner_name || homeowner?.name || 'Unknown Owner';
+  const ownerName = localProperty.owner_name || homeowner?.name || 'Unknown Owner';
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
