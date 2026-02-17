@@ -1101,3 +1101,9 @@ verify_jwt = false
 
 [functions.door-knock-strategy]
 verify_jwt = false
+
+[functions.property-enrich-details]
+verify_jwt = false
+
+[functions.dnc-scrub]
+verify_jwt = false
