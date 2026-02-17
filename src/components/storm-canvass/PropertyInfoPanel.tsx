@@ -99,8 +99,9 @@ export default function PropertyInfoPanel({
         addr = { formatted: property.address };
       }
       
-      console.log('[handleEnrich] Calling storm-public-lookup for:', property.id, addr, forceBypass ? '(FORCE)' : '');
+      console.log('[handleEnrich] Step 1: storm-public-lookup for:', property.id);
       
+      // Step 1: County scrape for owner/parcel data
       const { data, error } = await supabase.functions.invoke('storm-public-lookup', {
         body: {
           lat: property.lat || addr?.lat,
@@ -113,29 +114,50 @@ export default function PropertyInfoPanel({
       });
 
       if (error) {
-        console.error('[handleEnrich] Edge function error:', error);
+        console.error('[handleEnrich] storm-public-lookup error:', error);
         throw error;
       }
 
-      console.log('[handleEnrich] Response:', JSON.stringify(data).slice(0, 500));
-
       const pipelineResult = data?.pipeline || data?.result || data;
 
-      // Normalize cached response — cached records store contact data in raw_data
-      if (data?.cached && pipelineResult?.raw_data) {
-        const raw = pipelineResult.raw_data;
-        if (!pipelineResult.contact_phones && raw.contact_phones) {
-          pipelineResult.contact_phones = raw.contact_phones;
-        }
-        if (!pipelineResult.contact_emails && raw.contact_emails) {
-          pipelineResult.contact_emails = raw.contact_emails;
-        }
-        if (!pipelineResult.contact_age && raw.contact_age) {
-          pipelineResult.contact_age = raw.contact_age;
-        }
-      }
-      
+      // Update owner from county data
       if (validOwner(pipelineResult?.owner_name)) {
+        setLocalProperty((prev: any) => ({
+          ...prev,
+          owner_name: validOwner(pipelineResult.owner_name) || prev.owner_name,
+        }));
+      }
+
+      // Step 2: BatchData skip trace for contact enrichment
+      console.log('[handleEnrich] Step 2: canvassiq-skip-trace (BatchData)');
+      
+      const { data: skipData, error: skipError } = await supabase.functions.invoke('canvassiq-skip-trace', {
+        body: {
+          property_id: property.id,
+          owner_name: validOwner(pipelineResult?.owner_name) || validOwner(localProperty.owner_name) || '',
+          address: {
+            street: addr?.street || addr?.formatted || '',
+            city: addr?.city || '',
+            state: addr?.state || '',
+            zip: addr?.zip || '',
+            formatted: addr?.formatted || '',
+          },
+          tenant_id: profile.tenant_id,
+        }
+      });
+
+      if (skipError) {
+        console.warn('[handleEnrich] skip-trace error:', skipError);
+      }
+
+      const skipResult = skipData?.data || {};
+      const skipOwners = skipResult.owners || [];
+      const skipPhones = skipResult.phones || [];
+      const skipEmails = skipResult.emails || [];
+
+      if (skipOwners.length > 0) {
+        setEnrichedOwners(skipOwners);
+      } else if (validOwner(pipelineResult?.owner_name)) {
         setEnrichedOwners([{
           id: '1',
           name: validOwner(pipelineResult.owner_name)!,
@@ -144,75 +166,36 @@ export default function PropertyInfoPanel({
         }]);
       }
 
-      // Update localProperty directly from pipeline response (don't rely solely on DB refetch)
+      // Update localProperty with all enriched data
       setLocalProperty((prev: any) => ({
         ...prev,
-        owner_name: validOwner(pipelineResult?.owner_name) || prev.owner_name,
-        phone_numbers: pipelineResult?.contact_phones?.length > 0
-          ? pipelineResult.contact_phones.map((p: any) => p.number)
+        owner_name: skipOwners[0]?.name || validOwner(pipelineResult?.owner_name) || prev.owner_name,
+        phone_numbers: skipPhones.length > 0
+          ? skipPhones.map((p: any) => typeof p === 'string' ? p : p.number)
           : prev.phone_numbers,
-        emails: pipelineResult?.contact_emails?.length > 0
-          ? pipelineResult.contact_emails.map((e: any) => e.address)
+        emails: skipEmails.length > 0
+          ? skipEmails.map((e: any) => typeof e === 'string' ? e : e.address)
           : prev.emails,
         searchbug_data: {
-          owners: validOwner(pipelineResult?.owner_name)
-            ? [{ id: '1', name: validOwner(pipelineResult.owner_name)!, age: pipelineResult.contact_age, is_primary: true }]
-            : prev.searchbug_data?.owners || [],
-          phones: pipelineResult?.contact_phones || prev.searchbug_data?.phones || [],
-          emails: pipelineResult?.contact_emails || prev.searchbug_data?.emails || [],
-          relatives: pipelineResult?.contact_relatives || prev.searchbug_data?.relatives || [],
-          source: 'public_data_pipeline',
+          owners: skipOwners.length > 0 ? skipOwners : prev.searchbug_data?.owners || [],
+          phones: skipPhones,
+          emails: skipEmails,
+          relatives: skipResult.relatives || prev.searchbug_data?.relatives || [],
+          source: skipResult.source || 'batchdata',
           enriched_at: new Date().toISOString(),
         },
       }));
-      
-      // Secondary DB refetch — merge only non-null values so we don't clobber pipeline data
-      const { data: updatedProperty, error: fetchError } = await supabase
-        .from('canvassiq_properties')
-        .select('phone_numbers, emails, owner_name, searchbug_data')
-        .eq('id', property.id)
-        .single();
-      
-      if (fetchError) {
-        console.warn('[handleEnrich] Failed to refetch property:', fetchError);
-      } else if (updatedProperty) {
-        setLocalProperty((prev: any) => ({
-          ...prev,
-          phone_numbers: updatedProperty.phone_numbers?.length ? updatedProperty.phone_numbers : prev.phone_numbers,
-          emails: updatedProperty.emails?.length ? updatedProperty.emails : prev.emails,
-          owner_name: updatedProperty.owner_name || prev.owner_name,
-          searchbug_data: updatedProperty.searchbug_data || prev.searchbug_data,
-        }));
-      }
-      
-      const hasRealOwner = pipelineResult?.owner_name && 
-        pipelineResult.owner_name !== 'Unknown Owner' && pipelineResult.owner_name !== 'Unknown';
-      const hasPhones = pipelineResult?.contact_phones?.length > 0 || updatedProperty?.phone_numbers?.length > 0;
-      const hasEmails = pipelineResult?.contact_emails?.length > 0 || updatedProperty?.emails?.length > 0;
-      const hasUpdatedOwner = updatedProperty?.owner_name && 
-        updatedProperty.owner_name !== 'Unknown Owner' && 
-        updatedProperty.owner_name !== 'Unknown';
-      const hasUpdatedPhones = updatedProperty?.phone_numbers?.length > 0;
-      const hasUpdatedEmails = updatedProperty?.emails?.length > 0;
 
-      if (data?.cached) {
-        if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
-          toast.success('Property data loaded (cached)');
-        } else {
-          toast.warning('No owner data in cache', {
-            description: 'Tap Re-enrich to force a fresh lookup.',
-            action: {
-              label: 'Re-enrich',
-              onClick: () => handleEnrich(true),
-            },
-          });
-        }
-      } else if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
-        toast.success('Property enriched!');
+      const hasRealOwner = skipOwners[0]?.name && skipOwners[0].name !== 'Unknown Owner';
+      const hasPhones = skipPhones.length > 0;
+      const hasEmails = skipEmails.length > 0;
+
+      if (skipData?.cached) {
+        toast.success('Contact data loaded (cached)');
+      } else if (hasRealOwner || hasPhones || hasEmails) {
+        toast.success('Property enriched with BatchData!');
       } else {
-        toast.warning('No owner data found for this property', {
-          description: 'Public records may not be available for this address.',
-        });
+        toast.warning('No contact data found for this property');
       }
     } catch (err: any) {
       console.error('[handleEnrich] Error:', err?.message || err);
@@ -773,20 +756,26 @@ export default function PropertyInfoPanel({
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <div className="flex flex-wrap gap-1.5">
                     {phoneNumbers.slice(0, 3).map((phone: any, idx: number) => {
-                      // Handle both string format and object format from enrichment
                       const phoneNumber = typeof phone === 'string' ? phone : phone.number;
                       const phoneType = typeof phone === 'object' ? phone.type : null;
+                      const isDnc = typeof phone === 'object' && phone.dnc === true;
                       return (
-                        <Button
-                          key={idx}
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleCall(phoneNumber)}
-                          className="text-xs h-7"
-                        >
-                          {phoneNumber}
-                          {phoneType && <span className="text-muted-foreground ml-1">({phoneType})</span>}
-                        </Button>
+                        <div key={idx} className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleCall(phoneNumber)}
+                            className="text-xs h-7"
+                          >
+                            {phoneNumber}
+                            {phoneType && phoneType !== 'Unknown' && (
+                              <span className="text-muted-foreground ml-1">({phoneType})</span>
+                            )}
+                          </Button>
+                          {isDnc && (
+                            <Badge variant="destructive" className="text-[9px] h-5 px-1">DNC</Badge>
+                          )}
+                        </div>
                       );
                     })}
                   </div>
@@ -796,9 +785,8 @@ export default function PropertyInfoPanel({
                 <div className="flex items-center gap-2">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <div className="flex flex-wrap gap-1.5">
-                    {emails.slice(0, 2).map((email: any, idx: number) => {
+                    {emails.slice(0, 3).map((email: any, idx: number) => {
                       const emailAddress = typeof email === 'string' ? email : email.address;
-                      const isMasked = emailAddress && emailAddress.includes('*');
                       return (
                         <Button
                           key={idx}
@@ -808,7 +796,6 @@ export default function PropertyInfoPanel({
                           className="text-xs h-7 truncate max-w-[220px]"
                         >
                           {emailAddress}
-                          {isMasked && <span className="text-muted-foreground ml-1 text-[9px]">(partial)</span>}
                         </Button>
                       );
                     })}
