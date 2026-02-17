@@ -74,6 +74,7 @@ export default function PropertyInfoPanel({
   const [showStormReports, setShowStormReports] = useState(false);
   const [stormReports, setStormReports] = useState<any[]>([]);
   const [loadingStorm, setLoadingStorm] = useState(false);
+  const [stormFilter, setStormFilter] = useState<'all' | 'hail' | 'wind' | 'tornado'>('all');
 
   // Local state for property data — drives UI re-renders after enrichment
   const [localProperty, setLocalProperty] = useState<any>(property);
@@ -325,8 +326,6 @@ export default function PropertyInfoPanel({
       : [{ 
           id: '1', 
           name: validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Primary Owner',
-          gender: 'Unknown',
-          credit_score: 'Unknown',
           is_primary: true
         }];
 
@@ -727,22 +726,28 @@ export default function PropertyInfoPanel({
               </Button>
             </div>
             <RadioGroup value={selectedOwner || ''} onValueChange={setSelectedOwner}>
-              {displayOwners.map((owner) => (
-                <div key={owner.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
-                  <div className="flex items-center gap-3">
-                    <RadioGroupItem value={owner.id} id={owner.id} />
-                    <Label htmlFor={owner.id} className="flex flex-col cursor-pointer">
-                      <span className="font-medium text-sm">{owner.name}</span>
-                      <span className="text-[10px] text-muted-foreground">
-                        {owner.gender || 'Unknown'} • Credit: {owner.credit_score || 'Unknown'}
-                      </span>
-                    </Label>
+              {displayOwners.map((owner) => {
+                const firstName = owner.first_name || (owner.name ? owner.name.split(/\s+/)[0] : null);
+                const lastName = owner.last_name || (owner.name ? owner.name.split(/\s+/).slice(1).join(' ') : null);
+                const displayName = [firstName, lastName].filter(Boolean).join(' ') || 'Primary Owner';
+                const ageLine = owner.age ? `Age ${owner.age}` : null;
+                return (
+                  <div key={owner.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
+                    <div className="flex items-center gap-3">
+                      <RadioGroupItem value={owner.id} id={owner.id} />
+                      <Label htmlFor={owner.id} className="flex flex-col cursor-pointer">
+                        <span className="font-medium text-sm">{displayName}</span>
+                        {ageLine && (
+                          <span className="text-[10px] text-muted-foreground">{ageLine}</span>
+                        )}
+                      </Label>
+                    </div>
+                    <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <UserPlus className="h-4 w-4 text-muted-foreground" />
+                    </Button>
                   </div>
-                  <Button variant="ghost" size="icon" className="h-8 w-8">
-                    <UserPlus className="h-4 w-4 text-muted-foreground" />
-                  </Button>
-                </div>
-              ))}
+                );
+              })}
             </RadioGroup>
           </div>
 
@@ -787,17 +792,18 @@ export default function PropertyInfoPanel({
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <div className="flex flex-wrap gap-1.5">
                     {emails.slice(0, 2).map((email: any, idx: number) => {
-                      // Handle both string format and object format from enrichment
                       const emailAddress = typeof email === 'string' ? email : email.address;
+                      const isMasked = emailAddress && emailAddress.includes('*');
                       return (
                         <Button
                           key={idx}
                           variant="outline"
                           size="sm"
                           onClick={() => handleEmail(emailAddress)}
-                          className="text-xs h-7 truncate max-w-[160px]"
+                          className="text-xs h-7 truncate max-w-[220px]"
                         >
                           {emailAddress}
+                          {isMasked && <span className="text-muted-foreground ml-1 text-[9px]">(partial)</span>}
                         </Button>
                       );
                     })}
@@ -952,7 +958,31 @@ export default function PropertyInfoPanel({
                   <X className="h-4 w-4" />
                 </Button>
               </div>
-              <ScrollArea className="max-h-[55vh] p-4">
+              {/* Filter Tabs */}
+              {!loadingStorm && stormReports.length > 0 && (
+                <div className="flex gap-1.5 px-4 pt-3 pb-1 flex-wrap">
+                  {(['all', 'hail', 'wind', 'tornado'] as const).map((filter) => {
+                    const count = filter === 'all'
+                      ? stormReports.length
+                      : stormReports.filter(r => r.event_type?.toLowerCase().includes(filter)).length;
+                    const isActive = stormFilter === filter;
+                    const colorMap = { all: '', hail: 'bg-blue-500 text-white', wind: 'bg-orange-500 text-white', tornado: 'bg-red-500 text-white' };
+                    return (
+                      <Button
+                        key={filter}
+                        variant={isActive ? 'default' : 'outline'}
+                        size="sm"
+                        className={cn("h-7 text-xs gap-1", isActive && filter !== 'all' && colorMap[filter])}
+                        onClick={() => setStormFilter(filter)}
+                      >
+                        {filter.charAt(0).toUpperCase() + filter.slice(1)}
+                        <Badge variant="secondary" className="text-[9px] h-4 px-1 ml-0.5">{count}</Badge>
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
+              <ScrollArea className="max-h-[60vh] p-4">
                 {loadingStorm ? (
                   <div className="flex items-center justify-center py-8 gap-2">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -963,34 +993,46 @@ export default function PropertyInfoPanel({
                     <Cloud className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
                     <p className="text-sm text-muted-foreground">No storm reports found in this area</p>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground mb-3">{stormReports.length} report{stormReports.length !== 1 ? 's' : ''} found</p>
-                    {stormReports.map((report, i) => (
-                      <div key={i} className="border rounded-lg p-3 text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <Badge variant="secondary" className="text-[10px]">
-                            {report.event_type}
-                          </Badge>
-                          <span className="text-muted-foreground">
-                            {report.date ? new Date(report.date).toLocaleDateString() : 'Unknown date'}
-                          </span>
-                        </div>
-                        {report.magnitude && (
-                          <p className="font-medium">Magnitude: {report.magnitude}</p>
-                        )}
-                        {report.description && (
-                          <p className="text-muted-foreground line-clamp-2">{report.description}</p>
-                        )}
-                        <div className="flex items-center gap-2 text-muted-foreground">
-                          {report.location && <span>{report.location}</span>}
-                          {report.distance_miles > 0 && <span>• {report.distance_miles}mi away</span>}
-                          <span>• {report.source}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                ) : (() => {
+                  const filtered = stormFilter === 'all'
+                    ? stormReports
+                    : stormReports.filter(r => r.event_type?.toLowerCase().includes(stormFilter));
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground mb-3">{filtered.length} report{filtered.length !== 1 ? 's' : ''} shown</p>
+                      {filtered.map((report, i) => {
+                        const et = (report.event_type || '').toLowerCase();
+                        const badgeClass = et.includes('hail') ? 'bg-blue-100 text-blue-700 border-blue-300'
+                          : et.includes('wind') ? 'bg-orange-100 text-orange-700 border-orange-300'
+                          : et.includes('tornado') ? 'bg-red-100 text-red-700 border-red-300'
+                          : 'bg-muted text-muted-foreground';
+                        return (
+                          <div key={i} className="border rounded-lg p-3 text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <Badge variant="outline" className={cn("text-[10px]", badgeClass)}>
+                                {report.event_type}
+                              </Badge>
+                              <span className="text-muted-foreground">
+                                {report.date ? new Date(report.date).toLocaleDateString() : 'Unknown date'}
+                              </span>
+                            </div>
+                            {report.magnitude && (
+                              <p className="font-medium">Magnitude: {report.magnitude}</p>
+                            )}
+                            {report.description && (
+                              <p className="text-muted-foreground line-clamp-2">{report.description}</p>
+                            )}
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                              {report.location && <span>{report.location}</span>}
+                              {report.distance_miles > 0 && <span>• {report.distance_miles}mi away</span>}
+                              <span>• {report.source}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </ScrollArea>
             </div>
           </div>
