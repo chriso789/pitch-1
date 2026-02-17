@@ -3876,6 +3876,39 @@ export type Database = {
         }
         Relationships: []
       }
+      canvass_strategy_log: {
+        Row: {
+          created_at: string | null
+          id: string
+          normalized_address_key: string
+          property_id: string | null
+          request_context: Json | null
+          strategy: Json | null
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          normalized_address_key: string
+          property_id?: string | null
+          request_context?: Json | null
+          strategy?: Json | null
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          normalized_address_key?: string
+          property_id?: string | null
+          request_context?: Json | null
+          strategy?: Json | null
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       canvassiq_enrichment_logs: {
         Row: {
           confidence: number | null
@@ -6429,6 +6462,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      contact_enrichment_cache: {
+        Row: {
+          age: number | null
+          batchdata_payload: Json | null
+          cost: number | null
+          emails: Json | null
+          id: string
+          normalized_address_key: string
+          owner_name: string | null
+          phones: Json | null
+          relatives: Json | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          age?: number | null
+          batchdata_payload?: Json | null
+          cost?: number | null
+          emails?: Json | null
+          id?: string
+          normalized_address_key: string
+          owner_name?: string | null
+          phones?: Json | null
+          relatives?: Json | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          age?: number | null
+          batchdata_payload?: Json | null
+          cost?: number | null
+          emails?: Json | null
+          id?: string
+          normalized_address_key?: string
+          owner_name?: string | null
+          phones?: Json | null
+          relatives?: Json | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       contact_merge_log: {
         Row: {
@@ -24746,6 +24821,45 @@ export type Database = {
           },
         ]
       }
+      property_scores_cache: {
+        Row: {
+          absentee_reasons: string[]
+          absentee_score: number
+          equity_reasons: string[]
+          equity_score: number
+          id: string
+          normalized_address_key: string
+          roof_age_reasons: string[]
+          roof_age_score: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          absentee_reasons?: string[]
+          absentee_score?: number
+          equity_reasons?: string[]
+          equity_score?: number
+          id?: string
+          normalized_address_key: string
+          roof_age_reasons?: string[]
+          roof_age_score?: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          absentee_reasons?: string[]
+          absentee_score?: number
+          equity_reasons?: string[]
+          equity_score?: number
+          id?: string
+          normalized_address_key?: string
+          roof_age_reasons?: string[]
+          roof_age_score?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       proposal_financing: {
         Row: {
           apr_percent: number
@@ -25049,6 +25163,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      public_property_cache: {
+        Row: {
+          assessed_value: number | null
+          confidence_score: number | null
+          county: string | null
+          county_fips: string | null
+          homestead: boolean | null
+          id: string
+          last_sale_amount: number | null
+          last_sale_date: string | null
+          mailing_address: string | null
+          normalized_address_key: string
+          owner_name: string | null
+          parcel_id: string | null
+          raw_county_payload: Json | null
+          source: string | null
+          state: string
+          state_fips: string | null
+          tenant_id: string
+          updated_at: string | null
+          year_built: number | null
+        }
+        Insert: {
+          assessed_value?: number | null
+          confidence_score?: number | null
+          county?: string | null
+          county_fips?: string | null
+          homestead?: boolean | null
+          id?: string
+          last_sale_amount?: number | null
+          last_sale_date?: string | null
+          mailing_address?: string | null
+          normalized_address_key: string
+          owner_name?: string | null
+          parcel_id?: string | null
+          raw_county_payload?: Json | null
+          source?: string | null
+          state: string
+          state_fips?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          year_built?: number | null
+        }
+        Update: {
+          assessed_value?: number | null
+          confidence_score?: number | null
+          county?: string | null
+          county_fips?: string | null
+          homestead?: boolean | null
+          id?: string
+          last_sale_amount?: number | null
+          last_sale_date?: string | null
+          mailing_address?: string | null
+          normalized_address_key?: string
+          owner_name?: string | null
+          parcel_id?: string | null
+          raw_county_payload?: Json | null
+          source?: string | null
+          state?: string
+          state_fips?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          year_built?: number | null
+        }
+        Relationships: []
       }
       punch_list_items: {
         Row: {
