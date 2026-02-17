@@ -75,12 +75,13 @@ export default function LiveLocationMap({
       center: [userLocation.lng, userLocation.lat],
       zoom: 17,
       pitch: 0,
+      maxPitch: 0,
     });
 
     // Add navigation controls
     map.current.addControl(
       new mapboxgl.NavigationControl({
-        visualizePitch: true,
+        visualizePitch: false,
       }),
       'top-right'
     );

@@ -41,6 +41,13 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Sanitize owner name — strip literal "null"/"unknown" strings
+    const cleanOwner = (v: any) => {
+      if (!v) return null;
+      const s = String(v).trim().toLowerCase();
+      return (s === 'null' || s === 'undefined' || s === 'unknown' || s === 'unknown owner') ? null : String(v).trim();
+    };
+
     const timeoutMs = body.timeout_ms ?? 15000;
 
     // 1) Resolve location
@@ -61,6 +68,20 @@ Deno.serve(async (req) => {
         ? 7 * 24 * 60 * 60 * 1000
         : 30 * 24 * 60 * 60 * 1000;
       if (age < maxAgeMs) {
+        // Sync cached data to canvassiq_properties before returning
+        if (property_id && cleanOwner(cached.owner_name)) {
+          const cachedRaw = cached.raw_data || {};
+          const cachedPhones = cachedRaw.contact_phones || [];
+          const cachedEmails = cachedRaw.contact_emails || [];
+          const syncPayload: Record<string, any> = {
+            enrichment_last_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          };
+          if (cleanOwner(cached.owner_name)) syncPayload.owner_name = cleanOwner(cached.owner_name);
+          if (cachedPhones.length > 0) syncPayload.phone_numbers = cachedPhones.map((p: any) => p.number || p);
+          if (cachedEmails.length > 0) syncPayload.emails = cachedEmails.map((e: any) => e.address || e);
+          await supabase.from("canvassiq_properties").update(syncPayload).eq("id", property_id);
+        }
         return new Response(JSON.stringify({ success: true, result: cached, cached: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
@@ -132,12 +153,6 @@ Deno.serve(async (req) => {
     if (upsertErr) console.error("[storm-public-lookup] upsert error", upsertErr);
 
     // 6) Update canvassiq_properties if property_id provided (no owner_name gate)
-    // Sanitize owner name — strip literal "null"/"unknown" strings
-    const cleanOwner = (v: any) => {
-      if (!v) return null;
-      const s = String(v).trim().toLowerCase();
-      return (s === 'null' || s === 'undefined' || s === 'unknown' || s === 'unknown owner') ? null : String(v).trim();
-    };
 
     if (property_id) {
       const contactPhones = result.contact_phones || [];

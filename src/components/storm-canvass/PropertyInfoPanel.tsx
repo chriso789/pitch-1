@@ -115,6 +115,20 @@ export default function PropertyInfoPanel({
       console.log('[handleEnrich] Response:', JSON.stringify(data).slice(0, 500));
 
       const pipelineResult = data?.pipeline || data?.result || data;
+
+      // Normalize cached response — cached records store contact data in raw_data
+      if (data?.cached && pipelineResult?.raw_data) {
+        const raw = pipelineResult.raw_data;
+        if (!pipelineResult.contact_phones && raw.contact_phones) {
+          pipelineResult.contact_phones = raw.contact_phones;
+        }
+        if (!pipelineResult.contact_emails && raw.contact_emails) {
+          pipelineResult.contact_emails = raw.contact_emails;
+        }
+        if (!pipelineResult.contact_age && raw.contact_age) {
+          pipelineResult.contact_age = raw.contact_age;
+        }
+      }
       
       if (validOwner(pipelineResult?.owner_name)) {
         setEnrichedOwners([{
@@ -177,7 +191,11 @@ export default function PropertyInfoPanel({
       const hasUpdatedEmails = updatedProperty?.emails?.length > 0;
 
       if (data?.cached) {
-        toast.success('Using cached data');
+        if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
+          toast.success('Property data loaded (cached)');
+        } else {
+          toast.warning('No owner data in cache — tap Enrich to retry');
+        }
       } else if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
         toast.success('Property enriched!');
       } else {
