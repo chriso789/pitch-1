@@ -30,7 +30,8 @@ import {
   MessageSquare,
   Activity,
   CheckCircle,
-  UserCheck
+  UserCheck,
+  Eye
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -346,20 +347,28 @@ const ContactProfile = () => {
                       </div>
                     )}
                     
-                    {/* Quick Convert Button */}
-                    {entry.status === 'ready_for_approval' && (
-                      <div className="pt-3 border-t">
+                    {/* View Details & Quick Convert */}
+                    <div className="pt-3 border-t flex gap-2">
+                      <Button 
+                        variant="outline" 
+                        className="flex-1"
+                        onClick={() => navigate(`/lead/${entry.id}`)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        View Details
+                      </Button>
+                      {entry.status === 'ready_for_approval' && (
                         <JobApprovalDialog
                           pipelineEntry={entry}
                           onJobCreated={handleJobCreated}
                         >
-                          <Button className="w-full shadow-soft" variant="default">
+                          <Button className="flex-1 shadow-soft" variant="default">
                             <CheckCircle className="h-4 w-4 mr-2" />
                             Quick Convert to Job
                           </Button>
                         </JobApprovalDialog>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
