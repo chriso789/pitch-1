@@ -71,6 +71,9 @@ export default function PropertyInfoPanel({
   const [showFastEstimate, setShowFastEstimate] = useState(false);
   const hasAutoEnrichedRef = useRef<string | null>(null);
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
+  const [showStormReports, setShowStormReports] = useState(false);
+  const [stormReports, setStormReports] = useState<any[]>([]);
+  const [loadingStorm, setLoadingStorm] = useState(false);
 
   // Local state for property data — drives UI re-renders after enrichment
   const [localProperty, setLocalProperty] = useState<any>(property);
@@ -561,10 +564,28 @@ export default function PropertyInfoPanel({
     }
   };
 
+  const handleStormReports = async () => {
+    setShowStormReports(true);
+    setLoadingStorm(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('noaa-storm-reports', {
+        body: { lat: propertyLat, lng: propertyLng, radius_miles: 15, years_back: 3 },
+      });
+      if (error) throw error;
+      setStormReports(data?.reports || []);
+    } catch (err: any) {
+      console.error('[storm-reports]', err);
+      toast.error('Failed to fetch storm reports');
+      setStormReports([]);
+    } finally {
+      setLoadingStorm(false);
+    }
+  };
+
   const handleToolAction = (tool: string) => {
     switch (tool) {
       case 'storm':
-        window.open(`https://www.google.com/search?q=hail+storm+damage+${encodeURIComponent(fullAddress)}`, '_blank');
+        handleStormReports();
         break;
       case 'google_sun':
         window.open(`https://sunroof.withgoogle.com/building/${property.lat}/${property.lng}`, '_blank');
@@ -917,6 +938,63 @@ export default function PropertyInfoPanel({
           propertyAddress={property?.address?.street || property?.owner_address}
           userLocation={userLocation}
         />
+
+        {/* Storm Reports Dialog */}
+        {showStormReports && (
+          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50" onClick={() => setShowStormReports(false)}>
+            <div className="bg-background rounded-t-xl w-full max-w-lg max-h-[70vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-4 border-b">
+                <div>
+                  <h3 className="font-semibold text-sm">Storm Reports</h3>
+                  <p className="text-xs text-muted-foreground">NOAA data within 15mi • Last 3 years</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setShowStormReports(false)}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <ScrollArea className="max-h-[55vh] p-4">
+                {loadingStorm ? (
+                  <div className="flex items-center justify-center py-8 gap-2">
+                    <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Fetching NOAA reports...</span>
+                  </div>
+                ) : stormReports.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Cloud className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-sm text-muted-foreground">No storm reports found in this area</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground mb-3">{stormReports.length} report{stormReports.length !== 1 ? 's' : ''} found</p>
+                    {stormReports.map((report, i) => (
+                      <div key={i} className="border rounded-lg p-3 text-xs space-y-1">
+                        <div className="flex items-center justify-between">
+                          <Badge variant="secondary" className="text-[10px]">
+                            {report.event_type}
+                          </Badge>
+                          <span className="text-muted-foreground">
+                            {report.date ? new Date(report.date).toLocaleDateString() : 'Unknown date'}
+                          </span>
+                        </div>
+                        {report.magnitude && (
+                          <p className="font-medium">Magnitude: {report.magnitude}</p>
+                        )}
+                        {report.description && (
+                          <p className="text-muted-foreground line-clamp-2">{report.description}</p>
+                        )}
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          {report.location && <span>{report.location}</span>}
+                          {report.distance_miles > 0 && <span>• {report.distance_miles}mi away</span>}
+                          <span>• {report.source}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          </div>
+        )}
       </SheetContent>
     </Sheet>
   );
