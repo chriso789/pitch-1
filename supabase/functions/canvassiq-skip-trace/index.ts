@@ -145,7 +145,33 @@ serve(async (req) => {
     const relatives = result?.relatives || [];
 
     // =============================================
-    // STEP 3: Cache result
+    // STEP 3: DNC scrubbing — cache BatchData dnc flags
+    // =============================================
+    for (const phone of phones) {
+      if (phone.number) {
+        try {
+          await supabase.from('dnc_scrub_results').upsert({
+            tenant_id,
+            phone_e164: phone.number,
+            is_dnc: phone.dnc === true,
+            is_wireless: (phone.type || '').toLowerCase() === 'mobile',
+            source: 'batchdata',
+            scrubbed_at: new Date().toISOString(),
+          }, { onConflict: 'tenant_id,phone_e164' });
+        } catch { /* best-effort */ }
+      }
+    }
+
+    // Build callable phone list
+    const phonesWithCallable = phones.map(p => ({
+      number: p.number,
+      type: p.type,
+      dnc: p.dnc === true,
+      callable: p.dnc !== true,
+    }));
+
+    // =============================================
+    // STEP 4: Cache result
     // =============================================
     const contactRow = {
       property_id,
@@ -203,7 +229,7 @@ serve(async (req) => {
             age,
             is_primary: true,
           }],
-          phones: phones.map(p => ({ number: p.number, type: p.type, dnc: p.dnc })),
+          phones: phonesWithCallable,
           emails: emails.map(e => ({ address: e, type: 'personal' })),
           relatives,
           enriched_at: new Date().toISOString(),

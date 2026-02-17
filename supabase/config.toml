@@ -1098,3 +1098,6 @@ verify_jwt = false
 
 [functions.canvass-area-auto-split]
 verify_jwt = false
+
+[functions.door-knock-strategy]
+verify_jwt = false
