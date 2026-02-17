@@ -1,71 +1,81 @@
 
 
-# Fix: Auto-Pull All Free Public Data and Conditionally Show BatchData Button
+# Fix: Sarasota County ArcGIS URL is Dead + Sources Badges Misleading
 
-## What's Wrong
+## Root Cause
 
-1. **`handlePublicLookup` only extracts `owner_name`** -- The `storm-public-lookup` edge function returns parcel_id, assessed_value, year_built, living_sqft, homestead, lot_size, land_use, and confidence_score, but the frontend callback (lines 134-149) only reads `owner_name`. All other fields are thrown away.
+Two issues are causing "checks pass but no data saved":
 
-2. **UI reads from `property.property_data` instead of `localProperty`** -- The property detail badges (parcel ID, sqft, year built, homestead) on lines 683-706 read from `property.property_data`, which is the raw database prop passed from the parent. After `handlePublicLookup` completes, the new data is only in `localProperty` but the UI doesn't reference it for those fields.
+### 1. Sarasota County ArcGIS DNS Failure (Backend)
+The Sarasota adapter at `supabase/functions/_shared/public_data/sources/fl/counties/sarasota.ts` points to `gis.sc-pa.com` which is **no longer resolving** (DNS error in edge function logs). Every request fails with:
+```
+dns error: failed to lookup address information: Name or service not known
+```
 
-3. **"Get Contact Info" button always visible** -- It should only show when the free public lookup didn't find contact data (no phones/emails from public sources), as a fallback to trigger the paid BatchData skip-trace.
+The correct, working endpoint is hosted on ArcGIS Online:
+```
+https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer/0
+```
+
+I verified this endpoint returns data for 4346 Marcott Cir: owner "WILSON ANITA", parcel "0067020049", assessed $294,900, year built 1993, 1,492 sqft.
+
+The field names are also different from the old server:
+| Old Field | New Field |
+|-----------|-----------|
+| PARCEL_ID | ACCOUNT |
+| OWNER_NAME | NAME1 |
+| SITUS_ADDRESS | FULLADDRESS |
+| JUST_VALUE | JUST |
+| (none) | YRBL (year built) |
+| (none) | LIVING (sqft) |
+| (none) | LSQFT (lot sqft) |
+
+### 2. Source Badges Show False Positives (Frontend)
+The pipeline `sources` object contains keys like `"appraiser": "skipped_fl_direct"` or `"tax": "universal_tax"` even when those sources returned zero data. The frontend filter `Object.keys(sources).filter(k => sources[k])` treats any truthy string as success, so it shows green checkmarks for sources that actually failed or returned nothing.
+
+The badges should only show for sources that actually contributed data (i.e., confidence > 0 or owner found).
 
 ## Fix Plan
 
-### File: `src/components/storm-canvass/PropertyInfoPanel.tsx`
+### Change 1: Update Sarasota adapter URL and field mapping
 
-**Change 1: Extract all public fields in `handlePublicLookup`**
+**File:** `supabase/functions/_shared/public_data/sources/fl/counties/sarasota.ts`
 
-After the `storm-public-lookup` call returns, merge ALL pipeline fields into `localProperty`:
-- `owner_name`, `parcel_id`, `assessed_value`, `year_built`, `living_sqft`, `lot_size`, `land_use`, `homestead`, `confidence_score`, `owner_mailing_address`
-- Also merge `property_data` object so the UI badges work from `localProperty`
+- Change `serviceUrl` from `https://gis.sc-pa.com/arcgis/rest/services/Parcels/MapServer/0` to `https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer/0`
+- Change `searchField` from `SITUS_ADDRESS` to `FULLADDRESS`
+- Update `outFields` to `ACCOUNT,NAME1,FULLADDRESS,HOMESTEAD,JUST,SALE_DATE,SALE_AMT,YRBL,LIVING,LSQFT`
+- Update `fieldMap` to map the new field names:
+  - `ACCOUNT` -> `parcel_id`
+  - `NAME1` -> `owner_name`
+  - `FULLADDRESS` -> `property_address`
+  - `HOMESTEAD` -> `homestead`
+  - `JUST` -> `assessed_value`
+  - `SALE_DATE` -> `last_sale_date`
+  - `SALE_AMT` -> `last_sale_amount`
+  - `YRBL` -> `year_built`
+  - `LIVING` -> `living_sqft`
+  - `LSQFT` -> `lot_size`
 
-Update lines ~134-149 to:
-```typescript
-const enrichedFields: Record<string, any> = {};
-if (validOwner(pipelineResult?.owner_name)) {
-  enrichedFields.owner_name = validOwner(pipelineResult.owner_name);
-}
-// Build property_data from pipeline
-enrichedFields.property_data = {
-  ...prev.property_data,
-  parcel_id: pipelineResult?.parcel_id || prev.property_data?.parcel_id,
-  assessed_value: pipelineResult?.assessed_value || prev.property_data?.assessed_value,
-  year_built: pipelineResult?.year_built || prev.property_data?.year_built,
-  living_sqft: pipelineResult?.living_sqft || prev.property_data?.living_sqft,
-  homestead: pipelineResult?.homestead ?? prev.property_data?.homestead,
-  lot_size: pipelineResult?.lot_size || prev.property_data?.lot_size,
-  land_use: pipelineResult?.land_use || prev.property_data?.land_use,
-  confidence_score: pipelineResult?.confidence_score || prev.property_data?.confidence_score,
-  sources: Object.keys(pipelineResult?.sources || {}).filter(k => pipelineResult.sources[k]),
-};
-setLocalProperty(prev => ({ ...prev, ...enrichedFields }));
-```
+### Change 2: Fix misleading source badges in frontend
 
-**Change 2: UI reads from `localProperty` instead of `property`**
+**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-Update lines 664-706 to reference `localProperty.property_data` instead of `property.property_data` for:
-- Confidence badge
-- Parcel ID, sqft, year built, homestead badges
-- Sources verification
+Update the sources extraction (line 154) to only include sources that are NOT error/skip strings. Filter out values like `"skipped_fl_direct"`, `null`, `false`, and only include `true` or adapter IDs that start with `"fl_"` or similar known patterns. Additionally, only show the source badges row when confidence_score > 0.
 
-**Change 3: Conditionally show "Get Contact Info" button**
+### Change 3: Deploy edge function
 
-Only show the BatchData button when:
-- Public lookup is done AND no phone numbers or emails were found from public data
-- OR when the user has no owner_name (total failure)
-
-Replace the always-visible button (line 762-777) with conditional rendering: show "Get Contact Info" only when `publicLookupDoneRef.current === property.id && phoneNumbers.length === 0 && emails.length === 0`.
-
-During public lookup loading, show a "Loading property data..." indicator instead.
-
-### No Edge Function Changes
-
-The `storm-public-lookup` function already returns all the fields. The FL county registry and ArcGIS adapters (with suffix normalization) are already deployed. The issue is purely frontend -- the data comes back but gets ignored.
+After updating the Sarasota adapter, deploy `storm-public-lookup` so the fix takes effect immediately.
 
 ## Files to Update
 
 | File | Change |
 |------|--------|
-| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Extract all pipeline fields in handlePublicLookup; read from localProperty in UI; conditionally show BatchData button |
+| `supabase/functions/_shared/public_data/sources/fl/counties/sarasota.ts` | New ArcGIS Online URL + updated field names |
+| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Fix source badge false positives |
+
+## Expected Result
+
+- Opening a pin in Sarasota County will auto-pull owner name, parcel ID, assessed value, year built, sqft from the working ArcGIS endpoint
+- Source badges will only show green checkmarks for sources that actually returned data
+- Confidence score will be 75+ (instead of 0) for Sarasota properties
 
