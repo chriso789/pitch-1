@@ -1,10 +1,13 @@
 // supabase/functions/_shared/public_data/countyResolver.ts
+// County resolution: FCC Area API (fast) → Census TIGER (fallback)
 
 import { CountyContext } from "./types.ts";
+import { fccArea, normalizeCountyName } from "../geo/fccArea.ts";
 
 /**
- * Resolve county from lat/lng using Census TIGER geocoder.
- * Falls back to county_hint from Nominatim if TIGER fails.
+ * Resolve county from lat/lng.
+ * Tries FCC Census Area API first (faster, no key needed).
+ * Falls back to Census TIGER geocoder if FCC fails.
  */
 export async function getCountyContext(input: {
   lat: number;
@@ -15,6 +18,22 @@ export async function getCountyContext(input: {
 }): Promise<CountyContext> {
   const { lat, lng, state, county_hint, timeoutMs } = input;
 
+  // --- Try FCC first (faster) ---
+  try {
+    const fcc = await fccArea(lat, lng, Math.min(timeoutMs, 6000));
+    if (fcc.countyName) {
+      console.log(`[countyResolver] FCC resolved: ${fcc.countyName} (${fcc.stateCode})`);
+      return {
+        state: fcc.stateCode || state,
+        county_name: normalizeCountyName(fcc.countyName),
+        county_fips: fcc.countyFips,
+      };
+    }
+  } catch (e) {
+    console.warn("[countyResolver] FCC error, falling back to TIGER:", e);
+  }
+
+  // --- Fallback: Census TIGER ---
   try {
     const url = `https://geocoding.geo.census.gov/geocoder/geographies/coordinates?x=${lng}&y=${lat}&benchmark=Public_AR_Current&vintage=Current_Current&format=json`;
     const controller = new AbortController();
@@ -30,9 +49,10 @@ export async function getCountyContext(input: {
       const stateGeo = geographies?.States?.[0];
 
       if (county) {
+        const rawName = county.BASENAME || county.NAME || county_hint || "Unknown";
         return {
           state: stateGeo?.STUSAB || state,
-          county_name: county.BASENAME || county.NAME || county_hint || "Unknown",
+          county_name: normalizeCountyName(rawName),
           county_fips: county.GEOID || `${county.STATE}${county.COUNTY}`,
         };
       }
@@ -41,9 +61,9 @@ export async function getCountyContext(input: {
     console.error("[countyResolver] TIGER error:", e);
   }
 
-  // Fallback to Nominatim hint
+  // Fallback to hint
   return {
     state,
-    county_name: county_hint || "Unknown",
+    county_name: normalizeCountyName(county_hint),
   };
 }

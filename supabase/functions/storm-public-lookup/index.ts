@@ -5,6 +5,9 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { resolveLocation } from "../_shared/public_data/locationResolver.ts";
 import { getCountyContext } from "../_shared/public_data/countyResolver.ts";
 import { lookupPropertyPublic } from "../_shared/public_data/publicLookupPipeline.ts";
+import { equityScore } from "../_shared/scoring/equity.ts";
+import { absenteeScore } from "../_shared/scoring/absentee.ts";
+import { roofAgeLikelihood } from "../_shared/scoring/roofAge.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,7 +110,28 @@ Deno.serve(async (req) => {
       tenantId: tenant_id,
     });
 
-    // 5) Upsert to storm_properties_public
+    // 5) Compute intelligence scores
+    const scores = {
+      equity: equityScore({
+        assessedValue: result.assessed_value,
+        lastSaleAmount: result.last_sale_amount,
+        lastSaleDate: result.last_sale_date,
+        homestead: result.homestead,
+      }),
+      absentee: absenteeScore({
+        propertyAddress: result.property_address,
+        mailingAddress: result.owner_mailing_address,
+        homestead: result.homestead,
+        ownerName: result.owner_name,
+      }),
+      roof_age: roofAgeLikelihood({
+        yearBuilt: result.year_built,
+        lastSaleDate: result.last_sale_date,
+        homestead: result.homestead,
+      }),
+    };
+
+    // 6) Upsert to storm_properties_public
     // Sanitize date fields - scrapers sometimes return "Not provided" or other non-date strings
     const sanitizeDate = (v: any) => (v && !isNaN(Date.parse(v)) ? v : null);
 
@@ -143,6 +167,7 @@ Deno.serve(async (req) => {
       used_batchleads: result.sources.used_batchleads ?? false,
       batchleads_payload: result.raw.batchleads ?? null,
       raw_data: result.raw,
+      scores,
       updated_at: new Date().toISOString(),
     };
 
@@ -203,7 +228,7 @@ Deno.serve(async (req) => {
     }
 
     return new Response(
-      JSON.stringify({ success: true, result: saved ?? row, cached: false, pipeline: result }),
+      JSON.stringify({ success: true, result: saved ?? row, cached: false, pipeline: result, scores }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {

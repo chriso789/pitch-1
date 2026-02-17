@@ -3,7 +3,8 @@ import {
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
   Cloud, Sun, Compass, Calculator, FileText, Camera, CalendarPlus, BarChart3,
-  History, StickyNote, UserPlus, Loader2, Sparkles, ShieldCheck, ShieldAlert, RefreshCw
+  History, StickyNote, UserPlus, Loader2, Sparkles, ShieldCheck, ShieldAlert, RefreshCw,
+  Brain, TrendingUp, Building2, HardHat, PhoneOff
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -74,6 +75,9 @@ export default function PropertyInfoPanel({
   const [showStormReports, setShowStormReports] = useState(false);
   const [stormReports, setStormReports] = useState<any[]>([]);
   const [loadingStorm, setLoadingStorm] = useState(false);
+  const [generatingStrategy, setGeneratingStrategy] = useState(false);
+  const [doorStrategy, setDoorStrategy] = useState<any>(null);
+  const [pipelineScores, setPipelineScores] = useState<any>(null);
   const [stormFilter, setStormFilter] = useState<'all' | 'hail' | 'wind' | 'tornado'>('all');
 
   // Local state for property data — drives UI re-renders after enrichment
@@ -119,6 +123,13 @@ export default function PropertyInfoPanel({
       }
 
       const pipelineResult = data?.pipeline || data?.result || data;
+
+      // Capture scores from pipeline response
+      if (data?.scores) {
+        setPipelineScores(data.scores);
+      } else if (data?.result?.scores) {
+        setPipelineScores(data.result.scores);
+      }
 
       // Update owner from county data
       if (validOwner(pipelineResult?.owner_name)) {
@@ -243,6 +254,8 @@ export default function PropertyInfoPanel({
       setEnrichedOwners([]);
       setSelectedOwner(null);
       setNotes('');
+      setDoorStrategy(null);
+      setPipelineScores(null);
     }
   }, [property?.id]);
 
@@ -569,6 +582,43 @@ export default function PropertyInfoPanel({
     }
   };
 
+  const handleGenerateStrategy = async () => {
+    setGeneratingStrategy(true);
+    try {
+      const addr = typeof property.address === 'string' 
+        ? JSON.parse(property.address) 
+        : (property.address || {});
+      const { data, error } = await supabase.functions.invoke('door-knock-strategy', {
+        body: {
+          property: {
+            address: addr?.formatted || fullAddress,
+            owner_name: ownerName,
+            year_built: property.property_data?.year_built,
+            homestead: property.property_data?.homestead,
+            assessed_value: property.property_data?.assessed_value,
+          },
+          scores: pipelineScores,
+          contact: {
+            phones: phoneNumbers?.map((p: any) => ({
+              number: typeof p === 'string' ? p : p.number,
+              dnc: typeof p === 'object' && p.dnc === true,
+            })),
+            age: displayOwners[0]?.age,
+          },
+          time_of_day: new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening',
+        },
+      });
+      if (error) throw error;
+      setDoorStrategy(data?.strategy || null);
+      toast.success('Strategy generated!');
+    } catch (err: any) {
+      console.error('[strategy]', err);
+      toast.error('Failed to generate strategy');
+    } finally {
+      setGeneratingStrategy(false);
+    }
+  };
+
   const handleToolAction = (tool: string) => {
     switch (tool) {
       case 'storm':
@@ -755,7 +805,13 @@ export default function PropertyInfoPanel({
                 <div className="flex items-center gap-2">
                   <Phone className="h-4 w-4 text-muted-foreground" />
                   <div className="flex flex-wrap gap-1.5">
-                    {phoneNumbers.slice(0, 3).map((phone: any, idx: number) => {
+                    {[...phoneNumbers]
+                      .sort((a: any, b: any) => {
+                        const aDnc = typeof a === 'object' && a.dnc === true ? 1 : 0;
+                        const bDnc = typeof b === 'object' && b.dnc === true ? 1 : 0;
+                        return aDnc - bDnc;
+                      })
+                      .slice(0, 3).map((phone: any, idx: number) => {
                       const phoneNumber = typeof phone === 'string' ? phone : phone.number;
                       const phoneType = typeof phone === 'object' ? phone.type : null;
                       const isDnc = typeof phone === 'object' && phone.dnc === true;
@@ -764,9 +820,11 @@ export default function PropertyInfoPanel({
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleCall(phoneNumber)}
-                            className="text-xs h-7"
+                            onClick={() => !isDnc && handleCall(phoneNumber)}
+                            className={cn("text-xs h-7", isDnc && "opacity-40 line-through cursor-not-allowed")}
+                            disabled={isDnc}
                           >
+                            {isDnc && <PhoneOff className="h-3 w-3 mr-1 text-destructive" />}
                             {phoneNumber}
                             {phoneType && phoneType !== 'Unknown' && (
                               <span className="text-muted-foreground ml-1">({phoneType})</span>
@@ -816,7 +874,7 @@ export default function PropertyInfoPanel({
               </TabsTrigger>
             </TabsList>
             <TabsContent value="tools" className="mt-2">
-              <div className="grid grid-cols-5 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <Button 
                   variant="outline" 
                   size="sm" 
@@ -862,7 +920,51 @@ export default function PropertyInfoPanel({
                   <Camera className="h-5 w-5 mb-1 text-orange-500" />
                   <span className="text-[10px]">Add Photo</span>
                 </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-col h-16 p-2"
+                  onClick={handleGenerateStrategy}
+                  disabled={generatingStrategy}
+                >
+                  {generatingStrategy ? (
+                    <Loader2 className="h-5 w-5 mb-1 animate-spin text-primary" />
+                  ) : (
+                    <Brain className="h-5 w-5 mb-1 text-primary" />
+                  )}
+                  <span className="text-[10px]">{generatingStrategy ? 'AI...' : 'Strategy'}</span>
+                </Button>
               </div>
+              {/* AI Strategy Card */}
+              {doorStrategy && (
+                <div className="mt-3 border rounded-lg p-3 bg-muted/30 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Brain className="h-4 w-4 text-primary" />
+                      <span className="text-xs font-semibold">Door Knock Strategy</span>
+                    </div>
+                    <Badge variant="outline" className="text-[9px]">{doorStrategy.angle}</Badge>
+                  </div>
+                  <p className="text-xs leading-relaxed">{doorStrategy.opener}</p>
+                  {doorStrategy.objections?.length > 0 && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-medium text-muted-foreground">Objections:</p>
+                      {doorStrategy.objections.slice(0, 2).map((obj: any, i: number) => (
+                        <div key={i} className="text-[10px] pl-2 border-l-2 border-primary/30">
+                          <p className="font-medium">"{obj.objection}"</p>
+                          <p className="text-muted-foreground">→ {obj.response}</p>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between text-[10px] text-muted-foreground pt-1 border-t">
+                    <span>Next: {doorStrategy.next_action?.replace(/_/g, ' ')}</span>
+                    {doorStrategy.compliance_notes && (
+                      <span className="text-destructive">{doorStrategy.compliance_notes}</span>
+                    )}
+                  </div>
+                </div>
+              )}
             </TabsContent>
             <TabsContent value="add_new" className="mt-2">
               <div className="grid grid-cols-3 gap-2">
@@ -880,18 +982,35 @@ export default function PropertyInfoPanel({
                 </Button>
               </div>
             </TabsContent>
-            <TabsContent value="score_intel" className="mt-2">
+            <TabsContent value="score_intel" className="mt-2 space-y-3">
+              {/* Pipeline Intelligence Scores */}
+              {pipelineScores && (
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: 'Equity', data: pipelineScores.equity, icon: TrendingUp, color: 'text-green-600' },
+                    { label: 'Absentee', data: pipelineScores.absentee, icon: Building2, color: 'text-blue-600' },
+                    { label: 'Roof Age', data: pipelineScores.roof_age, icon: HardHat, color: 'text-orange-600' },
+                  ].map(({ label, data, icon: Icon, color }) => (
+                    <div key={label} className="border rounded-lg p-2 text-center">
+                      <Icon className={cn("h-4 w-4 mx-auto mb-1", color)} />
+                      <p className="text-lg font-bold">{data?.score ?? '—'}</p>
+                      <p className="text-[9px] text-muted-foreground">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Storm Intel */}
               {profile?.tenant_id && property?.normalized_address_key && property?.storm_event_id ? (
                 <StormScoreWhyPanel
                   tenantId={profile.tenant_id}
                   stormEventId={property.storm_event_id}
                   normalizedAddressKey={property.normalized_address_key}
                 />
-              ) : (
+              ) : !pipelineScores ? (
                 <div className="text-xs text-muted-foreground text-center py-4">
-                  No storm intel available for this property.
+                  No intel available. Enrich property to see scores.
                 </div>
-              )}
+              ) : null}
             </TabsContent>
           </Tabs>
 

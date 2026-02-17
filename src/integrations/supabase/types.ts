@@ -9272,6 +9272,39 @@ export type Database = {
           },
         ]
       }
+      dnc_scrub_results: {
+        Row: {
+          id: string
+          is_dnc: boolean | null
+          is_wireless: boolean | null
+          phone_e164: string
+          raw: Json | null
+          scrubbed_at: string | null
+          source: string | null
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          is_dnc?: boolean | null
+          is_wireless?: boolean | null
+          phone_e164: string
+          raw?: Json | null
+          scrubbed_at?: string | null
+          source?: string | null
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          is_dnc?: boolean | null
+          is_wireless?: boolean | null
+          phone_e164?: string
+          raw?: Json | null
+          scrubbed_at?: string | null
+          source?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       docgen_fields: {
         Row: {
           agreement_instance_id: string
@@ -32190,6 +32223,7 @@ export type Database = {
           polygon_id: string | null
           property_address: string | null
           raw_data: Json | null
+          scores: Json | null
           source_appraiser: string | null
           source_clerk: string | null
           source_esri: boolean | null
@@ -32227,6 +32261,7 @@ export type Database = {
           polygon_id?: string | null
           property_address?: string | null
           raw_data?: Json | null
+          scores?: Json | null
           source_appraiser?: string | null
           source_clerk?: string | null
           source_esri?: boolean | null
@@ -32264,6 +32299,7 @@ export type Database = {
           polygon_id?: string | null
           property_address?: string | null
           raw_data?: Json | null
+          scores?: Json | null
           source_appraiser?: string | null
           source_clerk?: string | null
           source_esri?: boolean | null
