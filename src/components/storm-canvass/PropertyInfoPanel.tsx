@@ -131,12 +131,32 @@ export default function PropertyInfoPanel({
         setPipelineScores(data.result.scores);
       }
 
-      if (validOwner(pipelineResult?.owner_name)) {
-        setLocalProperty((prev: any) => ({
-          ...prev,
-          owner_name: validOwner(pipelineResult.owner_name) || prev.owner_name,
-        }));
-      }
+      // Merge ALL public pipeline fields into localProperty
+      setLocalProperty((prev: any) => {
+        const enrichedFields: Record<string, any> = {};
+        if (validOwner(pipelineResult?.owner_name)) {
+          enrichedFields.owner_name = validOwner(pipelineResult.owner_name);
+        }
+        if (pipelineResult?.owner_mailing_address) {
+          enrichedFields.owner_mailing_address = pipelineResult.owner_mailing_address;
+        }
+        // Build property_data from pipeline results
+        enrichedFields.property_data = {
+          ...(prev.property_data || {}),
+          parcel_id: pipelineResult?.parcel_id || prev.property_data?.parcel_id,
+          assessed_value: pipelineResult?.assessed_value || prev.property_data?.assessed_value,
+          year_built: pipelineResult?.year_built || prev.property_data?.year_built,
+          living_sqft: pipelineResult?.living_sqft || prev.property_data?.living_sqft,
+          homestead: pipelineResult?.homestead ?? prev.property_data?.homestead,
+          lot_size: pipelineResult?.lot_size || prev.property_data?.lot_size,
+          land_use: pipelineResult?.land_use || prev.property_data?.land_use,
+          confidence_score: pipelineResult?.confidence_score || prev.property_data?.confidence_score,
+          sources: pipelineResult?.sources
+            ? Object.keys(pipelineResult.sources).filter((k: string) => pipelineResult.sources[k])
+            : prev.property_data?.sources,
+        };
+        return { ...prev, ...enrichedFields };
+      });
 
       // Set enriched owner from public data if available
       if (validOwner(pipelineResult?.owner_name)) {
@@ -661,18 +681,21 @@ export default function PropertyInfoPanel({
                   <User className="h-5 w-5 text-primary" />
                   {ownerName}
                   {/* Confidence badge from public data */}
-                  {property.property_data?.confidence_score != null && (
+                  {localProperty.property_data?.confidence_score != null && (
                     <Badge 
                       variant="outline"
                       className={cn(
                         "text-[10px] ml-1",
-                        property.property_data.confidence_score >= 80 && "bg-green-100 text-green-700 border-green-300",
-                        property.property_data.confidence_score >= 60 && property.property_data.confidence_score < 80 && "bg-yellow-100 text-yellow-700 border-yellow-300",
-                        property.property_data.confidence_score < 60 && "bg-red-100 text-red-700 border-red-300"
+                        localProperty.property_data.confidence_score >= 80 && "bg-green-100 text-green-700 border-green-300",
+                        localProperty.property_data.confidence_score >= 60 && localProperty.property_data.confidence_score < 80 && "bg-yellow-100 text-yellow-700 border-yellow-300",
+                        localProperty.property_data.confidence_score < 60 && "bg-red-100 text-red-700 border-red-300"
                       )}
                     >
-                      {property.property_data.confidence_score >= 80 ? '✓' : property.property_data.confidence_score >= 60 ? '⚠' : '✗'} {property.property_data.confidence_score}%
+                      {localProperty.property_data.confidence_score >= 80 ? '✓' : localProperty.property_data.confidence_score >= 60 ? '⚠' : '✗'} {localProperty.property_data.confidence_score}%
                     </Badge>
+                  )}
+                  {publicLookupLoading && (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground ml-1" />
                   )}
                 </SheetTitle>
                 <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
@@ -680,26 +703,26 @@ export default function PropertyInfoPanel({
                   {fullAddress}
                 </p>
                 {/* Property Intelligence Row */}
-                {property.property_data?.parcel_id && (
+                {localProperty.property_data?.parcel_id && (
                   <div className="flex flex-wrap gap-1.5 mt-1.5">
-                    {property.property_data.parcel_id && (
-                      <Badge variant="outline" className="text-[9px] font-normal">APN: {property.property_data.parcel_id}</Badge>
+                    {localProperty.property_data.parcel_id && (
+                      <Badge variant="outline" className="text-[9px] font-normal">APN: {localProperty.property_data.parcel_id}</Badge>
                     )}
-                    {property.property_data.living_sqft && (
-                      <Badge variant="outline" className="text-[9px] font-normal">{property.property_data.living_sqft.toLocaleString()} sqft</Badge>
+                    {localProperty.property_data.living_sqft && (
+                      <Badge variant="outline" className="text-[9px] font-normal">{localProperty.property_data.living_sqft.toLocaleString()} sqft</Badge>
                     )}
-                    {property.property_data.year_built && (
-                      <Badge variant="outline" className="text-[9px] font-normal">Built {property.property_data.year_built}</Badge>
+                    {localProperty.property_data.year_built && (
+                      <Badge variant="outline" className="text-[9px] font-normal">Built {localProperty.property_data.year_built}</Badge>
                     )}
-                    {property.property_data.homestead && (
+                    {localProperty.property_data.homestead && (
                       <Badge variant="outline" className="text-[9px] font-normal bg-blue-50 text-blue-700 border-blue-200">Homestead ✓</Badge>
                     )}
                   </div>
                 )}
                 {/* Source verification */}
-                {property.property_data?.sources && (
+                {localProperty.property_data?.sources && Array.isArray(localProperty.property_data.sources) && (
                   <div className="flex gap-1 mt-1">
-                    {property.property_data.sources.map((src: string) => (
+                    {localProperty.property_data.sources.map((src: string) => (
                       <span key={src} className="text-[8px] text-green-600">✔ {src}</span>
                     ))}
                   </div>
@@ -759,22 +782,26 @@ export default function PropertyInfoPanel({
           <div className="mb-4 p-3 bg-muted/50 rounded-lg">
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-medium text-muted-foreground">Select Home Owner</p>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="h-7 text-xs gap-1"
-                onClick={() => handleSkipTrace()}
-                disabled={enriching || publicLookupLoading}
-              >
-                {enriching ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : publicLookupLoading ? (
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3 w-3" />
-                )}
-                {enriching ? 'Getting Contacts...' : publicLookupLoading ? 'Loading Owner...' : 'Get Contact Info'}
-              </Button>
+              {publicLookupLoading ? (
+                <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Loading property data...
+                </span>
+              ) : (publicLookupDoneRef.current === property.id && phoneNumbers.length === 0 && emails.length === 0) ? (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 text-xs gap-1"
+                  onClick={() => handleSkipTrace()}
+                  disabled={enriching}
+                >
+                  {enriching ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  {enriching ? 'Getting Contacts...' : 'Get Contact Info'}
+                </Button>
+              ) : null}
             </div>
             <RadioGroup value={selectedOwner || ''} onValueChange={setSelectedOwner}>
               {displayOwners.map((owner) => {
