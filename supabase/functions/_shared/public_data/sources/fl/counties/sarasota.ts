@@ -6,22 +6,27 @@ import { arcgisLookup } from "../adapters/arcgis.ts";
 const config: ArcGISCountyConfig = {
   id: "fl_sarasota_arcgis",
   serviceUrl:
-    "https://gis.sc-pa.com/arcgis/rest/services/Parcels/MapServer/0",
-  searchField: "SITUS_ADDRESS",
-  outFields: "PARCEL_ID,OWNER_NAME,SITUS_ADDRESS,HOMESTEAD,JUST_VALUE,SALE_DATE,SALE_AMOUNT",
+    "https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer/0",
+  searchField: "FULLADDRESS",
+  outFields: "ACCOUNT,NAME1,FULLADDRESS,HOMESTEAD,JUST,SALE_DATE,SALE_AMT,YRBL,LIVING,LSQFT",
   fieldMap: {
-    PARCEL_ID: "parcel_id",
-    OWNER_NAME: "owner_name",
-    SITUS_ADDRESS: "property_address",
+    ACCOUNT: "parcel_id",
+    NAME1: "owner_name",
+    FULLADDRESS: "property_address",
     HOMESTEAD: "homestead",
-    JUST_VALUE: "assessed_value",
+    JUST: "assessed_value",
     SALE_DATE: "last_sale_date",
-    SALE_AMOUNT: "last_sale_amount",
+    SALE_AMT: "last_sale_amount",
+    YRBL: "year_built",
+    LIVING: "living_sqft",
+    LSQFT: "lot_size",
   },
   transforms: {
     homestead: (val) => String(val).toUpperCase() === "YES" || val === true || val === 1,
     last_sale_amount: (val) => (typeof val === "number" && val > 0 ? val : undefined),
     assessed_value: (val) => (typeof val === "number" && val > 0 ? val : undefined),
+    year_built: (val) => (typeof val === "number" && val > 1800 ? val : undefined),
+    living_sqft: (val) => (typeof val === "number" && val > 0 ? val : undefined),
   },
 };
 
