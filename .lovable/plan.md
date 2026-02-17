@@ -1,140 +1,170 @@
 
-# Integrate BatchData Skip Trace API -- Clean Architecture
 
-## Overview
+# Florida County Adapter Registry -- Direct API Architecture
 
-Replace the Firecrawl people-search scraping with **BatchData Skip Trace** as the primary contact enrichment source. This gives you **unmasked emails**, **verified phone numbers with DNC status**, and **structured first/last names** -- all from one API call per property.
+## Problem
 
-## New Architecture Flow
+The current pipeline uses **Firecrawl** for all county lookups -- it searches Google, finds a property page, then scrapes it with AI extraction. This is:
+- **Slow** (3-8 seconds per lookup: search + page load + LLM extraction)
+- **Expensive** ($0.10-0.15 per Firecrawl call, billed per scrape)
+- **Fragile** (depends on Google ranking, page structure, anti-bot protections)
+
+## Solution
+
+Build a **county adapter registry** that calls county APIs directly (most FL counties expose ArcGIS REST endpoints or similar). Firecrawl becomes the last-resort fallback for counties without adapters.
+
+## Florida Counties to Cover (22)
+
+**Tampa Bay to Marco Island:**
+Hernando, Pasco, Pinellas, Hillsborough, Polk, Manatee, Sarasota, Charlotte, Lee, Collier
+
+**Orlando to Key West:**
+Lake, Orange, Seminole, Osceola, Brevard, Indian River, St. Lucie, Martin, Palm Beach, Broward, Miami-Dade, Monroe
+
+## Platform Groupings (Research Required)
+
+Most FL counties run on a small set of platforms. Once one adapter template works, it stamps across all counties on that platform:
+
+| Platform | Pattern | Counties (estimated) |
+|----------|---------|---------------------|
+| ArcGIS REST | JSON API, no JS needed | Hillsborough, Orange, Brevard, Lee, others |
+| Patriot/Tyler | Form-based with API endpoints | Sarasota, Manatee, Charlotte |
+| qPublic | Standardized property viewer | Pasco, Hernando, others |
+| Custom/HTML | County-specific scraping | Miami-Dade, Palm Beach |
+
+*Exact platform assignments require inspecting each county appraiser's Network tab to confirm.*
+
+---
+
+## File Structure
 
 ```text
-Pin Click
-    |
-    v
-storm-public-lookup (county scrape for owner/parcel/assessed value)
-    |
-    v
-Cache in storm_properties_public + canvassiq_properties
-    |
-    v
-canvassiq-skip-trace checks: contact cached?
-    |
-    +-- YES (< 30 days) --> return cached
-    |
-    +-- NO --> BatchData Skip Trace API
-                    |
-                    v
-              Cache in canvass_property_contacts
-                    |
-                    v
-              Render full details (name, phones, emails, age)
+supabase/functions/_shared/public_data/
+  sources/
+    fl/
+      types.ts                    -- CountyLookupInput/Result types
+      registry.ts                 -- FL county router (county name -> adapter)
+      adapters/
+        arcgis.ts                 -- Generic ArcGIS REST adapter
+        patriot.ts                -- Patriot/Tyler platform adapter
+        qpublic.ts                -- qPublic platform adapter
+      counties/
+        hillsborough.ts           -- Config: ArcGIS URL + field mappings
+        pinellas.ts
+        sarasota.ts
+        manatee.ts
+        pasco.ts
+        hernando.ts
+        polk.ts
+        orange.ts
+        seminole.ts
+        osceola.ts
+        lake.ts
+        brevard.ts
+        indian_river.ts
+        st_lucie.ts
+        martin.ts
+        palm_beach.ts
+        broward.ts
+        miami_dade.ts
+        monroe.ts
+        charlotte.ts
+        lee.ts
+        collier.ts
 ```
 
-## What Gets Removed
+## Technical Changes
 
-- **Firecrawl people search** (`peopleSearch.ts`) -- no longer called from the pipeline
-- **TruePeopleSearch / FastPeopleSearch / WhitePages scraping** -- eliminated entirely
-- **Client-side scraping** -- none exists, confirmed clean
+### 1. New: `sources/fl/types.ts`
 
-## What Gets Built
+Shared types for all FL county adapters:
+- `CountyLookupInput`: address, city, state, zip, lat, lng
+- `CountyLookupResult`: parcel_id, owner_name, mailing_address, homestead, assessed_value, last_sale_date, last_sale_amount, year_built, living_sqft, lot_size, land_use, raw, source, confidence_score
 
-### Step 1: Add `BATCHDATA_API_KEY` Secret
+### 2. New: `sources/fl/registry.ts`
 
-You mentioned it's already saved -- I'll verify. If not present, I'll add it.
+County name router:
+```
+"hillsborough" -> hillsboroughLookup()
+"sarasota" -> sarasotaLookup()
+...
+"unknown" -> null (falls through to Firecrawl)
+```
+Export: `lookupFlCountyProperty(input) -> CountyLookupResult | null`
 
-### Step 2: New Database Table -- `canvass_property_contacts`
+### 3. New: `sources/fl/adapters/arcgis.ts`
 
-```sql
-CREATE TABLE canvass_property_contacts (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  property_id UUID REFERENCES canvassiq_properties(id) ON DELETE CASCADE,
-  first_name TEXT,
-  last_name TEXT,
-  primary_phone TEXT,
-  secondary_phone TEXT,
-  phone_numbers JSONB DEFAULT '[]',   -- [{number, type, dnc}]
-  emails TEXT[] DEFAULT '{}',
-  age INTEGER,
-  relatives TEXT[] DEFAULT '{}',
-  batchdata_raw JSONB,                -- full API response for audit
-  enriched_at TIMESTAMPTZ DEFAULT NOW(),
-  UNIQUE(property_id)
-);
--- RLS: tenant isolation via property join
+Generic ArcGIS REST adapter that takes config:
+- `serviceUrl`: the county's ArcGIS MapServer/FeatureServer URL
+- `fieldMap`: maps county field names to our standard names (e.g., `OWNERNAME` -> `owner_name`)
+- `searchField`: which field to query (usually `SITEADDR` or `ADDRESS`)
+
+One function handles all ArcGIS counties -- each county file just exports config.
+
+### 4. New: County config files (e.g., `counties/hillsborough.ts`)
+
+Each file exports a thin config object + the lookup function:
+```typescript
+export const hillsboroughConfig = {
+  serviceUrl: "https://gis.hcpafl.org/arcgis/rest/services/...",
+  searchField: "SITEADDR",
+  fieldMap: { OWNERNAME: "owner_name", MAILADDR: "mailing_address", ... }
+};
+export const hillsboroughLookup = (input) => arcgisLookup(hillsboroughConfig, input);
 ```
 
-### Step 3: New Adapter -- `supabase/functions/_shared/public_data/sources/batchdata/skipTrace.ts`
+### 5. Update: `publicLookupPipeline.ts`
 
-BatchData Skip Trace adapter:
-- **Endpoint:** `POST https://api.batchdata.com/api/v1/property/skip-trace`
-- **Auth:** `Authorization: Bearer {BATCHDATA_API_KEY}`
-- **Request:**
-```json
-{
-  "requests": [{
-    "propertyAddress": {
-      "street": "123 Main St",
-      "city": "Tampa",
-      "state": "FL",
-      "zip": "33601"
-    }
-  }]
-}
+Add FL county adapter as highest-priority step before the universal Firecrawl appraiser:
+
 ```
-- **Response parsing:** Extract `results[0].persons[0]` for name/phones/emails/age
-- **Returns:** Structured `{ firstName, lastName, phones[], emails[], age, relatives[], raw }`
-- Uses existing `retry()` utility for resilience
+1. FL County Direct API (if state=FL and county is supported) -- NEW
+2. Universal Firecrawl Appraiser (fallback for unsupported counties)
+3. Tax Collector (Firecrawl, keep as-is for now)
+4. Clerk (Firecrawl, keep as-is for now)
+5. BatchLeads fallback (existing)
+6. Merge + score
+```
 
-### Step 4: Rewrite `canvassiq-skip-trace/index.ts`
+### 6. Update: `registry.ts`
 
-Simplified 3-step flow:
-1. **Check cache** -- query `canvass_property_contacts` by `property_id`. If exists and < 30 days old, return cached.
-2. **Call BatchData** -- use the new adapter with property address. No owner name required (BatchData resolves by address).
-3. **Cache result** -- upsert into `canvass_property_contacts` and update `canvassiq_properties` with owner_name/phones/emails.
+Import the FL county registry. When `county.state === "FL"`, try FL direct lookup first. If it returns data, skip the Firecrawl appraiser.
 
-Remove:
-- SearchBug API calls
-- Firecrawl people search fallback
-- storm_properties_public people search data extraction
-- All "demo data" / fake data paths
+### 7. New: `sources/fl/adapters/patriot.ts` and `qpublic.ts`
 
-### Step 5: Update `publicLookupPipeline.ts`
+Similar to arcgis.ts but for those platforms. Each takes a config object.
 
-Remove step 6 (people search via Firecrawl). The pipeline now ONLY does:
-1. Property Appraiser (county scrape)
-2. Tax Collector
-3. Clerk (deeds/mortgages)
-4. BatchLeads fallback (for absentee owners, existing logic)
-5. Merge + confidence score
+---
 
-Contact enrichment is now **separate** -- handled by `canvassiq-skip-trace` calling BatchData, not by the public lookup pipeline.
+## Implementation Strategy
 
-### Step 6: Update `PropertyInfoPanel.tsx`
+**Phase 1 (this build):** Build the framework + 3 pilot counties
+- Framework: types, registry, ArcGIS adapter template
+- Hillsborough (Tampa) -- likely ArcGIS
+- Sarasota -- known Patriot/sc-pa.com
+- Orange (Orlando) -- likely ArcGIS
 
-- Read contact data from `canvass_property_contacts` (via the skip-trace response)
-- Display `first_name` + `last_name` separately in the header
-- Show full unmasked emails (no more "(partial)" indicators)
-- Show phone type labels (Mobile/Landline) and DNC badge from BatchData
-- Show age from BatchData response
+**Phase 2 (follow-up):** Stamp remaining counties
+- Each county is a ~20-line config file once you confirm the platform
+- Research: inspect Network XHR on each county appraiser site
+- Stamp: create config, add to registry, test
 
-### Cost Control
+**Phase 3 (optional):** Replace Firecrawl tax/clerk with direct APIs too
 
-BatchData skip trace is only called when:
-- User clicks a pin (on-demand, not batch)
-- No cached contact exists (or cache is > 30 days old)
-- Estimated cost: ~$0.10-0.15 per skip trace
+---
 
-## Files Changed
+## Integration with Existing Pipeline
 
-| File | Action |
-|------|--------|
-| `canvass_property_contacts` table | CREATE (new migration) |
-| `supabase/functions/_shared/public_data/sources/batchdata/skipTrace.ts` | CREATE -- BatchData adapter |
-| `supabase/functions/canvassiq-skip-trace/index.ts` | REWRITE -- clean 3-step: cache check, BatchData call, cache store |
-| `supabase/functions/_shared/public_data/publicLookupPipeline.ts` | EDIT -- remove people search step (step 6) |
-| `src/components/storm-canvass/PropertyInfoPanel.tsx` | EDIT -- display first/last name, full emails, phone types |
+The `storm-public-lookup` edge function stays unchanged -- it calls `lookupPropertyPublic()` which calls the registry. The registry change is internal: FL counties get direct API calls instead of Firecrawl scrapes.
 
-## Edge Functions to Deploy
+The `canvassiq-skip-trace` edge function (BatchData) also stays unchanged -- it runs after the county lookup, exactly as built.
 
-- `storm-public-lookup` (pipeline change)
-- `canvassiq-skip-trace` (full rewrite)
+## Cost Impact
+
+- **Before:** ~$0.30/property (Firecrawl appraiser + tax + clerk = 3 scrapes)
+- **After:** ~$0.00/property for FL counties with direct adapters (free public APIs)
+- BatchData skip trace remains ~$0.10-0.15 per contact enrichment (unchanged)
+
+## Key Dependency
+
+To build accurate adapters, we need to confirm the actual API endpoints for each county. The plan starts with 3 pilot counties where I'll research the endpoints, then the pattern stamps across the rest.
