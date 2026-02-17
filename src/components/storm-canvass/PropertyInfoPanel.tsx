@@ -82,6 +82,9 @@ export default function PropertyInfoPanel({
 
   // Local state for property data — drives UI re-renders after enrichment
   const [localProperty, setLocalProperty] = useState<any>(property);
+  const [skipTraceError, setSkipTraceError] = useState<string | null>(null);
+  const enrichingRef = useRef(false);
+  const prevPropertyIdRef = useRef<string | null>(null);
 
   // handleEnrich must be declared before the useEffect that calls it
   const handleEnrich = useCallback(async (forceBypass = false) => {
@@ -92,6 +95,8 @@ export default function PropertyInfoPanel({
     }
     
     setEnriching(true);
+    enrichingRef.current = true;
+    setSkipTraceError(null);
     try {
       let addr: any = {};
       try {
@@ -159,6 +164,7 @@ export default function PropertyInfoPanel({
 
       if (skipError) {
         console.warn('[handleEnrich] skip-trace error:', skipError);
+        setSkipTraceError('Contact lookup unavailable — API key may need updating');
       }
 
       const skipResult = skipData?.data || {};
@@ -213,6 +219,7 @@ export default function PropertyInfoPanel({
       toast.error(err?.message || 'Failed to enrich property');
     } finally {
       setEnriching(false);
+      enrichingRef.current = false;
     }
   }, [property?.id, property?.address, property?.lat, profile?.tenant_id]);
 
@@ -247,15 +254,20 @@ export default function PropertyInfoPanel({
     }
   }, [open, property?.id]);
 
-  // Sync localProperty when property prop changes
+  // Sync localProperty when property prop changes — but ONLY on actual ID change
   useEffect(() => {
-    if (property?.id) {
-      setLocalProperty(property);
-      setEnrichedOwners([]);
-      setSelectedOwner(null);
-      setNotes('');
-      setDoorStrategy(null);
-      setPipelineScores(null);
+    if (property?.id && property.id !== prevPropertyIdRef.current) {
+      prevPropertyIdRef.current = property.id;
+      // Only reset if not currently enriching (prevents wiping enriched data)
+      if (!enrichingRef.current) {
+        setLocalProperty(property);
+        setEnrichedOwners([]);
+        setSelectedOwner(null);
+        setNotes('');
+        setDoorStrategy(null);
+        setPipelineScores(null);
+        setSkipTraceError(null);
+      }
     }
   }, [property?.id]);
 
@@ -861,6 +873,19 @@ export default function PropertyInfoPanel({
                 </div>
               )}
             </div>
+          )}
+
+          {/* Skip-trace failure feedback */}
+          {skipTraceError && phoneNumbers?.length === 0 && emails?.length === 0 && !enriching && (
+            <Alert variant="destructive" className="mb-4 py-2">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-xs flex items-center justify-between">
+                <span>{skipTraceError}</span>
+                <Button variant="ghost" size="sm" className="h-6 text-xs ml-2" onClick={() => handleEnrich(true)}>
+                  <RefreshCw className="h-3 w-3 mr-1" /> Retry
+                </Button>
+              </AlertDescription>
+            </Alert>
           )}
 
           {/* Tools / Add New Tabs */}
