@@ -67,6 +67,8 @@ export default function GoogleLiveLocationMap({
         map.current = new google.maps.Map(mapContainer.current, {
           center: { lat: userLocation.lat, lng: userLocation.lng },
           zoom: 18,
+          tilt: 0,
+          heading: 0,
           mapTypeId: MAP_TYPE_IDS[mapStyle],
           mapTypeControl: false,
           fullscreenControl: false,
