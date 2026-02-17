@@ -229,9 +229,9 @@ export default function PropertyInfoPanel({
       : (property.searchbug_data || {});
     
     // Check if owner is unknown or missing
-    const ownerIsUnknown = !property.owner_name || 
-      property.owner_name === 'Unknown' || 
-      property.owner_name === 'Unknown Owner';
+    const ownerIsUnknown = !property?.owner_name || 
+      property?.owner_name === 'Unknown' || 
+      property?.owner_name === 'Unknown Owner';
     
     // Auto-enrich if: no data exists OR owner is unknown
     const hasEnrichmentData = existingPhones.length > 0 || 
@@ -444,7 +444,7 @@ export default function PropertyInfoPanel({
 
         if (!existingContact) {
           const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
-          const ownerFullName = selectedOwnerData?.name || property.owner_name || homeowner?.name;
+          const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
 
           const newContact = {
             tenant_id: profile.tenant_id,
@@ -508,8 +508,8 @@ export default function PropertyInfoPanel({
   };
 
   const handleNavigate = () => {
-    const lat = property.lat || address?.lat;
-    const lng = property.lng || address?.lng;
+    const lat = property?.lat || address?.lat;
+    const lng = property?.lng || address?.lng;
     if (lat && lng) {
       onNavigate(lat, lng, fullAddress);
       onOpenChange(false);
@@ -521,7 +521,7 @@ export default function PropertyInfoPanel({
 
     try {
       const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
-      const ownerFullName = selectedOwnerData?.name || property.owner_name || homeowner?.name;
+      const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
 
       const newContact = {
         tenant_id: profile.tenant_id,
@@ -585,17 +585,17 @@ export default function PropertyInfoPanel({
   const handleGenerateStrategy = async () => {
     setGeneratingStrategy(true);
     try {
-      const addr = typeof property.address === 'string' 
-        ? JSON.parse(property.address) 
-        : (property.address || {});
+      const addr = typeof property?.address === 'string' 
+        ? JSON.parse(property?.address) 
+        : (property?.address || {});
       const { data, error } = await supabase.functions.invoke('door-knock-strategy', {
         body: {
           property: {
             address: addr?.formatted || fullAddress,
             owner_name: ownerName,
-            year_built: property.property_data?.year_built,
-            homestead: property.property_data?.homestead,
-            assessed_value: property.property_data?.assessed_value,
+            year_built: property?.property_data?.year_built,
+            homestead: property?.property_data?.homestead,
+            assessed_value: property?.property_data?.assessed_value,
           },
           scores: pipelineScores,
           contact: {
