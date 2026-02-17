@@ -186,9 +186,15 @@ serve(async (req) => {
       .lte('lng', existing?.lng ? existing.lng + 0.0001 : 0)
       .maybeSingle();
 
-    const publicPhones = publicRecord?.raw_data?.people_search?.phones || [];
-    const publicEmails = publicRecord?.raw_data?.people_search?.emails || [];
-    const publicAge = publicRecord?.raw_data?.people_search?.age || null;
+    const publicPhones = publicRecord?.raw_data?.people_search?.phones || publicRecord?.raw_data?.people_search_by_address?.phones || [];
+    const publicEmails = publicRecord?.raw_data?.people_search?.emails || publicRecord?.raw_data?.people_search_by_address?.emails || [];
+    const publicAge = publicRecord?.raw_data?.people_search?.age || publicRecord?.raw_data?.people_search_by_address?.age || null;
+    // Extract person name from people search if available (resolved from scraped page)
+    const peopleSearchName = publicRecord?.raw_data?.people_search?.name || publicRecord?.raw_data?.people_search_by_address?.name || null;
+    if (!effectiveOwnerName && peopleSearchName) {
+      effectiveOwnerName = peopleSearchName;
+      console.log(`[canvassiq-skip-trace] Resolved owner from people search name: "${effectiveOwnerName}"`);
+    }
 
     if (publicPhones.length > 0 || publicEmails.length > 0) {
       console.log(`[canvassiq-skip-trace] Using free public data: ${publicPhones.length} phones, ${publicEmails.length} emails`);

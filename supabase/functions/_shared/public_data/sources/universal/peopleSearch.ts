@@ -8,6 +8,7 @@ export interface PeopleSearchResult {
   emails: { address: string; type: string }[];
   age: number | null;
   relatives: string[];
+  name: string | null;
 }
 
 const PEOPLE_SEARCH_DOMAINS = [
@@ -40,6 +41,7 @@ function isJunkEmail(email: string | undefined | null): boolean {
 const EXTRACTION_SCHEMA = {
   type: "object",
   properties: {
+    full_name: { type: "string", description: "The full name of the primary person on this page" },
     phones: {
       type: "array",
       items: {
@@ -65,7 +67,8 @@ const EXTRACTION_SCHEMA = {
   },
 };
 
-const EXTRACTION_PROMPT = `Extract ALL phone numbers, email addresses, age, and relatives/associates from this people search page. 
+const EXTRACTION_PROMPT = `Extract the primary person's full name, ALL phone numbers, email addresses, age, and relatives/associates from this people search page. 
+For full_name, extract the main person's complete name (first and last) shown in the page heading.
 For phones, classify as 'mobile', 'landline', or 'unknown'. 
 For emails, classify as 'personal' or 'work'. 
 Only include data that appears to belong to the primary person on the page, not ads or unrelated people.
@@ -109,6 +112,7 @@ export async function peopleSearch(input: {
 
     // Scrape with JSON extraction
     const extracted = await firecrawlScrapeJson<{
+      full_name?: string;
       phones?: { number: string; type: string }[];
       emails?: { address: string; type: string }[];
       age?: number;
@@ -134,14 +138,15 @@ export async function peopleSearch(input: {
 
     const age = typeof extracted.age === "number" && extracted.age > 0 && extracted.age < 120 ? extracted.age : null;
     const relatives = (extracted.relatives || []).filter((r) => r && r.length > 1).slice(0, 10);
+    const name = extracted.full_name && extracted.full_name.length > 2 && extracted.full_name !== "Unknown" ? extracted.full_name : null;
 
-    console.log(`[peopleSearch] Found ${phones.length} phones, ${emails.length} emails, age=${age}`);
+    console.log(`[peopleSearch] Found name=${name}, ${phones.length} phones, ${emails.length} emails, age=${age}`);
 
-    if (phones.length === 0 && emails.length === 0 && !age) {
+    if (phones.length === 0 && emails.length === 0 && !age && !name) {
       return null;
     }
 
-    return { phones, emails, age, relatives };
+    return { phones, emails, age, relatives, name };
   } catch (err) {
     console.error("[peopleSearch] Error:", err);
     return null;

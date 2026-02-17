@@ -331,7 +331,12 @@ export default function PropertyInfoPanel({
 
   // handleEnrich is defined above (useCallback) before the useEffect that calls it
 
-  const ownerName = validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Unknown Owner';
+  // Derive owner name: prefer enriched displayOwners (which have first/last from pipeline), then direct fields
+  const primaryOwner = displayOwners.find((o: any) => o.is_primary) || displayOwners[0];
+  const enrichedName = primaryOwner 
+    ? ([primaryOwner.first_name, primaryOwner.last_name].filter(Boolean).join(' ') || primaryOwner.name)
+    : null;
+  const ownerName = validOwner(enrichedName) || validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Unknown Owner';
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
