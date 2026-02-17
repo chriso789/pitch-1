@@ -1,13 +1,11 @@
 // supabase/functions/noaa-storm-reports/index.ts
-// Fetches storm reports from NOAA SWDI (Severe Weather Data Inventory) API
-// Free, no API key required. Returns hail, wind, tornado reports near a lat/lng.
+// Fetches storm reports from IEM Local Storm Reports + NWS Alerts
+// Free, no API key required
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
-
-const SWDI_BASE = "https://www.ncdc.noaa.gov/swdiws/json";
 
 interface StormReport {
   date: string;
@@ -21,8 +19,8 @@ interface StormReport {
   distance_miles?: number;
 }
 
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 3959; // Earth radius in miles
+function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 3959;
   const dLat = (lat2 - lat1) * Math.PI / 180;
   const dLon = (lon2 - lon1) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 +
@@ -31,14 +29,34 @@ function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function fmtDate(d: Date) { return d.toISOString().slice(0, 10); }
+
+const STORM_TYPES = ["HAIL", "TSTM WND", "TORNADO", "THUNDERSTORM WIND", "MARINE TSTM"];
+
+/** Get the WFO (Weather Forecast Office) code for a lat/lng from NWS API */
+async function getWFO(lat: number, lng: number): Promise<string[]> {
+  try {
+    const res = await fetch(`https://api.weather.gov/points/${lat},${lng}`, {
+      headers: { "User-Agent": "PitchCRM/1.0 (support@pitchcrm.com)" },
+    });
+    if (!res.ok) { await res.text(); return []; }
+    const json = await res.json();
+    const cwa = json?.properties?.cwa; // e.g. "FWD"
+    if (cwa) return [cwa];
+    return [];
+  } catch (e) {
+    console.warn("[storm] WFO lookup failed:", e);
+    return [];
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
 
   try {
     const { lat, lng, radius_miles = 15, years_back = 3 } = await req.json();
-
     if (!lat || !lng) {
-      return new Response(JSON.stringify({ error: "lat and lng are required" }), {
+      return new Response(JSON.stringify({ error: "lat and lng required" }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -46,118 +64,107 @@ Deno.serve(async (req) => {
     const endDate = new Date();
     const startDate = new Date();
     startDate.setFullYear(startDate.getFullYear() - years_back);
-
-    const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, "");
-    const dateRange = `${fmt(startDate)}:${fmt(endDate)}`;
-
-    // SWDI datasets: plsr (Preliminary Local Storm Reports), nx3hail (NEXRAD hail signatures)
-    const datasets = ["plsr", "nx3hail"];
     const allReports: StormReport[] = [];
 
-    for (const dataset of datasets) {
-      const url = `${SWDI_BASE}/${dataset}/${dateRange}?stat=tilesum:${lng},${lat}&limit=100`;
-      console.log(`[noaa-storm] fetching: ${url}`);
+    // Step 1: Get WFO code for location-filtered IEM queries
+    const wfos = await getWFO(lat, lng);
+    const wfoParam = wfos.length > 0 ? wfos.join(",") : "";
+    console.log(`[storm] WFO for ${lat},${lng}: ${wfoParam || "(none, using all)"}`);
 
-      try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          const text = await res.text();
-          console.warn(`[noaa-storm] ${dataset} failed [${res.status}]: ${text.slice(0, 200)}`);
-          continue;
-        }
-
-        const json = await res.json();
-        const results = json?.result ?? [];
-
-        for (const r of results) {
-          if (dataset === "plsr") {
-            const rLat = parseFloat(r.LAT || r.lat || "0");
-            const rLng = parseFloat(r.LON || r.lon || "0");
-            const dist = haversineDistance(lat, lng, rLat, rLng);
-            if (dist > radius_miles) continue;
-
-            allReports.push({
-              date: r.VALID || r.EVENT_BEGIN || "",
-              event_type: r.EVENT || r.event_type || "Unknown",
-              magnitude: r.MAG || r.MAGNITUDE || "",
-              description: r.REMARKS || r.DESCRIPTION || "",
-              location: r.CITY || r.LOCATION || "",
-              lat: rLat,
-              lng: rLng,
-              source: "NOAA PLSR",
-              distance_miles: Math.round(dist * 10) / 10,
-            });
-          } else if (dataset === "nx3hail") {
-            const rLat = parseFloat(r.LAT || r.WSR_LAT || "0");
-            const rLng = parseFloat(r.LON || r.WSR_LON || "0");
-            const dist = haversineDistance(lat, lng, rLat, rLng);
-            if (dist > radius_miles) continue;
-
-            allReports.push({
-              date: r.ZTIME || r.VALID || "",
-              event_type: "Hail (Radar)",
-              magnitude: r.MAXSIZE ? `${r.MAXSIZE}"` : "",
-              description: `NEXRAD hail signature, max size: ${r.MAXSIZE || "unknown"}`,
-              location: "",
-              lat: rLat,
-              lng: rLng,
-              source: "NOAA NEXRAD",
-              distance_miles: Math.round(dist * 10) / 10,
-            });
-          }
-        }
-      } catch (e) {
-        console.warn(`[noaa-storm] error fetching ${dataset}:`, e);
+    // ---- IEM Local Storm Reports ----
+    // With WFO filter, responses are much smaller so we can use larger time windows
+    try {
+      const chunks: { sts: string; ets: string }[] = [];
+      const c = new Date(startDate);
+      // Chunk by 1 year if WFO filtered, 3 months otherwise
+      const monthsPerChunk = wfoParam ? 12 : 3;
+      while (c < endDate) {
+        const ce = new Date(c);
+        ce.setMonth(ce.getMonth() + monthsPerChunk);
+        if (ce > endDate) ce.setTime(endDate.getTime());
+        chunks.push({ sts: `${fmtDate(c)}T00:00`, ets: `${fmtDate(ce)}T23:59` });
+        c.setTime(ce.getTime() + 86400000);
       }
+
+      const results = await Promise.allSettled(chunks.map(async (chunk) => {
+        const url = `https://mesonet.agron.iastate.edu/geojson/lsr.php?sts=${chunk.sts}&ets=${chunk.ets}&wfos=${wfoParam}`;
+        console.log(`[storm] IEM: ${url}`);
+        const res = await fetch(url);
+        if (!res.ok) { await res.text(); return []; }
+        const gj = await res.json();
+        const rpts: StormReport[] = [];
+        for (const f of (gj?.features || [])) {
+          const p = f.properties || {};
+          const [rLng, rLat] = f.geometry?.coordinates || [0, 0];
+          const type = (p.typetext || "").toUpperCase();
+          if (!STORM_TYPES.some(t => type.includes(t))) continue;
+          const dist = haversine(lat, lng, rLat, rLng);
+          if (dist > radius_miles) continue;
+          rpts.push({
+            date: p.valid || "",
+            event_type: p.typetext || "Storm",
+            magnitude: p.magnitude != null ? `${p.magnitude} ${p.unit || ""}`.trim() : "",
+            description: p.remark || "",
+            location: [p.city, p.county, p.state].filter(Boolean).join(", "),
+            lat: rLat, lng: rLng, source: "IEM/NWS LSR",
+            distance_miles: Math.round(dist * 10) / 10,
+          });
+        }
+        console.log(`[storm] IEM chunk ${chunk.sts}: ${rpts.length} hits from ${gj?.features?.length || 0} features`);
+        return rpts;
+      }));
+      for (const r of results) {
+        if (r.status === "fulfilled") allReports.push(...r.value);
+      }
+      console.log(`[storm] IEM total: ${allReports.length}`);
+    } catch (e) {
+      console.warn("[storm] IEM error:", e);
     }
 
-    // Also try NWS alerts API for recent/active alerts
+    // ---- NWS Alerts (active) ----
     try {
-      const alertsUrl = `https://api.weather.gov/alerts?point=${lat},${lng}&status=actual&limit=10`;
-      const alertRes = await fetch(alertsUrl, {
+      const res = await fetch(`https://api.weather.gov/alerts?point=${lat},${lng}&status=actual&limit=10`, {
         headers: { "User-Agent": "PitchCRM/1.0 (support@pitchcrm.com)" },
       });
-      if (alertRes.ok) {
-        const alertJson = await alertRes.json();
-        for (const feature of (alertJson?.features || [])) {
-          const props = feature.properties;
-          if (props?.event?.toLowerCase().includes("storm") ||
-              props?.event?.toLowerCase().includes("hail") ||
-              props?.event?.toLowerCase().includes("tornado") ||
-              props?.event?.toLowerCase().includes("wind")) {
+      if (res.ok) {
+        const json = await res.json();
+        for (const f of (json?.features || [])) {
+          const p = f.properties;
+          const evt = (p?.event || "").toLowerCase();
+          if (["storm", "hail", "tornado", "wind"].some(k => evt.includes(k))) {
             allReports.push({
-              date: props.onset || props.effective || "",
-              event_type: props.event || "Weather Alert",
-              magnitude: props.severity || "",
-              description: (props.headline || props.description || "").slice(0, 300),
-              location: props.areaDesc || "",
-              lat,
-              lng,
-              source: "NWS Alert",
-              distance_miles: 0,
+              date: p.onset || p.effective || "",
+              event_type: p.event, magnitude: p.severity || "",
+              description: (p.headline || "").slice(0, 300),
+              location: p.areaDesc || "",
+              lat, lng, source: "NWS Alert", distance_miles: 0,
             });
           }
         }
-      }
+      } else { await res.text(); }
     } catch (e) {
-      console.warn("[noaa-storm] NWS alerts error:", e);
+      console.warn("[storm] NWS error:", e);
     }
 
-    // Sort by date descending
-    allReports.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    // Deduplicate
+    const deduped: StormReport[] = [];
+    for (const r of allReports) {
+      if (!deduped.some(ex =>
+        ex.event_type === r.event_type &&
+        ex.date.slice(0, 10) === r.date.slice(0, 10) &&
+        haversine(ex.lat, ex.lng, r.lat, r.lng) < 1
+      )) deduped.push(r);
+    }
 
-    console.log(`[noaa-storm] found ${allReports.length} reports within ${radius_miles}mi of ${lat},${lng}`);
+    deduped.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+    console.log(`[storm] final: ${deduped.length} (${allReports.length} raw) within ${radius_miles}mi`);
 
     return new Response(JSON.stringify({
-      success: true,
-      reports: allReports,
-      count: allReports.length,
+      success: true, reports: deduped, count: deduped.length,
       search: { lat, lng, radius_miles, years_back },
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    }), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
   } catch (e) {
-    console.error("[noaa-storm] error:", e);
+    console.error("[storm] error:", e);
     return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

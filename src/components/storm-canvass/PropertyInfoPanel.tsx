@@ -941,8 +941,8 @@ export default function PropertyInfoPanel({
 
         {/* Storm Reports Dialog */}
         {showStormReports && (
-          <div className="fixed inset-0 z-[60] flex items-end justify-center bg-black/50" onClick={() => setShowStormReports(false)}>
-            <div className="bg-background rounded-t-xl w-full max-w-lg max-h-[70vh] overflow-hidden" onClick={(e) => e.stopPropagation()}>
+          <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowStormReports(false)}>
+            <div className="bg-background rounded-xl w-full max-w-lg max-h-[70vh] overflow-hidden shadow-xl" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-4 border-b">
                 <div>
                   <h3 className="font-semibold text-sm">Storm Reports</h3>
