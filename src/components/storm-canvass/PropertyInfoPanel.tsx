@@ -152,7 +152,14 @@ export default function PropertyInfoPanel({
           land_use: pipelineResult?.land_use || prev.property_data?.land_use,
           confidence_score: pipelineResult?.confidence_score || prev.property_data?.confidence_score,
           sources: pipelineResult?.sources
-            ? Object.keys(pipelineResult.sources).filter((k: string) => pipelineResult.sources[k])
+            ? Object.keys(pipelineResult.sources).filter((k: string) => {
+                const v = pipelineResult.sources[k];
+                // Only show sources that actually contributed data
+                if (!v || v === false || v === null) return false;
+                if (typeof v === 'string' && (v.startsWith('skipped') || v === 'null' || v === 'false')) return false;
+                if (k === 'used_batchleads' && v !== true) return false;
+                return true;
+              })
             : prev.property_data?.sources,
         };
         return { ...prev, ...enrichedFields };
@@ -719,8 +726,8 @@ export default function PropertyInfoPanel({
                     )}
                   </div>
                 )}
-                {/* Source verification */}
-                {localProperty.property_data?.sources && Array.isArray(localProperty.property_data.sources) && (
+                {/* Source verification - only show when confidence > 0 */}
+                {localProperty.property_data?.confidence_score > 0 && localProperty.property_data?.sources && Array.isArray(localProperty.property_data.sources) && localProperty.property_data.sources.length > 0 && (
                   <div className="flex gap-1 mt-1">
                     {localProperty.property_data.sources.map((src: string) => (
                       <span key={src} className="text-[8px] text-green-600">✔ {src}</span>
