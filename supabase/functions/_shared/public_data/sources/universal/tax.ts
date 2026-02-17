@@ -19,6 +19,21 @@ const SCHEMA = {
 const PROMPT =
   "Extract property tax information: owner name, assessed/taxable value, annual tax amount, homestead exemption status, parcel ID, and any last sale date and amount. Return null for fields not found.";
 
+const URL_BLOCKLIST = [
+  "/search", "/residents/", "/homeowners", "/property-owners",
+  "/search-for-parcel", "/parcel-search", "/property-search",
+  "/home", "/login", "/register", "/contact",
+];
+
+function isBlockedUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    return path.length <= 5 || URL_BLOCKLIST.some((b) => path.includes(b));
+  } catch {
+    return false;
+  }
+}
+
 export const universalTax: TaxAdapter = {
   id: "universal_firecrawl_tax",
 
@@ -40,15 +55,13 @@ export const universalTax: TaxAdapter = {
 
     console.log(`[universal_tax] searching: "${query}"`);
 
-    const results = await firecrawlSearch(query, 5);
-    if (!results.length) return null;
-
-    const detailResults = results.filter((r) => new URL(r.url).pathname.length > 5);
-    const candidates = detailResults.length > 0 ? detailResults : results;
+    const results = await firecrawlSearch(query, 8);
+    const filtered = results.filter((r) => !isBlockedUrl(r.url));
+    if (!filtered.length) return null;
 
     const bestUrl =
-      candidates.find((r) => r.url.includes(".gov") || r.url.includes("tax"))?.url ??
-      candidates[0].url;
+      filtered.find((r) => r.url.includes(".gov") || r.url.includes("tax"))?.url ??
+      filtered[0].url;
 
     console.log(`[universal_tax] scraping: ${bestUrl}`);
 

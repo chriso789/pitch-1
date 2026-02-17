@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
     );
 
     const body = await req.json();
-    const { lat, lng, address, tenant_id, property_id, storm_event_id, polygon_id } = body;
+    const { lat, lng, address, tenant_id, property_id, storm_event_id, polygon_id, force } = body;
 
     if (!tenant_id) {
       return new Response(JSON.stringify({ error: "tenant_id is required" }), {
@@ -53,7 +53,8 @@ Deno.serve(async (req) => {
     // 1) Resolve location
     const loc = await resolveLocation({ lat, lng, address, timeoutMs });
 
-    // 2) Check cache
+    // 2) Check cache (skip if force=true)
+    if (!force) {
     const { data: cached } = await supabase
       .from("storm_properties_public")
       .select("*")
@@ -87,6 +88,7 @@ Deno.serve(async (req) => {
         });
       }
     }
+    } // end if (!force)
 
     // 3) Resolve county
     const county = await getCountyContext({
@@ -144,13 +146,20 @@ Deno.serve(async (req) => {
       updated_at: new Date().toISOString(),
     };
 
-    const { data: saved, error: upsertErr } = await supabase
-      .from("storm_properties_public")
-      .upsert(row, { onConflict: "tenant_id,normalized_address_key" })
-      .select()
-      .single();
+    // Only cache results with confidence >= 10; skip caching junk results
+    let saved = row;
+    if (result.confidence_score >= 10) {
+      const { data: upserted, error: upsertErr } = await supabase
+        .from("storm_properties_public")
+        .upsert(row, { onConflict: "tenant_id,normalized_address_key" })
+        .select()
+        .single();
 
-    if (upsertErr) console.error("[storm-public-lookup] upsert error", upsertErr);
+      if (upsertErr) console.error("[storm-public-lookup] upsert error", upsertErr);
+      if (upserted) saved = upserted;
+    } else {
+      console.log(`[storm-public-lookup] skipping cache for low-confidence result (${result.confidence_score})`);
+    }
 
     // 6) Update canvassiq_properties if property_id provided (no owner_name gate)
 

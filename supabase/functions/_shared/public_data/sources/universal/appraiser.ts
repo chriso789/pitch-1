@@ -22,6 +22,22 @@ const SCHEMA = {
 const PROMPT =
   "Extract the property owner name, mailing address, parcel ID, assessed value, year built, living square footage, lot size, land use type, and whether there is a homestead exemption. Return null for any field not found on the page.";
 
+// URLs that are generic search/landing pages — never property detail pages
+const URL_BLOCKLIST = [
+  "/search", "/residents/", "/homeowners", "/property-owners",
+  "/search-for-parcel", "/parcel-search", "/property-search",
+  "/home", "/login", "/register", "/contact",
+];
+
+function isBlockedUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    return path.length <= 5 || URL_BLOCKLIST.some((b) => path.includes(b));
+  } catch {
+    return false;
+  }
+}
+
 function isJunk(val?: string): boolean {
   if (!val) return true;
   const low = val.toLowerCase().trim();
@@ -52,38 +68,40 @@ export const universalAppraiser: AppraiserAdapter = {
     const { loc, county } = input;
     const addr = loc.street || loc.normalized_address;
     const cityZip = [loc.city, loc.zip].filter(Boolean).join(" ");
-    const query = `"${addr}" ${cityZip} property appraiser ${county.county_name} county ${county.state} owner name parcel ID`;
 
-    console.log(`[universal_appraiser] searching: "${query}"`);
+    // Strategy 1: Search property aggregator sites first (most reliable scrapeable pages)
+    const aggregatorQuery = `"${addr}" ${cityZip} owner property site:redfin.com OR site:zillow.com OR site:realtor.com OR site:trulia.com`;
+    console.log(`[universal_appraiser] aggregator search: "${aggregatorQuery}"`);
 
-    // Step 1: Search for the property detail page
-    let results = await firecrawlSearch(query, 5);
+    let results = await firecrawlSearch(aggregatorQuery, 8);
+    let filteredResults = results.filter((r) => !isBlockedUrl(r.url));
 
-    // Fallback: retry without quotes if exact match fails
-    if (!results.length) {
-      const looseQuery = `${addr} ${cityZip} property appraiser ${county.county_name} county ${county.state} owner parcel`;
-      console.log(`[universal_appraiser] exact search failed, retrying loose: "${looseQuery}"`);
-      results = await firecrawlSearch(looseQuery, 5);
+    // Strategy 2: Fall back to county appraiser search
+    if (filteredResults.length === 0) {
+      const countyQuery = `"${addr}" ${cityZip} property appraiser ${county.county_name} county ${county.state} owner name parcel ID`;
+      console.log(`[universal_appraiser] county search: "${countyQuery}"`);
+      results = await firecrawlSearch(countyQuery, 8);
+      filteredResults = results.filter((r) => !isBlockedUrl(r.url));
     }
 
-    if (!results.length) {
-      console.warn("[universal_appraiser] no search results (even after fallback)");
+    // Strategy 3: Loose search without quotes
+    if (filteredResults.length === 0) {
+      const looseQuery = `${addr} ${cityZip} property owner records ${county.state}`;
+      console.log(`[universal_appraiser] loose search: "${looseQuery}"`);
+      results = await firecrawlSearch(looseQuery, 8);
+      filteredResults = results.filter((r) => !isBlockedUrl(r.url));
+    }
+
+    if (filteredResults.length === 0) {
+      console.warn("[universal_appraiser] no usable search results after all strategies");
       return null;
     }
 
-    // Filter out root/homepage URLs — we need detail pages
-    const isDetailPage = (url: string) => {
-      const path = new URL(url).pathname;
-      return path.length > 5; // skip "/" or "/search" type pages
-    };
-
-    const detailResults = results.filter((r) => isDetailPage(r.url));
-    const candidateResults = detailResults.length > 0 ? detailResults : results;
-
-    // Pick best URL — prefer .gov or known appraiser domains
+    // Pick best URL — prefer aggregator sites, then .gov
     const bestUrl =
-      candidateResults.find((r) => r.url.includes(".gov") || r.url.includes("appraiser") || r.url.includes("pa."))?.url ??
-      candidateResults[0].url;
+      filteredResults.find((r) => /redfin|zillow|realtor|trulia/.test(r.url))?.url ??
+      filteredResults.find((r) => r.url.includes(".gov") || r.url.includes("appraiser"))?.url ??
+      filteredResults[0].url;
 
     console.log(`[universal_appraiser] scraping: ${bestUrl}`);
 
