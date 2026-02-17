@@ -5,7 +5,6 @@ import { pickAppraiser, pickTax, pickClerk } from "./registry.ts";
 import { scoreConfidence } from "./score.ts";
 import { mergeResults } from "./merge.ts";
 import { batchLeadsFallback } from "./sources/batchleads/fallback.ts";
-import { peopleSearch, type PeopleSearchResult } from "./sources/universal/peopleSearch.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 function normalize(s: string) {
@@ -158,63 +157,17 @@ export async function lookupPropertyPublic(input: {
     }
   }
 
-  // 6) People search for contact info (free via Firecrawl)
-  let contactData: PeopleSearchResult | null = null;
-  const hasOwnerName = merged.owner_name && merged.owner_name !== "Unknown" && merged.owner_name !== "Unknown Owner";
-
-  if (hasOwnerName) {
-    contactData = await peopleSearch({
-      ownerName: merged.owner_name!,
-      city: loc.city,
-      state: loc.state,
-      timeoutMs,
-    }).catch((e) => {
-      raw.people_search_error = String(e);
-      return null;
-    });
-    if (contactData) {
-      sources.people_search = true;
-      raw.people_search = contactData;
-      // If people search found a refined name, update owner
-      if (contactData.name && contactData.name !== merged.owner_name) {
-        console.log(`[pipeline] People search refined owner name: "${merged.owner_name}" → "${contactData.name}"`);
-        merged.owner_name = contactData.name;
-      }
-    }
-  } else {
-    // Fallback: try people search by address when owner name is unavailable
-    const addrQuery = loc.street || loc.normalized_address;
-    if (addrQuery) {
-      console.log(`[pipeline] No owner name found, trying people search by address: "${addrQuery}"`);
-      contactData = await peopleSearch({
-        ownerName: addrQuery,
-        city: loc.city,
-        state: loc.state,
-        timeoutMs,
-      }).catch((e) => {
-        raw.people_search_address_error = String(e);
-        return null;
-      });
-      if (contactData) {
-        sources.people_search_by_address = true;
-        raw.people_search_by_address = contactData;
-        // Use person name from scraped page as owner_name when we had no owner
-        if (contactData.name && !merged.owner_name) {
-          merged.owner_name = contactData.name;
-          console.log(`[pipeline] Resolved owner name from people search: "${contactData.name}"`);
-        }
-      }
-    }
-  }
+  // Contact enrichment is now handled separately by canvassiq-skip-trace (BatchData)
+  // No more Firecrawl/people search in this pipeline
 
   return {
     normalized_address_key: loc.normalized_address_key,
     property_address: merged.property_address ?? loc.normalized_address,
     ...merged,
-    contact_phones: contactData?.phones ?? [],
-    contact_emails: contactData?.emails ?? [],
-    contact_age: contactData?.age ?? null,
-    contact_relatives: contactData?.relatives ?? [],
+    contact_phones: [],
+    contact_emails: [],
+    contact_age: null,
+    contact_relatives: [],
     confidence_score: confidence,
     sources: { ...sources, used_batchleads: usedBatchleads },
     raw,

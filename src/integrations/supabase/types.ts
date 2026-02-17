@@ -3740,6 +3740,59 @@ export type Database = {
           },
         ]
       }
+      canvass_property_contacts: {
+        Row: {
+          age: number | null
+          batchdata_raw: Json | null
+          emails: string[] | null
+          enriched_at: string | null
+          first_name: string | null
+          id: string
+          last_name: string | null
+          phone_numbers: Json | null
+          primary_phone: string | null
+          property_id: string
+          relatives: string[] | null
+          secondary_phone: string | null
+        }
+        Insert: {
+          age?: number | null
+          batchdata_raw?: Json | null
+          emails?: string[] | null
+          enriched_at?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          phone_numbers?: Json | null
+          primary_phone?: string | null
+          property_id: string
+          relatives?: string[] | null
+          secondary_phone?: string | null
+        }
+        Update: {
+          age?: number | null
+          batchdata_raw?: Json | null
+          emails?: string[] | null
+          enriched_at?: string | null
+          first_name?: string | null
+          id?: string
+          last_name?: string | null
+          phone_numbers?: Json | null
+          primary_phone?: string | null
+          property_id?: string
+          relatives?: string[] | null
+          secondary_phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_property_contacts_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: true
+            referencedRelation: "canvassiq_properties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       canvass_routes: {
         Row: {
           created_at: string
