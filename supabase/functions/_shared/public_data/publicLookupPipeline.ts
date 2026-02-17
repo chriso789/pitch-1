@@ -175,6 +175,11 @@ export async function lookupPropertyPublic(input: {
     if (contactData) {
       sources.people_search = true;
       raw.people_search = contactData;
+      // If people search found a refined name, update owner
+      if (contactData.name && contactData.name !== merged.owner_name) {
+        console.log(`[pipeline] People search refined owner name: "${merged.owner_name}" → "${contactData.name}"`);
+        merged.owner_name = contactData.name;
+      }
     }
   } else {
     // Fallback: try people search by address when owner name is unavailable
@@ -193,6 +198,11 @@ export async function lookupPropertyPublic(input: {
       if (contactData) {
         sources.people_search_by_address = true;
         raw.people_search_by_address = contactData;
+        // Use person name from scraped page as owner_name when we had no owner
+        if (contactData.name && !merged.owner_name) {
+          merged.owner_name = contactData.name;
+          console.log(`[pipeline] Resolved owner name from people search: "${contactData.name}"`);
+        }
       }
     }
   }
