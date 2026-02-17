@@ -1,81 +1,56 @@
 
 
-# Fix: Sarasota County ArcGIS URL is Dead + Sources Badges Misleading
+# Add "View Lead Details" Navigation from Contact Profile
 
-## Root Cause
+## Problem
+The contact profile page for Nicole Walker shows pipeline entry cards at the top (the card with "Pipeline Lead", status badge, CLJ numbers, and win probability), but those cards have no button or link to navigate to the Lead Details page (`/lead/{pipeline_entry_id}`). The only action available is "Quick Convert to Job" for `ready_for_approval` entries.
 
-Two issues are causing "checks pass but no data saved":
+The "View" button exists in the Pipeline tab's converter section, but the prominent pipeline summary cards at the top of the page lack direct navigation.
 
-### 1. Sarasota County ArcGIS DNS Failure (Backend)
-The Sarasota adapter at `supabase/functions/_shared/public_data/sources/fl/counties/sarasota.ts` points to `gis.sc-pa.com` which is **no longer resolving** (DNS error in edge function logs). Every request fails with:
+## Solution
+
+Add a "View Details" button to each pipeline summary card in the Contact Profile header section, allowing one-click navigation to `/lead/{entry.id}`.
+
+## Changes
+
+**File: `src/pages/ContactProfile.tsx`**
+
+In the pipeline status cards section (lines 306-368), add a "View Details" button next to the existing "Quick Convert to Job" button. For all pipeline entries (not just `ready_for_approval`), add a button that navigates to `/lead/{entry.id}`.
+
+Specifically, inside each pipeline card's `CardContent` (after the win probability section around line 347), add:
+
 ```
-dns error: failed to lookup address information: Name or service not known
+<div className="pt-3 border-t flex gap-2">
+  <Button 
+    variant="outline" 
+    className="flex-1"
+    onClick={() => navigate(`/lead/${entry.id}`)}
+  >
+    <Eye className="h-4 w-4 mr-2" />
+    View Details
+  </Button>
+  {entry.status === 'ready_for_approval' && (
+    <JobApprovalDialog ...>
+      <Button className="flex-1">
+        Quick Convert to Job
+      </Button>
+    </JobApprovalDialog>
+  )}
+</div>
 ```
 
-The correct, working endpoint is hosted on ArcGIS Online:
-```
-https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer/0
-```
+This replaces the current structure where "Quick Convert to Job" only shows for `ready_for_approval` entries and no navigation exists otherwise.
 
-I verified this endpoint returns data for 4346 Marcott Cir: owner "WILSON ANITA", parcel "0067020049", assessed $294,900, year built 1993, 1,492 sqft.
+The `Eye` icon import already exists in the file's import list (it's used in `ContactJobsTab`), so we just need to add it to the `ContactProfile.tsx` imports.
 
-The field names are also different from the old server:
-| Old Field | New Field |
-|-----------|-----------|
-| PARCEL_ID | ACCOUNT |
-| OWNER_NAME | NAME1 |
-| SITUS_ADDRESS | FULLADDRESS |
-| JUST_VALUE | JUST |
-| (none) | YRBL (year built) |
-| (none) | LIVING (sqft) |
-| (none) | LSQFT (lot sqft) |
-
-### 2. Source Badges Show False Positives (Frontend)
-The pipeline `sources` object contains keys like `"appraiser": "skipped_fl_direct"` or `"tax": "universal_tax"` even when those sources returned zero data. The frontend filter `Object.keys(sources).filter(k => sources[k])` treats any truthy string as success, so it shows green checkmarks for sources that actually failed or returned nothing.
-
-The badges should only show for sources that actually contributed data (i.e., confidence > 0 or owner found).
-
-## Fix Plan
-
-### Change 1: Update Sarasota adapter URL and field mapping
-
-**File:** `supabase/functions/_shared/public_data/sources/fl/counties/sarasota.ts`
-
-- Change `serviceUrl` from `https://gis.sc-pa.com/arcgis/rest/services/Parcels/MapServer/0` to `https://services3.arcgis.com/icrWMv7eBkctFu1f/arcgis/rest/services/ParcelHosted/FeatureServer/0`
-- Change `searchField` from `SITUS_ADDRESS` to `FULLADDRESS`
-- Update `outFields` to `ACCOUNT,NAME1,FULLADDRESS,HOMESTEAD,JUST,SALE_DATE,SALE_AMT,YRBL,LIVING,LSQFT`
-- Update `fieldMap` to map the new field names:
-  - `ACCOUNT` -> `parcel_id`
-  - `NAME1` -> `owner_name`
-  - `FULLADDRESS` -> `property_address`
-  - `HOMESTEAD` -> `homestead`
-  - `JUST` -> `assessed_value`
-  - `SALE_DATE` -> `last_sale_date`
-  - `SALE_AMT` -> `last_sale_amount`
-  - `YRBL` -> `year_built`
-  - `LIVING` -> `living_sqft`
-  - `LSQFT` -> `lot_size`
-
-### Change 2: Fix misleading source badges in frontend
-
-**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
-
-Update the sources extraction (line 154) to only include sources that are NOT error/skip strings. Filter out values like `"skipped_fl_direct"`, `null`, `false`, and only include `true` or adapter IDs that start with `"fl_"` or similar known patterns. Additionally, only show the source badges row when confidence_score > 0.
-
-### Change 3: Deploy edge function
-
-After updating the Sarasota adapter, deploy `storm-public-lookup` so the fix takes effect immediately.
-
-## Files to Update
+## Technical Details
 
 | File | Change |
 |------|--------|
-| `supabase/functions/_shared/public_data/sources/fl/counties/sarasota.ts` | New ArcGIS Online URL + updated field names |
-| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Fix source badge false positives |
+| `src/pages/ContactProfile.tsx` | Add `Eye` to lucide-react imports; add "View Details" button to pipeline summary cards that navigates to `/lead/{entry.id}` |
 
-## Expected Result
-
-- Opening a pin in Sarasota County will auto-pull owner name, parcel ID, assessed value, year built, sqft from the working ArcGIS endpoint
-- Source badges will only show green checkmarks for sources that actually returned data
-- Confidence score will be 75+ (instead of 0) for Sarasota properties
+## Result
+- Every pipeline card at the top of the Contact Profile will have a "View Details" button
+- Clicking it navigates to `/lead/{pipeline_entry_id}` (the Lead Details page)
+- For `ready_for_approval` entries, both "View Details" and "Quick Convert to Job" buttons appear side by side
 
