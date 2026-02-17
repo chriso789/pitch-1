@@ -3,6 +3,16 @@
 import type { CountyLookupInput, CountyLookupResult } from "./types.ts";
 import { hillsborough } from "./counties/hillsborough.ts";
 import { orange } from "./counties/orange.ts";
+import { pinellas } from "./counties/pinellas.ts";
+import { pasco } from "./counties/pasco.ts";
+import { sarasota } from "./counties/sarasota.ts";
+import { manatee } from "./counties/manatee.ts";
+import { polk } from "./counties/polk.ts";
+import { brevard } from "./counties/brevard.ts";
+import { lee } from "./counties/lee.ts";
+import { collier } from "./counties/collier.ts";
+import { broward } from "./counties/broward.ts";
+import { palm_beach } from "./counties/palm_beach.ts";
 
 type CountyAdapter = (input: CountyLookupInput) => Promise<CountyLookupResult>;
 
@@ -13,11 +23,16 @@ type CountyAdapter = (input: CountyLookupInput) => Promise<CountyLookupResult>;
 const REGISTRY: Record<string, CountyAdapter> = {
   hillsborough: hillsborough,
   orange: orange,
-  // Phase 2: add remaining counties as adapters are built
-  // pinellas, sarasota, manatee, pasco, hernando, polk,
-  // seminole, osceola, lake, brevard, indian river, st. lucie,
-  // martin, palm beach, broward, miami-dade, monroe,
-  // charlotte, lee, collier
+  pinellas: pinellas,
+  pasco: pasco,
+  sarasota: sarasota,
+  manatee: manatee,
+  polk: polk,
+  brevard: brevard,
+  lee: lee,
+  collier: collier,
+  broward: broward,
+  "palm beach": palm_beach,
 };
 
 /**
