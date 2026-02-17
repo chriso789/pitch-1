@@ -1,53 +1,71 @@
 
 
-# Restore Auto-Pull for Free Public Data on Pin Open
+# Fix: Auto-Pull All Free Public Data and Conditionally Show BatchData Button
 
-## Problem
-The previous fix removed ALL automatic enrichment when a pin opens. But the original design had two distinct steps:
-1. **Step 1 (Free):** `storm-public-lookup` -- scrapes county property appraiser sites for owner name, parcel ID, assessed value, year built, etc. This is free (uses Firecrawl or FL county APIs).
-2. **Step 2 (Paid):** `canvassiq-skip-trace` -- calls BatchData for phone numbers, emails, relatives. This costs money per lookup.
+## What's Wrong
 
-Only Step 2 should require a manual click. Step 1 should run automatically when a pin is opened.
+1. **`handlePublicLookup` only extracts `owner_name`** -- The `storm-public-lookup` edge function returns parcel_id, assessed_value, year_built, living_sqft, homestead, lot_size, land_use, and confidence_score, but the frontend callback (lines 134-149) only reads `owner_name`. All other fields are thrown away.
 
-## Solution
+2. **UI reads from `property.property_data` instead of `localProperty`** -- The property detail badges (parcel ID, sqft, year built, homestead) on lines 683-706 read from `property.property_data`, which is the raw database prop passed from the parent. After `handlePublicLookup` completes, the new data is only in `localProperty` but the UI doesn't reference it for those fields.
 
-**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
+3. **"Get Contact Info" button always visible** -- It should only show when the free public lookup didn't find contact data (no phones/emails from public sources), as a fallback to trigger the paid BatchData skip-trace.
 
-Split `handleEnrich` into two functions:
+## Fix Plan
 
-1. **`handlePublicLookup()`** -- Calls only `storm-public-lookup`. Runs automatically when a new pin is opened (via a `useEffect` on `property?.id`). Updates `localProperty` with owner name, assessed value, year built, etc.
+### File: `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-2. **`handleSkipTrace()`** -- Calls only `canvassiq-skip-trace` (BatchData). Only runs when the user clicks "Get Contact Info" or "Enrich". Updates phones, emails, and enriched owners.
+**Change 1: Extract all public fields in `handlePublicLookup`**
 
-The existing "Enrich" button will call both (or just skip-trace if public data is already loaded).
+After the `storm-public-lookup` call returns, merge ALL pipeline fields into `localProperty`:
+- `owner_name`, `parcel_id`, `assessed_value`, `year_built`, `living_sqft`, `lot_size`, `land_use`, `homestead`, `confidence_score`, `owner_mailing_address`
+- Also merge `property_data` object so the UI badges work from `localProperty`
 
-### Changes Detail
-
-1. Extract lines 111-145 (storm-public-lookup call) into a new `handlePublicLookup` callback
-2. Extract lines 148-216 (canvassiq-skip-trace call) into a new `handleSkipTrace` callback  
-3. Add a `useEffect` that calls `handlePublicLookup()` when `property?.id` changes (with a guard to run only once per pin)
-4. Wire the "Enrich" / "Get Contact Info" button to call `handleSkipTrace()`
-5. Keep the existing `handleEnrich` as a convenience that calls both (for manual full-enrich)
-
-### Technical Detail
-
-```text
-useEffect:
-  when property?.id changes AND not already looked up:
-    -> handlePublicLookup() [FREE - county scrape]
-    -> sets owner_name, assessed_value, year_built in localProperty
-
-Button click ("Enrich" / "Get Contact Info"):
-    -> handleSkipTrace() [PAID - BatchData]
-    -> sets phones, emails, enriched owners
+Update lines ~134-149 to:
+```typescript
+const enrichedFields: Record<string, any> = {};
+if (validOwner(pipelineResult?.owner_name)) {
+  enrichedFields.owner_name = validOwner(pipelineResult.owner_name);
+}
+// Build property_data from pipeline
+enrichedFields.property_data = {
+  ...prev.property_data,
+  parcel_id: pipelineResult?.parcel_id || prev.property_data?.parcel_id,
+  assessed_value: pipelineResult?.assessed_value || prev.property_data?.assessed_value,
+  year_built: pipelineResult?.year_built || prev.property_data?.year_built,
+  living_sqft: pipelineResult?.living_sqft || prev.property_data?.living_sqft,
+  homestead: pipelineResult?.homestead ?? prev.property_data?.homestead,
+  lot_size: pipelineResult?.lot_size || prev.property_data?.lot_size,
+  land_use: pipelineResult?.land_use || prev.property_data?.land_use,
+  confidence_score: pipelineResult?.confidence_score || prev.property_data?.confidence_score,
+  sources: Object.keys(pipelineResult?.sources || {}).filter(k => pipelineResult.sources[k]),
+};
+setLocalProperty(prev => ({ ...prev, ...enrichedFields }));
 ```
+
+**Change 2: UI reads from `localProperty` instead of `property`**
+
+Update lines 664-706 to reference `localProperty.property_data` instead of `property.property_data` for:
+- Confidence badge
+- Parcel ID, sqft, year built, homestead badges
+- Sources verification
+
+**Change 3: Conditionally show "Get Contact Info" button**
+
+Only show the BatchData button when:
+- Public lookup is done AND no phone numbers or emails were found from public data
+- OR when the user has no owner_name (total failure)
+
+Replace the always-visible button (line 762-777) with conditional rendering: show "Get Contact Info" only when `publicLookupDoneRef.current === property.id && phoneNumbers.length === 0 && emails.length === 0`.
+
+During public lookup loading, show a "Loading property data..." indicator instead.
+
+### No Edge Function Changes
+
+The `storm-public-lookup` function already returns all the fields. The FL county registry and ArcGIS adapters (with suffix normalization) are already deployed. The issue is purely frontend -- the data comes back but gets ignored.
 
 ## Files to Update
 
 | File | Change |
 |------|--------|
-| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Split handleEnrich into handlePublicLookup + handleSkipTrace; add auto-lookup useEffect |
+| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Extract all pipeline fields in handlePublicLookup; read from localProperty in UI; conditionally show BatchData button |
 
-## No Edge Function Changes
-
-All edge functions (`storm-public-lookup`, `canvassiq-skip-trace`) are already deployed and correct.
