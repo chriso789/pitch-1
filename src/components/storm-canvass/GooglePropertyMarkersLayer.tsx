@@ -45,6 +45,9 @@ const GRID_CELL_SIZE = 0.0015;
 // Debounce delay for map movement (ms)
 const LOAD_DEBOUNCE_MS = 400;
 
+// Max concurrent cell-cluster loading calls
+const MAX_CONCURRENT_LOADS = 3;
+
 function getGridCell(lat: number, lng: number): string {
   const cellLat = Math.floor(lat / GRID_CELL_SIZE) * GRID_CELL_SIZE;
   const cellLng = Math.floor(lng / GRID_CELL_SIZE) * GRID_CELL_SIZE;
@@ -183,45 +186,56 @@ export default function GooglePropertyMarkersLayer({
     return 1;
   }, []);
 
-  // Load parcels from edge function for a specific location (not grid cell locked)
-  const loadParcelsFromEdgeFunction = useCallback(async (lat: number, lng: number, radius: number, gridCells: string[]) => {
+  // Load parcels for a cluster of cells; only marks cells covered by returned bounds
+  const loadParcelsForCluster = useCallback(async (
+    clusterCenter: { lat: number; lng: number },
+    radius: number,
+    cellsInCluster: string[]
+  ) => {
     if (!profile?.tenant_id) return false;
-    
-    // Mark all cells as being loaded
-    gridCells.forEach(cell => loadedGridCellsRef.current.add(cell));
-    setIsLoading(true);
-    onLoadingChange?.(true);
-    
+
     try {
-      console.log('[GooglePropertyMarkersLayer] Loading parcels for', gridCells.length, 'cells at', lat.toFixed(5), lng.toFixed(5));
-      
+      console.log('[GooglePropertyMarkersLayer] Loading cluster of', cellsInCluster.length, 'cells at', clusterCenter.lat.toFixed(5), clusterCenter.lng.toFixed(5));
+
       const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
-        body: { lat, lng, radius, tenant_id: profile.tenant_id }
+        body: { lat: clusterCenter.lat, lng: clusterCenter.lng, radius, tenant_id: profile.tenant_id, force: true }
       });
 
       if (error) {
         console.error('[GooglePropertyMarkersLayer] Error loading parcels:', error);
-        // Allow retry on error
-        gridCells.forEach(cell => loadedGridCellsRef.current.delete(cell));
         return false;
       }
 
+      // Mark cells as loaded only if they fall within the coverage bounds returned by the edge function
+      const coverage = data?.coverage;
+      if (coverage) {
+        for (const cell of cellsInCluster) {
+          const [cellLatStr, cellLngStr] = cell.split('_');
+          const cellCenterLat = parseFloat(cellLatStr) + GRID_CELL_SIZE / 2;
+          const cellCenterLng = parseFloat(cellLngStr) + GRID_CELL_SIZE / 2;
+          if (
+            cellCenterLat >= coverage.minLat && cellCenterLat <= coverage.maxLat &&
+            cellCenterLng >= coverage.minLng && cellCenterLng <= coverage.maxLng
+          ) {
+            loadedGridCellsRef.current.add(cell);
+          }
+        }
+      } else {
+        // Fallback: mark all cells if no coverage returned
+        cellsInCluster.forEach(c => loadedGridCellsRef.current.add(c));
+      }
+
       if (data?.properties?.length > 0) {
-        console.log('[GooglePropertyMarkersLayer] Loaded', data.properties.length, 'properties');
         onPropertiesLoaded?.(data.properties.length);
         return true;
       }
-      
-      return data?.count === 0 ? true : false; // Consider 0 results as "loaded" for that area
+
+      return true; // 0 results is still a successful load for that area
     } catch (err) {
       console.error('[GooglePropertyMarkersLayer] Edge function error:', err);
-      gridCells.forEach(cell => loadedGridCellsRef.current.delete(cell));
       return false;
-    } finally {
-      setIsLoading(false);
-      onLoadingChange?.(false);
     }
-  }, [profile?.tenant_id, onLoadingChange, onPropertiesLoaded]);
+  }, [profile?.tenant_id, onPropertiesLoaded]);
 
   const getDispositionColor = (disposition: string | null): string => {
     if (!disposition) return DEFAULT_COLOR;
@@ -396,15 +410,51 @@ export default function GooglePropertyMarkersLayer({
         if (unloadedCells.length > 0) {
           console.log('[GooglePropertyMarkersLayer] Unloaded cells:', unloadedCells.length, 'of', visibleCells.length);
           
-          // Load parcels for the center of the visible area with all unloaded cells
-          const centerLat = (ne.lat() + sw.lat()) / 2;
-          const centerLng = (ne.lng() + sw.lng()) / 2;
+          // Group unloaded cells into clusters of nearby cells
+          const clusters: string[][] = [];
+          const remaining = [...unloadedCells];
+          while (remaining.length > 0 && clusters.length < MAX_CONCURRENT_LOADS) {
+            // Take a seed cell and grab all cells within ~2 grid cells distance
+            const seed = remaining.shift()!;
+            const [seedLatStr, seedLngStr] = seed.split('_');
+            const seedLat = parseFloat(seedLatStr);
+            const seedLng = parseFloat(seedLngStr);
+            const cluster = [seed];
+            
+            for (let i = remaining.length - 1; i >= 0; i--) {
+              const [cLatStr, cLngStr] = remaining[i].split('_');
+              const cLat = parseFloat(cLatStr);
+              const cLng = parseFloat(cLngStr);
+              if (Math.abs(cLat - seedLat) <= GRID_CELL_SIZE * 3 && Math.abs(cLng - seedLng) <= GRID_CELL_SIZE * 3) {
+                cluster.push(remaining.splice(i, 1)[0]);
+              }
+            }
+            clusters.push(cluster);
+          }
           
+          setIsLoading(true);
+          onLoadingChange?.(true);
           loadingRef.current = false;
-          const loaded = await loadParcelsFromEdgeFunction(centerLat, centerLng, getLoadRadius(zoom), unloadedCells);
           
-          if (loaded) {
-            // Re-query after loading new parcels with deduplication
+          // Fire cluster loads concurrently
+          const radius = getLoadRadius(zoom);
+          const loadPromises = clusters.map(cluster => {
+            // Compute center of this cluster's cells
+            let sumLat = 0, sumLng = 0;
+            for (const cell of cluster) {
+              const [cLatStr, cLngStr] = cell.split('_');
+              sumLat += parseFloat(cLatStr) + GRID_CELL_SIZE / 2;
+              sumLng += parseFloat(cLngStr) + GRID_CELL_SIZE / 2;
+            }
+            const center = { lat: sumLat / cluster.length, lng: sumLng / cluster.length };
+            return loadParcelsForCluster(center, radius, cluster);
+          });
+          
+          const results = await Promise.allSettled(loadPromises);
+          const anyLoaded = results.some(r => r.status === 'fulfilled' && r.value === true);
+          
+          if (anyLoaded) {
+            // Re-query after loading new parcels
             const { data: newRawProperties } = await supabase
               .from('canvassiq_properties')
               .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
@@ -418,13 +468,15 @@ export default function GooglePropertyMarkersLayer({
             const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
             
             if (newProperties.length > 0) {
-              // Use incremental update instead of clearing all markers
               updateMarkersIncrementally(newProperties, zoom);
             }
-            setCurrentZoom(zoom);
-            loadingRef.current = false;
-            return;
           }
+          
+          setIsLoading(false);
+          onLoadingChange?.(false);
+          setCurrentZoom(zoom);
+          loadingRef.current = false;
+          return;
         }
       }
       
@@ -437,7 +489,7 @@ export default function GooglePropertyMarkersLayer({
     } finally {
       loadingRef.current = false;
     }
-  }, [profile?.tenant_id, map, updateMarkersIncrementally, loadParcelsFromEdgeFunction, getLoadRadius]);
+  }, [profile?.tenant_id, map, updateMarkersIncrementally, loadParcelsForCluster, getLoadRadius, onLoadingChange]);
 
   // Update marker sizes when zoom changes significantly
   const updateMarkerSizes = useCallback(() => {
