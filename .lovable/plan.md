@@ -1,63 +1,69 @@
 
 
-# Fix: Storm Reports API Failure + Dialog Positioning
+# Fix: Owner Display, Email Masking, and Storm Reports UX
 
-## Three Issues Identified
+## Issues Identified
 
-### Issue 1: "Did this system do these data pulls?"
-**Answer: Yes, correctly.** The Firecrawl logs in your screenshots (whitepages scrapes, fastpeoplesearch searches, realtor.com scrapes) are triggered by the auto-enrich logic in `PropertyInfoPanel.tsx` which fires ONLY when the panel opens (`open === true`) for a selected pin. This is working as designed -- data pulls execute when a user selects a pin and the owner page opens. The `hasAutoEnrichedRef` prevents duplicate pulls for the same property.
+### 1. Owner Name Shows "null" Instead of First/Last Name
+- Line 735: The owner display shows `owner.name` which can be "null" when enrichment returns no name
+- Line 737: Shows "Unknown" for gender and "Unknown" for credit score, which is unhelpful
+- The header (line 614) shows "Unknown Owner" -- needs to display actual first and last name separately when available
 
-### Issue 2: Storm Reports returning 0 results (NOAA API broken)
-**Root Cause from edge function logs:**
-- `plsr` is NOT a valid SWDI dataset name. The API returns: `ERROR VALIDATING 'product' - Acceptable values are: [nx3structure, nx3hail, nx3meso...]`
-- The `stat=tilesum` query parameter is for tile-based statistical summaries, not proximity-based searches. It returns aggregated counts, not individual storm reports.
-- The NWS Alerts API only returns currently active alerts, which is usually empty.
+### 2. Emails Are Masked (e.g., `sa********@hotmail.com`)
+- The masking comes from the enrichment pipeline (people search scrapers return masked emails from public sites like FastPeopleSearch/WhitePages)
+- The UI should show the FULL email when available, not the masked version
+- If only masked emails exist, still show them but indicate they're partial
 
-**Fix:** Use the correct NOAA Storm Events Database API. NOAA provides a proper REST endpoint for historical storm events (SPC Storm Reports) at `https://www.spc.noaa.gov/climo/reports/` and the Storm Events Database has a bulk CSV download. However, the most reliable free approach is:
-
-1. Use **NOAA SWDI with correct dataset names** (`nx3hail` works, but use geographic bounding box queries instead of `tilesum`)
-2. Use **SPC Storm Reports** (daily CSV files from `https://www.spc.noaa.gov/climo/reports/`)
-3. Use **Iowa Environmental Mesonet (IEM)** which provides a proper JSON API for Local Storm Reports
-
-**The IEM API** is the best option: `https://mesonet.agron.iastate.edu/geojson/lsr.php` -- free, no API key, returns GeoJSON with hail size, wind speed, tornado reports by lat/lng bounding box and date range.
-
-### Issue 3: Storm Reports dialog positioned too low
-The dialog uses `items-end` which anchors it to the bottom of the screen. Since PropertyInfoPanel is already a bottom Sheet, the storm dialog appears behind/below it. Fix: use `items-center` and proper z-index.
+### 3. Storm Reports Dialog Needs Scroll + Filter
+- The dialog currently shows all reports in one list with no filtering
+- Need filter tabs/buttons for "All", "Hail", "Wind", "Tornado"
+- The `ScrollArea` is already there but the list needs better scrolling UX
+- Reports should show event-type-specific colors (blue for hail, orange for wind, red for tornado)
 
 ---
 
 ## Technical Changes
 
-### 1. `supabase/functions/noaa-storm-reports/index.ts` -- Complete rewrite
+### File 1: `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-Replace the broken SWDI queries with two reliable free sources:
+**A. Fix Owner Display (lines 710-747)**
 
-**Source A: Iowa Environmental Mesonet (IEM) Local Storm Reports API**
-- URL: `https://mesonet.agron.iastate.edu/geojson/lsr.php?sts=YYYY-MM-DDTHH:MM&ets=YYYY-MM-DDTHH:MM&wfos=`
-- Returns: GeoJSON with hail, wind, tornado, flood reports
-- Filter by: bounding box around lat/lng, then haversine distance
-- Free, no API key, reliable JSON
+- Replace `owner.name` display with split first/last name display
+- Show age when available instead of "gender" (enrichment doesn't return gender)
+- Remove "Credit: Unknown" -- enrichment doesn't provide credit scores
+- In the header (line 614), show first + last name from enriched data
 
-**Source B: NWS Alerts API** (keep existing, already works for active alerts)
+**B. Show Full Emails (lines 785-806)**
 
-**Source C: NOAA SWDI `nx3hail`** with proper bounding box query instead of `tilesum`
-- URL: `https://www.ncdc.noaa.gov/swdiws/json/nx3hail/YYYYMMDD:YYYYMMDD?bbox=W,S,E,N`
-- This is the correct query format for geographic searches
+- Display the full email address without masking
+- If the email contains asterisks (masked), add a subtle "(partial)" indicator
 
-### 2. `src/components/storm-canvass/PropertyInfoPanel.tsx` -- Fix dialog positioning
+**C. Storm Reports: Add Filter Tabs + Better Scroll (lines 942-997)**
 
-- Change `items-end` to `items-center` in the storm reports overlay
-- Ensure z-index is above the Sheet (z-[70] or higher)
-- Add proper padding so dialog doesn't overlap with the bottom sheet
+Add state for storm filter:
+```
+const [stormFilter, setStormFilter] = useState<'all' | 'hail' | 'wind' | 'tornado'>('all');
+```
+
+Add filter buttons above the report list:
+- "All" / "Hail" / "Wind" / "Tornado" toggle buttons
+- Filter logic: match `event_type` containing the keyword (case-insensitive)
+- Show count per filter type as badges
+- Set `max-h-[60vh]` on ScrollArea for proper scrolling
+
+Color-code event type badges:
+- Hail: blue
+- Wind: orange  
+- Tornado: red
+- Other: gray
 
 ---
 
 ## Summary
 
-| File | Change |
+| Area | Change |
 |------|--------|
-| `noaa-storm-reports/index.ts` | Replace broken `plsr` dataset + `tilesum` query with IEM Local Storm Reports API (GeoJSON) + correct SWDI bbox query for nx3hail |
-| `PropertyInfoPanel.tsx` | Fix storm dialog positioning from `items-end` to `items-center`, increase z-index |
-
-The enrichment pipeline (Firecrawl data pulls) IS working correctly on pin selection -- no changes needed there.
+| Owner name | Show first + last name separately; show age; remove fake gender/credit fields |
+| Emails | Display full address; mark masked emails with "(partial)" indicator |
+| Storm dialog | Add hail/wind/tornado filter tabs with counts; improve scroll height; color-code event badges |
 
