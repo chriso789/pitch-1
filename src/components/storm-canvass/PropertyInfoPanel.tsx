@@ -70,7 +70,7 @@ export default function PropertyInfoPanel({
   const [enriching, setEnriching] = useState(false);
   const [enrichedOwners, setEnrichedOwners] = useState<any[]>([]);
   const [showFastEstimate, setShowFastEstimate] = useState(false);
-  const hasAutoEnrichedRef = useRef<string | null>(null);
+  
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [showStormReports, setShowStormReports] = useState(false);
   const [stormReports, setStormReports] = useState<any[]>([]);
@@ -223,36 +223,6 @@ export default function PropertyInfoPanel({
     }
   }, [property?.id, property?.address, property?.lat, profile?.tenant_id]);
 
-  // Auto-enrich when panel opens and no enrichment data exists or owner is unknown
-  useEffect(() => {
-    if (!open || !property?.id || !profile?.tenant_id) return;
-    
-    // Parse existing data to check if already enriched
-    const existingPhones = typeof property.phone_numbers === 'string' 
-      ? JSON.parse(property.phone_numbers || '[]') 
-      : (property.phone_numbers || []);
-    const existingSearchbug = typeof property.searchbug_data === 'string'
-      ? JSON.parse(property.searchbug_data || '{}')
-      : (property.searchbug_data || {});
-    
-    // Check if owner is unknown or missing
-    const ownerIsUnknown = !property?.owner_name || 
-      property?.owner_name === 'Unknown' || 
-      property?.owner_name === 'Unknown Owner';
-    
-    // Auto-enrich if: no data exists OR owner is unknown
-    const hasEnrichmentData = existingPhones.length > 0 || 
-      (existingSearchbug && Object.keys(existingSearchbug).length > 0 && !ownerIsUnknown) ||
-      enrichedOwners.length > 0;
-    
-    // Force re-enrich if owner is unknown even if we already tried
-    const shouldEnrich = !hasEnrichmentData || ownerIsUnknown;
-    
-    if (shouldEnrich && hasAutoEnrichedRef.current !== property.id) {
-      hasAutoEnrichedRef.current = property.id;
-      handleEnrich();
-    }
-  }, [open, property?.id]);
 
   // Sync localProperty when property prop changes — but ONLY on actual ID change
   useEffect(() => {
