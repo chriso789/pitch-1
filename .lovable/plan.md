@@ -1,67 +1,29 @@
 
-# Fix: Live Canvass Pins Not Loading When Panning
 
-## Root Cause Analysis
+# Fix: "Cannot read properties of null (reading 'owner_name')"
 
-Three issues combine to prevent pins from appearing as the user pans the map:
+## Root Cause
 
-### Issue 1: Radius vs. Viewport Mismatch
-When new grid cells are detected, `loadParcelsFromEdgeFunction` is called with the **center of the viewport** and a small radius (0.15mi at zoom 18). But the unloaded cells are at the **edges** of the viewport. The geocoding grid only covers the center, leaving edge cells empty but marked as "loaded."
+`property` can be `null` when the panel is closing or when the selected property changes. The component has an early return guard at line 287 (`if (!property || !localProperty) return null`) that protects the render path, but several `useEffect` blocks and callback functions access `property.owner_name`, `property.address`, `property.lat`, etc. without null-safe access.
 
-### Issue 2: Premature Density Short-Circuit
-The `canvassiq-load-parcels` edge function checks if the bounding box already has 50+ properties. When the bounding box overlaps with a previously-loaded area, this check passes and the function returns early without geocoding the new area. The database confirms: properties exist at `lng > -82.334` (right side) but **zero properties** exist at `lng < -82.334` (left side).
+The crash specifically occurs in the auto-enrich `useEffect` (line 232) where `property.owner_name` is read without optional chaining, even though the guard on line 221 uses `property?.id`. A React state update race (property set to null between the guard check and the body execution, or a stale closure) triggers the crash.
 
-### Issue 3: Grid Cells Marked as Loaded Prematurely
-`loadedGridCellsRef.current.add(cell)` marks cells as loaded immediately before the edge function returns. Even if the API only covered the center area, edge cells are marked as done and never retried.
+## Fix
 
-## Fix Plan
+**File:** `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-### 1. Update `GooglePropertyMarkersLayer.tsx` -- Load parcels per grid cell, not viewport center
+Add optional chaining (`?.`) to all direct `property.xxx` accesses outside the render guard:
 
-Instead of calling `loadParcelsFromEdgeFunction` once with the viewport center, batch unloaded cells into groups and call the edge function with each group's center coordinates. This ensures every unloaded cell gets proper coverage.
+1. **Line 232-234** (auto-enrich useEffect): Change `property.owner_name` to `property?.owner_name`
+2. **Line 447**: Change `property.owner_name` to `property?.owner_name`  
+3. **Line 511**: Change `property.lat` / `property.lng` to `property?.lat` / `property?.lng`
+4. **Line 524**: Change `property.owner_name` to `property?.owner_name`
+5. **Line 588**: Change `property.address` to `property?.address`
+6. **Line 596-598**: Change `property.property_data` to `property?.property_data`
 
-```text
-Current:  1 call to center of viewport -> misses edges
-Fixed:    Group unloaded cells into clusters -> 1 call per cluster center
-```
+These are all in callbacks or effects that can fire after `property` becomes null due to React re-render timing.
 
-Changes:
-- Modify the unloaded cells handling (lines 392-428) to compute the center of UNLOADED cells rather than the full viewport
-- Only mark cells as loaded AFTER confirming the edge function's radius actually covered them
-- Add a maximum of 3 concurrent cell-loading calls to prevent API flooding
+## No other files affected
 
-### 2. Update `canvassiq-load-parcels/index.ts` -- Fix density check scope
+This is a single-file fix -- only `PropertyInfoPanel.tsx` needs updating.
 
-The density check should only count properties within the NEW area being requested, not overlap with adjacent loaded areas.
-
-Changes:
-- Tighten the density check bounding box to only the exact radius requested
-- Return the actual coverage bounds in the response so the client knows what area was covered
-- Add a `force` parameter to skip density check when client knows the area is uncovered
-
-### 3. Update `GooglePropertyMarkersLayer.tsx` -- Only mark cells as loaded when covered
-
-Track which cells were actually within the geocoding radius based on the response, not which cells were requested.
-
-Changes:
-- After edge function returns, verify each cell's center is within the loaded radius before marking it
-- On response with `count: 0`, still mark the cell as loaded (area genuinely has no properties) but only if the cell was within the request radius
-
-## Files to Update
-
-| File | Change |
-|------|--------|
-| `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` | Fix cell loading strategy, mark cells correctly |
-| `supabase/functions/canvassiq-load-parcels/index.ts` | Fix density check, return coverage bounds |
-
-## Edge Functions to Deploy
-
-- `canvassiq-load-parcels`
-
-## Expected Result
-
-After fix, panning the map in any direction will:
-1. Detect new grid cells at the viewport edges
-2. Call the parcel loader with coordinates covering those specific cells
-3. Geocode and insert new properties for uncovered areas
-4. Display pins immediately after insertion
