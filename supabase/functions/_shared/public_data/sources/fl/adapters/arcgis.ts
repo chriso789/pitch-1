@@ -12,12 +12,22 @@ export async function arcgisLookup(
 ): Promise<CountyLookupResult> {
   const { serviceUrl, searchField, outFields, fieldMap, transforms, id } = config;
 
-  // Normalize address for LIKE search: strip unit/apt, uppercase
+  // Street suffix abbreviation map
+  const SUFFIX_MAP: Record<string, string> = {
+    DRIVE: "DR", STREET: "ST", AVENUE: "AVE", BOULEVARD: "BLVD",
+    LANE: "LN", COURT: "CT", CIRCLE: "CIR", PLACE: "PL",
+    TERRACE: "TER", ROAD: "RD", TRAIL: "TRL", PARKWAY: "PKWY",
+    HIGHWAY: "HWY", EXPRESSWAY: "EXPY",
+  };
+
+  // Normalize address for LIKE search: strip unit/apt, uppercase, abbreviate suffixes
   const addr = input.address
     .toUpperCase()
     .replace(/[#,]/g, "")
     .replace(/\s+(APT|UNIT|STE|SUITE|LOT|BLDG)\s+.*/i, "")
-    .trim();
+    .trim()
+    .replace(/\b(DRIVE|STREET|AVENUE|BOULEVARD|LANE|COURT|CIRCLE|PLACE|TERRACE|ROAD|TRAIL|PARKWAY|HIGHWAY|EXPRESSWAY)\b/g,
+      (match) => SUFFIX_MAP[match] || match);
 
   // Build query URL
   const where = `${searchField} LIKE '%${addr}%'`;
