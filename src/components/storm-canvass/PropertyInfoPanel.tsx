@@ -83,34 +83,30 @@ export default function PropertyInfoPanel({
   // Local state for property data — drives UI re-renders after enrichment
   const [localProperty, setLocalProperty] = useState<any>(property);
   const [skipTraceError, setSkipTraceError] = useState<string | null>(null);
+  const [publicLookupLoading, setPublicLookupLoading] = useState(false);
   const enrichingRef = useRef(false);
   const prevPropertyIdRef = useRef<string | null>(null);
+  const publicLookupDoneRef = useRef<string | null>(null);
 
-  // handleEnrich must be declared before the useEffect that calls it
-  const handleEnrich = useCallback(async (forceBypass = false) => {
-    if (!property?.id || !profile?.tenant_id) {
-      console.warn('[handleEnrich] Missing property_id or tenant_id');
-      toast.error('Missing property data');
-      return;
-    }
-    
-    setEnriching(true);
-    enrichingRef.current = true;
-    setSkipTraceError(null);
+  // Helper to parse address object from property
+  const parseAddr = useCallback(() => {
     try {
-      let addr: any = {};
-      try {
-        addr = typeof property.address === 'string' 
-          ? JSON.parse(property.address) 
-          : (property.address || {});
-      } catch (parseErr) {
-        console.warn('[handleEnrich] Failed to parse address:', parseErr);
-        addr = { formatted: property.address };
-      }
-      
-      console.log('[handleEnrich] Step 1: storm-public-lookup for:', property.id);
-      
-      // Step 1: County scrape for owner/parcel data
+      return typeof property?.address === 'string'
+        ? JSON.parse(property.address)
+        : (property?.address || {});
+    } catch {
+      return { formatted: property?.address };
+    }
+  }, [property?.address]);
+
+  // Step 1 (FREE): County scrape for owner/parcel/assessed value
+  const handlePublicLookup = useCallback(async (forceBypass = false) => {
+    if (!property?.id || !profile?.tenant_id) return;
+    const addr = parseAddr();
+
+    setPublicLookupLoading(true);
+    try {
+      console.log('[handlePublicLookup] storm-public-lookup for:', property.id);
       const { data, error } = await supabase.functions.invoke('storm-public-lookup', {
         body: {
           lat: property.lat || addr?.lat,
@@ -123,20 +119,18 @@ export default function PropertyInfoPanel({
       });
 
       if (error) {
-        console.error('[handleEnrich] storm-public-lookup error:', error);
+        console.error('[handlePublicLookup] error:', error);
         throw error;
       }
 
       const pipelineResult = data?.pipeline || data?.result || data;
 
-      // Capture scores from pipeline response
       if (data?.scores) {
         setPipelineScores(data.scores);
       } else if (data?.result?.scores) {
         setPipelineScores(data.result.scores);
       }
 
-      // Update owner from county data
       if (validOwner(pipelineResult?.owner_name)) {
         setLocalProperty((prev: any) => ({
           ...prev,
@@ -144,13 +138,43 @@ export default function PropertyInfoPanel({
         }));
       }
 
-      // Step 2: BatchData skip trace for contact enrichment
-      console.log('[handleEnrich] Step 2: canvassiq-skip-trace (BatchData)');
-      
+      // Set enriched owner from public data if available
+      if (validOwner(pipelineResult?.owner_name)) {
+        setEnrichedOwners((prev) => prev.length > 0 ? prev : [{
+          id: '1',
+          name: validOwner(pipelineResult.owner_name)!,
+          age: pipelineResult.contact_age || null,
+          is_primary: true,
+        }]);
+      }
+
+      console.log('[handlePublicLookup] Done. Owner:', pipelineResult?.owner_name);
+    } catch (err: any) {
+      console.error('[handlePublicLookup] Error:', err?.message || err);
+    } finally {
+      setPublicLookupLoading(false);
+    }
+  }, [property?.id, property?.lat, property?.address, profile?.tenant_id, parseAddr]);
+
+  // Step 2 (PAID): BatchData skip trace for phones/emails
+  const handleSkipTrace = useCallback(async () => {
+    if (!property?.id || !profile?.tenant_id) {
+      toast.error('Missing property data');
+      return;
+    }
+
+    setEnriching(true);
+    enrichingRef.current = true;
+    setSkipTraceError(null);
+    const addr = parseAddr();
+
+    try {
+      console.log('[handleSkipTrace] canvassiq-skip-trace (BatchData) for:', property.id);
+
       const { data: skipData, error: skipError } = await supabase.functions.invoke('canvassiq-skip-trace', {
         body: {
           property_id: property.id,
-          owner_name: validOwner(pipelineResult?.owner_name) || validOwner(localProperty.owner_name) || '',
+          owner_name: validOwner(localProperty.owner_name) || '',
           address: {
             street: addr?.street || addr?.formatted || '',
             city: addr?.city || '',
@@ -163,7 +187,7 @@ export default function PropertyInfoPanel({
       });
 
       if (skipError) {
-        console.warn('[handleEnrich] skip-trace error:', skipError);
+        console.warn('[handleSkipTrace] skip-trace error:', skipError);
         setSkipTraceError('Contact lookup unavailable — API key may need updating');
       }
 
@@ -174,19 +198,11 @@ export default function PropertyInfoPanel({
 
       if (skipOwners.length > 0) {
         setEnrichedOwners(skipOwners);
-      } else if (validOwner(pipelineResult?.owner_name)) {
-        setEnrichedOwners([{
-          id: '1',
-          name: validOwner(pipelineResult.owner_name)!,
-          age: pipelineResult.contact_age || null,
-          is_primary: true,
-        }]);
       }
 
-      // Update localProperty with all enriched data
       setLocalProperty((prev: any) => ({
         ...prev,
-        owner_name: skipOwners[0]?.name || validOwner(pipelineResult?.owner_name) || prev.owner_name,
+        owner_name: skipOwners[0]?.name || prev.owner_name,
         phone_numbers: skipPhones.length > 0
           ? skipPhones.map((p: any) => typeof p === 'string' ? p : p.number)
           : prev.phone_numbers,
@@ -215,20 +231,24 @@ export default function PropertyInfoPanel({
         toast.warning('No contact data found for this property');
       }
     } catch (err: any) {
-      console.error('[handleEnrich] Error:', err?.message || err);
-      toast.error(err?.message || 'Failed to enrich property');
+      console.error('[handleSkipTrace] Error:', err?.message || err);
+      toast.error(err?.message || 'Failed to get contact info');
     } finally {
       setEnriching(false);
       enrichingRef.current = false;
     }
-  }, [property?.id, property?.address, property?.lat, profile?.tenant_id]);
+  }, [property?.id, property?.address, profile?.tenant_id, localProperty?.owner_name, parseAddr]);
 
+  // Convenience: full enrich (both steps)
+  const handleEnrich = useCallback(async (forceBypass = false) => {
+    await handlePublicLookup(forceBypass);
+    await handleSkipTrace();
+  }, [handlePublicLookup, handleSkipTrace]);
 
   // Sync localProperty when property prop changes — but ONLY on actual ID change
   useEffect(() => {
     if (property?.id && property.id !== prevPropertyIdRef.current) {
       prevPropertyIdRef.current = property.id;
-      // Only reset if not currently enriching (prevents wiping enriched data)
       if (!enrichingRef.current) {
         setLocalProperty(property);
         setEnrichedOwners([]);
@@ -237,9 +257,18 @@ export default function PropertyInfoPanel({
         setDoorStrategy(null);
         setPipelineScores(null);
         setSkipTraceError(null);
+        publicLookupDoneRef.current = null;
       }
     }
   }, [property?.id]);
+
+  // Auto-run FREE public lookup when a new pin is opened
+  useEffect(() => {
+    if (open && property?.id && publicLookupDoneRef.current !== property.id && !enrichingRef.current) {
+      publicLookupDoneRef.current = property.id;
+      handlePublicLookup();
+    }
+  }, [open, property?.id, handlePublicLookup]);
 
   // Calculate property coordinates (before early return for hooks consistency)
   const propertyLat = property?.lat || (typeof property?.address === 'string' 
@@ -734,15 +763,17 @@ export default function PropertyInfoPanel({
                 variant="outline" 
                 size="sm" 
                 className="h-7 text-xs gap-1"
-                onClick={() => handleEnrich(true)}
-                disabled={enriching}
+                onClick={() => handleSkipTrace()}
+                disabled={enriching || publicLookupLoading}
               >
                 {enriching ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : publicLookupLoading ? (
                   <Loader2 className="h-3 w-3 animate-spin" />
                 ) : (
                   <Sparkles className="h-3 w-3" />
                 )}
-                {enriching ? 'Enriching...' : 'Enrich'}
+                {enriching ? 'Getting Contacts...' : publicLookupLoading ? 'Loading Owner...' : 'Get Contact Info'}
               </Button>
             </div>
             <RadioGroup value={selectedOwner || ''} onValueChange={setSelectedOwner}>
@@ -851,7 +882,7 @@ export default function PropertyInfoPanel({
               <AlertTriangle className="h-4 w-4" />
               <AlertDescription className="text-xs flex items-center justify-between">
                 <span>{skipTraceError}</span>
-                <Button variant="ghost" size="sm" className="h-6 text-xs ml-2" onClick={() => handleEnrich(true)}>
+                <Button variant="ghost" size="sm" className="h-6 text-xs ml-2" onClick={() => handleSkipTrace()}>
                   <RefreshCw className="h-3 w-3 mr-1" /> Retry
                 </Button>
               </AlertDescription>
