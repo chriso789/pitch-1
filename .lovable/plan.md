@@ -1,170 +1,63 @@
 
 
-# Florida County Adapter Registry -- Direct API Architecture
+# Stamp 10 Florida County Adapters
 
-## Problem
+## What We're Doing
 
-The current pipeline uses **Firecrawl** for all county lookups -- it searches Google, finds a property page, then scrapes it with AI extraction. This is:
-- **Slow** (3-8 seconds per lookup: search + page load + LLM extraction)
-- **Expensive** ($0.10-0.15 per Firecrawl call, billed per scrape)
-- **Fragile** (depends on Google ranking, page structure, anti-bot protections)
+Creating 10 new county config files using the existing `ArcGISCountyConfig` + `arcgisLookup` pattern (same as Hillsborough and Orange), then registering them all.
 
-## Solution
+## Files to Create (10 county configs)
 
-Build a **county adapter registry** that calls county APIs directly (most FL counties expose ArcGIS REST endpoints or similar). Firecrawl becomes the last-resort fallback for counties without adapters.
+Each file follows the exact same pattern: import types + adapter, define config, export function.
 
-## Florida Counties to Cover (22)
+| County | File | Service URL | Search Field |
+|--------|------|-------------|--------------|
+| Pinellas | `counties/pinellas.ts` | `gis.pcpao.org` | SITUSADDRESS |
+| Pasco | `counties/pasco.ts` | `gis.pascopa.com` | SITUS_ADDRESS |
+| Sarasota | `counties/sarasota.ts` | `gis.sc-pa.com` | SITUS_ADDRESS |
+| Manatee | `counties/manatee.ts` | `gis.mymanatee.org` | SITUS_ADDRESS |
+| Polk | `counties/polk.ts` | `gis.polkpa.org` | SITUS_ADDRESS |
+| Brevard | `counties/brevard.ts` | `gis.bcpao.us` | SITUS_ADDRESS |
+| Lee | `counties/lee.ts` | `gis.leepa.org` | SITUS_ADDRESS |
+| Collier | `counties/collier.ts` | `gis.collierappraiser.com` | SITUS_ADDRESS |
+| Broward | `counties/broward.ts` | `gis.bcpa.net` | SITUS_ADDRESS |
+| Palm Beach | `counties/palm_beach.ts` | `gis.pbcgov.org` | SITUS_ADDRESS |
 
-**Tampa Bay to Marco Island:**
-Hernando, Pasco, Pinellas, Hillsborough, Polk, Manatee, Sarasota, Charlotte, Lee, Collier
+Each config specifies:
+- `id`: source identifier (e.g. `fl_pinellas_arcgis`)
+- `serviceUrl`: county ArcGIS MapServer/FeatureServer endpoint
+- `searchField`: address field name for LIKE queries
+- `outFields`: comma-separated fields to request (parcel, owner, homestead, sale data, assessed value where available)
+- `fieldMap`: maps ArcGIS field names to our standard `CountyLookupResult` fields
+- `transforms`: homestead boolean coercion, numeric validation for sale amounts/values
 
-**Orlando to Key West:**
-Lake, Orange, Seminole, Osceola, Brevard, Indian River, St. Lucie, Martin, Palm Beach, Broward, Miami-Dade, Monroe
+## File to Update
 
-## Platform Groupings (Research Required)
-
-Most FL counties run on a small set of platforms. Once one adapter template works, it stamps across all counties on that platform:
-
-| Platform | Pattern | Counties (estimated) |
-|----------|---------|---------------------|
-| ArcGIS REST | JSON API, no JS needed | Hillsborough, Orange, Brevard, Lee, others |
-| Patriot/Tyler | Form-based with API endpoints | Sarasota, Manatee, Charlotte |
-| qPublic | Standardized property viewer | Pasco, Hernando, others |
-| Custom/HTML | County-specific scraping | Miami-Dade, Palm Beach |
-
-*Exact platform assignments require inspecting each county appraiser's Network tab to confirm.*
-
----
-
-## File Structure
-
-```text
-supabase/functions/_shared/public_data/
-  sources/
-    fl/
-      types.ts                    -- CountyLookupInput/Result types
-      registry.ts                 -- FL county router (county name -> adapter)
-      adapters/
-        arcgis.ts                 -- Generic ArcGIS REST adapter
-        patriot.ts                -- Patriot/Tyler platform adapter
-        qpublic.ts                -- qPublic platform adapter
-      counties/
-        hillsborough.ts           -- Config: ArcGIS URL + field mappings
-        pinellas.ts
-        sarasota.ts
-        manatee.ts
-        pasco.ts
-        hernando.ts
-        polk.ts
-        orange.ts
-        seminole.ts
-        osceola.ts
-        lake.ts
-        brevard.ts
-        indian_river.ts
-        st_lucie.ts
-        martin.ts
-        palm_beach.ts
-        broward.ts
-        miami_dade.ts
-        monroe.ts
-        charlotte.ts
-        lee.ts
-        collier.ts
-```
-
-## Technical Changes
-
-### 1. New: `sources/fl/types.ts`
-
-Shared types for all FL county adapters:
-- `CountyLookupInput`: address, city, state, zip, lat, lng
-- `CountyLookupResult`: parcel_id, owner_name, mailing_address, homestead, assessed_value, last_sale_date, last_sale_amount, year_built, living_sqft, lot_size, land_use, raw, source, confidence_score
-
-### 2. New: `sources/fl/registry.ts`
-
-County name router:
-```
-"hillsborough" -> hillsboroughLookup()
-"sarasota" -> sarasotaLookup()
-...
-"unknown" -> null (falls through to Firecrawl)
-```
-Export: `lookupFlCountyProperty(input) -> CountyLookupResult | null`
-
-### 3. New: `sources/fl/adapters/arcgis.ts`
-
-Generic ArcGIS REST adapter that takes config:
-- `serviceUrl`: the county's ArcGIS MapServer/FeatureServer URL
-- `fieldMap`: maps county field names to our standard names (e.g., `OWNERNAME` -> `owner_name`)
-- `searchField`: which field to query (usually `SITEADDR` or `ADDRESS`)
-
-One function handles all ArcGIS counties -- each county file just exports config.
-
-### 4. New: County config files (e.g., `counties/hillsborough.ts`)
-
-Each file exports a thin config object + the lookup function:
-```typescript
-export const hillsboroughConfig = {
-  serviceUrl: "https://gis.hcpafl.org/arcgis/rest/services/...",
-  searchField: "SITEADDR",
-  fieldMap: { OWNERNAME: "owner_name", MAILADDR: "mailing_address", ... }
-};
-export const hillsboroughLookup = (input) => arcgisLookup(hillsboroughConfig, input);
-```
-
-### 5. Update: `publicLookupPipeline.ts`
-
-Add FL county adapter as highest-priority step before the universal Firecrawl appraiser:
+**`registry.ts`** -- Import all 10 new counties and add them to the `REGISTRY` map:
 
 ```
-1. FL County Direct API (if state=FL and county is supported) -- NEW
-2. Universal Firecrawl Appraiser (fallback for unsupported counties)
-3. Tax Collector (Firecrawl, keep as-is for now)
-4. Clerk (Firecrawl, keep as-is for now)
-5. BatchLeads fallback (existing)
-6. Merge + score
+pinellas, pasco, sarasota, manatee, polk, brevard, lee, collier, broward, "palm beach"
 ```
 
-### 6. Update: `registry.ts`
+The existing county name normalization (lowercase, strip " county") handles all keys. "palm beach" uses the space-separated key to match Census TIGER output.
 
-Import the FL county registry. When `county.state === "FL"`, try FL direct lookup first. If it returns data, skip the Firecrawl appraiser.
+## No Other Changes Needed
 
-### 7. New: `sources/fl/adapters/patriot.ts` and `qpublic.ts`
+- `arcgis.ts` adapter: unchanged (already handles everything)
+- `types.ts`: unchanged (all fields already defined)
+- `publicLookupPipeline.ts`: unchanged (already calls `lookupFlCountyProperty` for FL counties)
+- `storm-public-lookup` edge function: just needs redeployment to pick up new shared code
 
-Similar to arcgis.ts but for those platforms. Each takes a config object.
+## Technical Notes
 
----
+- The ArcGIS endpoint URLs are based on common FL county appraiser GIS patterns. If any endpoint returns errors on first test, the field names or URL paths may need minor adjustments (e.g., `/MapServer/0` vs `/FeatureServer/0`, or different layer indices). The adapter gracefully returns `confidence_score: 0` on errors, so Firecrawl fallback kicks in automatically.
+- `outFields: "*"` can be used as a safe default if exact field names aren't confirmed, but specifying fields is more efficient.
+- Each county file is ~25 lines. Total new code: ~250 lines across 10 files + ~15 lines of registry imports.
 
-## Implementation Strategy
+## Deployment
 
-**Phase 1 (this build):** Build the framework + 3 pilot counties
-- Framework: types, registry, ArcGIS adapter template
-- Hillsborough (Tampa) -- likely ArcGIS
-- Sarasota -- known Patriot/sc-pa.com
-- Orange (Orlando) -- likely ArcGIS
+Redeploy `storm-public-lookup` to pick up the new county adapters from shared code.
 
-**Phase 2 (follow-up):** Stamp remaining counties
-- Each county is a ~20-line config file once you confirm the platform
-- Research: inspect Network XHR on each county appraiser site
-- Stamp: create config, add to registry, test
+## Result
 
-**Phase 3 (optional):** Replace Firecrawl tax/clerk with direct APIs too
-
----
-
-## Integration with Existing Pipeline
-
-The `storm-public-lookup` edge function stays unchanged -- it calls `lookupPropertyPublic()` which calls the registry. The registry change is internal: FL counties get direct API calls instead of Firecrawl scrapes.
-
-The `canvassiq-skip-trace` edge function (BatchData) also stays unchanged -- it runs after the county lookup, exactly as built.
-
-## Cost Impact
-
-- **Before:** ~$0.30/property (Firecrawl appraiser + tax + clerk = 3 scrapes)
-- **After:** ~$0.00/property for FL counties with direct adapters (free public APIs)
-- BatchData skip trace remains ~$0.10-0.15 per contact enrichment (unchanged)
-
-## Key Dependency
-
-To build accurate adapters, we need to confirm the actual API endpoints for each county. The plan starts with 3 pilot counties where I'll research the endpoints, then the pattern stamps across the rest.
+After this, the system supports **12 FL counties** via direct ArcGIS APIs (Hillsborough, Orange + 10 new), covering Tampa Bay, Orlando corridor, Southwest FL, and Southeast FL. Remaining counties (Hernando, Seminole, Osceola, Lake, Indian River, St. Lucie, Martin, Miami-Dade, Charlotte, Monroe) can be stamped identically in a follow-up.
