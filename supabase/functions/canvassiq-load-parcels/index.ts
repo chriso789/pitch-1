@@ -11,6 +11,7 @@ interface RequestBody {
   lng: number;
   radius?: number; // in miles
   tenant_id: string;
+  force?: boolean; // skip density check when client knows area is uncovered
 }
 
 interface GeocodingResult {
@@ -37,9 +38,9 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     const body: RequestBody = await req.json();
-    const { lat, lng, radius = 0.25, tenant_id } = body;
+    const { lat, lng, radius = 0.25, tenant_id, force = false } = body;
 
-    console.log(`[canvassiq-load-parcels] Loading parcels for tenant ${tenant_id} at ${lat},${lng} radius ${radius}mi`);
+    console.log(`[canvassiq-load-parcels] Loading parcels for tenant ${tenant_id} at ${lat},${lng} radius ${radius}mi force=${force}`);
 
     if (!lat || !lng || !tenant_id) {
       return new Response(
@@ -48,14 +49,17 @@ serve(async (req) => {
       );
     }
 
-    // Calculate bounding box
+    // Calculate bounding box from the EXACT requested center+radius only
     const radiusInDegrees = radius / 69;
     const minLat = lat - radiusInDegrees;
     const maxLat = lat + radiusInDegrees;
     const minLng = lng - radiusInDegrees;
     const maxLng = lng + radiusInDegrees;
 
-    // Check existing properties
+    // Coverage bounds returned to client so it knows what area was actually covered
+    const coverage = { minLat, maxLat, minLng, maxLng, centerLat: lat, centerLng: lng, radiusMi: radius };
+
+    // Check existing properties within the EXACT requested bounds only
     const { data: existingProperties, error: existingError } = await supabase
       .from('canvassiq_properties')
       .select('id, lat, lng, normalized_address_key')
@@ -69,15 +73,17 @@ serve(async (req) => {
       console.error('[canvassiq-load-parcels] Error checking existing:', existingError);
     }
 
+    // Only short-circuit if NOT forced AND the EXACT requested area has enough density
     const expectedDensity = 50;
-    if (existingProperties && existingProperties.length >= expectedDensity) {
+    if (!force && existingProperties && existingProperties.length >= expectedDensity) {
       console.log(`[canvassiq-load-parcels] Area has sufficient coverage: ${existingProperties.length} properties`);
       return new Response(
         JSON.stringify({ 
           success: true, 
           properties: existingProperties,
           message: 'Existing properties returned',
-          count: existingProperties.length
+          count: existingProperties.length,
+          coverage,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -149,14 +155,15 @@ serve(async (req) => {
           success: true, 
           properties: allInserted,
           message: 'Properties loaded and enrichment started',
-          count: allInserted.length
+          count: allInserted.length,
+          coverage,
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     return new Response(
-      JSON.stringify({ success: true, properties: [], count: 0 }),
+      JSON.stringify({ success: true, properties: [], count: 0, coverage }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
