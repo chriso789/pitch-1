@@ -948,7 +948,7 @@ export default function PropertyInfoPanel({
         {/* Storm Reports Dialog */}
         {showStormReports && (
           <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4" onClick={() => setShowStormReports(false)}>
-            <div className="bg-background rounded-xl w-full max-w-lg max-h-[70vh] overflow-hidden shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="bg-background rounded-xl w-full max-w-lg max-h-[70vh] overflow-hidden shadow-xl flex flex-col" onClick={(e) => e.stopPropagation()}>
               <div className="flex items-center justify-between p-4 border-b">
                 <div>
                   <h3 className="font-semibold text-sm">Storm Reports</h3>
@@ -982,7 +982,8 @@ export default function PropertyInfoPanel({
                   })}
                 </div>
               )}
-              <ScrollArea className="max-h-[60vh] p-4">
+              <ScrollArea className="flex-1 overflow-hidden">
+                <div className="p-4">
                 {loadingStorm ? (
                   <div className="flex items-center justify-center py-8 gap-2">
                     <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
@@ -1033,6 +1034,7 @@ export default function PropertyInfoPanel({
                     </div>
                   );
                 })()}
+                </div>
               </ScrollArea>
             </div>
           </div>
