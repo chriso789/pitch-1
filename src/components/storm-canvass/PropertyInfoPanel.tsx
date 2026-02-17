@@ -3,7 +3,7 @@ import {
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
   Cloud, Sun, Compass, Calculator, FileText, Camera, CalendarPlus, BarChart3,
-  History, StickyNote, UserPlus, Loader2, Sparkles, ShieldCheck, ShieldAlert
+  History, StickyNote, UserPlus, Loader2, Sparkles, ShieldCheck, ShieldAlert, RefreshCw
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -76,7 +76,7 @@ export default function PropertyInfoPanel({
   const [localProperty, setLocalProperty] = useState<any>(property);
 
   // handleEnrich must be declared before the useEffect that calls it
-  const handleEnrich = useCallback(async () => {
+  const handleEnrich = useCallback(async (forceBypass = false) => {
     if (!property?.id || !profile?.tenant_id) {
       console.warn('[handleEnrich] Missing property_id or tenant_id');
       toast.error('Missing property data');
@@ -95,7 +95,7 @@ export default function PropertyInfoPanel({
         addr = { formatted: property.address };
       }
       
-      console.log('[handleEnrich] Calling storm-public-lookup (free) for:', property.id, addr);
+      console.log('[handleEnrich] Calling storm-public-lookup for:', property.id, addr, forceBypass ? '(FORCE)' : '');
       
       const { data, error } = await supabase.functions.invoke('storm-public-lookup', {
         body: {
@@ -104,6 +104,7 @@ export default function PropertyInfoPanel({
           address: addr?.formatted || addr?.street || '',
           tenant_id: profile.tenant_id,
           property_id: property.id,
+          force: forceBypass,
         }
       });
 
@@ -194,7 +195,13 @@ export default function PropertyInfoPanel({
         if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
           toast.success('Property data loaded (cached)');
         } else {
-          toast.warning('No owner data in cache — tap Enrich to retry');
+          toast.warning('No owner data in cache', {
+            description: 'Tap Re-enrich to force a fresh lookup.',
+            action: {
+              label: 'Re-enrich',
+              onClick: () => handleEnrich(true),
+            },
+          });
         }
       } else if (hasRealOwner || hasPhones || hasEmails || hasUpdatedOwner || hasUpdatedPhones || hasUpdatedEmails) {
         toast.success('Property enriched!');
@@ -687,7 +694,7 @@ export default function PropertyInfoPanel({
                 variant="outline" 
                 size="sm" 
                 className="h-7 text-xs gap-1"
-                onClick={handleEnrich}
+                onClick={() => handleEnrich(true)}
                 disabled={enriching}
               >
                 {enriching ? (
