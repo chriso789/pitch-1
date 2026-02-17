@@ -5,6 +5,7 @@ import { pickAppraiser, pickTax, pickClerk } from "./registry.ts";
 import { scoreConfidence } from "./score.ts";
 import { mergeResults } from "./merge.ts";
 import { batchLeadsFallback } from "./sources/batchleads/fallback.ts";
+import { lookupFlCountyProperty } from "./sources/fl/registry.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 function normalize(s: string) {
@@ -37,15 +38,43 @@ export async function lookupPropertyPublic(input: {
   const sources: Record<string, any> = {};
   const raw: Record<string, any> = {};
 
-  // 1) Property Appraiser
-  const appraiser = pickAppraiser(county);
+  // ─── Step 0: FL County Direct API (highest priority, free) ───
+  let flCountyRes: Partial<PublicPropertyResult> | null = null;
+  if (county.state.toUpperCase() === "FL" && county.county_name) {
+    flCountyRes = await lookupFlCountyProperty({
+      county: county.county_name,
+      address: loc.street || loc.normalized_address,
+      city: loc.city,
+      state: county.state,
+      zip: loc.zip,
+      lat: loc.lat,
+      lng: loc.lng,
+    }).catch((e) => {
+      raw.fl_county_error = String(e);
+      console.error("[pipeline] FL county adapter error:", e);
+      return null;
+    });
+
+    if (flCountyRes) {
+      sources.fl_county = (flCountyRes as any).source ?? "fl_direct";
+      raw.fl_county = flCountyRes;
+      // Map FL adapter field names to pipeline field names
+      if ((flCountyRes as any).mailing_address && !flCountyRes.owner_mailing_address) {
+        flCountyRes.owner_mailing_address = (flCountyRes as any).mailing_address;
+      }
+    }
+  }
+
+  // ─── Step 1: Property Appraiser (skip Firecrawl if FL county returned good data) ───
+  const skipFirecrawlAppraiser = flCountyRes && flCountyRes.owner_name && (flCountyRes as any).confidence_score >= 60;
+  const appraiser = skipFirecrawlAppraiser ? null : pickAppraiser(county);
   const appraiserRes = appraiser
     ? await appraiser.lookupByAddress({ loc, county, timeoutMs }).catch((e) => {
         raw.appraiser_error = String(e);
         return null;
       })
     : null;
-  sources.appraiser = appraiser ? appraiser.id : null;
+  sources.appraiser = appraiser ? appraiser.id : (skipFirecrawlAppraiser ? "skipped_fl_direct" : null);
   raw.appraiser = appraiserRes ?? null;
 
   // 2) Tax Collector
@@ -65,8 +94,8 @@ export async function lookupPropertyPublic(input: {
     ? await clerk.lookup({
         loc,
         county,
-        owner_name: appraiserRes?.owner_name ?? taxRes?.owner_name,
-        parcel_id: appraiserRes?.parcel_id ?? taxRes?.parcel_id,
+        owner_name: flCountyRes?.owner_name ?? appraiserRes?.owner_name ?? taxRes?.owner_name,
+        parcel_id: flCountyRes?.parcel_id ?? appraiserRes?.parcel_id ?? taxRes?.parcel_id,
         timeoutMs,
       }).catch((e) => {
         raw.clerk_error = String(e);
@@ -76,9 +105,9 @@ export async function lookupPropertyPublic(input: {
   sources.clerk = clerk ? clerk.id : null;
   raw.clerk = clerkRes ?? null;
 
-  // 4) Merge + initial confidence
-  let merged = mergeResults(loc, [appraiserRes, taxRes, clerkRes]);
-  let confidence = scoreConfidence({ loc, merged, appraiserRes, taxRes, clerkRes });
+  // 4) Merge + initial confidence (FL county data has highest priority)
+  let merged = mergeResults(loc, [flCountyRes, appraiserRes, taxRes, clerkRes]);
+  let confidence = scoreConfidence({ loc, merged, appraiserRes: flCountyRes ?? appraiserRes, taxRes, clerkRes });
 
   // 5) Smart BatchLeads fallback with cost controls
   let batchRes: Partial<PublicPropertyResult> | null = null;
@@ -139,15 +168,15 @@ export async function lookupPropertyPublic(input: {
         }
 
         // Re-merge (lowest priority — won't overwrite existing)
-        merged = mergeResults(loc, [appraiserRes, taxRes, clerkRes, batchRes]);
+        merged = mergeResults(loc, [flCountyRes, appraiserRes, taxRes, clerkRes, batchRes]);
 
         const onlyBatchleadsProvidedOwner =
-          !appraiserRes?.owner_name && !taxRes?.owner_name && !clerkRes?.owner_name && !!batchRes.owner_name;
+          !flCountyRes?.owner_name && !appraiserRes?.owner_name && !taxRes?.owner_name && !clerkRes?.owner_name && !!batchRes.owner_name;
 
         confidence = scoreConfidence({
           loc,
           merged,
-          appraiserRes,
+          appraiserRes: flCountyRes ?? appraiserRes,
           taxRes,
           clerkRes,
           batchleadsRes: batchRes,
