@@ -39,6 +39,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
@@ -73,15 +74,14 @@ const Pipeline = () => {
   const navigate = useNavigate();
   const { currentLocationId, currentLocation } = useLocation();
 
-  const jobStages = [
-    { name: "Leads", key: "lead", color: "bg-amber-500", icon: User },
-    { name: "Legal Review", key: "legal_review", color: "bg-blue-500", icon: FileText },
-    { name: "Contingency Signed", key: "contingency_signed", color: "bg-purple-500", icon: CheckCircle },
-    { name: "Ready for Approval", key: "ready_for_approval", color: "bg-orange-500", icon: AlertCircle },
-    { name: "Project", key: "project", color: "bg-green-500", icon: CalendarDays },
-    { name: "Completed", key: "completed", color: "bg-teal-500", icon: CheckSquare },
-    { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckSquare }
-  ];
+  const { stages: dynamicStages } = usePipelineStages();
+
+  const jobStages = dynamicStages.map(stage => ({
+    name: stage.name,
+    key: stage.key,
+    color: stage.color,
+    icon: FileText,
+  }));
 
   // Location indicator badge component
   const LocationIndicator = () => {
