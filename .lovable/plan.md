@@ -1,47 +1,51 @@
 
 
-# Fix Pipeline Kanban Board to Show "Estimate Sent" Stage
+# Show Both Contact and Lead in Global Search Results
 
 ## Problem
 
-The Pipeline page (`Pipeline.tsx`) uses a **hardcoded** `jobStages` array (lines 76-84) that only includes 7 stages:
-- Leads, Legal Review, Contingency Signed, Ready for Approval, Project, Completed, Closed
+The `search_contacts_and_jobs` database function contains deduplication logic (lines 89-92) that excludes Lead entries from search results when a corresponding Project record exists:
 
-It is missing **Estimate Sent** (and any other stages configured in the database). Meanwhile, the Dashboard already uses the dynamic `usePipelineStages()` hook and correctly shows all stages including "Estimate Sent."
+```sql
+AND NOT EXISTS (
+  SELECT 1 FROM projects proj 
+  WHERE proj.pipeline_entry_id = pe.id
+)
+```
+
+This means Nicole Walker only appears as a "Contact" in search, even though she also has a Lead/Pipeline entry the user needs to access via `/lead/:id`.
 
 ## Solution
 
-Replace the hardcoded `jobStages` array in `Pipeline.tsx` with dynamic stages from the `usePipelineStages()` hook -- the same approach already used by `KanbanPipeline.tsx` and the Dashboard.
+Remove the `NOT EXISTS` deduplication clause from the Leads section of the RPC so that pipeline entries always appear in search results regardless of project conversion status. This lets users navigate to both the Contact Profile (`/contact/:id`) and the Lead Details page (`/lead/:id`).
+
+Since leads and projects both route to `/lead/:id`, also remove the separate Projects (Jobs) section to avoid showing the same pipeline entry twice (once as "Lead" and once as "Job").
 
 ## Changes
 
-**File: `src/features/pipeline/components/Pipeline.tsx`**
+**New migration SQL:**
 
-1. **Import `usePipelineStages`** at the top of the file.
+1. **Remove the `NOT EXISTS` clause** from the Leads query block so all matching pipeline entries appear.
+2. **Remove the Projects/Jobs `UNION ALL` block** since those entries will now appear in the Leads section. A lead that has been converted to a project will still show as a "Lead" result routing to `/lead/:id`, which is the unified page.
 
-2. **Replace the hardcoded `jobStages` array** (lines 76-84) with the dynamic `stages` from the hook:
-   ```
-   const { stages: dynamicStages } = usePipelineStages();
+The updated function keeps two sections:
+- **Contacts** -- returns contact records, navigates to `/contact/:id`
+- **Leads** -- returns all pipeline entries (pre- and post-project), navigates to `/lead/:id`
 
-   // Map dynamic stages to the format Pipeline.tsx expects (with icons)
-   const jobStages = dynamicStages.map(stage => ({
-     name: stage.name,
-     key: stage.key,
-     color: stage.color,
-     icon: DefaultStageIcon, // Use a generic icon
-   }));
-   ```
-
-3. **No other changes needed** -- the rest of the component (`fetchPipelineData`, `handleDragEnd`, rendering) already iterates over `jobStages` dynamically, so swapping the source is sufficient.
+**No frontend changes needed** -- the `CLJSearchBar.tsx` component already handles `contact` and `lead` entity types with proper routing and grouping.
 
 ## Technical Details
 
-| File | Change |
+| Item | Detail |
 |------|--------|
-| `src/features/pipeline/components/Pipeline.tsx` | Import `usePipelineStages`; replace hardcoded `jobStages` with dynamic stages from hook |
+| Migration | New SQL migration dropping and recreating `search_contacts_and_jobs` |
+| Removed | `NOT EXISTS (SELECT 1 FROM projects ...)` clause from leads query |
+| Removed | Entire `UNION ALL` projects/jobs query block |
+| Kept | Contacts query (unchanged) and Leads query (minus dedup filter) |
 
 ## Result
 
-- The Pipeline Kanban board will show **all** configured stages, including "Estimate Sent"
-- Stage order, names, and colors will stay synchronized with the Dashboard and the Pipeline Stage Manager
-- Adding or removing stages in the manager will automatically update the Pipeline board
+- Searching "Nicole" shows two results: **Nicole Walker (Contact)** and **Nicole Walker (Lead)**
+- Clicking Contact navigates to `/contact/:id`
+- Clicking Lead navigates to `/lead/:id`
+- No duplicate entries since the separate Jobs section is removed
