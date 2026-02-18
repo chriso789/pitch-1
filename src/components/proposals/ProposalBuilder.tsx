@@ -36,6 +36,7 @@ import {
   type TierPricing,
 } from '@/hooks/useProposalGenerator';
 import { cn } from '@/lib/utils';
+import { LanguageSelector } from './LanguageSelector';
 
 interface ProposalBuilderProps {
   projectId: string;
@@ -66,6 +67,8 @@ export const ProposalBuilder = ({
   const [estimateId, setEstimateId] = useState<string | null>(null);
 
   // Form state
+  const [language, setLanguage] = useState('en');
+
   const [formData, setFormData] = useState<PricingInput>({
     roofArea: initialMeasurement?.roofArea || 2500,
     pitch: initialMeasurement?.pitch || '6/12',
@@ -287,7 +290,11 @@ export const ProposalBuilder = ({
               </div>
             </div>
 
-            {/* Scope of Work */}
+            {/* Language & Scope of Work */}
+            <div className="space-y-2">
+              <Label>Proposal Language</Label>
+              <LanguageSelector value={language} onChange={setLanguage} />
+            </div>
             <div className="space-y-2">
               <Label>Scope of Work</Label>
               <Textarea
