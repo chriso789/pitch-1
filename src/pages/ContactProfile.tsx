@@ -36,6 +36,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useActiveTenantId } from "@/hooks/useActiveTenantId";
+import { useContactStatuses } from "@/hooks/useContactStatuses";
 
 const ContactProfile = () => {
   const { id } = useParams();
@@ -52,6 +53,7 @@ const ContactProfile = () => {
   const [triggerEditCounter, setTriggerEditCounter] = useState(0);
   const [teamMembers, setTeamMembers] = useState<any[]>([]);
   const [assigningRep, setAssigningRep] = useState(false);
+  const { statuses: contactStatuses } = useContactStatuses();
   // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
     if (id === 'new' || !id) {
@@ -84,6 +86,21 @@ const ContactProfile = () => {
     };
     fetchTeam();
   }, [activeTenantId]);
+
+  const handleStatusChange = async (newStatus: string) => {
+    const statusValue = newStatus === 'unqualified' ? null : newStatus;
+    const { error } = await supabase
+      .from('contacts')
+      .update({ qualification_status: statusValue })
+      .eq('id', id);
+    if (error) {
+      toast({ title: "Error", description: "Failed to update status", variant: "destructive" });
+    } else {
+      setContact((prev: any) => prev ? { ...prev, qualification_status: statusValue } : null);
+      const statusLabel = contactStatuses.find(s => s.key === newStatus)?.name || 'Unqualified';
+      toast({ title: "Status Updated", description: `Contact status set to ${statusLabel}` });
+    }
+  };
 
   const handleAssignRep = async (value: string) => {
     const newAssignedTo = value === 'unassigned' ? null : value;
@@ -225,23 +242,30 @@ const ContactProfile = () => {
                   {contact.contact_number && (
                     <Badge variant="secondary" className="text-sm">#{contact.contact_number}</Badge>
                   )}
-                  <Badge 
-                    className={`text-sm ${
-                      contact.qualification_status === 'qualified' || contact.qualification_status === 'interested' 
-                        ? 'bg-success text-success-foreground' 
-                        : contact.qualification_status === 'storm_damage_marketing'
-                        ? 'bg-warning text-warning-foreground'
-                        : contact.qualification_status === 'old_roof_marketing'
-                        ? 'bg-primary text-primary-foreground'
-                        : contact.qualification_status === 'not_interested'
-                        ? 'bg-destructive text-destructive-foreground'
-                        : contact.qualification_status === 'follow_up'
-                        ? 'bg-yellow-500 text-white'
-                        : 'bg-muted text-muted-foreground'
-                    }`}
+                  <Select
+                    value={contact.qualification_status || 'unqualified'}
+                    onValueChange={handleStatusChange}
                   >
-                    {contact.qualification_status?.replace(/_/g, ' ') || 'Unqualified'}
-                  </Badge>
+                    <SelectTrigger className="h-7 w-auto min-w-[140px] text-sm border-input bg-background">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover border z-[200]">
+                      <SelectItem value="unqualified">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full bg-muted-foreground" />
+                          Unqualified
+                        </div>
+                      </SelectItem>
+                      {contactStatuses.map((status) => (
+                        <SelectItem key={status.id} value={status.key}>
+                          <div className="flex items-center gap-2">
+                            <span className="h-2 w-2 rounded-full" style={{ backgroundColor: status.color }} />
+                            {status.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
               </div>
             </div>
