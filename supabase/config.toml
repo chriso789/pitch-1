@@ -1107,3 +1107,9 @@ verify_jwt = false
 
 [functions.dnc-scrub]
 verify_jwt = false
+
+[functions.upsell-recommendations]
+verify_jwt = true
+
+[functions.translate-proposal]
+verify_jwt = true

@@ -6661,6 +6661,8 @@ export type Database = {
           lead_source: string | null
           lead_source_details: Json | null
           lead_status: string | null
+          lifecycle_stage: string | null
+          lifecycle_updated_at: string | null
           location_id: string | null
           longitude: number | null
           metadata: Json | null
@@ -6723,6 +6725,8 @@ export type Database = {
           lead_source?: string | null
           lead_source_details?: Json | null
           lead_status?: string | null
+          lifecycle_stage?: string | null
+          lifecycle_updated_at?: string | null
           location_id?: string | null
           longitude?: number | null
           metadata?: Json | null
@@ -6785,6 +6789,8 @@ export type Database = {
           lead_source?: string | null
           lead_source_details?: Json | null
           lead_status?: string | null
+          lifecycle_stage?: string | null
+          lifecycle_updated_at?: string | null
           location_id?: string | null
           longitude?: number | null
           metadata?: Json | null
@@ -17292,6 +17298,165 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "locations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maintenance_plans: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          frequency: string
+          id: string
+          next_service_date: string | null
+          notes: string | null
+          plan_type: string
+          price: number
+          project_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: string
+          id?: string
+          next_service_date?: string | null
+          notes?: string | null
+          plan_type?: string
+          price?: number
+          project_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          frequency?: string
+          id?: string
+          next_service_date?: string | null
+          notes?: string | null
+          plan_type?: string
+          price?: number
+          project_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_plans_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_plans_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "maintenance_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_plans_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "maintenance_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_plans_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      maintenance_visits: {
+        Row: {
+          completed_date: string | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          photos: string[] | null
+          plan_id: string
+          scheduled_date: string
+          status: string
+          technician_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          completed_date?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          photos?: string[] | null
+          plan_id: string
+          scheduled_date: string
+          status?: string
+          technician_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          completed_date?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          photos?: string[] | null
+          plan_id?: string
+          scheduled_date?: string
+          status?: string
+          technician_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "maintenance_visits_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "maintenance_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_visits_technician_id_fkey"
+            columns: ["technician_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "maintenance_visits_technician_id_fkey"
+            columns: ["technician_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "maintenance_visits_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -36796,6 +36961,97 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "verified_company_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      video_testimonials: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          duration_seconds: number | null
+          id: string
+          project_id: string | null
+          recorded_at: string | null
+          status: string
+          tenant_id: string
+          thumbnail_url: string | null
+          transcript: string | null
+          updated_at: string | null
+          video_url: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          duration_seconds?: number | null
+          id?: string
+          project_id?: string | null
+          recorded_at?: string | null
+          status?: string
+          tenant_id: string
+          thumbnail_url?: string | null
+          transcript?: string | null
+          updated_at?: string | null
+          video_url?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          duration_seconds?: number | null
+          id?: string
+          project_id?: string | null
+          recorded_at?: string | null
+          status?: string
+          tenant_id?: string
+          thumbnail_url?: string | null
+          transcript?: string | null
+          updated_at?: string | null
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "video_testimonials_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_testimonials_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "video_testimonials_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_testimonials_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "video_testimonials_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "video_testimonials_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
