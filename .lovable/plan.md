@@ -1,26 +1,28 @@
 
 
-# Make Contacts Location-Independent in Global Search
+# Restore Location Filtering on Contacts in Global Search
 
 ## Problem
 
-Currently, the `search_contacts_and_jobs` SQL function filters **both** contacts and leads by `location_id`. The user wants:
-
-- **Contacts** -- shared across the organization, visible regardless of selected location
-- **Leads** -- location-scoped, so East Coast and West Coast cannot see each other's leads
+The previous migration removed the `location_id` filter from the Contacts section of `search_contacts_and_jobs`. The user has clarified that **both contacts and leads are location-specific** — East Coast and West Coast should not see each other's contacts or leads.
 
 ## Solution
 
-Remove the `location_id` filter from the **Contacts** section of the SQL function while keeping it on the **Leads** section.
+Add the `p_location_id` filter back to the Contacts query block, matching the same pattern used in the Leads section.
 
 ## Changes
 
 **Database migration: Update `search_contacts_and_jobs` function**
 
-Remove lines 31-34 from the Contacts query:
+Add the location filter back to the Contacts WHERE clause (after line 41):
 
 ```text
-Before (Contacts WHERE clause):
+Before:
+  WHERE c.tenant_id = p_tenant_id
+    AND c.is_deleted = false
+    AND (...)
+
+After:
   WHERE c.tenant_id = p_tenant_id
     AND c.is_deleted = false
     AND (
@@ -29,28 +31,24 @@ Before (Contacts WHERE clause):
       OR (c.location_id IS NULL AND c.created_by = auth.uid())
     )
     AND (...)
-
-After (Contacts WHERE clause):
-  WHERE c.tenant_id = p_tenant_id
-    AND c.is_deleted = false
-    AND (...)
 ```
 
-The Leads section remains unchanged -- it keeps the `p_location_id` filter so leads are properly isolated by location.
+This is the same three-way check used in the Leads section:
+- If no location is selected (`p_location_id IS NULL`), show all
+- If a location is selected, show contacts matching that location
+- Fallback: show contacts with no location if the current user created them
 
 ## Technical Details
 
 | Item | Detail |
 |------|--------|
 | Migration | `CREATE OR REPLACE FUNCTION search_contacts_and_jobs` |
-| Contacts section | Remove `location_id` filter (lines 31-34) |
-| Leads section | Keep `location_id` filter unchanged (lines 64-68) |
-| Frontend | No changes -- `CLJSearchBar.tsx` already passes `currentLocationId` correctly |
+| Contacts section | Re-add `location_id` filter |
+| Leads section | No changes (already location-scoped) |
+| Frontend | No changes needed |
 
 ## Result
 
-- Searching "Nicole" from East Coast shows: **Nicole Walker (Contact)** + only her East Coast lead(s)
-- Searching "Nicole" from West Coast shows: **Nicole Walker (Contact)** + only her West Coast lead(s)
-- Contacts are always visible regardless of location selection
-- Leads remain properly isolated by location
-
+- Searching from East Coast shows only East Coast contacts and leads
+- Searching from West Coast shows only West Coast contacts and leads
+- "All Locations" mode (no location selected) shows everything within the tenant
