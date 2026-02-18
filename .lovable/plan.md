@@ -1,74 +1,58 @@
 
 
-# Sync Dashboard Pipeline Stats with Kanban Board
+# Fix Measure Edge Function RLS Error for Storm Canvass Fast Estimate
 
 ## Problem
 
-The dashboard "Pipeline Status" section uses **hardcoded stages** (Lead, Legal, Contingency, Project, Completed, Closed) with hardcoded status keys. Meanwhile, the Kanban pipeline board uses **dynamic stages** from `usePipelineStages()` loaded from the `pipeline_stages` database table. This causes two mismatches:
+When clicking "Generate AI Estimate" on the Live Canvass page, the `measure` edge function fails with:
 
-1. **Missing stages**: The dashboard omits stages like "Estimate Sent" and "Ready for Approval" that exist in the pipeline
-2. **Wrong counts**: The hardcoded counting logic (`counts.lead`, `counts.legal_review`, etc.) doesn't account for all pipeline stage keys, so entries in unrecognized stages are silently dropped
+> `Tags insert failed: new row violates row-level security policy for table "measurement_tags"`
 
-For example, the Kanban shows 10 Leads but the dashboard shows only 3, because the dashboard query counts `lead` but the actual status key might be different (e.g., `new_lead`).
+**Root cause:** The edge function creates a Supabase client using the service role key but also passes the user's `Authorization` header, which causes RLS to evaluate as the user. The `measurement_tags` INSERT policy requires `property_id IN (SELECT pipeline_entries.id WHERE tenant_id = get_user_tenant_id())`. Storm canvass passes a `canvassiq_properties.id` as `propertyId`, which doesn't exist in `pipeline_entries`, so the RLS check fails.
 
 ## Solution
 
-Replace the hardcoded pipeline stats in the dashboard with the same `usePipelineStages()` hook the Kanban board uses. This ensures both views always show identical stages with identical counts.
+Create a separate admin Supabase client (without the user's auth header) for write operations that need to bypass RLS (`persistTags`, `persistFacets`, `persistWasteCalculations`). The user-scoped client continues to be used for reads and user-context operations.
 
 ## Changes
 
-**File: `src/features/dashboard/components/Dashboard.tsx`**
+**File: `supabase/functions/measure/index.ts`**
 
-### 1. Import and use `usePipelineStages`
+1. **Create an admin client** alongside the existing user-scoped client in the main router (around line 1796):
+   ```
+   const adminSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+   ```
+   This client uses the service role key without the user's auth header, fully bypassing RLS.
 
-Add the hook import and call it alongside existing hooks to get the dynamic stage definitions.
+2. **Use the admin client for persist operations** -- Replace calls to `persistTags`, `persistFacets`, and `persistWasteCalculations` so they use `adminSupabase` instead of `supabase`. There are approximately 5-6 call sites where these functions are invoked (lines ~2514-2574 and similar).
 
-### 2. Replace hardcoded count buckets with dynamic counting
+   Before:
+   ```
+   await persistTags(supabase, row.id, propertyId, tags, userId);
+   ```
+   After:
+   ```
+   await persistTags(adminSupabase, row.id, propertyId, tags, userId);
+   ```
 
-Instead of:
-```
-const counts = { lead: 0, legal_review: 0, contingency_signed: 0, ... };
-data?.forEach(entry => { if (status in counts) counts[status]++; });
-```
-
-Use:
-```
-const counts: Record<string, number> = {};
-stages.forEach(s => counts[s.key] = 0);
-data?.forEach(entry => { if (entry.status in counts) counts[entry.status]++; });
-```
-
-This dynamically builds count buckets from whatever stages are configured in the database.
-
-### 3. Replace hardcoded `dashboardPipelineData` array
-
-Instead of the 6-item hardcoded array, map over the dynamic stages:
-```
-const dashboardPipelineData = stages
-  .filter(s => !s.is_terminal)  // Optionally exclude terminal statuses like Lost/Canceled
-  .map(stage => ({
-    status: stage.name,
-    count: pipelineStatusCounts[stage.key] || 0,
-    color: stage.color,
-    key: stage.key
-  }));
-```
-
-This ensures every stage the Kanban shows also appears on the dashboard with accurate counts.
-
-### 4. Convert Tailwind class colors for dashboard blocks
-
-The dynamic stages store colors as Tailwind classes like `bg-blue-500`. The dashboard currently uses custom classes like `bg-status-lead`. The rendering already uses the `color` prop directly in `className`, so the dynamic stage colors will work as-is.
+3. **Apply the same fix to `persistFacets` and `persistWasteCalculations`** calls to prevent similar RLS failures for those tables.
 
 ## Technical Details
 
 | File | Change |
 |------|--------|
-| `src/features/dashboard/components/Dashboard.tsx` | Import `usePipelineStages`; replace hardcoded counting with dynamic stage-based counting; replace hardcoded `dashboardPipelineData` with stages-driven mapping |
+| `supabase/functions/measure/index.ts` | Add `adminSupabase` client (no auth header); use it for `persistTags`, `persistFacets`, `persistWasteCalculations` calls |
+
+## Why This Approach
+
+- The service role key is already used -- we just need to stop overriding it with the user's auth header for write operations
+- No RLS policy changes needed (avoids opening security holes)
+- Reads still use the user-scoped client for proper tenant isolation
+- The admin client is only used server-side within the edge function, so there's no security risk
 
 ## Result
 
-- Dashboard "Pipeline Status" will show the exact same stages as the Kanban board
-- Counts will match 1:1 between both views
-- Adding/removing/reordering stages in the Pipeline Stage Manager will automatically update both views
-- No more "missing" entries due to unrecognized status keys
+- "Generate AI Estimate" on the Live Canvass page will successfully run measurements and persist tags
+- The Fast Estimate modal will display roof area, squares, pitch, and pricing tiers
+- Existing pipeline-based measurements continue working unchanged
+
