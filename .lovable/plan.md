@@ -1,56 +1,48 @@
 
 
-# Add "View Lead Details" Navigation from Contact Profile
+# Add Contact Status Dropdown to Contact Profile Header
 
 ## Problem
-The contact profile page for Nicole Walker shows pipeline entry cards at the top (the card with "Pipeline Lead", status badge, CLJ numbers, and win probability), but those cards have no button or link to navigate to the Lead Details page (`/lead/{pipeline_entry_id}`). The only action available is "Quick Convert to Job" for `ready_for_approval` entries.
-
-The "View" button exists in the Pipeline tab's converter section, but the prominent pipeline summary cards at the top of the page lack direct navigation.
+Nicole Walker shows "Unqualified" because her `qualification_status` field is `null` in the database. The current header displays this as a **static badge** with no way to change it. You need to be able to update the contact's qualification status directly from this page.
 
 ## Solution
-
-Add a "View Details" button to each pipeline summary card in the Contact Profile header section, allowing one-click navigation to `/lead/{entry.id}`.
+Replace the static status badge (lines 228-244) with an interactive dropdown selector, similar to the "Assign Rep" dropdown already on this page. The dropdown will list all available contact statuses from the `useContactStatuses` hook and update the database on change.
 
 ## Changes
 
 **File: `src/pages/ContactProfile.tsx`**
 
-In the pipeline status cards section (lines 306-368), add a "View Details" button next to the existing "Quick Convert to Job" button. For all pipeline entries (not just `ready_for_approval`), add a button that navigates to `/lead/{entry.id}`.
+1. **Import `useContactStatuses` hook** -- This hook already exists and fetches the tenant's custom statuses (or defaults like Not Home, Interested, Qualified, Follow Up, etc.)
 
-Specifically, inside each pipeline card's `CardContent` (after the win probability section around line 347), add:
+2. **Replace static Badge with a Select dropdown** -- Swap the current static `<Badge>` at line 228 for a `<Select>` component that:
+   - Shows the current status (or "Unqualified" if null) with color coding
+   - Lists all active statuses from `useContactStatuses()`
+   - On change, calls `supabase.from('contacts').update({ qualification_status: newStatus })` 
+   - Updates local state immediately for instant feedback
+   - Shows a toast on success/error
 
-```
-<div className="pt-3 border-t flex gap-2">
-  <Button 
-    variant="outline" 
-    className="flex-1"
-    onClick={() => navigate(`/lead/${entry.id}`)}
-  >
-    <Eye className="h-4 w-4 mr-2" />
-    View Details
-  </Button>
-  {entry.status === 'ready_for_approval' && (
-    <JobApprovalDialog ...>
-      <Button className="flex-1">
-        Quick Convert to Job
-      </Button>
-    </JobApprovalDialog>
-  )}
-</div>
-```
+3. **Add status update handler** -- A new `handleStatusChange` function similar to the existing `handleAssignRep`:
+   ```
+   const handleStatusChange = async (newStatus: string) => {
+     const statusValue = newStatus === 'unqualified' ? null : newStatus;
+     await supabase.from('contacts')
+       .update({ qualification_status: statusValue })
+       .eq('id', id);
+     setContact(prev => ({ ...prev, qualification_status: statusValue }));
+     // toast success
+   };
+   ```
 
-This replaces the current structure where "Quick Convert to Job" only shows for `ready_for_approval` entries and no navigation exists otherwise.
-
-The `Eye` icon import already exists in the file's import list (it's used in `ContactJobsTab`), so we just need to add it to the `ContactProfile.tsx` imports.
+The dropdown will sit in the same position as the current badge, maintaining the visual layout. Each status option will show its configured color dot for easy identification.
 
 ## Technical Details
 
 | File | Change |
 |------|--------|
-| `src/pages/ContactProfile.tsx` | Add `Eye` to lucide-react imports; add "View Details" button to pipeline summary cards that navigates to `/lead/{entry.id}` |
+| `src/pages/ContactProfile.tsx` | Import `useContactStatuses`; replace static Badge with Select dropdown; add `handleStatusChange` handler |
 
 ## Result
-- Every pipeline card at the top of the Contact Profile will have a "View Details" button
-- Clicking it navigates to `/lead/{pipeline_entry_id}` (the Lead Details page)
-- For `ready_for_approval` entries, both "View Details" and "Quick Convert to Job" buttons appear side by side
-
+- The "Unqualified" badge becomes a clickable dropdown
+- Selecting a status (e.g., "Qualified", "Interested") updates the contact immediately
+- The database trigger `sync_contact_to_pipeline` will auto-create a pipeline entry if set to "Qualified" or "Interested"
+- Color coding matches the status configuration
