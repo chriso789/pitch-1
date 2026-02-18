@@ -1,48 +1,74 @@
 
 
-# Add Contact Status Dropdown to Contact Profile Header
+# Sync Dashboard Pipeline Stats with Kanban Board
 
 ## Problem
-Nicole Walker shows "Unqualified" because her `qualification_status` field is `null` in the database. The current header displays this as a **static badge** with no way to change it. You need to be able to update the contact's qualification status directly from this page.
+
+The dashboard "Pipeline Status" section uses **hardcoded stages** (Lead, Legal, Contingency, Project, Completed, Closed) with hardcoded status keys. Meanwhile, the Kanban pipeline board uses **dynamic stages** from `usePipelineStages()` loaded from the `pipeline_stages` database table. This causes two mismatches:
+
+1. **Missing stages**: The dashboard omits stages like "Estimate Sent" and "Ready for Approval" that exist in the pipeline
+2. **Wrong counts**: The hardcoded counting logic (`counts.lead`, `counts.legal_review`, etc.) doesn't account for all pipeline stage keys, so entries in unrecognized stages are silently dropped
+
+For example, the Kanban shows 10 Leads but the dashboard shows only 3, because the dashboard query counts `lead` but the actual status key might be different (e.g., `new_lead`).
 
 ## Solution
-Replace the static status badge (lines 228-244) with an interactive dropdown selector, similar to the "Assign Rep" dropdown already on this page. The dropdown will list all available contact statuses from the `useContactStatuses` hook and update the database on change.
+
+Replace the hardcoded pipeline stats in the dashboard with the same `usePipelineStages()` hook the Kanban board uses. This ensures both views always show identical stages with identical counts.
 
 ## Changes
 
-**File: `src/pages/ContactProfile.tsx`**
+**File: `src/features/dashboard/components/Dashboard.tsx`**
 
-1. **Import `useContactStatuses` hook** -- This hook already exists and fetches the tenant's custom statuses (or defaults like Not Home, Interested, Qualified, Follow Up, etc.)
+### 1. Import and use `usePipelineStages`
 
-2. **Replace static Badge with a Select dropdown** -- Swap the current static `<Badge>` at line 228 for a `<Select>` component that:
-   - Shows the current status (or "Unqualified" if null) with color coding
-   - Lists all active statuses from `useContactStatuses()`
-   - On change, calls `supabase.from('contacts').update({ qualification_status: newStatus })` 
-   - Updates local state immediately for instant feedback
-   - Shows a toast on success/error
+Add the hook import and call it alongside existing hooks to get the dynamic stage definitions.
 
-3. **Add status update handler** -- A new `handleStatusChange` function similar to the existing `handleAssignRep`:
-   ```
-   const handleStatusChange = async (newStatus: string) => {
-     const statusValue = newStatus === 'unqualified' ? null : newStatus;
-     await supabase.from('contacts')
-       .update({ qualification_status: statusValue })
-       .eq('id', id);
-     setContact(prev => ({ ...prev, qualification_status: statusValue }));
-     // toast success
-   };
-   ```
+### 2. Replace hardcoded count buckets with dynamic counting
 
-The dropdown will sit in the same position as the current badge, maintaining the visual layout. Each status option will show its configured color dot for easy identification.
+Instead of:
+```
+const counts = { lead: 0, legal_review: 0, contingency_signed: 0, ... };
+data?.forEach(entry => { if (status in counts) counts[status]++; });
+```
+
+Use:
+```
+const counts: Record<string, number> = {};
+stages.forEach(s => counts[s.key] = 0);
+data?.forEach(entry => { if (entry.status in counts) counts[entry.status]++; });
+```
+
+This dynamically builds count buckets from whatever stages are configured in the database.
+
+### 3. Replace hardcoded `dashboardPipelineData` array
+
+Instead of the 6-item hardcoded array, map over the dynamic stages:
+```
+const dashboardPipelineData = stages
+  .filter(s => !s.is_terminal)  // Optionally exclude terminal statuses like Lost/Canceled
+  .map(stage => ({
+    status: stage.name,
+    count: pipelineStatusCounts[stage.key] || 0,
+    color: stage.color,
+    key: stage.key
+  }));
+```
+
+This ensures every stage the Kanban shows also appears on the dashboard with accurate counts.
+
+### 4. Convert Tailwind class colors for dashboard blocks
+
+The dynamic stages store colors as Tailwind classes like `bg-blue-500`. The dashboard currently uses custom classes like `bg-status-lead`. The rendering already uses the `color` prop directly in `className`, so the dynamic stage colors will work as-is.
 
 ## Technical Details
 
 | File | Change |
 |------|--------|
-| `src/pages/ContactProfile.tsx` | Import `useContactStatuses`; replace static Badge with Select dropdown; add `handleStatusChange` handler |
+| `src/features/dashboard/components/Dashboard.tsx` | Import `usePipelineStages`; replace hardcoded counting with dynamic stage-based counting; replace hardcoded `dashboardPipelineData` with stages-driven mapping |
 
 ## Result
-- The "Unqualified" badge becomes a clickable dropdown
-- Selecting a status (e.g., "Qualified", "Interested") updates the contact immediately
-- The database trigger `sync_contact_to_pipeline` will auto-create a pipeline entry if set to "Qualified" or "Interested"
-- Color coding matches the status configuration
+
+- Dashboard "Pipeline Status" will show the exact same stages as the Kanban board
+- Counts will match 1:1 between both views
+- Adding/removing/reordering stages in the Pipeline Stage Manager will automatically update both views
+- No more "missing" entries due to unrecognized status keys
