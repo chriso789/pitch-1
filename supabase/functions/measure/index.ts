@@ -1796,6 +1796,8 @@ serve(async (req) => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     global: { headers: { Authorization: authHeader || '' } }
   });
+  // Admin client without user auth header — bypasses RLS for persist operations
+  const adminSupabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
 
   try {
     // Handle body-based routing (for supabase.functions.invoke())
@@ -2513,8 +2515,8 @@ serve(async (req) => {
           
           // Generate tags for original
           const originalTags = buildSmartTags({ ...originalMeasBeforeOverride, id: originalMeasurementRow.id });
-          await persistTags(supabase, originalMeasurementRow.id, propertyId, originalTags, userId);
-          await persistFacets(supabase, originalMeasurementRow.id, originalMeasBeforeOverride.faces || []);
+          await persistTags(adminSupabase, originalMeasurementRow.id, propertyId, originalTags, userId);
+          await persistFacets(adminSupabase, originalMeasurementRow.id, originalMeasBeforeOverride.faces || []);
           
           console.log(`✅ Original AI measurement saved: ${originalMeasurementRow.id}`);
           
@@ -2524,9 +2526,9 @@ serve(async (req) => {
           
           // Generate tags for corrected
           const correctedTags = buildSmartTags({ ...meas, id: correctedMeasurementRow.id });
-          await persistTags(supabase, correctedMeasurementRow.id, propertyId, correctedTags, userId);
-          await persistFacets(supabase, correctedMeasurementRow.id, meas.faces || []);
-          await persistWasteCalculations(supabase, correctedMeasurementRow.id, meas.summary.total_area_sqft, meas.summary.total_squares, correctedTags);
+          await persistTags(adminSupabase, correctedMeasurementRow.id, propertyId, correctedTags, userId);
+          await persistFacets(adminSupabase, correctedMeasurementRow.id, meas.faces || []);
+          await persistWasteCalculations(adminSupabase, correctedMeasurementRow.id, meas.summary.total_area_sqft, meas.summary.total_squares, correctedTags);
           
           console.log(`✅ Corrected measurement saved: ${correctedMeasurementRow.id}`);
           
@@ -2567,11 +2569,11 @@ serve(async (req) => {
         
         // Generate and save Smart Tags
         const tags = buildSmartTags({ ...meas, id: row.id });
-        await persistTags(supabase, row.id, propertyId, tags, userId);
+        await persistTags(adminSupabase, row.id, propertyId, tags, userId);
 
         // Persist facets and waste calculations
-        await persistFacets(supabase, row.id, meas.faces || []);
-        await persistWasteCalculations(supabase, row.id, meas.summary.total_area_sqft, meas.summary.total_squares, tags);
+        await persistFacets(adminSupabase, row.id, meas.faces || []);
+        await persistWasteCalculations(adminSupabase, row.id, meas.summary.total_area_sqft, meas.summary.total_squares, tags);
 
         // Fix: Recalculate and update summary totals from faces (RPC may not persist correctly)
         const totalAreaFromFaces = (meas.faces || []).reduce((sum, f) => sum + (f.area_sqft || 0), 0);
@@ -2695,11 +2697,11 @@ serve(async (req) => {
 
         const row = await persistMeasurement(supabase, result, userId, lat && lng ? { lat, lng, zoom: 20 } : undefined);
         const tags = buildSmartTags({ ...result, id: row.id });
-        await persistTags(supabase, row.id, propertyId, tags, userId);
+        await persistTags(adminSupabase, row.id, propertyId, tags, userId);
 
         // Persist facets and waste calculations
-        await persistFacets(supabase, row.id, result.faces || []);
-        await persistWasteCalculations(supabase, row.id, result.summary.total_area_sqft, result.summary.total_squares, tags);
+        await persistFacets(adminSupabase, row.id, result.faces || []);
+        await persistWasteCalculations(adminSupabase, row.id, result.summary.total_area_sqft, result.summary.total_squares, tags);
 
         // Generate Mapbox visualization (non-blocking)
         try {
@@ -2919,7 +2921,7 @@ serve(async (req) => {
 
           const row = await persistMeasurement(supabase, measureResult, userId, { lat, lng, zoom: 20 });
           const tags = buildSmartTags({ ...measureResult, id: row.id });
-          await persistTags(supabase, row.id, propertyId, tags, userId);
+          await persistTags(adminSupabase, row.id, propertyId, tags, userId);
 
           // Persist facets with review flags
           const facetRecords = splitResult.facets.slice(0, 20).map((facet, i) => ({
@@ -3015,12 +3017,12 @@ serve(async (req) => {
           'meta.verified_at': new Date().toISOString()
         };
         
-        await persistTags(supabase, row.id, propertyId, updatedTags, userId);
+        await persistTags(adminSupabase, row.id, propertyId, updatedTags, userId);
 
         // Persist facets and waste calculations with unified summary fields
-        await persistFacets(supabase, row.id, verifiedWithSummary.faces || []);
+        await persistFacets(adminSupabase, row.id, verifiedWithSummary.faces || []);
         await persistWasteCalculations(
-          supabase, 
+          adminSupabase, 
           row.id, 
           unifiedSummary.total_area_flat_sqft || unifiedSummary.total_area_sqft, 
           unifiedSummary.total_squares, 
