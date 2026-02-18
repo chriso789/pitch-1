@@ -33,6 +33,7 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { SimplifiedProjectTimeline } from "./SimplifiedProjectTimeline";
 import { HomeownerAIChat } from "./HomeownerAIChat";
+import { CustomerPaymentSection } from "@/features/portal/components/CustomerPaymentSection";
 
 interface Project {
   id: string;
@@ -584,63 +585,24 @@ export function HomeownerPortal() {
           </TabsContent>
 
           <TabsContent value="payments" className="space-y-6">
-            <div className="grid md:grid-cols-3 gap-4 mb-6">
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Contract Total</div>
-                  <div className="text-2xl font-bold">${project.contract_amount.toLocaleString()}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Amount Paid</div>
-                  <div className="text-2xl font-bold text-green-600">${project.amount_paid.toLocaleString()}</div>
-                </CardContent>
-              </Card>
-              <Card>
-                <CardContent className="pt-6">
-                  <div className="text-sm text-muted-foreground">Balance Due</div>
-                  <div className="text-2xl font-bold text-primary">
-                    ${(project.contract_amount - project.amount_paid).toLocaleString()}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Payment Schedule</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {payments.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <DollarSign className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No payment schedule available</p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {payments.map((payment) => (
-                      <div key={payment.id} className="flex items-center justify-between p-3 border rounded-lg">
-                        <div>
-                          <p className="font-medium">{payment.description}</p>
-                          <p className="text-sm text-muted-foreground">
-                            Due: {format(new Date(payment.due_date), "MMM d, yyyy")}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                          <span className="font-semibold">${payment.amount.toLocaleString()}</span>
-                          {payment.paid_at ? (
-                            <Badge className="bg-green-500/10 text-green-500">Paid</Badge>
-                          ) : (
-                            <Button size="sm">Pay Now</Button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+            <CustomerPaymentSection
+              projectId={project.id}
+              contactId={contactInfo?.id}
+              token={localStorage.getItem("homeowner_session") ? JSON.parse(localStorage.getItem("homeowner_session")!).token : ""}
+              payments={payments.map(p => ({
+                id: p.id,
+                amount: p.amount,
+                status: p.paid_at ? 'completed' : p.status,
+                created_at: p.due_date || p.paid_at || '',
+                description: p.description,
+                payment_method: undefined,
+              }))}
+              paymentLinks={[]}
+              estimates={[]}
+              totalProjectValue={project.contract_amount}
+              amountPaid={project.amount_paid}
+              onPaymentComplete={() => loadPortalData()}
+            />
           </TabsContent>
 
           <TabsContent value="messages" className="space-y-6">
