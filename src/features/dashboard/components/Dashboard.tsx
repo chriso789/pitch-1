@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
+import { usePipelineStages } from "@/hooks/usePipelineStages";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -223,20 +224,11 @@ const Dashboard = () => {
       
       console.log('[Dashboard] Pipeline entries fetched:', data?.length || 0);
       
-      const counts: Record<string, number> = {
-        lead: 0,
-        legal_review: 0,
-        contingency_signed: 0,
-        project: 0,
-        completed: 0,
-        closed: 0
-      };
-      
+      // Build counts dynamically from all entries
+      const counts: Record<string, number> = {};
       data?.forEach(entry => {
         const status = entry.status;
-        if (status in counts) {
-          counts[status]++;
-        }
+        counts[status] = (counts[status] || 0) + 1;
       });
       
       console.log('[Dashboard] Pipeline counts:', counts);
@@ -369,13 +361,8 @@ const Dashboard = () => {
   // Export handlers
   const handleExportCSV = () => {
     const csvData = [
-      // Pipeline Summary
-      { section: 'Pipeline Summary', status: 'Lead', count: (pipelineStatusCounts as any).lead || 0 },
-      { section: 'Pipeline Summary', status: 'Legal', count: (pipelineStatusCounts as any).legal_review || 0 },
-      { section: 'Pipeline Summary', status: 'Contingency', count: (pipelineStatusCounts as any).contingency_signed || 0 },
-      { section: 'Pipeline Summary', status: 'Project', count: (pipelineStatusCounts as any).project || 0 },
-      { section: 'Pipeline Summary', status: 'Completed', count: (pipelineStatusCounts as any).completed || 0 },
-      { section: 'Pipeline Summary', status: 'Closed', count: (pipelineStatusCounts as any).closed || 0 },
+      // Pipeline Summary (dynamic stages)
+      ...dashboardPipelineData.map(s => ({ section: 'Pipeline Summary', status: s.status, count: s.count })),
       {},
       // Progress Metrics
       { section: 'Progress', metric: 'Unassigned Leads', value: unassignedLeads },
@@ -443,25 +430,22 @@ const Dashboard = () => {
     }
   ];
 
-  const dashboardPipelineData = [
-    { status: "Lead", count: (pipelineStatusCounts as any).lead || 0, color: "bg-status-lead" },
-    { status: "Legal", count: (pipelineStatusCounts as any).legal_review || 0, color: "bg-status-legal" },
-    { status: "Contingency", count: (pipelineStatusCounts as any).contingency_signed || 0, color: "bg-status-contingency" },
-    { status: "Project", count: (pipelineStatusCounts as any).project || 0, color: "bg-status-project" },
-    { status: "Completed", count: (pipelineStatusCounts as any).completed || 0, color: "bg-status-completed" },
-    { status: "Closed", count: (pipelineStatusCounts as any).closed || 0, color: "bg-status-closed" }
-  ];
+  // Dynamic pipeline stages from database (synced with Kanban board)
+  const { stages } = usePipelineStages();
+
+  const dashboardPipelineData = useMemo(() => 
+    stages.map(stage => ({
+      status: stage.name,
+      count: (pipelineStatusCounts as Record<string, number>)[stage.key] || 0,
+      color: stage.color, // Tailwind class like bg-blue-500
+      key: stage.key,
+    })),
+    [stages, pipelineStatusCounts]
+  );
 
   const getStatusColor = (status: string) => {
-    const colors = {
-      "Lead": "bg-status-lead text-foreground",
-      "Legal": "bg-status-legal text-status-legal-foreground",
-      "Contingency": "bg-status-contingency text-status-contingency-foreground", 
-      "Project": "bg-status-project text-status-project-foreground",
-      "Completed": "bg-status-completed text-status-completed-foreground",
-      "Closed": "bg-status-closed text-status-closed-foreground"
-    };
-    return colors[status as keyof typeof colors] || "bg-muted";
+    const stage = stages.find(s => s.name === status);
+    return stage ? `${stage.color} text-white` : "bg-muted";
   };
 
   return (
@@ -582,7 +566,7 @@ const Dashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-4">
+          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 md:gap-4">
             {dashboardPipelineData.map((stage, index) => (
               <div key={index} className="text-center">
                 <div className={`${stage.color} rounded-lg p-2 md:p-4 mb-1 md:mb-2`}>
