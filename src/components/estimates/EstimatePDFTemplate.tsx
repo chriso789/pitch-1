@@ -591,16 +591,16 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
             Project Photos
           </h3>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-5">
             {jobPhotos.map((photo, index) => (
               <div key={photo.id || index} className="bg-gray-50 rounded-lg overflow-hidden">
                 <img 
                   src={photo.file_url} 
                   alt={photo.description || `Photo ${index + 1}`}
-                  className="w-full h-48 object-cover"
+                  className="w-full h-80 object-cover"
                 />
                 <div className="p-2">
-                  <p className="text-xs text-gray-600 truncate">
+                  <p className="text-sm text-gray-600 truncate">
                     {photo.description || photo.category || `Photo ${index + 1}`}
                   </p>
                   {photo.category && (
