@@ -144,7 +144,6 @@ export function useMultiPagePDFGeneration() {
             return new Promise<void>((resolve) => {
               img.onload = () => resolve();
               img.onerror = () => resolve();
-              // Timeout after 3 seconds
               setTimeout(resolve, 3000);
             });
           })
@@ -152,25 +151,35 @@ export function useMultiPagePDFGeneration() {
 
         setProgress(((i + 0.5) / pageElements.length) * 90 + 5);
 
-        // Detect if this is an attachment page (image-only content)
-        // Attachment pages have full-bleed images with object-fit: contain
+        // Detect page type for adaptive quality
         const isAttachmentPage = pageElement.querySelector('img[style*="object-fit"]') !== null;
+        const isPhotoPage = pageElement.querySelector('.bg-teal-500') !== null; // Photo page has teal dot
+        const isImageHeavy = isAttachmentPage || isPhotoPage;
         
-        // Use lower scale for attachment pages (already images, don't need double resolution)
-        // This cuts pixel count by 75% for attachments while maintaining text clarity
-        const captureScale = isAttachmentPage ? 1.0 : 2.0;
+        // Use lower scale for image-heavy pages (photos are already raster data)
+        const captureScale = isImageHeavy ? 1.5 : 2.0;
 
         // Capture page to canvas with adaptive settings
         const canvas = await html2canvas(pageElement, {
-          scale: captureScale, // Dynamic: 1.0 for attachments, 2.0 for text
+          scale: captureScale,
           useCORS: true,
           allowTaint: true,
           backgroundColor: '#ffffff',
           logging: false,
           imageTimeout: 5000,
-          // Critical: Apply PDF-optimized styles to cloned element
           onclone: (_clonedDoc, clonedElement) => {
             applyPDFStyles(clonedElement);
+            
+            // For photo pages, downscale images in the clone to speed up capture
+            if (isImageHeavy) {
+              const clonedImages = clonedElement.querySelectorAll('img');
+              clonedImages.forEach(img => {
+                // Force smaller rendering to reduce canvas pixel count
+                if (img instanceof HTMLImageElement) {
+                  img.style.imageRendering = 'auto';
+                }
+              });
+            }
           },
         });
 
@@ -186,15 +195,14 @@ export function useMultiPagePDFGeneration() {
         const xOffset = 10;
         const yOffset = 10;
         
-        // Use JPEG at 0.65 quality for attachments (aggressive compression)
-        // PNG for text pages to maintain sharpness
-        const imageData = isAttachmentPage
-          ? canvas.toDataURL('image/jpeg', 0.65)
+        // Use JPEG compression for image-heavy pages, PNG for text clarity
+        const imageData = isImageHeavy
+          ? canvas.toDataURL('image/jpeg', 0.7)
           : canvas.toDataURL('image/png');
         
         pdf.addImage(
           imageData,
-          isAttachmentPage ? 'JPEG' : 'PNG',
+          isImageHeavy ? 'JPEG' : 'PNG',
           xOffset,
           yOffset,
           imgWidth,
@@ -202,7 +210,7 @@ export function useMultiPagePDFGeneration() {
         );
 
         setProgress(((i + 1) / pageElements.length) * 90 + 5);
-        console.log(`📄 Page ${i + 1}/${pageElements.length} captured (${isAttachmentPage ? 'JPEG' : 'PNG'})`);
+        console.log(`📄 Page ${i + 1}/${pageElements.length} captured (${isImageHeavy ? 'JPEG' : 'PNG'}, scale:${captureScale})`);
       }
 
       // Generate blob

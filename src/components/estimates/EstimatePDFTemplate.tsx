@@ -96,6 +96,18 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
+// Helper to determine grid columns for photos
+function getPhotoGridColsTemplate(count: number, layout: string): number {
+  if (layout === '1col') return 1;
+  if (layout === '2col') return 2;
+  if (layout === '3col') return 3;
+  if (layout === '4col') return 4;
+  if (count <= 1) return 1;
+  if (count <= 4) return 2;
+  if (count <= 9) return 3;
+  return 4;
+}
+
 // Page break CSS styles
 const pageBreakStyles = `
   @media print {
@@ -585,35 +597,37 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
       )}
 
       {/* Job Photos Page */}
-      {opts.showJobPhotos && jobPhotos && jobPhotos.length > 0 && (
-        <div className="page-break-before pt-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
-            <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
-            Project Photos
-          </h3>
-          <div className="grid grid-cols-1 gap-5">
-            {jobPhotos.map((photo, index) => (
-              <div key={photo.id || index} className="bg-gray-50 rounded-lg overflow-hidden">
-                <img 
-                  src={photo.file_url} 
-                  alt={photo.description || `Photo ${index + 1}`}
-                  className="w-full h-80 object-cover"
-                />
-                <div className="p-2">
-                  <p className="text-sm text-gray-600 truncate">
-                    {photo.description || photo.category || `Photo ${index + 1}`}
-                  </p>
-                  {photo.category && (
-                    <span className="inline-block mt-1 px-2 py-0.5 text-[10px] bg-gray-200 text-gray-700 rounded">
-                      {photo.category}
-                    </span>
+      {opts.showJobPhotos && jobPhotos && jobPhotos.length > 0 && (() => {
+        const cols = getPhotoGridColsTemplate(jobPhotos.length, opts.photoLayout || 'auto');
+        const gridClass = cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : cols === 3 ? 'grid-cols-3' : 'grid-cols-4';
+        const imgHeight = cols === 1 ? 'h-80' : cols === 2 ? 'h-52' : cols === 3 ? 'h-40' : 'h-32';
+        return (
+          <div className="page-break-before pt-8">
+            <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+              <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
+              Project Photos
+            </h3>
+            <div className={`grid ${gridClass} gap-4`}>
+              {jobPhotos.map((photo, index) => (
+                <div key={photo.id || index} className="bg-gray-50 rounded-lg overflow-hidden">
+                  <img 
+                    src={photo.file_url} 
+                    alt={photo.description || `Photo ${index + 1}`}
+                    className={`w-full ${imgHeight} object-cover`}
+                  />
+                  {cols <= 2 && (
+                    <div className="p-2">
+                      <p className="text-sm text-gray-600 truncate">
+                        {photo.description || photo.category || `Photo ${index + 1}`}
+                      </p>
+                    </div>
                   )}
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Warranty Info Page */}
       {opts.showWarrantyInfo && (

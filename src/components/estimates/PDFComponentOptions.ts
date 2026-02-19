@@ -43,6 +43,9 @@ export interface PDFComponentOptions {
   showRoofDiagram: boolean; // Schematic roof diagram (future)
   showWarrantyInfo: boolean; // Warranty details page
   
+  // Photo Layout
+  photoLayout: 'auto' | '1col' | '2col' | '3col' | '4col';
+  
   // Header/Footer on every page
   showPageHeader: boolean;
   showPageFooter: boolean;
@@ -96,6 +99,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showJobPhotos: false,
     showRoofDiagram: false,
     showWarrantyInfo: true,
+    // Photo Layout
+    photoLayout: 'auto',
     // Header/Footer
     showPageHeader: true,
     showPageFooter: true,
@@ -137,6 +142,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showJobPhotos: false,
     showRoofDiagram: false,
     showWarrantyInfo: false,
+    // Photo Layout
+    photoLayout: 'auto',
     // Header/Footer
     showPageHeader: true,
     showPageFooter: true,

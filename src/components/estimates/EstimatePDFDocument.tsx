@@ -400,7 +400,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     if (opts.showCoverPage) totalPageCount++;
     if (opts.showWarrantyInfo) totalPageCount++;
     if (opts.showMeasurementDetails && measurementSummary) totalPageCount++;
-    if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) totalPageCount++;
+    // Photos page count calculated below
     
     let currentPage = 0;
 
@@ -474,12 +474,22 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Job photos page
+    // Job photos page(s) - may need multiple pages for large grids
     if (opts.showJobPhotos && jobPhotos && jobPhotos.length > 0) {
-      currentPage++;
-      pageList.push(
-        <PhotosPage key="photos-page" jobPhotos={jobPhotos} />
-      );
+      const cols = getPhotoGridCols(jobPhotos.length, opts.photoLayout || 'auto');
+      // Each page can fit roughly: 2-col = 6, 3-col = 9, 4-col = 8, 1-col = 2
+      const photosPerPage = cols === 1 ? 2 : cols === 2 ? 4 : cols === 3 ? 6 : 8;
+      const photoChunks: typeof jobPhotos[] = [];
+      for (let i = 0; i < jobPhotos.length; i += photosPerPage) {
+        photoChunks.push(jobPhotos.slice(i, i + photosPerPage));
+      }
+      photoChunks.forEach((chunk, chunkIdx) => {
+        currentPage++;
+        totalPageCount++;
+        pageList.push(
+          <PhotosPage key={`photos-page-${chunkIdx}`} jobPhotos={chunk} cols={cols} pageIndex={chunkIdx} totalPhotoPages={photoChunks.length} />
+        );
+      });
     }
 
     return { pages: pageList, totalPages: totalPageCount };
@@ -862,27 +872,46 @@ const MeasurementPage: React.FC<{ measurementSummary: MeasurementSummary }> = ({
   );
 };
 
+// Helper to determine grid columns
+function getPhotoGridCols(count: number, layout: string): number {
+  if (layout === '1col') return 1;
+  if (layout === '2col') return 2;
+  if (layout === '3col') return 3;
+  if (layout === '4col') return 4;
+  // Auto mode
+  if (count <= 1) return 1;
+  if (count <= 4) return 2;
+  if (count <= 9) return 3;
+  return 4;
+}
+
 // Photos Page
-const PhotosPage: React.FC<{ jobPhotos: JobPhoto[] }> = ({ jobPhotos }) => {
+const PhotosPage: React.FC<{ jobPhotos: JobPhoto[]; cols: number; pageIndex: number; totalPhotoPages: number }> = ({ jobPhotos, cols, pageIndex, totalPhotoPages }) => {
+  const gridClass = cols === 1 ? 'grid-cols-1' : cols === 2 ? 'grid-cols-2' : cols === 3 ? 'grid-cols-3' : 'grid-cols-4';
+  // Adjust image height based on grid density
+  const imgHeight = cols === 1 ? 'h-72' : cols === 2 ? 'h-48' : cols === 3 ? 'h-36' : 'h-28';
+  
   return (
     <div className="space-y-3">
       <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
         <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
-        Project Photos
+        Project Photos{totalPhotoPages > 1 ? ` (${pageIndex + 1}/${totalPhotoPages})` : ''}
       </h3>
-      <div className="grid grid-cols-1 gap-4">
+      <div className={`grid ${gridClass} gap-3`}>
         {jobPhotos.map((photo, index) => (
           <div key={photo.id || index} className="bg-gray-50 rounded-lg overflow-hidden">
             <img 
               src={photo.file_url} 
               alt={photo.description || `Photo ${index + 1}`}
-              className="w-full h-64 object-cover"
+              className={`w-full ${imgHeight} object-cover`}
             />
-            <div className="p-2">
-              <p className="text-xs text-gray-600 truncate">
-                {photo.description || photo.category || `Photo ${index + 1}`}
-              </p>
-            </div>
+            {cols <= 2 && (
+              <div className="p-1.5">
+                <p className="text-xs text-gray-600 truncate">
+                  {photo.description || photo.category || `Photo ${index + 1}`}
+                </p>
+              </div>
+            )}
           </div>
         ))}
       </div>

@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { 
   FileText, 
@@ -168,6 +169,28 @@ export const EstimateAddonsPanel: React.FC<EstimateAddonsPanelProps> = ({
                   )}
                 </div>
               </div>
+              
+              {/* Photo Layout Selector */}
+              {pdfOptions.showJobPhotos && photos.length > 0 && (
+                <div className="pl-6">
+                  <Label className="text-xs text-muted-foreground mb-1 block">Photo Layout</Label>
+                  <Select
+                    value={pdfOptions.photoLayout || 'auto'}
+                    onValueChange={(v) => onOptionsChange({ photoLayout: v as any })}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto</SelectItem>
+                      <SelectItem value="1col">1 Column (Large)</SelectItem>
+                      <SelectItem value="2col">2×2 Grid</SelectItem>
+                      <SelectItem value="3col">3×3 Grid</SelectItem>
+                      <SelectItem value="4col">4×4 Grid</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               
               {loadingPhotos ? (
                 <p className="text-xs text-muted-foreground">Loading photos...</p>
