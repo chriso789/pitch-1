@@ -1,85 +1,52 @@
 
-
-# Add "Request Signature" to Estimate Sharing Flow
+# Add CC and BCC Fields to Share Estimate Dialog
 
 ## What This Does
 
-When you share an estimate with a homeowner, you'll now have the option to also request their digital signature. The homeowner receives an email with a link to view the estimate and sign it digitally -- no printing, scanning, or emailing back needed. You'll get notified when they sign, and the signed document is stored in the system.
+Adds optional CC and BCC email fields to the Share Estimate dialog so you can copy additional people (insurance adjusters, project managers, office staff, etc.) when sending quotes.
 
-## How It Works
+## Changes
 
-1. When you click **Share** on an estimate, the dialog now shows a **"Request Signature"** toggle
-2. When enabled, the homeowner receives an email with a signing link instead of just a view link
-3. The homeowner clicks the link, reviews the estimate PDF, and draws or types their signature
-4. Once signed, the system records the signature, updates the estimate status, and notifies you
+### 1. `src/components/estimates/ShareEstimateDialog.tsx`
 
-## Technical Changes
+- Add two new state variables: `ccEmails` (string) and `bccEmails` (string)
+- Add a collapsible "CC / BCC" section below the Recipient Email field (toggled by a small "Add CC/BCC" link to keep the dialog clean by default)
+- CC field: comma-separated emails
+- BCC field: comma-separated emails
+- Parse both fields into arrays before sending
+- Pass `cc` and `bcc` arrays to the `send-quote-email` edge function body
+- Also pass them to `send-document-for-signature` when signature mode is active
+- Reset both fields when dialog opens
 
-### 1. Update `ShareEstimateDialog` to include signature request option
+### 2. `supabase/functions/send-quote-email/index.ts`
 
-**File:** `src/components/estimates/ShareEstimateDialog.tsx`
+- Add `cc` and `bcc` optional fields to the `SendQuoteEmailRequest` interface
+- Pass `cc` and `bcc` arrays to the `resend.emails.send()` call (Resend API natively supports both)
+- Log CC/BCC in communication history metadata
 
-- Add a `Switch` toggle labeled "Request Digital Signature" below the message field
-- When toggled on, show a note: "Homeowner will receive a signing link to digitally sign the estimate"
-- On send: if signature is requested, call `send-document-for-signature` edge function (with `document_type: 'estimate'`) in addition to (or instead of) the regular `send-quote-email`
-- Pass the `estimateId` as `document_id` to create a signature envelope
-- Add new props: `estimateDisplayName` for the envelope title
+### 3. `supabase/functions/send-document-for-signature/index.ts`
 
-### 2. Update `send-document-for-signature` edge function to handle estimates better
+- Accept optional `cc` and `bcc` arrays in the request body
+- Forward them to the Resend email send call when dispatching the signing link email
 
-**File:** `supabase/functions/send-document-for-signature/index.ts`
-
-- The function already supports `document_type: 'estimate'` but queries the `estimates` table (which may not exist as `enhanced_estimates` is the actual table)
-- Update the estimate lookup to query `enhanced_estimates` instead
-- Use the estimate's stored `pdf_url` to get the document URL from storage (generate a signed URL)
-- Set the envelope title from the estimate number/display name
-
-### 3. Update `PublicSignatureCapture` to show estimate PDF
-
-**File:** `src/pages/PublicSignatureCapture.tsx`
-
-- The page already supports `document_url` via the envelope -- it renders an iframe preview
-- Ensure the PDF URL is a valid signed URL so the homeowner can view the full estimate before signing
-- No major changes needed here; the existing flow handles it
-
-### 4. Add signature status indicator on estimate
-
-**File:** `src/components/estimates/SavedEstimatesList.tsx`
-
-- Show a badge on estimates that have a pending or completed signature envelope
-- Display "Awaiting Signature", "Signed", etc. next to the estimate in the list
-
-## Flow Diagram
+## UI Layout (inside dialog)
 
 ```text
-Contractor                          System                          Homeowner
-    |                                 |                                |
-    |-- Click "Share" on estimate --> |                                |
-    |   [x] Request Signature toggle  |                                |
-    |-- Click "Send Quote" ---------> |                                |
-    |                                 |-- Generate/upload PDF -------> |
-    |                                 |-- Create signature envelope -> |
-    |                                 |-- Create recipient + token --> |
-    |                                 |-- Send email with sign link -> |
-    |                                 |                                |
-    |                                 |          Homeowner clicks link |
-    |                                 |<-- Load /sign/:token ---------|
-    |                                 |-- Return PDF + sign fields --> |
-    |                                 |                                |
-    |                                 |     Homeowner draws signature  |
-    |                                 |<-- Submit signature -----------|
-    |                                 |-- Store digital signature ---> |
-    |                                 |-- Update envelope status ----> |
-    |<-- Notification: "Signed!" ---- |                                |
-    |                                 |                                |
+Recipient Name     [___________________]
+Recipient Email    [___________________]
+                   + Add CC/BCC          <-- small text link
+
+  (when expanded:)
+  CC               [___________________]
+  BCC              [___________________]
+  Separate multiple emails with commas
+
+Subject (optional) [___________________]
+Personal Message   [___________________]
 ```
 
-## Files Modified
+## Validation
 
-| File | Change |
-|------|--------|
-| `src/components/estimates/ShareEstimateDialog.tsx` | Add "Request Signature" toggle; call signature edge function when enabled |
-| `supabase/functions/send-document-for-signature/index.ts` | Fix estimate table lookup (`enhanced_estimates`); generate signed PDF URL |
-| `src/components/estimates/SavedEstimatesList.tsx` | Show signature status badge on estimates |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Pass `estimateDisplayName` prop to ShareEstimateDialog |
-
+- Each email in CC/BCC is validated with the same regex used for the primary recipient
+- Empty CC/BCC fields are simply omitted from the API call
+- Invalid emails show a toast error specifying which field has the issue
