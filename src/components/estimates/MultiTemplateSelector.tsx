@@ -161,6 +161,7 @@ interface MultiTemplateSelectorProps {
   onUnsavedChangesChange?: (hasChanges: boolean, estimateName?: string) => void;
   onSaveChanges?: () => Promise<void>;
   saveChangesRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  clearEditingEstimateId?: string | null;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
@@ -168,7 +169,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   onCalculationsUpdate,
   onEstimateCreated,
   onUnsavedChangesChange,
-  saveChangesRef
+  saveChangesRef,
+  clearEditingEstimateId
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -515,7 +517,25 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, existingEstimateId, showPreviewPanel]);
 
-  // NOTE: Auto-load of saved estimates on page mount is DISABLED.
+  // Clear editing state when a deleted estimate ID matches what we're editing
+  useEffect(() => {
+    if (clearEditingEstimateId && clearEditingEstimateId === existingEstimateId) {
+      setExistingEstimateId(null);
+      setEditingEstimateNumber(null);
+      setIsEditingLoadedEstimate(false);
+      setEstimateDisplayName('');
+      setLineItems([]);
+      resetToOriginal();
+      // Clear editEstimate from URL
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('editEstimate');
+      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clearEditingEstimateId]);
+
+
   // Users must explicitly select a template from the dropdown to see content.
   // This keeps the template area blank until user action.
   // The loadEstimateForEditing function below can still be called explicitly

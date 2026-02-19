@@ -53,6 +53,7 @@ interface SavedEstimatesListProps {
   hasUnsavedChanges?: boolean;
   onSaveAndSwitch?: () => Promise<void>;
   currentEditingName?: string;
+  onEstimateDeleted?: (estimateId: string) => void;
 }
 
 export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
@@ -65,7 +66,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   currentEditingId,
   hasUnsavedChanges = false,
   onSaveAndSwitch,
-  currentEditingName
+  currentEditingName,
+  onEstimateDeleted
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -287,6 +289,9 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
       queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      
+      // Notify parent so sibling components can clear editing state
+      onEstimateDeleted?.(estimateToRemove.id);
       
       toast({
         title: 'Estimate Deleted',
