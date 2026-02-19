@@ -48,6 +48,7 @@ serve(async (req) => {
       sender_email,
       subject,
       message,
+      document_url,
       is_reminder = false,
       cc,
       bcc
@@ -114,6 +115,18 @@ serve(async (req) => {
                 <p style="margin: 0; color: #4b5563; font-size: 14px; font-style: italic;">
                   "${message}"
                 </p>
+              </div>
+              ` : ''}
+              
+              ${document_url ? `
+              <!-- Document Preview Link -->
+              <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px; text-align: center;">
+                <p style="margin: 0 0 12px; color: #0c4a6e; font-size: 14px; font-weight: 600;">
+                  📄 View the attached estimate before signing
+                </p>
+                <a href="${document_url}" style="display: inline-block; background-color: #ffffff; color: ${primaryColor}; text-decoration: none; padding: 10px 24px; font-size: 14px; font-weight: 500; border-radius: 6px; border: 1px solid ${primaryColor};">
+                  View Estimate PDF
+                </a>
               </div>
               ` : ''}
               

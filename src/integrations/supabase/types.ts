@@ -30769,6 +30769,7 @@ export type Database = {
           contact_id: string | null
           created_at: string
           created_by: string | null
+          document_url: string | null
           envelope_number: string | null
           estimate_id: string | null
           expires_at: string | null
@@ -30789,6 +30790,7 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
+          document_url?: string | null
           envelope_number?: string | null
           estimate_id?: string | null
           expires_at?: string | null
@@ -30809,6 +30811,7 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
+          document_url?: string | null
           envelope_number?: string | null
           estimate_id?: string | null
           expires_at?: string | null

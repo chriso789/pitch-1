@@ -241,10 +241,14 @@ serve(async (req) => {
 
     const emailResults = await Promise.all(emailPromises);
 
-    // Update envelope status to sent
+    // Update envelope status to sent and store document URL for signing page
     await supabase
       .from("signature_envelopes")
-      .update({ status: "sent", sent_at: new Date().toISOString() })
+      .update({
+        status: "sent",
+        sent_at: new Date().toISOString(),
+        ...(documentUrl ? { document_url: documentUrl } : {}),
+      })
       .eq("id", envelope.id);
 
     // Log signature event
