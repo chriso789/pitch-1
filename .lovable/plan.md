@@ -1,92 +1,93 @@
 
 
-# Add Photo Upload and Paste to AI Admin Chat
+# Fix Overhead Calculation Across All Profiles
 
-## Overview
+## Problem
 
-Enable users to attach images to AI Admin chat messages via file picker button, drag-and-drop, or clipboard paste (Ctrl+V / Cmd+V). Images are uploaded to a Supabase Storage bucket and sent to the AI models as vision inputs (both GPT-4o and Claude support image URLs).
+Overhead should always be calculated on the **pre-tax selling price**, but several components and the edge function calculate it on the **tax-included selling price**, inflating the overhead amount. Additionally, `RepProfitBreakdown` doesn't fetch the `overhead_rate` fallback field from profiles.
 
-## What Changes
+## Root Cause Analysis
 
-### 1. Database Migration -- Storage Bucket
+The core pricing hook (`useEstimatePricing.ts`) correctly calculates overhead on the pre-tax amount. But when the data is saved and re-read, the stored `selling_price` **includes tax**. Other components then multiply overhead % by this inflated number.
 
-Create a new `ai-admin-uploads` storage bucket for chat images:
-- Public bucket (so signed URLs aren't needed for display)
-- File size limit: 10MB
-- Allowed MIME types: image/png, image/jpeg, image/webp, image/gif
-- RLS policies: authenticated users can upload to their own tenant path (`{tenant_id}/...`), anyone can read (public bucket)
+## Bugs Found (5 locations)
 
-### 2. Edge Function: `supabase/functions/ai-admin-agent/index.ts`
-
-Update message handling to support OpenAI vision format:
-- Accept messages where `content` can be a string OR an array of content parts (`[{type: "text", text: "..."}, {type: "image_url", image_url: {url: "..."}}]`)
-- Pass image content parts directly to OpenAI GPT-4o (natively supports vision)
-- For Anthropic Claude fallback, convert image URLs to Anthropic's `image` content block format (`{type: "image", source: {type: "url", url: "..."}}`)
-- Update the system prompt to mention the assistant can analyze uploaded images (screenshots, photos, diagrams)
-
-### 3. Frontend: `src/components/ai-admin/AIAdminChat.tsx`
-
-**New UI elements:**
-- Image attach button (camera/paperclip icon) next to the send button
-- Hidden file input accepting `image/*`
-- Image preview strip above the text input showing pending attachments with remove buttons
-- Paste handler on the textarea that detects image clipboard data
-
-**New state:**
-- `pendingImages: Array<{file: File, preview: string}>` -- images queued for the next message
-
-**Upload flow:**
-1. User selects/pastes image -> shown as thumbnail preview above input
-2. On send: upload each image to `ai-admin-uploads/{tenant_id}/{uuid}.{ext}` via Supabase Storage
-3. Build message content as an array: `[{type: "image_url", image_url: {url}}, {type: "text", text: "user message"}]`
-4. Send to edge function
-5. Display images inline in the chat message bubble
-
-**Message rendering update:**
-- When a user message content is an array (has images), render the images as thumbnails above the text
-- When persisting to `ai_chat_messages`, store the full content array as JSON in the `content` column
-
-**Paste handling:**
-```text
-onPaste event on Textarea:
-  -> Check clipboardData.items for image types
-  -> If image found, create File object, add to pendingImages
-  -> Show preview thumbnail
-  -> Prevent default only if image was pasted (allow text paste normally)
+### 1. Edge Function: `update-estimate-line-items` (line 172)
 ```
-
-**Drag-and-drop:**
-- Add onDragOver/onDrop handlers to the chat area
-- Accept dropped image files, add to pendingImages
-
-### 4. Message Interface Update
-
-Update the `Message` interface to support mixed content:
-
-```text
-interface MessageContent {
-  type: "text" | "image_url";
-  text?: string;
-  image_url?: { url: string };
-}
-
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string | MessageContent[];
-}
+// BUG: finalSellingPrice includes sales tax
+const overheadAmount = finalSellingPrice * (overheadPercent / 100);
 ```
+**Fix**: Subtract `sales_tax_amount` before calculating overhead.
 
-## Files Created
-1. Migration SQL for `ai-admin-uploads` storage bucket and RLS policies
+### 2. `EstimateHyperlinkBar.tsx` (line 140)
+```
+// BUG: newPrice is tax-included
+const overheadAmount = newPrice * (overheadRate / 100);
+```
+**Fix**: Subtract the estimate's `sales_tax_amount` before computing overhead.
+
+### 3. `EstimateHyperlinkBar.tsx` (lines 210-212)
+```
+// BUG: salePrice includes tax
+const salePrice = hyperlinkData?.sale_price || ...;
+return salePrice * (salesRepOverheadRate / 100);
+```
+**Fix**: Subtract `sales_tax_amount` from `salePrice`.
+
+### 4. `RepProfitBreakdown.tsx` (lines 54-66)
+**BUG**: Query only fetches `personal_overhead_rate`, not `overhead_rate`. Falls back to hardcoded `10` instead of using the profile's `overhead_rate` field.
+**Fix**: Add `overhead_rate` to the SELECT query and apply the hierarchy: `personal_overhead_rate > 0 ? personal : base`.
+
+### 5. `ProfitCenterPanel.tsx` (line 25-29)
+**BUG**: `SalesRepData` interface doesn't include `overhead_rate` -- relies on `as any` cast.
+**Fix**: Add `overhead_rate` to the interface for type safety.
 
 ## Files Modified
-1. `supabase/functions/ai-admin-agent/index.ts` -- Accept and forward image content parts to OpenAI/Anthropic vision APIs
-2. `src/components/ai-admin/AIAdminChat.tsx` -- Add image upload button, paste handler, drag-drop, image previews, and updated message rendering
 
-## Security
-- Images uploaded to tenant-scoped paths only
-- File size capped at 10MB, image MIME types only
-- Public bucket for easy display (no sensitive data expected in admin chat images)
-- RLS enforces upload path matches user's tenant
+1. **`supabase/functions/update-estimate-line-items/index.ts`** -- Subtract sales tax before overhead calculation
+2. **`src/components/estimates/EstimateHyperlinkBar.tsx`** -- Subtract sales tax in both overhead calculations
+3. **`src/components/estimates/RepProfitBreakdown.tsx`** -- Fetch `overhead_rate` and apply hierarchy
+4. **`src/components/estimates/ProfitCenterPanel.tsx`** -- Add `overhead_rate` to interface
+
+## Technical Details
+
+### Correct Overhead Formula (consistent everywhere)
+```
+preTaxSellingPrice = sellingPrice - salesTaxAmount
+overheadAmount = preTaxSellingPrice * (overheadRate / 100)
+```
+
+### Correct Overhead Rate Hierarchy (consistent everywhere)
+```
+effectiveRate = personal_overhead_rate > 0 ? personal_overhead_rate : overhead_rate ?? 10
+```
+
+### Edge Function Change (update-estimate-line-items)
+
+Around line 168-172, add sales tax subtraction:
+```typescript
+const salesTaxAmount = estimate.sales_tax_amount || 0;
+const preTaxSellingPrice = finalSellingPrice - salesTaxAmount;
+const overheadAmount = preTaxSellingPrice * (overheadPercent / 100);
+```
+
+### RepProfitBreakdown Query Fix
+
+Add `overhead_rate` to both profile selects and use the hierarchy:
+```typescript
+profiles!pipeline_entries_assigned_to_fkey(
+  first_name, last_name,
+  overhead_rate,            // ADD THIS
+  personal_overhead_rate,
+  commission_rate, commission_structure
+)
+```
+Then:
+```typescript
+const personalOH = primaryRep?.personal_overhead_rate ?? 0;
+const baseOH = primaryRep?.overhead_rate ?? 10;
+const primaryOverheadRate = personalOH > 0 ? personalOH : baseOH;
+```
+
+Same fix for secondary rep.
 
