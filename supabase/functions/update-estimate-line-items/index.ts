@@ -167,9 +167,11 @@ serve(async (req) => {
     // Use provided selling price or calculate from estimate
     const finalSellingPrice = selling_price || estimate.selling_price;
 
-    // Calculate overhead using rep's effective rate
+    // Calculate overhead using rep's effective rate on PRE-TAX selling price
     const overheadPercent = repOverheadRate;
-    const overheadAmount = finalSellingPrice * (overheadPercent / 100);
+    const salesTaxAmount = estimate.sales_tax_amount || 0;
+    const preTaxSellingPrice = finalSellingPrice - salesTaxAmount;
+    const overheadAmount = preTaxSellingPrice * (overheadPercent / 100);
     
     // Calculate commission based on rep's structure
     let repCommissionAmount: number;
