@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
-
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   Collapsible,
@@ -710,6 +710,26 @@ export function EstimatePreviewPanel({
                       badge={jobPhotos.length > 0 ? `${jobPhotos.length}` : undefined}
                       disabled={jobPhotos.length === 0}
                     />
+                    {options.showJobPhotos && jobPhotos.length > 0 && (
+                      <div className="pl-4 pt-1">
+                        <Label className="text-xs text-muted-foreground mb-1 block">Photo Layout</Label>
+                        <Select
+                          value={options.photoLayout || 'auto'}
+                          onValueChange={(v) => setOptions(prev => ({ ...prev, photoLayout: v as any }))}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="auto">Auto</SelectItem>
+                            <SelectItem value="1col">1 Column (Large)</SelectItem>
+                            <SelectItem value="2col">2×2 Grid</SelectItem>
+                            <SelectItem value="3col">3×3 Grid</SelectItem>
+                            <SelectItem value="4col">4×4 Grid</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <ToggleRow
                       label="Warranty Info"
                       checked={options.showWarrantyInfo}
