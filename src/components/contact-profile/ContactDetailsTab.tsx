@@ -58,11 +58,15 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const prevTriggerEdit = useRef(0);
+  const editSectionRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (triggerEdit > 0 && triggerEdit !== prevTriggerEdit.current) {
       setIsEditing(true);
       prevTriggerEdit.current = triggerEdit;
+      setTimeout(() => {
+        editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 100);
     }
   }, [triggerEdit]);
   const [jobCount, setJobCount] = useState(0);
@@ -342,7 +346,7 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
       </div>
 
       {/* Contact Information */}
-      <Card className="shadow-soft">
+      <Card className="shadow-soft" ref={editSectionRef}>
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold">Contact Information</CardTitle>
           <Button
