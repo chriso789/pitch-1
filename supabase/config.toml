@@ -1122,3 +1122,6 @@ verify_jwt = false
 
 [functions.ai-admin-agent]
 verify_jwt = false
+
+[functions.notify-signature-opened]
+verify_jwt = false

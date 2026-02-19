@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { Check, RotateCcw, Pen, FileText, Shield, AlertCircle, Loader2 } from 'lucide-react';
+import { Check, RotateCcw, Pen, FileText, Shield, AlertCircle, Loader2, Download } from 'lucide-react';
 
 interface SignatureEnvelope {
   id: string;
@@ -50,11 +50,21 @@ const PublicSignatureCapture = () => {
     }
   }, [signatureMethod, envelope]);
 
+  const notifySignatureOpened = async () => {
+    try {
+      await supabase.functions.invoke('notify-signature-opened', {
+        body: { access_token: token }
+      });
+    } catch (err) {
+      // Never block page load on notification failure
+      console.error('Failed to send open notification:', err);
+    }
+  };
+
   const loadEnvelope = async () => {
     try {
       setLoading(true);
       
-      // Look up envelope by access token
       const { data: recipient, error: recipientError } = await supabase
         .from('signature_recipients')
         .select(`
@@ -102,6 +112,9 @@ const PublicSignatureCapture = () => {
       });
       
       setTypedName(recipient.recipient_name || '');
+
+      // Fire-and-forget: notify rep that customer opened the signing page
+      notifySignatureOpened();
     } catch (err) {
       console.error('Error loading envelope:', err);
       setError('Failed to load document. Please try again later.');
@@ -113,17 +126,12 @@ const PublicSignatureCapture = () => {
   const initCanvas = () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    // Set canvas size
     const rect = canvas.getBoundingClientRect();
     canvas.width = rect.width * 2;
     canvas.height = rect.height * 2;
     ctx.scale(2, 2);
-
-    // Set drawing styles
     ctx.strokeStyle = '#1e3a5f';
     ctx.lineWidth = 2;
     ctx.lineCap = 'round';
@@ -133,27 +141,17 @@ const PublicSignatureCapture = () => {
   const getCanvasCoordinates = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return { x: 0, y: 0 };
-
     const rect = canvas.getBoundingClientRect();
-    
     if ('touches' in e) {
-      return {
-        x: e.touches[0].clientX - rect.left,
-        y: e.touches[0].clientY - rect.top
-      };
+      return { x: e.touches[0].clientX - rect.left, y: e.touches[0].clientY - rect.top };
     }
-    
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top
-    };
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-
     setIsDrawing(true);
     const { x, y } = getCanvasCoordinates(e);
     ctx.beginPath();
@@ -162,15 +160,10 @@ const PublicSignatureCapture = () => {
 
   const draw = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
-
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-
-    if ('touches' in e) {
-      e.preventDefault();
-    }
-
+    if ('touches' in e) e.preventDefault();
     const { x, y } = getCanvasCoordinates(e);
     ctx.lineTo(x, y);
     ctx.stroke();
@@ -187,20 +180,17 @@ const PublicSignatureCapture = () => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d');
     if (!canvas || !ctx) return;
-
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     setHasSignature(false);
   };
 
   const getSignatureData = (): string | null => {
     if (signatureMethod === 'type') {
-      // Generate signature from typed name
       const canvas = document.createElement('canvas');
       canvas.width = 400;
       canvas.height = 100;
       const ctx = canvas.getContext('2d');
       if (!ctx) return null;
-
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = '#1e3a5f';
@@ -208,7 +198,6 @@ const PublicSignatureCapture = () => {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(typedName, 200, 50);
-      
       return canvas.toDataURL('image/png');
     } else {
       const canvas = canvasRef.current;
@@ -222,27 +211,20 @@ const PublicSignatureCapture = () => {
       toast.error('Please type your name to sign');
       return;
     }
-    
     if (signatureMethod === 'draw' && !hasSignature) {
       toast.error('Please draw your signature');
       return;
     }
-
     const signatureData = getSignatureData();
     if (!signatureData) {
       toast.error('Failed to capture signature');
       return;
     }
-
     try {
       setSubmitting(true);
-      
       const recipient = envelope?.signature_recipients[0];
-      if (!recipient) {
-        throw new Error('No recipient found');
-      }
+      if (!recipient) throw new Error('No recipient found');
 
-      // Capture digital signature
       const { error: sigError } = await supabase
         .from('digital_signatures')
         .insert({
@@ -253,35 +235,24 @@ const PublicSignatureCapture = () => {
           signature_hash: btoa(signatureData.slice(0, 100)),
           signed_at: new Date().toISOString()
         } as any);
-
       if (sigError) throw sigError;
 
-      // Update recipient status
       const { error: updateError } = await supabase
         .from('signature_recipients')
-        .update({ 
-          status: 'signed',
-          signed_at: new Date().toISOString()
-        })
+        .update({ status: 'signed', signed_at: new Date().toISOString() })
         .eq('id', recipient.id);
-
       if (updateError) throw updateError;
 
-      // Check if all recipients have signed
       const { data: allRecipients } = await supabase
         .from('signature_recipients')
         .select('status')
         .eq('envelope_id', envelope?.id);
 
       const allSigned = allRecipients?.every(r => r.status === 'signed');
-      
       if (allSigned) {
         await supabase
           .from('signature_envelopes')
-          .update({ 
-            status: 'completed',
-            completed_at: new Date().toISOString()
-          })
+          .update({ status: 'completed', completed_at: new Date().toISOString() })
           .eq('id', envelope?.id);
       }
 
@@ -345,139 +316,143 @@ const PublicSignatureCapture = () => {
   }
 
   return (
-    <div className="min-h-screen bg-muted py-8 px-4">
-      <div className="max-w-2xl mx-auto space-y-6">
-        {/* Header */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center gap-2 mb-2">
-              <FileText className="h-5 w-5 text-primary" />
-              <Badge variant="outline">Document Signing</Badge>
-            </div>
-            <CardTitle>{envelope?.title || 'Document'}</CardTitle>
-            <CardDescription>
-              Please review and sign the document below
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
+    <div className="min-h-screen bg-muted">
+      {/* Header bar */}
+      <div className="bg-background border-b px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <FileText className="h-5 w-5 text-primary" />
+          <h1 className="font-semibold text-lg truncate">{envelope?.title || 'Document'}</h1>
+          <Badge variant="outline" className="hidden sm:inline-flex">Document Signing</Badge>
+        </div>
+        {envelope?.document_url && (
+          <a
+            href={envelope.document_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            download
+          >
+            <Button variant="outline" size="sm" className="flex items-center gap-2">
+              <Download className="h-4 w-4" />
+              <span className="hidden sm:inline">Download PDF</span>
+            </Button>
+          </a>
+        )}
+      </div>
+
+      {/* Side-by-side content */}
+      <div className="flex flex-col lg:flex-row h-[calc(100vh-57px)]">
+        {/* Left panel: PDF viewer */}
+        {envelope?.document_url && (
+          <div className="flex-1 lg:flex-[2] min-h-[600px] lg:min-h-0">
+            <iframe
+              src={envelope.document_url}
+              className="w-full h-full border-0"
+              title="Estimate Preview"
+            />
+          </div>
+        )}
+
+        {/* Right panel: Signature */}
+        <div className="w-full lg:w-[400px] lg:max-w-[400px] border-t lg:border-t-0 lg:border-l overflow-y-auto bg-background">
+          <div className="p-5 space-y-5">
+            {/* Signer info */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="secondary">
                 {envelope?.signature_recipients[0]?.name}
               </Badge>
               <span>•</span>
-              <span>{envelope?.signature_recipients[0]?.email}</span>
+              <span className="truncate">{envelope?.signature_recipients[0]?.email}</span>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Document Preview (if available) */}
-        {envelope?.document_url && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Document Preview</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="border rounded-lg overflow-hidden bg-white">
-                <iframe
-                  src={envelope.document_url}
-                  className="w-full h-[400px]"
-                  title="Document Preview"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Signature Section */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Pen className="h-5 w-5" />
-                <CardTitle className="text-lg">Your Signature</CardTitle>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant={signatureMethod === 'draw' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSignatureMethod('draw')}
-                >
-                  Draw
-                </Button>
-                <Button
-                  variant={signatureMethod === 'type' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSignatureMethod('type')}
-                >
-                  Type
-                </Button>
-              </div>
-            </div>
-            <CardDescription>
-              {signatureMethod === 'draw' 
-                ? 'Draw your signature in the box below' 
-                : 'Type your full legal name'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {signatureMethod === 'draw' ? (
-              <>
-                <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-4 bg-white">
-                  <canvas
-                    ref={canvasRef}
-                    className="w-full h-40 cursor-crosshair touch-none"
-                    style={{ touchAction: 'none' }}
-                    onMouseDown={startDrawing}
-                    onMouseMove={draw}
-                    onMouseUp={stopDrawing}
-                    onMouseLeave={stopDrawing}
-                    onTouchStart={startDrawing}
-                    onTouchMove={draw}
-                    onTouchEnd={stopDrawing}
-                  />
+            {/* Signature method toggle */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Pen className="h-4 w-4" />
+                  <span className="font-semibold">Your Signature</span>
                 </div>
-                {hasSignature && (
+                <div className="flex gap-1">
                   <Button
-                    variant="outline"
+                    variant={signatureMethod === 'draw' ? 'default' : 'outline'}
                     size="sm"
-                    onClick={clearCanvas}
-                    className="flex items-center gap-2"
+                    onClick={() => setSignatureMethod('draw')}
                   >
-                    <RotateCcw className="h-4 w-4" />
-                    Clear Signature
+                    Draw
                   </Button>
-                )}
-              </>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="typedName">Full Legal Name</Label>
-                  <Input
-                    id="typedName"
-                    value={typedName}
-                    onChange={(e) => setTypedName(e.target.value)}
-                    placeholder="Enter your full name"
-                    className="text-lg"
-                  />
+                  <Button
+                    variant={signatureMethod === 'type' ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setSignatureMethod('type')}
+                  >
+                    Type
+                  </Button>
                 </div>
-                {typedName && (
-                  <div className="border rounded-lg p-4 bg-white">
-                    <p className="text-sm text-muted-foreground mb-2">Signature Preview:</p>
-                    <p 
-                      className="text-3xl text-primary"
-                      style={{ fontFamily: '"Brush Script MT", cursive', fontStyle: 'italic' }}
-                    >
-                      {typedName}
-                    </p>
-                  </div>
-                )}
               </div>
-            )}
+              <p className="text-xs text-muted-foreground mb-3">
+                {signatureMethod === 'draw'
+                  ? 'Draw your signature in the box below'
+                  : 'Type your full legal name'}
+              </p>
+
+              {signatureMethod === 'draw' ? (
+                <>
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-3 bg-white">
+                    <canvas
+                      ref={canvasRef}
+                      className="w-full h-32 cursor-crosshair touch-none"
+                      style={{ touchAction: 'none' }}
+                      onMouseDown={startDrawing}
+                      onMouseMove={draw}
+                      onMouseUp={stopDrawing}
+                      onMouseLeave={stopDrawing}
+                      onTouchStart={startDrawing}
+                      onTouchMove={draw}
+                      onTouchEnd={stopDrawing}
+                    />
+                  </div>
+                  {hasSignature && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearCanvas}
+                      className="flex items-center gap-2 mt-2"
+                    >
+                      <RotateCcw className="h-3 w-3" />
+                      Clear
+                    </Button>
+                  )}
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <div>
+                    <Label htmlFor="typedName">Full Legal Name</Label>
+                    <Input
+                      id="typedName"
+                      value={typedName}
+                      onChange={(e) => setTypedName(e.target.value)}
+                      placeholder="Enter your full name"
+                    />
+                  </div>
+                  {typedName && (
+                    <div className="border rounded-lg p-3 bg-white">
+                      <p className="text-xs text-muted-foreground mb-1">Preview:</p>
+                      <p
+                        className="text-2xl text-primary"
+                        style={{ fontFamily: '"Brush Script MT", cursive', fontStyle: 'italic' }}
+                      >
+                        {typedName}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <Separator />
 
+            {/* Printed name */}
             <div className="space-y-2">
-              <Label htmlFor="printedName">Printed Name (for records)</Label>
+              <Label htmlFor="printedName">Printed Name</Label>
               <Input
                 id="printedName"
                 value={typedName}
@@ -486,35 +461,34 @@ const PublicSignatureCapture = () => {
               />
             </div>
 
-            <div className="bg-muted/50 rounded-lg p-4 text-sm text-muted-foreground">
+            {/* Legal notice */}
+            <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
               <p className="flex items-center gap-2">
-                <Shield className="h-4 w-4" />
+                <Shield className="h-3 w-3 flex-shrink-0" />
                 By signing, you agree that your electronic signature is legally binding.
               </p>
             </div>
-          </CardContent>
-        </Card>
 
-        {/* Submit Button */}
-        <div className="flex justify-end gap-3">
-          <Button
-            size="lg"
-            onClick={handleSubmit}
-            disabled={submitting || (signatureMethod === 'draw' && !hasSignature) || (signatureMethod === 'type' && !typedName.trim())}
-            className="flex items-center gap-2"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <Check className="h-4 w-4" />
-                Complete Signature
-              </>
-            )}
-          </Button>
+            {/* Submit */}
+            <Button
+              size="lg"
+              className="w-full flex items-center gap-2"
+              onClick={handleSubmit}
+              disabled={submitting || (signatureMethod === 'draw' && !hasSignature) || (signatureMethod === 'type' && !typedName.trim())}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                <>
+                  <Check className="h-4 w-4" />
+                  Complete Signature
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
