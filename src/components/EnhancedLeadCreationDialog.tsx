@@ -99,6 +99,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     description: "",
     address: "",
     phone: "",
+    email: "",
     roofAge: "",
     status: "lead",
     priority: "medium" as const,
@@ -227,6 +228,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         ...prev, 
         address: fullAddress,
         phone: contact.phone || "",
+        email: contact.email || "",
         name: `${contact.first_name} ${contact.last_name} - Roofing Project`
       }));
       
@@ -253,6 +255,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         ...prev, 
         address: "",
         phone: "",
+        email: "",
         name: ""
       }));
     }
@@ -458,6 +461,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         ...prev,
         name: `${contact.first_name} ${contact.last_name} - Roofing Project`,
         phone: contact.phone || prev.phone,
+        email: contact.email || prev.email,
         address: fullAddress || prev.address,
       }));
       
@@ -498,6 +502,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           name: formData.name,
           phone: formData.phone,
           address: formData.address,
+          email: formData.email,
           description: formData.description,
           roofAge: formData.roofAge,
           roofType: formData.roofType,
@@ -544,6 +549,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         description: "",
         address: "",
         phone: "",
+        email: "",
         roofAge: "",
         status: "lead",
         priority: "medium",
@@ -666,6 +672,18 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                 {fieldErrors.phone && (
                   <p className="text-sm text-destructive mt-1">{fieldErrors.phone}</p>
                 )}
+              </div>
+
+              <div>
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+                  placeholder="Enter email address"
+                  disabled={formData.useSameInfo}
+                />
               </div>
 
               <div>
