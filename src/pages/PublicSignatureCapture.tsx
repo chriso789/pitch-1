@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { Check, RotateCcw, Pen, FileText, Shield, AlertCircle, Loader2, Download } from 'lucide-react';
@@ -37,6 +38,7 @@ const PublicSignatureCapture = () => {
   const [submitting, setSubmitting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [signatureMethod, setSignatureMethod] = useState<'draw' | 'type'>('draw');
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     if (token) {
@@ -45,10 +47,12 @@ const PublicSignatureCapture = () => {
   }, [token]);
 
   useEffect(() => {
-    if (canvasRef.current && signatureMethod === 'draw') {
-      initCanvas();
+    if (canvasRef.current && signatureMethod === 'draw' && sheetOpen) {
+      // Small delay to let sheet animate open before measuring canvas
+      const timer = setTimeout(() => initCanvas(), 100);
+      return () => clearTimeout(timer);
     }
-  }, [signatureMethod, envelope]);
+  }, [signatureMethod, sheetOpen]);
 
   const notifySignatureOpened = async () => {
     try {
@@ -56,7 +60,6 @@ const PublicSignatureCapture = () => {
         body: { access_token: token }
       });
     } catch (err) {
-      // Never block page load on notification failure
       console.error('Failed to send open notification:', err);
     }
   };
@@ -112,8 +115,6 @@ const PublicSignatureCapture = () => {
       });
       
       setTypedName(recipient.recipient_name || '');
-
-      // Fire-and-forget: notify rep that customer opened the signing page
       notifySignatureOpened();
     } catch (err) {
       console.error('Error loading envelope:', err);
@@ -222,8 +223,6 @@ const PublicSignatureCapture = () => {
     }
     try {
       setSubmitting(true);
-
-      // Use the submit-signature edge function for proper IP logging & audit trail
       const { data, error: submitError } = await supabase.functions.invoke('submit-signature', {
         body: {
           access_token: token,
@@ -232,11 +231,10 @@ const PublicSignatureCapture = () => {
           consent_agreed: true,
         }
       });
-
       if (submitError) throw submitError;
       if (data?.error) throw new Error(data.error?.message || data.error);
-
       setCompleted(true);
+      setSheetOpen(false);
       toast.success('Signature captured successfully!');
     } catch (err) {
       console.error('Error submitting signature:', err);
@@ -296,45 +294,56 @@ const PublicSignatureCapture = () => {
   }
 
   return (
-    <div className="min-h-screen bg-muted">
+    <div className="min-h-screen bg-muted flex flex-col">
       {/* Header bar */}
-      <div className="bg-background border-b px-4 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <FileText className="h-5 w-5 text-primary" />
+      <div className="bg-background border-b px-4 py-3 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="h-5 w-5 text-primary shrink-0" />
           <h1 className="font-semibold text-lg truncate">{envelope?.title || 'Document'}</h1>
-          <Badge variant="outline" className="hidden sm:inline-flex">Document Signing</Badge>
         </div>
-        {envelope?.document_url && (
-          <a
-            href={envelope.document_url}
-            target="_blank"
-            rel="noopener noreferrer"
-            download
-          >
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
-              <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">Download PDF</span>
-            </Button>
-          </a>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {envelope?.document_url && (
+            <a href={envelope.document_url} target="_blank" rel="noopener noreferrer" download>
+              <Button variant="outline" size="sm" className="flex items-center gap-2">
+                <Download className="h-4 w-4" />
+                <span className="hidden sm:inline">Download</span>
+              </Button>
+            </a>
+          )}
+          <Button size="sm" onClick={() => setSheetOpen(true)} className="flex items-center gap-2">
+            <Pen className="h-4 w-4" />
+            Approve & Sign
+          </Button>
+        </div>
       </div>
 
-      {/* Side-by-side content */}
-      <div className="flex flex-col lg:flex-row h-[calc(100vh-57px)]">
-        {/* Left panel: PDF viewer */}
-        {envelope?.document_url && (
-          <div className="flex-1 lg:flex-[2] min-h-[600px] lg:min-h-0">
-            <iframe
-              src={envelope.document_url}
-              className="w-full h-full border-0"
-              title="Estimate Preview"
-            />
-          </div>
-        )}
+      {/* Full-screen PDF viewer */}
+      {envelope?.document_url ? (
+        <div className="flex-1">
+          <iframe
+            src={envelope.document_url}
+            className="w-full h-full border-0"
+            style={{ minHeight: 'calc(100vh - 57px)' }}
+            title="Estimate Preview"
+          />
+        </div>
+      ) : (
+        <div className="flex-1 flex items-center justify-center">
+          <p className="text-muted-foreground">No document preview available</p>
+        </div>
+      )}
 
-        {/* Right panel: Signature */}
-        <div className="w-full lg:w-[400px] lg:max-w-[400px] border-t lg:border-t-0 lg:border-l overflow-y-auto bg-background">
-          <div className="p-5 space-y-5">
+      {/* Signature drawer */}
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+          <SheetHeader>
+            <SheetTitle>Sign Document</SheetTitle>
+            <SheetDescription>
+              Review the document, then sign below to complete.
+            </SheetDescription>
+          </SheetHeader>
+
+          <div className="mt-6 space-y-5">
             {/* Signer info */}
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="secondary">
@@ -469,8 +478,8 @@ const PublicSignatureCapture = () => {
               )}
             </Button>
           </div>
-        </div>
-      </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 };
