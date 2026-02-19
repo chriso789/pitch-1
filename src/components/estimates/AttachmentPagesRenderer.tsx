@@ -182,6 +182,7 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
         <div
           key={`attachment-${page.documentId}-page-${page.pageNumber}`}
           data-report-page
+          data-attachment-page
           className="bg-white flex flex-col"
           style={{
             width: `${PAGE_WIDTH}px`,
