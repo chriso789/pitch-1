@@ -222,39 +222,19 @@ const PublicSignatureCapture = () => {
     }
     try {
       setSubmitting(true);
-      const recipient = envelope?.signature_recipients[0];
-      if (!recipient) throw new Error('No recipient found');
 
-      const { error: sigError } = await supabase
-        .from('digital_signatures')
-        .insert({
-          envelope_id: envelope?.id!,
-          recipient_id: recipient.id,
-          tenant_id: '14de934e-7964-4afd-940a-620d2ace125d',
+      // Use the submit-signature edge function for proper IP logging & audit trail
+      const { data, error: submitError } = await supabase.functions.invoke('submit-signature', {
+        body: {
+          access_token: token,
           signature_data: signatureData,
-          signature_hash: btoa(signatureData.slice(0, 100)),
-          signed_at: new Date().toISOString()
-        } as any);
-      if (sigError) throw sigError;
+          signature_type: signatureMethod === 'draw' ? 'drawn' : 'typed',
+          consent_agreed: true,
+        }
+      });
 
-      const { error: updateError } = await supabase
-        .from('signature_recipients')
-        .update({ status: 'signed', signed_at: new Date().toISOString() })
-        .eq('id', recipient.id);
-      if (updateError) throw updateError;
-
-      const { data: allRecipients } = await supabase
-        .from('signature_recipients')
-        .select('status')
-        .eq('envelope_id', envelope?.id);
-
-      const allSigned = allRecipients?.every(r => r.status === 'signed');
-      if (allSigned) {
-        await supabase
-          .from('signature_envelopes')
-          .update({ status: 'completed', completed_at: new Date().toISOString() })
-          .eq('id', envelope?.id);
-      }
+      if (submitError) throw submitError;
+      if (data?.error) throw new Error(data.error?.message || data.error);
 
       setCompleted(true);
       toast.success('Signature captured successfully!');
