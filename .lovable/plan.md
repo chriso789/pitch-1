@@ -1,83 +1,98 @@
 
+# Fix Signature Flow: Email Copies, CRM Storage, and SMS Notifications
 
-# Photo Grid Layout, Arrangement Selector, and Faster PDF Loading
+## Root Cause Analysis
 
-## Problem Summary
+I investigated the most recent signed envelope (`8dc5fc7a`) and found:
 
-1. **Stretched photos**: When more than 2 photos are attached, they display full-width (single column `grid-cols-1`), making each image huge and stretched. Only 3 of several photos were included.
-2. **No layout control**: The "Review Estimate" page has no way to adjust how photos are arranged before export.
-3. **Slow PDF loading**: The html2canvas pipeline captures each photo at full resolution on a separate row, inflating page count and processing time.
+### Finding 1: `submit-signature` edge function has WRONG column names
+The code tries to insert into `digital_signatures` using columns that **do not exist** in the actual database:
+- `signature_type` -- does NOT exist
+- `image_url` -- does NOT exist
+- `consent_text` -- does NOT exist
+- `user_agent` -- does NOT exist
+- `metadata` -- does NOT exist
 
-## Solution
+**Actual columns:** `id, tenant_id, envelope_id, recipient_id, field_id, signature_data, signature_hash, signature_metadata, signed_at, ip_address, is_valid, created_at`
 
-### 1. Smart Photo Grid Layout (Auto 2x2, 3x3, etc.)
+This means the deployed (old) version of submit-signature works differently from the current code. The old version likely sets the envelope to `completed` directly but **never calls `finalize-envelope`**.
 
-Replace the single-column photo layout in both PDF renderers with an automatic grid that adapts to the photo count:
+### Finding 2: `finalize-envelope` has ZERO logs -- it was never called
+This is why:
+- `signed_pdf_path` is NULL on the completed envelope
+- No completion email was sent to anyone
+- No signed document was saved to the CRM documents tab
 
-| Photo Count | Grid Layout |
-|---|---|
-| 1 | Full width (1 column) |
-| 2 | 2 columns side by side |
-| 3-4 | 2x2 grid |
-| 5-6 | 3x2 grid |
-| 7-9 | 3x3 grid |
-| 10+ | 4-column grid, multiple rows |
+### Finding 3: `notify-signature-opened` has ZERO logs
+The frontend call (`supabase.functions.invoke('notify-signature-opened')`) exists in the latest code but the **production site has NOT been published** with these changes. The old published site doesn't make this call.
 
-Photos will use `object-cover` with a fixed aspect ratio to prevent stretching, and all photos will be included (no arbitrary limit).
+### Finding 4: No "opened" event in signature_events
+Only one event exists: `envelope_sent`. No `opened` event, confirming the notification was never triggered.
 
-### 2. Photo Layout Selector in Review Estimate Page
+---
 
-Add a dropdown next to the "Job Photos" toggle in the EstimatePreviewPanel that lets users pick their preferred arrangement:
+## Fix Plan
 
-- **Auto** (default) -- system picks best grid based on count
-- **1 Column** -- large, one per row (current behavior)
-- **2x2 Grid** -- 2 columns
-- **3x3 Grid** -- 3 columns
-- **4x4 Grid** -- 4 columns
+### 1. Fix `submit-signature` to match actual database schema
 
-The selected layout is passed through `PDFComponentOptions` to both `EstimatePDFTemplate` and `EstimatePDFDocument`.
+Rewrite the insert to use the correct columns:
 
-### 3. Faster PDF Generation for Photos
+```text
+Before (broken):
+  signature_type, signature_data, image_url, signature_hash,
+  ip_address, user_agent, consent_text, metadata
 
-- Resize/compress images in the browser before html2canvas capture using an offscreen canvas (cap at 800px width)
-- Use JPEG at 0.7 quality for the photos page specifically
-- Pre-load all photo images before capture to avoid the 3-second timeout per image
+After (correct):
+  tenant_id, envelope_id, recipient_id, signature_data,
+  signature_hash, signature_metadata, ip_address, is_valid
+```
 
-## Technical Details
+Store the signature image data in `signature_data`, and put extra info (type, consent, user agent) into `signature_metadata` JSONB.
 
-### Files to Change
+Also upload the signature image to storage and store the path in `signature_metadata.image_path`.
+
+### 2. Fix `submit-signature` to properly call `finalize-envelope`
+
+After updating recipient status to `signed` and checking if all recipients signed, call `finalize-envelope` via direct `fetch` (not `supabase.functions.invoke`) with the service role key -- same pattern as the SMS fix.
+
+### 3. Fix `finalize-envelope` to embed signature on the PDF
+
+Currently it only adds a "Signature Certificate" page at the end. It should also attempt to draw the signature image on the last page of the actual estimate (the "signature block" area) before adding the certificate page.
+
+The `finalize-envelope` function should:
+- Download each signer's signature image from storage
+- Draw it on the last page of the PDF at a designated position (bottom area, above the certificate)
+- Then add the certificate page as it already does
+
+### 4. Fix `finalize-envelope` to reliably email signed copies
+
+The email block already exists but was never reached (function never ran). Once `submit-signature` properly calls it with the service role key, the flow will:
+- Generate the signed PDF with signature embedded
+- Upload to `documents` storage bucket
+- Create a `documents` table record (saves to CRM for the lead)
+- Email the signed copy to the homeowner AND the rep via Resend
+
+### 5. Publish reminder
+
+After deploying these fixes, the app **must be published** so the production site:
+- Calls `notify-signature-opened` when the customer opens the signing page (SMS to rep)
+- Uses the new `submit-signature` that triggers the full finalization flow
+
+---
+
+## Files Changed
 
 | File | Change |
 |---|---|
-| `src/components/estimates/PDFComponentOptions.ts` | Add `photoLayout` option: `'auto' \| '1col' \| '2col' \| '3col' \| '4col'` |
-| `src/components/estimates/EstimatePDFTemplate.tsx` | Replace `grid-cols-1` photo section with dynamic grid based on `photoLayout` option and photo count |
-| `src/components/estimates/EstimatePDFDocument.tsx` | Same grid logic in the `PhotosPage` component |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Add a layout selector dropdown next to the "Job Photos" toggle row |
-| `src/components/estimates/EstimateAddonsPanel.tsx` | Add same layout selector if photos are toggled on |
-| `src/hooks/useMultiPagePDFGeneration.ts` | Pre-load and downscale images before capture; use JPEG compression for photo pages |
+| `supabase/functions/submit-signature/index.ts` | Fix column names to match actual schema; upload signature image to storage; call `finalize-envelope` via direct fetch with service role key |
+| `supabase/functions/finalize-envelope/index.ts` | Embed signature image on the last page of the estimate PDF (signature block area) before adding certificate page; fix `signature_image_path` reference to use `signature_metadata` |
 
-### Grid Logic (shared helper)
+Both edge functions will be redeployed after changes.
 
-```typescript
-function getPhotoGridCols(count: number, layout: string): number {
-  if (layout === '1col') return 1;
-  if (layout === '2col') return 2;
-  if (layout === '3col') return 3;
-  if (layout === '4col') return 4;
-  // Auto mode
-  if (count <= 1) return 1;
-  if (count <= 4) return 2;
-  if (count <= 9) return 3;
-  return 4;
-}
-```
+---
 
-The grid class becomes `grid-cols-{n}` and each image gets a fixed aspect ratio container with `object-cover` to prevent stretching.
+## Expected Result After Fix + Publish
 
-### Performance Optimization
-
-In `useMultiPagePDFGeneration.ts`, before capturing the photos page:
-- Create an offscreen canvas for each image, draw it scaled down to max 800px width
-- Replace the `src` in the cloned DOM with the compressed data URL
-- This reduces pixel count by ~75% and eliminates the per-image loading delay
-
+1. Customer clicks "Review and Sign" in email --> opens signing page --> **SMS sent to rep** ("Jason just opened their signature request")
+2. Customer signs --> `submit-signature` stores signature correctly --> calls `finalize-envelope`
+3. `finalize-envelope` downloads original PDF --> embeds signature image on the document --> adds certificate page --> uploads signed PDF --> saves document record to CRM (appears in Documents tab for the lead) --> emails signed copy to homeowner AND rep
