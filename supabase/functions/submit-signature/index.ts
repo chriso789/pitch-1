@@ -174,12 +174,12 @@ serve(async (req: Request) => {
       message: allSigned
         ? `All recipients have signed "${envelope.title}"`
         : `${recipient.recipient_name} signed "${envelope.title}"`,
-      action_url: `/signature-envelopes/${envelope.id}`,
       metadata: {
         envelope_id: envelope.id,
         recipient_id: recipient.id,
         signature_id: signature.id,
         all_signed: allSigned,
+        action_url: `/signature-envelopes/${envelope.id}`,
       },
     });
 

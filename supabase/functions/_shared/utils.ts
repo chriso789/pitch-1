@@ -72,6 +72,12 @@ export async function createNotification(
     metadata?: Record<string, unknown>;
   }
 ): Promise<void> {
+  // Merge action_url into metadata since user_notifications has no action_url column
+  const mergedMetadata = {
+    ...(params.metadata || {}),
+    ...(params.action_url ? { action_url: params.action_url } : {}),
+  };
+
   const { error } = await supabase
     .from('user_notifications')
     .insert({
@@ -80,8 +86,7 @@ export async function createNotification(
       type: params.type,
       title: params.title,
       message: params.message,
-      action_url: params.action_url,
-      metadata: params.metadata,
+      metadata: Object.keys(mergedMetadata).length > 0 ? mergedMetadata : null,
     });
 
   if (error) {

@@ -63,7 +63,7 @@ serve(async (req: Request) => {
     // Verify all recipients have signed
     const { data: recipients, error: recipientsError } = await supabase
       .from('signature_recipients')
-      .select('id, name, email, status, signed_at')
+      .select('id, recipient_name, recipient_email, status, signed_at')
       .eq('envelope_id', envelope.id);
 
     if (recipientsError) {
@@ -74,14 +74,14 @@ serve(async (req: Request) => {
     const unsignedRecipients = recipients?.filter(r => r.status !== 'signed') || [];
     if (unsignedRecipients.length > 0) {
       return errorResponse('INCOMPLETE', 'Not all recipients have signed', 400, {
-        unsigned_recipients: unsignedRecipients.map(r => ({ name: r.name, email: r.email })),
+        unsigned_recipients: unsignedRecipients.map(r => ({ name: r.recipient_name, email: r.recipient_email })),
       });
     }
 
     // Get all signatures with their images
     const { data: signatures } = await supabase
       .from('digital_signatures')
-      .select('*, recipient:signature_recipients(name, email)')
+      .select('*, recipient:signature_recipients(recipient_name, recipient_email)')
       .eq('envelope_id', envelope.id);
 
     console.log(`Processing ${signatures?.length || 0} signatures for envelope ${envelope.id}`);
@@ -168,7 +168,7 @@ serve(async (req: Request) => {
                       height: drawH,
                     });
 
-                    console.log(`Embedded signature on last page at x=${sigX} for ${(sig.recipient as any)?.name}`);
+                    console.log(`Embedded signature on last page at x=${sigX} for ${(sig.recipient as any)?.recipient_name}`);
                     sigX += sigSpacing;
 
                     // Wrap to next row if needed
@@ -236,8 +236,8 @@ serve(async (req: Request) => {
           
           // Add each signature detail
           for (const sig of signatures || []) {
-            const recipientName = (sig.recipient as any)?.name || 'Unknown';
-            const recipientEmail = (sig.recipient as any)?.email || '';
+            const recipientName = (sig.recipient as any)?.recipient_name || 'Unknown';
+            const recipientEmail = (sig.recipient as any)?.recipient_email || '';
             const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
             const sigImagePath = meta.image_path as string | undefined;
             
@@ -386,8 +386,8 @@ serve(async (req: Request) => {
       title: envelope.title,
       completed_at: new Date().toISOString(),
       recipients: recipients?.map(r => ({
-        name: r.name,
-        email: r.email,
+        name: r.recipient_name,
+        email: r.recipient_email,
         signed_at: r.signed_at,
       })),
       signatures: signatures?.map(s => ({
@@ -419,7 +419,7 @@ serve(async (req: Request) => {
     // Create a document record for the signed PDF so it appears in Documents tab
     let documentId: string | null = null;
     if (signedPdfPath && signedPdfBytes) {
-      const recipientNames = recipients?.map(r => r.name).join(', ') || 'Unknown';
+      const recipientNames = recipients?.map(r => r.recipient_name).join(', ') || 'Unknown';
       
       const { data: docRecord, error: docError } = await supabase
         .from('documents')
@@ -445,6 +445,30 @@ serve(async (req: Request) => {
       }
     }
 
+    // --- Update enhanced_estimates status to 'signed' if linked ---
+    try {
+      const { data: linkedEstimate } = await supabase
+        .from('enhanced_estimates')
+        .select('id')
+        .eq('signature_envelope_id', envelope.id)
+        .maybeSingle();
+
+      if (linkedEstimate) {
+        const { error: estUpdateErr } = await supabase
+          .from('enhanced_estimates')
+          .update({ status: 'signed', signed_at: new Date().toISOString() })
+          .eq('id', linkedEstimate.id);
+
+        if (estUpdateErr) {
+          console.error('Failed to update estimate status:', estUpdateErr);
+        } else {
+          console.log(`Estimate ${linkedEstimate.id} status updated to signed`);
+        }
+      }
+    } catch (estErr) {
+      console.error('Error updating estimate status:', estErr);
+    }
+
     // Notify sender
     await createNotification(supabase, {
       tenant_id: envelope.tenant_id,
@@ -452,13 +476,13 @@ serve(async (req: Request) => {
       type: 'envelope_completed',
       title: 'Envelope Completed',
       message: `"${envelope.title}" has been signed by all recipients`,
-      action_url: `/signature-envelopes/${envelope.id}`,
       metadata: {
         envelope_id: envelope.id,
         completed_at: new Date().toISOString(),
         recipients_count: recipients?.length || 0,
         signed_pdf_path: signedPdfPath,
         document_id: documentId,
+        action_url: `/signature-envelopes/${envelope.id}`,
       },
     });
 
@@ -502,8 +526,8 @@ serve(async (req: Request) => {
           const recipientData = sig.recipient as any;
           return `
             <tr>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${recipientData?.name || 'Unknown'}</td>
-              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${recipientData?.email || ''}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${recipientData?.recipient_name || 'Unknown'}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${recipientData?.recipient_email || ''}</td>
               <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${sig.signed_at ? new Date(sig.signed_at).toLocaleString() : 'N/A'}</td>
               <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${sig.ip_address || 'N/A'}</td>
             </tr>`;
@@ -553,7 +577,7 @@ serve(async (req: Request) => {
         // Collect all email addresses: recipients + sender
         const emailAddresses: string[] = [];
         for (const r of recipients || []) {
-          if (r.email) emailAddresses.push(r.email);
+          if (r.recipient_email) emailAddresses.push(r.recipient_email);
         }
 
         // Also get sender email
