@@ -1,50 +1,43 @@
 
 
-# Fix: Show and Manage Uploaded Photos in Lead Details
+# Fix: Photos Not Showing After Upload + Edge Function Schema Mismatches
 
-## Problem
-The Photos tab in Lead Details never displays the actual uploaded photos. Even though photos are fetched correctly from the `customer_photos` table, the gallery code (lines 1158-1196) renders a generic placeholder icon instead of the real images. There is also no way to edit, categorize, delete, or manage photos from this tab.
+## Root Cause
 
-## Solution
-Replace the broken photo viewer with the existing `PhotoControlCenter` component, which already provides a full-featured photo gallery with grid/list views, category filtering, editing, deletion, reordering, and estimate inclusion toggles.
+The `PhotoControlCenter` uploads photos via the `photo-upload` edge function, but that edge function has **multiple column name mismatches** against the actual `customer_photos` database table, causing every insert to fail silently.
 
-## Changes
+### Actual `customer_photos` columns vs what the edge function uses:
 
-### `src/pages/LeadDetails.tsx`
+| Edge Function Uses | Actual Column | Issue |
+|---|---|---|
+| `file_path` | Does NOT exist | `file_name` is the correct column |
+| `updated_at` (in update action) | Does NOT exist | `uploaded_at` exists but is set on creation |
 
-**Replace the Photos TabsContent** (lines 1150-1197) with `PhotoControlCenter`:
+The `file_path` bug causes both the `upload` and `bulk_upload` actions to fail -- the photo gets saved to storage but the database record is never created. So the gallery query returns nothing.
 
-```tsx
-<TabsContent value="photos" className="mt-0 space-y-4">
-  <PhotoControlCenter
-    leadId={id!}
-    showHeader={false}
-    compactMode={true}
-  />
-</TabsContent>
-```
+## Fix (2 files)
 
-This replaces both the `LeadPhotoUploader` and the broken image placeholder carousel with a single unified component that already handles:
-- Photo uploading (with drag-and-drop)
-- Grid and list view modes
-- Category filtering (Before, During, After, Damage, etc.)
-- Photo editing (description, category)
-- Photo markup/annotation
-- Bulk select and delete
-- Drag-and-drop reordering
-- "Include in Estimate" toggle per photo
-- Primary photo selection
+### 1. `supabase/functions/photo-upload/index.ts`
 
-**Add the import** for `PhotoControlCenter` at the top of the file.
+**Upload action (line 217):** Change `file_path: storagePath` to `file_name: storagePath`
 
-**Remove unused imports** that were only needed for the old photo viewer (the `ImageIcon`, `currentPhotoIndex` state, `showFullScreenPhoto` state, `ChevronLeft`/`ChevronRight` if not used elsewhere).
+**Bulk upload action (line 356):** Change `file_path: storagePath` to `file_name: storagePath`
 
-### Update photo count badge
+**Update action (line 414):** Remove `updated_at` from the updates object (column doesn't exist). The update itself still works since category/description/include_in_estimate are valid columns.
 
-The tab badge still uses `photos` from `useLeadDetails`. This will continue to work since `PhotoControlCenter` fetches its own data internally, and the badge count from `useLeadDetails` remains accurate for display purposes.
+### 2. `src/components/photos/PhotoControlCenter.tsx`
+
+After upload completes via `usePhotos`, the react-query cache is already invalidated. But to ensure the gallery is visible immediately (no blank state while refetching), add optimistic display of uploaded photos:
+
+- After `uploadPhoto` resolves successfully in `handleFileUpload`, the `queryClient.invalidateQueries` in `usePhotos` will trigger an automatic refetch. No additional changes needed here once the edge function bug is fixed -- the photos will appear.
+
+However, to improve the mobile UX:
+- Show a success toast with photo count after batch upload
+- Auto-scroll to show the newly uploaded photos in the grid
 
 ## Result
-- All uploaded photos (including the 2 drone photos from mobile) will be visible in a grid
-- Users can edit, categorize, annotate, and delete photos
-- Users can mark photos for estimate inclusion directly from the gallery
-- Upload functionality is preserved within the same component
+- Photos uploaded from mobile (or desktop) will immediately appear in the gallery grid
+- The "Upload" and "Take Photo" buttons will work end-to-end
+- Photo updates (category, estimate inclusion) will also work correctly
+- Both single and bulk upload paths are fixed
+
