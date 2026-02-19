@@ -1,43 +1,76 @@
 
 
-# Fix: Photos Not Showing After Upload + Edge Function Schema Mismatches
+# Fix: Mobile Tab Layout and Move Notes to Lead Header
 
-## Root Cause
+## Problems (from screenshots)
 
-The `PhotoControlCenter` uploads photos via the `photo-upload` edge function, but that edge function has **multiple column name mismatches** against the actual `customer_photos` database table, causing every insert to fail silently.
+1. **Tabs too wide on mobile** -- The TabsList with 5 tabs (Comms, Photos, Notes, Activity, Timeline) stretches beyond its container. Missing the scroll-and-fade pattern required by mobile nav standards.
+2. **"Notes" tab doesn't belong here** -- The Notes tab is a simple lead notes textarea that should be a compact one-liner in the lead details header area, not buried in the tabbed section alongside Photos and Comms.
+3. **Internal Team Notes already exists above** -- There's already an `InternalNotesSection` card between the header and approval requirements (line 1044-1050). The "Notes" tab duplicates note-taking in a confusing way.
 
-### Actual `customer_photos` columns vs what the edge function uses:
+## Solution
 
-| Edge Function Uses | Actual Column | Issue |
-|---|---|---|
-| `file_path` | Does NOT exist | `file_name` is the correct column |
-| `updated_at` (in update action) | Does NOT exist | `uploaded_at` exists but is set on creation |
+### 1. Move Lead Notes inline into the header area (one-liner)
 
-The `file_path` bug causes both the `upload` and `bulk_upload` actions to fail -- the photo gets saved to storage but the database record is never created. So the gallery query returns nothing.
+Replace the `InternalNotesSection` standalone card (lines 1044-1050) placement with a compact layout that includes BOTH the `LeadNotesSection` (simple lead notes) as a one-line expandable field in the stats/details area, AND keeps the Internal Team Notes card.
 
-## Fix (2 files)
+Specifically, add the `LeadNotesSection` as a compact inline row right after the stats bar (after line 861), styled as a single-line input that expands on focus/click. This puts lead notes directly in the header where the user expects them.
 
-### 1. `supabase/functions/photo-upload/index.ts`
+### 2. Remove "Notes" tab from the tabbed card
 
-**Upload action (line 217):** Change `file_path: storagePath` to `file_name: storagePath`
+Remove the Notes `TabsTrigger` and `TabsContent` from the Comms/Photos tab card (lines 1089-1092 and 1157-1163). This reduces the tab count from 5 to 4, giving more breathing room on mobile.
 
-**Bulk upload action (line 356):** Change `file_path: storagePath` to `file_name: storagePath`
+### 3. Fix tab overflow on mobile with scroll-and-fade pattern
 
-**Update action (line 414):** Remove `updated_at` from the updates object (column doesn't exist). The update itself still works since category/description/include_in_estimate are valid columns.
+Apply the established mobile navigation pattern to the remaining TabsList:
+- Add `flex flex-nowrap overflow-x-auto` to the TabsList
+- Add `flex-shrink-0` to each TabsTrigger
+- Add a right-side fade gradient as a visual cue for scrollable content
+- Remove fixed `h-8` constraint that compresses tabs on small screens
 
-### 2. `src/components/photos/PhotoControlCenter.tsx`
+## Technical Changes
 
-After upload completes via `usePhotos`, the react-query cache is already invalidated. But to ensure the gallery is visible immediately (no blank state while refetching), add optimistic display of uploaded photos:
+### `src/pages/LeadDetails.tsx`
 
-- After `uploadPhoto` resolves successfully in `handleFileUpload`, the `queryClient.invalidateQueries` in `usePhotos` will trigger an automatic refetch. No additional changes needed here once the edge function bug is fixed -- the photos will appear.
+**A) Add inline notes row after stats bar (~line 861)**
 
-However, to improve the mobile UX:
-- Show a success toast with photo count after batch upload
-- Auto-scroll to show the newly uploaded photos in the grid
+```tsx
+{/* Inline Lead Notes - compact one-liner */}
+<div className="flex items-start gap-2 mt-2">
+  <StickyNote className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
+  <LeadNotesSection 
+    pipelineEntryId={id!}
+    initialNotes={lead.notes}
+    onNotesUpdate={refetchLead}
+  />
+</div>
+```
+
+**B) Update `LeadNotesSection` component** to support a compact inline mode: single-line input that shows a truncated preview, expanding to full textarea on click/focus.
+
+**C) Remove Notes tab trigger and content** from the tabbed card (lines 1089-1092 and 1157-1163).
+
+**D) Fix TabsList for mobile** (line 1075):
+
+```tsx
+<TabsList className="h-auto flex flex-nowrap overflow-x-auto w-full justify-start gap-1 bg-transparent p-0">
+  <TabsTrigger value="comms" className="text-xs h-7 px-3 flex-shrink-0">
+    ...
+  </TabsTrigger>
+  {/* etc */}
+</TabsList>
+```
+
+### `src/components/lead-details/LeadNotesSection.tsx`
+
+Refactor to support a compact inline mode:
+- Default display: single-line text preview showing truncated notes (or "Add notes..." placeholder)
+- On click: expand to a textarea for editing
+- Auto-save on blur/debounce (already implemented)
+- Visually fits within the lead header stats area
 
 ## Result
-- Photos uploaded from mobile (or desktop) will immediately appear in the gallery grid
-- The "Upload" and "Take Photo" buttons will work end-to-end
-- Photo updates (category, estimate inclusion) will also work correctly
-- Both single and bulk upload paths are fixed
-
+- Lead notes appear as a one-line field directly in the lead details header -- always visible, no tab navigation needed
+- Photos tab has more room on mobile without the Notes tab competing for space
+- Remaining tabs (Comms, Photos, Activity, Timeline) use scroll-and-fade on mobile to prevent overflow
+- Internal Team Notes card remains as a separate section below the header (unchanged)
