@@ -870,16 +870,16 @@ const PhotosPage: React.FC<{ jobPhotos: JobPhoto[] }> = ({ jobPhotos }) => {
         <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
         Project Photos
       </h3>
-      <div className="grid grid-cols-2 gap-3">
-        {jobPhotos.slice(0, 4).map((photo, index) => (
+      <div className="grid grid-cols-1 gap-4">
+        {jobPhotos.map((photo, index) => (
           <div key={photo.id || index} className="bg-gray-50 rounded-lg overflow-hidden">
             <img 
               src={photo.file_url} 
               alt={photo.description || `Photo ${index + 1}`}
-              className="w-full h-32 object-cover"
+              className="w-full h-64 object-cover"
             />
-            <div className="p-1.5">
-              <p className="text-[10px] text-gray-600 truncate">
+            <div className="p-2">
+              <p className="text-xs text-gray-600 truncate">
                 {photo.description || photo.category || `Photo ${index + 1}`}
               </p>
             </div>
