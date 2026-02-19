@@ -1,40 +1,58 @@
 
 
-# Fix: Signature Submission Failing Due to Invalid IP Address Format
+# Fix: "X" Button Not Closing Preview Estimate Dialog
 
 ## Root Cause
 
-The edge function logs show the exact error:
+Two issues prevent the close button from working:
 
+1. **Pointer events blocked**: The Radix auto-generated close button (absolute positioned at top-right) is being covered by the `DialogHeader` which has `relative z-10` and the full-height content `div` below it. The CSS hack `[&>button:last-child]:z-[60]` is unreliable because `overflow-hidden` on the DialogContent clips interactive areas, and sibling stacking contexts interfere.
+
+2. **Nested Dialog conflict**: The `ShareEstimateDialog` component is rendered *inside* the outer `<Dialog>` root (between `</DialogContent>` and `</Dialog>`). This places it within the same Radix Dialog context, which can cause the parent dialog's `onOpenChange` to fire unexpectedly when the nested dialog unmounts or state changes.
+
+## Fix (2 files)
+
+### File 1: `src/components/estimates/EstimatePreviewPanel.tsx`
+
+- **Hide the Radix auto-generated close button** entirely using `[&>button:last-child]:hidden`
+- **Add an explicit close button** inside the `DialogHeader` with a direct `onClick={() => onOpenChange(false)}` call -- this avoids all z-index and pointer-event issues
+- **Move `ShareEstimateDialog` outside the `<Dialog>` root** so it renders as a sibling, not a nested child, eliminating Radix context conflicts
+
+```text
+Before:
+  <Dialog open={open} onOpenChange={onOpenChange}>
+    <DialogContent className="... [&>button:last-child]:z-[60] ...">
+      <DialogHeader>
+        <DialogTitle>Preview Estimate</DialogTitle>
+      </DialogHeader>
+      ...content...
+    </DialogContent>
+    <ShareEstimateDialog ... />   <-- INSIDE Dialog root (bad)
+  </Dialog>
+
+After:
+  <>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="... [&>button:last-child]:hidden">
+        <DialogHeader>
+          <DialogTitle>Preview Estimate</DialogTitle>
+          <button onClick={() => onOpenChange(false)}>X</button>  <-- explicit
+        </DialogHeader>
+        ...content...
+      </DialogContent>
+    </Dialog>
+    <ShareEstimateDialog ... />   <-- OUTSIDE Dialog root (correct)
+  </>
 ```
-invalid input syntax for type inet: "173.169.254.66,173.169.254.66, 3.2.51.244"
-```
 
-The `ip_address` column in `digital_signatures` is PostgreSQL type `inet`, which only accepts a **single** IP address. But the `X-Forwarded-For` header returns a comma-separated list of proxy IPs (e.g., `"173.169.254.66,173.169.254.66, 3.2.51.244"`). The `getClientInfo()` helper in `supabase/functions/_shared/utils.ts` returns this raw value without parsing it.
+### File 2: No other files need changes
 
-## Fix
+The `MultiTemplateSelector.tsx` passes `onOpenChange={setShowPreviewPanel}` which is correct. The `showPreview` URL parameter useEffect only fires when the URL actually contains `showPreview=true`, which is not the case during normal close operations.
 
-**File: `supabase/functions/_shared/utils.ts`** (line 185)
+## What This Fixes
 
-Change the IP extraction to take only the **first** IP from the `X-Forwarded-For` header (which is the actual client IP):
-
-```typescript
-// Before:
-const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-
-// After:
-const forwardedFor = req.headers.get('x-forwarded-for');
-const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : (req.headers.get('x-real-ip') || 'unknown');
-```
-
-This is a one-line fix in the shared utility. Since `getClientInfo` is used by multiple edge functions, this fix applies globally.
-
-**Redeploy:** `submit-signature` (and any other functions using this shared util).
-
-## Expected Result
-
-After this fix, the signature submission will:
-1. Insert the signature record successfully with a valid single IP
-2. Update the recipient status to "signed"
-3. Trigger `finalize-envelope` (generates signed PDF, emails copies, saves to CRM)
+- Clicking the X button will reliably close the dialog and it will stay closed
+- No more pointer-event blocking from overlapping elements
+- No more Radix Dialog context conflicts from nested dialogs
+- Share functionality continues to work (just rendered outside the Dialog tree)
 
