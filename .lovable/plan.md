@@ -1,56 +1,48 @@
 
 
-# Fix Estimate Descriptions, Duplicate Net Profit, and Overhead Calculation
+# Fix: Dashboard Pipeline Counts Don't Match Pipeline Board
 
-## Three Issues to Fix
+## Root Cause
 
-### Issue 1: Template Descriptions Still Show Old Technical Text in Database
-The seeder code was updated with homeowner-friendly descriptions, but the existing records in `estimate_calc_template_items` still have old descriptions like "Starter strip shingles", "Hip and ridge cap", "Synthetic underlayment 10sq roll", etc.
+The dashboard and the pipeline board use **different filtering logic**, causing the numbers to disagree:
 
-**Fix:** Write a SQL migration that updates all existing template item descriptions in `estimate_calc_template_items` to match the new homeowner-friendly text from the seeder. This uses a `CASE` statement matching on `item_name` patterns to update ~20 common description mappings in one pass.
+- **Dashboard** (`Dashboard.tsx` line 213-216): For non-admin roles, it filters pipeline entries to only those where `assigned_to` or `created_by` matches the current user. The admin roles list is `['master', 'corporate', 'office_admin']` -- notably missing `owner`.
+- **Pipeline Board** (`usePipelineData.ts`): Shows ALL entries for the tenant with NO role-based filtering.
 
-### Issue 2: "Net Profit" Displayed Twice
-In `EstimateBreakdownCard.tsx`, the Profit row shows the profit amount (e.g., $9,903.12), then immediately below the commission line it shows "Net Profit: $9,903.12" -- the exact same number. This is redundant.
+Since you're logged in as `owner`, the dashboard treats you as a non-admin and only counts entries you personally created or are assigned to (showing 2 Leads). Meanwhile the pipeline board shows all 89 Leads for the whole company.
 
-**Fix:** Remove lines 178-182 in `EstimateBreakdownCard.tsx` that render the "Net Profit: ..." subtitle under the commission row. The profit amount is already clearly shown in the Profit section directly above.
+## Fix
 
-### Issue 3: Overhead Calculated on Tax-Inclusive Selling Price
-In `ProfitCenterPanel.tsx` (line 183), overhead is calculated as `sellingPrice * (overheadRate / 100)`. But `sellingPrice` from `api_estimate_hyperlink_bar` pulls from `enhanced_estimates.selling_price`, which includes sales tax. Overhead should be calculated on the pre-tax selling price.
+Two changes are needed to bring these into alignment:
 
-Similarly in `RepProfitBreakdown.tsx` (line 119), overhead uses the raw `sellingPrice` prop which may include tax.
+### 1. Add `owner` to the dashboard admin roles list
 
-**Fix:**
-- In `ProfitCenterPanel.tsx`: Fetch `sales_tax_amount` from the estimate data and subtract it before computing overhead. Update the RPC or add a separate query to get the tax amount.
-- In `RepProfitBreakdown.tsx`: Accept an optional `salesTaxAmount` prop and subtract it from sellingPrice before overhead calculation.
-- Update `api_estimate_hyperlink_bar` SQL function to also return `sales_tax_amount` so the frontend can separate pre-tax selling price.
+In `src/features/dashboard/components/Dashboard.tsx` (line 213), add `owner` to the `adminRoles` array so that owners see company-wide pipeline counts on the dashboard, matching what they see on the pipeline board.
 
----
+```text
+Before: const adminRoles = ['master', 'corporate', 'office_admin'];
+After:  const adminRoles = ['master', 'owner', 'corporate', 'office_admin'];
+```
 
-## Technical Details
+### 2. Handle the 1,000-row PostgREST default limit
 
-### Migration: Update Existing Template Descriptions
-A new SQL migration will run `UPDATE estimate_calc_template_items SET description = CASE...END` for all common item names across all tenants. Mapping includes:
-- Shingles (any brand) -> "Remove old roof and install new..."
-- Starter Strip -> "Adhesive starter row installed along eaves..."
-- Ridge Cap -> "Specially shaped shingles installed along the peak..."
-- Underlayment -> "Waterproof barrier installed over the roof deck..."
-- Ice and Water -> "Self-adhering waterproof membrane..."
-- Drip Edge -> "Metal edge flashing installed along the roof perimeter..."
-- Valley Metal -> "Metal channel installed where two roof slopes meet..."
-- Pipe Boot -> "Rubber-sealed flashing fitted around plumbing vent pipes..."
-- Coil Nails -> "Galvanized roofing nails used to secure shingles..."
-- Roofing Cement -> "Sealant applied to flashings, edges, and penetrations..."
-- OSB Sheets -> "Replacement plywood decking boards..."
-- Tear Off (labor) -> "Remove and dispose of all existing roofing materials..."
-- Shingle/Panel Install (labor) -> "Professionally install new... per manufacturer specifications..."
-- Cleanup/Haul (labor) -> "Complete job-site cleanup, magnetic nail sweep..."
-- Underlayment Install -> "Install waterproof underlayment over the entire roof deck..."
-- Ridge/Hip Work -> "Install ridge cap and hip cap along all peaks and hip lines..."
-- Flashing/Details -> "Install step flashing, valley metal, and detail work..."
+The dashboard fetches `status` for every pipeline entry to count them client-side. If the tenant has more than 1,000 entries, PostgREST silently truncates the results, causing undercounts.
+
+Replace the client-side counting approach with a database RPC function that does the aggregation server-side (no row limit):
+
+- Create a new SQL migration with an RPC function `get_pipeline_status_counts(p_tenant_id, p_location_id, p_user_id, p_user_role)` that runs:
+  ```sql
+  SELECT status, count(*)::int as count
+  FROM pipeline_entries
+  WHERE tenant_id = p_tenant_id
+    AND is_deleted = false
+    AND (p_location_id IS NULL OR location_id = p_location_id)
+  GROUP BY status;
+  ```
+- Update the dashboard query to call this RPC instead of fetching all rows and counting in JavaScript.
 
 ### Files Modified
-1. **New migration SQL** -- bulk update descriptions in `estimate_calc_template_items`
-2. **`src/components/estimates/EstimateBreakdownCard.tsx`** -- remove redundant "Net Profit" line (lines 178-182)
-3. **`src/components/estimates/ProfitCenterPanel.tsx`** -- subtract `sales_tax_amount` before overhead calculation
-4. **`src/components/estimates/RepProfitBreakdown.tsx`** -- subtract tax before overhead calculation
-5. **Update `api_estimate_hyperlink_bar`** SQL function to return `sales_tax_amount`
+
+1. **New SQL migration** -- Create `get_pipeline_status_counts` RPC function
+2. **`src/features/dashboard/components/Dashboard.tsx`** -- Replace client-side count logic with RPC call and add `owner` to admin roles
+
