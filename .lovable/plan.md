@@ -1,30 +1,60 @@
 
 
-# Fix: Make the "X" Close Button Visible on Preview Estimate Dialog
+# Fix: Preview Estimate Dialog Keeps Re-Opening After Clicking X
 
-## Problem
+## Root Cause Found
 
-The close button exists and works, but it's invisible because it uses the default foreground color at 70% opacity against a matching background. The small `h-4 w-4` icon blends completely into the header.
+The `showPreview` URL parameter is being cleared using `window.history.replaceState()`, but the component reads URL params via React Router's `useSearchParams()`. React Router is **completely unaware** of `replaceState` changes, so it still sees `showPreview=true` in the URL.
 
-## Fix
+Here is what happens step by step:
 
-**File: `src/components/estimates/EstimatePreviewPanel.tsx`** (line 501-508)
+1. URL contains `showPreview=true`
+2. useEffect sees it, opens the preview dialog, and calls `replaceState` to "clear" it
+3. User clicks the X button, setting `showPreviewPanel` to `false`
+4. Since `showPreviewPanel` is a dependency of that useEffect, the effect re-runs
+5. React Router's `searchParams` still returns `showPreview=true` (replaceState didn't update it)
+6. The effect sees `showPreview=true` and `!showPreviewPanel`, so it re-opens the dialog
+7. This creates an infinite loop where the dialog can never stay closed
 
-Make the X button clearly visible by:
-- Adding a background, border, and shadow so it stands out
-- Increasing icon size from `h-4 w-4` to `h-5 w-5`
-- Setting full opacity instead of `opacity-70`
+## The Fix
+
+**File: `src/components/estimates/MultiTemplateSelector.tsx`**
+
+Two changes:
+
+1. Use React Router's `setSearchParams` instead of `window.history.replaceState` so the URL param is properly cleared in React Router's state
+2. Remove `showPreviewPanel` from the useEffect dependency array so closing the dialog doesn't re-trigger the effect
 
 ```tsx
-<button
-  type="button"
-  className="absolute right-4 top-4 z-[70] rounded-md border bg-background p-1.5 shadow-sm transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
-  onClick={() => onOpenChange(false)}
->
-  <X className="h-5 w-5" />
-  <span className="sr-only">Close</span>
-</button>
+// Before (broken):
+const [searchParams] = useSearchParams();
+// ...
+useEffect(() => {
+  const showPreview = searchParams.get('showPreview');
+  if (showPreview === 'true' && existingEstimateId && !showPreviewPanel) {
+    setShowPreviewPanel(true);
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('showPreview');
+    const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+    window.history.replaceState({}, '', newUrl);  // React Router doesn't see this!
+  }
+}, [searchParams, existingEstimateId, showPreviewPanel]); // showPreviewPanel triggers re-run
+
+// After (fixed):
+const [searchParams, setSearchParams] = useSearchParams();
+// ...
+useEffect(() => {
+  const showPreview = searchParams.get('showPreview');
+  if (showPreview === 'true' && existingEstimateId) {
+    setShowPreviewPanel(true);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.delete('showPreview');
+      return next;
+    }, { replace: true });
+  }
+}, [searchParams, existingEstimateId, setSearchParams]);
 ```
 
-This gives the button a visible card-like appearance (border + background + shadow) so it's always clearly visible in the top-right corner regardless of the header background.
+No other files need changes. The X button itself is working correctly -- the problem is entirely in this useEffect loop.
 
