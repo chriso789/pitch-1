@@ -120,6 +120,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/crew')) return 'crew';
     if (path.startsWith('/homeowner')) return 'homeowner';
     if (path.startsWith('/admin/monitoring')) return 'monitoring';
+    if (path.startsWith('/settings/ai-admin')) return 'ai-admin';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/help')) return 'help';
     return 'dashboard';
@@ -318,19 +319,27 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
 
   const bottomNavigation = [
     {
+      name: "Help",
+      href: "help",
+      path: "/help",
+      icon: HelpCircle,
+      description: "Support & documentation"
+    },
+    {
+      name: "AI Admin",
+      href: "ai-admin",
+      path: "/settings/ai-admin",
+      icon: Bot,
+      description: "AI backend builder",
+      masterOnly: true
+    },
+    {
       name: "Settings",
       href: "settings",
       path: "/settings",
       icon: Settings,
       description: "System configuration",
       testId: TEST_IDS.sidebar.settings
-    },
-    {
-      name: "Help",
-      href: "help",
-      path: "/help",
-      icon: HelpCircle,
-      description: "Support & documentation"
     }
   ];
 
@@ -674,7 +683,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       {/* Bottom Navigation - Fixed */}
       <div className="p-3 border-t border-border">
         <nav className="space-y-0.5">
-          {bottomNavigation.map((item) => (
+          {bottomNavigation.filter(item => !item.masterOnly || currentUser?.role === 'master').map((item) => (
             <Link
               key={item.href}
               to={item.path}
