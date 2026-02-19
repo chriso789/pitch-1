@@ -160,6 +160,7 @@ export function EstimatePreviewPanel({
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
+  const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
@@ -362,7 +363,13 @@ export function EstimatePreviewPanel({
       
       // Count actual pages
       const pageCount = container.querySelectorAll('[data-report-page]').length;
-      console.log(`[Share] Generating PDF with ${pageCount} pages including attachments`);
+      
+      // Count estimate-only pages (before attachment pages)
+      const estimatePages = container.querySelectorAll('#estimate-pdf-pages [data-report-page]');
+      const estimatePageCount = estimatePages.length;
+      const sigPageIdx = estimatePageCount > 0 ? estimatePageCount - 1 : null;
+      setSignaturePageIndex(sigPageIdx);
+      console.log(`[Share] Generating PDF with ${pageCount} pages (${estimatePageCount} estimate pages, signature on page ${sigPageIdx})`);
       
       // Generate multi-page PDF (captures each [data-report-page] separately)
       const result = await generateMultiPagePDF('estimate-preview-template', pageCount, {
@@ -935,6 +942,7 @@ export function EstimatePreviewPanel({
       customerName={customerName}
       estimateNumber={estimateNumber}
       estimateDisplayName={estimateDisplayName}
+      signaturePageIndex={signaturePageIndex}
     />
     </>
   );

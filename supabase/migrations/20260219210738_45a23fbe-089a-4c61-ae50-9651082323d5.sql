@@ -1,0 +1,1 @@
+ALTER TABLE signature_envelopes ADD COLUMN IF NOT EXISTS signature_page_index INTEGER;

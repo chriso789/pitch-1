@@ -28,6 +28,7 @@ interface ShareEstimateDialogProps {
   customerName?: string;
   estimateNumber?: string;
   estimateDisplayName?: string;
+  signaturePageIndex?: number | null;
 }
 
 export function ShareEstimateDialog({
@@ -40,6 +41,7 @@ export function ShareEstimateDialog({
   customerName = '',
   estimateNumber,
   estimateDisplayName,
+  signaturePageIndex,
 }: ShareEstimateDialogProps) {
   const [recipientEmail, setRecipientEmail] = useState(customerEmail);
   const [recipientName, setRecipientName] = useState(customerName);
@@ -138,6 +140,7 @@ export function ShareEstimateDialog({
             expire_days: 30,
             pipeline_entry_id: pipelineEntryId || undefined,
             contact_id: contactId || undefined,
+            signature_page_index: signaturePageIndex ?? undefined,
             ...(ccArray.length > 0 && { cc: ccArray }),
             ...(bccArray.length > 0 && { bcc: bccArray }),
           },
