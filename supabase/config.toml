@@ -1119,3 +1119,6 @@ verify_jwt = false
 
 [functions.telnyx-voicemail-drop]
 verify_jwt = false
+
+[functions.ai-admin-agent]
+verify_jwt = false

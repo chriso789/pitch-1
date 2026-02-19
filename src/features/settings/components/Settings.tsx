@@ -57,6 +57,7 @@ import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequ
 import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
 import { PipelineStageManager } from "@/components/settings/PipelineStageManager";
 import { ContactStatusManager } from "@/components/settings/ContactStatusManager";
+import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
 
 interface SettingsTab {
   id: string;
@@ -98,6 +99,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   pricing: "products",
   "voice-assistant": "communications",
   "ai-agent": "communications",
+  "ai-admin": "system",
   integrations: "communications",
   email: "communications",
   developer: "system",
@@ -456,6 +458,8 @@ export const Settings = () => {
             </CardContent>
           </Card>
         );
+      case "ai-admin":
+        return <AIAdminChat />;
       default:
         return (
           <div className="text-center py-8 text-muted-foreground">
