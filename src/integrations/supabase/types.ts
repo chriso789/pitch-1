@@ -468,6 +468,86 @@ export type Database = {
           },
         ]
       }
+      ai_admin_changes: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          result: Json
+          session_id: string | null
+          tenant_id: string
+          tool_args: Json
+          tool_name: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          result?: Json
+          session_id?: string | null
+          tenant_id: string
+          tool_args?: Json
+          tool_name: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          result?: Json
+          session_id?: string | null
+          tenant_id?: string
+          tool_args?: Json
+          tool_name?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_admin_changes_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_admin_projects: {
+        Row: {
+          changes: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          changes?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          changes?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       ai_agents: {
         Row: {
           created_at: string
