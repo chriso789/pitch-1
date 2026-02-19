@@ -181,7 +181,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
           {/* New / Unassigned column FIRST — always visible */}
           <ContactKanbanColumn
             id="uncategorized"
-            title="New / Unassigned"
+            title="New / Unqualified"
             color="#f59e0b"
             count={groupedContacts['uncategorized']?.length || 0}
             items={groupedContacts['uncategorized']?.map(c => c.id) || []}

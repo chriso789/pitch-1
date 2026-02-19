@@ -73,19 +73,44 @@ const ContactProfile = () => {
     }
   }, [id]);
 
-  // Fetch team members for assign rep dropdown
+  // Fetch team members for assign rep dropdown — location-filtered & active only
   useEffect(() => {
-    if (!activeTenantId) return;
+    if (!activeTenantId || !contact) return;
     const fetchTeam = async () => {
-      const { data } = await supabase
+      const ELEVATED_ROLES = ['owner', 'corporate', 'office_admin'];
+
+      // If contact has a location, filter reps by that location
+      let locationUserIds: string[] = [];
+      if (contact.location_id) {
+        const { data: assignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', contact.location_id)
+          .eq('is_active', true);
+        locationUserIds = (assignments || []).map((a: any) => a.user_id);
+      }
+
+      // Build query: active profiles only
+      let query = supabase
         .from('profiles')
         .select('id, first_name, last_name, role')
         .eq('tenant_id', activeTenantId)
+        .eq('is_active', true)
         .order('first_name');
-      if (data) setTeamMembers(data);
+
+      const { data } = await query;
+      if (data) {
+        // Filter: include elevated roles always + location-assigned users
+        const filtered = contact.location_id
+          ? data.filter((p: any) =>
+              ELEVATED_ROLES.includes(p.role) || locationUserIds.includes(p.id)
+            )
+          : data;
+        setTeamMembers(filtered);
+      }
     };
     fetchTeam();
-  }, [activeTenantId]);
+  }, [activeTenantId, contact?.location_id]);
 
   const handleStatusChange = async (newStatus: string) => {
     const statusValue = newStatus === 'unqualified' ? null : newStatus;
