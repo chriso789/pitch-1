@@ -97,16 +97,22 @@ serve(async (req) => {
     const docTitle = envelope.title || "a document";
     const message = `🔔 ${recipient.recipient_name} just opened their signature request for ${docTitle}!`;
 
-    // Send SMS via telnyx-send-sms
+    // Send SMS via telnyx-send-sms using direct fetch with tenant_id
     try {
-      await supabase.functions.invoke("telnyx-send-sms", {
-        body: {
+      const smsResponse = await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           to: creatorProfile.phone,
           message,
-          skipAuth: true,
-        },
+          tenant_id: envelope.tenant_id,
+          sent_by: envelope.created_by,
+        }),
       });
-      console.log(`SMS notification sent to ${creatorProfile.phone}`);
+      console.log(`SMS notification sent to ${creatorProfile.phone}, status: ${smsResponse.status}`);
     } catch (smsError) {
       console.error("Failed to send SMS notification:", smsError);
       // Don't fail the request over SMS
