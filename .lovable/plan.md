@@ -1,78 +1,50 @@
 
 
-# Fix: Job Photos Toggle + Photo Visibility in Estimate Preview
+# Fix: Show and Manage Uploaded Photos in Lead Details
 
-## Problem 1: Job Photos toggle does nothing
-The "Job Photos" toggle in the Estimate Preview panel correctly sets `options.showJobPhotos = true`, but the `EstimatePDFDocument` component is rendered **without any `jobPhotos` data**. Line 855 of `EstimatePreviewPanel.tsx` passes all other props but omits `jobPhotos`.
+## Problem
+The Photos tab in Lead Details never displays the actual uploaded photos. Even though photos are fetched correctly from the `customer_photos` table, the gallery code (lines 1158-1196) renders a generic placeholder icon instead of the real images. There is also no way to edit, categorize, delete, or manage photos from this tab.
 
-The PDF template checks `opts.showJobPhotos && jobPhotos && jobPhotos.length > 0` -- since `jobPhotos` is undefined, the page never renders regardless of the toggle.
+## Solution
+Replace the broken photo viewer with the existing `PhotoControlCenter` component, which already provides a full-featured photo gallery with grid/list views, category filtering, editing, deletion, reordering, and estimate inclusion toggles.
 
-## Problem 2: Where are uploaded photos?
-Good news -- the photos uploaded from mobile are saved correctly:
-- **Storage:** `customer-photos` bucket, path: `{tenant_id}/leads/{lead_id}/...`
-- **Database:** `customer_photos` table with `lead_id` matching this lead
-- 2 drone photos visible with `include_in_estimate: false`
+## Changes
 
-The upload fix from earlier (changing `file_path` to `file_name`) is working.
+### `src/pages/LeadDetails.tsx`
 
-## Fix
-
-### `src/components/estimates/EstimatePreviewPanel.tsx`
-
-**1. Add state and fetch logic for job photos**
-
-Import `useEffect` and add a state variable + fetch function that loads photos from `customer_photos` where `lead_id = pipelineEntryId`:
-
-```typescript
-const [jobPhotos, setJobPhotos] = useState<Array<{
-  id: string;
-  file_url: string;
-  description?: string | null;
-  category?: string | null;
-}>>([]);
-
-useEffect(() => {
-  if (!pipelineEntryId || !open) return;
-
-  const fetchPhotos = async () => {
-    const { data } = await supabase
-      .from('customer_photos')
-      .select('id, file_url, description, category')
-      .eq('lead_id', pipelineEntryId)
-      .order('display_order');
-    if (data) setJobPhotos(data);
-  };
-  fetchPhotos();
-}, [pipelineEntryId, open]);
-```
-
-**2. Pass `jobPhotos` to `EstimatePDFDocument`**
-
-Add the missing prop on line ~874:
+**Replace the Photos TabsContent** (lines 1150-1197) with `PhotoControlCenter`:
 
 ```tsx
-<EstimatePDFDocument
-  ...existing props...
-  jobPhotos={jobPhotos}
-/>
+<TabsContent value="photos" className="mt-0 space-y-4">
+  <PhotoControlCenter
+    leadId={id!}
+    showHeader={false}
+    compactMode={true}
+  />
+</TabsContent>
 ```
 
-**3. Update the toggle row to show photo count**
+This replaces both the `LeadPhotoUploader` and the broken image placeholder carousel with a single unified component that already handles:
+- Photo uploading (with drag-and-drop)
+- Grid and list view modes
+- Category filtering (Before, During, After, Damage, etc.)
+- Photo editing (description, category)
+- Photo markup/annotation
+- Bulk select and delete
+- Drag-and-drop reordering
+- "Include in Estimate" toggle per photo
+- Primary photo selection
 
-Update the "Job Photos" toggle row to display a count badge so users know how many photos are available:
+**Add the import** for `PhotoControlCenter` at the top of the file.
 
-```tsx
-<ToggleRow
-  label="Job Photos"
-  checked={options.showJobPhotos}
-  onChange={(v) => updateOption('showJobPhotos', v)}
-  badge={jobPhotos.length > 0 ? `${jobPhotos.length}` : undefined}
-  disabled={jobPhotos.length === 0}
-/>
-```
+**Remove unused imports** that were only needed for the old photo viewer (the `ImageIcon`, `currentPhotoIndex` state, `showFullScreenPhoto` state, `ChevronLeft`/`ChevronRight` if not used elsewhere).
+
+### Update photo count badge
+
+The tab badge still uses `photos` from `useLeadDetails`. This will continue to work since `PhotoControlCenter` fetches its own data internally, and the badge count from `useLeadDetails` remains accurate for display purposes.
 
 ## Result
-- Toggling "Job Photos" ON will render a photos page in the estimate preview showing photos from the lead
-- The toggle shows a count badge (e.g., "2") so users know photos exist
-- If no photos are uploaded, the toggle is disabled with a visual indicator
-- Photos uploaded from mobile are now connected to the estimate export flow
+- All uploaded photos (including the 2 drone photos from mobile) will be visible in a grid
+- Users can edit, categorize, annotate, and delete photos
+- Users can mark photos for estimate inclusion directly from the gallery
+- Upload functionality is preserved within the same component
