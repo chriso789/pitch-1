@@ -1,90 +1,56 @@
 
 
-# Batch 1: Phases 25-29 Implementation
+# Improve Estimate Template Line Item Descriptions
 
-## Status Assessment
+## Problem
 
-After thorough codebase analysis, Phases 19-24 are already fully implemented. The first 5 truly unimplemented phases are **25 through 29**.
+The current line item descriptions in all brand templates are short, technical labels that just repeat the product name (e.g., "SureNail Technology shingles", "Starter strip", "Hip and ridge cap"). Homeowners reading estimates don't understand what these items are or why they're needed.
 
----
+## Solution
 
-## Phase 25: Upsell/Cross-Sell Recommendation Engine
+Rewrite every `description` field in `src/lib/estimates/brandTemplateSeeder.ts` across all 12 brand templates (GAF, OC Duration, OC Oakridge, CertainTeed, 5V Metal, Standing Seam, Worthouse Dura, Worthouse Supre, Boral Flat Tile, Eagle Flat Tile, Boral W Tile, Eagle W Tile) with homeowner-friendly explanations.
 
-AI-powered component that suggests add-on services (gutters, siding, solar, windows) based on property data, job type, and measurement reports.
+## Examples of Changes
 
-**New files:**
-- `src/features/leads/components/UpsellRecommendations.tsx` -- Card component showing AI-generated add-on suggestions with estimated value, displayed on lead/project detail pages
-- Uses existing AI gateway (`ai.gateway.lovable.dev`) to analyze property data and generate recommendations
-- Integrates into existing lead detail view (`src/hooks/useLeadDetails.ts` context)
+| Item | Current Description | New Description |
+|------|-------------------|-----------------|
+| Shingles (any brand) | "SureNail Technology shingles" | "Remove old roof and install new architectural shingles for lasting weather protection" |
+| Starter Strip | "Starter strip shingles" | "Adhesive starter row installed along eaves and rakes to seal the first course of shingles against wind uplift" |
+| Ridge Cap | "Hip and ridge cap" | "Specially shaped shingles installed along the peak and hip lines of your roof for a finished, watertight seal" |
+| Underlayment | "Synthetic underlayment 10sq roll" | "Waterproof barrier installed over the roof deck beneath the shingles as a secondary layer of leak protection" |
+| Ice & Water Shield | "Ice and water shield 200sqft roll" | "Self-adhering waterproof membrane applied to vulnerable areas (eaves and valleys) to prevent ice dam and wind-driven rain leaks" |
+| Drip Edge | "10ft galvanized drip edge (eave + rake)" | "Metal edge flashing installed along the roof perimeter to direct water away from the fascia and into gutters" |
+| Valley Metal | "10ft w-style valley metal" | "Metal channel installed where two roof slopes meet to direct heavy water flow and prevent valley leaks" |
+| Pipe Boot | "Small pipe boot flashing" | "Rubber-sealed flashing fitted around plumbing vent pipes to prevent leaks at roof penetrations" |
+| Coil Nails | "Roofing coil nails box" | "Galvanized roofing nails used to secure shingles to the roof deck per manufacturer specifications" |
+| Roofing Cement | "Roof sealant tube" | "Sealant applied to flashings, edges, and penetrations for additional waterproofing" |
+| OSB Sheets | "Decking repair sheets" | "Replacement plywood decking boards for any rotted or damaged sections discovered during tear-off" |
+| Tear Off (labor) | "Remove existing roofing" | "Remove and dispose of all existing roofing materials down to the bare deck" |
+| Shingle Install (labor) | "Install architectural shingles" | "Professionally install new shingles per manufacturer specifications to maintain full warranty coverage" |
+| Cleanup/Haul (labor) | "Debris removal" | "Complete job site cleanup, magnetic nail sweep, and haul all debris to the dump" |
 
-**No database changes needed** -- recommendations are generated on-the-fly from existing property/measurement data.
+## Scope of Changes
 
----
+**Single file modified:** `src/lib/estimates/brandTemplateSeeder.ts`
 
-## Phase 26: Subscription Maintenance Plans
+All 12 brand templates will be updated -- approximately 120+ description fields total. Each description will:
 
-Recurring annual roof inspection/maintenance plans with billing tracking.
+1. Explain what the item does in plain English
+2. Explain why it's needed (weather protection, code compliance, warranty, etc.)
+3. For shingle-type items, include "Remove old roof and install new..." language
+4. Keep descriptions concise (1-2 sentences max)
+5. Avoid jargon -- use terms a homeowner would understand
 
-**Database migration:**
-- New `maintenance_plans` table: id, tenant_id, contact_id, project_id, plan_type, frequency (annual/semi-annual/quarterly), price, status, next_service_date, created_by, etc.
-- New `maintenance_visits` table: id, plan_id, scheduled_date, completed_date, technician_id, notes, photos
+The descriptions will also apply correctly per roof type:
+- **Shingle templates** -- reference shingle-specific language
+- **Metal templates** -- reference panel and screw language
+- **Stone coated templates** -- reference stone coated panel language
+- **Tile templates** -- reference concrete tile language
 
-**New files:**
-- `src/features/projects/components/MaintenancePlanManager.tsx` -- Create/manage maintenance plans from project detail
-- `src/features/projects/components/MaintenancePlanCard.tsx` -- Compact card showing plan status and next service date
+## Technical Notes
 
----
-
-## Phase 27: Customer Lifecycle Stage Automation
-
-Auto-move contacts through lifecycle stages: Prospect, Lead, Customer, Repeat Customer, Advocate.
-
-**Database migration:**
-- Add `lifecycle_stage` column to contacts table (enum: prospect, lead, customer, repeat_customer, advocate)
-- Add `lifecycle_updated_at` timestamp column
-
-**New files:**
-- `src/features/contacts/components/LifecycleStageIndicator.tsx` -- Visual badge showing current stage with color coding
-- Automation logic added to existing `automation-processor` edge function to auto-advance stages based on events (job closed = customer, second job = repeat, review left = advocate)
-
----
-
-## Phase 28: Multi-Language Proposal Support
-
-Generate proposals in Spanish, Portuguese, and Creole using AI translation.
-
-**New files:**
-- `src/components/proposals/LanguageSelector.tsx` -- Language picker dropdown (English, Spanish, Portuguese, Creole)
-- `supabase/functions/translate-proposal/index.ts` -- Edge function that takes proposal content and target language, returns translated version via AI gateway
-- Integration into existing `ProposalBuilder.tsx` with a language toggle
-
-**No database changes** -- translated content is generated on demand and stored in the existing proposal JSONB fields.
-
----
-
-## Phase 29: Video Testimonial Capture
-
-In-app video recording from homeowners with publishing to a testimonial gallery.
-
-**Database migration:**
-- New `video_testimonials` table: id, tenant_id, project_id, contact_id, video_url, thumbnail_url, duration_seconds, transcript, status (pending/approved/published), recorded_at
-
-**New files:**
-- `src/features/reviews/components/VideoTestimonialCapture.tsx` -- MediaRecorder-based video capture component with preview
-- `src/features/reviews/components/TestimonialGallery.tsx` -- Grid gallery of approved testimonials for embedding in proposals
-- Videos stored in Supabase Storage bucket `video-testimonials`
-
----
-
-## Implementation Order
-
-1. Phase 27 (Lifecycle Stages) -- database migration first, then UI
-2. Phase 25 (Upsell Engine) -- pure frontend + AI, no DB changes
-3. Phase 26 (Maintenance Plans) -- database migration + UI
-4. Phase 28 (Multi-Language) -- edge function + UI integration
-5. Phase 29 (Video Testimonials) -- database migration + storage + UI
-
-## After This Batch
-
-Remaining unimplemented phases (30, 32-35, 37-44, 46-47, 49-54, 55-66, 68-76, 78-86, 87-89, 91-94, 96-108, 110, 112-114, 116-118) will continue in subsequent batches of 5.
+- The `description` field is already displayed in the UI via the `DescriptionEditor` component in `SectionedLineItemsTable.tsx` (shown as gray text below the item name)
+- No schema changes needed -- `description` is an existing `string` field on `TemplateItem`
+- Existing estimates already saved in the database will not be affected -- only new estimates built from templates going forward will get the improved descriptions
+- Users can still edit descriptions inline via the existing editor
 
