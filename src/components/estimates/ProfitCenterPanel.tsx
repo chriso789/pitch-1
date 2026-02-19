@@ -23,6 +23,7 @@ interface ProfitCenterPanelProps {
 }
 
 interface SalesRepData {
+  overhead_rate: number | null;
   personal_overhead_rate: number | null;
   commission_rate: number | null;
   first_name: string | null;
@@ -84,7 +85,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
         .single();
       
       if (error) throw error;
-      return data?.profiles as (SalesRepData & { overhead_rate: number | null }) | null;
+      return data?.profiles as SalesRepData | null;
     },
     enabled: !!pipelineEntryId,
   });
@@ -144,7 +145,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
   const personalOverhead = salesRepData?.personal_overhead_rate ?? 0;
-  const baseOverhead = (salesRepData as any)?.overhead_rate ?? 10;
+  const baseOverhead = salesRepData?.overhead_rate ?? 10;
   const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
   const commissionRate = salesRepData?.commission_rate ?? 50;
   const repName = salesRepData 

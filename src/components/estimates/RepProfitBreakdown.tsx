@@ -18,6 +18,7 @@ interface RepProfitBreakdownProps {
 }
 
 interface RepProfile {
+  overhead_rate: number | null;
   personal_overhead_rate: number | null;
   commission_rate: number | null;
   commission_structure: 'profit_split' | 'percentage_contract_price' | null;
@@ -54,6 +55,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
           profiles!pipeline_entries_assigned_to_fkey(
             first_name,
             last_name,
+            overhead_rate,
             personal_overhead_rate,
             commission_rate,
             commission_structure
@@ -61,6 +63,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
           secondary_rep:profiles!pipeline_entries_secondary_assigned_to_fkey(
             first_name,
             last_name,
+            overhead_rate,
             personal_overhead_rate,
             commission_rate,
             commission_structure
@@ -88,7 +91,9 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
 
   // Primary rep data
   const primaryRep = repData?.profiles;
-  const primaryOverheadRate = primaryRep?.personal_overhead_rate ?? 10;
+  const primaryPersonalOH = primaryRep?.personal_overhead_rate ?? 0;
+  const primaryBaseOH = primaryRep?.overhead_rate ?? 10;
+  const primaryOverheadRate = primaryPersonalOH > 0 ? primaryPersonalOH : primaryBaseOH;
   const primaryCommissionRate = primaryRep?.commission_rate ?? 50;
   const primaryCommissionStructure = primaryRep?.commission_structure || 'profit_split';
   const primaryRepName = primaryRep 
@@ -98,7 +103,9 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   // Secondary rep data
   const secondaryRep = repData?.secondary_rep;
   const hasSecondaryRep = !!repData?.secondary_assigned_to && !!secondaryRep;
-  const secondaryOverheadRate = secondaryRep?.personal_overhead_rate ?? 10;
+  const secondaryPersonalOH = secondaryRep?.personal_overhead_rate ?? 0;
+  const secondaryBaseOH = secondaryRep?.overhead_rate ?? 10;
+  const secondaryOverheadRate = secondaryPersonalOH > 0 ? secondaryPersonalOH : secondaryBaseOH;
   const secondaryCommissionRate = secondaryRep?.commission_rate ?? 50;
   const secondaryCommissionStructure = secondaryRep?.commission_structure || 'profit_split';
   const secondaryRepName = secondaryRep 
