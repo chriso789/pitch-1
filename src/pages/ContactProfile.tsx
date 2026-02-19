@@ -294,7 +294,32 @@ const ContactProfile = () => {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+
+            {/* Compact contact info bar */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
+              {contact.phone && (
+                <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 hover:text-foreground transition-colors">
+                  <Phone className="h-3.5 w-3.5" />
+                  <span>{contact.phone}</span>
+                </a>
+              )}
+              {contact.email && (
+                <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 hover:text-foreground transition-colors">
+                  <Mail className="h-3.5 w-3.5" />
+                  <span>{contact.email}</span>
+                </a>
+              )}
+              {(contact.address_street || contact.address_city) && (
+                <span className="flex items-center gap-1.5">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span>
+                    {[contact.address_street, contact.address_city, contact.address_state && contact.address_zip ? `${contact.address_state} ${contact.address_zip}` : contact.address_state || contact.address_zip].filter(Boolean).join(', ')}
+                  </span>
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 mt-2">
               {contact.phone && (
                 <CallButton 
                   phoneNumber={contact.phone}

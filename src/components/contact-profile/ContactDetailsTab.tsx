@@ -687,50 +687,38 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
             <div className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <User className="h-5 w-5 text-muted-foreground" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Full Name</p>
-                      <p className="font-medium">
-                        {contact?.first_name} {contact?.last_name}
-                      </p>
+                  {contact?.company_name && (
+                    <div className="flex items-center gap-3">
+                      <Building2 className="h-5 w-5 text-muted-foreground" />
+                      <div>
+                        <p className="text-sm text-muted-foreground">Company</p>
+                        <p className="font-medium">{contact.company_name}</p>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  {/* Email Display - Show all emails */}
-                  {allEmails.length > 0 && (
+                  {/* Additional emails beyond primary */}
+                  {allEmails.length > 1 && (
                     <div className="flex items-start gap-3">
                       <Mail className="h-5 w-5 text-muted-foreground mt-1" />
                       <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">
-                          Email{allEmails.length > 1 ? 's' : ''}
-                        </p>
-                        {allEmails.map((email, index) => (
-                          <div key={index} className="flex items-center gap-2">
-                            <p className="font-medium">{email}</p>
-                            {index === 0 && allEmails.length > 1 && (
-                              <Badge variant="secondary" className="text-xs">Primary</Badge>
-                            )}
-                          </div>
+                        <p className="text-sm text-muted-foreground">Additional Emails</p>
+                        {allEmails.slice(1).map((email, index) => (
+                          <p key={index} className="font-medium">{email}</p>
                         ))}
                       </div>
                     </div>
                   )}
 
-                  {/* Phone Display - Show only valid phone numbers */}
-                  {parsedPhones.length > 0 && (
+                  {/* Additional phones beyond primary */}
+                  {parsedPhones.length > 1 && (
                     <div className="flex items-start gap-3">
                       <Phone className="h-5 w-5 text-muted-foreground mt-1" />
                       <div className="space-y-1">
-                        <p className="text-sm text-muted-foreground">
-                          Phone{parsedPhones.length > 1 ? 's' : ''}
-                        </p>
-                        {parsedPhones.map((phone, index) => (
+                        <p className="text-sm text-muted-foreground">Additional Phones</p>
+                        {parsedPhones.slice(1).map((phone, index) => (
                           <div key={index} className="flex items-center gap-2">
                             <p className="font-medium">{phone.number}</p>
-                            {phone.isPrimary && parsedPhones.length > 1 && (
-                              <Badge className="text-xs bg-orange-500 hover:bg-orange-600">Primary</Badge>
-                            )}
                             {phone.isLandline && (
                               <Badge variant="outline" className="text-xs text-green-600 border-green-600">
                                 Landline ✓
@@ -741,27 +729,9 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                       </div>
                     </div>
                   )}
-
-                  {contact?.company_name && (
-                    <div className="flex items-center gap-3">
-                      <Building2 className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Company</p>
-                        <p className="font-medium">{contact.company_name}</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-muted-foreground mt-1" />
-                    <div>
-                      <p className="text-sm text-muted-foreground">Address</p>
-                      <p className="font-medium">{formatAddress(contact)}</p>
-                    </div>
-                  </div>
-
                   {contact?.tags && contact.tags.length > 0 && (
                     <div>
                       <p className="text-sm text-muted-foreground mb-2">Tags</p>
