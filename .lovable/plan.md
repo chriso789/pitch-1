@@ -1,64 +1,78 @@
 
-# Fix: Signed Estimate Not Updating Status, Documents, or Sending Emails
 
-## Root Cause (from live error logs)
+# Fix: Finalize-Envelope Crashing After Signature (3 Errors)
 
-The `finalize-envelope` edge function crashes immediately because it references **wrong column names**:
+The live edge function logs show exactly why the signed document is never generated, emailed, or saved back to the CRM. The `finalize-envelope` function crashes due to 3 separate errors, all of which must be fixed together.
+
+## Error 1: Unicode character crash (CRITICAL)
 
 ```
-ERROR: column signature_recipients.name does not exist
+Error: WinAnsi cannot encode "✓" (0x2713)
 ```
 
-This means after a signature is captured:
-- The signed PDF is never generated (no signature embedded on the estimate)
-- No document record is created in the Documents tab
-- No completion email is sent to the client or rep
-- The estimate status is never updated to "signed"
+**Line 308** of `finalize-envelope/index.ts` uses a checkmark `✓` in a drawText call. The `pdf-lib` standard fonts (Helvetica) only support WinAnsi characters and cannot render Unicode symbols.
 
-## All Issues Found
+**Fix:** Replace `✓` with a plain ASCII alternative like `[X]` or `*`.
 
-### Issue 1: `finalize-envelope/index.ts` -- Wrong column names (CRITICAL)
-The function queries `name` and `email` but the actual columns are `recipient_name` and `recipient_email`.
+```
+// Line 308 — before:
+certPage.drawText(`✓ "${consentText}"`, { ... });
 
-**Lines 64-67:** Change `.select('id, name, email, status, signed_at')` to `.select('id, recipient_name, recipient_email, status, signed_at')`
+// After:
+certPage.drawText(`[X] "${consentText}"`, { ... });
+```
 
-Then update ALL references throughout the function:
-- `r.name` becomes `r.recipient_name`
-- `r.email` becomes `r.recipient_email`
+## Error 2: Missing `final_pdf_hash` column (CRITICAL)
 
-This affects ~8 places in the file (recipient names in document records, certificate page, email collection, etc.)
+```
+Could not find the 'final_pdf_hash' column of 'signature_envelopes'
+```
 
-### Issue 2: `finalize-envelope/index.ts` -- No estimate status update
-When the envelope is linked to an `enhanced_estimate`, the status should be set to `signed`. Currently only the old `capture-digital-signature` function does this, but the active signing flow uses `submit-signature` -> `finalize-envelope` which skips it entirely.
+The envelope update on **line 409** tries to write `final_pdf_hash` but that column does not exist on `signature_envelopes`. This causes a 500 error and kills the entire function — nothing after this runs (no document record, no estimate update, no emails).
 
-**Add after envelope completion (around line 417):** Query `enhanced_estimates` by `signature_envelope_id`, and if found, update its `status` to `signed` and set `signed_at`.
+**Fix:** Database migration to add the column, OR remove `final_pdf_hash` from the update and store it in `metadata` or skip it. Adding the column is cleaner since the code also reads it later.
 
-### Issue 3: `submit-signature/index.ts` -- Wrong notification columns
-The `createNotification` call passes `action_url` and `priority` which don't exist on `user_notifications`. These should be removed or placed inside `metadata`.
+**Migration:**
+```sql
+ALTER TABLE signature_envelopes 
+ADD COLUMN IF NOT EXISTS final_pdf_hash TEXT;
+```
 
-**Lines 169-184:** Remove `action_url` and `priority` from the notification insert, or move them into the `metadata` JSONB field.
+**No code change needed** — the existing code on lines 404-412 will work once the column exists.
 
-### Issue 4: `finalize-envelope/index.ts` -- Wrong notification columns
-Same problem -- `createNotification` likely passes `action_url` which doesn't exist.
+## Error 3: Notification type check constraint (NON-BLOCKING but noisy)
 
-**Lines 449-463:** Same fix as Issue 3.
+```
+new row for relation "user_notifications" violates check constraint "user_notifications_type_check"
+```
 
-## Files to Change
+The `user_notifications` table has a CHECK constraint limiting `type` to only: `rank_change`, `achievement_unlock`, `prize_zone`, `reward_ready`. The signature system passes `signature_received` and `envelope_completed` which are rejected.
 
-### 1. `supabase/functions/finalize-envelope/index.ts`
-- Fix column names: `name` -> `recipient_name`, `email` -> `recipient_email` (lines 66, and all downstream references on lines ~239, 252, 390, 422, 505-507, 555-556)
-- Add estimate status update block after envelope completion (~line 417)
-- Fix `createNotification` call to remove `action_url`/`priority`
+**Fix:** Alter the check constraint to include the signature types.
 
-### 2. `supabase/functions/submit-signature/index.ts`
-- Fix `createNotification` call to remove `action_url` and `priority` (lines 169-184)
+**Migration:**
+```sql
+ALTER TABLE user_notifications DROP CONSTRAINT user_notifications_type_check;
+ALTER TABLE user_notifications ADD CONSTRAINT user_notifications_type_check 
+  CHECK (type = ANY (ARRAY[
+    'rank_change', 'achievement_unlock', 'prize_zone', 'reward_ready',
+    'signature_received', 'envelope_completed', 'envelope_viewed'
+  ]));
+```
 
-### 3. `supabase/functions/_shared/utils.ts` (if needed)
-- Verify `createNotification` helper matches the actual `user_notifications` schema
+## Summary of Changes
+
+| File / Resource | Change |
+|---|---|
+| **Database migration** | Add `final_pdf_hash` column to `signature_envelopes`; expand `user_notifications` type check constraint |
+| **`supabase/functions/finalize-envelope/index.ts`** | Line 308: replace `✓` with `[X]` to avoid WinAnsi encoding crash |
 
 ## What This Fixes
 
-- Estimate status in "Saved Estimates" will update to "signed" after customer signs
-- Signed PDF (with embedded signature + certificate page) will be saved to the Documents tab
-- Completion emails will be sent to both the client and the sales rep with a download link
-- In-app notifications will work without database errors
+Once all 3 errors are resolved, the finalize-envelope function will run to completion, which means:
+- Signed PDF with embedded signature + certificate page is generated and uploaded
+- Document record is created in the Documents tab
+- Estimate status is updated to "signed" in Saved Estimates
+- Completion email with download link is sent to the client and the sales rep
+- In-app notifications are created without constraint violations
+
