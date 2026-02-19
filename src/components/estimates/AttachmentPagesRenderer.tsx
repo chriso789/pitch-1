@@ -188,6 +188,8 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
             minHeight: `${PAGE_HEIGHT}px`,
             maxHeight: `${PAGE_HEIGHT}px`,
             overflow: 'hidden',
+            fontSize: 0,
+            lineHeight: 0,
           }}
         >
           <img
@@ -197,7 +199,9 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
               width: '100%',
               height: '100%',
               objectFit: 'contain',
+              display: 'block',
             }}
+            draggable={false}
           />
         </div>
       ))}

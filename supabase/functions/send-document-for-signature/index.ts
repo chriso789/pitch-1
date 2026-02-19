@@ -205,12 +205,18 @@ serve(async (req) => {
 
     const createdRecipients = await Promise.all(recipientPromises);
 
-    // Link envelope to smart doc instance if applicable
+    // Link envelope to the source document
     if (document_type === 'smart_doc_instance') {
       await supabase
         .from("smart_doc_instances")
         .update({ signature_envelope_id: envelope.id })
         .eq("id", document_id);
+    } else if (document_type === 'estimate') {
+      await supabase
+        .from("enhanced_estimates")
+        .update({ signature_envelope_id: envelope.id })
+        .eq("id", document_id);
+      console.log(`Linked envelope ${envelope.id} to estimate ${document_id}`);
     }
 
     // Send email invitations to recipients
