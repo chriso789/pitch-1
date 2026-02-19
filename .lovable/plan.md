@@ -1,68 +1,60 @@
 
+# Fix: Deleted Estimate Still Showing in Edit Mode
 
-# Fix Estimate Preview: Exit Button and Missing Line Item Notes
-
-## Problem 1: Can't Exit Preview
-The estimate preview dialog's close button (X) is positioned at `right-4 top-4` but it may be obscured by the DialogHeader content or have a low z-index. Additionally, there is no explicit "Close" or "Back" button in the panel's UI -- the only way to exit is the small X icon, which can be hard to find on the large full-screen dialog.
-
-## Problem 2: Line Item Notes Not Showing
-The `notes` and `description` fields are **stripped out** when saving estimates. All three save functions in `MultiTemplateSelector.tsx` explicitly map line items without including `notes` or `description`:
-
-```text
-materials: materialItems.map(item => ({
-  id: item.id,
-  item_name: item.item_name,
-  qty: item.qty,
-  ...
-  // notes and description are MISSING here
-}))
-```
-
-This means:
-- Fresh estimates show notes (they're in memory from template calculation)
-- Saved/reloaded estimates lose notes (stripped during save, never restored from DB)
-
-The rendering code we added previously is correct -- the data just isn't being persisted.
+## Problem
+When you delete an estimate from the "Saved Estimates" list, the estimate builder below still shows "Viewing saved estimate" with the deleted estimate's line items loaded. This happens because `SavedEstimatesList` and `MultiTemplateSelector` are sibling components -- deleting in one does not notify the other to clear its internal state.
 
 ## Changes
 
-### 1. `src/components/estimates/MultiTemplateSelector.tsx`
-
-**Add `notes` and `description` to all three save functions** (lines ~330-342, ~1222-1244, ~1483-1505):
-
-Add these two fields to each material and labor item mapping:
+### 1. `src/components/estimates/SavedEstimatesList.tsx`
+Add a new optional prop `onEstimateDeleted` to the component interface. Call it after a successful delete, passing the deleted estimate ID:
 
 ```typescript
-materials: materialItems.map(item => ({
-  id: item.id,
-  item_name: item.item_name,
-  description: item.description,  // ADD
-  notes: item.notes,              // ADD
-  qty: item.qty,
-  qty_original: item.qty_original,
-  unit: item.unit,
-  unit_cost: item.unit_cost,
-  unit_cost_original: item.unit_cost_original,
-  line_total: item.line_total,
-  is_override: item.is_override,
-})),
+// Add to props interface
+onEstimateDeleted?: (estimateId: string) => void;
+
+// Call at end of handleDeleteEstimate (after cache invalidation, before toast)
+onEstimateDeleted?.(estimateToRemove.id);
 ```
 
-Same for labor items in each location.
+### 2. `src/components/estimates/MultiTemplateSelector.tsx`
+Add a new optional prop `clearEditingEstimateId` that, when set, causes the component to clear its editing state if it matches the currently loaded estimate:
 
-**Remove the floating FAB button** (lines ~2403-2414) since there's already an inline Preview button. This was supposed to be done in the previous approved plan but wasn't executed yet.
+```typescript
+// Add to props interface
+clearEditingEstimateId?: string | null;
 
-### 2. `src/components/estimates/EstimatePreviewPanel.tsx`
+// Add useEffect to react when it changes
+useEffect(() => {
+  if (clearEditingEstimateId && clearEditingEstimateId === existingEstimateId) {
+    setExistingEstimateId(null);
+    setEditingEstimateNumber(null);
+    setIsEditingLoadedEstimate(false);
+    setEstimateDisplayName('');
+    setLineItems([]);
+    resetToOriginal();
+  }
+}, [clearEditingEstimateId]);
+```
 
-**Add explicit Close button** to the dialog header alongside the existing controls, and ensure the X button has a high enough z-index:
+### 3. `src/pages/LeadDetails.tsx`
+Wire the two together with a state variable:
 
-- Add a visible "Close" button with an X icon in the DialogHeader area
-- Ensure the Radix close button has `z-50` so it's never obscured by header content
+```typescript
+const [deletedEstimateId, setDeletedEstimateId] = useState<string | null>(null);
 
-### 3. Verify edge function preserves notes
+// On SavedEstimatesList:
+<SavedEstimatesList
+  ...
+  onEstimateDeleted={(id) => setDeletedEstimateId(id)}
+/>
 
-Check that the `update-estimate-line-items` edge function passes through the full line item JSON (including `notes` and `description`) to the database without stripping fields. If it does a selective pick, those fields need to be added there too.
+// On MultiTemplateSelector:
+<MultiTemplateSelector
+  ...
+  clearEditingEstimateId={deletedEstimateId}
+/>
+```
 
 ## Result
-- Users can close the preview via a clearly visible Close button
-- Line item notes (Color/Specs like "Charcoal", "Weathered Wood") persist through save/reload and display in the preview
+When you delete an estimate from the saved list, the estimate builder immediately clears its editing state and returns to the blank/template-selection view.
