@@ -37,6 +37,8 @@ import {
   Layers,
   Share2,
   Save,
+  X,
+  ArrowLeft,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -469,10 +471,21 @@ export function EstimatePreviewPanel({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden">
         <DialogHeader className="px-6 py-4 border-b">
-          <DialogTitle className="flex items-center gap-2">
-            <Eye className="h-5 w-5" />
-            Preview Estimate
-          </DialogTitle>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              <Eye className="h-5 w-5" />
+              Preview Estimate
+            </DialogTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onOpenChange(false)}
+              className="flex items-center gap-1.5"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Close Preview
+            </Button>
+          </div>
         </DialogHeader>
 
         <div className="flex h-[calc(95vh-120px)] min-h-0">
