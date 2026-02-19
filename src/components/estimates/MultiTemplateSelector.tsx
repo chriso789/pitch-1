@@ -247,7 +247,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const { generateMultiPagePDF, downloadPDF: downloadMultiPagePDF, isGenerating: isGeneratingMultiPage } = useMultiPagePDFGeneration();
   const queryClient = useQueryClient();
   const pdfContainerRef = useRef<HTMLDivElement>(null);
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   // Load enabled trades for this company
   const [enabledTrades, setEnabledTrades] = useState<string[]>(ALL_TRADES.map(t => t.value));
@@ -501,21 +501,19 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   useEffect(() => {
     const showPreview = searchParams.get('showPreview');
     
-    // Open preview if:
-    // 1. showPreview=true is in URL
-    // 2. An estimate is loaded (existingEstimateId is set)
-    // 3. Preview panel isn't already open
-    if (showPreview === 'true' && existingEstimateId && !showPreviewPanel) {
+    // Open preview if showPreview=true is in URL and an estimate is loaded
+    if (showPreview === 'true' && existingEstimateId) {
       setShowPreviewPanel(true);
       
-      // Clear the showPreview URL param after opening
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('showPreview');
-      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
-      window.history.replaceState({}, '', newUrl);
+      // Clear the showPreview URL param using React Router's setSearchParams
+      // so React Router is aware of the change (window.history.replaceState doesn't update it)
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('showPreview');
+        return next;
+      }, { replace: true });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams, existingEstimateId, showPreviewPanel]);
+  }, [searchParams, existingEstimateId, setSearchParams]);
 
   // Clear editing state when a deleted estimate ID matches what we're editing
   useEffect(() => {
