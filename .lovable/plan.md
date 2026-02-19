@@ -1,58 +1,30 @@
 
 
-# Fix: "X" Button Not Closing Preview Estimate Dialog
+# Fix: Make the "X" Close Button Visible on Preview Estimate Dialog
 
-## Root Cause
+## Problem
 
-Two issues prevent the close button from working:
+The close button exists and works, but it's invisible because it uses the default foreground color at 70% opacity against a matching background. The small `h-4 w-4` icon blends completely into the header.
 
-1. **Pointer events blocked**: The Radix auto-generated close button (absolute positioned at top-right) is being covered by the `DialogHeader` which has `relative z-10` and the full-height content `div` below it. The CSS hack `[&>button:last-child]:z-[60]` is unreliable because `overflow-hidden` on the DialogContent clips interactive areas, and sibling stacking contexts interfere.
+## Fix
 
-2. **Nested Dialog conflict**: The `ShareEstimateDialog` component is rendered *inside* the outer `<Dialog>` root (between `</DialogContent>` and `</Dialog>`). This places it within the same Radix Dialog context, which can cause the parent dialog's `onOpenChange` to fire unexpectedly when the nested dialog unmounts or state changes.
+**File: `src/components/estimates/EstimatePreviewPanel.tsx`** (line 501-508)
 
-## Fix (2 files)
+Make the X button clearly visible by:
+- Adding a background, border, and shadow so it stands out
+- Increasing icon size from `h-4 w-4` to `h-5 w-5`
+- Setting full opacity instead of `opacity-70`
 
-### File 1: `src/components/estimates/EstimatePreviewPanel.tsx`
-
-- **Hide the Radix auto-generated close button** entirely using `[&>button:last-child]:hidden`
-- **Add an explicit close button** inside the `DialogHeader` with a direct `onClick={() => onOpenChange(false)}` call -- this avoids all z-index and pointer-event issues
-- **Move `ShareEstimateDialog` outside the `<Dialog>` root** so it renders as a sibling, not a nested child, eliminating Radix context conflicts
-
-```text
-Before:
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="... [&>button:last-child]:z-[60] ...">
-      <DialogHeader>
-        <DialogTitle>Preview Estimate</DialogTitle>
-      </DialogHeader>
-      ...content...
-    </DialogContent>
-    <ShareEstimateDialog ... />   <-- INSIDE Dialog root (bad)
-  </Dialog>
-
-After:
-  <>
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="... [&>button:last-child]:hidden">
-        <DialogHeader>
-          <DialogTitle>Preview Estimate</DialogTitle>
-          <button onClick={() => onOpenChange(false)}>X</button>  <-- explicit
-        </DialogHeader>
-        ...content...
-      </DialogContent>
-    </Dialog>
-    <ShareEstimateDialog ... />   <-- OUTSIDE Dialog root (correct)
-  </>
+```tsx
+<button
+  type="button"
+  className="absolute right-4 top-4 z-[70] rounded-md border bg-background p-1.5 shadow-sm transition-colors hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+  onClick={() => onOpenChange(false)}
+>
+  <X className="h-5 w-5" />
+  <span className="sr-only">Close</span>
+</button>
 ```
 
-### File 2: No other files need changes
-
-The `MultiTemplateSelector.tsx` passes `onOpenChange={setShowPreviewPanel}` which is correct. The `showPreview` URL parameter useEffect only fires when the URL actually contains `showPreview=true`, which is not the case during normal close operations.
-
-## What This Fixes
-
-- Clicking the X button will reliably close the dialog and it will stay closed
-- No more pointer-event blocking from overlapping elements
-- No more Radix Dialog context conflicts from nested dialogs
-- Share functionality continues to work (just rendered outside the Dialog tree)
+This gives the button a visible card-like appearance (border + background + shadow) so it's always clearly visible in the top-right corner regardless of the header background.
 
