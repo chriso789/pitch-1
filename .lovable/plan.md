@@ -1,56 +1,56 @@
 
 
-# Improve Estimate Template Line Item Descriptions
+# Fix Estimate Descriptions, Duplicate Net Profit, and Overhead Calculation
 
-## Problem
+## Three Issues to Fix
 
-The current line item descriptions in all brand templates are short, technical labels that just repeat the product name (e.g., "SureNail Technology shingles", "Starter strip", "Hip and ridge cap"). Homeowners reading estimates don't understand what these items are or why they're needed.
+### Issue 1: Template Descriptions Still Show Old Technical Text in Database
+The seeder code was updated with homeowner-friendly descriptions, but the existing records in `estimate_calc_template_items` still have old descriptions like "Starter strip shingles", "Hip and ridge cap", "Synthetic underlayment 10sq roll", etc.
 
-## Solution
+**Fix:** Write a SQL migration that updates all existing template item descriptions in `estimate_calc_template_items` to match the new homeowner-friendly text from the seeder. This uses a `CASE` statement matching on `item_name` patterns to update ~20 common description mappings in one pass.
 
-Rewrite every `description` field in `src/lib/estimates/brandTemplateSeeder.ts` across all 12 brand templates (GAF, OC Duration, OC Oakridge, CertainTeed, 5V Metal, Standing Seam, Worthouse Dura, Worthouse Supre, Boral Flat Tile, Eagle Flat Tile, Boral W Tile, Eagle W Tile) with homeowner-friendly explanations.
+### Issue 2: "Net Profit" Displayed Twice
+In `EstimateBreakdownCard.tsx`, the Profit row shows the profit amount (e.g., $9,903.12), then immediately below the commission line it shows "Net Profit: $9,903.12" -- the exact same number. This is redundant.
 
-## Examples of Changes
+**Fix:** Remove lines 178-182 in `EstimateBreakdownCard.tsx` that render the "Net Profit: ..." subtitle under the commission row. The profit amount is already clearly shown in the Profit section directly above.
 
-| Item | Current Description | New Description |
-|------|-------------------|-----------------|
-| Shingles (any brand) | "SureNail Technology shingles" | "Remove old roof and install new architectural shingles for lasting weather protection" |
-| Starter Strip | "Starter strip shingles" | "Adhesive starter row installed along eaves and rakes to seal the first course of shingles against wind uplift" |
-| Ridge Cap | "Hip and ridge cap" | "Specially shaped shingles installed along the peak and hip lines of your roof for a finished, watertight seal" |
-| Underlayment | "Synthetic underlayment 10sq roll" | "Waterproof barrier installed over the roof deck beneath the shingles as a secondary layer of leak protection" |
-| Ice & Water Shield | "Ice and water shield 200sqft roll" | "Self-adhering waterproof membrane applied to vulnerable areas (eaves and valleys) to prevent ice dam and wind-driven rain leaks" |
-| Drip Edge | "10ft galvanized drip edge (eave + rake)" | "Metal edge flashing installed along the roof perimeter to direct water away from the fascia and into gutters" |
-| Valley Metal | "10ft w-style valley metal" | "Metal channel installed where two roof slopes meet to direct heavy water flow and prevent valley leaks" |
-| Pipe Boot | "Small pipe boot flashing" | "Rubber-sealed flashing fitted around plumbing vent pipes to prevent leaks at roof penetrations" |
-| Coil Nails | "Roofing coil nails box" | "Galvanized roofing nails used to secure shingles to the roof deck per manufacturer specifications" |
-| Roofing Cement | "Roof sealant tube" | "Sealant applied to flashings, edges, and penetrations for additional waterproofing" |
-| OSB Sheets | "Decking repair sheets" | "Replacement plywood decking boards for any rotted or damaged sections discovered during tear-off" |
-| Tear Off (labor) | "Remove existing roofing" | "Remove and dispose of all existing roofing materials down to the bare deck" |
-| Shingle Install (labor) | "Install architectural shingles" | "Professionally install new shingles per manufacturer specifications to maintain full warranty coverage" |
-| Cleanup/Haul (labor) | "Debris removal" | "Complete job site cleanup, magnetic nail sweep, and haul all debris to the dump" |
+### Issue 3: Overhead Calculated on Tax-Inclusive Selling Price
+In `ProfitCenterPanel.tsx` (line 183), overhead is calculated as `sellingPrice * (overheadRate / 100)`. But `sellingPrice` from `api_estimate_hyperlink_bar` pulls from `enhanced_estimates.selling_price`, which includes sales tax. Overhead should be calculated on the pre-tax selling price.
 
-## Scope of Changes
+Similarly in `RepProfitBreakdown.tsx` (line 119), overhead uses the raw `sellingPrice` prop which may include tax.
 
-**Single file modified:** `src/lib/estimates/brandTemplateSeeder.ts`
+**Fix:**
+- In `ProfitCenterPanel.tsx`: Fetch `sales_tax_amount` from the estimate data and subtract it before computing overhead. Update the RPC or add a separate query to get the tax amount.
+- In `RepProfitBreakdown.tsx`: Accept an optional `salesTaxAmount` prop and subtract it from sellingPrice before overhead calculation.
+- Update `api_estimate_hyperlink_bar` SQL function to also return `sales_tax_amount` so the frontend can separate pre-tax selling price.
 
-All 12 brand templates will be updated -- approximately 120+ description fields total. Each description will:
+---
 
-1. Explain what the item does in plain English
-2. Explain why it's needed (weather protection, code compliance, warranty, etc.)
-3. For shingle-type items, include "Remove old roof and install new..." language
-4. Keep descriptions concise (1-2 sentences max)
-5. Avoid jargon -- use terms a homeowner would understand
+## Technical Details
 
-The descriptions will also apply correctly per roof type:
-- **Shingle templates** -- reference shingle-specific language
-- **Metal templates** -- reference panel and screw language
-- **Stone coated templates** -- reference stone coated panel language
-- **Tile templates** -- reference concrete tile language
+### Migration: Update Existing Template Descriptions
+A new SQL migration will run `UPDATE estimate_calc_template_items SET description = CASE...END` for all common item names across all tenants. Mapping includes:
+- Shingles (any brand) -> "Remove old roof and install new..."
+- Starter Strip -> "Adhesive starter row installed along eaves..."
+- Ridge Cap -> "Specially shaped shingles installed along the peak..."
+- Underlayment -> "Waterproof barrier installed over the roof deck..."
+- Ice and Water -> "Self-adhering waterproof membrane..."
+- Drip Edge -> "Metal edge flashing installed along the roof perimeter..."
+- Valley Metal -> "Metal channel installed where two roof slopes meet..."
+- Pipe Boot -> "Rubber-sealed flashing fitted around plumbing vent pipes..."
+- Coil Nails -> "Galvanized roofing nails used to secure shingles..."
+- Roofing Cement -> "Sealant applied to flashings, edges, and penetrations..."
+- OSB Sheets -> "Replacement plywood decking boards..."
+- Tear Off (labor) -> "Remove and dispose of all existing roofing materials..."
+- Shingle/Panel Install (labor) -> "Professionally install new... per manufacturer specifications..."
+- Cleanup/Haul (labor) -> "Complete job-site cleanup, magnetic nail sweep..."
+- Underlayment Install -> "Install waterproof underlayment over the entire roof deck..."
+- Ridge/Hip Work -> "Install ridge cap and hip cap along all peaks and hip lines..."
+- Flashing/Details -> "Install step flashing, valley metal, and detail work..."
 
-## Technical Notes
-
-- The `description` field is already displayed in the UI via the `DescriptionEditor` component in `SectionedLineItemsTable.tsx` (shown as gray text below the item name)
-- No schema changes needed -- `description` is an existing `string` field on `TemplateItem`
-- Existing estimates already saved in the database will not be affected -- only new estimates built from templates going forward will get the improved descriptions
-- Users can still edit descriptions inline via the existing editor
-
+### Files Modified
+1. **New migration SQL** -- bulk update descriptions in `estimate_calc_template_items`
+2. **`src/components/estimates/EstimateBreakdownCard.tsx`** -- remove redundant "Net Profit" line (lines 178-182)
+3. **`src/components/estimates/ProfitCenterPanel.tsx`** -- subtract `sales_tax_amount` before overhead calculation
+4. **`src/components/estimates/RepProfitBreakdown.tsx`** -- subtract tax before overhead calculation
+5. **Update `api_estimate_hyperlink_bar`** SQL function to return `sales_tax_amount`
