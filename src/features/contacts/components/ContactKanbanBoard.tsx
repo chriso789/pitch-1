@@ -87,7 +87,7 @@ export const ContactKanbanBoard: React.FC<ContactKanbanBoardProps> = ({
 
     // Group contacts
     filteredContacts.forEach(contact => {
-      const status = contact.qualification_status || 'uncategorized';
+      const status = (!contact.qualification_status || contact.qualification_status === 'unqualified') ? 'uncategorized' : contact.qualification_status;
       if (groups[status]) {
         groups[status].push(contact);
       } else {
