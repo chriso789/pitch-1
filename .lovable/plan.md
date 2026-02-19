@@ -1,48 +1,125 @@
 
 
-# Fix List Builder Filters + Exclude Project-Stage Contacts + Add to Previous Telnyx Dialer Plan
+# AI Admin Command Center -- Combined Config Manager + CRM Assistant
 
-## Combined Plan
+## Overview
 
-This plan adds two fixes to the List Builder **on top of** the previously approved Telnyx live dialer plan (WebRTC calling, voicemail drops, recording, contact detail panel, webhooks). Both plans will be implemented together.
+Build a new "AI Admin" settings tab that provides a full-screen chat interface where admin users can manage system configuration AND get AI-powered CRM assistance through natural language. The AI agent will be able to read and write database-driven settings (pipeline stages, lead sources, automations, templates, etc.) and analyze CRM data -- all through conversation.
 
-## Part A: List Builder Fixes (this request)
+## Architecture
 
-### Problem 1: Filter returns "No contacts match filters"
-The query logic is correct but may fail silently when the `is_deleted` filter uses `.or('is_deleted.is.null,is_deleted.eq.false')` syntax which can conflict with other filters. The fix normalizes the filter chain to ensure all conditions compose properly with PostgREST.
+The system works by giving the AI agent **tool-calling** capabilities. Instead of asking the model to return JSON text, we define structured tools the agent can invoke. The edge function executes those tools server-side against the database, then returns results to the user.
 
-### Problem 2: Projects showing in dialer list
-Contacts that already have a pipeline entry at "project" status or beyond (project, completed, closed) should NOT appear in the dialer list. These are active or finished jobs, not stagnant leads to cold-call.
+### Available AI Tools (what the agent can do)
 
-**Fix in `CallCenterListBuilder.tsx`:**
-1. After fetching contacts, run a secondary query to get contact IDs that have pipeline entries with `status IN ('project', 'completed', 'closed')` for the same tenant
-2. Exclude those contact IDs from the displayed list
-3. This keeps the Supabase query simple (no complex joins) and the exclusion logic explicit
+**Config Management Tools:**
+- `list_pipeline_stages` -- View all pipeline stages and their order
+- `update_pipeline_stage` -- Add, rename, reorder, or delete pipeline stages
+- `list_contact_statuses` -- View all contact/qualification statuses
+- `update_contact_status` -- Add, rename, or delete contact statuses
+- `list_lead_sources` -- View configured lead sources
+- `update_lead_source` -- Add or remove lead sources
+- `list_automations` -- View automation rules
+- `update_automation` -- Enable/disable or modify automation rules
+- `update_app_setting` -- Change any app_settings key/value (company name, colors, etc.)
+- `list_estimate_templates` -- View estimate templates
+- `list_users` -- View team members and roles
+- `update_user_role` -- Change a user's role (admin only)
 
-### Technical Changes to `CallCenterListBuilder.tsx`
-- Add a parallel query to fetch `pipeline_entries` where `status` is in the advanced/terminal set: `['project', 'completed', 'closed']`
-- Filter the contacts result to exclude any contact whose ID appears in that set
-- Fix the `is_deleted` filter to use `.eq('is_deleted', false)` combined with `.or()` properly, or switch to a simpler `.neq('is_deleted', true)` pattern that handles null correctly
+**CRM Intelligence Tools:**
+- `query_pipeline_stats` -- Get pipeline counts, values, close rates by stage
+- `query_contact_stats` -- Get contact counts by status, source, location
+- `query_recent_activity` -- Get recent communications, tasks, lead activity
+- `query_stagnant_leads` -- Find leads with no activity in X days
+- `query_revenue_summary` -- Revenue by period, rep, location
+- `search_contacts` -- Find contacts by name, phone, email
+- `search_leads` -- Find pipeline entries by status, value, rep
 
-## Part B: Telnyx Live Dialer (previous plan, unchanged)
+**Action Tools:**
+- `create_contact` -- Add a new contact (existing capability, carried forward)
+- `create_task` -- Create a task/reminder (existing capability, carried forward)
+- `draft_email` -- Generate email content for a contact
+- `draft_sms` -- Generate SMS content for a contact
+- `score_lead` -- Analyze and score a specific lead
 
-All items from the previously approved plan remain:
+## What Gets Built
 
-1. **WebRTC Calling** -- Replace `tel:` links in `CallCenterLiveDialer.tsx` with in-browser Telnyx calls via `telnyx-dial` edge function, with mute/hold/hangup controls and live timer
-2. **Voicemail Drop** -- New `VoicemailDropManager.tsx` component and `telnyx-voicemail-drop` edge function to play pre-recorded audio when AMD detects voicemail
-3. **Contact Detail Panel** -- New `ContactDetailPanel.tsx` shown between calls for reps to update CRM data before advancing
-4. **Call Webhook Handler** -- New `telnyx-call-webhook` edge function to receive Telnyx events, store recordings, update call records
-5. **Quick Call Mode** -- Standalone single-call card in the Dialer tab for one-off recorded calls
-6. **Storage Buckets** -- `call-recordings` and `voicemail-drops` for audio files
+### 1. New Edge Function: `supabase/functions/ai-admin-agent/index.ts`
 
-### Files Created
-1. `src/components/call-center/VoicemailDropManager.tsx`
-2. `src/components/call-center/ContactDetailPanel.tsx`
-3. `supabase/functions/telnyx-voicemail-drop/index.ts`
-4. `supabase/functions/telnyx-call-webhook/index.ts`
+A new, dedicated edge function that:
+- Accepts chat messages with full conversation history
+- Streams responses token-by-token via SSE for real-time feel
+- Uses the Lovable AI Gateway with tool-calling to let the model invoke config/CRM tools
+- Executes tool calls server-side with service-role access (bypasses RLS for admin operations)
+- Validates that the requesting user has admin/owner/master role before allowing config writes
+- Uses `google/gemini-3-flash-preview` as the default model
+- Handles 429/402 rate limit errors gracefully
 
-### Files Modified
-1. `src/components/call-center/CallCenterListBuilder.tsx` -- Fix filters, exclude project-stage contacts
-2. `src/components/call-center/CallCenterLiveDialer.tsx` -- Replace tel: with WebRTC, add call controls, voicemail drop, contact detail panel
-3. `src/pages/CallCenterPage.tsx` -- Add Quick Call card, voicemail management, integrate new components
-4. `supabase/config.toml` -- Add webhook function entries with `verify_jwt = false`
+The system prompt tells the AI it is a PITCH CRM admin assistant that can both configure the system and analyze data. It receives the user's role and tenant context so it knows what it can modify.
+
+### 2. New Page: `src/pages/settings/AIAdminPage.tsx`
+
+A full chat interface with:
+- Scrollable message history with markdown rendering
+- Streaming token-by-token display as the AI responds
+- Message input with send button and Enter-to-send
+- Tool execution results shown inline (e.g., "Updated pipeline stage 'Inspection' to position 3")
+- Conversation persisted to `ai_chat_sessions` / `ai_chat_messages` with `session_type: 'admin'`
+- Role-gated: only `master`, `owner`, `corporate`, `office_admin` can access
+- "New Conversation" button to start fresh
+- Suggested prompts shown when chat is empty (e.g., "Show me pipeline stages", "How many stagnant leads do we have?", "Add a new lead source called 'Google Ads'")
+
+### 3. Integration into Settings
+
+- Add an "AI Admin" tab to the Settings page under the "system" category
+- Tab restricted to `master`, `owner`, `corporate`, `office_admin` roles
+- The tab renders the `AIAdminPage` component directly
+- Also accessible via route `/settings/ai-admin` for direct navigation
+
+### 4. New Route
+
+- Add `/settings/ai-admin` route in the router pointing to the new page
+
+## Files Created
+1. `supabase/functions/ai-admin-agent/index.ts` -- Edge function with tool-calling AI agent
+2. `src/pages/settings/AIAdminPage.tsx` -- Full chat UI page
+3. `src/components/ai-admin/AIAdminChat.tsx` -- Chat component with streaming, message list, input
+
+## Files Modified
+1. `src/features/settings/components/Settings.tsx` -- Add "ai-admin" tab rendering
+2. `src/App.tsx` (or router file) -- Add `/settings/ai-admin` route
+3. `supabase/config.toml` -- Add `ai-admin-agent` function entry
+
+## Technical Details
+
+### Tool Calling Pattern (Edge Function)
+
+The edge function defines tools as OpenAI-compatible function schemas, sends them with the chat request to the Lovable AI Gateway, and when the model responds with `tool_calls`, the function executes each tool against the database and sends results back to the model for a final response.
+
+```text
+User: "Add a pipeline stage called 'Inspection' after 'Qualified Lead'"
+  --> AI Gateway call with tools defined
+  --> Model returns tool_call: update_pipeline_stage({ action: "add", name: "Inspection", after: "Qualified Lead" })
+  --> Edge function executes: INSERT into pipeline_stages
+  --> Result sent back to model
+  --> Model responds: "Done! I've added 'Inspection' as a new pipeline stage, positioned after 'Qualified Lead'."
+```
+
+### Security Model
+- Edge function validates JWT and checks user role via profiles table
+- Config-writing tools require `master`, `owner`, or `office_admin` role
+- Read-only/query tools available to `manager` and above
+- All operations scoped to the user's `tenant_id`
+- Tool executions logged to `ai_chat_messages.actions_taken` for audit trail
+
+### Streaming Implementation
+- Edge function proxies the SSE stream from Lovable AI Gateway
+- Frontend parses SSE line-by-line and renders tokens as they arrive
+- Tool calls interrupt the stream: the edge function detects `tool_calls` in the stream, executes them, then sends a follow-up request to get the final streamed response
+
+### Existing Infrastructure Used
+- `ai_chat_sessions` / `ai_chat_messages` tables for persistence
+- `LOVABLE_API_KEY` secret for Lovable AI Gateway
+- `lovable-ai.ts` shared helper patterns
+- `supabase.ts` shared helpers for auth and service client
+- Existing Settings tab system with role-based filtering
