@@ -1,5 +1,5 @@
 // Estimate Preview Panel with live toggle controls
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -163,6 +163,28 @@ export function EstimatePreviewPanel({
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
+
+  // Fetch job photos for estimate preview
+  const [jobPhotos, setJobPhotos] = useState<Array<{
+    id: string;
+    file_url: string;
+    description?: string | null;
+    category?: string | null;
+  }>>([]);
+
+  useEffect(() => {
+    if (!pipelineEntryId || !open) return;
+
+    const fetchPhotos = async () => {
+      const { data } = await supabase
+        .from('customer_photos')
+        .select('id, file_url, description, category')
+        .eq('lead_id', pipelineEntryId)
+        .order('display_order');
+      if (data) setJobPhotos(data);
+    };
+    fetchPhotos();
+  }, [pipelineEntryId, open]);
 
   // Filter template attachments to exclude removed ones
   const activeTemplateAttachments = useMemo(() => 
@@ -685,6 +707,8 @@ export function EstimatePreviewPanel({
                       label="Job Photos"
                       checked={options.showJobPhotos}
                       onChange={(v) => updateOption('showJobPhotos', v)}
+                      badge={jobPhotos.length > 0 ? `${jobPhotos.length}` : undefined}
+                      disabled={jobPhotos.length === 0}
                     />
                     <ToggleRow
                       label="Warranty Info"
@@ -731,7 +755,7 @@ export function EstimatePreviewPanel({
                       onPageOrderChange={setPageOrder}
                       hasAttachments={allAttachments.length > 0}
                       hasMeasurements={!!measurementSummary}
-                      hasPhotos={false}
+                      hasPhotos={jobPhotos.length > 0}
                     />
                   </CollapsibleContent>
                 </Collapsible>
@@ -871,6 +895,7 @@ export function EstimatePreviewPanel({
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
                     templateAttachments={allAttachments}
+                    jobPhotos={jobPhotos}
                   />
                 </div>
               </div>
