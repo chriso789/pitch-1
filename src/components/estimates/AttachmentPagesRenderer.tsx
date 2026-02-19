@@ -190,6 +190,7 @@ export function AttachmentPagesRenderer({ attachments }: AttachmentPagesRenderer
             overflow: 'hidden',
             fontSize: 0,
             lineHeight: 0,
+            color: 'transparent',
           }}
         >
           <img

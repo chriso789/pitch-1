@@ -1,0 +1,1 @@
+ALTER TYPE estimate_status ADD VALUE IF NOT EXISTS 'signed';

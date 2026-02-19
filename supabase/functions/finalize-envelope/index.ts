@@ -144,70 +144,81 @@ serve(async (req: Request) => {
               const recipientName = (sig.recipient as any)?.recipient_name || 'Unknown';
               const signedDate = sig.signed_at ? new Date(sig.signed_at).toLocaleDateString() : new Date().toLocaleDateString();
 
-              if (sigImagePath) {
+              // Helper: embed signature image bytes on the page
+              const embedSigImage = async (imgBytes: Uint8Array) => {
+                let embeddedImg;
                 try {
+                  embeddedImg = await pdfDoc.embedPng(imgBytes);
+                } catch {
+                  embeddedImg = await pdfDoc.embedJpg(imgBytes);
+                }
+
+                const dims = embeddedImg.scale(1);
+                const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height, 1);
+                const drawW = dims.width * scale;
+                const drawH = dims.height * scale;
+
+                lastPage.drawImage(embeddedImg, {
+                  x: sigX,
+                  y: sigY,
+                  width: drawW,
+                  height: drawH,
+                });
+
+                // Draw signer name, date, and IP below signature
+                lastPage.drawText(recipientName, {
+                  x: sigX,
+                  y: sigY - 14,
+                  size: 9,
+                  font: helveticaBoldFont,
+                  color: rgb(0, 0, 0),
+                });
+                lastPage.drawText(`Date: ${signedDate}`, {
+                  x: sigX,
+                  y: sigY - 26,
+                  size: 8,
+                  font: helveticaFont,
+                  color: rgb(0.3, 0.3, 0.3),
+                });
+                lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
+                  x: sigX,
+                  y: sigY - 37,
+                  size: 7,
+                  font: helveticaFont,
+                  color: rgb(0.5, 0.5, 0.5),
+                });
+
+                console.log(`Embedded signature image + details for ${recipientName}`);
+                sigX += sigSpacing;
+                if (sigX + maxSigWidth > pageWidth - 40) {
+                  sigX = 60;
+                  sigY -= 100;
+                }
+              };
+
+              try {
+                if (sigImagePath) {
+                  // Case 1: Image stored in storage bucket
                   const { data: sigImgBlob } = await supabase.storage
                     .from('signatures')
                     .download(sigImagePath);
 
                   if (sigImgBlob) {
                     const sigImgBytes = new Uint8Array(await sigImgBlob.arrayBuffer());
-                    let embeddedImg;
-                    try {
-                      embeddedImg = await pdfDoc.embedPng(sigImgBytes);
-                    } catch {
-                      embeddedImg = await pdfDoc.embedJpg(sigImgBytes);
-                    }
-
-                    const dims = embeddedImg.scale(1);
-                    const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height, 1);
-                    const drawW = dims.width * scale;
-                    const drawH = dims.height * scale;
-
-                    // Draw signature image
-                    lastPage.drawImage(embeddedImg, {
-                      x: sigX,
-                      y: sigY,
-                      width: drawW,
-                      height: drawH,
-                    });
-
-                    // Draw signer name and date below signature
-                    lastPage.drawText(recipientName, {
-                      x: sigX,
-                      y: sigY - 14,
-                      size: 9,
-                      font: helveticaBoldFont,
-                      color: rgb(0, 0, 0),
-                    });
-                    lastPage.drawText(`Date: ${signedDate}`, {
-                      x: sigX,
-                      y: sigY - 26,
-                      size: 8,
-                      font: helveticaFont,
-                      color: rgb(0.3, 0.3, 0.3),
-                    });
-                    lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
-                      x: sigX,
-                      y: sigY - 37,
-                      size: 7,
-                      font: helveticaFont,
-                      color: rgb(0.5, 0.5, 0.5),
-                    });
-
-                    console.log(`Embedded signature + details on last page for ${recipientName}`);
-                    sigX += sigSpacing;
-
-                    if (sigX + maxSigWidth > pageWidth - 40) {
-                      sigX = 60;
-                      sigY -= 100;
-                    }
+                    await embedSigImage(sigImgBytes);
                   }
-                } catch (embedErr) {
-                  console.error('Could not embed signature on last page:', embedErr);
-                }
-              } else if (sig.signature_data && (meta.signature_type === 'typed')) {
-                try {
+                } else if (sig.signature_data && sig.signature_data.startsWith('data:image')) {
+                  // Case 2: signature_data is a base64 data URL (even if type says 'typed')
+                  console.log(`Decoding inline base64 image for ${recipientName} (${sig.signature_data.length} chars)`);
+                  const base64Data = sig.signature_data.split(',')[1];
+                  const binaryStr = atob(base64Data);
+                  const imgBytes = new Uint8Array(binaryStr.length);
+                  for (let i = 0; i < binaryStr.length; i++) {
+                    imgBytes[i] = binaryStr.charCodeAt(i);
+                  }
+                  await embedSigImage(imgBytes);
+                } else if (sig.signature_data) {
+                  // Case 3: Plain text typed signature
                   lastPage.drawText(sig.signature_data, {
                     x: sigX,
                     y: sigY + 10,
@@ -229,10 +240,17 @@ serve(async (req: Request) => {
                     font: helveticaFont,
                     color: rgb(0.3, 0.3, 0.3),
                   });
+                  lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
+                    x: sigX,
+                    y: sigY - 37,
+                    size: 7,
+                    font: helveticaFont,
+                    color: rgb(0.5, 0.5, 0.5),
+                  });
                   sigX += sigSpacing;
-                } catch (typedErr) {
-                  console.error('Could not draw typed signature:', typedErr);
                 }
+              } catch (embedErr) {
+                console.error('Could not embed signature on last page:', embedErr);
               }
             }
           }

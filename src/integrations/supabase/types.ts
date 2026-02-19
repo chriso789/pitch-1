@@ -40721,6 +40721,7 @@ export type Database = {
         | "approved"
         | "rejected"
         | "expired"
+        | "signed"
       job_status:
         | "lead"
         | "legal"
@@ -41048,6 +41049,7 @@ export const Constants = {
         "approved",
         "rejected",
         "expired",
+        "signed",
       ],
       job_status: [
         "lead",
