@@ -20,6 +20,8 @@ interface RequestBody {
   email_subject?: string;
   email_message?: string;
   expire_days?: number;
+  pipeline_entry_id?: string;
+  contact_id?: string;
 }
 
 serve(async (req) => {
@@ -53,11 +55,12 @@ serve(async (req) => {
     // Get user profile for tenant
     const { data: profile } = await supabase
       .from("profiles")
-      .select("tenant_id, first_name, last_name, email")
+      .select("tenant_id, active_tenant_id, first_name, last_name, email")
       .eq("id", user.id)
       .single();
 
-    if (!profile?.tenant_id) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       return new Response(JSON.stringify({ error: "No tenant found" }), {
         status: 400,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -65,7 +68,7 @@ serve(async (req) => {
     }
 
     const body: RequestBody = await req.json();
-    const { document_id, document_type, recipients, email_subject, email_message, expire_days = 30 } = body;
+    const { document_id, document_type, recipients, email_subject, email_message, expire_days = 30, pipeline_entry_id, contact_id } = body;
 
     if (!document_id || !recipients?.length) {
       return new Response(JSON.stringify({ error: "document_id and recipients required" }), {
@@ -77,94 +80,81 @@ serve(async (req) => {
     console.log(`Creating signature envelope for ${document_type} ${document_id}`);
 
     // Fetch document metadata based on type
-    let documentData: any = null;
-    let pdfUrl: string | null = null;
-    let contactId: string | null = null;
-    let projectId: string | null = null;
+    let documentTitle = email_subject || "Please sign this document";
+    let pdfPath: string | null = null;
+    let resolvedContactId: string | null = contact_id || null;
+    let resolvedProjectId: string | null = null;
+    let resolvedPipelineEntryId: string | null = pipeline_entry_id || null;
 
     if (document_type === 'smart_doc_instance') {
       const { data } = await supabase
         .from("smart_doc_instances")
-        .select("*, contact:contact_id(*), project:project_id(*)")
+        .select("id, pdf_url, contact_id, project_id, title")
         .eq("id", document_id)
         .single();
-      documentData = data;
-      pdfUrl = data?.pdf_url;
-      contactId = data?.contact_id;
-      projectId = data?.project_id;
+      if (data) {
+        pdfPath = data.pdf_url;
+        resolvedContactId = resolvedContactId || data.contact_id;
+        resolvedProjectId = data.project_id;
+        documentTitle = email_subject || `Please sign: ${data.title || 'Document'}`;
+      }
     } else if (document_type === 'estimate') {
       const { data } = await supabase
-        .from("estimates")
-        .select("*, contact:contact_id(*), project:project_id(*)")
+        .from("enhanced_estimates")
+        .select("id, pdf_url, contact_id, pipeline_entry_id, estimate_number, display_name")
         .eq("id", document_id)
         .single();
-      documentData = data;
-      pdfUrl = data?.pdf_url;
-      contactId = data?.contact_id;
-      projectId = data?.project_id;
+      if (data) {
+        pdfPath = data.pdf_url;
+        resolvedContactId = resolvedContactId || data.contact_id;
+        resolvedPipelineEntryId = resolvedPipelineEntryId || data.pipeline_entry_id;
+        documentTitle = email_subject || `Please sign: ${data.display_name || data.estimate_number || 'Estimate'}`;
+      } else {
+        return new Response(JSON.stringify({ error: "Estimate not found" }), {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
     } else if (document_type === 'proposal') {
       const { data } = await supabase
         .from("proposals")
-        .select("*, contact:contact_id(*), project:project_id(*)")
+        .select("id, pdf_url, contact_id, project_id")
         .eq("id", document_id)
         .single();
-      documentData = data;
-      pdfUrl = data?.pdf_url;
-      contactId = data?.contact_id;
-      projectId = data?.project_id;
-    }
-
-    if (!documentData) {
-      return new Response(JSON.stringify({ error: "Document not found" }), {
-        status: 404,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Generate PDF if not already created
-    if (!pdfUrl && document_type === 'smart_doc_instance') {
-      console.log("Generating PDF for smart doc instance...");
-      const pdfResponse = await supabase.functions.invoke("smart-docs-pdf", {
-        body: {
-          instance_id: document_id,
-          upload: "signed",
-          filename: `document-${document_id}.pdf`
-        }
-      });
-      
-      if (pdfResponse.data?.pdf_url) {
-        pdfUrl = pdfResponse.data.pdf_url;
-        // Update instance with PDF URL
-        await supabase
-          .from("smart_doc_instances")
-          .update({ pdf_url: pdfUrl })
-          .eq("id", document_id);
+      if (data) {
+        pdfPath = data.pdf_url;
+        resolvedContactId = resolvedContactId || data.contact_id;
+        resolvedProjectId = data.project_id;
       }
+    }
+
+    // Generate a signed URL for the PDF if we have a storage path
+    let documentUrl: string | null = null;
+    if (pdfPath) {
+      const { data: signedUrlData } = await supabase.storage
+        .from("documents")
+        .createSignedUrl(pdfPath, 60 * 60 * 24 * 30); // 30 days
+      documentUrl = signedUrlData?.signedUrl || null;
     }
 
     // Calculate expiry date
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expire_days);
 
-    // Create signature envelope
+    // Create signature envelope using actual table columns
     const { data: envelope, error: envelopeError } = await supabase
       .from("signature_envelopes")
       .insert({
-        tenant_id: profile.tenant_id,
-        contact_id: contactId,
-        project_id: projectId,
-        document_type,
-        document_id,
-        document_url: pdfUrl,
-        subject: email_subject || "Please sign this document",
-        message: email_message || "Please review and sign the attached document.",
+        tenant_id: tenantId,
+        title: documentTitle,
+        estimate_id: document_type === 'estimate' ? document_id : null,
+        contact_id: resolvedContactId,
+        project_id: resolvedProjectId,
+        pipeline_entry_id: resolvedPipelineEntryId,
+        generated_pdf_path: pdfPath,
         status: "pending",
         expires_at: expiresAt.toISOString(),
-        sent_by: user.id,
-        metadata: {
-          document_type,
-          original_document_id: document_id
-        }
+        created_by: user.id,
       })
       .select()
       .single();
@@ -174,7 +164,7 @@ serve(async (req) => {
       throw envelopeError;
     }
 
-    console.log(`Created envelope ${envelope.id}`);
+    console.log(`Created envelope ${envelope.id} (${envelope.envelope_number})`);
 
     // Create recipients with access tokens
     const recipientPromises = recipients.map(async (recipient, index) => {
@@ -184,11 +174,11 @@ serve(async (req) => {
         .from("signature_recipients")
         .insert({
           envelope_id: envelope.id,
-          tenant_id: profile.tenant_id,
-          name: recipient.name,
-          email: recipient.email,
-          role: recipient.role || "signer",
-          routing_order: recipient.routing_order ?? index + 1,
+          tenant_id: tenantId,
+          recipient_name: recipient.name,
+          recipient_email: recipient.email,
+          recipient_role: recipient.role || "signer",
+          signing_order: recipient.routing_order ?? index + 1,
           access_token: accessToken,
           status: "pending"
         })
@@ -200,10 +190,7 @@ serve(async (req) => {
         throw recipientError;
       }
 
-      return {
-        ...recipientData,
-        signing_url: `${supabaseUrl.replace('.supabase.co', '.supabase.co')}/sign/${accessToken}`
-      };
+      return { ...recipientData, access_token: accessToken };
     });
 
     const createdRecipients = await Promise.all(recipientPromises);
@@ -223,20 +210,20 @@ serve(async (req) => {
           body: {
             envelope_id: envelope.id,
             recipient_id: recipient.id,
-            recipient_name: recipient.name,
-            recipient_email: recipient.email,
+            recipient_name: recipient.recipient_name,
+            recipient_email: recipient.recipient_email,
             access_token: recipient.access_token,
-            sender_name: `${profile.first_name} ${profile.last_name}`.trim(),
-            sender_email: profile.email,
-            subject: email_subject || "Please sign this document",
+            sender_name: `${profile!.first_name} ${profile!.last_name}`.trim(),
+            sender_email: profile!.email,
+            subject: documentTitle,
             message: email_message || "Please review and sign the attached document.",
-            document_url: pdfUrl
+            document_url: documentUrl
           }
         });
-        return { email: recipient.email, sent: true };
+        return { email: recipient.recipient_email, sent: true };
       } catch (error) {
-        console.error(`Failed to send email to ${recipient.email}:`, error);
-        return { email: recipient.email, sent: false, error: String(error) };
+        console.error(`Failed to send email to ${recipient.recipient_email}:`, error);
+        return { email: recipient.recipient_email, sent: false, error: String(error) };
       }
     });
 
@@ -253,25 +240,26 @@ serve(async (req) => {
       .from("signature_events")
       .insert({
         envelope_id: envelope.id,
-        tenant_id: profile.tenant_id,
+        tenant_id: tenantId,
         event_type: "envelope_sent",
-        event_data: {
-          recipients: createdRecipients.map(r => ({ id: r.id, email: r.email })),
-          email_results: emailResults
+        event_description: `Signature request sent to ${createdRecipients.length} recipient(s)`,
+        event_metadata: {
+          recipients: createdRecipients.map(r => ({ id: r.id, email: r.recipient_email })),
+          email_results: emailResults,
+          document_type,
         },
-        created_by: user.id
       });
 
-    console.log(`Signature envelope ${envelope.id} created and sent successfully`);
+    console.log(`Signature envelope ${envelope.envelope_number} sent successfully`);
 
     return new Response(JSON.stringify({
       success: true,
       envelope_id: envelope.id,
+      envelope_number: envelope.envelope_number,
       recipients: createdRecipients.map(r => ({
         id: r.id,
-        email: r.email,
-        name: r.name,
-        signing_url: r.signing_url
+        email: r.recipient_email,
+        name: r.recipient_name,
       })),
       email_results: emailResults
     }), {

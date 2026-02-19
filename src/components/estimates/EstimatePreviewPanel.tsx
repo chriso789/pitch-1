@@ -914,6 +914,7 @@ export function EstimatePreviewPanel({
         customerEmail={customerEmail || ''}
         customerName={customerName}
         estimateNumber={estimateNumber}
+        estimateDisplayName={estimateDisplayName}
       />
     </Dialog>
   );
