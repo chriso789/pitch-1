@@ -52,6 +52,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplateApplicator';
 import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
+import { PhotoControlCenter } from '@/components/photos/PhotoControlCenter';
 import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
 import { UnifiedCommunicationsTimeline } from '@/components/timeline/UnifiedCommunicationsTimeline';
 import { LeadNotesSection } from '@/components/lead-details/LeadNotesSection';
@@ -231,8 +232,6 @@ const LeadDetails = () => {
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'estimate');
   const [estimateCalculations, setEstimateCalculations] = useState<any>(null);
   const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
-  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
-  const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
   const estimateSectionRef = useRef<HTMLDivElement>(null);
   
   // Unsaved changes tracking for estimate switching
@@ -1148,52 +1147,11 @@ const LeadDetails = () => {
             </TabsContent>
 
             <TabsContent value="photos" className="mt-0 space-y-4">
-              {/* Photo Uploader */}
-              <LeadPhotoUploader 
-                pipelineEntryId={id!} 
-                onUploadComplete={refetchPhotos}
+              <PhotoControlCenter
+                leadId={id!}
+                showHeader={false}
+                compactMode={true}
               />
-              
-              {/* Existing Photos */}
-              {photos.length > 0 && (
-                <div className="space-y-3">
-                  <div 
-                    className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group max-h-32"
-                    onClick={() => setShowFullScreenPhoto(true)}
-                  >
-                    <ImageIcon className="h-10 w-10 text-muted-foreground" />
-                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                      <span className="text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                        Click to expand
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 text-xs"
-                      onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
-                      disabled={currentPhotoIndex === 0}
-                    >
-                      <ChevronLeft className="h-3 w-3" />
-                    </Button>
-                    <span className="text-xs text-muted-foreground">
-                      {currentPhotoIndex + 1}/{photos.length}
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="h-6 text-xs"
-                      onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
-                      disabled={currentPhotoIndex === photos.length - 1}
-                    >
-                      <ChevronRight className="h-3 w-3" />
-                    </Button>
-                  </div>
-                </div>
-              )}
             </TabsContent>
 
             <TabsContent value="notes" className="mt-0">
