@@ -214,7 +214,7 @@ Deno.serve(async (req: Request) => {
             lead_id: finalLeadId || null,
             project_id: finalProjectId || null,
             file_url: publicUrl,
-            file_path: storagePath,
+            file_name: storagePath,
             original_filename: file_name,
             file_size: binaryData.length,
             mime_type: mime_type || 'image/jpeg',
@@ -353,7 +353,7 @@ Deno.serve(async (req: Request) => {
                 lead_id: finalLeadId || null,
                 project_id: finalProjectId || null,
                 file_url: publicUrl,
-                file_path: storagePath,
+                file_name: storagePath,
                 original_filename: file_name,
                 file_size: binaryData.length,
                 mime_type: mime_type || 'image/jpeg',
@@ -411,7 +411,7 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
+        const updates: Record<string, unknown> = {};
         if (category !== undefined) updates.category = category;
         if (description !== undefined) updates.description = description;
         if (include_in_estimate !== undefined) updates.include_in_estimate = include_in_estimate;
