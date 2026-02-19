@@ -137,22 +137,25 @@ export function useEstimatePricing(
       const materialsRatio = directCost > 0 ? materialsTotal / directCost : 0;
       
       // Derive pre-tax selling price from fixed price
-      // fixedPrice = preTaxSelling + (preTaxSelling × materialsRatio × taxRate)
-      // fixedPrice = preTaxSelling × (1 + materialsRatio × taxRate)
-      // preTaxSelling = fixedPrice / (1 + materialsRatio × taxRate)
       const taxMultiplier = config.salesTaxEnabled 
         ? 1 + (materialsRatio * (config.salesTaxRate / 100))
         : 1;
       
       sellingPrice = fixedPrice! / taxMultiplier;  // Pre-tax selling price
-      overheadAmount = sellingPrice * (config.overheadPercent / 100);
+      // Overhead on FULL tax-included price (fixedPrice)
+      overheadAmount = fixedPrice! * (config.overheadPercent / 100);
       profitAmount = sellingPrice - directCost - overheadAmount;
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
     } else {
       // Standard mode: solve for selling price algebraically
+      // Overhead is on FULL price (pre-tax + tax), so we incorporate tax into the formula
       const overheadDecimal = config.overheadPercent / 100;
       const profitDecimal = config.profitMarginPercent / 100;
-      const divisor = 1 - overheadDecimal - profitDecimal;
+      const materialsRatioForTax = directCost > 0 ? materialsTotal / directCost : 0;
+      const taxFactor = config.salesTaxEnabled ? materialsRatioForTax * (config.salesTaxRate / 100) : 0;
+      
+      // S = DC / (1 - oh*(1 + taxFactor) - p)
+      const divisor = 1 - overheadDecimal * (1 + taxFactor) - profitDecimal;
       
       // Prevent division by zero or negative (if OH + Profit >= 100%)
       if (divisor <= 0) {
@@ -161,8 +164,10 @@ export function useEstimatePricing(
         sellingPrice = directCost / divisor;
       }
       
-      overheadAmount = sellingPrice * overheadDecimal;
       profitAmount = sellingPrice * profitDecimal;
+      // Overhead on FULL price (pre-tax + tax)
+      const taxAmountForOverhead = sellingPrice * taxFactor;
+      overheadAmount = (sellingPrice + taxAmountForOverhead) * overheadDecimal;
       actualProfitMargin = config.profitMarginPercent;
     }
 

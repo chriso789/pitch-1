@@ -134,12 +134,10 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
         throw new Error('Could not fetch estimate');
       }
       
-      // Recalculate dependent values - overhead on PRE-TAX selling price
+      // Recalculate dependent values - overhead on FULL tax-included selling price
       const directCost = (estimate.material_cost || 0) + (estimate.labor_cost || 0);
       const overheadRate = estimate.overhead_percent || salesRepOverheadRate;
-      const salesTax = estimate.sales_tax_amount || 0;
-      const preTaxPrice = newPrice - salesTax;
-      const overheadAmount = preTaxPrice * (overheadRate / 100);
+      const overheadAmount = newPrice * (overheadRate / 100);
       const profitAmount = newPrice - directCost - overheadAmount;
       const profitPercent = newPrice > 0 ? (profitAmount / newPrice) * 100 : 0;
       
@@ -208,12 +206,10 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     }
   };
 
-  // Calculate overhead based on sales rep's effective overhead rate on PRE-TAX price
+  // Calculate overhead based on sales rep's effective overhead rate on FULL tax-included price
   const calculateRepOverhead = () => {
     const salePrice = hyperlinkData?.sale_price || calculations?.selling_price || 0;
-    const salesTax = (hyperlinkData as any)?.sales_tax_amount || 0;
-    const preTaxPrice = salePrice - salesTax;
-    return preTaxPrice * (salesRepOverheadRate / 100);
+    return salePrice * (salesRepOverheadRate / 100);
   };
 
   // Build links from the new RPC response structure
