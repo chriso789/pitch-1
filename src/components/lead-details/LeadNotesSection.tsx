@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Textarea } from '@/components/ui/textarea';
-import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
-import { Loader2, Save, StickyNote } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 
 interface LeadNotesSectionProps {
@@ -20,17 +19,17 @@ export function LeadNotesSection({
   const [notes, setNotes] = useState(initialNotes || '');
   const [isSaving, setIsSaving] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   
   const debouncedNotes = useDebounce(notes, 1500);
 
-  // Sync with initial notes when they change
   useEffect(() => {
     if (initialNotes !== undefined && initialNotes !== null) {
       setNotes(initialNotes);
     }
   }, [initialNotes]);
 
-  // Auto-save when debounced notes change
   useEffect(() => {
     if (hasUnsavedChanges && debouncedNotes !== initialNotes) {
       handleSave();
@@ -71,43 +70,50 @@ export function LeadNotesSection({
     setHasUnsavedChanges(true);
   };
 
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <StickyNote className="h-4 w-4" />
-          <span>Lead Notes</span>
-        </div>
-        {hasUnsavedChanges && (
-          <span className="text-xs text-muted-foreground">
-            {isSaving ? 'Saving...' : 'Unsaved changes'}
-          </span>
-        )}
+  const handleExpand = () => {
+    setIsExpanded(true);
+    setTimeout(() => textareaRef.current?.focus(), 50);
+  };
+
+  const handleBlur = () => {
+    // Collapse back to one-liner after a short delay (allow save to trigger)
+    setTimeout(() => setIsExpanded(false), 200);
+  };
+
+  if (!isExpanded) {
+    return (
+      <div className="flex items-center gap-2 flex-1 min-w-0">
+        <button
+          type="button"
+          onClick={handleExpand}
+          className="flex-1 min-w-0 text-left text-sm truncate px-2 py-1 rounded border border-transparent hover:border-border hover:bg-muted/50 transition-colors cursor-text"
+        >
+          {notes ? (
+            <span className="text-foreground">{notes}</span>
+          ) : (
+            <span className="text-muted-foreground">Add notes...</span>
+          )}
+        </button>
+        {isSaving && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground flex-shrink-0" />}
       </div>
-      
+    );
+  }
+
+  return (
+    <div className="flex-1 min-w-0 space-y-1">
       <Textarea
+        ref={textareaRef}
         value={notes}
         onChange={(e) => handleNotesChange(e.target.value)}
+        onBlur={handleBlur}
         placeholder="Add notes about this lead..."
-        className="min-h-[120px] resize-none text-sm"
+        className="min-h-[80px] resize-none text-sm"
       />
-      
-      <div className="flex justify-end">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleSave}
-          disabled={isSaving || !hasUnsavedChanges}
-          className="h-7 text-xs"
-        >
-          {isSaving ? (
-            <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          ) : (
-            <Save className="h-3 w-3 mr-1" />
-          )}
-          Save
-        </Button>
-      </div>
+      {hasUnsavedChanges && (
+        <span className="text-[10px] text-muted-foreground">
+          {isSaving ? 'Saving...' : 'Auto-saves'}
+        </span>
+      )}
     </div>
   );
 }
