@@ -1,52 +1,32 @@
 
-# Add CC and BCC Fields to Share Estimate Dialog
+# Fix Signature Request Errors and Condense Share Dialog
 
-## What This Does
+## Problems Found
 
-Adds optional CC and BCC email fields to the Share Estimate dialog so you can copy additional people (insurance adjusters, project managers, office staff, etc.) when sending quotes.
+1. **Edge function crash**: The `email-signature-request` function inserts into `signature_events` using a column called `event_data` -- but the actual column is `event_metadata`. This causes a database error, which bubbles up as the "non-2xx status code" you're seeing.
+2. **CC/BCC not forwarded**: The `email-signature-request` function doesn't accept or pass `cc`/`bcc` to the Resend API call, so even though `send-document-for-signature` sends them, they're ignored.
+3. **Dialog not scrollable**: When CC/BCC is expanded, the dialog overflows the viewport and the Send button is hidden off-screen.
+4. **Spacing too loose**: Fields have too much vertical padding, making the form unnecessarily tall.
 
 ## Changes
 
-### 1. `src/components/estimates/ShareEstimateDialog.tsx`
+### 1. `supabase/functions/email-signature-request/index.ts`
 
-- Add two new state variables: `ccEmails` (string) and `bccEmails` (string)
-- Add a collapsible "CC / BCC" section below the Recipient Email field (toggled by a small "Add CC/BCC" link to keep the dialog clean by default)
-- CC field: comma-separated emails
-- BCC field: comma-separated emails
-- Parse both fields into arrays before sending
-- Pass `cc` and `bcc` arrays to the `send-quote-email` edge function body
-- Also pass them to `send-document-for-signature` when signature mode is active
-- Reset both fields when dialog opens
+- Fix the `signature_events` insert: rename `event_data` to `event_metadata` (line ~199)
+- Add `cc` and `bcc` to the `RequestBody` interface (optional string arrays)
+- Destructure `cc` and `bcc` from the request body
+- Pass them to the Resend `fetch` call body so CC/BCC recipients get the signing email too
 
-### 2. `supabase/functions/send-quote-email/index.ts`
+### 2. `src/components/estimates/ShareEstimateDialog.tsx`
 
-- Add `cc` and `bcc` optional fields to the `SendQuoteEmailRequest` interface
-- Pass `cc` and `bcc` arrays to the `resend.emails.send()` call (Resend API natively supports both)
-- Log CC/BCC in communication history metadata
+- Add `max-h-[80vh] overflow-y-auto` to the DialogContent so the form scrolls when content exceeds viewport
+- Reduce spacing from `space-y-4` to `space-y-3` on the form container
+- Reduce textarea rows from 3 to 2
+- Reduce the signature toggle section padding from `p-4` to `p-3`
+- These changes keep all content visible and the buttons always reachable
 
-### 3. `supabase/functions/send-document-for-signature/index.ts`
+## Result
 
-- Accept optional `cc` and `bcc` arrays in the request body
-- Forward them to the Resend email send call when dispatching the signing link email
-
-## UI Layout (inside dialog)
-
-```text
-Recipient Name     [___________________]
-Recipient Email    [___________________]
-                   + Add CC/BCC          <-- small text link
-
-  (when expanded:)
-  CC               [___________________]
-  BCC              [___________________]
-  Separate multiple emails with commas
-
-Subject (optional) [___________________]
-Personal Message   [___________________]
-```
-
-## Validation
-
-- Each email in CC/BCC is validated with the same regex used for the primary recipient
-- Empty CC/BCC fields are simply omitted from the API call
-- Invalid emails show a toast error specifying which field has the issue
+- Signature requests will send successfully (no more edge function error)
+- CC/BCC recipients will receive copies of the signing email
+- The dialog will scroll properly and all buttons will be accessible regardless of how much content is shown
