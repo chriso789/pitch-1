@@ -1,51 +1,51 @@
 
-# Move Save Button Next to Reset Defaults
 
-## Problem
-The three action buttons (Save, Share, Export PDF) are crowded in one row and getting cut off. The Save button logically belongs next to "Reset Defaults" since both are document-management actions, while Share and Export are distribution actions.
+# Fix AI Admin Assistant -- Session Error + Master-Only Access
 
-## Change
+## Problem Identified
 
-### File: `src/components/estimates/EstimatePreviewPanel.tsx` (lines 758-824)
+The "Failed to create chat session" error is caused by a **database CHECK constraint** on the `ai_chat_sessions` table. The constraint only allows these session types:
 
-Restructure the footer to have two rows:
+- `general`, `lead_assist`, `task_planning`, `pipeline_review`
 
-**Row 1** (full width, two buttons side by side):
-- **Reset Defaults** (ghost, left) 
-- **Save** (outline, right)
+But the AI Admin Chat tries to insert `session_type: 'admin'`, which the database rejects.
 
-**Row 2** (full width, two buttons side by side):
-- **Share** (outline, flex-1)
-- **Export PDF** (primary, flex-1)
+## Changes Required
 
-This gives each button more space and groups them logically:
-- Top row = document state actions (reset / save)
-- Bottom row = distribution actions (share / export)
+### 1. Database: Add 'admin' to the session_type CHECK constraint
 
-### Layout Code
+Run a migration to drop the old constraint and add a new one that includes `'admin'`:
 
-```typescript
-{/* Bottom Actions */}
-<div className="sticky bottom-0 z-20 ...">
-  {/* Row 1: Reset + Save */}
-  <div className="flex gap-2">
-    <Button variant="ghost" size="sm" onClick={handleResetToDefaults} className="flex-1">
-      <RotateCcw /> Reset Defaults
-    </Button>
-    <Button variant="outline" size="sm" onClick={handleSaveToDocuments} disabled={...} className="flex-1">
-      <Save /> Save
-    </Button>
-  </div>
-  {/* Row 2: Share + Export */}
-  <div className="flex gap-2">
-    <Button variant="outline" onClick={handlePrepareAndShare} ...>
-      <Share2 /> Share
-    </Button>
-    <Button onClick={handleExportPDF} ...>
-      <Download /> Export PDF
-    </Button>
-  </div>
-</div>
+```sql
+ALTER TABLE ai_chat_sessions DROP CONSTRAINT ai_chat_sessions_session_type_check;
+ALTER TABLE ai_chat_sessions ADD CONSTRAINT ai_chat_sessions_session_type_check 
+  CHECK (session_type = ANY (ARRAY['general', 'lead_assist', 'task_planning', 'pipeline_review', 'admin']));
 ```
 
-No other files affected.
+This is the root cause of the "Failed to create chat session" error.
+
+### 2. Restrict AI Admin tab to Master role only
+
+Update the `settings_tabs` row for `ai-admin` so only the `master` role can see it:
+
+```sql
+UPDATE settings_tabs 
+SET required_role = ARRAY['master'] 
+WHERE tab_key = 'ai-admin';
+```
+
+Currently it is visible to `master`, `owner`, `corporate`, and `office_admin`. Per the user's request, only the Master Developer login should see this tab.
+
+### 3. No edge function or frontend code changes needed
+
+- The `ai-admin-agent` edge function already has full tool-calling with 20+ tools for reading and writing CRM configuration (pipeline stages, lead sources, contact statuses, app settings, projects, etc.)
+- It already uses OpenAI with streaming + Anthropic fallback
+- The `AIAdminChat` component already handles streaming, image uploads, and change tracking
+- Once the DB constraint is fixed, everything will work end-to-end
+
+## Summary
+
+This is a two-line database fix:
+1. Add `'admin'` to the allowed session types (fixes the error)
+2. Restrict the tab to `master` role only (per user requirement)
+
