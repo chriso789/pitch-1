@@ -1,125 +1,110 @@
 
-
-# AI Admin Command Center -- Combined Config Manager + CRM Assistant
+# AI Admin Agent: Switch to OpenAI/Claude + Add Change Tracking
 
 ## Overview
 
-Build a new "AI Admin" settings tab that provides a full-screen chat interface where admin users can manage system configuration AND get AI-powered CRM assistance through natural language. The AI agent will be able to read and write database-driven settings (pipeline stages, lead sources, automations, templates, etc.) and analyze CRM data -- all through conversation.
+Upgrade the AI Admin Command Center to use OpenAI (GPT-4o) and Anthropic (Claude) directly instead of the Lovable AI Gateway, and add project/change tracking so the agent logs every modification it makes, can reference past changes, and provides system update suggestions.
 
-## Architecture
+## What Changes
 
-The system works by giving the AI agent **tool-calling** capabilities. Instead of asking the model to return JSON text, we define structured tools the agent can invoke. The edge function executes those tools server-side against the database, then returns results to the user.
+### 1. Edge Function: `supabase/functions/ai-admin-agent/index.ts` (rewrite)
 
-### Available AI Tools (what the agent can do)
+**Switch AI provider:**
+- Replace `ai.gateway.lovable.dev` calls with direct `api.openai.com/v1/chat/completions` using the existing `OPENAI_API_KEY` secret
+- Use `gpt-4o` as the primary model for tool-calling (best tool-call support)
+- Add fallback to Anthropic Claude via `api.anthropic.com/v1/messages` using the existing `ANTHROPIC_API_KEY` secret if OpenAI fails
+- Remove all references to `LOVABLE_API_KEY`
 
-**Config Management Tools:**
-- `list_pipeline_stages` -- View all pipeline stages and their order
-- `update_pipeline_stage` -- Add, rename, reorder, or delete pipeline stages
-- `list_contact_statuses` -- View all contact/qualification statuses
-- `update_contact_status` -- Add, rename, or delete contact statuses
-- `list_lead_sources` -- View configured lead sources
-- `update_lead_source` -- Add or remove lead sources
-- `list_automations` -- View automation rules
-- `update_automation` -- Enable/disable or modify automation rules
-- `update_app_setting` -- Change any app_settings key/value (company name, colors, etc.)
-- `list_estimate_templates` -- View estimate templates
-- `list_users` -- View team members and roles
-- `update_user_role` -- Change a user's role (admin only)
+**Add change tracking tools (new tools for the agent):**
+- `log_change` -- Automatically called after every write operation to record what was changed, why, and by whom into a new `ai_admin_changes` table
+- `list_recent_changes` -- Query past changes so the agent can reference its own history ("What did I change last week?")
+- `suggest_system_updates` -- Analyze current config, pipeline health, and usage patterns to proactively suggest improvements
+- `create_project` -- Create a tracked project/initiative (e.g., "Reorganize pipeline stages") stored in `ai_admin_projects` table
+- `list_projects` -- View active projects and their status
+- `update_project` -- Mark projects as in-progress, completed, or add notes
 
-**CRM Intelligence Tools:**
-- `query_pipeline_stats` -- Get pipeline counts, values, close rates by stage
-- `query_contact_stats` -- Get contact counts by status, source, location
-- `query_recent_activity` -- Get recent communications, tasks, lead activity
-- `query_stagnant_leads` -- Find leads with no activity in X days
-- `query_revenue_summary` -- Revenue by period, rep, location
-- `search_contacts` -- Find contacts by name, phone, email
-- `search_leads` -- Find pipeline entries by status, value, rep
+**Expand existing tools:**
+- `query_table_schema` -- Let the agent inspect any table's columns and types (read-only, from `information_schema`)
+- `run_read_query` -- Execute a read-only SELECT query against the database for flexible data analysis (parameterized, no writes)
+- `list_edge_functions` -- Show deployed edge functions from config
+- `list_rls_policies` -- Show RLS policies on a given table
 
-**Action Tools:**
-- `create_contact` -- Add a new contact (existing capability, carried forward)
-- `create_task` -- Create a task/reminder (existing capability, carried forward)
-- `draft_email` -- Generate email content for a contact
-- `draft_sms` -- Generate SMS content for a contact
-- `score_lead` -- Analyze and score a specific lead
+### 2. New Database Tables (migration)
 
-## What Gets Built
+```sql
+-- Track every change the AI agent makes
+CREATE TABLE ai_admin_changes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL,
+  user_id UUID REFERENCES auth.users(id),
+  tool_name TEXT NOT NULL,
+  tool_args JSONB NOT NULL DEFAULT '{}',
+  result JSONB NOT NULL DEFAULT '{}',
+  description TEXT,
+  session_id UUID REFERENCES ai_chat_sessions(id),
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-### 1. New Edge Function: `supabase/functions/ai-admin-agent/index.ts`
+-- Track projects/initiatives the AI is working on
+CREATE TABLE ai_admin_projects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  status TEXT DEFAULT 'active',
+  changes JSONB DEFAULT '[]',
+  created_by UUID REFERENCES auth.users(id),
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
 
-A new, dedicated edge function that:
-- Accepts chat messages with full conversation history
-- Streams responses token-by-token via SSE for real-time feel
-- Uses the Lovable AI Gateway with tool-calling to let the model invoke config/CRM tools
-- Executes tool calls server-side with service-role access (bypasses RLS for admin operations)
-- Validates that the requesting user has admin/owner/master role before allowing config writes
-- Uses `google/gemini-3-flash-preview` as the default model
-- Handles 429/402 rate limit errors gracefully
-
-The system prompt tells the AI it is a PITCH CRM admin assistant that can both configure the system and analyze data. It receives the user's role and tenant context so it knows what it can modify.
-
-### 2. New Page: `src/pages/settings/AIAdminPage.tsx`
-
-A full chat interface with:
-- Scrollable message history with markdown rendering
-- Streaming token-by-token display as the AI responds
-- Message input with send button and Enter-to-send
-- Tool execution results shown inline (e.g., "Updated pipeline stage 'Inspection' to position 3")
-- Conversation persisted to `ai_chat_sessions` / `ai_chat_messages` with `session_type: 'admin'`
-- Role-gated: only `master`, `owner`, `corporate`, `office_admin` can access
-- "New Conversation" button to start fresh
-- Suggested prompts shown when chat is empty (e.g., "Show me pipeline stages", "How many stagnant leads do we have?", "Add a new lead source called 'Google Ads'")
-
-### 3. Integration into Settings
-
-- Add an "AI Admin" tab to the Settings page under the "system" category
-- Tab restricted to `master`, `owner`, `corporate`, `office_admin` roles
-- The tab renders the `AIAdminPage` component directly
-- Also accessible via route `/settings/ai-admin` for direct navigation
-
-### 4. New Route
-
-- Add `/settings/ai-admin` route in the router pointing to the new page
-
-## Files Created
-1. `supabase/functions/ai-admin-agent/index.ts` -- Edge function with tool-calling AI agent
-2. `src/pages/settings/AIAdminPage.tsx` -- Full chat UI page
-3. `src/components/ai-admin/AIAdminChat.tsx` -- Chat component with streaming, message list, input
-
-## Files Modified
-1. `src/features/settings/components/Settings.tsx` -- Add "ai-admin" tab rendering
-2. `src/App.tsx` (or router file) -- Add `/settings/ai-admin` route
-3. `supabase/config.toml` -- Add `ai-admin-agent` function entry
-
-## Technical Details
-
-### Tool Calling Pattern (Edge Function)
-
-The edge function defines tools as OpenAI-compatible function schemas, sends them with the chat request to the Lovable AI Gateway, and when the model responds with `tool_calls`, the function executes each tool against the database and sends results back to the model for a final response.
-
-```text
-User: "Add a pipeline stage called 'Inspection' after 'Qualified Lead'"
-  --> AI Gateway call with tools defined
-  --> Model returns tool_call: update_pipeline_stage({ action: "add", name: "Inspection", after: "Qualified Lead" })
-  --> Edge function executes: INSERT into pipeline_stages
-  --> Result sent back to model
-  --> Model responds: "Done! I've added 'Inspection' as a new pipeline stage, positioned after 'Qualified Lead'."
+-- RLS: admin roles only, scoped to tenant
 ```
 
-### Security Model
-- Edge function validates JWT and checks user role via profiles table
-- Config-writing tools require `master`, `owner`, or `office_admin` role
-- Read-only/query tools available to `manager` and above
-- All operations scoped to the user's `tenant_id`
-- Tool executions logged to `ai_chat_messages.actions_taken` for audit trail
+### 3. Frontend: `src/components/ai-admin/AIAdminChat.tsx` (update)
 
-### Streaming Implementation
-- Edge function proxies the SSE stream from Lovable AI Gateway
-- Frontend parses SSE line-by-line and renders tokens as they arrive
-- Tool calls interrupt the stream: the edge function detects `tool_calls` in the stream, executes them, then sends a follow-up request to get the final streamed response
+- Add a "Changes" sidebar/tab that shows recent `ai_admin_changes` entries
+- Add a "Projects" sidebar/tab that shows `ai_admin_projects`
+- Update suggested prompts to include new capabilities:
+  - "What changes have been made recently?"
+  - "Suggest system improvements"
+  - "Create a project to reorganize our pipeline"
+  - "Show me the schema of the contacts table"
+  - "How many calls were made this month?"
+- Add a model selector toggle (OpenAI / Claude) in the header so admin can choose which model to use
 
-### Existing Infrastructure Used
-- `ai_chat_sessions` / `ai_chat_messages` tables for persistence
-- `LOVABLE_API_KEY` secret for Lovable AI Gateway
-- `lovable-ai.ts` shared helper patterns
-- `supabase.ts` shared helpers for auth and service client
-- Existing Settings tab system with role-based filtering
+### 4. Config: `supabase/config.toml`
+
+No changes needed -- `ai-admin-agent` is already registered.
+
+## Architecture Flow
+
+```text
+User prompt --> AIAdminChat (frontend)
+  --> POST /ai-admin-agent (edge function)
+    --> Authenticate user, verify admin role
+    --> Call OpenAI GPT-4o with tool definitions
+    --> If tool_calls returned:
+        --> Execute tools against DB (service-role)
+        --> Log each tool execution to ai_admin_changes
+        --> Send tool results back to OpenAI for final response
+    --> Stream final response as SSE
+    --> If OpenAI fails: retry with Anthropic Claude
+  --> Frontend renders streamed markdown
+  --> Frontend shows change log in sidebar
+```
+
+## Security
+
+- Only `master`, `owner`, `corporate`, `office_admin` roles can access
+- All write operations logged to `ai_admin_changes` with full audit trail
+- `run_read_query` restricted to SELECT statements only (regex validated server-side)
+- All operations scoped to user's `tenant_id`
+- API keys (`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`) stay server-side only
+
+## Files Created
+1. Migration SQL for `ai_admin_changes` and `ai_admin_projects` tables
+
+## Files Modified
+1. `supabase/functions/ai-admin-agent/index.ts` -- Rewrite to use OpenAI/Claude directly, add change tracking and expanded tools
+2. `src/components/ai-admin/AIAdminChat.tsx` -- Add changes sidebar, projects tab, model selector, updated prompts
