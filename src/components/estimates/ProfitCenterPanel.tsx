@@ -96,7 +96,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       const { data, error } = await supabase
         .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
       if (error) throw error;
-      return data as { materials: number; labor: number; sale_price: number } | null;
+      return data as { materials: number; labor: number; sale_price: number; sales_tax_amount: number } | null;
     },
     enabled: !!pipelineEntryId,
   });
@@ -179,8 +179,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const materialVariance = actualMaterialCost - originalMaterialCost;
   const laborVariance = actualLaborCost - originalLaborCost;
 
+  const salesTaxAmount = (estimateData as any)?.sales_tax_amount || 0;
+  const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   const totalCost = effectiveMaterialCost + effectiveLaborCost + actualOverheadCost;
-  const overheadAmount = sellingPrice * (overheadRate / 100);
+  const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
   const grossProfit = sellingPrice - totalCost;
   const netProfit = grossProfit - overheadAmount;
   const repCommission = netProfit * (commissionRate / 100);
