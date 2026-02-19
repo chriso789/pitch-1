@@ -19,11 +19,10 @@ interface SubmitSignatureRequest {
   signature_data: string; // Base64 encoded image or typed name
   signature_type: 'drawn' | 'typed' | 'uploaded';
   consent_agreed: boolean;
-  field_values?: Record<string, string>; // Optional form field values
+  field_values?: Record<string, string>;
 }
 
 serve(async (req: Request) => {
-  // Handle CORS
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 
@@ -35,17 +34,14 @@ serve(async (req: Request) => {
     const supabase = createServiceClient();
     const { ip, userAgent } = getClientInfo(req);
 
-    // Parse input
     const body: SubmitSignatureRequest = await req.json();
-    
+
     if (!body.access_token) {
       return errorResponse('VALIDATION_ERROR', 'Missing access_token', 400);
     }
-
     if (!body.signature_data) {
       return errorResponse('VALIDATION_ERROR', 'Missing signature_data', 400);
     }
-
     if (!body.consent_agreed) {
       return errorResponse('CONSENT_REQUIRED', 'You must agree to the e-signature consent', 400);
     }
@@ -58,7 +54,7 @@ serve(async (req: Request) => {
     // Look up recipient by access token
     const { data: recipient, error: recipientError } = await supabase
       .from('signature_recipients')
-      .select('id, envelope_id, name, email, status')
+      .select('id, envelope_id, name, email, status, tenant_id')
       .eq('access_token', body.access_token)
       .single();
 
@@ -67,7 +63,6 @@ serve(async (req: Request) => {
       return errorResponse('NOT_FOUND', 'Invalid access token', 404);
     }
 
-    // Check if already signed
     if (recipient.status === 'signed') {
       return errorResponse('ALREADY_SIGNED', 'You have already signed this document', 400);
     }
@@ -84,7 +79,6 @@ serve(async (req: Request) => {
       return errorResponse('NOT_FOUND', 'Envelope not found', 404);
     }
 
-    // Validate envelope status
     if (envelope.status !== 'sent') {
       return errorResponse('INVALID_STATUS', `Cannot sign envelope with status: ${envelope.status}`, 400);
     }
@@ -92,50 +86,57 @@ serve(async (req: Request) => {
     // Generate signature hash for tamper evidence
     const signatureHash = await hashToken(body.signature_data);
 
-    // Store signature image in Supabase Storage (if drawn/uploaded)
-    let imageUrl: string | null = null;
-    
-    if (body.signature_type === 'drawn' || body.signature_type === 'uploaded') {
-      // Decode base64 and upload
-      const base64Data = body.signature_data.replace(/^data:image\/\w+;base64,/, '');
-      const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-      
-      const fileName = `${envelope.tenant_id}/${envelope.id}/${recipient.id}_signature.png`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('signatures')
-        .upload(fileName, binaryData, {
-          contentType: 'image/png',
-          upsert: true,
-        });
+    // Upload signature image to storage (if drawn/uploaded)
+    let imagePath: string | null = null;
 
-      if (uploadError) {
-        console.error('Signature upload error:', uploadError);
-        // Continue without storage - use inline data
-      } else {
-        const { data: urlData } = supabase.storage
+    if (body.signature_type === 'drawn' || body.signature_type === 'uploaded') {
+      try {
+        const base64Data = body.signature_data.replace(/^data:image\/\w+;base64,/, '');
+        const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+        const fileName = `${envelope.tenant_id}/${envelope.id}/${recipient.id}_signature.png`;
+
+        const { error: uploadError } = await supabase.storage
           .from('signatures')
-          .getPublicUrl(fileName);
-        imageUrl = urlData.publicUrl;
+          .upload(fileName, binaryData, {
+            contentType: 'image/png',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          console.error('Signature upload error:', uploadError);
+        } else {
+          imagePath = fileName;
+          console.log(`Signature image uploaded to: ${fileName}`);
+        }
+      } catch (uploadErr) {
+        console.error('Failed to upload signature image:', uploadErr);
       }
     }
 
-    // Create signature record
+    // ---------------------------------------------------------------
+    // INSERT using ACTUAL database columns:
+    //   tenant_id, envelope_id, recipient_id, signature_data,
+    //   signature_hash, signature_metadata, ip_address, is_valid
+    // ---------------------------------------------------------------
     const { data: signature, error: signatureError } = await supabase
       .from('digital_signatures')
       .insert({
+        tenant_id: envelope.tenant_id,
         envelope_id: envelope.id,
         recipient_id: recipient.id,
-        signature_type: body.signature_type,
-        signature_data: body.signature_type === 'typed' ? body.signature_data : null,
-        image_url: imageUrl,
+        signature_data: body.signature_data,
         signature_hash: signatureHash,
-        ip_address: ip,
-        user_agent: userAgent,
-        consent_text: 'I agree to sign this document electronically',
-        metadata: {
+        signature_metadata: {
+          signature_type: body.signature_type,
+          consent_text: 'I agree to sign this document electronically',
+          consent_agreed: body.consent_agreed,
+          user_agent: userAgent?.substring(0, 300),
+          image_path: imagePath,
           field_values: body.field_values,
         },
+        ip_address: ip,
+        is_valid: true,
       })
       .select('id, signed_at')
       .single();
@@ -144,6 +145,8 @@ serve(async (req: Request) => {
       console.error('Signature insert error:', signatureError);
       return errorResponse('DATABASE_ERROR', 'Failed to save signature', 500);
     }
+
+    console.log(`Signature saved: ${signature.id} for envelope ${envelope.id}`);
 
     // Update recipient status to signed
     await supabase
@@ -168,7 +171,7 @@ serve(async (req: Request) => {
       user_id: envelope.created_by,
       type: 'signature_received',
       title: allSigned ? 'Envelope Completed' : 'Signature Received',
-      message: allSigned 
+      message: allSigned
         ? `All recipients have signed "${envelope.title}"`
         : `${recipient.name} signed "${envelope.title}"`,
       action_url: `/signature-envelopes/${envelope.id}`,
@@ -180,27 +183,35 @@ serve(async (req: Request) => {
       },
     });
 
-    // If all signed, trigger finalization
+    // If all signed, call finalize-envelope via direct fetch with service role key
     if (allSigned) {
-      // Call finalize-envelope function
       try {
-        const response = await fetch(
-          `${Deno.env.get('SUPABASE_URL')}/functions/v1/finalize-envelope`,
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+        console.log(`All recipients signed — calling finalize-envelope for ${envelope.id}`);
+
+        const finalizeResponse = await fetch(
+          `${supabaseUrl}/functions/v1/finalize-envelope`,
           {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+              'Authorization': `Bearer ${serviceRoleKey}`,
             },
             body: JSON.stringify({ envelope_id: envelope.id }),
           }
         );
-        
-        if (!response.ok) {
-          console.error('Failed to trigger finalization:', await response.text());
+
+        if (!finalizeResponse.ok) {
+          const errText = await finalizeResponse.text();
+          console.error('finalize-envelope call failed:', finalizeResponse.status, errText);
+        } else {
+          const result = await finalizeResponse.json();
+          console.log('finalize-envelope succeeded:', JSON.stringify(result));
         }
-      } catch (error) {
-        console.error('Error triggering finalization:', error);
+      } catch (finalizeError) {
+        console.error('Error calling finalize-envelope:', finalizeError);
       }
     }
 

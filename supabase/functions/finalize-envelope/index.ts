@@ -119,7 +119,88 @@ serve(async (req: Request) => {
           const pdfBytes = await pdfData.arrayBuffer();
           const pdfDoc = await PDFDocument.load(pdfBytes);
           
-          // Add signature certificate page
+          // ============================================================
+          // STEP 1: Embed signature images on the LAST page of the
+          //         estimate (the "signature block" area at the bottom)
+          // ============================================================
+          const pageCount = pdfDoc.getPageCount();
+          if (pageCount > 0 && signatures && signatures.length > 0) {
+            const lastPage = pdfDoc.getPage(pageCount - 1);
+            const { width: pageWidth } = lastPage.getSize();
+
+            // Place signatures starting at the bottom-left area
+            let sigX = 60;
+            const sigY = 80; // near bottom of last page
+            const maxSigWidth = 180;
+            const maxSigHeight = 55;
+            const sigSpacing = 200;
+
+            for (const sig of signatures) {
+              // Get image path from signature_metadata JSONB
+              const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
+              const sigImagePath = meta.image_path as string | undefined;
+
+              if (sigImagePath) {
+                try {
+                  const { data: sigImgBlob } = await supabase.storage
+                    .from('signatures')
+                    .download(sigImagePath);
+
+                  if (sigImgBlob) {
+                    const sigImgBytes = new Uint8Array(await sigImgBlob.arrayBuffer());
+                    let embeddedImg;
+                    try {
+                      embeddedImg = await pdfDoc.embedPng(sigImgBytes);
+                    } catch {
+                      embeddedImg = await pdfDoc.embedJpg(sigImgBytes);
+                    }
+
+                    // Scale to fit within bounds
+                    const dims = embeddedImg.scale(1);
+                    const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height, 1);
+                    const drawW = dims.width * scale;
+                    const drawH = dims.height * scale;
+
+                    lastPage.drawImage(embeddedImg, {
+                      x: sigX,
+                      y: sigY,
+                      width: drawW,
+                      height: drawH,
+                    });
+
+                    console.log(`Embedded signature on last page at x=${sigX} for ${(sig.recipient as any)?.name}`);
+                    sigX += sigSpacing;
+
+                    // Wrap to next row if needed
+                    if (sigX + maxSigWidth > pageWidth - 40) {
+                      sigX = 60;
+                    }
+                  }
+                } catch (embedErr) {
+                  console.error('Could not embed signature on last page:', embedErr);
+                }
+              } else if (sig.signature_data && (meta.signature_type === 'typed')) {
+                // For typed signatures, draw the text
+                try {
+                  const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+                  lastPage.drawText(sig.signature_data, {
+                    x: sigX,
+                    y: sigY + 10,
+                    size: 18,
+                    font: helveticaBoldFont,
+                    color: rgb(0, 0, 0.4),
+                  });
+                  sigX += sigSpacing;
+                } catch (typedErr) {
+                  console.error('Could not draw typed signature:', typedErr);
+                }
+              }
+            }
+          }
+
+          // ============================================================
+          // STEP 2: Add Signature Certificate page
+          // ============================================================
           const certPage = pdfDoc.addPage([612, 792]);
           const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
           const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
@@ -153,10 +234,12 @@ serve(async (req: Request) => {
           
           let yPos = height - 140;
           
-          // Add each signature
+          // Add each signature detail
           for (const sig of signatures || []) {
-            const recipientName = sig.recipient?.name || 'Unknown';
-            const recipientEmail = sig.recipient?.email || '';
+            const recipientName = (sig.recipient as any)?.name || 'Unknown';
+            const recipientEmail = (sig.recipient as any)?.email || '';
+            const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
+            const sigImagePath = meta.image_path as string | undefined;
             
             certPage.drawText(`Signer: ${recipientName}`, {
               x: 50,
@@ -190,18 +273,17 @@ serve(async (req: Request) => {
               color: rgb(0.3, 0.3, 0.3),
             });
             
-            // Embed signature image if available
-            if (sig.signature_image_path) {
+            // Embed signature image on certificate page too
+            if (sigImagePath) {
               try {
                 const { data: sigImageData } = await supabase.storage
                   .from('signatures')
-                  .download(sig.signature_image_path);
+                  .download(sigImagePath);
                 
                 if (sigImageData) {
                   const sigBytes = new Uint8Array(await sigImageData.arrayBuffer());
                   let signatureImage;
                   
-                  // Try PNG first, fall back to JPEG
                   try {
                     signatureImage = await pdfDoc.embedPng(sigBytes);
                   } catch {
@@ -217,12 +299,13 @@ serve(async (req: Request) => {
                   });
                 }
               } catch (e) {
-                console.log('Could not embed signature image:', e);
+                console.log('Could not embed signature image on cert:', e);
               }
             }
             
             // Consent statement
-            certPage.drawText('✓ "I agree that this electronic signature is legally binding"', {
+            const consentText = (meta.consent_text as string) || 'I agree that this electronic signature is legally binding';
+            certPage.drawText(`✓ "${consentText}"`, {
               x: 50,
               y: yPos - 75,
               size: 9,
@@ -234,7 +317,10 @@ serve(async (req: Request) => {
           }
           
           // Footer with hash
-          const pdfHash = sig.signature_hash || await hashToken(JSON.stringify({ envelope_id: envelope.id, signatures: signatures?.map(s => s.id) }));
+          const pdfHash = (signatures && signatures.length > 0 && signatures[0].signature_hash)
+            ? signatures[0].signature_hash
+            : await hashToken(JSON.stringify({ envelope_id: envelope.id, signatures: signatures?.map(s => s.id) }));
+
           certPage.drawText(`Document Hash: ${pdfHash.substring(0, 32)}...`, {
             x: 50,
             y: 60,
@@ -272,6 +358,25 @@ serve(async (req: Request) => {
       } catch (pdfError) {
         console.error('Error processing PDF:', pdfError);
         // Continue without PDF - envelope can still be marked complete
+      }
+    }
+
+    // Also store the signed download URL on the envelope for quick access
+    if (signedPdfPath) {
+      try {
+        const { data: signedUrlData } = await supabase.storage
+          .from('documents')
+          .createSignedUrl(signedPdfPath, 60 * 60 * 24 * 30); // 30 days
+        
+        if (signedUrlData?.signedUrl) {
+          await supabase
+            .from('signature_envelopes')
+            .update({ document_url: signedUrlData.signedUrl })
+            .eq('id', envelope.id);
+          console.log('Stored 30-day signed URL on envelope.document_url');
+        }
+      } catch (urlErr) {
+        console.error('Failed to store document_url:', urlErr);
       }
     }
 
