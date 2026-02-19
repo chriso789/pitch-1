@@ -82,7 +82,7 @@ serve(async (req) => {
     console.log(`Creating signature envelope for ${document_type} ${document_id}`);
 
     // Fetch document metadata based on type
-    let documentTitle = email_subject || "Please sign this document";
+    let documentTitle = email_subject || "Document Signature Request";
     let pdfPath: string | null = null;
     let resolvedContactId: string | null = contact_id || null;
     let resolvedProjectId: string | null = null;
@@ -98,7 +98,7 @@ serve(async (req) => {
         pdfPath = data.pdf_url;
         resolvedContactId = resolvedContactId || data.contact_id;
         resolvedProjectId = data.project_id;
-        documentTitle = email_subject || `Please sign: ${data.title || 'Document'}`;
+        documentTitle = email_subject || data.title || 'Document';
       }
     } else if (document_type === 'estimate') {
       const { data, error: estError } = await supabase
@@ -115,7 +115,7 @@ serve(async (req) => {
       }
       pdfPath = data.pdf_url;
       resolvedPipelineEntryId = resolvedPipelineEntryId || data.pipeline_entry_id;
-      documentTitle = email_subject || `Please sign: ${data.display_name || data.estimate_number || 'Estimate'}`;
+      documentTitle = email_subject || data.display_name || data.estimate_number || 'Estimate';
       // Resolve contact_id from pipeline entry if not already set
       if (!resolvedContactId && data.pipeline_entry_id) {
         const { data: pe } = await supabase
