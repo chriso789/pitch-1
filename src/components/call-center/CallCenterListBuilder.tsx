@@ -21,6 +21,9 @@ interface CallCenterListBuilderProps {
   onListCreated: () => void;
 }
 
+// Pipeline statuses that indicate a contact is already a project/job
+const EXCLUDED_PIPELINE_STATUSES = ['project', 'completed', 'closed'];
+
 export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
   open,
   onOpenChange,
@@ -35,6 +38,26 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
   const [listName, setListName] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // Fetch contact IDs that are in project/completed/closed pipeline stages
+  const { data: excludedContactIds } = useQuery({
+    queryKey: ['excluded-project-contacts', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return new Set<string>();
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('contact_id')
+        .eq('is_deleted', false)
+        .in('status', EXCLUDED_PIPELINE_STATUSES);
+      if (error) {
+        console.error('Failed to fetch excluded contacts:', error);
+        return new Set<string>();
+      }
+      return new Set((data || []).map(e => e.contact_id));
+    },
+    enabled: !!tenantId && open,
+    staleTime: 60_000,
+  });
+
   // Fetch contacts with phone numbers
   const { data: contacts, isLoading } = useQuery({
     queryKey: ['list-builder-contacts', tenantId, statusFilter, sourceFilter, stagnantDays],
@@ -45,7 +68,7 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
         .select('id, first_name, last_name, phone, email, qualification_status, lead_source, address_city, address_state, updated_at')
         .eq('tenant_id', tenantId)
         .not('phone', 'is', null)
-        .or('is_deleted.is.null,is_deleted.eq.false')
+        .neq('is_deleted', true)
         .order('updated_at', { ascending: true })
         .limit(500);
 
@@ -67,16 +90,27 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
     enabled: !!tenantId && open,
   });
 
+  // Filter out contacts that are already in project/completed/closed stages
   const filteredContacts = useMemo(() => {
     if (!contacts) return [];
-    if (!search.trim()) return contacts;
-    const s = search.toLowerCase();
-    return contacts.filter(c =>
-      `${c.first_name} ${c.last_name}`.toLowerCase().includes(s) ||
-      c.phone?.includes(s) ||
-      c.email?.toLowerCase().includes(s)
-    );
-  }, [contacts, search]);
+    let list = contacts;
+
+    // Exclude project-stage contacts
+    if (excludedContactIds && excludedContactIds.size > 0) {
+      list = list.filter(c => !excludedContactIds.has(c.id));
+    }
+
+    // Apply search filter
+    if (search.trim()) {
+      const s = search.toLowerCase();
+      list = list.filter(c =>
+        `${c.first_name} ${c.last_name}`.toLowerCase().includes(s) ||
+        c.phone?.includes(s) ||
+        c.email?.toLowerCase().includes(s)
+      );
+    }
+    return list;
+  }, [contacts, search, excludedContactIds]);
 
   const toggleSelect = (id: string) => {
     setSelectedIds(prev => {
@@ -103,7 +137,6 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
     setSaving(true);
     try {
       const user = (await supabase.auth.getUser()).data.user;
-      // Create the list
       const { data: list, error: listError } = await supabase
         .from('dialer_lists')
         .insert({
@@ -116,7 +149,6 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
         .single();
       if (listError) throw listError;
 
-      // Create list items
       const selected = filteredContacts.filter(c => selectedIds.has(c.id));
       const items = selected.map(c => ({
         list_id: list.id,
@@ -135,7 +167,6 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
       toast({ title: 'List created', description: `"${listName}" with ${selectedIds.size} contacts.` });
       onListCreated();
       onOpenChange(false);
-      // Reset
       setListName('');
       setSelectedIds(new Set());
       setSearch('');
@@ -157,17 +188,15 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
             <ListPlus className="h-5 w-5" />
             Build Dialer List
           </DialogTitle>
-          <DialogDescription>Filter and select contacts to create a callable list.</DialogDescription>
+          <DialogDescription>Filter and select contacts to create a callable list. Contacts with active projects are excluded.</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-4 flex-1 min-h-0">
-          {/* List name */}
           <div className="space-y-1.5">
             <Label>List Name</Label>
             <Input placeholder="e.g. Stagnant Leads - January" value={listName} onChange={e => setListName(e.target.value)} />
           </div>
 
-          {/* Filters */}
           <div className="flex flex-wrap gap-2">
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[160px]">
@@ -200,13 +229,11 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
 
           <StagnantLeadFilter selectedDays={stagnantDays} onSelect={setStagnantDays} />
 
-          {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input className="pl-9" placeholder="Search name, phone, email..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
-          {/* Select all & count */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Checkbox
@@ -221,7 +248,6 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
             </Badge>
           </div>
 
-          {/* Contact list */}
           <ScrollArea className="h-[280px] border rounded-md">
             {isLoading ? (
               <div className="flex items-center justify-center py-12">

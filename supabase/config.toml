@@ -1113,3 +1113,9 @@ verify_jwt = true
 
 [functions.translate-proposal]
 verify_jwt = true
+
+[functions.telnyx-call-webhook]
+verify_jwt = false
+
+[functions.telnyx-voicemail-drop]
+verify_jwt = false
