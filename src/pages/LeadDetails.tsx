@@ -860,6 +860,16 @@ const LeadDetails = () => {
               </Button>
             </div>
 
+            {/* Inline Lead Notes - compact one-liner */}
+            <div className="flex items-center gap-2 mt-2">
+              <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+              <LeadNotesSection 
+                pipelineEntryId={id!}
+                initialNotes={lead.notes}
+                onNotesUpdate={refetchLead}
+              />
+            </div>
+
             {/* Sales Reps - combined row */}
             <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
               <div className="flex items-center gap-2">
@@ -1072,33 +1082,32 @@ const LeadDetails = () => {
       <Card className="border-muted">
         <Tabs defaultValue="comms" className="w-full">
           <CardHeader className="pb-2 pt-3">
-            <TabsList className="h-8">
-              <TabsTrigger value="comms" className="text-xs h-7 px-3">
-                <MessageSquare className="h-3 w-3 mr-1" />
-                Comms
-              </TabsTrigger>
-              <TabsTrigger value="photos" className="text-xs h-7 px-3">
-                <Camera className="h-3 w-3 mr-1" />
-                Photos
-                {photos.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">
-                    {photos.length}
-                  </Badge>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="notes" className="text-xs h-7 px-3">
-                <FileText className="h-3 w-3 mr-1" />
-                Notes
-              </TabsTrigger>
-              <TabsTrigger value="activity" className="text-xs h-7 px-3">
-                <FileText className="h-3 w-3 mr-1" />
-                Activity
-              </TabsTrigger>
-              <TabsTrigger value="timeline" className="text-xs h-7 px-3">
-                <Phone className="h-3 w-3 mr-1" />
-                Timeline
-              </TabsTrigger>
-            </TabsList>
+            <div className="relative">
+              <TabsList className="h-auto flex flex-nowrap overflow-x-auto w-full justify-start gap-1 bg-transparent p-0 scrollbar-hide">
+                <TabsTrigger value="comms" className="text-xs h-7 px-3 flex-shrink-0">
+                  <MessageSquare className="h-3 w-3 mr-1" />
+                  Comms
+                </TabsTrigger>
+                <TabsTrigger value="photos" className="text-xs h-7 px-3 flex-shrink-0">
+                  <Camera className="h-3 w-3 mr-1" />
+                  Photos
+                  {photos.length > 0 && (
+                    <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">
+                      {photos.length}
+                    </Badge>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="activity" className="text-xs h-7 px-3 flex-shrink-0">
+                  <FileText className="h-3 w-3 mr-1" />
+                  Activity
+                </TabsTrigger>
+                <TabsTrigger value="timeline" className="text-xs h-7 px-3 flex-shrink-0">
+                  <Phone className="h-3 w-3 mr-1" />
+                  Timeline
+                </TabsTrigger>
+              </TabsList>
+              <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card to-transparent pointer-events-none" />
+            </div>
           </CardHeader>
 
           <CardContent className="pt-0 pb-3">
@@ -1154,13 +1163,6 @@ const LeadDetails = () => {
               />
             </TabsContent>
 
-            <TabsContent value="notes" className="mt-0">
-              <LeadNotesSection 
-                pipelineEntryId={id!}
-                initialNotes={lead.notes}
-                onNotesUpdate={refetchLead}
-              />
-            </TabsContent>
 
             <TabsContent value="activity" className="mt-0">
               <LeadActivityTimeline 
