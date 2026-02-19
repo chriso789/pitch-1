@@ -1,94 +1,48 @@
 
-# Call Center Live Dialer with Contact List Builder
 
-## Overview
+# Fix List Builder Filters + Exclude Project-Stage Contacts + Add to Previous Telnyx Dialer Plan
 
-Transform the Call Center page into a full-featured live dialer workspace where reps can build contact lists, filter through contacts, and call directly from the system. This adds three major capabilities to the existing Call Center page:
+## Combined Plan
 
-1. **List Builder** -- Filter and select contacts from the CRM to create callable lists
-2. **Live Dialer** -- Step through a list and call contacts one-by-one with dispositions
-3. **Stagnant Lead Focus** -- Pre-built filters to surface contacts that haven't been touched in X days
+This plan adds two fixes to the List Builder **on top of** the previously approved Telnyx live dialer plan (WebRTC calling, voicemail drops, recording, contact detail panel, webhooks). Both plans will be implemented together.
 
-## What Changes
+## Part A: List Builder Fixes (this request)
 
-### 1. New Component: `CallCenterListBuilder.tsx`
-A dialog/panel where reps can:
-- Search and filter contacts by qualification status, lead source, location, assigned rep, date ranges, and tags
-- Filter for "stagnant leads" (contacts with no activity in 7/14/30/60/90 days using `last_activity_at` or `updated_at`)
-- Select individual contacts or bulk-select filtered results
-- Save the selection as a new `dialer_list` with items written to `dialer_list_items`
-- Uses existing `contacts` table with the user's tenant and location filters
+### Problem 1: Filter returns "No contacts match filters"
+The query logic is correct but may fail silently when the `is_deleted` filter uses `.or('is_deleted.is.null,is_deleted.eq.false')` syntax which can conflict with other filters. The fix normalizes the filter chain to ensure all conditions compose properly with PostgREST.
 
-### 2. New Component: `CallCenterLiveDialer.tsx`
-A focused calling interface that:
-- Loads a selected `dialer_list` and steps through its `dialer_list_items`
-- Shows the current contact's name, phone, email, address, and qualification status
-- Provides a "Call" button that opens the phone via `tel:` link (same pattern as `PhoneNumberSelector`)
-- After each call, shows a disposition dialog (using `dialer_dispositions` from the DB)
-- Tracks progress (called/remaining/skipped) and updates item status
-- "Next" / "Skip" / "End Session" controls
-- Logs call attempts to `communication_history`
+### Problem 2: Projects showing in dialer list
+Contacts that already have a pipeline entry at "project" status or beyond (project, completed, closed) should NOT appear in the dialer list. These are active or finished jobs, not stagnant leads to cold-call.
 
-### 3. Updated: `CallCenterPage.tsx`
-Add a tabbed layout to the existing page:
-- **Tab 1: "Dialer"** -- The new live dialer + list selection UI
-- **Tab 2: "Call Log"** -- The existing recent calls view (moved here as-is)
-- **Tab 3: "Lists"** -- View/manage saved dialer lists, see stats, delete old lists
-- Header updated: "Call Center" title stays, subtitle updated to reflect dialer capability
-- A prominent "Build List" button opens the list builder dialog
+**Fix in `CallCenterListBuilder.tsx`:**
+1. After fetching contacts, run a secondary query to get contact IDs that have pipeline entries with `status IN ('project', 'completed', 'closed')` for the same tenant
+2. Exclude those contact IDs from the displayed list
+3. This keeps the Supabase query simple (no complex joins) and the exclusion logic explicit
 
-### 4. New Component: `StagnantLeadFilter.tsx`
-A preset filter chip bar specifically for finding stagnant leads:
-- "No activity 7+ days", "14+ days", "30+ days", "60+ days", "90+ days"
-- Filters contacts where `updated_at` or the latest `communication_history.created_at` is older than the selected threshold
-- Can be combined with other filters (location, status, source)
+### Technical Changes to `CallCenterListBuilder.tsx`
+- Add a parallel query to fetch `pipeline_entries` where `status` is in the advanced/terminal set: `['project', 'completed', 'closed']`
+- Filter the contacts result to exclude any contact whose ID appears in that set
+- Fix the `is_deleted` filter to use `.eq('is_deleted', false)` combined with `.or()` properly, or switch to a simpler `.neq('is_deleted', true)` pattern that handles null correctly
 
-## Database Usage
+## Part B: Telnyx Live Dialer (previous plan, unchanged)
 
-All tables already exist -- no migrations needed:
-- `dialer_lists` -- stores named lists with tenant_id
-- `dialer_list_items` -- stores contacts in each list (phone, name, status, contact_id via metadata)
-- `dialer_dispositions` -- call outcome options
-- `dialer_campaigns` -- optional grouping (not required for basic flow)
-- `dialer_sessions` -- tracks dialing session stats
-- `contacts` -- source data for filtering and list building
-- `communication_history` -- for logging calls and checking last activity
+All items from the previously approved plan remain:
 
-## Technical Details
+1. **WebRTC Calling** -- Replace `tel:` links in `CallCenterLiveDialer.tsx` with in-browser Telnyx calls via `telnyx-dial` edge function, with mute/hold/hangup controls and live timer
+2. **Voicemail Drop** -- New `VoicemailDropManager.tsx` component and `telnyx-voicemail-drop` edge function to play pre-recorded audio when AMD detects voicemail
+3. **Contact Detail Panel** -- New `ContactDetailPanel.tsx` shown between calls for reps to update CRM data before advancing
+4. **Call Webhook Handler** -- New `telnyx-call-webhook` edge function to receive Telnyx events, store recordings, update call records
+5. **Quick Call Mode** -- Standalone single-call card in the Dialer tab for one-off recorded calls
+6. **Storage Buckets** -- `call-recordings` and `voicemail-drops` for audio files
 
 ### Files Created
-1. `src/components/call-center/CallCenterListBuilder.tsx` -- Filter/select contacts dialog
-2. `src/components/call-center/CallCenterLiveDialer.tsx` -- Active dialing interface
-3. `src/components/call-center/StagnantLeadFilter.tsx` -- Preset stagnant-lead filter chips
-4. `src/components/call-center/CallCenterListsManager.tsx` -- View/manage saved lists
+1. `src/components/call-center/VoicemailDropManager.tsx`
+2. `src/components/call-center/ContactDetailPanel.tsx`
+3. `supabase/functions/telnyx-voicemail-drop/index.ts`
+4. `supabase/functions/telnyx-call-webhook/index.ts`
 
 ### Files Modified
-1. `src/pages/CallCenterPage.tsx` -- Add tabs (Dialer, Call Log, Lists), add "Build List" button, integrate new components
-
-### Key Patterns Followed
-- Uses `useEffectiveTenantId()` for tenant filtering (existing pattern)
-- Uses `tel:` link for initiating calls (same as `PhoneNumberSelector.tsx`)
-- Logs to `communication_history` (same as `PhoneNumberSelector.tsx`)
-- Uses Tanstack Query for data fetching (existing pattern)
-- Disposition dialog pattern from existing `Dialer.tsx`
-- Location filtering uses `user_location_assignments` (same pattern as the rep dropdown fix)
-
-### Contact Filtering Options in List Builder
-- **Status**: qualification_status (unqualified, qualified, not_home, interested, etc.)
-- **Lead Source**: lead_source field
-- **Location**: location_id
-- **Assigned Rep**: assigned_to
-- **Tags**: tags array
-- **Stagnant Duration**: contacts not updated in X days
-- **Has Phone**: only contacts with a phone number (required for calling)
-- **Search**: free-text search on name/phone/email
-
-### Live Dialer Flow
-1. Rep selects a saved list from the Lists tab or builds a new one
-2. Clicks "Start Dialing" to enter the live dialer view
-3. First pending contact loads with full details
-4. Rep clicks "Call" -- opens phone dialer via tel: link
-5. After call, rep selects a disposition and adds optional notes
-6. System logs the attempt, updates the list item status, advances to next contact
-7. Progress bar shows how many contacts remain
-8. Rep can pause/resume or end session at any time
+1. `src/components/call-center/CallCenterListBuilder.tsx` -- Fix filters, exclude project-stage contacts
+2. `src/components/call-center/CallCenterLiveDialer.tsx` -- Replace tel: with WebRTC, add call controls, voicemail drop, contact detail panel
+3. `src/pages/CallCenterPage.tsx` -- Add Quick Call card, voicemail management, integrate new components
+4. `supabase/config.toml` -- Add webhook function entries with `verify_jwt = false`
