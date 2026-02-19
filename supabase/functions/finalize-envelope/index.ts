@@ -357,10 +357,134 @@ serve(async (req: Request) => {
       },
     });
 
-    // Notify all recipients with completion
-    for (const recipient of recipients || []) {
-      // In production, send email with final PDF attached
-      console.log(`Would send completion email to: ${recipient.email}`);
+    // --- Send completion emails to all recipients AND the sender ---
+    const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
+    if (RESEND_API_KEY && signedPdfPath) {
+      try {
+        // Get tenant info for branding
+        const { data: tenant } = await supabase
+          .from("tenants")
+          .select("name, settings")
+          .eq("id", envelope.tenant_id)
+          .single();
+
+        const tenantName = tenant?.name || "PITCH CRM";
+        const tenantSettings = (tenant?.settings as Record<string, any>) || {};
+        const primaryColor = tenantSettings.primary_color || "#2563eb";
+
+        // Get company email domain
+        const { data: emailDomain } = await supabase
+          .from("company_email_domains")
+          .select("*")
+          .eq("tenant_id", envelope.tenant_id)
+          .eq("verification_status", "verified")
+          .eq("is_active", true)
+          .maybeSingle();
+
+        const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+        const fromEmail = emailDomain?.from_email || `signatures@${fromDomain}`;
+        const fromName = emailDomain?.from_name || tenantName;
+
+        // Generate a signed URL for the completed PDF
+        const { data: signedUrlData } = await supabase.storage
+          .from("documents")
+          .createSignedUrl(signedPdfPath, 60 * 60 * 24 * 30); // 30 days
+
+        const downloadUrl = signedUrlData?.signedUrl || "";
+
+        // Build signature summary for the email
+        const signatureSummary = (signatures || []).map(sig => {
+          const recipientData = sig.recipient as any;
+          return `
+            <tr>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${recipientData?.name || 'Unknown'}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${recipientData?.email || ''}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${sig.signed_at ? new Date(sig.signed_at).toLocaleString() : 'N/A'}</td>
+              <td style="padding: 8px 12px; border-bottom: 1px solid #e5e7eb; font-size: 14px;">${sig.ip_address || 'N/A'}</td>
+            </tr>`;
+        }).join('');
+
+        const completionHtml = `
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f4f4f5;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr><td style="padding: 40px 20px;">
+      <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <tr><td style="background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); padding: 32px 40px; text-align: center;">
+          <h1 style="margin: 0; color: #ffffff; font-size: 24px;">✅ Document Signed</h1>
+        </td></tr>
+        <tr><td style="padding: 40px;">
+          <p style="margin: 0 0 16px; color: #374151; font-size: 16px; line-height: 1.6;">
+            All parties have signed <strong>"${envelope.title || 'Document'}"</strong>. A copy of the signed document is attached below for your records.
+          </p>
+          <h3 style="margin: 24px 0 12px; color: #111827; font-size: 16px;">Signature Details</h3>
+          <table style="width: 100%; border-collapse: collapse; border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden;">
+            <thead><tr style="background-color: #f9fafb;">
+              <th style="padding: 8px 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase;">Name</th>
+              <th style="padding: 8px 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase;">Email</th>
+              <th style="padding: 8px 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase;">Signed At</th>
+              <th style="padding: 8px 12px; text-align: left; font-size: 12px; color: #6b7280; text-transform: uppercase;">IP Address</th>
+            </tr></thead>
+            <tbody>${signatureSummary}</tbody>
+          </table>
+          <table role="presentation" style="width: 100%; margin: 32px 0;">
+            <tr><td style="text-align: center;">
+              ${downloadUrl ? `<a href="${downloadUrl}" style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 14px 36px; font-size: 16px; font-weight: 600; border-radius: 8px;">Download Signed Document</a>` : ''}
+            </td></tr>
+          </table>
+          <p style="margin: 0; color: #6b7280; font-size: 12px;">Document Hash: ${finalPdfHash.substring(0, 32)}...</p>
+        </td></tr>
+        <tr><td style="background-color: #f9fafb; padding: 20px 40px; border-top: 1px solid #e5e7eb;">
+          <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">Sent via ${tenantName}</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+
+        // Collect all email addresses: recipients + sender
+        const emailAddresses: string[] = [];
+        for (const r of recipients || []) {
+          if (r.email) emailAddresses.push(r.email);
+        }
+
+        // Also get sender email
+        if (envelope.created_by) {
+          const { data: senderProfile } = await supabase
+            .from("profiles")
+            .select("email")
+            .eq("id", envelope.created_by)
+            .single();
+          if (senderProfile?.email) emailAddresses.push(senderProfile.email);
+        }
+
+        // Send to each address
+        for (const email of emailAddresses) {
+          try {
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${RESEND_API_KEY}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                from: `${fromName} <${fromEmail}>`,
+                to: [email],
+                subject: `✅ Signed: ${envelope.title || 'Document'}`,
+                html: completionHtml,
+              }),
+            });
+            console.log(`Completion email sent to ${email}`);
+          } catch (emailErr) {
+            console.error(`Failed to send completion email to ${email}:`, emailErr);
+          }
+        }
+      } catch (emailError) {
+        console.error("Error sending completion emails:", emailError);
+      }
     }
 
     // Log audit event
