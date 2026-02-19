@@ -133,7 +133,7 @@ export function ShareEstimateDialog({
               role: 'signer',
               routing_order: 1,
             }],
-            email_subject: subject.trim() || `Please sign: ${estimateDisplayName || estimateNumber || 'Estimate'}`,
+            email_subject: subject.trim() || estimateDisplayName || estimateNumber || 'Estimate',
             email_message: message.trim() || undefined,
             expire_days: 30,
             pipeline_entry_id: pipelineEntryId || undefined,
