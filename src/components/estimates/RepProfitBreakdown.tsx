@@ -13,6 +13,7 @@ interface RepProfitBreakdownProps {
   sellingPrice: number;
   materialCost: number;
   laborCost: number;
+  salesTaxAmount?: number;
   className?: string;
 }
 
@@ -37,6 +38,7 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   sellingPrice,
   materialCost,
   laborCost,
+  salesTaxAmount = 0,
   className
 }) => {
   // Fetch both primary and secondary rep's commission settings
@@ -113,10 +115,11 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   // For two profit-split reps, they must have the same overhead
   const overheadRate = primaryOverheadRate;
 
-  // Calculate costs and profits
+  // Calculate costs and profits (overhead on pre-tax selling price)
   const totalCost = materialCost + laborCost;
   const grossProfit = sellingPrice - totalCost;
-  const overheadAmount = sellingPrice * (overheadRate / 100);
+  const preTaxSellingPrice = sellingPrice - salesTaxAmount;
+  const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
   const profitAfterOverhead = grossProfit - overheadAmount;
 
   // Step 1: If secondary rep is "percentage_contract_price" (Percent of Contract), 

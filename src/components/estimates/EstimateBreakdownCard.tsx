@@ -175,11 +175,6 @@ export function EstimateBreakdownCard({
               {formatCurrency(breakdown.repCommissionAmount)}
             </span>
           </div>
-          {config.commissionStructure === 'profit_split' && (
-            <div className="text-xs text-muted-foreground pl-6">
-              Net Profit: {formatCurrency(breakdown.netProfit)}
-            </div>
-          )}
         </div>
 
         <Separator />
