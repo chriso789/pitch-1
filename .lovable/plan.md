@@ -1,84 +1,67 @@
 
 
-# Fix PDF Size, Add "Approve & Sign" Button, and Fix SMS Notification
+# Fix Subject Line, Deploy Signing Page Layout, and Fix SMS Notification
 
-## 1. Redesign Layout: Full-Screen PDF with Floating "Approve & Sign" Button
+## 3 Issues Found
 
-The current side-by-side layout gives the signature panel ~35% of the screen, making the PDF feel cramped. Instead:
+### Issue 1: "Please sign:" keeps appearing in subject/title
+**Root cause:** Two places add the "Please sign:" prefix as a fallback:
+- `ShareEstimateDialog.tsx` line 136: when the user leaves subject blank, it falls back to `"Please sign: Tile & Mortar Repair"`
+- `send-document-for-signature/index.ts` line 118: same pattern as a second fallback
 
-- The PDF iframe will take up the **full viewport** (100% width, full height minus the thin header bar)
-- A prominent **"Approve & Sign"** button sits in the top-right header bar
-- Clicking it opens a **slide-over drawer** (from the right) containing the signature controls (draw/type, printed name, submit)
-- The download button stays in the header alongside the Approve & Sign button
-- On mobile, the drawer takes full width
+This `documentTitle` becomes the envelope's `title` (stored in the database), and also the email subject. So even if the user types a custom subject, if they leave it blank, the prefix gets added. The fix: use just the estimate display name without "Please sign:" as the fallback.
 
-Layout:
-```text
-+----------------------------------------------------------+
-|  [doc icon] Tile & Mortar Repair   [Download] [Approve & Sign] |
-+----------------------------------------------------------+
-|                                                          |
-|              Full-screen PDF viewer                      |
-|              (100% width, calc(100vh - 57px))            |
-|                                                          |
-|                                                          |
-+----------------------------------------------------------+
+### Issue 2: Document preview still shows old small layout
+**Root cause:** The code in `PublicSignatureCapture.tsx` IS already updated with the full-screen layout and "Approve & Sign" button. However, the user's screenshot is from `pitch-crm.ai` (the published/production domain). The latest code changes have not been published yet -- the production site still runs the old card-based layout.
+
+**Action needed:** Publish the app after these fixes. But I'll also verify the layout code is optimal.
+
+### Issue 3: No SMS text to the rep when customer opens signing page
+**Root cause:** The `notify-signature-opened` edge function has zero logs -- it was never invoked. The function call lives in the frontend code (`PublicSignatureCapture.tsx` line 59), but the published site has the OLD frontend code that doesn't include this call. Once published, the new code will invoke it.
+
+I'll also verify the function is correctly deployed.
+
+---
+
+## Changes
+
+### 1. Remove "Please sign:" prefix (`ShareEstimateDialog.tsx`)
+
+Line 136 -- change the fallback from:
 ```
-
-When "Approve & Sign" is clicked, a right-side drawer slides in with the signature form, overlaying the PDF.
-
-### File: `src/pages/PublicSignatureCapture.tsx`
-
-- Remove the `flex-col lg:flex-row` split layout
-- Make the PDF iframe take full width/height
-- Add a `Sheet` (vaul drawer from shadcn) triggered by the "Approve & Sign" button
-- Move all signature controls (draw/type toggle, canvas, typed name input, printed name, legal notice, submit button) inside the Sheet content
-- The Sheet opens from the right side on desktop, bottom on mobile
-
-## 2. Fix SMS Notification: Pass `tenant_id` and `sent_by`
-
-The `notify-signature-opened` function calls `telnyx-send-sms` via `supabase.functions.invoke` without passing `tenant_id` or `sent_by`. The SMS function needs these to look up the correct outbound phone number for the company.
-
-### File: `supabase/functions/notify-signature-opened/index.ts`
-
-- Switch from `supabase.functions.invoke` to a direct `fetch` call (same pattern as `track-quote-view`)
-- Pass `tenant_id` from the envelope and `sent_by` as the envelope's `created_by`
-- Use the service role key in the Authorization header so `telnyx-send-sms` recognizes it as a service-to-service call
-
-Change from:
-```typescript
-await supabase.functions.invoke("telnyx-send-sms", {
-  body: { to: creatorProfile.phone, message, skipAuth: true }
-});
+email_subject: subject.trim() || `Please sign: ${estimateDisplayName || estimateNumber || 'Estimate'}`,
 ```
-
 To:
-```typescript
-await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
-  method: 'POST',
-  headers: {
-    'Authorization': `Bearer ${supabaseServiceKey}`,
-    'Content-Type': 'application/json'
-  },
-  body: JSON.stringify({
-    to: creatorProfile.phone,
-    message,
-    tenant_id: envelope.tenant_id,
-    sent_by: envelope.created_by,
-  })
-});
 ```
+email_subject: subject.trim() || estimateDisplayName || estimateNumber || 'Estimate',
+```
+
+### 2. Remove "Please sign:" prefix (`send-document-for-signature/index.ts`)
+
+Lines 85, 101, 118 -- remove "Please sign:" from all fallbacks:
+- Line 85: `"Please sign this document"` becomes `"Document Signature Request"`
+- Line 101: `"Please sign: ${data.title}"` becomes just `data.title || 'Document'`
+- Line 118: `"Please sign: ${data.display_name}"` becomes just `data.display_name || data.estimate_number || 'Estimate'`
+
+### 3. Re-deploy `notify-signature-opened` edge function
+
+Verify it's deployed and accessible so the SMS fires when the customer opens the signing page.
+
+### 4. Publish reminder
+
+After these changes, the app must be **published** so the production site (`pitch-crm.ai`) picks up the new full-screen layout, the "Approve & Sign" button, and the SMS notification call.
+
+---
 
 ## Files Changed
 
 | File | Change |
 |------|--------|
-| `src/pages/PublicSignatureCapture.tsx` | Full-screen PDF layout with floating "Approve & Sign" button that opens a Sheet/drawer for signature capture |
-| `supabase/functions/notify-signature-opened/index.ts` | Fix SMS by using direct fetch with `tenant_id` and `sent_by` params |
+| `src/components/estimates/ShareEstimateDialog.tsx` | Remove "Please sign:" from subject fallback |
+| `supabase/functions/send-document-for-signature/index.ts` | Remove "Please sign:" from all documentTitle fallbacks |
+| Edge function deployment | Re-deploy `notify-signature-opened` to ensure it's live |
 
-## Result
+## After Implementation
 
-- PDF takes up ~95% of the viewport -- full immersive viewing experience
-- "Approve & Sign" button is always visible in the top-right corner, no scrolling needed
-- Clicking it opens a clean drawer with signature controls overlaying the PDF
-- SMS notification actually sends to the rep when the customer opens the signing page
+You will need to **publish** the app for the changes to appear on `pitch-crm.ai`. The signing page layout, SMS notification, and subject fix all depend on the published code being up to date.
+
