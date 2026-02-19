@@ -117,6 +117,7 @@ import ActivityDashboardPage from "./pages/admin/ActivityDashboardPage";
 import CanvasserLeaderboardPage from "./pages/CanvasserLeaderboardPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AIAgentSettingsPage from "./pages/settings/AIAgentSettingsPage";
+import AIAdminPage from "./pages/settings/AIAdminPage";
 import AIAgentDashboardPage from "./pages/AIAgentDashboardPage";
 import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGallery";
 import PublicPortalView from "./pages/PublicPortalView";
@@ -323,6 +324,7 @@ const AppContent = () => {
         <Route path="/admin/audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="/settings/ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
+        <Route path="/settings/ai-admin" element={<ProtectedRoute><AIAdminPage /></ProtectedRoute>} />
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
         <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
         <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
