@@ -18,6 +18,8 @@ interface RequestBody {
   message: string;
   document_url?: string;
   is_reminder?: boolean;
+  cc?: string[];
+  bcc?: string[];
 }
 
 serve(async (req) => {
@@ -46,7 +48,9 @@ serve(async (req) => {
       sender_email,
       subject,
       message,
-      is_reminder = false
+      is_reminder = false,
+      cc,
+      bcc
     } = body;
 
     if (!recipient_email || !access_token) {
@@ -167,7 +171,9 @@ serve(async (req) => {
         to: [recipient_email],
         subject: is_reminder ? `⏰ Reminder: ${subject}` : subject,
         html: emailHtml,
-        reply_to: sender_email
+        reply_to: sender_email,
+        ...(cc && cc.length > 0 && { cc }),
+        ...(bcc && bcc.length > 0 && { bcc }),
       })
     });
 
@@ -196,7 +202,7 @@ serve(async (req) => {
         envelope_id,
         tenant_id: envelope?.tenant_id,
         event_type: is_reminder ? "reminder_sent" : "invitation_sent",
-        event_data: {
+        event_metadata: {
           recipient_id,
           recipient_email,
           resend_id: resendData.id

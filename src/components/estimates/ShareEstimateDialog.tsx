@@ -196,7 +196,7 @@ export function ShareEstimateDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-md max-h-[80vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {requestSignature ? <FileSignature className="h-5 w-5" /> : <Mail className="h-5 w-5" />}
@@ -222,7 +222,7 @@ export function ShareEstimateDialog({
             </p>
           </div>
         ) : (
-          <div className="space-y-4 py-4">
+          <div className="space-y-3 py-2">
             <div className="space-y-2">
               <Label htmlFor="recipient-name">Recipient Name</Label>
               <Input
@@ -300,12 +300,12 @@ export function ShareEstimateDialog({
                   : "Thanks for your interest! I've prepared a quote for your project..."}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                rows={3}
+                rows={2}
               />
             </div>
 
             {/* Signature request toggle */}
-            <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+            <div className="flex items-center justify-between rounded-lg border p-3 bg-muted/30">
               <div className="space-y-0.5">
                 <Label htmlFor="request-signature" className="text-sm font-medium flex items-center gap-2">
                   <FileSignature className="h-4 w-4 text-primary" />
