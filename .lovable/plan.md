@@ -1,41 +1,98 @@
 
 
-# Fix: Edit Button Appears Non-Functional on Contact Profile
+# Clean Up Lead Details Header
 
 ## Problem
-The Edit button in the contact profile header does work -- it switches to the Details tab and enables editing mode. However, the edit form is inside the "Contact Information" card which sits far below the header (after Pipeline cards, Quick Stats, Homeowner Portal Access, etc.). Since the page does not scroll to the form, the user sees no visible change and assumes the button is broken.
+The lead details header is cluttered and takes up too much vertical space. Information is spread across 6+ rows with redundant data (phone, email, and address appear both in the main header AND the contact card on the right). The layout feels unstructured.
 
-## Root Cause
-`ContactDetailsTab.tsx` sets `isEditing = true` when `triggerEdit` changes, but there is no `scrollIntoView()` call to bring the edit form into the viewport.
+## Proposed Layout
 
-## Changes
+Reorganize into a compact, well-structured header with clear visual hierarchy:
 
-### `src/components/contact-profile/ContactDetailsTab.tsx`
-
-**Add a ref to the Contact Information card and scroll to it when edit is triggered:**
-
-1. Add a `useRef` for the edit section (the "Contact Information" card around line 345)
-2. In the existing `useEffect` that responds to `triggerEdit` (lines 62-67), after setting `isEditing(true)`, call `scrollIntoView` with a small delay to allow the DOM to update:
-
-```typescript
-const editSectionRef = useRef<HTMLDivElement>(null);
-
-useEffect(() => {
-  if (triggerEdit > 0 && triggerEdit !== prevTriggerEdit.current) {
-    setIsEditing(true);
-    prevTriggerEdit.current = triggerEdit;
-    // Scroll the edit form into view after a brief delay for render
-    setTimeout(() => {
-      editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
-  }
-}, [triggerEdit]);
+```text
++------------------------------------------------------------------+
+| [Back]  Name H1  [Status Dropdown]         [Contact Card - Right] |
+|                                             - Name, Phone, Email  |
+|  Pin LEAD PROPERTY                          - Address             |
+|  123 Main St, City, ST ZIP  [Re-verify]     - Qualification       |
+|                                             - Link to contact     |
+|  Phone: 555-1234  |  Email: a@b.com        |                     |
+|                                                                   |
+|  Priority: High  |  Roof: Tile  |  Age: 7yr  |  Value: $2,000 [E]|
+|  Sales Rep: John Smith [E]   Secondary: Jane [E]                  |
++------------------------------------------------------------------+
 ```
 
-3. Attach the ref to the "Contact Information" card:
+### Changes to `src/pages/LeadDetails.tsx`
+
+**1. Consolidate the property details row (lines 773-806)**
+- Make the address display more compact: single line with smaller text, remove the "LEAD PROPERTY" label since it's obvious from context
+- Keep MapPin icon and Re-verify button inline
+
+**2. Compact the contact info row (lines 808-828)**
+- Merge phone and email into a single tight row with pipe separators
+- Use slightly smaller text
+
+**3. Consolidate project metadata row (lines 830-864)**
+- Keep Priority, Roof, Roof Age, Est. Value, and Edit button in one compact row
+- Use a subtle background/border to visually group them as a "stats bar"
+
+**4. Merge Sales Rep and Secondary Rep into one row (lines 866-985)**
+- Display both reps on a single line separated by a divider
+- Reduces two rows to one
+
+**5. Remove duplicate info from Contact Card (lines 989-1068)**
+- Since phone, email, and address are already in the main header, the contact card should be slimmer
+- Keep: Contact name (as link), qualification status dropdown, and external link button
+- Remove: phone, email, and address from the card (they're redundant)
+
+### Specific Code Changes
+
+**Address section** - Remove the "LEAD PROPERTY" label, make it a single compact line:
 ```tsx
-<Card className="shadow-soft" ref={editSectionRef}>
+<div className="flex items-center gap-2 mt-2 text-sm">
+  <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
+  <p className="text-foreground">
+    {address text}
+  </p>
+  <AddressReverificationButton ... />
+</div>
+```
+
+**Stats bar** - Wrap in a subtle card-like container:
+```tsx
+<div className="flex items-center gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2">
+  {/* Priority, Roof, Age, Value, Edit */}
+</div>
+```
+
+**Sales reps** - Combine into one row:
+```tsx
+<div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
+  <div className="flex items-center gap-2">
+    <span className="text-muted-foreground">Rep:</span>
+    {/* rep name + edit */}
+  </div>
+  <span className="text-muted-foreground">|</span>
+  <div className="flex items-center gap-2">
+    <span className="text-muted-foreground">Split Rep:</span>
+    {/* secondary rep or Add button */}
+  </div>
+</div>
+```
+
+**Contact Card** - Slim down by removing redundant fields:
+```tsx
+<Card className="w-64 shadow-soft border-primary/20">
+  {/* Keep: header with Contact label, qualification dropdown, external link */}
+  {/* Keep: contact name */}
+  {/* Remove: phone, email, address (already in main header) */}
+</Card>
 ```
 
 ## Result
-Clicking the header "Edit" button will smoothly scroll the page down to the Contact Information card, which is now in edit mode with all form fields visible. The user gets immediate visual feedback that the button worked.
+- Header shrinks from ~6 vertical sections to ~4 compact rows
+- No redundant data between header and contact card
+- Project metadata visually grouped in a subtle stats bar
+- Sales reps consolidated to one line
+- Cleaner, more professional appearance matching the detail-page-layout-protocol
