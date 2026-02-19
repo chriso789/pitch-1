@@ -284,6 +284,7 @@ const PageShell: React.FC<{
   pageNumber: number;
   totalPages: number;
   showHeader?: boolean;
+  isSignaturePage?: boolean;
 }> = ({
   children,
   companyLogo,
@@ -296,10 +297,12 @@ const PageShell: React.FC<{
   pageNumber,
   totalPages,
   showHeader = true,
+  isSignaturePage = false,
 }) => {
   return (
     <div 
       data-report-page
+      {...(isSignaturePage ? { 'data-signature-page': true } : {})}
       className="bg-white text-black flex flex-col pdf-render-container"
       style={{ 
         width: `${PAGE_WIDTH}px`, 
@@ -403,6 +406,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Photos page count calculated below
     
     let currentPage = 0;
+    // Track which page index (in pageList) contains the signature block
+    let signaturePageIdx: number | null = null;
 
     // Cover page (if enabled) - prepended before other content
     if (opts.showCoverPage) {
@@ -425,6 +430,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
 
     // Page 1: Customer info + first chunk of items + summary
     currentPage++;
+    const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions;
+    if (firstPageHasTerms && opts.showSignatureBlock) {
+      signaturePageIdx = pageList.length; // index of this page in the list
+    }
     pageList.push(
       <FirstPage
         key="page-1"
@@ -437,7 +446,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         breakdown={breakdown}
         config={config}
         opts={opts}
-        showTerms={itemChunks.length <= 1 && opts.showTermsAndConditions}
+        showTerms={firstPageHasTerms}
         finePrintContent={opts.showCustomFinePrint ? finePrintContent : undefined}
       />
     );
@@ -446,6 +455,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     for (let i = 1; i < itemChunks.length; i++) {
       currentPage++;
       const isLastItemPage = i === itemChunks.length - 1;
+      const showTerms = isLastItemPage && opts.showTermsAndConditions;
+      if (showTerms && opts.showSignatureBlock) {
+        signaturePageIdx = pageList.length;
+      }
       pageList.push(
         <ItemsContinuationPage
           key={`items-page-${i + 1}`}
@@ -454,7 +467,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           breakdown={isLastItemPage ? breakdown : undefined}
           config={isLastItemPage ? config : undefined}
           opts={opts}
-          showTerms={isLastItemPage && opts.showTermsAndConditions}
+          showTerms={showTerms}
           finePrintContent={isLastItemPage && opts.showCustomFinePrint ? finePrintContent : undefined}
         />
       );
@@ -492,7 +505,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       });
     }
 
-    return { pages: pageList, totalPages: totalPageCount };
+    return { pages: pageList, totalPages: totalPageCount, signaturePageIdx };
   }, [materialItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent]);
 
   const commonProps = {
@@ -523,6 +536,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
             key={idx}
             {...commonProps}
             pageNumber={idx + 1}
+            isSignaturePage={idx === pages.signaturePageIdx}
           >
             {pageContent}
           </PageShell>

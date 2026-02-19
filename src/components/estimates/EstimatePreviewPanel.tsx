@@ -364,12 +364,15 @@ export function EstimatePreviewPanel({
       // Count actual pages
       const pageCount = container.querySelectorAll('[data-report-page]').length;
       
-      // Count estimate-only pages (before attachment pages)
-      const estimatePages = container.querySelectorAll('#estimate-pdf-pages [data-report-page]');
-      const estimatePageCount = estimatePages.length;
-      const sigPageIdx = estimatePageCount > 0 ? estimatePageCount - 1 : null;
+      // Find the signature page using the data-signature-page marker
+      const allPages = Array.from(container.querySelectorAll('[data-report-page]'));
+      const sigPage = container.querySelector('[data-signature-page]');
+      let sigPageIdx: number | null = null;
+      if (sigPage) {
+        sigPageIdx = allPages.indexOf(sigPage as Element);
+      }
       setSignaturePageIndex(sigPageIdx);
-      console.log(`[Share] Generating PDF with ${pageCount} pages (${estimatePageCount} estimate pages, signature on page ${sigPageIdx})`);
+      console.log(`[Share] Generating PDF with ${pageCount} pages, signature on page ${sigPageIdx} (found via data-signature-page)`);
       
       // Generate multi-page PDF (captures each [data-report-page] separately)
       const result = await generateMultiPagePDF('estimate-preview-template', pageCount, {
