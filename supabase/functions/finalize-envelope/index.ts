@@ -138,7 +138,7 @@ serve(async (req: Request) => {
             const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
             
             let sigX = 60;
-            let sigY = 120; // signature block area near bottom
+            let sigY = 215; // signature block area – aligns with "Customer Signature" line
             const maxSigWidth = 180;
             const maxSigHeight = 55;
             const sigSpacing = 220;
@@ -170,24 +170,24 @@ serve(async (req: Request) => {
                   height: drawH,
                 });
 
-                // Draw signer name, date, and IP below signature
+                // Draw signer name, date, and IP below the signature line
                 lastPage.drawText(recipientName, {
                   x: sigX,
-                  y: sigY - 14,
+                  y: sigY - 65,
                   size: 9,
                   font: helveticaBoldFont,
                   color: rgb(0, 0, 0),
                 });
                 lastPage.drawText(`Date: ${signedDate}`, {
                   x: sigX,
-                  y: sigY - 26,
+                  y: sigY - 77,
                   size: 8,
                   font: helveticaFont,
                   color: rgb(0.3, 0.3, 0.3),
                 });
                 lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
                   x: sigX,
-                  y: sigY - 37,
+                  y: sigY - 88,
                   size: 7,
                   font: helveticaFont,
                   color: rgb(0.5, 0.5, 0.5),
@@ -233,21 +233,21 @@ serve(async (req: Request) => {
                   });
                   lastPage.drawText(recipientName, {
                     x: sigX,
-                    y: sigY - 14,
+                    y: sigY - 65,
                     size: 9,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0),
                   });
                   lastPage.drawText(`Date: ${signedDate}`, {
                     x: sigX,
-                    y: sigY - 26,
+                    y: sigY - 77,
                     size: 8,
                     font: helveticaFont,
                     color: rgb(0.3, 0.3, 0.3),
                   });
                   lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
                     x: sigX,
-                    y: sigY - 37,
+                    y: sigY - 88,
                     size: 7,
                     font: helveticaFont,
                     color: rgb(0.5, 0.5, 0.5),
