@@ -1,98 +1,31 @@
 
+# Fix: Photo Upload Fails - "Could not find 'file_path' column"
 
-# Clean Up Lead Details Header
+## Root Cause
+The error message says it all: **"Could not find the 'file_path' column of 'customer_photos' in the schema cache"**
 
-## Problem
-The lead details header is cluttered and takes up too much vertical space. Information is spread across 6+ rows with redundant data (phone, email, and address appear both in the main header AND the contact card on the right). The layout feels unstructured.
-
-## Proposed Layout
-
-Reorganize into a compact, well-structured header with clear visual hierarchy:
-
-```text
-+------------------------------------------------------------------+
-| [Back]  Name H1  [Status Dropdown]         [Contact Card - Right] |
-|                                             - Name, Phone, Email  |
-|  Pin LEAD PROPERTY                          - Address             |
-|  123 Main St, City, ST ZIP  [Re-verify]     - Qualification       |
-|                                             - Link to contact     |
-|  Phone: 555-1234  |  Email: a@b.com        |                     |
-|                                                                   |
-|  Priority: High  |  Roof: Tile  |  Age: 7yr  |  Value: $2,000 [E]|
-|  Sales Rep: John Smith [E]   Secondary: Jane [E]                  |
-+------------------------------------------------------------------+
+In `src/components/photos/LeadPhotoUploader.tsx` (line 222), the insert payload uses `file_path`:
+```typescript
+file_path: fileName,  // WRONG - column doesn't exist
 ```
 
-### Changes to `src/pages/LeadDetails.tsx`
+But the actual `customer_photos` table schema has **`file_name`**, not `file_path`. The column names in the database are:
+- `file_name` (exists)
+- `file_url` (exists)
+- `file_path` (does NOT exist)
 
-**1. Consolidate the property details row (lines 773-806)**
-- Make the address display more compact: single line with smaller text, remove the "LEAD PROPERTY" label since it's obvious from context
-- Keep MapPin icon and Re-verify button inline
+## Fix
 
-**2. Compact the contact info row (lines 808-828)**
-- Merge phone and email into a single tight row with pipe separators
-- Use slightly smaller text
+### `src/components/photos/LeadPhotoUploader.tsx` (line 222)
 
-**3. Consolidate project metadata row (lines 830-864)**
-- Keep Priority, Roof, Roof Age, Est. Value, and Edit button in one compact row
-- Use a subtle background/border to visually group them as a "stats bar"
+Change `file_path` to `file_name` in the insert payload:
 
-**4. Merge Sales Rep and Secondary Rep into one row (lines 866-985)**
-- Display both reps on a single line separated by a divider
-- Reduces two rows to one
+```typescript
+// Before
+file_path: fileName,
 
-**5. Remove duplicate info from Contact Card (lines 989-1068)**
-- Since phone, email, and address are already in the main header, the contact card should be slimmer
-- Keep: Contact name (as link), qualification status dropdown, and external link button
-- Remove: phone, email, and address from the card (they're redundant)
-
-### Specific Code Changes
-
-**Address section** - Remove the "LEAD PROPERTY" label, make it a single compact line:
-```tsx
-<div className="flex items-center gap-2 mt-2 text-sm">
-  <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
-  <p className="text-foreground">
-    {address text}
-  </p>
-  <AddressReverificationButton ... />
-</div>
+// After
+file_name: fileName,
 ```
 
-**Stats bar** - Wrap in a subtle card-like container:
-```tsx
-<div className="flex items-center gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2">
-  {/* Priority, Roof, Age, Value, Edit */}
-</div>
-```
-
-**Sales reps** - Combine into one row:
-```tsx
-<div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
-  <div className="flex items-center gap-2">
-    <span className="text-muted-foreground">Rep:</span>
-    {/* rep name + edit */}
-  </div>
-  <span className="text-muted-foreground">|</span>
-  <div className="flex items-center gap-2">
-    <span className="text-muted-foreground">Split Rep:</span>
-    {/* secondary rep or Add button */}
-  </div>
-</div>
-```
-
-**Contact Card** - Slim down by removing redundant fields:
-```tsx
-<Card className="w-64 shadow-soft border-primary/20">
-  {/* Keep: header with Contact label, qualification dropdown, external link */}
-  {/* Keep: contact name */}
-  {/* Remove: phone, email, address (already in main header) */}
-</Card>
-```
-
-## Result
-- Header shrinks from ~6 vertical sections to ~4 compact rows
-- No redundant data between header and contact card
-- Project metadata visually grouped in a subtle stats bar
-- Sales reps consolidated to one line
-- Cleaner, more professional appearance matching the detail-page-layout-protocol
+This is a one-line fix. No other files or database changes needed -- the storage upload succeeds (photos reach the bucket), but the database record insert fails because of the wrong column name. Once corrected, the DB insert will succeed and photos will save properly.
