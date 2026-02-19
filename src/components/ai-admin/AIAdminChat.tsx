@@ -12,14 +12,27 @@ import { useActiveTenantId } from "@/hooks/useActiveTenantId";
 import { toast } from "sonner";
 import {
   Bot, Send, Plus, Loader2, User, Sparkles,
-  History, FolderKanban, ChevronRight, Cpu
+  History, FolderKanban, Cpu, Paperclip, X, Image as ImageIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// ── Types ────────────────────────────────────────────────────
+
+interface MessageContentPart {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: { url: string };
+}
 
 interface Message {
   id: string;
   role: "user" | "assistant";
-  content: string;
+  content: string | MessageContentPart[];
+}
+
+interface PendingImage {
+  file: File;
+  preview: string;
 }
 
 interface ChangeEntry {
@@ -38,6 +51,41 @@ interface ProjectEntry {
   updated_at: string;
 }
 
+// ── Helpers ──────────────────────────────────────────────────
+
+function getMessageText(content: string | MessageContentPart[]): string {
+  if (typeof content === "string") return content;
+  return content
+    .filter((p) => p.type === "text")
+    .map((p) => p.text || "")
+    .join(" ");
+}
+
+function getMessageImages(content: string | MessageContentPart[]): string[] {
+  if (typeof content === "string") return [];
+  return content
+    .filter((p) => p.type === "image_url" && p.image_url?.url)
+    .map((p) => p.image_url!.url);
+}
+
+/** Serialize content for DB storage (always a string column) */
+function serializeContent(content: string | MessageContentPart[]): string {
+  if (typeof content === "string") return content;
+  return JSON.stringify(content);
+}
+
+/** Deserialize content coming from DB */
+function deserializeContent(raw: string): string | MessageContentPart[] {
+  if (!raw.startsWith("[")) return raw;
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0 && parsed[0].type) return parsed;
+  } catch { /* not json */ }
+  return raw;
+}
+
+// ── Constants ────────────────────────────────────────────────
+
 const SUGGESTED_PROMPTS = [
   "Show me all pipeline stages",
   "What changes have been made recently?",
@@ -50,6 +98,10 @@ const SUGGESTED_PROMPTS = [
 ];
 
 const CHAT_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/ai-admin-agent`;
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
+const ALLOWED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+
+// ── Component ────────────────────────────────────────────────
 
 export const AIAdminChat: React.FC = () => {
   const { user } = useCurrentUser();
@@ -62,8 +114,12 @@ export const AIAdminChat: React.FC = () => {
   const [sidebarTab, setSidebarTab] = useState<"changes" | "projects">("changes");
   const [changes, setChanges] = useState<ChangeEntry[]>([]);
   const [projects, setProjects] = useState<ProjectEntry[]>([]);
+  const [pendingImages, setPendingImages] = useState<PendingImage[]>([]);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -77,6 +133,13 @@ export const AIAdminChat: React.FC = () => {
     loadChanges();
     loadProjects();
   }, [user?.id, activeTenantId]);
+
+  // Cleanup preview URLs on unmount
+  useEffect(() => {
+    return () => {
+      pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+    };
+  }, []);
 
   const loadChanges = async () => {
     if (!activeTenantId) return;
@@ -123,7 +186,7 @@ export const AIAdminChat: React.FC = () => {
         setMessages(msgs.map((m) => ({
           id: m.id,
           role: m.role as "user" | "assistant",
-          content: m.content,
+          content: deserializeContent(m.content),
         })));
       }
     }
@@ -141,10 +204,10 @@ export const AIAdminChat: React.FC = () => {
     return data.id;
   };
 
-  const persistMessage = async (sid: string, role: string, content: string, actionsTaken?: unknown) => {
+  const persistMessage = async (sid: string, role: string, content: string | MessageContentPart[], actionsTaken?: unknown) => {
     if (!activeTenantId) return;
     await supabase.from("ai_chat_messages").insert({
-      session_id: sid, tenant_id: activeTenantId, role, content,
+      session_id: sid, tenant_id: activeTenantId, role, content: serializeContent(content),
       actions_taken: (actionsTaken || null) as any,
     } as any);
     await supabase.from("ai_chat_sessions")
@@ -152,11 +215,114 @@ export const AIAdminChat: React.FC = () => {
       .eq("id", sid);
   };
 
+  // ── Image handling ─────────────────────────────────────────
+
+  const addPendingImage = useCallback((file: File) => {
+    if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
+      toast.error("Only PNG, JPEG, WebP, and GIF images are supported.");
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE) {
+      toast.error("Image must be under 10MB.");
+      return;
+    }
+    const preview = URL.createObjectURL(file);
+    setPendingImages((prev) => [...prev, { file, preview }]);
+  }, []);
+
+  const removePendingImage = useCallback((index: number) => {
+    setPendingImages((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  const uploadImages = async (): Promise<string[]> => {
+    if (!activeTenantId || pendingImages.length === 0) return [];
+    setIsUploading(true);
+    const urls: string[] = [];
+    try {
+      for (const img of pendingImages) {
+        const ext = img.file.name.split(".").pop()?.toLowerCase() || "png";
+        const path = `${activeTenantId}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage
+          .from("ai-admin-uploads")
+          .upload(path, img.file, { contentType: img.file.type, upsert: false });
+        if (error) throw error;
+        const { data: urlData } = supabase.storage.from("ai-admin-uploads").getPublicUrl(path);
+        urls.push(urlData.publicUrl);
+      }
+    } finally {
+      setIsUploading(false);
+    }
+    return urls;
+  };
+
+  const handlePaste = useCallback((e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    let hasImage = false;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) { addPendingImage(file); hasImage = true; }
+      }
+    }
+    // Only prevent default if we captured an image (allow text paste)
+    if (hasImage) e.preventDefault();
+  }, [addPendingImage]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    const files = Array.from(e.dataTransfer.files);
+    files.forEach((f) => { if (f.type.startsWith("image/")) addPendingImage(f); });
+  }, [addPendingImage]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragOver(true); }, []);
+  const handleDragLeave = useCallback((e: React.DragEvent) => { e.preventDefault(); setIsDragOver(false); }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    files.forEach((f) => addPendingImage(f));
+    e.target.value = "";
+  }, [addPendingImage]);
+
+  // ── Send ───────────────────────────────────────────────────
+
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isLoading) return;
-    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: text.trim() };
+    if ((!text.trim() && pendingImages.length === 0) || isLoading) return;
+
+    // Upload pending images first
+    let imageUrls: string[] = [];
+    if (pendingImages.length > 0) {
+      try {
+        imageUrls = await uploadImages();
+      } catch (err) {
+        toast.error("Failed to upload images");
+        console.error(err);
+        return;
+      }
+    }
+
+    // Build content
+    let msgContent: string | MessageContentPart[];
+    if (imageUrls.length > 0) {
+      const parts: MessageContentPart[] = [];
+      imageUrls.forEach((url) => parts.push({ type: "image_url", image_url: { url } }));
+      if (text.trim()) parts.push({ type: "text", text: text.trim() });
+      msgContent = parts;
+    } else {
+      msgContent = text.trim();
+    }
+
+    const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: msgContent };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    // Clear pending images
+    pendingImages.forEach((img) => URL.revokeObjectURL(img.preview));
+    setPendingImages([]);
     setIsLoading(true);
 
     let sid = sessionId;
@@ -164,8 +330,9 @@ export const AIAdminChat: React.FC = () => {
       sid = await createSession();
       if (!sid) { toast.error("Failed to create chat session"); setIsLoading(false); return; }
     }
-    await persistMessage(sid, "user", userMsg.content);
+    await persistMessage(sid, "user", msgContent);
 
+    // Build API messages — always send content as-is (string or array)
     const apiMessages = [...messages, userMsg].map((m) => ({ role: m.role, content: m.content }));
     let assistantContent = "";
 
@@ -195,7 +362,6 @@ export const AIAdminChat: React.FC = () => {
       }
 
       const actionsTaken = resp.headers.get("X-Actions-Taken");
-
       const reader = resp.body!.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
@@ -253,8 +419,6 @@ export const AIAdminChat: React.FC = () => {
       if (assistantContent) {
         await persistMessage(sid, "assistant", assistantContent, actionsTaken ? JSON.parse(actionsTaken) : null);
       }
-
-      // Refresh sidebar data after response (may have made changes)
       loadChanges();
       loadProjects();
     } catch (err) {
@@ -263,11 +427,12 @@ export const AIAdminChat: React.FC = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [messages, isLoading, sessionId, activeTenantId, selectedModel]);
+  }, [messages, isLoading, sessionId, activeTenantId, selectedModel, pendingImages]);
 
   const handleNewConversation = async () => {
     setMessages([]);
     setSessionId(null);
+    setPendingImages([]);
     inputRef.current?.focus();
   };
 
@@ -288,10 +453,27 @@ export const AIAdminChat: React.FC = () => {
     return date.toLocaleDateString();
   };
 
+  // ── Render ─────────────────────────────────────────────────
+
   return (
-    <div className="flex h-[calc(100vh-280px)] min-h-[500px] gap-4">
+    <div
+      className="flex h-[calc(100vh-280px)] min-h-[500px] gap-4"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {/* Drag overlay */}
+      {isDragOver && (
+        <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm border-2 border-dashed border-primary rounded-lg pointer-events-none">
+          <div className="flex flex-col items-center gap-2 text-primary">
+            <ImageIcon className="h-10 w-10" />
+            <p className="text-sm font-medium">Drop images here</p>
+          </div>
+        </div>
+      )}
+
       {/* Main Chat Area */}
-      <div className="flex flex-col flex-1 min-w-0">
+      <div className="flex flex-col flex-1 min-w-0 relative">
         {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-border">
           <div className="flex items-center gap-3">
@@ -306,7 +488,6 @@ export const AIAdminChat: React.FC = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Model Selector */}
             <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
               <button
                 onClick={() => setSelectedModel("openai")}
@@ -317,10 +498,7 @@ export const AIAdminChat: React.FC = () => {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <span className="flex items-center gap-1.5">
-                  <Cpu className="h-3 w-3" />
-                  GPT-4o
-                </span>
+                <span className="flex items-center gap-1.5"><Cpu className="h-3 w-3" />GPT-4o</span>
               </button>
               <button
                 onClick={() => setSelectedModel("claude")}
@@ -331,15 +509,11 @@ export const AIAdminChat: React.FC = () => {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                <span className="flex items-center gap-1.5">
-                  <Cpu className="h-3 w-3" />
-                  Claude
-                </span>
+                <span className="flex items-center gap-1.5"><Cpu className="h-3 w-3" />Claude</span>
               </button>
             </div>
             <Button variant="outline" size="sm" onClick={handleNewConversation}>
-              <Plus className="h-4 w-4 mr-1" />
-              New Chat
+              <Plus className="h-4 w-4 mr-1" />New Chat
             </Button>
           </div>
         </div>
@@ -370,35 +544,53 @@ export const AIAdminChat: React.FC = () => {
               </div>
             </div>
           ) : (
-            messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}
-              >
-                {msg.role === "assistant" && (
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
-                    <Bot className="h-4 w-4 text-primary" />
-                  </div>
-                )}
-                <Card className={cn(
-                  "max-w-[80%] px-4 py-3",
-                  msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
-                )}>
-                  {msg.role === "assistant" ? (
-                    <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                      <ReactMarkdown>{msg.content}</ReactMarkdown>
+            messages.map((msg) => {
+              const images = getMessageImages(msg.content);
+              const text = getMessageText(msg.content);
+              return (
+                <div
+                  key={msg.id}
+                  className={cn("flex gap-3", msg.role === "user" ? "justify-end" : "justify-start")}
+                >
+                  {msg.role === "assistant" && (
+                    <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0 mt-1">
+                      <Bot className="h-4 w-4 text-primary" />
                     </div>
-                  ) : (
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
                   )}
-                </Card>
-                {msg.role === "user" && (
-                  <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center shrink-0 mt-1">
-                    <User className="h-4 w-4 text-secondary-foreground" />
-                  </div>
-                )}
-              </div>
-            ))
+                  <Card className={cn(
+                    "max-w-[80%] px-4 py-3",
+                    msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-muted"
+                  )}>
+                    {/* Render images inline */}
+                    {images.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {images.map((url, i) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                            <img
+                              src={url}
+                              alt={`Uploaded image ${i + 1}`}
+                              className="max-h-40 max-w-[200px] rounded-md object-cover border border-border/30"
+                            />
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {msg.role === "assistant" ? (
+                      <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
+                        <ReactMarkdown>{text}</ReactMarkdown>
+                      </div>
+                    ) : (
+                      text && <p className="text-sm whitespace-pre-wrap">{text}</p>
+                    )}
+                  </Card>
+                  {msg.role === "user" && (
+                    <div className="h-8 w-8 rounded-full bg-secondary flex items-center justify-center shrink-0 mt-1">
+                      <User className="h-4 w-4 text-secondary-foreground" />
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
           {isLoading && messages[messages.length - 1]?.role !== "assistant" && (
             <div className="flex gap-3">
@@ -412,26 +604,66 @@ export const AIAdminChat: React.FC = () => {
           )}
         </div>
 
-        {/* Input */}
+        {/* Input area */}
         <div className="border-t border-border pt-4">
+          {/* Pending image previews */}
+          {pendingImages.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {pendingImages.map((img, i) => (
+                <div key={i} className="relative group">
+                  <img
+                    src={img.preview}
+                    alt={`Pending ${i + 1}`}
+                    className="h-16 w-16 rounded-md object-cover border border-border"
+                  />
+                  <button
+                    onClick={() => removePendingImage(i)}
+                    className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-destructive-foreground flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/gif"
+              multiple
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              className="shrink-0 h-[44px] w-[44px]"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isLoading || isUploading}
+              title="Attach image"
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
             <Textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about settings, pipeline data, changes, projects..."
+              onPaste={handlePaste}
+              placeholder={pendingImages.length > 0 ? "Add a message or send images..." : "Ask about settings, pipeline data, changes, projects..."}
               className="min-h-[44px] max-h-[120px] resize-none"
               disabled={isLoading}
               rows={1}
             />
             <Button
               onClick={() => sendMessage(input)}
-              disabled={!input.trim() || isLoading}
+              disabled={(!input.trim() && pendingImages.length === 0) || isLoading || isUploading}
               size="icon"
               className="shrink-0 h-[44px] w-[44px]"
             >
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+              {isLoading || isUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
             </Button>
           </div>
         </div>
@@ -442,12 +674,10 @@ export const AIAdminChat: React.FC = () => {
         <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as any)} className="flex flex-col flex-1">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="changes" className="text-xs">
-              <History className="h-3 w-3 mr-1" />
-              Changes
+              <History className="h-3 w-3 mr-1" />Changes
             </TabsTrigger>
             <TabsTrigger value="projects" className="text-xs">
-              <FolderKanban className="h-3 w-3 mr-1" />
-              Projects
+              <FolderKanban className="h-3 w-3 mr-1" />Projects
             </TabsTrigger>
           </TabsList>
 
