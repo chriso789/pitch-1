@@ -490,13 +490,22 @@ export function EstimatePreviewPanel({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:z-[60] [&>button:last-child]:top-5 [&>button:last-child]:right-5">
+      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:hidden">
         <DialogHeader className="px-6 py-4 border-b relative z-10">
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
             Preview Estimate
           </DialogTitle>
+          <button
+            type="button"
+            className="absolute right-4 top-4 z-[70] rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            onClick={() => onOpenChange(false)}
+          >
+            <X className="h-4 w-4" />
+            <span className="sr-only">Close</span>
+          </button>
         </DialogHeader>
 
         <div className="flex h-[calc(95vh-120px)] min-h-0">
@@ -913,19 +922,21 @@ export function EstimatePreviewPanel({
         </div>
       </DialogContent>
 
-      {/* Share Estimate Dialog */}
-      <ShareEstimateDialog
-        open={showShareDialog}
-        onOpenChange={setShowShareDialog}
-        estimateId={estimateId}
-        pipelineEntryId={pipelineEntryId}
-        contactId={contactId}
-        customerEmail={customerEmail || ''}
-        customerName={customerName}
-        estimateNumber={estimateNumber}
-        estimateDisplayName={estimateDisplayName}
-      />
     </Dialog>
+
+    {/* Share Estimate Dialog - rendered outside Dialog root to prevent Radix context conflicts */}
+    <ShareEstimateDialog
+      open={showShareDialog}
+      onOpenChange={setShowShareDialog}
+      estimateId={estimateId}
+      pipelineEntryId={pipelineEntryId}
+      contactId={contactId}
+      customerEmail={customerEmail || ''}
+      customerName={customerName}
+      estimateNumber={estimateNumber}
+      estimateDisplayName={estimateDisplayName}
+    />
+    </>
   );
 }
 
