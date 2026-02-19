@@ -86,10 +86,11 @@ serve(async (req: Request) => {
     // Generate signature hash for tamper evidence
     const signatureHash = await hashToken(body.signature_data);
 
-    // Upload signature image to storage (if drawn/uploaded)
+    // Upload signature image to storage for ANY type when data is a base64 image
     let imagePath: string | null = null;
+    const isBase64Image = body.signature_data.startsWith('data:image');
 
-    if (body.signature_type === 'drawn' || body.signature_type === 'uploaded') {
+    if (isBase64Image) {
       try {
         const base64Data = body.signature_data.replace(/^data:image\/\w+;base64,/, '');
         const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
