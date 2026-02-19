@@ -1,60 +1,43 @@
 
-# Add AI Admin Button to Sidebar (Between Help and Settings)
 
-## Overview
-Add a dedicated "AI Admin" navigation link in the sidebar's bottom section, positioned between Help and Settings. Only visible to users with the `master` role.
+# Show Line Item Notes in Estimate Preview
 
-## Change
+## Problem
+Line item notes (Color/Specs) are saved in the database but never displayed in the estimate preview PDF. The preview templates only show `item.description` — they completely skip `item.notes`.
 
-### File: `src/shared/components/layout/Sidebar.tsx`
+## Root Cause
+Both PDF rendering components render descriptions but ignore notes:
+- `EstimatePDFTemplate.tsx` (lines 268-273, 317-319): only checks `item.description`
+- `EstimatePDFDocument.tsx` (lines 657-662): only checks `item.description`
 
-**1. Reorder `bottomNavigation` array (lines 319-335)**
+The `notes` field is defined on the LineItem interface (line 9 of `useEstimatePricing.ts`) and is editable in the estimate builder via `SectionedLineItemsTable.tsx`, but never passed through to the preview.
 
-Change the order and add an AI Admin entry:
+## Changes
 
-```typescript
-const bottomNavigation = [
-  {
-    name: "Help",
-    href: "help",
-    path: "/help",
-    icon: HelpCircle,
-    description: "Support & documentation"
-  },
-  {
-    name: "AI Admin",
-    href: "ai-admin",
-    path: "/settings/ai-admin",
-    icon: Bot,
-    description: "AI backend builder",
-    masterOnly: true
-  },
-  {
-    name: "Settings",
-    href: "settings",
-    path: "/settings",
-    icon: Settings,
-    description: "System configuration",
-    testId: TEST_IDS.sidebar.settings
-  },
-];
+### 1. `src/components/estimates/EstimatePDFTemplate.tsx`
+**Unified view (line ~273)** and **Traditional view (line ~319)**: After the description block, add a notes block:
+
+```tsx
+{item.notes && (
+  <div className="text-xs text-gray-500 mt-0.5 leading-snug italic">
+    {item.notes}
+  </div>
+)}
 ```
 
-**2. Update `getActiveSection` (around line 105)**
+### 2. `src/components/estimates/EstimatePDFDocument.tsx`
+**ItemsTable component (line ~662)**: Same addition after the description block:
 
-Add a check for the AI Admin route:
-```typescript
-if (path.startsWith('/settings/ai-admin')) return 'ai-admin';
-```
-Place this **before** the existing `/settings` check so it matches first.
-
-**3. Filter `masterOnly` items in the bottom nav render (lines 677-707)**
-
-Add `.filter()` before `.map()` to hide `masterOnly` items for non-master users:
-```typescript
-{bottomNavigation
-  .filter(item => !item.masterOnly || currentUser?.role === 'master')
-  .map((item) => ( ... ))}
+```tsx
+{item.notes && (
+  <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+    {item.notes}
+  </div>
+)}
 ```
 
-No new files, no database changes. The `Bot` icon is already imported (line 35).
+### 3. Verify notes data flows through
+Check that the line items passed to the preview components include the `notes` field from the database. If the query fetching estimate line items doesn't select `notes`, that will also need to be added.
+
+## Result
+Each line item in the estimate preview will show its notes (e.g., "Charcoal", "Weathered Wood") beneath the item name, giving homeowners the specific details they need.
