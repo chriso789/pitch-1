@@ -125,7 +125,12 @@ serve(async (req: Request) => {
           // ============================================================
           const pageCount = pdfDoc.getPageCount();
           if (pageCount > 0 && signatures && signatures.length > 0) {
-            const lastPage = pdfDoc.getPage(pageCount - 1);
+            // Use signature_page_index if set, otherwise fallback to last page
+            const targetPageIdx = (envelope.signature_page_index != null && envelope.signature_page_index < pageCount)
+              ? envelope.signature_page_index
+              : pageCount - 1;
+            console.log(`Targeting page ${targetPageIdx} for signature (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount})`);
+            const lastPage = pdfDoc.getPage(targetPageIdx);
             const { width: pageWidth } = lastPage.getSize();
 
             // Place signatures on the signature block area of the last page

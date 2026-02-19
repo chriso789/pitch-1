@@ -24,6 +24,7 @@ interface RequestBody {
   contact_id?: string;
   cc?: string[];
   bcc?: string[];
+  signature_page_index?: number;
 }
 
 serve(async (req) => {
@@ -70,7 +71,7 @@ serve(async (req) => {
     }
 
     const body: RequestBody = await req.json();
-    const { document_id, document_type, recipients, email_subject, email_message, expire_days = 30, pipeline_entry_id, contact_id, cc, bcc } = body;
+    const { document_id, document_type, recipients, email_subject, email_message, expire_days = 30, pipeline_entry_id, contact_id, cc, bcc, signature_page_index } = body;
 
     if (!document_id || !recipients?.length) {
       return new Response(JSON.stringify({ error: "document_id and recipients required" }), {
@@ -165,6 +166,7 @@ serve(async (req) => {
         status: "pending",
         expires_at: expiresAt.toISOString(),
         created_by: user.id,
+        ...(signature_page_index != null ? { signature_page_index } : {}),
       })
       .select()
       .single();

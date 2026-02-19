@@ -30779,6 +30779,7 @@ export type Database = {
           pipeline_entry_id: string | null
           project_id: string | null
           sent_at: string | null
+          signature_page_index: number | null
           signed_pdf_path: string | null
           status: string
           template_id: string | null
@@ -30801,6 +30802,7 @@ export type Database = {
           pipeline_entry_id?: string | null
           project_id?: string | null
           sent_at?: string | null
+          signature_page_index?: number | null
           signed_pdf_path?: string | null
           status?: string
           template_id?: string | null
@@ -30823,6 +30825,7 @@ export type Database = {
           pipeline_entry_id?: string | null
           project_id?: string | null
           sent_at?: string | null
+          signature_page_index?: number | null
           signed_pdf_path?: string | null
           status?: string
           template_id?: string | null
