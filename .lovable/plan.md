@@ -1,71 +1,84 @@
 
 
-# Fix Signature Email: Company Domain and Subject Line
+# Fix PDF Size, Add "Approve & Sign" Button, and Fix SMS Notification
 
-## Problems Found
+## 1. Redesign Layout: Full-Screen PDF with Floating "Approve & Sign" Button
 
-### 1. Email comes from "PITCH CRM" instead of "O'Brien Contracting"
+The current side-by-side layout gives the signature panel ~35% of the screen, making the PDF feel cramped. Instead:
 
-**Root cause:** The `email-signature-request` function (line 66) tries to join tenant data using PostgREST:
-```
-.select("*, tenant:tenant_id(name, settings)")
-```
-But `signature_envelopes.tenant_id` has **no foreign key constraint** to the `tenants` table, so the join silently returns `null`. This causes:
-- `tenantName` falls back to `"PITCH CRM"` (line 70)
-- `tenantId` is `undefined` (line 73)
-- The company domain lookup block (lines 80-94) is skipped entirely
-- Email sends from `PITCH CRM <signatures@pitch-crm.ai>` instead of `O'Brien Contracting <support@obriencontractingusa.com>`
+- The PDF iframe will take up the **full viewport** (100% width, full height minus the thin header bar)
+- A prominent **"Approve & Sign"** button sits in the top-right header bar
+- Clicking it opens a **slide-over drawer** (from the right) containing the signature controls (draw/type, printed name, submit)
+- The download button stays in the header alongside the Approve & Sign button
+- On mobile, the drawer takes full width
 
-### 2. Subject not using the custom text typed in the share dialog
-
-The subject field IS being passed through correctly in the data, but when no custom subject is typed, it defaults to "Please sign: {estimate name}". If the user typed a custom subject, it does get used. However, the `documentTitle` (which becomes both the envelope title AND email subject) is being set on line 118 with the pattern `"Please sign: ..."` -- if the user expected their typed subject to override this, it should.
-
-## Fix
-
-### Database Migration -- Add Foreign Key
-
-```sql
-ALTER TABLE signature_envelopes
-  ADD CONSTRAINT fk_signature_envelopes_tenant
-  FOREIGN KEY (tenant_id) REFERENCES tenants(id);
+Layout:
+```text
++----------------------------------------------------------+
+|  [doc icon] Tile & Mortar Repair   [Download] [Approve & Sign] |
++----------------------------------------------------------+
+|                                                          |
+|              Full-screen PDF viewer                      |
+|              (100% width, calc(100vh - 57px))            |
+|                                                          |
+|                                                          |
++----------------------------------------------------------+
 ```
 
-This makes the PostgREST join work, so the function correctly resolves the tenant name, settings, and then finds the company email domain.
+When "Approve & Sign" is clicked, a right-side drawer slides in with the signature form, overlaying the PDF.
 
-### Fallback in `email-signature-request/index.ts`
+### File: `src/pages/PublicSignatureCapture.tsx`
 
-As a safety net (in case the join still returns null for edge cases), add a direct fallback query:
+- Remove the `flex-col lg:flex-row` split layout
+- Make the PDF iframe take full width/height
+- Add a `Sheet` (vaul drawer from shadcn) triggered by the "Approve & Sign" button
+- Move all signature controls (draw/type toggle, canvas, typed name input, printed name, legal notice, submit button) inside the Sheet content
+- The Sheet opens from the right side on desktop, bottom on mobile
 
+## 2. Fix SMS Notification: Pass `tenant_id` and `sent_by`
+
+The `notify-signature-opened` function calls `telnyx-send-sms` via `supabase.functions.invoke` without passing `tenant_id` or `sent_by`. The SMS function needs these to look up the correct outbound phone number for the company.
+
+### File: `supabase/functions/notify-signature-opened/index.ts`
+
+- Switch from `supabase.functions.invoke` to a direct `fetch` call (same pattern as `track-quote-view`)
+- Pass `tenant_id` from the envelope and `sent_by` as the envelope's `created_by`
+- Use the service role key in the Authorization header so `telnyx-send-sms` recognizes it as a service-to-service call
+
+Change from:
 ```typescript
-// After the existing join attempt (line 64-68):
-let tenantName = envelope?.tenant?.name || "PITCH CRM";
-let tenantId = envelope?.tenant_id;  // <-- use the column directly, not the joined object
-
-// If join didn't resolve tenant name, fetch directly
-if (tenantName === "PITCH CRM" && tenantId) {
-  const { data: tenantRow } = await supabase
-    .from("tenants")
-    .select("name, settings")
-    .eq("id", tenantId)
-    .single();
-  if (tenantRow) {
-    tenantName = tenantRow.name;
-    tenantSettings = tenantRow.settings || {};
-  }
-}
+await supabase.functions.invoke("telnyx-send-sms", {
+  body: { to: creatorProfile.phone, message, skipAuth: true }
+});
 ```
 
-The key fix: `tenantId` should be read from `envelope?.tenant_id` (the raw column) instead of `envelope?.tenant?.id` (the joined object). This ensures the company domain lookup runs even if the join fails.
+To:
+```typescript
+await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+  method: 'POST',
+  headers: {
+    'Authorization': `Bearer ${supabaseServiceKey}`,
+    'Content-Type': 'application/json'
+  },
+  body: JSON.stringify({
+    to: creatorProfile.phone,
+    message,
+    tenant_id: envelope.tenant_id,
+    sent_by: envelope.created_by,
+  })
+});
+```
 
-### Files Changed
+## Files Changed
 
 | File | Change |
 |------|--------|
-| Database migration | Add FK constraint on `signature_envelopes.tenant_id` to `tenants(id)` |
-| `supabase/functions/email-signature-request/index.ts` | Read `tenantId` from `envelope.tenant_id` directly; add fallback tenant query; ensure company domain lookup always runs |
+| `src/pages/PublicSignatureCapture.tsx` | Full-screen PDF layout with floating "Approve & Sign" button that opens a Sheet/drawer for signature capture |
+| `supabase/functions/notify-signature-opened/index.ts` | Fix SMS by using direct fetch with `tenant_id` and `sent_by` params |
 
-### Result
+## Result
 
-- Emails will come from `O'Brien Contracting <support@obriencontractingusa.com>` (the verified company domain)
-- The subject line uses whatever the user typed in the share dialog, falling back to `"Please sign: {estimate name}"` only if they left it blank
-- Footer says "Sent via O'Brien Contracting" instead of "PITCH CRM"
+- PDF takes up ~95% of the viewport -- full immersive viewing experience
+- "Approve & Sign" button is always visible in the top-right corner, no scrolling needed
+- Clicking it opens a clean drawer with signature controls overlaying the PDF
+- SMS notification actually sends to the rep when the customer opens the signing page
