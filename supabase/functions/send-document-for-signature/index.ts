@@ -101,21 +101,29 @@ serve(async (req) => {
         documentTitle = email_subject || `Please sign: ${data.title || 'Document'}`;
       }
     } else if (document_type === 'estimate') {
-      const { data } = await supabase
+      const { data, error: estError } = await supabase
         .from("enhanced_estimates")
-        .select("id, pdf_url, contact_id, pipeline_entry_id, estimate_number, display_name")
+        .select("id, pdf_url, pipeline_entry_id, estimate_number, display_name")
         .eq("id", document_id)
         .single();
-      if (data) {
-        pdfPath = data.pdf_url;
-        resolvedContactId = resolvedContactId || data.contact_id;
-        resolvedPipelineEntryId = resolvedPipelineEntryId || data.pipeline_entry_id;
-        documentTitle = email_subject || `Please sign: ${data.display_name || data.estimate_number || 'Estimate'}`;
-      } else {
+      if (estError || !data) {
+        console.error("Estimate lookup error:", estError);
         return new Response(JSON.stringify({ error: "Estimate not found" }), {
           status: 404,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
+      }
+      pdfPath = data.pdf_url;
+      resolvedPipelineEntryId = resolvedPipelineEntryId || data.pipeline_entry_id;
+      documentTitle = email_subject || `Please sign: ${data.display_name || data.estimate_number || 'Estimate'}`;
+      // Resolve contact_id from pipeline entry if not already set
+      if (!resolvedContactId && data.pipeline_entry_id) {
+        const { data: pe } = await supabase
+          .from("pipeline_entries")
+          .select("contact_id")
+          .eq("id", data.pipeline_entry_id)
+          .maybeSingle();
+        resolvedContactId = pe?.contact_id || null;
       }
     } else if (document_type === 'proposal') {
       const { data } = await supabase
