@@ -1,45 +1,41 @@
 
-# Add Email Field to the "Add New Lead" Form
+
+# Fix: Edit Button Appears Non-Functional on Contact Profile
 
 ## Problem
-The "Add New Lead" dialog (`EnhancedLeadCreationDialog.tsx`) has no email input, even though:
-- The `formData` state doesn't include an `email` field
-- The edge function `create-lead-with-contact` already accepts and handles `email` (dedup, contact creation)
-- The `SelectedContact` interface already has `email`
+The Edit button in the contact profile header does work -- it switches to the Details tab and enables editing mode. However, the edit form is inside the "Contact Information" card which sits far below the header (after Pipeline cards, Quick Stats, Homeowner Portal Access, etc.). Since the page does not scroll to the form, the user sees no visible change and assumes the button is broken.
+
+## Root Cause
+`ContactDetailsTab.tsx` sets `isEditing = true` when `triggerEdit` changes, but there is no `scrollIntoView()` call to bring the edit form into the viewport.
 
 ## Changes
 
-### `src/components/EnhancedLeadCreationDialog.tsx`
+### `src/components/contact-profile/ContactDetailsTab.tsx`
 
-**1. Add `email` to formData state (line ~101)**
-Insert `email: ""` into the initial formData object, right after `phone`.
+**Add a ref to the Contact Information card and scroll to it when edit is triggered:**
 
-**2. Add email input field in the left column (after Phone Number, around line ~669)**
-Add an email input between Phone Number and Roof Age:
-```tsx
-<div>
-  <Label htmlFor="email">Email</Label>
-  <Input
-    id="email"
-    type="email"
-    value={formData.email}
-    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-    placeholder="Enter email address"
-    disabled={formData.useSameInfo}
-  />
-</div>
+1. Add a `useRef` for the edit section (the "Contact Information" card around line 345)
+2. In the existing `useEffect` that responds to `triggerEdit` (lines 62-67), after setting `isEditing(true)`, call `scrollIntoView` with a small delay to allow the DOM to update:
+
+```typescript
+const editSectionRef = useRef<HTMLDivElement>(null);
+
+useEffect(() => {
+  if (triggerEdit > 0 && triggerEdit !== prevTriggerEdit.current) {
+    setIsEditing(true);
+    prevTriggerEdit.current = triggerEdit;
+    // Scroll the edit form into view after a brief delay for render
+    setTimeout(() => {
+      editSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }
+}, [triggerEdit]);
 ```
 
-**3. Pass email in handleSubmit body (line ~497)**
-Add `email: formData.email` to the edge function call body.
+3. Attach the ref to the "Contact Information" card:
+```tsx
+<Card className="shadow-soft" ref={editSectionRef}>
+```
 
-**4. Reset email on form clear (line ~546)**
-Add `email: ""` to the reset object.
-
-**5. Pre-fill email from linked contact**
-In the `useSameInfo` effect, set email from the selected contact when "Use same info" is checked.
-
-## Technical Notes
-- The field is optional (no asterisk, no validation required) -- email is not mandatory for lead creation
-- The `create-lead-with-contact` edge function already handles email for dedup matching and contact record creation, so no backend changes are needed
-- When "Use same info as contact" is checked, the email will auto-fill from the linked contact's record
+## Result
+Clicking the header "Edit" button will smoothly scroll the page down to the Contact Information card, which is now in edit mode with all form fields visible. The user gets immediate visual feedback that the button worked.
