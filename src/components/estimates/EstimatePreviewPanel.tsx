@@ -756,18 +756,20 @@ export function EstimatePreviewPanel({
 
             {/* Bottom Actions */}
             <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleResetToDefaults}
-                className="w-full"
-              >
-                <RotateCcw className="h-4 w-4 mr-2" />
-                Reset Defaults
-              </Button>
+              {/* Row 1: Reset + Save */}
               <div className="flex gap-2">
                 <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetToDefaults}
+                  className="flex-1"
+                >
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                  Reset Defaults
+                </Button>
+                <Button
                   variant="outline"
+                  size="sm"
                   onClick={handleSaveToDocuments}
                   disabled={isSaving || isExporting || isGeneratingPDF || !pipelineEntryId || !tenantId || !userId}
                   className="flex-1"
@@ -785,6 +787,9 @@ export function EstimatePreviewPanel({
                     </>
                   )}
                 </Button>
+              </div>
+              {/* Row 2: Share + Export */}
+              <div className="flex gap-2">
                 <Button
                   variant="outline"
                   onClick={handlePrepareAndShare}
