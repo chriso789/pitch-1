@@ -1,67 +1,83 @@
 
 
-# Fix Subject Line, Deploy Signing Page Layout, and Fix SMS Notification
+# Photo Grid Layout, Arrangement Selector, and Faster PDF Loading
 
-## 3 Issues Found
+## Problem Summary
 
-### Issue 1: "Please sign:" keeps appearing in subject/title
-**Root cause:** Two places add the "Please sign:" prefix as a fallback:
-- `ShareEstimateDialog.tsx` line 136: when the user leaves subject blank, it falls back to `"Please sign: Tile & Mortar Repair"`
-- `send-document-for-signature/index.ts` line 118: same pattern as a second fallback
+1. **Stretched photos**: When more than 2 photos are attached, they display full-width (single column `grid-cols-1`), making each image huge and stretched. Only 3 of several photos were included.
+2. **No layout control**: The "Review Estimate" page has no way to adjust how photos are arranged before export.
+3. **Slow PDF loading**: The html2canvas pipeline captures each photo at full resolution on a separate row, inflating page count and processing time.
 
-This `documentTitle` becomes the envelope's `title` (stored in the database), and also the email subject. So even if the user types a custom subject, if they leave it blank, the prefix gets added. The fix: use just the estimate display name without "Please sign:" as the fallback.
+## Solution
 
-### Issue 2: Document preview still shows old small layout
-**Root cause:** The code in `PublicSignatureCapture.tsx` IS already updated with the full-screen layout and "Approve & Sign" button. However, the user's screenshot is from `pitch-crm.ai` (the published/production domain). The latest code changes have not been published yet -- the production site still runs the old card-based layout.
+### 1. Smart Photo Grid Layout (Auto 2x2, 3x3, etc.)
 
-**Action needed:** Publish the app after these fixes. But I'll also verify the layout code is optimal.
+Replace the single-column photo layout in both PDF renderers with an automatic grid that adapts to the photo count:
 
-### Issue 3: No SMS text to the rep when customer opens signing page
-**Root cause:** The `notify-signature-opened` edge function has zero logs -- it was never invoked. The function call lives in the frontend code (`PublicSignatureCapture.tsx` line 59), but the published site has the OLD frontend code that doesn't include this call. Once published, the new code will invoke it.
+| Photo Count | Grid Layout |
+|---|---|
+| 1 | Full width (1 column) |
+| 2 | 2 columns side by side |
+| 3-4 | 2x2 grid |
+| 5-6 | 3x2 grid |
+| 7-9 | 3x3 grid |
+| 10+ | 4-column grid, multiple rows |
 
-I'll also verify the function is correctly deployed.
+Photos will use `object-cover` with a fixed aspect ratio to prevent stretching, and all photos will be included (no arbitrary limit).
 
----
+### 2. Photo Layout Selector in Review Estimate Page
 
-## Changes
+Add a dropdown next to the "Job Photos" toggle in the EstimatePreviewPanel that lets users pick their preferred arrangement:
 
-### 1. Remove "Please sign:" prefix (`ShareEstimateDialog.tsx`)
+- **Auto** (default) -- system picks best grid based on count
+- **1 Column** -- large, one per row (current behavior)
+- **2x2 Grid** -- 2 columns
+- **3x3 Grid** -- 3 columns
+- **4x4 Grid** -- 4 columns
 
-Line 136 -- change the fallback from:
-```
-email_subject: subject.trim() || `Please sign: ${estimateDisplayName || estimateNumber || 'Estimate'}`,
-```
-To:
-```
-email_subject: subject.trim() || estimateDisplayName || estimateNumber || 'Estimate',
-```
+The selected layout is passed through `PDFComponentOptions` to both `EstimatePDFTemplate` and `EstimatePDFDocument`.
 
-### 2. Remove "Please sign:" prefix (`send-document-for-signature/index.ts`)
+### 3. Faster PDF Generation for Photos
 
-Lines 85, 101, 118 -- remove "Please sign:" from all fallbacks:
-- Line 85: `"Please sign this document"` becomes `"Document Signature Request"`
-- Line 101: `"Please sign: ${data.title}"` becomes just `data.title || 'Document'`
-- Line 118: `"Please sign: ${data.display_name}"` becomes just `data.display_name || data.estimate_number || 'Estimate'`
+- Resize/compress images in the browser before html2canvas capture using an offscreen canvas (cap at 800px width)
+- Use JPEG at 0.7 quality for the photos page specifically
+- Pre-load all photo images before capture to avoid the 3-second timeout per image
 
-### 3. Re-deploy `notify-signature-opened` edge function
+## Technical Details
 
-Verify it's deployed and accessible so the SMS fires when the customer opens the signing page.
-
-### 4. Publish reminder
-
-After these changes, the app must be **published** so the production site (`pitch-crm.ai`) picks up the new full-screen layout, the "Approve & Sign" button, and the SMS notification call.
-
----
-
-## Files Changed
+### Files to Change
 
 | File | Change |
-|------|--------|
-| `src/components/estimates/ShareEstimateDialog.tsx` | Remove "Please sign:" from subject fallback |
-| `supabase/functions/send-document-for-signature/index.ts` | Remove "Please sign:" from all documentTitle fallbacks |
-| Edge function deployment | Re-deploy `notify-signature-opened` to ensure it's live |
+|---|---|
+| `src/components/estimates/PDFComponentOptions.ts` | Add `photoLayout` option: `'auto' \| '1col' \| '2col' \| '3col' \| '4col'` |
+| `src/components/estimates/EstimatePDFTemplate.tsx` | Replace `grid-cols-1` photo section with dynamic grid based on `photoLayout` option and photo count |
+| `src/components/estimates/EstimatePDFDocument.tsx` | Same grid logic in the `PhotosPage` component |
+| `src/components/estimates/EstimatePreviewPanel.tsx` | Add a layout selector dropdown next to the "Job Photos" toggle row |
+| `src/components/estimates/EstimateAddonsPanel.tsx` | Add same layout selector if photos are toggled on |
+| `src/hooks/useMultiPagePDFGeneration.ts` | Pre-load and downscale images before capture; use JPEG compression for photo pages |
 
-## After Implementation
+### Grid Logic (shared helper)
 
-You will need to **publish** the app for the changes to appear on `pitch-crm.ai`. The signing page layout, SMS notification, and subject fix all depend on the published code being up to date.
+```typescript
+function getPhotoGridCols(count: number, layout: string): number {
+  if (layout === '1col') return 1;
+  if (layout === '2col') return 2;
+  if (layout === '3col') return 3;
+  if (layout === '4col') return 4;
+  // Auto mode
+  if (count <= 1) return 1;
+  if (count <= 4) return 2;
+  if (count <= 9) return 3;
+  return 4;
+}
+```
+
+The grid class becomes `grid-cols-{n}` and each image gets a fixed aspect ratio container with `object-cover` to prevent stretching.
+
+### Performance Optimization
+
+In `useMultiPagePDFGeneration.ts`, before capturing the photos page:
+- Create an offscreen canvas for each image, draw it scaled down to max 800px width
+- Replace the `src` in the cloned DOM with the compressed data URL
+- This reduces pixel count by ~75% and eliminates the per-image loading delay
 
