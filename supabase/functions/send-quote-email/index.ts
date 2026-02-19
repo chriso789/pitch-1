@@ -17,6 +17,8 @@ interface SendQuoteEmailRequest {
   subject?: string;
   message?: string;
   pdf_url?: string;
+  cc?: string[];
+  bcc?: string[];
 }
 
 /**
@@ -354,6 +356,8 @@ serve(async (req: Request) => {
     const emailResult = await resend.emails.send({
       from: `${fromName} <${fromEmail}>`,
       to: [body.recipient_email],
+      ...(body.cc?.length ? { cc: body.cc } : {}),
+      ...(body.bcc?.length ? { bcc: body.bcc } : {}),
       reply_to: replyTo,
       subject: body.subject || `Your Quote from ${companyName} - ${estimate.display_name || estimate.estimate_number}`,
       html: emailHtml
@@ -383,7 +387,9 @@ serve(async (req: Request) => {
         metadata: {
           tracking_link_id: trackingLink.id,
           estimate_id: estimate.id,
-          resend_id: emailResult.data?.id
+          resend_id: emailResult.data?.id,
+          ...(body.cc?.length ? { cc: body.cc } : {}),
+          ...(body.bcc?.length ? { bcc: body.bcc } : {}),
         }
       });
 
