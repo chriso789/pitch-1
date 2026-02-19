@@ -36,6 +36,7 @@ import {
   ChevronDown,
   Layers,
   Share2,
+  Save,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -50,6 +51,7 @@ import { type LineItem } from '@/hooks/useEstimatePricing';
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 import { useToast } from '@/hooks/use-toast';
 import { ShareEstimateDialog } from './ShareEstimateDialog';
+import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 
 interface CompanyInfo {
   name: string;
@@ -149,6 +151,7 @@ export function EstimatePreviewPanel({
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [additionalAttachments, setAdditionalAttachments] = useState<TemplateAttachment[]>([]);
   const [removedTemplateIds, setRemovedTemplateIds] = useState<Set<string>>(new Set());
   const [pageOrder, setPageOrder] = useState<PageOrderItem[]>(DEFAULT_PAGE_ORDER);
@@ -379,6 +382,87 @@ export function EstimatePreviewPanel({
     
     // Open share dialog
     setShowShareDialog(true);
+  };
+
+  // Save PDF to documents for later retrieval
+  const handleSaveToDocuments = async () => {
+    if (!pipelineEntryId || !tenantId || !userId) {
+      toast({
+        title: 'Cannot Save',
+        description: 'Missing required context. Please save the estimate first.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const container = document.getElementById('estimate-preview-template');
+      if (!container) throw new Error('Preview template not found');
+
+      const maxWaitMs = 10000;
+      const pollIntervalMs = 200;
+      let waited = 0;
+
+      while (waited < maxWaitMs) {
+        const loadingIndicators = container.querySelectorAll('.animate-spin');
+        const pageCount = container.querySelectorAll('[data-report-page]').length;
+        if (loadingIndicators.length === 0 && pageCount > 0) break;
+        await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
+        waited += pollIntervalMs;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const pageCount = container.querySelectorAll('[data-report-page]').length;
+      const filename = getFilename();
+
+      const result = await generateMultiPagePDF('estimate-preview-template', pageCount, {
+        filename,
+        format: 'letter',
+        orientation: 'portrait',
+      });
+
+      if (!result.success || !result.blob) {
+        throw new Error(result.error || 'PDF generation failed');
+      }
+
+      const saveResult = await saveEstimatePdf({
+        pdfBlob: result.blob,
+        pipelineEntryId,
+        tenantId,
+        estimateNumber,
+        description: `Estimate ${estimateDisplayName || estimateNumber}`,
+        userId,
+        estimateDisplayName: estimateDisplayName || null,
+        estimatePricingTier: null,
+      });
+
+      if (!saveResult.success) {
+        throw new Error(saveResult.error || 'Failed to save PDF');
+      }
+
+      if (estimateId && saveResult.filePath) {
+        await supabase
+          .from('enhanced_estimates')
+          .update({ pdf_url: saveResult.filePath })
+          .eq('id', estimateId);
+      }
+
+      toast({
+        title: 'Estimate Saved ✓',
+        description: `${filename} saved to documents (${pageCount} pages)`,
+      });
+    } catch (error: any) {
+      console.error('Error saving estimate:', error);
+      toast({
+        title: 'Save Failed',
+        description: error.message || 'Failed to save estimate PDF',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -684,8 +768,27 @@ export function EstimatePreviewPanel({
               <div className="flex gap-2">
                 <Button
                   variant="outline"
+                  onClick={handleSaveToDocuments}
+                  disabled={isSaving || isExporting || isGeneratingPDF || !pipelineEntryId || !tenantId || !userId}
+                  className="flex-1"
+                  title={!pipelineEntryId ? 'Save the estimate first' : 'Save to documents'}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 mr-2" />
+                      Save
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={handlePrepareAndShare}
-                  disabled={isExporting || isGeneratingPDF || !(estimateId || pipelineEntryId)}
+                  disabled={isSaving || isExporting || isGeneratingPDF || !(estimateId || pipelineEntryId)}
                   className="flex-1"
                   title={!(estimateId || pipelineEntryId) ? 'Save the estimate first to share' : 'Share via email'}
                 >
@@ -703,7 +806,7 @@ export function EstimatePreviewPanel({
                 </Button>
                 <Button
                   onClick={handleExportPDF}
-                  disabled={isExporting || isGeneratingPDF}
+                  disabled={isSaving || isExporting || isGeneratingPDF}
                   className="flex-1"
                 >
                   {isExporting || isGeneratingPDF ? (
