@@ -160,6 +160,7 @@ serve(async (req) => {
     `;
 
     // Send email via Resend
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -167,7 +168,7 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: `${tenantName} <signatures@pitchcrm.app>`,
+        from: `${tenantName} <signatures@${fromDomain}>`,
         to: [recipient_email],
         subject: is_reminder ? `⏰ Reminder: ${subject}` : subject,
         html: emailHtml,
