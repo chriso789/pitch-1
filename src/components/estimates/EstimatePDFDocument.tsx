@@ -660,6 +660,11 @@ const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions }> = (
                     {item.description}
                   </div>
                 )}
+                {item.notes && (
+                  <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+                    {item.notes}
+                  </div>
+                )}
               </td>
               {opts.showLineItemQuantities && (
                 <>

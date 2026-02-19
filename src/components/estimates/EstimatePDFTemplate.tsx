@@ -271,6 +271,11 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                           {item.description}
                         </div>
                       )}
+                      {item.notes && (
+                        <div className="text-xs text-gray-500 mt-0.5 leading-snug italic">
+                          {item.notes}
+                        </div>
+                      )}
                     </td>
                     {opts.showLineItemQuantities && (
                       <>
@@ -317,6 +322,9 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                     <div className="text-gray-900">{item.item_name}</div>
                     {item.description && item.description !== item.item_name && (
                       <div className="text-[10px] text-gray-500 leading-snug">{item.description}</div>
+                    )}
+                    {item.notes && (
+                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">{item.notes}</div>
                     )}
                   </td>
                   {opts.showLineItemQuantities && (
