@@ -219,7 +219,7 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
             contact_id: contactId || null,
             lead_id: pipelineEntryId,
             file_url: publicUrl,
-            file_path: fileName,
+            file_name: fileName,
             original_filename: upload.file.name,
             description: upload.file.name,
             category: upload.category,
