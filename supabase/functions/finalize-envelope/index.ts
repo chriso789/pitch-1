@@ -128,17 +128,21 @@ serve(async (req: Request) => {
             const lastPage = pdfDoc.getPage(pageCount - 1);
             const { width: pageWidth } = lastPage.getSize();
 
-            // Place signatures starting at the bottom-left area
+            // Place signatures on the signature block area of the last page
+            const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
+            const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+            
             let sigX = 60;
-            const sigY = 80; // near bottom of last page
+            let sigY = 120; // signature block area near bottom
             const maxSigWidth = 180;
             const maxSigHeight = 55;
-            const sigSpacing = 200;
+            const sigSpacing = 220;
 
             for (const sig of signatures) {
-              // Get image path from signature_metadata JSONB
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
               const sigImagePath = meta.image_path as string | undefined;
+              const recipientName = (sig.recipient as any)?.recipient_name || 'Unknown';
+              const signedDate = sig.signed_at ? new Date(sig.signed_at).toLocaleDateString() : new Date().toLocaleDateString();
 
               if (sigImagePath) {
                 try {
@@ -155,12 +159,12 @@ serve(async (req: Request) => {
                       embeddedImg = await pdfDoc.embedJpg(sigImgBytes);
                     }
 
-                    // Scale to fit within bounds
                     const dims = embeddedImg.scale(1);
                     const scale = Math.min(maxSigWidth / dims.width, maxSigHeight / dims.height, 1);
                     const drawW = dims.width * scale;
                     const drawH = dims.height * scale;
 
+                    // Draw signature image
                     lastPage.drawImage(embeddedImg, {
                       x: sigX,
                       y: sigY,
@@ -168,27 +172,62 @@ serve(async (req: Request) => {
                       height: drawH,
                     });
 
-                    console.log(`Embedded signature on last page at x=${sigX} for ${(sig.recipient as any)?.recipient_name}`);
+                    // Draw signer name and date below signature
+                    lastPage.drawText(recipientName, {
+                      x: sigX,
+                      y: sigY - 14,
+                      size: 9,
+                      font: helveticaBoldFont,
+                      color: rgb(0, 0, 0),
+                    });
+                    lastPage.drawText(`Date: ${signedDate}`, {
+                      x: sigX,
+                      y: sigY - 26,
+                      size: 8,
+                      font: helveticaFont,
+                      color: rgb(0.3, 0.3, 0.3),
+                    });
+                    lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
+                      x: sigX,
+                      y: sigY - 37,
+                      size: 7,
+                      font: helveticaFont,
+                      color: rgb(0.5, 0.5, 0.5),
+                    });
+
+                    console.log(`Embedded signature + details on last page for ${recipientName}`);
                     sigX += sigSpacing;
 
-                    // Wrap to next row if needed
                     if (sigX + maxSigWidth > pageWidth - 40) {
                       sigX = 60;
+                      sigY -= 100;
                     }
                   }
                 } catch (embedErr) {
                   console.error('Could not embed signature on last page:', embedErr);
                 }
               } else if (sig.signature_data && (meta.signature_type === 'typed')) {
-                // For typed signatures, draw the text
                 try {
-                  const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
                   lastPage.drawText(sig.signature_data, {
                     x: sigX,
                     y: sigY + 10,
                     size: 18,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0.4),
+                  });
+                  lastPage.drawText(recipientName, {
+                    x: sigX,
+                    y: sigY - 14,
+                    size: 9,
+                    font: helveticaBoldFont,
+                    color: rgb(0, 0, 0),
+                  });
+                  lastPage.drawText(`Date: ${signedDate}`, {
+                    x: sigX,
+                    y: sigY - 26,
+                    size: 8,
+                    font: helveticaFont,
+                    color: rgb(0.3, 0.3, 0.3),
                   });
                   sigX += sigSpacing;
                 } catch (typedErr) {
@@ -198,144 +237,7 @@ serve(async (req: Request) => {
             }
           }
 
-          // ============================================================
-          // STEP 2: Add Signature Certificate page
-          // ============================================================
-          const certPage = pdfDoc.addPage([612, 792]);
-          const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-          const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
-          
-          const { height } = certPage.getSize();
-          
-          // Header
-          certPage.drawText('SIGNATURE CERTIFICATE', {
-            x: 50,
-            y: height - 60,
-            size: 18,
-            font: helveticaBold,
-            color: rgb(0, 0.3, 0.6),
-          });
-          
-          certPage.drawText(envelope.title || 'Document', {
-            x: 50,
-            y: height - 85,
-            size: 12,
-            font: helvetica,
-            color: rgb(0.3, 0.3, 0.3),
-          });
-          
-          // Divider line
-          certPage.drawLine({
-            start: { x: 50, y: height - 100 },
-            end: { x: 562, y: height - 100 },
-            thickness: 1,
-            color: rgb(0.8, 0.8, 0.8),
-          });
-          
-          let yPos = height - 140;
-          
-          // Add each signature detail
-          for (const sig of signatures || []) {
-            const recipientName = (sig.recipient as any)?.recipient_name || 'Unknown';
-            const recipientEmail = (sig.recipient as any)?.recipient_email || '';
-            const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
-            const sigImagePath = meta.image_path as string | undefined;
-            
-            certPage.drawText(`Signer: ${recipientName}`, {
-              x: 50,
-              y: yPos,
-              size: 11,
-              font: helveticaBold,
-              color: rgb(0, 0, 0),
-            });
-            
-            certPage.drawText(`Email: ${recipientEmail}`, {
-              x: 50,
-              y: yPos - 18,
-              size: 10,
-              font: helvetica,
-              color: rgb(0.3, 0.3, 0.3),
-            });
-            
-            certPage.drawText(`Signed: ${new Date(sig.signed_at).toLocaleString()}`, {
-              x: 50,
-              y: yPos - 34,
-              size: 10,
-              font: helvetica,
-              color: rgb(0.3, 0.3, 0.3),
-            });
-            
-            certPage.drawText(`IP Address: ${sig.ip_address || 'Unknown'}`, {
-              x: 50,
-              y: yPos - 50,
-              size: 10,
-              font: helvetica,
-              color: rgb(0.3, 0.3, 0.3),
-            });
-            
-            // Embed signature image on certificate page too
-            if (sigImagePath) {
-              try {
-                const { data: sigImageData } = await supabase.storage
-                  .from('signatures')
-                  .download(sigImagePath);
-                
-                if (sigImageData) {
-                  const sigBytes = new Uint8Array(await sigImageData.arrayBuffer());
-                  let signatureImage;
-                  
-                  try {
-                    signatureImage = await pdfDoc.embedPng(sigBytes);
-                  } catch {
-                    signatureImage = await pdfDoc.embedJpg(sigBytes);
-                  }
-                  
-                  const sigDims = signatureImage.scale(0.4);
-                  certPage.drawImage(signatureImage, {
-                    x: 300,
-                    y: yPos - 60,
-                    width: Math.min(sigDims.width, 200),
-                    height: Math.min(sigDims.height, 60),
-                  });
-                }
-              } catch (e) {
-                console.log('Could not embed signature image on cert:', e);
-              }
-            }
-            
-            // Consent statement
-            const consentText = (meta.consent_text as string) || 'I agree that this electronic signature is legally binding';
-            certPage.drawText(`[X] "${consentText}"`, {
-              x: 50,
-              y: yPos - 75,
-              size: 9,
-              font: helvetica,
-              color: rgb(0.2, 0.5, 0.2),
-            });
-            
-            yPos -= 120;
-          }
-          
-          // Footer with hash
-          const pdfHash = (signatures && signatures.length > 0 && signatures[0].signature_hash)
-            ? signatures[0].signature_hash
-            : await hashToken(JSON.stringify({ envelope_id: envelope.id, signatures: signatures?.map(s => s.id) }));
-
-          certPage.drawText(`Document Hash: ${pdfHash.substring(0, 32)}...`, {
-            x: 50,
-            y: 60,
-            size: 8,
-            font: helvetica,
-            color: rgb(0.5, 0.5, 0.5),
-          });
-          
-          certPage.drawText(`Generated: ${new Date().toISOString()}`, {
-            x: 50,
-            y: 45,
-            size: 8,
-            font: helvetica,
-            color: rgb(0.5, 0.5, 0.5),
-          });
+          // No separate certificate page -- signature details are on the signature block
           
           // Save the modified PDF
           signedPdfBytes = await pdfDoc.save();
