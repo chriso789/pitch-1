@@ -1,76 +1,78 @@
 
 
-# Fix: Signature Embedding, Status Update, and Data URL Leak (3 Root Causes)
+# Fix: Place Signature on Correct Page (Signature Block) + Show Verification Details
 
-## Problem Summary
+## Problem
 
-Three distinct bugs are preventing the signature from appearing correctly on the signed PDF:
+The signature is being placed on the LAST page of the PDF (which is an attachment page -- the Florida Building Commission license), instead of on the estimate's "Customer Signature" block. This happens because `finalize-envelope` uses `pageCount - 1` to get the last page, but attachment pages come AFTER the estimate pages.
 
-## Root Cause 1: Signature image treated as text (THE "data:image/png" LINE)
+The estimate PDF structure is:
+- Pages 1-N: Estimate content (the LAST of these has the "Customer Signature" block)
+- Pages N+1 to end: Attachment pages (license, insurance, etc.)
 
-The database confirms the signature was saved with `signature_type: 'typed'` but `signature_data` is actually a full `data:image/png;base64,...` string (10,270 characters). Here's what happens:
+The code targets the wrong page because it doesn't know where the estimate ends and attachments begin.
 
-1. **`submit-signature`** only uploads the image to storage for `drawn` or `uploaded` types (line 92). Since this one is `typed`, the upload is skipped and `image_path` stays `null`.
-2. **`finalize-envelope`** checks `image_path` first (line 147) -- it's null, so it falls through to the `typed` branch (line 209).
-3. The `typed` branch calls `drawText(sig.signature_data)` which prints the entire 10,270-character base64 string as literal text on the PDF page.
+## Solution
 
-**Fix in `finalize-envelope/index.ts`:** Before the typed text branch, add a check: if `signature_data` starts with `data:image`, decode the base64 and embed it as a PNG image -- regardless of what `signature_type` says. This covers the case where the signature canvas produces image data even for "typed" signatures.
+### 1. Add `signature_page_index` column to `signature_envelopes`
 
-## Root Cause 2: Estimate status enum missing "signed"
+A new integer column that stores the 0-based index of the page containing the signature block. This tells `finalize-envelope` exactly which page to draw on.
 
-The logs show:
+```sql
+ALTER TABLE signature_envelopes 
+ADD COLUMN IF NOT EXISTS signature_page_index INTEGER;
 ```
-Failed to update estimate status: invalid input value for enum estimate_status: "signed"
-```
 
-The `estimate_status` PostgreSQL enum only has: `draft, preview, sent, approved, rejected, expired`. There is no `signed` value.
+### 2. Pass signature page index from EstimatePreviewPanel
 
-**Fix:** Database migration to add `signed` to the enum.
+In the `handleShareEstimate` function, after counting total pages, also count only the estimate content pages (from `#estimate-pdf-pages [data-report-page]`). The signature block is on the LAST estimate page, so `signature_page_index = estimatePageCount - 1`.
 
-## Root Cause 3: Signature position is hardcoded, not on the signature block
+Store this on the `enhanced_estimates` record alongside the `pdf_url` update, then the `send-document-for-signature` function can read it.
 
-The current code places the signature at `y=120` from the bottom of the last page. The actual signature block on the estimate ("Customer Signature" + signature line + "Date: ___") is rendered as HTML content that gets captured into the PDF at whatever vertical position it ends up. The `y=120` coordinate is a rough guess that may not align with the actual signature block.
+**File: `src/components/estimates/EstimatePreviewPanel.tsx`**
+- After generating the PDF, count estimate-only pages: `container.querySelectorAll('#estimate-pdf-pages [data-report-page]').length`
+- Update `enhanced_estimates` with a new field or store in the existing record
 
-The signature block is a 2-column grid with "Customer Signature" on the left and "Company Representative" on the right, each with a horizontal line and date field. The signature image should be placed directly above the customer signature line.
+### 3. Pass signature page index through `send-document-for-signature`
 
-**Fix:** Adjust the signature Y position to better target the signature block area. Since the signature block is at the very bottom of the terms/signature page content, position the signature higher (around `y=100-110`) and use coordinates that place it just above the signature line in the left column.
+**File: `src/components/estimates/ShareEstimateDialog.tsx`**
+- Accept a new prop `signaturePageIndex`
+- Pass it in the request body to `send-document-for-signature`
+
+**File: `supabase/functions/send-document-for-signature/index.ts`**
+- Accept `signature_page_index` in the request body
+- Store it on the envelope when inserting into `signature_envelopes`
+
+### 4. Use the correct page in `finalize-envelope`
+
+**File: `supabase/functions/finalize-envelope/index.ts`**
+- Read `envelope.signature_page_index` 
+- If set, use `pdfDoc.getPage(envelope.signature_page_index)` instead of `pdfDoc.getPage(pageCount - 1)`
+- Fallback to `pageCount - 1` if not set (backward compatibility)
+- Position signature at the "Customer Signature" area: left column, just above the signature line (~`y=100`, `x=60`)
+- Draw signer name below the signature image
+- Draw `Date: MM/DD/YYYY` below the name (filling in the "Date: ___" field)
+- Draw IP address in small gray text below the date
+
+### 5. Fix base64 image detection (from previous plan, still needed)
+
+**File: `supabase/functions/finalize-envelope/index.ts`**
+- The existing code at line 210 already checks `sig.signature_data.startsWith('data:image')` -- verify this path is actually being reached. If `signature_data` is `null` or the condition doesn't match, the signature silently skips. Add logging to confirm.
 
 ## Files to Change
 
-### 1. `supabase/functions/finalize-envelope/index.ts` (lines 141-237)
-
-Restructure the signature embedding logic with this priority order:
-
-```
-for each signature:
-  1. If image_path exists in metadata -> download from storage, embed as image (existing code, works)
-  2. NEW: Else if signature_data starts with "data:image" -> decode base64 inline, embed as PNG image
-  3. Else -> drawText for truly plain-text typed signatures
-  In all cases: draw signer name, date, IP below the signature
-```
-
-The new branch (case 2) will:
-- Strip the `data:image/png;base64,` prefix
-- Decode the base64 string to binary bytes
-- Embed as PNG image using `pdfDoc.embedPng()`
-- Draw at the same position as the image_path branch
-
-Also fix in `submit-signature/index.ts`: upload the image to storage for ALL signature types when the data starts with `data:image`, not just for `drawn`/`uploaded`. This ensures `image_path` is set for future signatures regardless of type label.
-
-### 2. Database migration: Add "signed" to estimate_status enum
-
-```sql
-ALTER TYPE estimate_status ADD VALUE IF NOT EXISTS 'signed';
-```
-
-### 3. `src/components/estimates/AttachmentPagesRenderer.tsx`
-
-Add `color: 'transparent'` to the page container style as a final defensive layer so any leaked text from a previously-broken PDF is invisible.
+| File | Change |
+|---|---|
+| **Database migration** | Add `signature_page_index INTEGER` column to `signature_envelopes` |
+| **`src/components/estimates/EstimatePreviewPanel.tsx`** | Count estimate-only pages, pass `signaturePageIndex` to ShareEstimateDialog |
+| **`src/components/estimates/ShareEstimateDialog.tsx`** | Accept and forward `signaturePageIndex` prop |
+| **`supabase/functions/send-document-for-signature/index.ts`** | Accept `signature_page_index`, store on envelope |
+| **`supabase/functions/finalize-envelope/index.ts`** | Use `signature_page_index` to target the correct page; fallback to last page |
 
 ## What This Fixes
 
-- **Signature on PDF**: The actual signature image will be properly decoded from base64 and embedded as a real image on the signature block area -- no more raw text
-- **Signer details**: Name, date, and IP will appear below the embedded signature image
-- **Estimate status**: Will correctly update to "signed" in the database and reflect in the Saved Estimates list
-- **Future-proofing**: `submit-signature` will upload images for all signature types, ensuring `image_path` is always available
+- Signature image will appear on the "Customer Signature" line of the estimate page, not on the attachment page
+- Signer name, date, and IP will be visible below the signature on the correct page
+- Works correctly regardless of how many attachment pages follow the estimate
+- Backward compatible: envelopes without `signature_page_index` will still target the last page
 
