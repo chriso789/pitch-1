@@ -1,6 +1,6 @@
 /**
  * Call Center Page
- * Live dialer workspace with list building, calling, and call log
+ * Live dialer workspace with list building, calling, voicemail management, and call log
  */
 
 import { useState } from 'react';
@@ -8,7 +8,8 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   Phone, Mic, Bot, Clock, PhoneCall, PhoneOff, 
   Download, RefreshCw, Filter,
-  ChevronDown, ChevronRight, FileText, ListPlus
+  ChevronDown, ChevronRight, FileText, ListPlus, Voicemail,
+  Search, Loader2
 } from 'lucide-react';
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -17,6 +18,7 @@ import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -25,6 +27,8 @@ import { cn } from '@/lib/utils';
 import { CallCenterListBuilder } from '@/components/call-center/CallCenterListBuilder';
 import { CallCenterLiveDialer } from '@/components/call-center/CallCenterLiveDialer';
 import { CallCenterListsManager } from '@/components/call-center/CallCenterListsManager';
+import { VoicemailDropManager } from '@/components/call-center/VoicemailDropManager';
+import { toast } from '@/hooks/use-toast';
 
 interface CallRecord {
   id: string;
@@ -56,6 +60,10 @@ const CallCenterPage = () => {
   const [activeTab, setActiveTab] = useState('dialer');
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
 
+  // Quick Call state
+  const [quickCallNumber, setQuickCallNumber] = useState('');
+  const [quickCalling, setQuickCalling] = useState(false);
+
   // Fetch calls
   const { data: calls, isLoading, refetch } = useQuery({
     queryKey: ['call-center-calls', tenantId, statusFilter],
@@ -85,6 +93,51 @@ const CallCenterPage = () => {
   const callRecordings: any[] = [];
   const callTranscripts: any[] = [];
 
+  // Quick Call handler
+  const handleQuickCall = async () => {
+    if (!quickCallNumber.trim() || !tenantId) return;
+    setQuickCalling(true);
+    try {
+      // Search for a contact with this phone number
+      const cleanNum = quickCallNumber.replace(/\D/g, '');
+      const { data: contacts } = await supabase
+        .from('contacts')
+        .select('id, phone')
+        .eq('tenant_id', tenantId)
+        .or(`phone.ilike.%${cleanNum}%`)
+        .limit(1);
+
+      const contactId = contacts?.[0]?.id;
+
+      if (!contactId) {
+        toast({ title: 'Contact not found', description: 'No contact matches this number. Call will proceed without linking.', variant: 'default' });
+        // Could still call but telnyx-dial requires contact_id for now
+        setQuickCalling(false);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('telnyx-dial', {
+        body: {
+          tenant_id: tenantId,
+          contact_id: contactId,
+          record: true,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Call failed');
+
+      toast({ title: 'Call initiated', description: `Calling ${quickCallNumber}` });
+      setQuickCallNumber('');
+      // Refresh call log
+      setTimeout(() => refetch(), 2000);
+    } catch (err: any) {
+      toast({ title: 'Call failed', description: err.message, variant: 'destructive' });
+    } finally {
+      setQuickCalling(false);
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'completed':
@@ -95,6 +148,8 @@ const CallCenterPage = () => {
       case 'missed':
       case 'no-answer':
         return <Badge variant="outline" className="bg-yellow-500/10 text-yellow-600 border-yellow-300">Missed</Badge>;
+      case 'voicemail_dropped':
+        return <Badge variant="outline" className="bg-purple-500/10 text-purple-600 border-purple-300">VM Dropped</Badge>;
       case 'failed':
         return <Badge variant="destructive">Failed</Badge>;
       default:
@@ -157,10 +212,47 @@ const CallCenterPage = () => {
             <TabsTrigger value="dialer">Dialer</TabsTrigger>
             <TabsTrigger value="call-log">Call Log</TabsTrigger>
             <TabsTrigger value="lists">Lists</TabsTrigger>
+            <TabsTrigger value="voicemails">Voicemails</TabsTrigger>
           </TabsList>
 
           {/* Dialer Tab */}
-          <TabsContent value="dialer" className="mt-4">
+          <TabsContent value="dialer" className="mt-4 space-y-4">
+            {/* Quick Call Card */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <PhoneCall className="h-4 w-4 text-primary" />
+                  Quick Call
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <Input
+                      className="pl-9"
+                      placeholder="Enter phone number or search contact..."
+                      value={quickCallNumber}
+                      onChange={e => setQuickCallNumber(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleQuickCall()}
+                    />
+                  </div>
+                  <Button onClick={handleQuickCall} disabled={quickCalling || !quickCallNumber.trim()}>
+                    {quickCalling ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Phone className="h-4 w-4 mr-2" />
+                    )}
+                    Call
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  All calls are recorded automatically
+                </p>
+              </CardContent>
+            </Card>
+
+            {/* Live Dialer */}
             <CallCenterLiveDialer
               selectedListId={selectedListId}
               onEndSession={handleEndSession}
@@ -215,6 +307,7 @@ const CallCenterPage = () => {
                   <SelectItem value="completed">Completed</SelectItem>
                   <SelectItem value="in-progress">Active</SelectItem>
                   <SelectItem value="missed">Missed</SelectItem>
+                  <SelectItem value="voicemail_dropped">VM Dropped</SelectItem>
                   <SelectItem value="failed">Failed</SelectItem>
                 </SelectContent>
               </Select>
@@ -398,6 +491,11 @@ const CallCenterPage = () => {
           {/* Lists Tab */}
           <TabsContent value="lists" className="mt-4">
             <CallCenterListsManager onSelectList={handleSelectList} />
+          </TabsContent>
+
+          {/* Voicemails Tab */}
+          <TabsContent value="voicemails" className="mt-4">
+            <VoicemailDropManager />
           </TabsContent>
         </Tabs>
       </div>

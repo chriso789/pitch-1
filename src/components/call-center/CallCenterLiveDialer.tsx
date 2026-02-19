@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,12 +9,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import {
-  Phone, SkipForward, Square, User, Mail, MapPin,
-  Loader2, ListChecks, PlayCircle, PhoneCall
+  Phone, SkipForward, Square, User, Mail,
+  Loader2, ListChecks, PlayCircle, PhoneCall,
+  MicOff, Mic, PhoneOff, Voicemail, Timer
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from '@/hooks/use-toast';
+import { ContactDetailPanel } from './ContactDetailPanel';
+
+type DialerPhase = 'idle' | 'calling' | 'active' | 'disposition' | 'detail';
 
 interface CallCenterLiveDialerProps {
   selectedListId: string | null;
@@ -28,10 +32,26 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
   const tenantId = useEffectiveTenantId();
   const queryClient = useQueryClient();
   const [currentIndex, setCurrentIndex] = useState(0);
-  const [showDisposition, setShowDisposition] = useState(false);
+  const [phase, setPhase] = useState<DialerPhase>('idle');
   const [disposition, setDisposition] = useState('');
   const [notes, setNotes] = useState('');
   const [savingDisposition, setSavingDisposition] = useState(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [callDuration, setCallDuration] = useState(0);
+  const [callStartTime, setCallStartTime] = useState<Date | null>(null);
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const [amdResult, setAmdResult] = useState<string | null>(null);
+  const [selectedVoicemailId, setSelectedVoicemailId] = useState<string | null>(null);
+  const [droppingVoicemail, setDroppingVoicemail] = useState(false);
+
+  // Duration timer
+  useEffect(() => {
+    if (phase !== 'active' || !callStartTime) return;
+    const interval = setInterval(() => {
+      setCallDuration(Math.floor((Date.now() - callStartTime.getTime()) / 1000));
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [phase, callStartTime]);
 
   // Fetch list items
   const { data: items, isLoading } = useQuery({
@@ -66,40 +86,152 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     enabled: !!tenantId,
   });
 
+  // Fetch voicemail templates
+  const { data: voicemailTemplates } = useQuery({
+    queryKey: ['voicemail-templates', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('voicemail_templates')
+        .select('id, name, audio_url')
+        .eq('tenant_id', tenantId)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId,
+  });
+
   const pendingItems = useMemo(() => items?.filter(i => i.status === 'pending') || [], [items]);
   const completedCount = useMemo(() => items?.filter(i => i.status !== 'pending').length || 0, [items]);
   const totalCount = items?.length || 0;
   const currentItem = pendingItems[currentIndex] || null;
   const progressPct = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
+  const meta = currentItem?.metadata as any;
+  const contactId = meta?.contact_id;
 
-  const handleCall = () => {
-    if (!currentItem) return;
-    const cleanNumber = currentItem.phone.replace(/\D/g, '');
-    window.location.href = `tel:${cleanNumber}`;
-
-    // Log to communication_history
-    (async () => {
-      try {
-        const user = (await supabase.auth.getUser()).data.user;
-        const contactId = (currentItem.metadata as any)?.contact_id;
-        if (tenantId && contactId) {
-          await supabase.from('communication_history').insert({
-            tenant_id: tenantId,
-            contact_id: contactId,
-            communication_type: 'call',
-            direction: 'outbound',
-            content: `Dialer call to ${currentItem.phone}`,
-            rep_id: user?.id,
-            metadata: { phone: currentItem.phone, method: 'tel_link', dialer_list_id: selectedListId },
-          });
-        }
-      } catch (e) { console.error('Failed to log call:', e); }
-    })();
-
-    // Show disposition after calling
-    setTimeout(() => setShowDisposition(true), 500);
+  const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
+  // Initiate call via Telnyx
+  const handleCall = useCallback(async () => {
+    if (!currentItem || !tenantId || !contactId) return;
+
+    setPhase('calling');
+    setAmdResult(null);
+    setCallDuration(0);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('telnyx-dial', {
+        body: {
+          tenant_id: tenantId,
+          contact_id: contactId,
+          record: true,
+          answering_machine_detection: 'premium',
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Failed to initiate call');
+
+      setActiveCallId(data.call.id);
+      setPhase('active');
+      setCallStartTime(new Date());
+
+      toast({ title: 'Call connected', description: `Calling ${currentItem.first_name} ${currentItem.last_name}` });
+
+      // Listen for AMD results via realtime
+      const channel = supabase.channel(`amd-${data.call.id}`);
+      channel.on('broadcast', { event: 'amd_result' }, (msg) => {
+        setAmdResult(msg.payload?.result || null);
+        if (msg.payload?.result === 'machine') {
+          toast({ title: 'Voicemail detected', description: 'You can drop a voicemail now.' });
+        }
+      }).subscribe();
+
+    } catch (err: any) {
+      console.error('Call failed:', err);
+      toast({ title: 'Call failed', description: err.message, variant: 'destructive' });
+      setPhase('idle');
+    }
+  }, [currentItem, tenantId, contactId]);
+
+  // End call
+  const handleHangup = useCallback(async () => {
+    if (activeCallId) {
+      // Update call record to completed
+      await supabase.from('calls').update({
+        status: 'completed',
+        ended_at: new Date().toISOString(),
+        duration_seconds: callDuration,
+      }).eq('id', activeCallId);
+    }
+
+    setPhase('disposition');
+    setCallStartTime(null);
+  }, [activeCallId, callDuration]);
+
+  // Drop voicemail
+  const handleDropVoicemail = async () => {
+    if (!selectedVoicemailId || !activeCallId) {
+      toast({ title: 'Select a voicemail template', variant: 'destructive' });
+      return;
+    }
+
+    setDroppingVoicemail(true);
+    try {
+      // Get call_control_id from our call record
+      const { data: callRow } = await supabase
+        .from('calls')
+        .select('telnyx_call_control_id')
+        .eq('id', activeCallId)
+        .single();
+
+      if (!callRow?.telnyx_call_control_id) {
+        throw new Error('No call control ID found');
+      }
+
+      const { data, error } = await supabase.functions.invoke('telnyx-voicemail-drop', {
+        body: {
+          call_control_id: callRow.telnyx_call_control_id,
+          voicemail_template_id: selectedVoicemailId,
+          call_id: activeCallId,
+        },
+      });
+
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Voicemail drop failed');
+
+      toast({ title: 'Voicemail dropped', description: 'Moving to next contact...' });
+
+      // Auto-advance: save disposition as voicemail and move on
+      await supabase.from('dialer_list_items').update({
+        status: 'completed',
+        metadata: {
+          ...meta,
+          disposition: 'voicemail_drop',
+          voicemail_template_id: selectedVoicemailId,
+          called_at: new Date().toISOString(),
+        },
+      }).eq('id', currentItem!.id);
+
+      setPhase('idle');
+      setActiveCallId(null);
+      setAmdResult(null);
+      setSelectedVoicemailId(null);
+      queryClient.invalidateQueries({ queryKey: ['dialer-list-items', selectedListId] });
+      setCurrentIndex(0);
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    } finally {
+      setDroppingVoicemail(false);
+    }
+  };
+
+  // Save disposition
   const handleSaveDisposition = async () => {
     if (!disposition) {
       toast({ title: 'Select a disposition', variant: 'destructive' });
@@ -107,26 +239,46 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     }
     setSavingDisposition(true);
     try {
-      // Update item status
-      await supabase
-        .from('dialer_list_items')
-        .update({
-          status: 'completed',
-          metadata: {
-            ...(currentItem?.metadata as any),
-            disposition,
-            disposition_notes: notes,
-            called_at: new Date().toISOString(),
-          },
-        })
-        .eq('id', currentItem!.id);
+      await supabase.from('dialer_list_items').update({
+        status: 'completed',
+        metadata: {
+          ...meta,
+          disposition,
+          disposition_notes: notes,
+          called_at: new Date().toISOString(),
+          call_id: activeCallId,
+        },
+      }).eq('id', currentItem!.id);
 
-      setShowDisposition(false);
+      // Log to communication_history
+      if (tenantId && contactId) {
+        const user = (await supabase.auth.getUser()).data.user;
+        await supabase.from('communication_history').insert({
+          tenant_id: tenantId,
+          contact_id: contactId,
+          communication_type: 'call',
+          direction: 'outbound',
+          content: `Dialer call — ${disposition}${notes ? ': ' + notes : ''}`,
+          rep_id: user?.id,
+          metadata: {
+            phone: currentItem!.phone,
+            method: 'telnyx_webrtc',
+            dialer_list_id: selectedListId,
+            call_id: activeCallId,
+            duration_seconds: callDuration,
+          },
+        });
+      }
+
       setDisposition('');
       setNotes('');
-      // Refresh items
+      setActiveCallId(null);
+
+      // Show contact detail panel
+      setPhase('detail');
+
       queryClient.invalidateQueries({ queryKey: ['dialer-list-items', selectedListId] });
-      setCurrentIndex(0); // will re-index from pending
+      setCurrentIndex(0);
     } catch (err: any) {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     } finally {
@@ -134,18 +286,24 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     }
   };
 
+  // Skip contact
   const handleSkip = async () => {
     if (!currentItem) return;
-    await supabase
-      .from('dialer_list_items')
-      .update({
-        status: 'skipped',
-        metadata: { ...(currentItem.metadata as any), skipped_at: new Date().toISOString() },
-      })
-      .eq('id', currentItem.id);
+    await supabase.from('dialer_list_items').update({
+      status: 'skipped',
+      metadata: { ...meta, skipped_at: new Date().toISOString() },
+    }).eq('id', currentItem.id);
     queryClient.invalidateQueries({ queryKey: ['dialer-list-items', selectedListId] });
     setCurrentIndex(0);
   };
+
+  // Advance from detail panel
+  const handleNextFromDetail = () => {
+    setPhase('idle');
+    setCurrentIndex(0);
+  };
+
+  // --- Render States ---
 
   if (!selectedListId) {
     return (
@@ -171,6 +329,19 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     );
   }
 
+  // Show contact detail panel between calls
+  if (phase === 'detail' && contactId) {
+    return (
+      <ContactDetailPanel
+        contactId={contactId}
+        contactName={`${currentItem?.first_name || ''} ${currentItem?.last_name || ''}`.trim()}
+        contactPhone={currentItem?.phone || ''}
+        contactEmail={currentItem?.email}
+        onNext={handleNextFromDetail}
+      />
+    );
+  }
+
   if (!currentItem) {
     return (
       <Card>
@@ -185,8 +356,6 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
       </Card>
     );
   }
-
-  const meta = currentItem.metadata as any;
 
   return (
     <>
@@ -208,6 +377,17 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
             <CardTitle className="flex items-center gap-2 text-lg">
               <PhoneCall className="h-5 w-5 text-primary" />
               Current Contact
+              {phase === 'active' && (
+                <Badge variant="default" className="ml-auto gap-1.5 animate-pulse">
+                  <Timer className="h-3 w-3" />
+                  {formatDuration(callDuration)}
+                </Badge>
+              )}
+              {phase === 'calling' && (
+                <Badge variant="secondary" className="ml-auto animate-pulse">
+                  Connecting...
+                </Badge>
+              )}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -237,32 +417,98 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
               </div>
             </div>
 
-            {/* Action buttons */}
+            {/* Call controls */}
             <div className="flex items-center gap-2 pt-2">
-              <Button size="lg" onClick={handleCall} className="flex-1">
-                <Phone className="h-4 w-4 mr-2" />
-                Call
-              </Button>
-              <Button variant="outline" onClick={handleSkip}>
-                <SkipForward className="h-4 w-4 mr-2" />
-                Skip
-              </Button>
-              <Button variant="destructive" onClick={onEndSession}>
-                <Square className="h-4 w-4 mr-2" />
-                End
-              </Button>
+              {phase === 'idle' && (
+                <>
+                  <Button size="lg" onClick={handleCall} className="flex-1">
+                    <Phone className="h-4 w-4 mr-2" />
+                    Call
+                  </Button>
+                  <Button variant="outline" onClick={handleSkip}>
+                    <SkipForward className="h-4 w-4 mr-2" />
+                    Skip
+                  </Button>
+                  <Button variant="destructive" onClick={onEndSession}>
+                    <Square className="h-4 w-4 mr-2" />
+                    End
+                  </Button>
+                </>
+              )}
+
+              {phase === 'calling' && (
+                <Button size="lg" variant="destructive" className="flex-1" disabled>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Connecting...
+                </Button>
+              )}
+
+              {phase === 'active' && (
+                <>
+                  <Button
+                    variant={isMuted ? 'destructive' : 'outline'}
+                    onClick={() => setIsMuted(!isMuted)}
+                  >
+                    {isMuted ? <MicOff className="h-4 w-4 mr-2" /> : <Mic className="h-4 w-4 mr-2" />}
+                    {isMuted ? 'Unmute' : 'Mute'}
+                  </Button>
+                  <Button size="lg" variant="destructive" onClick={handleHangup} className="flex-1">
+                    <PhoneOff className="h-4 w-4 mr-2" />
+                    Hang Up
+                  </Button>
+                </>
+              )}
             </div>
+
+            {/* AMD + Voicemail Drop */}
+            {phase === 'active' && amdResult === 'machine' && voicemailTemplates && voicemailTemplates.length > 0 && (
+              <Card className="border-destructive/30 bg-destructive/5">
+                <CardContent className="pt-4 pb-3 space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-medium text-destructive">
+                    <Voicemail className="h-4 w-4" />
+                    Voicemail Detected
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Select value={selectedVoicemailId || ''} onValueChange={setSelectedVoicemailId}>
+                      <SelectTrigger className="flex-1">
+                        <SelectValue placeholder="Select voicemail to drop..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {voicemailTemplates.map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Button
+                      onClick={handleDropVoicemail}
+                      disabled={droppingVoicemail || !selectedVoicemailId}
+                      className="shrink-0"
+                    >
+                      {droppingVoicemail ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Voicemail className="h-4 w-4 mr-1.5" />
+                      )}
+                      Drop VM
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </CardContent>
         </Card>
       </div>
 
       {/* Disposition Dialog */}
-      <Dialog open={showDisposition} onOpenChange={setShowDisposition}>
+      <Dialog open={phase === 'disposition'} onOpenChange={(open) => { if (!open) setPhase('detail'); }}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Call Disposition</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            <div className="text-sm text-muted-foreground">
+              Call duration: {formatDuration(callDuration)}
+            </div>
             <div className="space-y-2">
               <Label>Outcome</Label>
               <Select value={disposition} onValueChange={setDisposition}>
@@ -295,12 +541,12 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setShowDisposition(false); setDisposition(''); setNotes(''); }}>
+            <Button variant="outline" onClick={() => { setPhase('detail'); setDisposition(''); setNotes(''); }}>
               Skip Disposition
             </Button>
             <Button onClick={handleSaveDisposition} disabled={savingDisposition}>
               {savingDisposition && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Save & Next
+              Save & Continue
             </Button>
           </DialogFooter>
         </DialogContent>
