@@ -1,60 +1,45 @@
 
-# Fix: Deleted Estimate Still Showing in Edit Mode
+# Add Email Field to the "Add New Lead" Form
 
 ## Problem
-When you delete an estimate from the "Saved Estimates" list, the estimate builder below still shows "Viewing saved estimate" with the deleted estimate's line items loaded. This happens because `SavedEstimatesList` and `MultiTemplateSelector` are sibling components -- deleting in one does not notify the other to clear its internal state.
+The "Add New Lead" dialog (`EnhancedLeadCreationDialog.tsx`) has no email input, even though:
+- The `formData` state doesn't include an `email` field
+- The edge function `create-lead-with-contact` already accepts and handles `email` (dedup, contact creation)
+- The `SelectedContact` interface already has `email`
 
 ## Changes
 
-### 1. `src/components/estimates/SavedEstimatesList.tsx`
-Add a new optional prop `onEstimateDeleted` to the component interface. Call it after a successful delete, passing the deleted estimate ID:
+### `src/components/EnhancedLeadCreationDialog.tsx`
 
-```typescript
-// Add to props interface
-onEstimateDeleted?: (estimateId: string) => void;
+**1. Add `email` to formData state (line ~101)**
+Insert `email: ""` into the initial formData object, right after `phone`.
 
-// Call at end of handleDeleteEstimate (after cache invalidation, before toast)
-onEstimateDeleted?.(estimateToRemove.id);
+**2. Add email input field in the left column (after Phone Number, around line ~669)**
+Add an email input between Phone Number and Roof Age:
+```tsx
+<div>
+  <Label htmlFor="email">Email</Label>
+  <Input
+    id="email"
+    type="email"
+    value={formData.email}
+    onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+    placeholder="Enter email address"
+    disabled={formData.useSameInfo}
+  />
+</div>
 ```
 
-### 2. `src/components/estimates/MultiTemplateSelector.tsx`
-Add a new optional prop `clearEditingEstimateId` that, when set, causes the component to clear its editing state if it matches the currently loaded estimate:
+**3. Pass email in handleSubmit body (line ~497)**
+Add `email: formData.email` to the edge function call body.
 
-```typescript
-// Add to props interface
-clearEditingEstimateId?: string | null;
+**4. Reset email on form clear (line ~546)**
+Add `email: ""` to the reset object.
 
-// Add useEffect to react when it changes
-useEffect(() => {
-  if (clearEditingEstimateId && clearEditingEstimateId === existingEstimateId) {
-    setExistingEstimateId(null);
-    setEditingEstimateNumber(null);
-    setIsEditingLoadedEstimate(false);
-    setEstimateDisplayName('');
-    setLineItems([]);
-    resetToOriginal();
-  }
-}, [clearEditingEstimateId]);
-```
+**5. Pre-fill email from linked contact**
+In the `useSameInfo` effect, set email from the selected contact when "Use same info" is checked.
 
-### 3. `src/pages/LeadDetails.tsx`
-Wire the two together with a state variable:
-
-```typescript
-const [deletedEstimateId, setDeletedEstimateId] = useState<string | null>(null);
-
-// On SavedEstimatesList:
-<SavedEstimatesList
-  ...
-  onEstimateDeleted={(id) => setDeletedEstimateId(id)}
-/>
-
-// On MultiTemplateSelector:
-<MultiTemplateSelector
-  ...
-  clearEditingEstimateId={deletedEstimateId}
-/>
-```
-
-## Result
-When you delete an estimate from the saved list, the estimate builder immediately clears its editing state and returns to the blank/template-selection view.
+## Technical Notes
+- The field is optional (no asterisk, no validation required) -- email is not mandatory for lead creation
+- The `create-lead-with-contact` edge function already handles email for dedup matching and contact record creation, so no backend changes are needed
+- When "Use same info as contact" is checked, the email will auto-fill from the linked contact's record
