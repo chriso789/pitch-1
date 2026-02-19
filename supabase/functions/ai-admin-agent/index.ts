@@ -681,7 +681,7 @@ async function executeTool(
 
 interface AIMessage {
   role: string;
-  content?: string | null;
+  content?: string | unknown[] | null;
   tool_calls?: unknown[];
   tool_call_id?: string;
 }
@@ -724,10 +724,26 @@ async function callAnthropic(
   // Convert messages for Anthropic format (no system in messages array)
   const anthropicMessages = messages
     .filter((m) => m.role !== "system")
-    .map((m) => ({
-      role: m.role === "tool" ? "user" : m.role,
-      content: m.role === "tool" ? `[Tool result]: ${m.content}` : (m.content || ""),
-    }));
+    .map((m) => {
+      const role = m.role === "tool" ? "user" : m.role;
+      // Handle mixed content arrays (with image_url parts) for Anthropic vision
+      if (Array.isArray(m.content)) {
+        const anthropicContent = (m.content as any[]).map((part: any) => {
+          if (part.type === "image_url" && part.image_url?.url) {
+            return { type: "image", source: { type: "url", url: part.image_url.url } };
+          }
+          if (part.type === "text") {
+            return { type: "text", text: part.text || "" };
+          }
+          return { type: "text", text: JSON.stringify(part) };
+        });
+        return { role, content: anthropicContent };
+      }
+      if (m.role === "tool") {
+        return { role, content: `[Tool result]: ${m.content}` };
+      }
+      return { role, content: m.content || "" };
+    });
 
   const resp = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -822,6 +838,7 @@ CAPABILITIES:
 - Track changes: view recent modifications, create/manage projects
 - Inspect database schema and suggest system improvements
 - Reference past changes and provide context on what was modified
+- Analyze uploaded images (screenshots, photos, diagrams) when provided by the user
 
 ${isAdmin ? "This user has ADMIN privileges and can modify system configuration." : "This user has READ-ONLY access. They can query data but cannot modify configuration."}
 
