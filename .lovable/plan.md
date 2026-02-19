@@ -1,78 +1,56 @@
 
 
-# Fix: Finalize-Envelope Crashing After Signature (3 Errors)
+# Fix: Signature Flow -- Link Estimate, Embed on Signature Block, Remove Extra Page, Fix Data URL Leak
 
-The live edge function logs show exactly why the signed document is never generated, emailed, or saved back to the CRM. The `finalize-envelope` function crashes due to 3 separate errors, all of which must be fixed together.
+## Issues Found
 
-## Error 1: Unicode character crash (CRITICAL)
+### 1. Estimate status never updates to "signed" (ROOT CAUSE)
+The `send-document-for-signature` edge function only links `signature_envelope_id` back to `smart_doc_instances` (line 209), but when called from the Share Estimate dialog with `document_type: 'estimate'`, it never writes the envelope ID to `enhanced_estimates.signature_envelope_id`. So when `finalize-envelope` later tries to find the estimate via `signature_envelope_id`, it finds nothing and the status stays "draft".
 
-```
-Error: WinAnsi cannot encode "✓" (0x2713)
-```
+**Fix:** Add an `else if (document_type === 'estimate')` block in `send-document-for-signature` that updates `enhanced_estimates.signature_envelope_id` for the given estimate.
 
-**Line 308** of `finalize-envelope/index.ts` uses a checkmark `✓` in a drawText call. The `pdf-lib` standard fonts (Helvetica) only support WinAnsi characters and cannot render Unicode symbols.
+### 2. Signature, date, and signer details should go on the signature block -- not a separate page
+Currently `finalize-envelope` embeds the signature image on the last page at a fixed position (y=80), then creates an entirely separate "SIGNATURE CERTIFICATE" page. The user wants:
+- Signature image placed directly on the signature block area
+- Signer name and date printed below the signature
+- The separate certificate page removed entirely
 
-**Fix:** Replace `✓` with a plain ASCII alternative like `[X]` or `*`.
+**Fix:** Modify `finalize-envelope` to:
+- Draw the signer's name, date, and IP address as small text below the signature image on the last page (the signature block area)
+- Remove the entire "STEP 2: Add Signature Certificate page" section (lines 201-338)
 
-```
-// Line 308 — before:
-certPage.drawText(`✓ "${consentText}"`, { ... });
+### 3. "data:image/png;base64,..." text leaking on screen
+The attachment pages renderer converts PDF pages to base64 data URLs and renders them in `<img>` tags. The raw base64 string is overflowing its container and appearing as visible text. This happens because the page container uses `overflow: hidden` but the `<img>` alt text or a CSS rendering issue lets the URL text escape.
 
-// After:
-certPage.drawText(`[X] "${consentText}"`, { ... });
-```
+**Fix:** Add `overflow-hidden` to the image container, remove the data URL from the `alt` attribute (it's already not there, but the issue is likely the data URL being set as a text node somewhere), and ensure the image fills its container properly.
 
-## Error 2: Missing `final_pdf_hash` column (CRITICAL)
+## Files to Change
 
-```
-Could not find the 'final_pdf_hash' column of 'signature_envelopes'
-```
-
-The envelope update on **line 409** tries to write `final_pdf_hash` but that column does not exist on `signature_envelopes`. This causes a 500 error and kills the entire function — nothing after this runs (no document record, no estimate update, no emails).
-
-**Fix:** Database migration to add the column, OR remove `final_pdf_hash` from the update and store it in `metadata` or skip it. Adding the column is cleaner since the code also reads it later.
-
-**Migration:**
-```sql
-ALTER TABLE signature_envelopes 
-ADD COLUMN IF NOT EXISTS final_pdf_hash TEXT;
-```
-
-**No code change needed** — the existing code on lines 404-412 will work once the column exists.
-
-## Error 3: Notification type check constraint (NON-BLOCKING but noisy)
-
-```
-new row for relation "user_notifications" violates check constraint "user_notifications_type_check"
+### `supabase/functions/send-document-for-signature/index.ts`
+- After line 214, add a new block:
+```typescript
+if (document_type === 'estimate') {
+  await supabase
+    .from("enhanced_estimates")
+    .update({ signature_envelope_id: envelope.id })
+    .eq("id", document_id);
+}
 ```
 
-The `user_notifications` table has a CHECK constraint limiting `type` to only: `rank_change`, `achievement_unlock`, `prize_zone`, `reward_ready`. The signature system passes `signature_received` and `envelope_completed` which are rejected.
+### `supabase/functions/finalize-envelope/index.ts`
+- **Enhance Step 1** (lines 127-199): After embedding the signature image, also draw signer name, signed date, and IP in small text below the signature
+- **Remove Step 2** entirely (lines 201-338): Delete the certificate page generation code. The audit trail data (hash, timestamp, IP) is already stored in the database and in the completion email
 
-**Fix:** Alter the check constraint to include the signature types.
-
-**Migration:**
-```sql
-ALTER TABLE user_notifications DROP CONSTRAINT user_notifications_type_check;
-ALTER TABLE user_notifications ADD CONSTRAINT user_notifications_type_check 
-  CHECK (type = ANY (ARRAY[
-    'rank_change', 'achievement_unlock', 'prize_zone', 'reward_ready',
-    'signature_received', 'envelope_completed', 'envelope_viewed'
-  ]));
-```
-
-## Summary of Changes
-
-| File / Resource | Change |
-|---|---|
-| **Database migration** | Add `final_pdf_hash` column to `signature_envelopes`; expand `user_notifications` type check constraint |
-| **`supabase/functions/finalize-envelope/index.ts`** | Line 308: replace `✓` with `[X]` to avoid WinAnsi encoding crash |
+### `src/components/estimates/AttachmentPagesRenderer.tsx`
+- Add `overflow-hidden` and `text-indent: -9999px` or similar technique to prevent any text content from the data URL leaking visually
+- Ensure the `<img>` element clips properly within its container
 
 ## What This Fixes
 
-Once all 3 errors are resolved, the finalize-envelope function will run to completion, which means:
-- Signed PDF with embedded signature + certificate page is generated and uploaded
-- Document record is created in the Documents tab
-- Estimate status is updated to "signed" in Saved Estimates
-- Completion email with download link is sent to the client and the sales rep
-- In-app notifications are created without constraint violations
-
+- **Estimate status**: Will correctly update from "draft" to "signed" after all recipients sign
+- **Saved Estimates list**: Will reflect the signed status immediately
+- **Signature placement**: Signature image + signer name + date appear directly on the estimate's signature block instead of a separate page
+- **No extra page**: The separate "SIGNATURE CERTIFICATE" page is removed -- cleaner, more professional output
+- **Data URL text**: The raw base64 string will no longer be visible on the estimate preview
+- **Documents tab**: Signed PDF already saves correctly (confirmed working in logs)
+- **Email**: Completion email already sends correctly (confirmed working in logs)
