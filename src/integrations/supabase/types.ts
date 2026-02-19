@@ -30829,6 +30829,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "fk_signature_envelopes_tenant"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "signature_envelopes_template_id_fkey"
             columns: ["template_id"]
             isOneToOne: false

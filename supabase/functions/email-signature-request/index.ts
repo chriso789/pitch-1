@@ -67,10 +67,24 @@ serve(async (req) => {
       .eq("id", envelope_id)
       .single();
 
-    const tenantName = envelope?.tenant?.name || "PITCH CRM";
-    const tenantSettings = envelope?.tenant?.settings || {};
+    let tenantName = envelope?.tenant?.name || "PITCH CRM";
+    let tenantSettings = envelope?.tenant?.settings || {};
+    const tenantId = envelope?.tenant_id; // read from raw column, not joined object
+
+    // Fallback: if join didn't resolve tenant, query directly
+    if (tenantName === "PITCH CRM" && tenantId) {
+      const { data: tenantRow } = await supabase
+        .from("tenants")
+        .select("name, settings")
+        .eq("id", tenantId)
+        .single();
+      if (tenantRow) {
+        tenantName = tenantRow.name;
+        tenantSettings = tenantRow.settings || {};
+      }
+    }
+
     const primaryColor = tenantSettings.primary_color || "#2563eb";
-    const tenantId = envelope?.tenant_id;
 
     // Look up company email domain for sending from company domain
     let fromEmail: string;
