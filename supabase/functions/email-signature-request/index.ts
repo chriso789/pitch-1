@@ -48,7 +48,6 @@ serve(async (req) => {
       sender_email,
       subject,
       message,
-      document_url,
       is_reminder = false,
       cc,
       bcc
@@ -71,12 +70,34 @@ serve(async (req) => {
     const tenantName = envelope?.tenant?.name || "PITCH CRM";
     const tenantSettings = envelope?.tenant?.settings || {};
     const primaryColor = tenantSettings.primary_color || "#2563eb";
+    const tenantId = envelope?.tenant_id;
 
-    // Build signing URL - use the public signing page
+    // Look up company email domain for sending from company domain
+    let fromEmail: string;
+    let fromName: string;
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+
+    if (tenantId) {
+      const { data: emailDomain } = await supabase
+        .from("company_email_domains")
+        .select("*")
+        .eq("tenant_id", tenantId)
+        .eq("verification_status", "verified")
+        .eq("is_active", true)
+        .maybeSingle();
+
+      fromEmail = emailDomain?.from_email || `signatures@${fromDomain}`;
+      fromName = emailDomain?.from_name || tenantName;
+    } else {
+      fromEmail = `signatures@${fromDomain}`;
+      fromName = tenantName;
+    }
+
+    // Build signing URL
     const appUrl = Deno.env.get("APP_URL") || "https://pitchcrm.app";
     const signingUrl = `${appUrl}/sign/${access_token}`;
 
-    // Build professional email HTML
+    // Build professional email HTML - single CTA, no separate PDF button
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -118,18 +139,6 @@ serve(async (req) => {
               </div>
               ` : ''}
               
-              ${document_url ? `
-              <!-- Document Preview Link -->
-              <div style="background-color: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px; text-align: center;">
-                <p style="margin: 0 0 12px; color: #0c4a6e; font-size: 14px; font-weight: 600;">
-                  📄 View the attached estimate before signing
-                </p>
-                <a href="${document_url}" style="display: inline-block; background-color: #ffffff; color: ${primaryColor}; text-decoration: none; padding: 10px 24px; font-size: 14px; font-weight: 500; border-radius: 6px; border: 1px solid ${primaryColor};">
-                  View Estimate PDF
-                </a>
-              </div>
-              ` : ''}
-              
               <!-- CTA Button -->
               <table role="presentation" style="width: 100%; margin: 32px 0;">
                 <tr>
@@ -159,8 +168,7 @@ serve(async (req) => {
           <tr>
             <td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;">
               <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
-                Sent via ${tenantName}<br>
-                Powered by PITCH CRM Signature System
+                Sent via ${tenantName}
               </p>
             </td>
           </tr>
@@ -172,8 +180,7 @@ serve(async (req) => {
 </html>
     `;
 
-    // Send email via Resend
-    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+    // Send email via Resend - from company domain
     const resendResponse = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -181,7 +188,7 @@ serve(async (req) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        from: `${tenantName} <signatures@${fromDomain}>`,
+        from: `${fromName} <${fromEmail}>`,
         to: [recipient_email],
         subject: is_reminder ? `⏰ Reminder: ${subject}` : subject,
         html: emailHtml,
@@ -198,7 +205,7 @@ serve(async (req) => {
       throw new Error(resendData.message || "Failed to send email");
     }
 
-    console.log(`Signature request email sent to ${recipient_email}, Resend ID: ${resendData.id}`);
+    console.log(`Signature request email sent to ${recipient_email} from ${fromName} <${fromEmail}>, Resend ID: ${resendData.id}`);
 
     // Update recipient record with email sent timestamp
     await supabase
