@@ -39537,6 +39537,18 @@ export type Database = {
         Args: { contact_id_param: string }
         Returns: number
       }
+      get_pipeline_status_counts: {
+        Args: {
+          p_location_id?: string
+          p_tenant_id: string
+          p_user_id?: string
+          p_user_role?: string
+        }
+        Returns: {
+          count: number
+          status: string
+        }[]
+      }
       get_proposal_analytics: {
         Args: { p_days?: number; p_tenant_id: string }
         Returns: {

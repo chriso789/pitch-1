@@ -182,53 +182,35 @@ const Dashboard = () => {
     }
   });
 
-  // Pipeline status counts - filtered by tenant, role, AND location
+  // Pipeline status counts - server-side aggregation via RPC (no 1000-row limit)
   const { data: pipelineStatusCounts = {}, isError: pipelineError } = useQuery({
     queryKey: ['dashboard-pipeline-counts', user?.id, user?.active_tenant_id || user?.tenant_id, currentLocationId],
     queryFn: async () => {
       if (!user) return {};
       
-      // Use active_tenant_id from useCurrentUser (already fetched)
       const tenantId = user.active_tenant_id || user.tenant_id;
       if (!tenantId) {
         console.warn('[Dashboard] No tenant_id available for pipeline query');
         return {};
       }
       
-      console.log('[Dashboard] Fetching pipeline counts for tenant:', tenantId, 'location:', currentLocationId, 'user:', user.id, 'role:', user.role);
+      console.log('[Dashboard] Fetching pipeline counts via RPC for tenant:', tenantId, 'location:', currentLocationId);
       
-      // Build query - NO date range filter for pipeline status (shows current state)
-      let query = supabase
-        .from('pipeline_entries')
-        .select('status')
-        .eq('tenant_id', tenantId)
-        .eq('is_deleted', false);
-      
-      // Filter by location if selected
-      if (currentLocationId) {
-        query = query.eq('location_id', currentLocationId);
-      }
-      
-      // For non-admin roles, only show their assigned/created entries
-      const adminRoles = ['master', 'corporate', 'office_admin'];
-      if (!adminRoles.includes(user.role)) {
-        query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
-      }
-      
-      const { data, error } = await query;
+      const { data, error } = await supabase.rpc('get_pipeline_status_counts', {
+        p_tenant_id: tenantId,
+        p_location_id: currentLocationId || null,
+        p_user_id: user.id,
+        p_user_role: user.role || ''
+      });
       
       if (error) {
-        console.error('[Dashboard] Pipeline query error:', error);
+        console.error('[Dashboard] Pipeline RPC error:', error);
         throw error;
       }
       
-      console.log('[Dashboard] Pipeline entries fetched:', data?.length || 0);
-      
-      // Build counts dynamically from all entries
       const counts: Record<string, number> = {};
-      data?.forEach(entry => {
-        const status = entry.status;
-        counts[status] = (counts[status] || 0) + 1;
+      (data || []).forEach((row: { status: string; count: number }) => {
+        counts[row.status] = row.count;
       });
       
       console.log('[Dashboard] Pipeline counts:', counts);
