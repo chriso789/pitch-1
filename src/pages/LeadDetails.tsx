@@ -239,6 +239,7 @@ const LeadDetails = () => {
   const [estimateHasUnsavedChanges, setEstimateHasUnsavedChanges] = useState(false);
   const [currentEditingEstimateName, setCurrentEditingEstimateName] = useState<string | undefined>(undefined);
   const saveEstimateChangesRef = useRef<(() => Promise<void>) | null>(null);
+  const [deletedEstimateId, setDeletedEstimateId] = useState<string | null>(null);
   
   // Handle unsaved changes state from MultiTemplateSelector
   const handleUnsavedChangesChange = useCallback((hasChanges: boolean, estimateName?: string) => {
@@ -594,6 +595,7 @@ const LeadDetails = () => {
               hasUnsavedChanges={estimateHasUnsavedChanges}
               currentEditingName={currentEditingEstimateName}
               onSaveAndSwitch={handleSaveAndSwitch}
+              onEstimateDeleted={(id) => setDeletedEstimateId(id)}
             />
 
             {/* Unified Measurement Management Panel */}
@@ -617,6 +619,7 @@ const LeadDetails = () => {
               }}
               onUnsavedChangesChange={handleUnsavedChangesChange}
               saveChangesRef={saveEstimateChangesRef}
+              clearEditingEstimateId={deletedEstimateId}
             />
           </div>
         );
