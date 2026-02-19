@@ -305,7 +305,7 @@ serve(async (req: Request) => {
             
             // Consent statement
             const consentText = (meta.consent_text as string) || 'I agree that this electronic signature is legally binding';
-            certPage.drawText(`✓ "${consentText}"`, {
+            certPage.drawText(`[X] "${consentText}"`, {
               x: 50,
               y: yPos - 75,
               size: 9,

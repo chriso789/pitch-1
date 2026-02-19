@@ -30773,6 +30773,7 @@ export type Database = {
           envelope_number: string | null
           estimate_id: string | null
           expires_at: string | null
+          final_pdf_hash: string | null
           generated_pdf_path: string | null
           id: string
           pipeline_entry_id: string | null
@@ -30794,6 +30795,7 @@ export type Database = {
           envelope_number?: string | null
           estimate_id?: string | null
           expires_at?: string | null
+          final_pdf_hash?: string | null
           generated_pdf_path?: string | null
           id?: string
           pipeline_entry_id?: string | null
@@ -30815,6 +30817,7 @@ export type Database = {
           envelope_number?: string | null
           estimate_id?: string | null
           expires_at?: string | null
+          final_pdf_hash?: string | null
           generated_pdf_path?: string | null
           id?: string
           pipeline_entry_id?: string | null
