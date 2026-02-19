@@ -22,6 +22,8 @@ interface RequestBody {
   expire_days?: number;
   pipeline_entry_id?: string;
   contact_id?: string;
+  cc?: string[];
+  bcc?: string[];
 }
 
 serve(async (req) => {
@@ -68,7 +70,7 @@ serve(async (req) => {
     }
 
     const body: RequestBody = await req.json();
-    const { document_id, document_type, recipients, email_subject, email_message, expire_days = 30, pipeline_entry_id, contact_id } = body;
+    const { document_id, document_type, recipients, email_subject, email_message, expire_days = 30, pipeline_entry_id, contact_id, cc, bcc } = body;
 
     if (!document_id || !recipients?.length) {
       return new Response(JSON.stringify({ error: "document_id and recipients required" }), {
@@ -217,7 +219,9 @@ serve(async (req) => {
             sender_email: profile!.email,
             subject: documentTitle,
             message: email_message || "Please review and sign the attached document.",
-            document_url: documentUrl
+            document_url: documentUrl,
+            ...(cc?.length ? { cc } : {}),
+            ...(bcc?.length ? { bcc } : {}),
           }
         });
         return { email: recipient.recipient_email, sent: true };

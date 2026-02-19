@@ -12,7 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Send, Mail, CheckCircle, FileSignature } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Loader2, Send, Mail, CheckCircle, FileSignature, ChevronDown } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
@@ -44,6 +45,9 @@ export function ShareEstimateDialog({
   const [recipientName, setRecipientName] = useState(customerName);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
+  const [ccEmails, setCcEmails] = useState('');
+  const [bccEmails, setBccEmails] = useState('');
+  const [showCcBcc, setShowCcBcc] = useState(false);
   const [requestSignature, setRequestSignature] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
@@ -57,6 +61,9 @@ export function ShareEstimateDialog({
       setRecipientName(customerName);
       setSubject('');
       setMessage('');
+      setCcEmails('');
+      setBccEmails('');
+      setShowCcBcc(false);
       setRequestSignature(false);
       setIsSent(false);
     }
@@ -91,6 +98,26 @@ export function ShareEstimateDialog({
       return;
     }
 
+    // Parse and validate CC/BCC emails
+    const parseCcList = (raw: string): string[] =>
+      raw.split(',').map(e => e.trim()).filter(Boolean);
+
+    const ccArray = parseCcList(ccEmails);
+    const bccArray = parseCcList(bccEmails);
+
+    for (const email of ccArray) {
+      if (!emailRegex.test(email)) {
+        toast({ title: 'Invalid CC Email', description: `"${email}" is not a valid email`, variant: 'destructive' });
+        return;
+      }
+    }
+    for (const email of bccArray) {
+      if (!emailRegex.test(email)) {
+        toast({ title: 'Invalid BCC Email', description: `"${email}" is not a valid email`, variant: 'destructive' });
+        return;
+      }
+    }
+
     setIsSending(true);
 
     try {
@@ -111,6 +138,8 @@ export function ShareEstimateDialog({
             expire_days: 30,
             pipeline_entry_id: pipelineEntryId || undefined,
             contact_id: contactId || undefined,
+            ...(ccArray.length > 0 && { cc: ccArray }),
+            ...(bccArray.length > 0 && { bcc: bccArray }),
           },
         });
 
@@ -134,6 +163,8 @@ export function ShareEstimateDialog({
             recipient_name: recipientName.trim(),
             subject: subject.trim() || undefined,
             message: message.trim() || undefined,
+            ...(ccArray.length > 0 && { cc: ccArray }),
+            ...(bccArray.length > 0 && { bcc: bccArray }),
           },
         });
 
@@ -212,6 +243,37 @@ export function ShareEstimateDialog({
                 onChange={(e) => setRecipientEmail(e.target.value)}
               />
             </div>
+
+            {/* CC / BCC collapsible */}
+            <Collapsible open={showCcBcc} onOpenChange={setShowCcBcc}>
+              <CollapsibleTrigger asChild>
+                <button type="button" className="text-xs text-primary hover:underline flex items-center gap-1">
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showCcBcc ? 'rotate-180' : ''}`} />
+                  {showCcBcc ? 'Hide CC/BCC' : '+ Add CC/BCC'}
+                </button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-3 pt-2">
+                <div className="space-y-1">
+                  <Label htmlFor="cc-emails" className="text-xs">CC</Label>
+                  <Input
+                    id="cc-emails"
+                    placeholder="adjuster@insurance.com, office@company.com"
+                    value={ccEmails}
+                    onChange={(e) => setCcEmails(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="bcc-emails" className="text-xs">BCC</Label>
+                  <Input
+                    id="bcc-emails"
+                    placeholder="manager@company.com"
+                    value={bccEmails}
+                    onChange={(e) => setBccEmails(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Separate multiple emails with commas</p>
+              </CollapsibleContent>
+            </Collapsible>
 
             <div className="space-y-2">
               <Label htmlFor="subject">
