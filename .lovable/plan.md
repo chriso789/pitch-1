@@ -1,99 +1,71 @@
 
-# Signature Experience Overhaul: Layout, Notifications, Email Cleanup, and Company Domain
 
-## 5 Changes
+# Fix Signature Email: Company Domain and Subject Line
 
-### 1. Side-by-Side Layout for Signing Page (PublicSignatureCapture.tsx)
+## Problems Found
 
-Replace the current stacked vertical layout (small PDF preview on top, signature section below requiring scroll) with a side-by-side layout:
+### 1. Email comes from "PITCH CRM" instead of "O'Brien Contracting"
 
-- **Left panel (~65% width):** Full-height PDF viewer with the estimate embedded at near-full width, plus a "Download PDF" button in the header
-- **Right panel (~35% width):** Compact signing card (draw/type signature + submit button) -- always visible without scrolling
-- On mobile, stack vertically but with a much taller PDF viewer (min 600px height instead of 400px)
-- Remove the separate "Document Preview" card header to maximize viewing space
+**Root cause:** The `email-signature-request` function (line 66) tries to join tenant data using PostgREST:
+```
+.select("*, tenant:tenant_id(name, settings)")
+```
+But `signature_envelopes.tenant_id` has **no foreign key constraint** to the `tenants` table, so the join silently returns `null`. This causes:
+- `tenantName` falls back to `"PITCH CRM"` (line 70)
+- `tenantId` is `undefined` (line 73)
+- The company domain lookup block (lines 80-94) is skipped entirely
+- Email sends from `PITCH CRM <signatures@pitch-crm.ai>` instead of `O'Brien Contracting <support@obriencontractingusa.com>`
 
-### 2. Remove "View Estimate PDF" Button from Email (email-signature-request)
+### 2. Subject not using the custom text typed in the share dialog
 
-Since the "Review & Sign Document" button already opens the signing page which embeds the full estimate, the separate "View Estimate PDF" link is redundant. Remove the entire `document_url` conditional block (lines 121-131) from the email HTML template. This makes the email cleaner with a single clear CTA.
+The subject field IS being passed through correctly in the data, but when no custom subject is typed, it defaults to "Please sign: {estimate name}". If the user typed a custom subject, it does get used. However, the `documentTitle` (which becomes both the envelope title AND email subject) is being set on line 118 with the pattern `"Please sign: ..."` -- if the user expected their typed subject to override this, it should.
 
-### 3. SMS Notification to Rep When Customer Opens Signing Page (PublicSignatureCapture.tsx + new edge function call)
+## Fix
 
-When `loadEnvelope` successfully loads the document (i.e., the customer clicked "Review & Sign"):
+### Database Migration -- Add Foreign Key
 
-- Call a new lightweight edge function `notify-signature-opened` (or invoke `telnyx-send-sms` via the existing pattern from `track-quote-view`)
-- The function looks up the envelope's `created_by` user, gets their phone number, and sends an SMS like: `"🔔 Jason Dudjak just opened their signature request for Quote #EST-001!"`
-- Also log a `signature_events` entry with event_type `"opened"`
-- Deduplicate: only send on the first open (check if an "opened" event already exists for this envelope)
-
-### 4. Add Download Button to Signing Page
-
-In the PDF header area of the signing page, add a download link/button using the `document_url`. This gives the customer a way to save the estimate locally without cluttering the email.
-
-### 5. Send Signature Email from Company Domain, Not PITCH CRM (email-signature-request)
-
-Currently the email uses `signatures@{RESEND_FROM_DOMAIN}` and falls back to "PITCH CRM" as the sender name. Instead, mirror the pattern from `send-quote-email`:
-
-- Query `company_email_domains` for the tenant's verified domain
-- Use the company's `from_email` / `from_name` if configured
-- Fall back to `{tenantName} <signatures@{RESEND_FROM_DOMAIN}>` only if no company domain is set
-- Update the footer from "Powered by PITCH CRM Signature System" to just the company name
-
----
-
-## Technical Details
-
-### Files Modified
-
-| File | Changes |
-|------|---------|
-| `src/pages/PublicSignatureCapture.tsx` | Redesign to side-by-side layout; add download button; call notify endpoint on load |
-| `supabase/functions/email-signature-request/index.ts` | Remove "View Estimate PDF" block; use `company_email_domains` for from address; clean footer |
-| `supabase/functions/notify-signature-opened/index.ts` | **New** -- looks up envelope creator, sends SMS notification, logs event, deduplicates |
-
-### New Edge Function: `notify-signature-opened`
-
-```text
-Input: { access_token: string }
-Logic:
-  1. Look up recipient by access_token
-  2. Get envelope + created_by user
-  3. Check signature_events for existing "opened" event for this envelope -- skip SMS if found
-  4. Insert signature_events row (event_type: "opened")
-  5. Get creator's phone from profiles
-  6. Call telnyx-send-sms with notification message
-  7. Return success (never block page load on failure)
+```sql
+ALTER TABLE signature_envelopes
+  ADD CONSTRAINT fk_signature_envelopes_tenant
+  FOREIGN KEY (tenant_id) REFERENCES tenants(id);
 ```
 
-### Layout Structure (PublicSignatureCapture.tsx)
+This makes the PostgREST join work, so the function correctly resolves the tenant name, settings, and then finds the company email domain.
 
-```text
-+--------------------------------------------------+
-|  Header: Document Title          [Download PDF]   |
-+--------------------------------------------------+
-|                        |                          |
-|   Full-width PDF       |   Your Signature         |
-|   iframe/embed         |   [Draw] [Type]          |
-|   (h-[calc(100vh-     |                          |
-|     200px)])           |   [canvas / input]       |
-|                        |                          |
-|                        |   Printed Name: ____     |
-|                        |                          |
-|                        |   [Complete Signature]   |
-|                        |                          |
-+--------------------------------------------------+
-```
+### Fallback in `email-signature-request/index.ts`
 
-### Company Domain Email Pattern (from send-quote-email)
+As a safety net (in case the join still returns null for edge cases), add a direct fallback query:
 
 ```typescript
-const { data: emailDomain } = await supabase
-  .from("company_email_domains")
-  .select("*")
-  .eq("tenant_id", envelope.tenant_id)
-  .eq("verification_status", "verified")
-  .eq("is_active", true)
-  .single();
+// After the existing join attempt (line 64-68):
+let tenantName = envelope?.tenant?.name || "PITCH CRM";
+let tenantId = envelope?.tenant_id;  // <-- use the column directly, not the joined object
 
-const fromEmail = emailDomain?.from_email || `signatures@${fromDomain}`;
-const fromName = emailDomain?.from_name || tenantName;
+// If join didn't resolve tenant name, fetch directly
+if (tenantName === "PITCH CRM" && tenantId) {
+  const { data: tenantRow } = await supabase
+    .from("tenants")
+    .select("name, settings")
+    .eq("id", tenantId)
+    .single();
+  if (tenantRow) {
+    tenantName = tenantRow.name;
+    tenantSettings = tenantRow.settings || {};
+  }
+}
 ```
+
+The key fix: `tenantId` should be read from `envelope?.tenant_id` (the raw column) instead of `envelope?.tenant?.id` (the joined object). This ensures the company domain lookup runs even if the join fails.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| Database migration | Add FK constraint on `signature_envelopes.tenant_id` to `tenants(id)` |
+| `supabase/functions/email-signature-request/index.ts` | Read `tenantId` from `envelope.tenant_id` directly; add fallback tenant query; ensure company domain lookup always runs |
+
+### Result
+
+- Emails will come from `O'Brien Contracting <support@obriencontractingusa.com>` (the verified company domain)
+- The subject line uses whatever the user typed in the share dialog, falling back to `"Please sign: {estimate name}"` only if they left it blank
+- Footer says "Sent via O'Brien Contracting" instead of "PITCH CRM"
