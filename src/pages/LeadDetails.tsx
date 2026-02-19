@@ -770,44 +770,39 @@ const LeadDetails = () => {
               )}
             </div>
             
-            {/* Lead Property Address */}
+            {/* Property Address - compact single line */}
             {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
-              <div className="flex items-start gap-2 mt-3 text-sm">
-                <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Lead Property</span>
-                  <div className="flex items-center gap-2">
-                    <p className="text-foreground font-medium">
-                      {lead.verified_address?.formatted_address || 
-                       `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
-                    </p>
-                    {lead.contact?.id && (
-                      <AddressReverificationButton
-                        contactId={lead.contact.id}
-                        currentAddress={
-                          lead.verified_address?.formatted_address || 
-                          `${lead.contact?.address_street || ''}, ${lead.contact?.address_city || ''}, ${lead.contact?.address_state || ''} ${lead.contact?.address_zip || ''}`.trim()
-                        }
-                        onReverified={(newCoords) => {
-                          toast({
-                            title: "Coordinates Updated",
-                            description: "The property location has been re-verified. Measurements will now use the correct location.",
-                          });
-                          refetchLead();
-                        }}
-                        size="sm"
-                        variant="ghost"
-                        className="h-6 px-2 text-xs"
-                      />
-                    )}
-                  </div>
-                </div>
+              <div className="flex items-center gap-2 mt-2 text-sm">
+                <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
+                <p className="text-foreground">
+                  {lead.verified_address?.formatted_address || 
+                   `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
+                </p>
+                {lead.contact?.id && (
+                  <AddressReverificationButton
+                    contactId={lead.contact.id}
+                    currentAddress={
+                      lead.verified_address?.formatted_address || 
+                      `${lead.contact?.address_street || ''}, ${lead.contact?.address_city || ''}, ${lead.contact?.address_state || ''} ${lead.contact?.address_zip || ''}`.trim()
+                    }
+                    onReverified={(newCoords) => {
+                      toast({
+                        title: "Coordinates Updated",
+                        description: "The property location has been re-verified. Measurements will now use the correct location.",
+                      });
+                      refetchLead();
+                    }}
+                    size="sm"
+                    variant="ghost"
+                    className="h-6 px-2 text-xs"
+                  />
+                )}
               </div>
             )}
 
-            {/* Contact Information */}
+            {/* Contact info - compact inline */}
             {lead.contact && (lead.contact.phone || lead.contact.email) && (
-              <div className="flex items-center gap-4 mt-2 text-sm">
+              <div className="flex items-center gap-3 mt-1 text-sm">
                 {lead.contact.phone && (
                   <div className="flex items-center gap-1.5">
                     <Phone className="h-3.5 w-3.5 text-muted-foreground" />
@@ -815,6 +810,9 @@ const LeadDetails = () => {
                       {lead.contact.phone}
                     </a>
                   </div>
+                )}
+                {lead.contact.phone && lead.contact.email && (
+                  <span className="text-muted-foreground">|</span>
                 )}
                 {lead.contact.email && (
                   <div className="flex items-center gap-1.5">
@@ -827,8 +825,8 @@ const LeadDetails = () => {
               </div>
             )}
             
-            {/* Lead Information directly under name */}
-            <div className="flex items-center gap-4 text-sm mt-2">
+            {/* Stats bar */}
+            <div className="flex items-center gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2 flex-wrap">
               {lead.priority && (
                 <div className="flex items-center gap-1">
                   <span className="text-muted-foreground">Priority:</span>
@@ -863,132 +861,132 @@ const LeadDetails = () => {
               </Button>
             </div>
 
-            {/* Sales Rep */}
-            <div className="flex items-center gap-2 mt-2">
-              <span className="text-muted-foreground text-sm">Sales Rep:</span>
-              {isEditingSalesRep ? (
-                <Select 
-                  value={lead.assigned_rep?.id || ''} 
-                  onValueChange={(value) => handleSalesRepUpdate(value)}
-                >
-                  <SelectTrigger className="h-7 w-[200px]">
-                    <SelectValue placeholder="Select rep" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {availableSalesReps.map((rep) => (
-                      <SelectItem key={rep.id} value={rep.id}>
-                        {rep.first_name} {rep.last_name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              ) : lead.assigned_rep ? (
-                <div className="flex items-center gap-1">
-                  <span className="font-medium text-sm">
-                    {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
-                  </span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    className="h-5 w-5 p-0"
-                    onClick={() => setIsEditingSalesRep(true)}
+            {/* Sales Reps - combined row */}
+            <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Rep:</span>
+                {isEditingSalesRep ? (
+                  <Select 
+                    value={lead.assigned_rep?.id || ''} 
+                    onValueChange={(value) => handleSalesRepUpdate(value)}
                   >
-                    <Edit2 className="h-3 w-3" />
-                  </Button>
-                </div>
-              ) : (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-6"
-                  onClick={() => setIsEditingSalesRep(true)}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Assign
-                </Button>
-              )}
-            </div>
-
-            {/* Secondary Sales Rep */}
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-muted-foreground text-sm">Secondary Rep:</span>
-              {isEditingSecondaryRep ? (
-                <Select 
-                  value={lead.secondary_assigned_rep?.id || ''} 
-                  onValueChange={async (value) => {
-                    try {
-                      // Use null for empty value to avoid FK constraint errors
-                      const secondaryRepId = value && value !== 'none' ? value : null;
-                      const { error } = await supabase
-                        .from('pipeline_entries')
-                        .update({ 
-                          secondary_assigned_to: secondaryRepId,
-                          primary_rep_split_percent: secondaryRepId ? 50 : 100
-                        })
-                        .eq('id', id);
-                      if (error) throw error;
-                      toast({ title: "Secondary rep updated" });
-                      refetchLead();
-                      setIsEditingSecondaryRep(false);
-                    } catch (error: any) {
-                      console.error('Error updating secondary rep:', error);
-                      toast({ 
-                        title: "Error updating secondary rep", 
-                        description: error.message || "Please try again",
-                        variant: "destructive" 
-                      });
-                    }
-                  }}
-                >
-                  <SelectTrigger className="h-7 w-[200px]">
-                    <SelectValue placeholder="Select secondary rep" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">None</SelectItem>
-                    {availableSalesReps
-                      .filter(rep => rep.id !== lead.assigned_rep?.id)
-                      .map((rep) => (
+                    <SelectTrigger className="h-7 w-[200px]">
+                      <SelectValue placeholder="Select rep" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableSalesReps.map((rep) => (
                         <SelectItem key={rep.id} value={rep.id}>
                           {rep.first_name} {rep.last_name}
                         </SelectItem>
                       ))}
-                  </SelectContent>
-                </Select>
-              ) : lead.secondary_assigned_rep ? (
-                <div className="flex items-center gap-1">
-                  <span className="font-medium text-sm">
-                    {lead.secondary_assigned_rep.first_name} {lead.secondary_assigned_rep.last_name}
-                  </span>
-                  <Badge variant="outline" className="text-xs ml-1">
-                    {lead.primary_rep_split_percent || 50}/{100 - (lead.primary_rep_split_percent || 50)} split
-                  </Badge>
+                    </SelectContent>
+                  </Select>
+                ) : lead.assigned_rep ? (
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">
+                      {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
+                    </span>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-5 w-5 p-0"
+                      onClick={() => setIsEditingSalesRep(true)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="h-6"
+                    onClick={() => setIsEditingSalesRep(true)}
+                  >
+                    <Plus className="h-3 w-3 mr-1" />
+                    Assign
+                  </Button>
+                )}
+              </div>
+              <span className="text-muted-foreground">|</span>
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground">Split Rep:</span>
+                {isEditingSecondaryRep ? (
+                  <Select 
+                    value={lead.secondary_assigned_rep?.id || ''} 
+                    onValueChange={async (value) => {
+                      try {
+                        const secondaryRepId = value && value !== 'none' ? value : null;
+                        const { error } = await supabase
+                          .from('pipeline_entries')
+                          .update({ 
+                            secondary_assigned_to: secondaryRepId,
+                            primary_rep_split_percent: secondaryRepId ? 50 : 100
+                          })
+                          .eq('id', id);
+                        if (error) throw error;
+                        toast({ title: "Secondary rep updated" });
+                        refetchLead();
+                        setIsEditingSecondaryRep(false);
+                      } catch (error: any) {
+                        console.error('Error updating secondary rep:', error);
+                        toast({ 
+                          title: "Error updating secondary rep", 
+                          description: error.message || "Please try again",
+                          variant: "destructive" 
+                        });
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-7 w-[200px]">
+                      <SelectValue placeholder="Select secondary rep" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">None</SelectItem>
+                      {availableSalesReps
+                        .filter(rep => rep.id !== lead.assigned_rep?.id)
+                        .map((rep) => (
+                          <SelectItem key={rep.id} value={rep.id}>
+                            {rep.first_name} {rep.last_name}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                ) : lead.secondary_assigned_rep ? (
+                  <div className="flex items-center gap-1">
+                    <span className="font-medium">
+                      {lead.secondary_assigned_rep.first_name} {lead.secondary_assigned_rep.last_name}
+                    </span>
+                    <Badge variant="outline" className="text-xs ml-1">
+                      {lead.primary_rep_split_percent || 50}/{100 - (lead.primary_rep_split_percent || 50)} split
+                    </Badge>
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="h-5 w-5 p-0"
+                      onClick={() => setIsEditingSecondaryRep(true)}
+                    >
+                      <Edit2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ) : (
                   <Button 
                     variant="ghost" 
                     size="sm" 
-                    className="h-5 w-5 p-0"
+                    className="h-6 text-muted-foreground"
                     onClick={() => setIsEditingSecondaryRep(true)}
                   >
-                    <Edit2 className="h-3 w-3" />
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Split Rep
                   </Button>
-                </div>
-              ) : (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-6 text-muted-foreground"
-                  onClick={() => setIsEditingSecondaryRep(true)}
-                >
-                  <Plus className="h-3 w-3 mr-1" />
-                  Add Split Rep
-                </Button>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Contact Card with Qualification Status */}
         {lead.contact && (
-          <Card className="w-80 shadow-soft border-primary/20">
+          <Card className="w-64 shadow-soft border-primary/20">
             <CardContent className="p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-2">
@@ -1036,33 +1034,9 @@ const LeadDetails = () => {
                   </Button>
                 </div>
               </div>
-              <div className="space-y-2">
-                <p className="font-semibold">
-                  {lead.contact.first_name} {lead.contact.last_name}
-                </p>
-                <div className="space-y-1 text-sm text-muted-foreground">
-                  {lead.contact.phone && (
-                    <div className="flex items-center space-x-2">
-                      <Phone className="h-3 w-3" />
-                      <span>{lead.contact.phone}</span>
-                    </div>
-                  )}
-                  {lead.contact.email && (
-                    <div className="flex items-center space-x-2">
-                      <Mail className="h-3 w-3" />
-                      <span>{lead.contact.email}</span>
-                    </div>
-                  )}
-                  {lead.contact.address_street && (
-                    <div className="flex items-center space-x-2">
-                      <MapPin className="h-3 w-3" />
-                      <span className="text-xs">
-                        {lead.contact.address_street}, {lead.contact.address_city}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <p className="font-semibold">
+                {lead.contact.first_name} {lead.contact.last_name}
+              </p>
             </CardContent>
           </Card>
         )}
