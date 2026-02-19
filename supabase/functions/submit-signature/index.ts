@@ -54,7 +54,7 @@ serve(async (req: Request) => {
     // Look up recipient by access token
     const { data: recipient, error: recipientError } = await supabase
       .from('signature_recipients')
-      .select('id, envelope_id, name, email, status, tenant_id')
+      .select('id, envelope_id, recipient_name, recipient_email, status, tenant_id')
       .eq('access_token', body.access_token)
       .single();
 
@@ -173,7 +173,7 @@ serve(async (req: Request) => {
       title: allSigned ? 'Envelope Completed' : 'Signature Received',
       message: allSigned
         ? `All recipients have signed "${envelope.title}"`
-        : `${recipient.name} signed "${envelope.title}"`,
+        : `${recipient.recipient_name} signed "${envelope.title}"`,
       action_url: `/signature-envelopes/${envelope.id}`,
       metadata: {
         envelope_id: envelope.id,

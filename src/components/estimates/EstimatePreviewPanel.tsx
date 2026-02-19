@@ -491,8 +491,8 @@ export function EstimatePreviewPanel({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden">
-        <DialogHeader className="px-6 py-4 border-b">
+      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:z-50">
+        <DialogHeader className="px-6 py-4 border-b relative z-10">
           <div className="flex items-center justify-between">
             <DialogTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5" />
@@ -502,7 +502,7 @@ export function EstimatePreviewPanel({
               variant="outline"
               size="sm"
               onClick={() => onOpenChange(false)}
-              className="flex items-center gap-1.5"
+              className="flex items-center gap-1.5 relative z-20"
             >
               <ArrowLeft className="h-4 w-4" />
               Close Preview
