@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2 } from 'lucide-react';
+import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import {
   AlertDialog,
@@ -131,6 +131,36 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
       })) as SavedEstimate[];
     },
     enabled: !!pipelineEntryId,
+  });
+
+  // Fetch signature envelopes linked to estimates for this pipeline entry
+  const { data: signatureEnvelopes } = useQuery({
+    queryKey: ['estimate-signature-envelopes', pipelineEntryId],
+    queryFn: async () => {
+      const estimateIds = estimates?.map(e => e.id) || [];
+      if (estimateIds.length === 0) return {};
+
+      const { data, error } = await supabase
+        .from('signature_envelopes')
+        .select('id, estimate_id, status')
+        .in('estimate_id', estimateIds);
+
+      if (error) throw error;
+
+      // Map estimate_id -> latest envelope status
+      const map: Record<string, string> = {};
+      for (const env of (data || [])) {
+        if (env.estimate_id) {
+          // Keep the most relevant status (completed > sent > pending)
+          const existing = map[env.estimate_id];
+          if (!existing || env.status === 'completed' || (env.status === 'sent' && existing === 'pending')) {
+            map[env.estimate_id] = env.status;
+          }
+        }
+      }
+      return map;
+    },
+    enabled: !!pipelineEntryId && !!estimates && estimates.length > 0,
   });
 
   const handleSelectEstimate = async (estimateId: string) => {
@@ -383,10 +413,23 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {estimate.short_description || estimate.template_name}
                   </span>
                 </div>
-                <div className="flex items-center gap-3 text-xs">
+                <div className="flex items-center gap-3 text-xs flex-wrap">
                   <Badge className={getStatusBadge(estimate.status)} variant="secondary">
                     {estimate.status}
                   </Badge>
+                  {signatureEnvelopes?.[estimate.id] && (
+                    <Badge 
+                      variant="outline"
+                      className={
+                        signatureEnvelopes[estimate.id] === 'completed'
+                          ? 'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
+                          : 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30'
+                      }
+                    >
+                      <FileSignature className="h-3 w-3 mr-1" />
+                      {signatureEnvelopes[estimate.id] === 'completed' ? 'Signed' : 'Awaiting Signature'}
+                    </Badge>
+                  )}
                   <span className={`flex items-center gap-1 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
                     <Percent className="h-3 w-3" />
                     {(estimate.actual_profit_percent || 0).toFixed(1)}% Margin

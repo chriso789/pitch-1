@@ -11,7 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { Loader2, Send, Mail, CheckCircle } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Loader2, Send, Mail, CheckCircle, FileSignature } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
@@ -20,11 +21,12 @@ interface ShareEstimateDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   estimateId?: string;
-  pipelineEntryId?: string;  // Fallback for finding estimate
+  pipelineEntryId?: string;
   contactId?: string;
   customerEmail?: string;
   customerName?: string;
   estimateNumber?: string;
+  estimateDisplayName?: string;
 }
 
 export function ShareEstimateDialog({
@@ -36,11 +38,13 @@ export function ShareEstimateDialog({
   customerEmail = '',
   customerName = '',
   estimateNumber,
+  estimateDisplayName,
 }: ShareEstimateDialogProps) {
   const [recipientEmail, setRecipientEmail] = useState(customerEmail);
   const [recipientName, setRecipientName] = useState(customerName);
   const [subject, setSubject] = useState('');
   const [message, setMessage] = useState('');
+  const [requestSignature, setRequestSignature] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [isSent, setIsSent] = useState(false);
   const { toast } = useToast();
@@ -53,6 +57,7 @@ export function ShareEstimateDialog({
       setRecipientName(customerName);
       setSubject('');
       setMessage('');
+      setRequestSignature(false);
       setIsSent(false);
     }
   }, [open, customerEmail, customerName]);
@@ -76,7 +81,6 @@ export function ShareEstimateDialog({
       return;
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(recipientEmail.trim())) {
       toast({
@@ -90,41 +94,68 @@ export function ShareEstimateDialog({
     setIsSending(true);
 
     try {
-      const { data, error } = await supabase.functions.invoke('send-quote-email', {
-        body: {
-          estimate_id: estimateId || undefined,
-          pipeline_entry_id: pipelineEntryId || undefined,  // Fallback for finding estimate
-          tenant_id: effectiveTenantId || undefined,  // Hint for multi-tenant users
-          contact_id: contactId || null,
-          recipient_email: recipientEmail.trim(),
-          recipient_name: recipientName.trim(),
-          subject: subject.trim() || undefined,
-          message: message.trim() || undefined,
-        },
-      });
+      // If requesting signature, use the signature flow
+      if (requestSignature) {
+        const { data, error } = await supabase.functions.invoke('send-document-for-signature', {
+          body: {
+            document_id: estimateId,
+            document_type: 'estimate',
+            recipients: [{
+              name: recipientName.trim(),
+              email: recipientEmail.trim(),
+              role: 'signer',
+              routing_order: 1,
+            }],
+            email_subject: subject.trim() || `Please sign: ${estimateDisplayName || estimateNumber || 'Estimate'}`,
+            email_message: message.trim() || undefined,
+            expire_days: 30,
+            pipeline_entry_id: pipelineEntryId || undefined,
+            contact_id: contactId || undefined,
+          },
+        });
 
-      if (error) throw error;
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Failed to send signature request');
 
-      if (!data?.success) {
-        throw new Error(data?.error || 'Failed to send email');
+        setIsSent(true);
+        toast({
+          title: 'Signature Request Sent! ✍️',
+          description: `${recipientName.split(' ')[0]} will receive a link to review and digitally sign the estimate.`,
+        });
+      } else {
+        // Regular quote email (no signature)
+        const { data, error } = await supabase.functions.invoke('send-quote-email', {
+          body: {
+            estimate_id: estimateId || undefined,
+            pipeline_entry_id: pipelineEntryId || undefined,
+            tenant_id: effectiveTenantId || undefined,
+            contact_id: contactId || null,
+            recipient_email: recipientEmail.trim(),
+            recipient_name: recipientName.trim(),
+            subject: subject.trim() || undefined,
+            message: message.trim() || undefined,
+          },
+        });
+
+        if (error) throw error;
+        if (!data?.success) throw new Error(data?.error || 'Failed to send email');
+
+        setIsSent(true);
+        toast({
+          title: 'Quote Sent! 📧',
+          description: `Email sent to ${recipientEmail}. You'll get a text when they view it.`,
+        });
       }
 
-      setIsSent(true);
-      toast({
-        title: 'Quote Sent! 📧',
-        description: `Email sent to ${recipientEmail}. You'll get a text when they view it.`,
-      });
-
-      // Close dialog after a short delay
       setTimeout(() => {
         onOpenChange(false);
       }, 2000);
 
     } catch (error: any) {
-      console.error('Error sending quote email:', error);
+      console.error('Error sending:', error);
       toast({
         title: 'Send Failed',
-        description: error.message || 'Failed to send quote email',
+        description: error.message || 'Failed to send',
         variant: 'destructive',
       });
     } finally {
@@ -137,20 +168,26 @@ export function ShareEstimateDialog({
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Mail className="h-5 w-5" />
-            Share Estimate
+            {requestSignature ? <FileSignature className="h-5 w-5" /> : <Mail className="h-5 w-5" />}
+            {requestSignature ? 'Send for Signature' : 'Share Estimate'}
           </DialogTitle>
           <DialogDescription>
-            Send a trackable email with your estimate. You'll receive an SMS notification when they view it.
+            {requestSignature
+              ? 'Send a signing link so the homeowner can digitally sign the estimate — no printing needed.'
+              : 'Send a trackable email with your estimate. You\'ll receive an SMS notification when they view it.'}
           </DialogDescription>
         </DialogHeader>
 
         {isSent ? (
           <div className="py-8 text-center">
             <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-foreground mb-2">Quote Sent Successfully!</h3>
+            <h3 className="text-lg font-semibold text-foreground mb-2">
+              {requestSignature ? 'Signature Request Sent!' : 'Quote Sent Successfully!'}
+            </h3>
             <p className="text-sm text-muted-foreground">
-              You'll receive a text message when {recipientName.split(' ')[0]} opens the quote.
+              {requestSignature
+                ? `${recipientName.split(' ')[0]} will receive a link to review and sign the estimate digitally.`
+                : `You'll receive a text message when ${recipientName.split(' ')[0]} opens the quote.`}
             </p>
           </div>
         ) : (
@@ -182,7 +219,9 @@ export function ShareEstimateDialog({
               </Label>
               <Input
                 id="subject"
-                placeholder={`Your Quote${estimateNumber ? ` #${estimateNumber}` : ''}`}
+                placeholder={requestSignature
+                  ? `Please sign: ${estimateDisplayName || estimateNumber || 'Estimate'}`
+                  : `Your Quote${estimateNumber ? ` #${estimateNumber}` : ''}`}
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
               />
@@ -194,10 +233,30 @@ export function ShareEstimateDialog({
               </Label>
               <Textarea
                 id="message"
-                placeholder="Thanks for your interest! I've prepared a quote for your project..."
+                placeholder={requestSignature
+                  ? "Please review and sign the attached estimate at your convenience..."
+                  : "Thanks for your interest! I've prepared a quote for your project..."}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
+              />
+            </div>
+
+            {/* Signature request toggle */}
+            <div className="flex items-center justify-between rounded-lg border p-4 bg-muted/30">
+              <div className="space-y-0.5">
+                <Label htmlFor="request-signature" className="text-sm font-medium flex items-center gap-2">
+                  <FileSignature className="h-4 w-4 text-primary" />
+                  Request Digital Signature
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Homeowner will receive a signing link to digitally sign the estimate
+                </p>
+              </div>
+              <Switch
+                id="request-signature"
+                checked={requestSignature}
+                onCheckedChange={setRequestSignature}
               />
             </div>
           </div>
@@ -214,6 +273,11 @@ export function ShareEstimateDialog({
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Sending...
+                  </>
+                ) : requestSignature ? (
+                  <>
+                    <FileSignature className="mr-2 h-4 w-4" />
+                    Send for Signature
                   </>
                 ) : (
                   <>
