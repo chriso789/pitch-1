@@ -138,7 +138,7 @@ serve(async (req) => {
         const { data: userSettings } = await supabaseAdmin
           .from('app_settings')
           .select('setting_value')
-          .eq('user_id', user.id)
+          .eq('user_id', userId)
           .eq('tenant_id', tenantId)
           .eq('setting_key', 'current_location_id')
           .single();
