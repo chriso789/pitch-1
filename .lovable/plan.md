@@ -1,38 +1,35 @@
 
 
-# Auto-Assign Default Qualification Status to Contacts
+# Fix Kanban Column Name and Location-Filter the Rep Dropdown
 
-## Problem
+## Two Issues
 
-467 contacts show in the "Contacts by Status" board, but nearly all (466) are piled into the "New / Unassigned" column with 0 in every other column. This is because the `qualification_status` field on those contacts is NULL -- they were imported or created without ever being given a disposition.
+### Issue 1: Kanban Board Column Named "New / Unassigned" is Misleading
+Contacts with assigned reps (e.g., Duke Herzel assigned to Chris O'Brien) appear in "New / Unassigned" because their `qualification_status` is `unqualified`. The column name implies no rep is assigned, but it actually reflects the qualification/disposition status. 
 
-The board is technically working correctly; it groups by `qualification_status`. NULL values go to "uncategorized" (shown as "New / Unassigned"). The other columns (Qualified, Not Home, Interested, etc.) are empty because no contacts have those values set.
+**Fix:** Rename the column from "New / Unassigned" to "New / Unqualified" so users understand it refers to the contact's disposition, not their rep assignment.
 
-## Solution
+File: `src/features/contacts/components/ContactKanbanBoard.tsx` -- change the title prop on the uncategorized column from `"New / Unassigned"` to `"New / Unqualified"`.
 
-Two changes to prevent this from happening going forward and to fix the existing data:
+### Issue 2: Contact Profile Rep Dropdown Shows All Company Users (No Location or Active Filter)
+The rep assignment dropdown on the Contact Profile page (`ContactProfile.tsx` lines 76-88) fetches ALL profiles for the tenant with no filtering. This means:
+- **Inactive users** appear (e.g., Natalie Janacek has `is_active = false`)
+- **East Coast-only reps** appear when viewing a West Coast contact (e.g., Colt Steingraber, Michael Grosso, Uri Kaweblum are only assigned to East Coast)
 
-### 1. Database Trigger: Auto-set default qualification status on INSERT
+**Fix:** Update the team members fetch in `ContactProfile.tsx` to:
+1. Filter by `is_active = true` to exclude removed/deactivated users
+2. Filter by the contact's `location_id` using `user_location_assignments` -- only show reps assigned to the same location as the contact being viewed
+3. Always include elevated roles (owner, corporate, office_admin) who bypass location filters, consistent with the existing pattern in `LeadCreationDialog` and `useLeadDetails`
 
-Create a trigger on the `contacts` table that sets `qualification_status = 'unqualified'` (or a configurable default) whenever a new contact is inserted with a NULL `qualification_status`. This ensures all future contacts -- whether created manually, via import, or via API -- always have a status.
+## Technical Details
 
-### 2. SQL Migration: Backfill existing NULL contacts
+### File: `src/features/contacts/components/ContactKanbanBoard.tsx`
+- Line 155: Change `title="New / Unassigned"` to `title="New / Unqualified"`
 
-Run a one-time UPDATE to set `qualification_status = 'unqualified'` for all contacts where it is currently NULL. This moves the 3,152+ existing contacts from "uncategorized" into the "New / Unassigned" column with a proper status key.
-
-### 3. Kanban Board: Map 'unqualified' to the "New / Unassigned" column
-
-Update `ContactKanbanBoard.tsx` so that contacts with `qualification_status = 'unqualified'` are shown in the "New / Unassigned" column alongside truly NULL contacts. This way the first column captures both legacy NULL and the new default status.
-
-## Files Modified
-
-1. **New SQL migration** -- backfill NULL qualification_status to 'unqualified' and create INSERT trigger
-2. **`src/features/contacts/components/ContactKanbanBoard.tsx`** -- treat 'unqualified' same as uncategorized in grouping logic (line 90)
-
-## Technical Notes
-
-- The trigger uses `BEFORE INSERT` so the value is set before RLS policies evaluate the row
-- The backfill is safe -- it only updates rows where `qualification_status IS NULL`
-- No UI changes needed beyond the grouping logic tweak
-- Existing contacts that already have a status (storm_damage, not_home, etc.) are untouched
+### File: `src/pages/ContactProfile.tsx`
+- Lines 76-88: Replace the simple `profiles` query with a two-step fetch:
+  1. Query `user_location_assignments` for the contact's `location_id` to get location-assigned user IDs
+  2. Query `profiles` filtered to those user IDs plus elevated roles (owner, corporate, office_admin), with `is_active = true`
+- The fetch will depend on `contact.location_id`, so it runs after the contact data loads
+- Elevated roles are always included regardless of location assignment, matching the existing pattern used in `LeadCreationDialog.tsx` (lines 215-233) and `useLeadDetails.ts` (lines 280-284)
 
