@@ -1,28 +1,77 @@
 
 
-# Fix: Remove Non-Existent Columns from `signer-open` Edge Function
+# Professional Email & Signing Experience Overhaul
 
 ## Problem
+The signature request emails and signing pages use intimidating, "forceful" language like "legally binding," "Document Signature Request," and yellow warning banners that make the experience feel like a legal threat rather than a professional business proposal. This causes recipients to distrust the email and treat it as spam.
 
-The latest deploy fixed the `recipient_name`/`recipient_email` columns, but two more non-existent columns remain:
+## What Changes
 
-1. **`signature_envelopes.message`** -- does not exist in the database. The SELECT query on line 81 crashes with error 42703, returning "Envelope not found" to the frontend.
-2. **`signature_recipients.viewed_at`** -- does not exist. The UPDATE on line 117 will fail silently or error when marking first view.
+### 1. Signature Request Email (`supabase/functions/email-signature-request/index.ts`)
 
-## Changes
+**Current issues:**
+- Header says "Document Signature Request" -- sounds like a legal summons
+- Yellow warning box says "Your signature is legally binding" -- intimidating
+- Tone is impersonal and transactional
+- No company logo in the header
+- Footer says "Sent via [Company]" instead of being **from** the company
 
-### File: `supabase/functions/signer-open/index.ts`
+**New design:**
+- Header: Show company logo + company name (not "Document Signature Request")
+- Subject line: Already uses custom subject from the frontend, no change needed
+- Body: Warm, inviting tone -- "We've prepared your project proposal for review"
+- Remove the yellow "legally binding" warning box entirely
+- Replace with a subtle, friendly note: "This secure link was created just for you and is valid for 30 days."
+- Footer: Show full company contact info (name, phone, email) instead of just "Sent via"
+- Add company logo to the header banner
 
-**1. Remove `message` from the envelope SELECT query (line 81)**
+### 2. Quote Email (`supabase/functions/send-quote-email/index.ts`)
 
-Remove the `message,` line from the select statement (lines 73-83).
+This email is already decent but will get minor polish:
+- Keep the existing professional structure (it's the better of the two)
+- No "legally binding" language present -- no changes needed here
 
-**2. Remove `message` from the response payload (line 188)**
+### 3. Report Packet Email (`supabase/functions/report-packet-send-resend/index.ts`)
 
-Change `message: envelope.message,` to remove it entirely (or set it to `null`/empty string if the frontend expects the field).
+- Currently generic ("Your Report Package is Ready") -- add company logo
+- Fetch tenant logo_url for the header
+- Minor polish to match the signature email styling
 
-**3. Remove `viewed_at` from the recipient UPDATE (line 117)**
+### 4. Frontend Signing Pages
 
-Remove the `viewed_at: new Date().toISOString(),` line since that column doesn't exist. The status change to `'viewed'` is sufficient.
+**`src/pages/SignDocument.tsx` (line 212-214):**
+- Remove: "Your signature will be legally binding."
+- Replace with: "By signing, you confirm your acceptance of the terms outlined in this document."
 
-After these fixes, all column references will match the actual database schema and both Chris's and Taylor's existing links will work immediately.
+**`src/pages/PublicSignatureCapture.tsx` (line 463-466):**
+- Remove: "your electronic signature is legally binding"
+- Replace with: "By signing, you confirm your approval of this document."
+
+### 5. Backend Consent Text (`supabase/functions/report-packet-sign/index.ts`, line 126)
+
+- Change default consent text from "I agree that this signature is legally binding..." to "I agree to the terms outlined in this document and authorize my electronic signature."
+
+## Files to Edit
+
+| File | Change |
+|------|--------|
+| `supabase/functions/email-signature-request/index.ts` | Redesign email HTML -- add logo, warm tone, remove "legally binding" warning |
+| `src/pages/SignDocument.tsx` | Remove "legally binding" from footer text |
+| `src/pages/PublicSignatureCapture.tsx` | Soften legal notice language |
+| `supabase/functions/report-packet-sign/index.ts` | Update default consent_text |
+| `supabase/functions/report-packet-send-resend/index.ts` | Add company logo, fetch tenant branding |
+
+## Email Before vs After (Signature Request)
+
+**Before:**
+- Header: "Document Signature Request" (dark blue gradient, no logo)
+- Yellow warning: "Your signature is legally binding"
+- Footer: "Sent via [Company]"
+
+**After:**
+- Header: Company logo + company name (branded gradient)
+- Warm message: "[Sender] at [Company] has prepared a proposal for your review."
+- Soft note: "This secure link was created just for you and is valid for 30 days."
+- Footer: Full company info -- name, phone, email
+- CTA button: "Review Your Proposal" (instead of "Review & Sign Document")
+
