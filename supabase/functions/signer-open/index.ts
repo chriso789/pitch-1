@@ -77,7 +77,8 @@ serve(async (req: Request) => {
         title,
         status,
         created_by,
-        pdf_url,
+        document_url,
+        generated_pdf_path,
         message,
         expires_at
       `)
@@ -159,6 +160,26 @@ serve(async (req: Request) => {
       .eq('recipient_id', recipient.id)
       .order('page_number', { ascending: true });
 
+    // Generate a fresh signed URL for the PDF document
+    let pdfUrl = envelope.document_url;
+    
+    if (envelope.generated_pdf_path) {
+      // Always generate a fresh signed URL from the storage path
+      try {
+        const { data: signedData, error: signError } = await supabase.storage
+          .from('documents')
+          .createSignedUrl(envelope.generated_pdf_path, 3600); // 1 hour expiry
+        
+        if (!signError && signedData?.signedUrl) {
+          pdfUrl = signedData.signedUrl;
+        } else {
+          console.warn('Failed to generate fresh signed URL, falling back to stored URL:', signError);
+        }
+      } catch (urlError) {
+        console.warn('Error generating signed URL:', urlError);
+      }
+    }
+
     console.log(`Signer opened envelope: ${envelope.id}, recipient: ${recipient.id}, first view: ${isFirstView}`);
 
     return successResponse({
@@ -166,7 +187,7 @@ serve(async (req: Request) => {
         id: envelope.id,
         title: envelope.title,
         message: envelope.message,
-        pdf_url: envelope.pdf_url,
+        pdf_url: pdfUrl,
         status: envelope.status,
       },
       recipient: {

@@ -54,68 +54,76 @@ const PublicSignatureCapture = () => {
     }
   }, [signatureMethod, sheetOpen]);
 
-  const notifySignatureOpened = async () => {
-    try {
-      await supabase.functions.invoke('notify-signature-opened', {
-        body: { access_token: token }
-      });
-    } catch (err) {
-      console.error('Failed to send open notification:', err);
-    }
-  };
+  // notifySignatureOpened is now handled by signer-open edge function
 
   const loadEnvelope = async () => {
     try {
       setLoading(true);
       
-      const { data: recipient, error: recipientError } = await supabase
-        .from('signature_recipients')
-        .select(`
-          *,
-          signature_envelopes(*)
-        `)
-        .eq('access_token', token)
-        .single();
+      // Use signer-open edge function to bypass RLS for external recipients
+      const { data, error: fnError } = await supabase.functions.invoke('signer-open', {
+        body: { access_token: token }
+      });
 
-      if (recipientError || !recipient) {
+      if (fnError || !data?.data) {
+        const errorCode = data?.error?.code;
+        if (errorCode === 'ALREADY_SIGNED') {
+          setCompleted(true);
+          const envData = data?.data?.envelope;
+          const recipData = data?.data?.recipient;
+          setEnvelope({
+            id: envData?.id || '',
+            title: envData?.title || 'Document',
+            status: 'signed',
+            signature_recipients: [{
+              id: recipData?.id || '',
+              email: recipData?.email || '',
+              name: recipData?.name || '',
+              role: 'signer',
+              status: 'signed'
+            }]
+          });
+          return;
+        }
         setError('Invalid or expired signature link. Please request a new link from the sender.');
         return;
       }
 
-      if (recipient.status === 'signed') {
+      const { envelope: envData, recipient: recipData } = data.data;
+
+      if (recipData.status === 'signed') {
         setCompleted(true);
         setEnvelope({
-          id: (recipient.signature_envelopes as any).id,
-          title: (recipient.signature_envelopes as any).title,
+          id: envData.id,
+          title: envData.title,
           status: 'signed',
           signature_recipients: [{
-            id: recipient.id,
-            email: recipient.recipient_email,
-            name: recipient.recipient_name,
-            role: recipient.recipient_role,
-            status: recipient.status
+            id: recipData.id,
+            email: recipData.email,
+            name: recipData.name,
+            role: 'signer',
+            status: 'signed'
           }]
         });
         return;
       }
 
       setEnvelope({
-        id: (recipient.signature_envelopes as any).id,
-        title: (recipient.signature_envelopes as any).title,
-        status: (recipient.signature_envelopes as any).status,
-        document_html: (recipient.signature_envelopes as any).document_html,
-        document_url: (recipient.signature_envelopes as any).document_url,
+        id: envData.id,
+        title: envData.title,
+        status: envData.status,
+        document_url: envData.pdf_url,
         signature_recipients: [{
-          id: recipient.id,
-          email: recipient.recipient_email,
-          name: recipient.recipient_name,
-          role: recipient.recipient_role,
-          status: recipient.status
+          id: recipData.id,
+          email: recipData.email,
+          name: recipData.name,
+          role: 'signer',
+          status: recipData.status
         }]
       });
       
-      setTypedName(recipient.recipient_name || '');
-      notifySignatureOpened();
+      setTypedName(recipData.name || '');
+      // Notification is already handled by the signer-open edge function
     } catch (err) {
       console.error('Error loading envelope:', err);
       setError('Failed to load document. Please try again later.');
