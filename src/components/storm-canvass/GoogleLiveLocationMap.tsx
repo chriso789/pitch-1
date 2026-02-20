@@ -101,6 +101,20 @@ export default function GoogleLiveLocationMap({
           zIndex: 9999,
         });
 
+        // Prevent 3D tilt - reset immediately if user triggers it
+        map.current.addListener('tilt_changed', () => {
+          if (map.current && map.current.getTilt() !== 0) {
+            map.current.setTilt(0);
+          }
+        });
+
+        // Also prevent rotation
+        map.current.addListener('heading_changed', () => {
+          if (map.current && map.current.getHeading() !== 0) {
+            map.current.setHeading(0);
+          }
+        });
+
         setMapReady(true);
       } catch (err) {
         console.error('Failed to initialize Google Maps:', err);
