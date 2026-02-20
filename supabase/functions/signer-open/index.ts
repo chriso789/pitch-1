@@ -78,7 +78,6 @@ serve(async (req: Request) => {
         created_by,
         document_url,
         generated_pdf_path,
-        message,
         expires_at
       `)
       .eq('id', recipient.envelope_id)
@@ -114,7 +113,6 @@ serve(async (req: Request) => {
         .from('signature_recipients')
         .update({
           status: 'viewed',
-          viewed_at: new Date().toISOString(),
         })
         .eq('id', recipient.id);
 
@@ -185,7 +183,7 @@ serve(async (req: Request) => {
       envelope: {
         id: envelope.id,
         title: envelope.title,
-        message: envelope.message,
+        message: null,
         pdf_url: pdfUrl,
         status: envelope.status,
       },
