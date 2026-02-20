@@ -123,17 +123,31 @@ serve(async (req) => {
     // Get branding for email
     const branding = packet.branding_snapshot as Record<string, string>;
     const companyName = branding?.company_name || 'Your Contractor';
+    const companyLogo = branding?.logo_url || null;
     const fromEmail = Deno.env.get('RESEND_FROM_EMAIL') || 'reports@pitchcrm.io';
 
-    // Send via Resend
-    const resendApiKey = Deno.env.get('RESEND_API_KEY');
-    if (!resendApiKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: { code: 'CONFIG_ERROR', message: 'Resend not configured' } }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // If no logo in branding snapshot, try to fetch from tenant
+    let logoUrl = companyLogo;
+    if (!logoUrl) {
+      const { data: tenantRow } = await supabase
+        .from('tenants')
+        .select('logo_url')
+        .eq('id', tenantId)
+        .single();
+      logoUrl = tenantRow?.logo_url || null;
     }
 
+    const logoHtml = logoUrl
+      ? `<img src="${logoUrl}" alt="${companyName}" style="max-height: 48px; max-width: 200px; margin-bottom: 12px;" /><br>`
+      : '';
+
+    // Build footer contact parts
+    const footerParts: string[] = [];
+    if (branding?.phone) footerParts.push(branding.phone);
+    if (branding?.email) footerParts.push(branding.email);
+    const footerLine = footerParts.join(' &nbsp;•&nbsp; ');
+
+    // Send via Resend
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -141,33 +155,54 @@ serve(async (req) => {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-  <div style="background: linear-gradient(135deg, #2563eb, #1e40af); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 24px;">${companyName}</h1>
-  </div>
-  
-  <div style="background: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none;">
-    <h2 style="color: #1f2937; margin-top: 0;">Your Report Package is Ready</h2>
-    
-    <div style="white-space: pre-line; margin-bottom: 25px;">${emailBody || 'Please review your report and estimate package by clicking the button below.'}</div>
-    
-    <div style="text-align: center; margin: 30px 0;">
-      <a href="${viewUrl}" style="background: #2563eb; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; display: inline-block;">
-        View Your Report
-      </a>
-    </div>
-    
-    <p style="color: #6b7280; font-size: 14px; margin-top: 25px;">
-      If you have any questions, please don't hesitate to contact us.
-    </p>
-  </div>
-  
-  <div style="background: #1f2937; padding: 20px; border-radius: 0 0 10px 10px; text-align: center;">
-    <p style="color: #9ca3af; margin: 0; font-size: 12px;">
-      ${branding?.phone ? branding.phone + ' | ' : ''}${branding?.email || ''}
-      ${branding?.website ? '<br>' + branding.website : ''}
-    </p>
-  </div>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f4f4f5;">
+  <table role="presentation" style="width: 100%; border-collapse: collapse;">
+    <tr>
+      <td style="padding: 40px 20px;">
+        <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+          <!-- Header with logo & company name -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); padding: 32px 40px; text-align: center;">
+              ${logoHtml}
+              <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 600;">${companyName}</h1>
+            </td>
+          </tr>
+          
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px;">
+              <h2 style="color: #1f2937; margin: 0 0 20px; font-size: 20px;">Your Report Package is Ready</h2>
+              
+              <div style="white-space: pre-line; margin-bottom: 25px; color: #374151; font-size: 15px; line-height: 1.6;">${emailBody || 'Please review your report and estimate package by clicking the button below.'}</div>
+              
+              <table role="presentation" style="width: 100%; margin: 30px 0;">
+                <tr>
+                  <td style="text-align: center;">
+                    <a href="${viewUrl}" style="display: inline-block; background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
+                      View Your Report
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              
+              <p style="color: #6b7280; font-size: 14px; margin-top: 25px; line-height: 1.5;">
+                If you have any questions, please don't hesitate to contact us.
+              </p>
+            </td>
+          </tr>
+          
+          <!-- Footer with company info -->
+          <tr>
+            <td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb; text-align: center;">
+              <p style="margin: 0; color: #374151; font-size: 13px; font-weight: 600;">${companyName}</p>
+              ${footerLine ? `<p style="margin: 4px 0 0; color: #6b7280; font-size: 12px;">${footerLine}</p>` : ''}
+              ${branding?.website ? `<p style="margin: 4px 0 0; color: #9ca3af; font-size: 12px;">${branding.website}</p>` : ''}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
 

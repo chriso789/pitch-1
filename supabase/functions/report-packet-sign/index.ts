@@ -123,7 +123,7 @@ serve(async (req) => {
       timestamp: signedAt,
       ip: clientIp,
       user_agent: userAgent,
-      consent_text: consent_text || 'I agree that this signature is legally binding and represents my acceptance of the terms outlined in this document.',
+      consent_text: consent_text || 'I agree to the terms outlined in this document and authorize my electronic signature.',
       consent_agreed: true,
       signer_name,
       signer_email,

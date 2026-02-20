@@ -209,8 +209,7 @@ export const SignDocument: React.FC = () => {
         {/* Footer */}
         <div className="text-center mt-8 text-sm text-muted-foreground">
           <p>
-            By signing this document, you agree to the terms and conditions outlined above.
-            Your signature will be legally binding.
+            By signing, you confirm your acceptance of the terms outlined in this document.
           </p>
         </div>
       </div>

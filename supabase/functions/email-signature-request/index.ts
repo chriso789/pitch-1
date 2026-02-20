@@ -60,27 +60,33 @@ serve(async (req) => {
       });
     }
 
-    // Get tenant info for branding
+    // Get tenant info for branding (include logo, phone, email)
     const { data: envelope } = await supabase
       .from("signature_envelopes")
-      .select("*, tenant:tenant_id(name, settings)")
+      .select("*, tenant:tenant_id(name, settings, logo_url, phone, email)")
       .eq("id", envelope_id)
       .single();
 
     let tenantName = envelope?.tenant?.name || "PITCH CRM";
     let tenantSettings = envelope?.tenant?.settings || {};
-    const tenantId = envelope?.tenant_id; // read from raw column, not joined object
+    let tenantLogoUrl = envelope?.tenant?.logo_url || null;
+    let tenantPhone = envelope?.tenant?.phone || null;
+    let tenantEmail = envelope?.tenant?.email || null;
+    const tenantId = envelope?.tenant_id;
 
     // Fallback: if join didn't resolve tenant, query directly
     if (tenantName === "PITCH CRM" && tenantId) {
       const { data: tenantRow } = await supabase
         .from("tenants")
-        .select("name, settings")
+        .select("name, settings, logo_url, phone, email")
         .eq("id", tenantId)
         .single();
       if (tenantRow) {
         tenantName = tenantRow.name;
         tenantSettings = tenantRow.settings || {};
+        tenantLogoUrl = tenantRow.logo_url || tenantLogoUrl;
+        tenantPhone = tenantRow.phone || tenantPhone;
+        tenantEmail = tenantRow.email || tenantEmail;
       }
     }
 
@@ -111,7 +117,20 @@ serve(async (req) => {
     const appUrl = Deno.env.get("APP_URL") || "https://pitchcrm.app";
     const signingUrl = `${appUrl}/sign/${access_token}`;
 
-    // Build professional email HTML - single CTA, no separate PDF button
+    // Company logo HTML (if available)
+    const logoHtml = tenantLogoUrl
+      ? `<img src="${tenantLogoUrl}" alt="${tenantName}" style="max-height: 48px; max-width: 200px; margin-bottom: 12px;" /><br>`
+      : '';
+
+    // Build footer contact details
+    const footerParts: string[] = [];
+    if (tenantPhone) footerParts.push(tenantPhone);
+    if (tenantEmail) footerParts.push(tenantEmail);
+    const footerContactLine = footerParts.length > 0
+      ? `<p style="margin: 4px 0 0; color: #6b7280; font-size: 12px;">${footerParts.join(' &nbsp;•&nbsp; ')}</p>`
+      : '';
+
+    // Build professional email HTML
     const emailHtml = `
 <!DOCTYPE html>
 <html>
@@ -125,11 +144,12 @@ serve(async (req) => {
     <tr>
       <td style="padding: 40px 20px;">
         <table role="presentation" style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
-          <!-- Header -->
+          <!-- Header with logo & company name -->
           <tr>
             <td style="background: linear-gradient(135deg, ${primaryColor} 0%, #1e40af 100%); padding: 32px 40px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
-                ${is_reminder ? '⏰ Reminder: ' : ''}Document Signature Request
+              ${logoHtml}
+              <h1 style="margin: 0; color: #ffffff; font-size: 22px; font-weight: 600;">
+                ${tenantName}
               </h1>
             </td>
           </tr>
@@ -142,7 +162,10 @@ serve(async (req) => {
               </p>
               
               <p style="margin: 0 0 20px; color: #374151; font-size: 16px; line-height: 1.6;">
-                <strong>${sender_name}</strong> has sent you a document to review and sign.
+                ${is_reminder
+                  ? `This is a friendly reminder — <strong>${sender_name}</strong> at <strong>${tenantName}</strong> has a proposal waiting for your review.`
+                  : `<strong>${sender_name}</strong> at <strong>${tenantName}</strong> has prepared a proposal for your review.`
+                }
               </p>
               
               ${message ? `
@@ -158,32 +181,31 @@ serve(async (req) => {
                 <tr>
                   <td style="text-align: center;">
                     <a href="${signingUrl}" style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, #1e40af 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; font-size: 16px; font-weight: 600; border-radius: 8px; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);">
-                      Review & Sign Document
+                      Review Your Proposal
                     </a>
                   </td>
                 </tr>
               </table>
               
-              <!-- Security Note -->
-              <div style="background-color: #fef3c7; border-radius: 8px; padding: 16px 20px; margin: 24px 0;">
-                <p style="margin: 0; color: #92400e; font-size: 14px;">
-                  🔒 <strong>Secure Signing:</strong> This link is unique to you and expires in 30 days. Your signature is legally binding.
-                </p>
-              </div>
+              <!-- Soft security note -->
+              <p style="margin: 24px 0 0; color: #9ca3af; font-size: 13px; text-align: center; line-height: 1.5;">
+                🔒 This secure link was created just for you and is valid for 30 days.
+              </p>
               
-              <p style="margin: 24px 0 0; color: #6b7280; font-size: 14px; line-height: 1.6;">
+              <p style="margin: 16px 0 0; color: #9ca3af; font-size: 13px; line-height: 1.5;">
                 If the button doesn't work, copy and paste this link into your browser:<br>
-                <a href="${signingUrl}" style="color: ${primaryColor}; word-break: break-all;">${signingUrl}</a>
+                <a href="${signingUrl}" style="color: ${primaryColor}; word-break: break-all; font-size: 12px;">${signingUrl}</a>
               </p>
             </td>
           </tr>
           
-          <!-- Footer -->
+          <!-- Footer with company info -->
           <tr>
-            <td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center;">
-                Sent via ${tenantName}
+            <td style="background-color: #f9fafb; padding: 24px 40px; border-top: 1px solid #e5e7eb; text-align: center;">
+              <p style="margin: 0; color: #374151; font-size: 13px; font-weight: 600;">
+                ${tenantName}
               </p>
+              ${footerContactLine}
             </td>
           </tr>
         </table>
@@ -204,7 +226,7 @@ serve(async (req) => {
       body: JSON.stringify({
         from: `${fromName} <${fromEmail}>`,
         to: [recipient_email],
-        subject: is_reminder ? `⏰ Reminder: ${subject}` : subject,
+        subject: is_reminder ? `Reminder: ${subject}` : subject,
         html: emailHtml,
         reply_to: sender_email,
         ...(cc && cc.length > 0 && { cc }),

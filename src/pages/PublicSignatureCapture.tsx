@@ -462,7 +462,7 @@ const PublicSignatureCapture = () => {
             <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
               <p className="flex items-center gap-2">
                 <Shield className="h-3 w-3 flex-shrink-0" />
-                By signing, you agree that your electronic signature is legally binding.
+                By signing, you confirm your approval of this document.
               </p>
             </div>
 
