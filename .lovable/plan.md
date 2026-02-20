@@ -1,62 +1,37 @@
 
 
-# Fix: Signature Link "Unable to Load" for External Recipients
+# Fix: Column Name Mismatch in `signer-open` Edge Function
 
 ## Root Cause
 
-The `PublicSignatureCapture` page directly queries the `signature_recipients` table using the Supabase client (anon key). However, the RLS policy on `signature_recipients` only allows access when `tenant_id = get_user_tenant_id()`. Since Chris is an external recipient with no Supabase auth session, `get_user_tenant_id()` returns null, the query returns zero rows, and the page shows "Invalid or expired signature link."
+The `signer-open` edge function is crashing with **`column signature_recipients.name does not exist`** (error code 42703). The function references columns `name`, `email`, and `routing_order`, but the actual database columns are `recipient_name`, `recipient_email`, and `signing_order`.
 
-The `signer-open` edge function already exists and uses the service role key to bypass RLS -- it was designed for exactly this purpose. But `PublicSignatureCapture.tsx` never calls it; instead, it queries the database directly.
-
-## Solution
-
-Replace the direct database query in `PublicSignatureCapture.tsx` with a call to the existing `signer-open` edge function. This function:
-- Validates the access token using the service role (bypasses RLS)
-- Checks envelope status (expired, voided, completed, etc.)
-- Marks the recipient as "viewed" on first open
-- Notifies the sender
-- Returns the envelope details and signature fields
-
-Additionally, the `document_url` stored in the envelope is a **signed URL** with a 30-day expiry. While this won't be the immediate issue (it was just created), we should also ensure the edge function generates a fresh signed URL from the storage path if the stored URL has expired. This prevents future "unable to load" errors for documents accessed days later.
+This is confirmed in the live edge function logs -- every request Chris makes hits this error immediately, returns a 404, and the frontend shows "Unable to Load."
 
 ## Changes
 
-### File: `src/pages/PublicSignatureCapture.tsx`
-
-Replace the `loadEnvelope` function. Instead of:
-
-```typescript
-const { data: recipient, error: recipientError } = await supabase
-  .from('signature_recipients')
-  .select(`*, signature_envelopes(*)`)
-  .eq('access_token', token)
-  .single();
-```
-
-Use:
-
-```typescript
-const { data, error: fnError } = await supabase.functions.invoke('signer-open', {
-  body: { access_token: token }
-});
-
-if (fnError || !data?.data) {
-  setError('Invalid or expired signature link...');
-  return;
-}
-
-const { envelope: envData, recipient: recipData } = data.data;
-```
-
-Then map `envData` and `recipData` into the existing `SignatureEnvelope` state shape.
-
 ### File: `supabase/functions/signer-open/index.ts`
 
-Add fresh signed URL generation: if `envelope.document_url` contains a storage path (not a full URL) or if the signed URL's token is expired, regenerate a signed URL from the storage path. This ensures the PDF always loads regardless of when the link was first created.
+**1. Fix the SELECT query (lines 43-52)**
 
-## What This Fixes
+| Wrong column | Correct column |
+|---|---|
+| `name` | `recipient_name` |
+| `email` | `recipient_email` |
+| `routing_order` | `signing_order` |
+| `viewed_at` | Remove (column does not exist -- use `status` to determine first view) |
 
-- External recipients (unauthenticated users) can now open signature links
-- PDF documents will always load with fresh signed URLs
-- The existing `signer-open` edge function handles all validation, audit logging, and notifications -- no duplicate logic needed
-- No RLS policy changes required (keeps security tight)
+**2. Fix all references to `recipient.name` and `recipient.email` throughout the file**
+
+Every place that uses `recipient.name` must become `recipient.recipient_name`, and `recipient.email` must become `recipient.recipient_email`. This affects:
+
+- Line 128: notification message
+- Line 134-135: notification metadata
+- Line 150: audit log metadata
+- Line 195-196: response payload
+
+**3. Fix first-view detection (line 111)**
+
+Since `viewed_at` doesn't exist, determine first view by checking `recipient.status !== 'viewed'` and `recipient.status !== 'signed'` instead.
+
+After these fixes, the edge function will query the correct columns, Chris's link will work immediately (no new link needed), and all previous unviewed signature links will also start working.
