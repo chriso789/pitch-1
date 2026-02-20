@@ -1,42 +1,36 @@
 
 
-# Fix: Signature Position to Align with "Customer Signature" Block
+# Fix: Prevent 3D Tilt on Live Canvassing Map
 
 ## Problem
 
-The signature image and verification text are drawn at `sigY = 120` (120 points from the bottom of the page). This places them below the "Date: ___" line and into the footer area. They need to be moved UP to sit directly on the "Customer Signature" line.
+The Google Maps satellite view tilts into 3D perspective when users interact with it on mobile. While `tilt: 0` is set at initialization, Google Maps still allows two-finger tilt gestures at runtime. The `gestureHandling: 'greedy'` setting captures all touch input, and `rotateControl: false` only hides the rotate UI button -- it does NOT disable the tilt/rotate gesture.
 
-In PDF coordinates (letter size = 612 x 792 points), Y=0 is the very bottom. The signature block ("Customer Signature" label, horizontal line, "Date: ___") sits roughly 25-30% from the bottom of the page, which translates to approximately Y=200-250.
+## Solution
 
-## Current vs. Target Placement
+Add a `tilt_changed` event listener that immediately resets tilt to 0 whenever the user accidentally triggers 3D mode. This is the most reliable cross-version approach.
 
-```text
-Current layout (wrong):                    Target layout (correct):
-                                           
-  Customer Signature    Company Rep          Customer Signature    Company Rep
-  _______________       _______________      [signature image]     _______________
-  Date: ___             Date: ___            _______________       _______________
-                                             Jason Dudjak
-                                             Date: 2/19/2026
-  [signature image]  <-- too low             IP: 173.x.x.x
-  Jason Dudjak
-  Date: 2/19/2026
-  IP: 173.x.x.x
-  [FOOTER]                                   [FOOTER]
+## File to Change
+
+**`src/components/storm-canvass/GoogleLiveLocationMap.tsx`**
+
+After the map is initialized (after line 86), add a listener:
+
+```typescript
+// Prevent 3D tilt - reset immediately if user triggers it
+map.current.addListener('tilt_changed', () => {
+  if (map.current && map.current.getTilt() !== 0) {
+    map.current.setTilt(0);
+  }
+});
+
+// Also prevent rotation
+map.current.addListener('heading_changed', () => {
+  if (map.current && map.current.getHeading() !== 0) {
+    map.current.setHeading(0);
+  }
+});
 ```
 
-## Changes
-
-### File: `supabase/functions/finalize-envelope/index.ts`
-
-One change only -- adjust the signature Y coordinate and verification text positions:
-
-| Current | New | Purpose |
-|---|---|---|
-| `sigY = 120` | `sigY = 215` | Move signature image UP to sit just above the horizontal signature line |
-| Verification at `sigY - 14`, `sigY - 26`, `sigY - 37` | At `sigY - 65`, `sigY - 77`, `sigY - 88` | Place name, date, IP below the signature line (filling in the "Date: ___" area) |
-
-The signature image will be drawn at Y=215 (just above the "Customer Signature" horizontal line), and the verification details will appear at Y=150-127 (just below the line, replacing the blank "Date: ___" text).
-
-This applies to all three rendering paths (storage image, base64 image, plain text).
+This ensures the map stays perfectly flat (top-down satellite view) at all times, which is essential for door-to-door canvassing where spatial orientation matters.
 
