@@ -43,11 +43,10 @@ serve(async (req: Request) => {
       .select(`
         id,
         envelope_id,
-        name,
-        email,
+        recipient_name,
+        recipient_email,
         status,
-        routing_order,
-        viewed_at,
+        signing_order,
         signed_at
       `)
       .eq('access_token', body.access_token)
@@ -108,7 +107,7 @@ serve(async (req: Request) => {
     }
 
     // Update recipient status to viewed (if first view)
-    const isFirstView = !recipient.viewed_at;
+    const isFirstView = recipient.status !== 'viewed' && recipient.status !== 'signed';
     
     if (isFirstView) {
       await supabase
@@ -125,13 +124,13 @@ serve(async (req: Request) => {
         user_id: envelope.created_by,
         type: 'envelope_viewed',
         title: 'Envelope Opened',
-        message: `${recipient.name} (${recipient.email}) opened "${envelope.title}"`,
+        message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"`,
         action_url: `/signature-envelopes/${envelope.id}`,
         metadata: {
           envelope_id: envelope.id,
           recipient_id: recipient.id,
-          recipient_name: recipient.name,
-          recipient_email: recipient.email,
+          recipient_name: recipient.recipient_name,
+          recipient_email: recipient.recipient_email,
         },
       });
     }
@@ -147,7 +146,7 @@ serve(async (req: Request) => {
       user_agent: userAgent,
       metadata: {
         recipient_id: recipient.id,
-        recipient_email: recipient.email,
+        recipient_email: recipient.recipient_email,
         is_first_view: isFirstView,
       },
     });
@@ -192,8 +191,8 @@ serve(async (req: Request) => {
       },
       recipient: {
         id: recipient.id,
-        name: recipient.name,
-        email: recipient.email,
+        name: recipient.recipient_name,
+        email: recipient.recipient_email,
         status: isFirstView ? 'viewed' : recipient.status,
       },
       fields: fields || [],
