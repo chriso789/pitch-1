@@ -1,0 +1,1 @@
+UPDATE profiles SET title = 'COB' WHERE id = '0a56229d-1722-4ea0-90ec-c42fdac6fcc9';
