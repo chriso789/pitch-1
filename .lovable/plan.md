@@ -1,49 +1,45 @@
 
+# Fix "Save Selection" Button to Save the Estimate
 
-# Fix: Update "Master Developer" Title and Remove Name Uniqueness Constraint
+## Problem
 
-## Two Issues Found
+The "Save Selection" button currently only saves the **template ID** to the pipeline entry's metadata. It does NOT save or update the actual estimate data (line items, pricing, etc.). This is misleading -- users expect it to save the estimate they're building/editing.
 
-### Issue 1: Sidebar shows "Master Developer"
-The sidebar displays the profile's `title` field before falling back to the role display name. Your profile (`0a56229d`) has `title` set to `"Master Developer"` in the database. Changing the role display name to "COB" doesn't affect this -- it's a separate field.
+## Current Button Layout (confusing)
 
-**Fix:** Update the `title` field in the database from `"Master Developer"` to `"COB"` (or whatever you'd like shown there).
+| Button | What it actually does |
+|--------|----------------------|
+| Save Selection | Only saves template ID to pipeline metadata |
+| Save Changes | Only appears when editing + has overrides; calls edge function to update estimate |
+| Create Estimate | Creates a brand new estimate with full data + PDF |
 
-### Issue 2: Profile save fails with "Failed to update user profile"
-There's a unique index `idx_unique_active_profile_per_tenant` that prevents two active users in the same tenant from having the same first + last name. You currently have:
+## Fix
 
-| Profile ID | Name | Title | Active |
-|-----------|------|-------|--------|
-| `0a56229d` | Chris O'Brien | Master Developer | Yes |
-| `248aad6c` | Chris O | Owner | Yes |
+Repurpose "Save Selection" so it behaves correctly depending on context:
 
-When you try to update `248aad6c` to "Chris O'Brien", the database blocks it because `0a56229d` already has that name.
+- **When editing an existing estimate:** Call `handleSaveLineItemChanges` (saves line items, pricing, display name, and regenerates PDF) -- same as the current "Save Changes" button
+- **When creating a new estimate:** Call `handleCreateEstimate` (creates the full estimate record with PDF)
 
-**Fix:** Drop the `idx_unique_active_profile_per_tenant` index. Name-based uniqueness is wrong -- two real people can have the same name. The primary key (`id` tied to `auth.users`) is the correct uniqueness mechanism.
+Then **remove the redundant buttons** ("Save Changes" and "Create Estimate") since "Save Selection" now handles both cases. Rename the button to **"Save Estimate"** for clarity.
 
 ## Changes
 
-### 1. New SQL Migration
-Drop the overly aggressive unique constraint:
-```sql
-DROP INDEX IF EXISTS idx_unique_active_profile_per_tenant;
-```
+### File: `src/components/estimates/MultiTemplateSelector.tsx`
 
-### 2. Update title in database
-Update the `title` field on profile `0a56229d` from "Master Developer" to "COB" so the sidebar reflects the new name immediately.
+**1. Replace `handleSaveSelection` function (lines 1100-1141)**
 
-### 3. No code file changes needed
-The sidebar logic (`Sidebar.tsx` line 745-746) correctly shows `title` first, then falls back to `getRoleDisplayName()`. Once the database title is updated, it will display correctly.
+Instead of saving template metadata, route to the correct save handler:
+- If `existingEstimateId` exists -> call `handleSaveLineItemChanges()`
+- Otherwise -> call `handleCreateEstimate()`
 
-## Files
+**2. Update Action Buttons section (lines 2362-2431)**
 
-| File | Change |
-|------|--------|
-| New migration SQL | `DROP INDEX IF EXISTS idx_unique_active_profile_per_tenant;` |
-| Database update | Set `title = 'COB'` on profile `0a56229d` |
+- Rename "Save Selection" to **"Save Estimate"**
+- Remove the separate "Save Changes" button (lines 2402-2417) since "Save Estimate" now covers that case
+- Remove the separate "Create Estimate" button (lines 2419-2430) since "Save Estimate" now covers that case
+- Disable condition: `!selectedTemplateId || lineItems.length === 0 || saving || creating || savingLineItems`
 
-## After the Fix
-- Sidebar will show "COB" instead of "Master Developer"
-- Profile save will work without the name collision error
-- You'll be able to update your name, email, and other fields normally
-
+The final button row will be:
+1. **Save Estimate** -- saves or creates depending on context
+2. **Preview** -- unchanged
+3. **Export PDF** -- unchanged
