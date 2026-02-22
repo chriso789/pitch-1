@@ -1097,46 +1097,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
      }
    };
 
-  const handleSaveSelection = async () => {
-    if (!selectedTemplateId) return;
-    
-    setSaving(true);
-    try {
-      const result1 = await supabaseClient
-        .from('pipeline_entries')
-        .select('metadata')
-        .eq('id', pipelineEntryId)
-        .single();
-
-      if (result1.error) throw result1.error;
-
-      const currentMetadata = (result1.data?.metadata as any) || {};
-      const updatedMetadata = {
-        ...currentMetadata,
-        selected_template_id: selectedTemplateId,
-        selected_template_ids: [selectedTemplateId]
-      };
-
-      const result2 = await supabaseClient
-        .from('pipeline_entries')
-        .update({ metadata: updatedMetadata })
-        .eq('id', pipelineEntryId);
-
-      if (result2.error) throw result2.error;
-
-      toast({
-        title: 'Saved',
-        description: 'Template selection saved successfully'
-      });
-    } catch (error) {
-      console.error('Error saving template selection:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to save template selection',
-        variant: 'destructive'
-      });
-    } finally {
-      setSaving(false);
+  const handleSaveEstimate = async () => {
+    if (existingEstimateId) {
+      await handleSaveLineItemChanges();
+    } else {
+      await handleCreateEstimate();
     }
   };
 
@@ -2363,17 +2328,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       <div className="flex gap-3 pb-8 flex-wrap">
         {shouldShowTemplateContent && (
           <Button
-            variant="outline"
-            onClick={handleSaveSelection}
-            disabled={!selectedTemplateId || saving}
+            onClick={handleSaveEstimate}
+            disabled={!selectedTemplateId || lineItems.length === 0 || saving || creating || savingLineItems}
             className="flex-1 min-w-[140px]"
           >
-            {saving ? (
+            {(saving || creating || savingLineItems) ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             ) : (
               <Save className="mr-2 h-4 w-4" />
             )}
-            Save Selection
+            Save Estimate
           </Button>
         )}
         
@@ -2398,36 +2362,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             </Button>
           </>
         )}
-        
-        {/* Show Save Changes button when editing existing estimate with modifications */}
-        {existingEstimateId && lineItems.some(item => item.is_override) && (
-          <Button
-            variant="secondary"
-            onClick={handleSaveLineItemChanges}
-            disabled={savingLineItems}
-            className="flex-1 min-w-[140px]"
-          >
-            {savingLineItems ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-2 h-4 w-4" />
-            )}
-            Save Changes
-          </Button>
-        )}
-        
-        <Button
-          onClick={handleCreateEstimate}
-          disabled={!selectedTemplateId || lineItems.length === 0 || creating}
-          className="flex-1 min-w-[140px]"
-        >
-          {creating ? (
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-          ) : (
-            <FileText className="mr-2 h-4 w-4" />
-          )}
-          Create Estimate
-        </Button>
       </div>
 
 
