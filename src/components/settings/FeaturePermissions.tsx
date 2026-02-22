@@ -33,7 +33,7 @@ const FEATURES = [
 ];
 
 const ROLES = [
-  { key: 'master', name: 'Master', color: 'destructive' },
+  { key: 'master', name: 'COB', color: 'destructive' },
   { key: 'corporate', name: 'Corporate', color: 'destructive' },
   { key: 'office_admin', name: 'Office Admin', color: 'default' },
   { key: 'regional_manager', name: 'Regional Manager', color: 'default' },

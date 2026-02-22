@@ -13,7 +13,7 @@ export const ROLE_HIERARCHY = {
 export type AppRole = keyof typeof ROLE_HIERARCHY;
 
 export const ROLE_DISPLAY_NAMES: Record<AppRole, string> = {
-  master: 'Master',
+  master: 'COB',
   owner: 'Owner',
   corporate: 'Corporate',
   office_admin: 'Office Admin',
