@@ -1,132 +1,94 @@
 
-# Inspection Walkthrough Feature
 
-## Overview
+# Blank Template + Trade Filtering + Inspection Button Visibility
 
-A guided, step-by-step photo inspection flow that walks reps through documenting every critical part of a property. Accessible from both Lead Details and Storm Canvass. Each step requires a photo + notes, and the completed inspection is saved to a new `inspections` table.
+## 3 Issues to Fix
 
-## New Database Table
+### Issue 1: No "Blank Template" Option
+Users need a way to build a custom estimate from scratch without pre-populated line items. Currently, every template loads line items from `estimate_calc_template_items`. A "Blank Template" would start with zero line items, letting the user add their own via the existing "Add Item" functionality, while still running full overhead/commission/tax calculations.
 
-Create an `inspections` table to store completed walkthrough results:
+### Issue 2: Template Dropdowns Show All Templates Regardless of Trade
+The `TemplateCombobox` currently groups by `roof_type` (shingle, metal, etc.) which is roofing-specific. When a non-roofing trade (Gutters, Siding, etc.) is selected, `matchesTradeCategory` correctly filters templates, but if no matching templates exist it falls back to showing ALL templates (`filteredTemplates.length > 0 ? filteredTemplates : templates`). This means a Gutters trade shows roofing templates. Each trade's dropdown should only show its own templates plus a "Blank Template" option.
 
-```sql
-CREATE TABLE inspections (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  tenant_id UUID REFERENCES tenants(id),
-  lead_id UUID REFERENCES pipeline_entries(id),
-  canvass_property_id UUID,
-  inspected_by UUID REFERENCES profiles(id),
-  status TEXT NOT NULL DEFAULT 'in_progress',  -- in_progress, completed
-  steps_data JSONB NOT NULL DEFAULT '[]',       -- array of {step_id, title, photo_url, notes, completed_at}
-  completed_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+### Issue 3: Inspection Walkthrough Button Not Visible
+The "Start Inspection" button exists in the code (line 1162 of LeadDetails.tsx) but it's inside the "Photos" tab. The user needs to click the "Photos" tab first. The button is there and working -- it's just hidden behind the tab that defaults to "Comms".
 
-ALTER TABLE inspections ENABLE ROW LEVEL SECURITY;
--- RLS: users can manage inspections within their tenant
-CREATE POLICY "tenant_access" ON inspections
-  FOR ALL USING (tenant_id = (SELECT tenant_id FROM profiles WHERE id = auth.uid()));
+## Changes
+
+### 1. Add Virtual "Blank Template" to Every Trade Dropdown
+
+**File: `src/components/estimates/MultiTemplateSelector.tsx`**
+
+- Define a constant `BLANK_TEMPLATE` with a special ID (e.g., `'__blank__'`)
+- In `handleTemplateSelect`, detect the blank template ID and set empty line items instead of fetching from `estimate_calc_template_items`
+- When blank template is selected, enable "creating new estimate" mode with zero line items -- the user adds items via the existing "Add Item" button
+- All financial calculations (overhead, commission, tax, profit margin) still run through `useEstimatePricing` as items get added
+
+**File: `src/components/estimates/TemplateCombobox.tsx`**
+
+- Accept a new optional `showBlankOption` prop (default `true`)
+- Render a "Blank Template" item at the top of the list, before any grouped templates, with a distinct visual (e.g., Plus icon instead of checkmark prefix, muted description "Start from scratch")
+- This appears in every trade's dropdown
+
+### 2. Stop Fallback to All Templates for Non-Roofing Trades
+
+**File: `src/components/estimates/MultiTemplateSelector.tsx` (line 2060)**
+
+Current code:
+```
+templates={filteredTemplates.length > 0 ? filteredTemplates : templates}
 ```
 
-## Inspection Steps (11 total)
+Change to always pass `filteredTemplates` (no fallback). Combined with the blank template being injected, every trade will always have at least the blank option even if no real templates exist for that trade.
 
-| # | ID | Title | Description |
-|---|-----|-------|-------------|
-| 1 | front | Front of House | Photograph the full front elevation. Ensure the entire facade is visible including roof line, fascia, and entry. |
-| 2 | left_side | Left Side | Stand at the front-left corner and capture the full left side wall, eave, and any visible roof planes. |
-| 3 | right_side | Right Side | Same as left, from the front-right corner. Note any AC units, meters, or obstructions. |
-| 4 | rear | Rear of House | Capture the full back elevation. Include patio covers, rear roof slopes, and any additions. |
-| 5 | gutters | Gutters (Soft Metals) | Close-up of gutters. Look for dents, dings, or bent sections caused by hail or wind debris. |
-| 6 | downspouts | Downspouts | Photograph downspouts from top to bottom. Look for dents, kinks, or detachment from the wall. |
-| 7 | window_wraps | Window Wraps / Trim | Close-up of window trim and wraps. Look for dents, cracks, or chipped paint from impact. |
-| 8 | window_screens | Window Screens | Photograph window screens. Look for tears, holes, or bent frames from hail or debris. |
-| 9 | siding | Siding | Capture siding sections. Look for cracks, chips, hail splatter marks, or loose panels. |
-| 10 | roof | Roof | Photograph ridge cap, vents, pipe jacks, valleys, and any penetrations. Note missing or damaged shingles. |
-| 11 | additional | Additional / Misc Damage | Capture any other damage not covered above. Use notes to describe what you're documenting. |
+### 3. Make Inspection Button More Discoverable
 
-## New Files
+**File: `src/pages/LeadDetails.tsx`**
 
-### 1. `src/components/inspection/InspectionWalkthrough.tsx`
+Move the "Start Inspection" button out of the Photos tab content and into a more prominent position -- add it as a tool/action alongside the existing toolbar area (near the Approval Requirements section or as an additional tab trigger). Alternatively, add an "Inspection" tab to the tabs list so it's visible at the same level as Comms/Photos/Activity.
 
-The main walkthrough component. Renders as a full-screen dialog.
-
-**Props:**
-- `open` / `onOpenChange` -- dialog control
-- `leadId?` -- when opened from Lead Details (uses `customer-photos` bucket + `customer_photos` table)
-- `contactId?` -- optional contact association
-- `canvassPropertyId?` / `propertyAddress?` / `userLocation?` -- when opened from Storm Canvass (uses `canvass-photos` bucket + `canvass_activity_log`)
-
-**State:**
-- `currentStepIndex` -- which step the user is on (0-10)
-- `stepsData` -- array of `{ stepId, photoUrl, notes, completedAt }` for each step
-- `inspectionId` -- UUID of the `inspections` row (created on first photo)
-- `showCamera` -- whether the camera capture UI is visible
-- `showSummary` -- true when all steps done, shows review screen
-
-**Flow per step:**
-1. Show step title + description with bullet-point guidance
-2. Show progress bar ("Step 3 of 11")
-3. "Take Photo" button opens inline camera (reuses `CanvassPhotoCapture` logic for camera access, or file picker on desktop)
-4. After capture, show thumbnail + notes textarea
-5. "Next" button (disabled until photo uploaded) advances to next step
-6. "Skip" option available (marks step as skipped)
-7. "Back" button to revisit previous steps
-
-**Photo upload logic:**
-- If `leadId` is provided: upload to `customer-photos` bucket at path `{tenantId}/leads/{leadId}/{timestamp}.jpg`, insert into `customer_photos` table with `category: 'inspection'`
-- If `canvassPropertyId` is provided: upload to `canvass-photos` bucket at path `{tenantId}/{propertyId}/{timestamp}.jpg`, log to `canvass_activity_log`
-
-**Summary screen:**
-- Grid of thumbnails with step title and notes
-- Tap any step to retake photo or edit notes
-- "Finish Inspection" button updates the `inspections` row with `status: 'completed'` and `completed_at`
-
-### 2. `src/components/inspection/inspectionSteps.ts`
-
-Constants file defining the 11 steps with `id`, `title`, `description`, and `guidance` bullet points.
-
-### 3. `src/components/inspection/InspectionStepCard.tsx`
-
-Single step display component: shows the title, description, photo thumbnail (or capture button), and notes input.
-
-### 4. `src/components/inspection/InspectionSummary.tsx`
-
-Review screen showing all captured photos in a grid with notes, plus the "Finish Inspection" button.
-
-## Integration Points
-
-### Lead Details (`src/pages/LeadDetails.tsx`)
-
-Add an "Inspection" button in the Photos tab content area (line ~1158), above or alongside the `PhotoControlCenter`:
-
-```tsx
-<Button onClick={() => setShowInspection(true)} variant="outline" size="sm">
-  <Camera className="h-4 w-4 mr-2" />
-  Start Inspection
-</Button>
-```
-
-Render `InspectionWalkthrough` as a sibling dialog (per dialog management standards), passing `leadId={id}` and `contactId={lead.contact?.id}`.
-
-### Storm Canvass (`src/components/storm-canvass/PropertyInfoPanel.tsx`)
-
-Add a new tool button in the Tools grid (line ~996, after the "Strategy" button):
-
-```tsx
-<Button variant="outline" size="sm" className="flex-col h-16 p-2"
-  onClick={() => setShowInspection(true)}>
-  <Camera className="h-5 w-5 mb-1 text-teal-500" />
-  <span className="text-[10px]">Inspection</span>
-</Button>
-```
-
-Render `InspectionWalkthrough` passing `canvassPropertyId={property.id}`, `propertyAddress`, and `userLocation`.
+**Recommended approach:** Add a dedicated "Inspection" tab trigger in the TabsList (line 1088-1110) that, when clicked, shows the inspection button and any past inspection summaries. This makes it immediately visible without requiring the user to navigate to Photos first.
 
 ## Technical Details
 
-- Photos are captured using the device camera via `navigator.mediaDevices.getUserMedia` (same pattern as `CanvassPhotoCapture`)
-- GPS coordinates are captured automatically when available
-- Timestamp overlay is burned into photos (same as `CanvassPhotoCapture`)
-- Storage paths follow the `{tenantId}/...` convention required by RLS policies
-- The `inspections.steps_data` JSONB column stores the full walkthrough state, making it easy to generate reports later
-- Progress is saved incrementally -- if the rep closes the walkthrough mid-way, the `inspections` row retains all completed steps
+### Blank Template Constant
+```typescript
+const BLANK_TEMPLATE = {
+  id: '__blank__',
+  name: 'Blank Template',
+  roof_type: 'other',
+  template_category: 'universal', // matches all trades
+};
+```
+
+### Template Selection Handler Update
+When `templateId === '__blank__'`:
+- Set `selectedTemplateId` to `'__blank__'`
+- Call `setLineItems([])` (empty array)
+- Set `setIsCreatingNewEstimate(true)`
+- Skip `fetchLineItems` call
+- The "Add Item" UI is already available for the user to manually build line items
+
+### TemplateCombobox Changes
+- Add `showBlankOption?: boolean` prop
+- Prepend blank template option before grouped templates
+- Blank template renders in its own group header ("CUSTOM") or ungrouped at the top
+
+### Trade Filtering Fix
+- Remove the fallback `filteredTemplates.length > 0 ? filteredTemplates : templates`
+- Always pass `filteredTemplates` to `TemplateCombobox`
+- The blank template is injected into every trade's filtered list
+
+### Inspection Tab Addition
+- Add `TabsTrigger value="inspection"` with ClipboardCheck icon
+- Add `TabsContent value="inspection"` with the Start Inspection button and inspection history query
+- Remove the button from inside the Photos tab
+
+## Files to Modify
+
+| File | Change |
+|------|--------|
+| `src/components/estimates/MultiTemplateSelector.tsx` | Add blank template constant, handle blank selection, remove all-templates fallback |
+| `src/components/estimates/TemplateCombobox.tsx` | Add blank template option at top of dropdown |
+| `src/pages/LeadDetails.tsx` | Add Inspection tab to make the button discoverable |
+| `src/lib/trades.ts` | Add `'universal'` match to `matchesTradeCategory` so blank template appears in all trades |
