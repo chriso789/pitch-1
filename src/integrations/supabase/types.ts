@@ -14988,6 +14988,71 @@ export type Database = {
           },
         ]
       }
+      inspections: {
+        Row: {
+          canvass_property_id: string | null
+          completed_at: string | null
+          created_at: string | null
+          id: string
+          inspected_by: string | null
+          lead_id: string | null
+          status: string
+          steps_data: Json
+          tenant_id: string | null
+        }
+        Insert: {
+          canvass_property_id?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          inspected_by?: string | null
+          lead_id?: string | null
+          status?: string
+          steps_data?: Json
+          tenant_id?: string | null
+        }
+        Update: {
+          canvass_property_id?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          id?: string
+          inspected_by?: string | null
+          lead_id?: string | null
+          status?: string
+          steps_data?: Json
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspections_inspected_by_fkey"
+            columns: ["inspected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_inspected_by_fkey"
+            columns: ["inspected_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "inspections_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inspections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       insurance_canonical_items: {
         Row: {
           alternate_units: string[] | null

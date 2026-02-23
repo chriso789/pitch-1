@@ -21,6 +21,7 @@ import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
 import { CanvassPhotoCapture } from './CanvassPhotoCapture';
+import { InspectionWalkthrough } from '@/components/inspection/InspectionWalkthrough';
 import StormScoreWhyPanel from './StormScoreWhyPanel';
 import { 
   calculateDistanceMeters, 
@@ -72,6 +73,7 @@ export default function PropertyInfoPanel({
   const [showFastEstimate, setShowFastEstimate] = useState(false);
   
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
+  const [showInspection, setShowInspection] = useState(false);
   const [showStormReports, setShowStormReports] = useState(false);
   const [stormReports, setStormReports] = useState<any[]>([]);
   const [loadingStorm, setLoadingStorm] = useState(false);
@@ -994,6 +996,15 @@ export default function PropertyInfoPanel({
                   )}
                   <span className="text-[10px]">{generatingStrategy ? 'AI...' : 'Strategy'}</span>
                 </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-col h-16 p-2"
+                  onClick={() => setShowInspection(true)}
+                >
+                  <Camera className="h-5 w-5 mb-1 text-teal-500" />
+                  <span className="text-[10px]">Inspection</span>
+                </Button>
               </div>
               {/* AI Strategy Card */}
               {doorStrategy && (
@@ -1112,6 +1123,13 @@ export default function PropertyInfoPanel({
         <CanvassPhotoCapture
           open={showPhotoCapture}
           onOpenChange={setShowPhotoCapture}
+          propertyAddress={property?.address?.street || property?.owner_address}
+          userLocation={userLocation}
+        />
+        <InspectionWalkthrough
+          open={showInspection}
+          onOpenChange={setShowInspection}
+          canvassPropertyId={property?.id}
           propertyAddress={property?.address?.street || property?.owner_address}
           userLocation={userLocation}
         />
