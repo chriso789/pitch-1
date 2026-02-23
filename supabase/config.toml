@@ -1128,3 +1128,21 @@ verify_jwt = false
 
 [functions.polish-inspection-notes]
 verify_jwt = false
+
+[functions.api-key-manager]
+verify_jwt = true
+
+[functions.automation-processor]
+verify_jwt = false
+
+[functions.crew-schedule-optimizer]
+verify_jwt = true
+
+[functions.crew-timesheet-processor]
+verify_jwt = true
+
+[functions.noaa-storm-reports]
+verify_jwt = false
+
+[functions.request-quote-signature]
+verify_jwt = false
