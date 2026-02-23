@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Check, ChevronsUpDown, FileText } from 'lucide-react';
+import { Check, ChevronsUpDown, FileText, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +17,8 @@ import {
 } from '@/components/ui/popover';
 import { Badge } from '@/components/ui/badge';
 
+export const BLANK_TEMPLATE_ID = '__blank__';
+
 interface Template {
   id: string;
   name: string;
@@ -33,6 +35,7 @@ interface TemplateComboboxProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  showBlankOption?: boolean;
 }
 
 const ROOF_TYPE_LABELS: Record<string, string> = {
@@ -53,6 +56,7 @@ export const TemplateCombobox: React.FC<TemplateComboboxProps> = ({
   placeholder = 'Select a template...',
   disabled = false,
   className,
+  showBlankOption = true,
 }) => {
   const [open, setOpen] = useState(false);
 
@@ -83,6 +87,7 @@ export const TemplateCombobox: React.FC<TemplateComboboxProps> = ({
 
   // Find selected template
   const selectedTemplate = useMemo(() => {
+    if (value === BLANK_TEMPLATE_ID) return { id: BLANK_TEMPLATE_ID, name: 'Blank Template' } as Template;
     return templates.find(t => t.id === value);
   }, [templates, value]);
 
@@ -112,6 +117,32 @@ export const TemplateCombobox: React.FC<TemplateComboboxProps> = ({
           <CommandInput placeholder="Search templates..." />
           <CommandList>
             <CommandEmpty>No template found.</CommandEmpty>
+
+            {showBlankOption && (
+              <CommandGroup heading={
+                <span className="font-semibold text-xs uppercase tracking-wide">Custom</span>
+              }>
+                <CommandItem
+                  value="Blank Template"
+                  onSelect={() => {
+                    onValueChange(BLANK_TEMPLATE_ID);
+                    setOpen(false);
+                  }}
+                  className="cursor-pointer"
+                >
+                  <Plus
+                    className={cn(
+                      'mr-2 h-4 w-4',
+                      value === BLANK_TEMPLATE_ID ? 'opacity-100 text-primary' : 'opacity-50'
+                    )}
+                  />
+                  <div className="flex flex-col">
+                    <span>Blank Template</span>
+                    <span className="text-xs text-muted-foreground">Start from scratch</span>
+                  </div>
+                </CommandItem>
+              </CommandGroup>
+            )}
             
             {sortedRoofTypes.map(roofType => (
               <CommandGroup 

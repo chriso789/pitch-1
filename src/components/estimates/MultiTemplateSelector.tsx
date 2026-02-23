@@ -32,7 +32,7 @@ import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptio
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
-import { TemplateCombobox } from './TemplateCombobox';
+import { TemplateCombobox, BLANK_TEMPLATE_ID } from './TemplateCombobox';
 // usePDFGeneration removed - now using useMultiPagePDFGeneration for all PDF operations
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 
@@ -831,6 +831,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       return;
     }
     
+    if (selectedTemplateId === BLANK_TEMPLATE_ID) {
+      // Blank template: empty line items, user adds their own
+      setLineItems([]);
+      return;
+    }
     if (selectedTemplateId) {
       console.log('📐 Evaluating formulas with context:', measurementContext);
       fetchLineItems(selectedTemplateId);
@@ -1010,6 +1015,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplateId(templateId);
+    if (templateId === BLANK_TEMPLATE_ID) {
+      // Blank template: clear line items, skip fetching
+      setLineItems([]);
+      setTemplateAttachments([]);
+      if (!isEditingLoadedEstimate && !existingEstimateId) {
+        setIsCreatingNewEstimate(true);
+      }
+      return;
+    }
      // Fetch any template attachments (e.g., metal roof flyers)
      fetchTemplateAttachments(templateId);
     // Auto-enable creating mode when template is selected (unless already editing an existing estimate)
@@ -2057,7 +2071,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                   <CollapsibleContent>
                     <div className="px-3 pb-3 space-y-3">
                       <TemplateCombobox
-                        templates={filteredTemplates.length > 0 ? filteredTemplates : templates}
+                        templates={filteredTemplates}
                         value={trade.tradeType === 'roofing' ? selectedTemplateId : trade.templateId}
                         onValueChange={(templateId) => {
                           setTradeSections(prev => prev.map(t =>
