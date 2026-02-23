@@ -1125,3 +1125,6 @@ verify_jwt = false
 
 [functions.notify-signature-opened]
 verify_jwt = false
+
+[functions.polish-inspection-notes]
+verify_jwt = false
