@@ -5,7 +5,7 @@ import { INSPECTION_STEPS } from './inspectionSteps';
 
 interface StepData {
   stepId: string;
-  photoUrl: string | null;
+  photoUrls: string[];
   notes: string;
   completedAt: string | null;
   skipped?: boolean;
@@ -74,14 +74,13 @@ export function useInspectionReportPDF() {
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
       const pageCount = { value: 1 };
       const timestamp = new Date().toLocaleString();
-      const completedCount = data.stepsData.filter((s) => s.photoUrl).length;
-      const skippedCount = data.stepsData.filter((s) => s.skipped && !s.photoUrl).length;
+      const completedCount = data.stepsData.filter((s) => s.photoUrls.length > 0).length;
+      const skippedCount = data.stepsData.filter((s) => s.skipped && s.photoUrls.length === 0).length;
 
       // ── Cover / Header ──
       let y = MARGIN;
 
-      // Title block
-      pdf.setFillColor(24, 24, 27); // zinc-900
+      pdf.setFillColor(24, 24, 27);
       pdf.rect(0, 0, PAGE_W, 52, 'F');
 
       pdf.setTextColor(255, 255, 255);
@@ -97,7 +96,6 @@ export function useInspectionReportPDF() {
         pdf.text(data.companyName, MARGIN, y + 32);
       }
 
-      // Right-aligned metadata
       const metaX = PAGE_W - MARGIN;
       pdf.setFontSize(9);
       let metaY = y + 14;
@@ -115,7 +113,6 @@ export function useInspectionReportPDF() {
 
       y = 60;
 
-      // Property address
       if (data.propertyAddress) {
         pdf.setTextColor(60, 60, 60);
         pdf.setFontSize(11);
@@ -135,8 +132,9 @@ export function useInspectionReportPDF() {
       pdf.text('SUMMARY', MARGIN + 4, y + 6);
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9);
+      const totalPhotos = data.stepsData.reduce((sum, s) => sum + s.photoUrls.length, 0);
       pdf.text(
-        `${INSPECTION_STEPS.length} steps  •  ${completedCount} completed  •  ${skippedCount} skipped`,
+        `${INSPECTION_STEPS.length} steps  •  ${completedCount} completed  •  ${skippedCount} skipped  •  ${totalPhotos} photos`,
         MARGIN + 4,
         y + 12
       );
@@ -144,25 +142,36 @@ export function useInspectionReportPDF() {
 
       // ── Fetch all photos in parallel ──
       toast.info('Loading inspection photos...');
-      const photoPromises = data.stepsData.map((s) =>
-        s.photoUrl ? fetchImageAsBase64(s.photoUrl) : Promise.resolve(null)
+      const allPhotoUrls = data.stepsData.flatMap((s) => s.photoUrls);
+      const photoMap = new Map<string, string | null>();
+      const photoResults = await Promise.all(
+        allPhotoUrls.map(async (url) => {
+          const b64 = await fetchImageAsBase64(url);
+          return { url, b64 };
+        })
       );
-      const photos = await Promise.all(photoPromises);
+      for (const r of photoResults) {
+        photoMap.set(r.url, r.b64);
+      }
       toast.info('Building PDF...');
 
       // ── Render each step ──
       for (let i = 0; i < INSPECTION_STEPS.length; i++) {
         const step = INSPECTION_STEPS[i];
         const stepData = data.stepsData[i];
-        const photo = photos[i];
-        const hasPhoto = !!photo;
-        const stepHeight = hasPhoto ? Math.max(PHOTO_H + 8, 30) : 20;
-        const notesLines = stepData?.notes
-          ? pdf.splitTextToSize(stepData.notes, hasPhoto ? CONTENT_W - PHOTO_W - 10 : CONTENT_W - 4)
-          : [];
-        const totalNeeded = stepHeight + notesLines.length * 4 + 8;
+        const photos = stepData.photoUrls.map((url) => photoMap.get(url)).filter(Boolean) as string[];
+        const hasPhotos = photos.length > 0;
 
-        y = ensureSpace(pdf, y, totalNeeded, pageCount);
+        // Calculate needed height: header(11) + photos rows + notes + spacing
+        const photoRows = hasPhotos ? Math.ceil(photos.length / 2) : 0;
+        const photoHeight = photoRows * (PHOTO_H + 4);
+        const notesLines = stepData?.notes
+          ? pdf.splitTextToSize(stepData.notes, CONTENT_W - 4)
+          : [];
+        const notesHeight = notesLines.length * 4 + (notesLines.length > 0 ? 8 : 0);
+        const totalNeeded = 11 + photoHeight + notesHeight + 8;
+
+        y = ensureSpace(pdf, y, Math.min(totalNeeded, MAX_Y - MARGIN), pageCount);
 
         // Step header bar
         pdf.setFillColor(240, 240, 240);
@@ -172,56 +181,66 @@ export function useInspectionReportPDF() {
         pdf.setTextColor(40, 40, 40);
         pdf.text(`${i + 1}. ${step.title.toUpperCase()}`, MARGIN + 3, y + 5.5);
 
-        if (stepData?.skipped && !hasPhoto) {
+        if (stepData?.skipped && !hasPhotos) {
           pdf.setFontSize(8);
           pdf.setTextColor(180, 100, 0);
           pdf.text('SKIPPED', PAGE_W - MARGIN - 3, y + 5.5, { align: 'right' });
+        } else if (hasPhotos) {
+          pdf.setFontSize(8);
+          pdf.setTextColor(100, 100, 100);
+          pdf.text(`${photos.length} photo${photos.length !== 1 ? 's' : ''}`, PAGE_W - MARGIN - 3, y + 5.5, { align: 'right' });
         }
         y += 11;
 
-        // Photo + notes side by side
-        if (hasPhoto) {
-          try {
-            pdf.addImage(photo!, 'JPEG', MARGIN, y, PHOTO_W, PHOTO_H);
-          } catch {
-            // fallback: draw placeholder
-            pdf.setFillColor(230, 230, 230);
-            pdf.rect(MARGIN, y, PHOTO_W, PHOTO_H, 'F');
-            pdf.setFontSize(8);
-            pdf.setTextColor(150, 150, 150);
-            pdf.text('Photo unavailable', MARGIN + PHOTO_W / 2, y + PHOTO_H / 2, { align: 'center' });
-          }
-
-          // Notes beside photo
-          if (notesLines.length > 0) {
-            const notesX = MARGIN + PHOTO_W + 5;
-            pdf.setFontSize(8);
-            pdf.setFont('helvetica', 'bold');
-            pdf.setTextColor(100, 100, 100);
-            pdf.text('Notes:', notesX, y + 5);
-            pdf.setFont('helvetica', 'normal');
-            pdf.setTextColor(60, 60, 60);
-            pdf.setFontSize(9);
-            let noteY = y + 10;
-            for (const line of notesLines) {
-              if (noteY > MAX_Y) break;
-              pdf.text(line, notesX, noteY);
-              noteY += 4;
+        // Render photos 2 per row
+        if (hasPhotos) {
+          for (let p = 0; p < photos.length; p += 2) {
+            y = ensureSpace(pdf, y, PHOTO_H + 4, pageCount);
+            try {
+              pdf.addImage(photos[p], 'JPEG', MARGIN, y, PHOTO_W, PHOTO_H);
+            } catch {
+              pdf.setFillColor(230, 230, 230);
+              pdf.rect(MARGIN, y, PHOTO_W, PHOTO_H, 'F');
+              pdf.setFontSize(8);
+              pdf.setTextColor(150, 150, 150);
+              pdf.text('Photo unavailable', MARGIN + PHOTO_W / 2, y + PHOTO_H / 2, { align: 'center' });
             }
-          }
 
-          y += PHOTO_H + 4;
-        } else if (notesLines.length > 0) {
-          // Notes only (no photo)
-          pdf.setFontSize(9);
+            if (p + 1 < photos.length) {
+              const x2 = MARGIN + PHOTO_W + 5;
+              try {
+                pdf.addImage(photos[p + 1], 'JPEG', x2, y, PHOTO_W, PHOTO_H);
+              } catch {
+                pdf.setFillColor(230, 230, 230);
+                pdf.rect(x2, y, PHOTO_W, PHOTO_H, 'F');
+                pdf.setFontSize(8);
+                pdf.setTextColor(150, 150, 150);
+                pdf.text('Photo unavailable', x2 + PHOTO_W / 2, y + PHOTO_H / 2, { align: 'center' });
+              }
+            }
+            y += PHOTO_H + 4;
+          }
+        }
+
+        // Notes below photos
+        if (notesLines.length > 0) {
+          y = ensureSpace(pdf, y, 12, pageCount);
+          pdf.setFontSize(8);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setTextColor(100, 100, 100);
+          pdf.text('Notes:', MARGIN + 3, y);
+          y += 4;
+          pdf.setFont('helvetica', 'normal');
           pdf.setTextColor(60, 60, 60);
+          pdf.setFontSize(9);
           for (const line of notesLines) {
+            y = ensureSpace(pdf, y, 5, pageCount);
             pdf.text(line, MARGIN + 3, y);
             y += 4;
           }
         }
 
-        y += 4; // spacing between steps
+        y += 4;
       }
 
       // ── Add footers to all pages ──

@@ -6,7 +6,7 @@ import { useInspectionReportPDF } from './useInspectionReportPDF';
 
 interface StepData {
   stepId: string;
-  photoUrl: string | null;
+  photoUrls: string[];
   notes: string;
   completedAt: string | null;
   skipped?: boolean;
@@ -29,7 +29,7 @@ export function InspectionSummary({
   propertyAddress,
   inspectorName,
 }: InspectionSummaryProps) {
-  const completedCount = stepsData.filter((s) => s.photoUrl).length;
+  const completedCount = stepsData.filter((s) => s.photoUrls.length > 0).length;
   const { downloadReport, generating } = useInspectionReportPDF();
 
   const handleDownload = () => {
@@ -54,18 +54,27 @@ export function InspectionSummary({
       <div className="grid grid-cols-2 gap-3">
         {INSPECTION_STEPS.map((step, idx) => {
           const data = stepsData[idx];
+          const firstPhoto = data?.photoUrls?.[0];
+          const extraCount = (data?.photoUrls?.length || 0) - 1;
           return (
             <button
               key={step.id}
               className="border rounded-lg p-2 text-left hover:bg-muted/50 transition-colors focus:outline-none focus:ring-2 focus:ring-ring"
               onClick={() => onStepClick(idx)}
             >
-              {data?.photoUrl ? (
-                <img
-                  src={data.photoUrl}
-                  alt={step.title}
-                  className="w-full h-20 object-cover rounded-md mb-1"
-                />
+              {firstPhoto ? (
+                <div className="relative">
+                  <img
+                    src={firstPhoto}
+                    alt={step.title}
+                    className="w-full h-20 object-cover rounded-md mb-1"
+                  />
+                  {extraCount > 0 && (
+                    <span className="absolute top-1 right-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium">
+                      +{extraCount}
+                    </span>
+                  )}
+                </div>
               ) : (
                 <div className="w-full h-20 bg-muted rounded-md mb-1 flex items-center justify-center">
                   {data?.skipped ? (
@@ -76,7 +85,7 @@ export function InspectionSummary({
                 </div>
               )}
               <div className="flex items-center gap-1">
-                {data?.photoUrl && (
+                {firstPhoto && (
                   <CheckCircle className="h-3 w-3 text-green-500 shrink-0" />
                 )}
                 <span className="text-xs font-medium truncate">{step.title}</span>

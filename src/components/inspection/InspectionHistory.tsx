@@ -28,9 +28,15 @@ export function InspectionHistory({ leadId, propertyAddress }: InspectionHistory
     },
   });
 
+  const normalizeSteps = (raw: any[]): any[] =>
+    raw.map((s: any) => ({
+      ...s,
+      photoUrls: s.photoUrls || (s.photoUrl ? [s.photoUrl] : []),
+    }));
+
   const handleDownload = async (inspection: any) => {
     setDownloadingId(inspection.id);
-    const stepsData = (inspection.steps_data || []) as any[];
+    const stepsData = normalizeSteps((inspection.steps_data || []) as any[]);
     await downloadReport(
       {
         stepsData,
@@ -58,8 +64,8 @@ export function InspectionHistory({ leadId, propertyAddress }: InspectionHistory
     <div className="space-y-2">
       <h5 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Past Inspections</h5>
       {inspections.map((insp) => {
-        const stepsData = (insp.steps_data || []) as any[];
-        const photoCount = stepsData.filter((s: any) => s.photoUrl).length;
+        const stepsData = normalizeSteps((insp.steps_data || []) as any[]);
+        const photoCount = stepsData.filter((s: any) => s.photoUrls?.length > 0).length;
         const isDownloading = downloadingId === insp.id && generating;
 
         return (

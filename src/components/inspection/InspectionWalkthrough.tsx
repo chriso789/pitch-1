@@ -13,7 +13,7 @@ import { InspectionSummary } from './InspectionSummary';
 
 interface StepData {
   stepId: string;
-  photoUrl: string | null;
+  photoUrls: string[];
   notes: string;
   completedAt: string | null;
   skipped?: boolean;
@@ -32,7 +32,7 @@ interface InspectionWalkthroughProps {
 function initStepsData(): StepData[] {
   return INSPECTION_STEPS.map((s) => ({
     stepId: s.id,
-    photoUrl: null,
+    photoUrls: [],
     notes: '',
     completedAt: null,
     skipped: false,
@@ -89,7 +89,6 @@ export function InspectionWalkthrough({
       });
       streamRef.current = mediaStream;
       setShowCamera(true);
-      // small delay for video ref to mount
       setTimeout(() => {
         if (videoRef.current) {
           videoRef.current.srcObject = mediaStream;
@@ -97,7 +96,6 @@ export function InspectionWalkthrough({
         }
       }, 100);
     } catch {
-      // Fallback to file picker
       handleFilePicker();
     }
   }, []);
@@ -125,7 +123,6 @@ export function InspectionWalkthrough({
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
 
-    // Add timestamp overlay
     const now = new Date().toLocaleString();
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
     ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
@@ -178,19 +175,18 @@ export function InspectionWalkthrough({
       const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(path);
       const photoUrl = urlData.publicUrl;
 
-      // Update step data
+      // Append to photoUrls array
       setStepsData((prev) => {
         const next = [...prev];
         next[currentStep] = {
           ...next[currentStep],
-          photoUrl,
+          photoUrls: [...next[currentStep].photoUrls, photoUrl],
           completedAt: new Date().toISOString(),
           skipped: false,
         };
         return next;
       });
 
-      // Insert into customer_photos table if lead context
       if (leadId) {
         await supabase.from('customer_photos').insert({
           tenant_id: tenantId,
@@ -203,7 +199,6 @@ export function InspectionWalkthrough({
         } as any);
       }
 
-      // Create or update the inspections row
       await upsertInspection(photoUrl);
     } catch (err: any) {
       toast.error('Upload failed: ' + (err.message || 'Unknown error'));
@@ -212,12 +207,31 @@ export function InspectionWalkthrough({
     }
   };
 
+  const handleRemovePhoto = (photoIndex: number) => {
+    setStepsData((prev) => {
+      const next = [...prev];
+      const step = next[currentStep];
+      const newUrls = step.photoUrls.filter((_, i) => i !== photoIndex);
+      next[currentStep] = {
+        ...step,
+        photoUrls: newUrls,
+        completedAt: newUrls.length > 0 ? step.completedAt : null,
+      };
+      return next;
+    });
+  };
+
   const upsertInspection = async (latestPhotoUrl?: string) => {
     if (!tenantId || !user) return;
 
     const updatedSteps = stepsData.map((s, i) => {
       if (i === currentStep && latestPhotoUrl) {
-        return { ...s, photoUrl: latestPhotoUrl, completedAt: new Date().toISOString(), skipped: false };
+        return {
+          ...s,
+          photoUrls: [...s.photoUrls, latestPhotoUrl],
+          completedAt: new Date().toISOString(),
+          skipped: false,
+        };
       }
       return s;
     });
@@ -305,7 +319,7 @@ export function InspectionWalkthrough({
   };
 
   const progressPercent =
-    (stepsData.filter((s) => s.photoUrl || s.skipped).length / INSPECTION_STEPS.length) * 100;
+    (stepsData.filter((s) => s.photoUrls.length > 0 || s.skipped).length / INSPECTION_STEPS.length) * 100;
 
   const step = INSPECTION_STEPS[currentStep];
   const currentData = stepsData[currentStep];
@@ -341,13 +355,7 @@ export function InspectionWalkthrough({
         <div className="flex-1 overflow-y-auto">
           {showCamera ? (
             <div className="relative w-full h-full min-h-[300px] bg-black flex items-center justify-center">
-              <video
-                ref={videoRef}
-                autoPlay
-                playsInline
-                muted
-                className="w-full h-full object-cover"
-              />
+              <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
               <canvas ref={canvasRef} className="hidden" />
               <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-3">
                 <Button variant="secondary" onClick={stopCamera} className="rounded-full h-12 w-12 p-0">
@@ -379,13 +387,14 @@ export function InspectionWalkthrough({
               totalSteps={INSPECTION_STEPS.length}
               data={currentData}
               onTakePhoto={startCamera}
+              onRemovePhoto={handleRemovePhoto}
               onNotesChange={handleNotesChange}
               capturing={capturing}
             />
           )}
         </div>
 
-        {/* Footer nav (hidden when camera or summary is shown) */}
+        {/* Footer nav */}
         {!showCamera && !showSummary && (
           <div className="flex items-center justify-between px-4 py-3 border-t bg-background shrink-0">
             <Button variant="ghost" size="sm" onClick={handleBack} disabled={currentStep === 0}>
