@@ -14,6 +14,8 @@ export type TradeValue = typeof ALL_TRADES[number]['value'];
  */
 export function matchesTradeCategory(templateCategory: string | null | undefined, tradeValue: string): boolean {
   const cat = (templateCategory || 'standard').toLowerCase();
+  // 'universal' matches all trades (used by Blank Template)
+  if (cat === 'universal') return true;
   if (tradeValue === 'roofing') {
     return cat === 'roofing' || cat === 'standard' || cat === 'premium';
   }

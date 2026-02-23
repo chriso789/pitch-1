@@ -13,7 +13,7 @@ import {
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
   ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus, MessageSquare,
-  Pencil, Crosshair, Ruler, Calculator, Lock, ChevronDown
+  Pencil, Crosshair, Ruler, Calculator, Lock, ChevronDown, ClipboardCheck
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -1107,6 +1107,10 @@ const LeadDetails = () => {
                   <Phone className="h-3 w-3 mr-1" />
                   Timeline
                 </TabsTrigger>
+                <TabsTrigger value="inspection" className="text-xs h-7 px-3 flex-shrink-0">
+                  <ClipboardCheck className="h-3 w-3 mr-1" />
+                  Inspection
+                </TabsTrigger>
               </TabsList>
               <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card to-transparent pointer-events-none" />
             </div>
@@ -1158,12 +1162,6 @@ const LeadDetails = () => {
             </TabsContent>
 
             <TabsContent value="photos" className="mt-0 space-y-4">
-              <div className="flex justify-end">
-                <Button variant="outline" size="sm" onClick={() => setShowInspection(true)}>
-                  <Camera className="h-4 w-4 mr-2" />
-                  Start Inspection
-                </Button>
-              </div>
               <PhotoControlCenter
                 leadId={id!}
                 showHeader={false}
@@ -1186,6 +1184,21 @@ const LeadDetails = () => {
                 maxItems={30}
                 showFilters={true}
               />
+            </TabsContent>
+
+            <TabsContent value="inspection" className="mt-0">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-medium">Property Inspection</h4>
+                    <p className="text-xs text-muted-foreground">Guided photo walkthrough of property condition</p>
+                  </div>
+                  <Button variant="default" size="sm" onClick={() => setShowInspection(true)}>
+                    <ClipboardCheck className="h-4 w-4 mr-2" />
+                    Start Inspection
+                  </Button>
+                </div>
+              </div>
             </TabsContent>
           </CardContent>
         </Tabs>
