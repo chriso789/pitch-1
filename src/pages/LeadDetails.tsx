@@ -59,6 +59,7 @@ import { LeadNotesSection } from '@/components/lead-details/LeadNotesSection';
 import { InternalNotesSection } from '@/components/lead-details/InternalNotesSection';
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { EditProjectDetailsDialog } from '@/components/lead-details/EditProjectDetailsDialog';
+import { InspectionWalkthrough } from '@/components/inspection/InspectionWalkthrough';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
@@ -334,6 +335,7 @@ const LeadDetails = () => {
   
   // Project details edit dialog state
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
+  const [showInspection, setShowInspection] = useState(false);
   
   // Auth context
   const { user } = useAuth();
@@ -1156,6 +1158,12 @@ const LeadDetails = () => {
             </TabsContent>
 
             <TabsContent value="photos" className="mt-0 space-y-4">
+              <div className="flex justify-end">
+                <Button variant="outline" size="sm" onClick={() => setShowInspection(true)}>
+                  <Camera className="h-4 w-4 mr-2" />
+                  Start Inspection
+                </Button>
+              </div>
               <PhotoControlCenter
                 leadId={id!}
                 showHeader={false}
@@ -1337,6 +1345,14 @@ const LeadDetails = () => {
           refetchLead();
           setShowEditProjectDialog(false);
         }}
+      />
+
+      {/* Inspection Walkthrough */}
+      <InspectionWalkthrough
+        open={showInspection}
+        onOpenChange={setShowInspection}
+        leadId={id}
+        contactId={lead.contact?.id}
       />
     </div>
   );
