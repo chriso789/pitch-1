@@ -60,6 +60,7 @@ import { InternalNotesSection } from '@/components/lead-details/InternalNotesSec
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { EditProjectDetailsDialog } from '@/components/lead-details/EditProjectDetailsDialog';
 import { InspectionWalkthrough } from '@/components/inspection/InspectionWalkthrough';
+import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
@@ -1198,6 +1199,7 @@ const LeadDetails = () => {
                     Start Inspection
                   </Button>
                 </div>
+                <InspectionHistory leadId={id!} propertyAddress={[lead?.contact?.address_street, lead?.contact?.address_city, lead?.contact?.address_state, lead?.contact?.address_zip].filter(Boolean).join(', ')} />
               </div>
             </TabsContent>
           </CardContent>

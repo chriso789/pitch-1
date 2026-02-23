@@ -1,7 +1,8 @@
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, SkipForward, Camera, Loader2 } from 'lucide-react';
+import { CheckCircle, SkipForward, Camera, Loader2, Download } from 'lucide-react';
 import { INSPECTION_STEPS } from './inspectionSteps';
+import { useInspectionReportPDF } from './useInspectionReportPDF';
 
 interface StepData {
   stepId: string;
@@ -16,6 +17,8 @@ interface InspectionSummaryProps {
   onStepClick: (index: number) => void;
   onFinish: () => void;
   finishing: boolean;
+  propertyAddress?: string;
+  inspectorName?: string;
 }
 
 export function InspectionSummary({
@@ -23,8 +26,21 @@ export function InspectionSummary({
   onStepClick,
   onFinish,
   finishing,
+  propertyAddress,
+  inspectorName,
 }: InspectionSummaryProps) {
   const completedCount = stepsData.filter((s) => s.photoUrl).length;
+  const { downloadReport, generating } = useInspectionReportPDF();
+
+  const handleDownload = () => {
+    downloadReport({
+      stepsData,
+      propertyAddress,
+      inspectorName,
+      inspectionDate: new Date().toLocaleDateString(),
+      status: 'Completed',
+    });
+  };
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -75,14 +91,26 @@ export function InspectionSummary({
         })}
       </div>
 
-      <Button onClick={onFinish} disabled={finishing} className="w-full mt-2">
-        {finishing ? (
-          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-        ) : (
-          <CheckCircle className="h-4 w-4 mr-2" />
+      <div className="flex gap-2 mt-2">
+        {completedCount > 0 && (
+          <Button variant="outline" onClick={handleDownload} disabled={generating} className="flex-1">
+            {generating ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            Download Report
+          </Button>
         )}
-        Finish Inspection
-      </Button>
+        <Button onClick={onFinish} disabled={finishing} className="flex-1">
+          {finishing ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <CheckCircle className="h-4 w-4 mr-2" />
+          )}
+          Finish Inspection
+        </Button>
+      </div>
     </div>
   );
 }
