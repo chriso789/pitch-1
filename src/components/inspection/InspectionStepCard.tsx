@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Camera, X, CheckCircle, Plus } from 'lucide-react';
+import { Camera, X, CheckCircle, Plus, Mic, MicOff } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { InspectionStep } from './inspectionSteps';
 
@@ -22,6 +22,10 @@ interface InspectionStepCardProps {
   onRemovePhoto: (index: number) => void;
   onNotesChange: (notes: string) => void;
   capturing: boolean;
+  isListening?: boolean;
+  onToggleVoice?: () => void;
+  interimTranscript?: string;
+  voiceSupported?: boolean;
 }
 
 export function InspectionStepCard({
@@ -33,8 +37,20 @@ export function InspectionStepCard({
   onRemovePhoto,
   onNotesChange,
   capturing,
+  isListening = false,
+  onToggleVoice,
+  interimTranscript = '',
+  voiceSupported = false,
 }: InspectionStepCardProps) {
   const hasPhotos = data.photoUrls.length > 0;
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Auto-scroll textarea when voice input adds text
+  useEffect(() => {
+    if (textareaRef.current && isListening) {
+      textareaRef.current.scrollTop = textareaRef.current.scrollHeight;
+    }
+  }, [data.notes, interimTranscript, isListening]);
 
   return (
     <div className="flex flex-col gap-4 p-4">
@@ -102,13 +118,37 @@ export function InspectionStepCard({
         )}
       </Button>
 
-      {/* Notes */}
-      <Textarea
-        placeholder="Describe what you see (optional)..."
-        value={data.notes}
-        onChange={(e) => onNotesChange(e.target.value)}
-        className="min-h-[60px] text-sm"
-      />
+      {/* Notes with voice toggle */}
+      <div className="relative">
+        <Textarea
+          ref={textareaRef}
+          placeholder="Add notes about what you see..."
+          value={isListening && interimTranscript ? data.notes + interimTranscript : data.notes}
+          onChange={(e) => onNotesChange(e.target.value)}
+          className="min-h-[60px] text-sm pr-10"
+          readOnly={isListening}
+        />
+        {voiceSupported && onToggleVoice && (
+          <button
+            type="button"
+            onClick={onToggleVoice}
+            className={`absolute top-2 right-2 h-7 w-7 rounded-full flex items-center justify-center transition-colors ${
+              isListening
+                ? 'bg-destructive text-destructive-foreground animate-pulse'
+                : 'bg-muted text-muted-foreground hover:bg-accent'
+            }`}
+            title={isListening ? 'Stop dictation' : 'Start voice dictation'}
+          >
+            {isListening ? <MicOff className="h-3.5 w-3.5" /> : <Mic className="h-3.5 w-3.5" />}
+          </button>
+        )}
+        {isListening && (
+          <div className="flex items-center gap-1.5 mt-1.5 text-xs text-destructive">
+            <div className="w-1.5 h-1.5 bg-destructive rounded-full animate-pulse" />
+            Listening... speak your observations
+          </div>
+        )}
+      </div>
     </div>
   );
 }

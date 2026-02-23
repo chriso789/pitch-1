@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import jsPDF from 'jspdf';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { INSPECTION_STEPS } from './inspectionSteps';
 
 interface StepData {
@@ -44,6 +45,35 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+async function polishNotes(
+  stepsData: StepData[]
+): Promise<Map<number, string>> {
+  const polished = new Map<number, string>();
+  const toPolish = stepsData
+    .map((s, i) => ({ index: i, notes: s.notes }))
+    .filter((s) => s.notes && s.notes.trim().length > 0);
+
+  if (toPolish.length === 0) return polished;
+
+  const results = await Promise.allSettled(
+    toPolish.map(async ({ index, notes }) => {
+      const step = INSPECTION_STEPS[index];
+      const { data, error } = await supabase.functions.invoke('polish-inspection-notes', {
+        body: { notes, stepTitle: step.title, stepDescription: step.description },
+      });
+      if (error) throw error;
+      return { index, text: data?.polished || notes };
+    })
+  );
+
+  for (const r of results) {
+    if (r.status === 'fulfilled') {
+      polished.set(r.value.index, r.value.text);
+    }
+  }
+  return polished;
 }
 
 function addFooter(pdf: jsPDF, pageNum: number, totalPages: number, timestamp: string) {
@@ -140,16 +170,21 @@ export function useInspectionReportPDF() {
       );
       y += 22;
 
-      // ── Fetch all photos in parallel ──
-      toast.info('Loading inspection photos...');
+      // ── Fetch photos and polish notes in parallel ──
+      toast.info('Loading photos & polishing notes...');
       const allPhotoUrls = data.stepsData.flatMap((s) => s.photoUrls);
       const photoMap = new Map<string, string | null>();
-      const photoResults = await Promise.all(
-        allPhotoUrls.map(async (url) => {
-          const b64 = await fetchImageAsBase64(url);
-          return { url, b64 };
-        })
-      );
+
+      const [photoResults, polishedNotesMap] = await Promise.all([
+        Promise.all(
+          allPhotoUrls.map(async (url) => {
+            const b64 = await fetchImageAsBase64(url);
+            return { url, b64 };
+          })
+        ),
+        polishNotes(data.stepsData).catch(() => new Map<number, string>()),
+      ]);
+
       for (const r of photoResults) {
         photoMap.set(r.url, r.b64);
       }
@@ -162,11 +197,14 @@ export function useInspectionReportPDF() {
         const photos = stepData.photoUrls.map((url) => photoMap.get(url)).filter(Boolean) as string[];
         const hasPhotos = photos.length > 0;
 
+        // Use polished notes if available, fallback to raw
+        const displayNotes = polishedNotesMap.get(i) || stepData?.notes || '';
+
         // Calculate needed height: header(11) + photos rows + notes + spacing
         const photoRows = hasPhotos ? Math.ceil(photos.length / 2) : 0;
         const photoHeight = photoRows * (PHOTO_H + 4);
-        const notesLines = stepData?.notes
-          ? pdf.splitTextToSize(stepData.notes, CONTENT_W - 4)
+        const notesLines = displayNotes
+          ? pdf.splitTextToSize(displayNotes, CONTENT_W - 4)
           : [];
         const notesHeight = notesLines.length * 4 + (notesLines.length > 0 ? 8 : 0);
         const totalNeeded = 11 + photoHeight + notesHeight + 8;

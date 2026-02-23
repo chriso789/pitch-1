@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { INSPECTION_STEPS } from './inspectionSteps';
 import { InspectionStepCard } from './InspectionStepCard';
 import { InspectionSummary } from './InspectionSummary';
+import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
 
 interface StepData {
   stepId: string;
@@ -60,6 +61,47 @@ export function InspectionWalkthrough({
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+
+  // Speech recognition for voice dictation
+  const {
+    isListening,
+    transcript,
+    interimTranscript,
+    isSupported: voiceSupported,
+    startListening,
+    stopListening,
+    resetTranscript,
+  } = useSpeechRecognition({ continuous: true, interimResults: true });
+
+  // When speech transcript updates, append to current step notes
+  useEffect(() => {
+    if (transcript) {
+      setStepsData((prev) => {
+        const next = [...prev];
+        const existing = next[currentStep].notes;
+        const separator = existing && !existing.endsWith(' ') ? ' ' : '';
+        next[currentStep] = {
+          ...next[currentStep],
+          notes: existing + separator + transcript,
+        };
+        return next;
+      });
+      resetTranscript();
+    }
+  }, [transcript, currentStep, resetTranscript]);
+
+  // Stop listening when changing steps
+  useEffect(() => {
+    if (isListening) stopListening();
+  }, [currentStep]);
+
+  const handleToggleVoice = useCallback(() => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  }, [isListening, startListening, stopListening]);
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -390,6 +432,10 @@ export function InspectionWalkthrough({
               onRemovePhoto={handleRemovePhoto}
               onNotesChange={handleNotesChange}
               capturing={capturing}
+              isListening={isListening}
+              onToggleVoice={handleToggleVoice}
+              interimTranscript={interimTranscript}
+              voiceSupported={voiceSupported}
             />
           )}
         </div>
