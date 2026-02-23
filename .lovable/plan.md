@@ -1,87 +1,84 @@
 
 
-# Support Multiple Photos Per Inspection Step
+# Smart Notes with Voice Mode for Inspection Steps
 
-## Problem
+## Overview
 
-Currently each inspection step stores a single `photoUrl: string | null`. Field reps often need to capture multiple angles of the same area (e.g., multiple downspouts, several windows, damage from different views).
+Replace the standalone "Describe what you see" textarea with an integrated notes input that sits alongside the photo thumbnails. Add a voice dictation toggle button so field reps can speak their observations instead of typing. Raw notes (typed or dictated) are then AI-polished into professional, grammatically correct descriptions when generating the PDF report.
 
-## Data Model Change
+## Changes Summary
 
-Change `StepData.photoUrl` from `string | null` to `photoUrls: string[]` (an array). Keep backward compatibility by also checking for the old `photoUrl` field when loading existing inspections from the database.
+### 1. Update `InspectionStepCard.tsx` -- Inline Notes with Voice Toggle
 
-## Changes by File
+- Move the textarea so it appears directly below each photo thumbnail (contextually tied to what the user is documenting)
+- Change placeholder to "Add notes about this photo..." 
+- Add a small microphone toggle button inside/beside the textarea
+- When voice mode is active, show a recording indicator and stream dictation into the notes field
+- Use the browser's `SpeechRecognition` API (already built in `useSpeechRecognition.ts` hook) for real-time dictation -- appends spoken text to existing notes
+- The mic button toggles between recording and stopped states
 
-### 1. `src/components/inspection/InspectionStepCard.tsx`
+### 2. Create Edge Function `polish-inspection-notes`
 
-- Update `StepData` interface: replace `photoUrl: string | null` with `photoUrls: string[]`
-- Photo area: show a scrollable horizontal row of thumbnail images when photos exist
-- Each thumbnail gets a small "X" button to remove it
-- Always show the "Add Photo" button below the thumbnails (not just when empty)
-- Show photo count badge (e.g., "3 photos")
+A new Supabase Edge Function that takes raw field notes and returns a polished, professional description:
 
-### 2. `src/components/inspection/InspectionWalkthrough.tsx`
+- Accepts: `{ notes: string, stepTitle: string, stepDescription: string }`
+- Uses OpenAI GPT to rewrite the raw notes into a fluent, grammatically correct observation
+- Preserves all factual details -- just fixes grammar, spelling, and flow
+- Returns: `{ polished: string }`
 
-- Update `StepData` interface to use `photoUrls: string[]`
-- `initStepsData`: set `photoUrls: []` instead of `photoUrl: null`
-- `uploadFile`: push new URL into the array instead of replacing
-- `upsertInspection`: same array-based logic
-- Progress calculation: check `s.photoUrls.length > 0` instead of `s.photoUrl`
-- Completion: a step is "completed" when it has at least one photo
+### 3. Update `useInspectionReportPDF.ts` -- AI-Polished Notes in PDF
 
-### 3. `src/components/inspection/InspectionSummary.tsx`
+- Before building the PDF, batch-send all non-empty notes through the `polish-inspection-notes` edge function
+- Use the polished text in the PDF report instead of raw notes
+- Fall back to raw notes if the AI call fails
 
-- Update `StepData` interface to use `photoUrls: string[]`
-- `completedCount`: check `s.photoUrls.length > 0`
-- Thumbnail display: show first photo from array, with "+N" badge if more exist
+### 4. Voice Recording UX
 
-### 4. `src/components/inspection/useInspectionReportPDF.ts`
+The voice button uses the existing `useSpeechRecognition` hook (browser Web Speech API) for zero-latency dictation:
 
-- Update `StepData` interface to use `photoUrls: string[]`
-- `completedCount`/`skippedCount`: use array length checks
-- Photo embedding: embed ALL photos for each step (lay them out side by side or stacked, 2 per row)
-- Adjust page break logic to account for multiple photos per step
+- Tap mic icon: starts listening, shows pulsing red indicator
+- Speak naturally: interim text appears in real-time in the textarea
+- Tap again to stop: final transcript is appended to existing notes
+- If Web Speech API is not supported (rare), fall back to the `voice-transcribe` edge function (record then transcribe)
 
-### 5. `src/components/inspection/InspectionHistory.tsx`
+## Technical Details
 
-- Backward compatibility: when loading `steps_data` from DB, normalize old `photoUrl` field into `photoUrls` array
-
-## UI Layout for Multiple Photos
+### InspectionStepCard.tsx Layout Change
 
 ```
-Step 6 of 11
-Downspouts
-Photograph downspouts from top to bottom.
+[Photo thumbnails row - horizontal scroll]
+[+ Add Another Photo button]
 
-[Guidance bullets]
-
-+--------+ +--------+ +--------+
-| photo1 | | photo2 | | photo3 |  <-- horizontal scroll
-+--------+ +--------+ +--------+
-         [ + Add Photo ]           <-- always visible
-
-[Notes textarea]
++------------------------------------------+
+| Add notes about this photo...        [mic]|
+|                                          |
++------------------------------------------+
 ```
 
-Each photo thumbnail is ~80px square with a delete "X" button on hover/tap. The "Add Photo" button is always available so the user can keep adding.
+The mic button is a small icon button positioned at the top-right of the textarea area. When active, it pulses red.
 
-## Backward Compatibility
+### Edge Function: `supabase/functions/polish-inspection-notes/index.ts`
 
-When reading `steps_data` from the database, normalize with:
-```typescript
-// If old format with photoUrl string, convert to array
-const photoUrls = step.photoUrls || (step.photoUrl ? [step.photoUrl] : []);
-```
+Uses OpenAI to transform raw dictated/typed notes into professional report language:
 
-This ensures existing completed inspections still render correctly.
+- System prompt instructs the model to preserve all factual observations
+- Fixes grammar, spelling, adds professional tone
+- Keeps it concise (1-3 sentences per step)
+- Does not add information that wasn't in the original notes
 
-## Files to Modify
+### PDF Generation Flow
 
-| File | Change |
+1. Collect all steps with non-empty notes
+2. Send batch request to `polish-inspection-notes` for each
+3. Build PDF using polished text (or raw text as fallback)
+4. This happens transparently during report generation
+
+### Files to Create/Modify
+
+| File | Action |
 |------|--------|
-| `src/components/inspection/InspectionStepCard.tsx` | Multi-photo UI with thumbnails + add button |
-| `src/components/inspection/InspectionWalkthrough.tsx` | Array-based photo storage and upload logic |
-| `src/components/inspection/InspectionSummary.tsx` | Array-aware summary display |
-| `src/components/inspection/useInspectionReportPDF.ts` | Embed all photos per step in PDF |
-| `src/components/inspection/InspectionHistory.tsx` | Backward compat normalization |
+| `src/components/inspection/InspectionStepCard.tsx` | Modify -- add voice toggle button to textarea area |
+| `src/components/inspection/InspectionWalkthrough.tsx` | Modify -- pass voice toggle handler, manage speech recognition state |
+| `supabase/functions/polish-inspection-notes/index.ts` | Create -- AI note polishing edge function |
+| `src/components/inspection/useInspectionReportPDF.ts` | Modify -- polish notes before PDF generation |
 
