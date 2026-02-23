@@ -996,6 +996,18 @@ const LeadDetails = () => {
           </div>
         </div>
 
+        {/* Inspection Row */}
+        <div className="flex items-center gap-2 px-1">
+          <ClipboardCheck className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          <span className="text-xs font-medium text-muted-foreground">Inspection:</span>
+          <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={() => setShowInspection(true)}>
+            Start Inspection
+          </Button>
+          <div className="flex-1 min-w-0">
+            <InspectionHistory leadId={id!} propertyAddress={[lead?.contact?.address_street, lead?.contact?.address_city, lead?.contact?.address_state, lead?.contact?.address_zip].filter(Boolean).join(', ')} />
+          </div>
+        </div>
+
         {/* Contact Card with Qualification Status */}
         {lead.contact && (
           <Card className="w-64 shadow-soft border-primary/20">
@@ -1108,10 +1120,6 @@ const LeadDetails = () => {
                   <Phone className="h-3 w-3 mr-1" />
                   Timeline
                 </TabsTrigger>
-                <TabsTrigger value="inspection" className="text-xs h-7 px-3 flex-shrink-0">
-                  <ClipboardCheck className="h-3 w-3 mr-1" />
-                  Inspection
-                </TabsTrigger>
               </TabsList>
               <div className="absolute right-0 top-0 bottom-0 w-8 bg-gradient-to-l from-card to-transparent pointer-events-none" />
             </div>
@@ -1185,22 +1193,6 @@ const LeadDetails = () => {
                 maxItems={30}
                 showFilters={true}
               />
-            </TabsContent>
-
-            <TabsContent value="inspection" className="mt-0">
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h4 className="text-sm font-medium">Property Inspection</h4>
-                    <p className="text-xs text-muted-foreground">Guided photo walkthrough of property condition</p>
-                  </div>
-                  <Button variant="default" size="sm" onClick={() => setShowInspection(true)}>
-                    <ClipboardCheck className="h-4 w-4 mr-2" />
-                    Start Inspection
-                  </Button>
-                </div>
-                <InspectionHistory leadId={id!} propertyAddress={[lead?.contact?.address_street, lead?.contact?.address_city, lead?.contact?.address_state, lead?.contact?.address_zip].filter(Boolean).join(', ')} />
-              </div>
             </TabsContent>
           </CardContent>
         </Tabs>
