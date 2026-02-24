@@ -48,7 +48,7 @@ export async function generateProposalPdf(
 
     // Render to canvas with high quality
     const canvas = await html2canvas(container, {
-      scale: 2, // Higher resolution
+      scale: 1.5, // Optimized for email-safe file sizes
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
@@ -62,7 +62,7 @@ export async function generateProposalPdf(
       format: pageSize,
     });
 
-    const imgData = canvas.toDataURL("image/png", 1.0);
+    const imgData = canvas.toDataURL("image/jpeg", 0.65);
     const imgWidth = contentWidth;
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
 
@@ -72,14 +72,14 @@ export async function generateProposalPdf(
     const usableHeight = pageHeight - margin * 2;
 
     // First page
-    pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+    pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
     heightLeft -= usableHeight;
 
     // Additional pages if needed
     while (heightLeft > 0) {
       position -= usableHeight;
       pdf.addPage();
-      pdf.addImage(imgData, "PNG", margin, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, "JPEG", margin, position, imgWidth, imgHeight);
       heightLeft -= usableHeight;
     }
 

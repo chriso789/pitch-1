@@ -83,7 +83,7 @@ export function usePDFGeneration() {
       filename = 'measurement-report.pdf',
       orientation = 'portrait',
       format = 'letter',
-      quality = 3, // Increased from 2 to 3 for sharper text
+      quality = 1.5, // Optimized for email-safe file sizes (JPEG compression)
     } = options;
 
     setIsGenerating(true);
@@ -147,21 +147,21 @@ export function usePDFGeneration() {
         format,
       });
 
-      // Use PNG format for better text clarity (no JPEG compression artifacts)
-      const imgData = canvas.toDataURL('image/png');
+      // Use JPEG format for smaller file sizes (email-safe)
+      const imgData = canvas.toDataURL('image/jpeg', 0.65);
       
       // Add pages if content is too tall
       let heightLeft = imgHeight;
       let position = 0;
       const pageHeight = orientation === 'portrait' ? 297 : 210;
 
-      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
         position = heightLeft - imgHeight;
         pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
       }
 

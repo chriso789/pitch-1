@@ -67,7 +67,7 @@ export async function exportDashboardToPDF(
 
     // Capture element as canvas
     const canvas = await html2canvas(element, {
-      scale: 2, // Higher quality
+      scale: 1.5, // Optimized for email-safe file sizes
       useCORS: true,
       logging: false,
       backgroundColor: '#ffffff',
@@ -101,9 +101,9 @@ export async function exportDashboardToPDF(
     }
 
     // Add canvas image to PDF
-    const imgData = canvas.toDataURL('image/png');
+    const imgData = canvas.toDataURL('image/jpeg', 0.65);
     const yOffset = options.title ? 35 : 10;
-    pdf.addImage(imgData, 'PNG', 10, yOffset, imgWidth - 20, imgHeight);
+    pdf.addImage(imgData, 'JPEG', 10, yOffset, imgWidth - 20, imgHeight);
 
     // Add footer
     const pageCount = pdf.getNumberOfPages();
