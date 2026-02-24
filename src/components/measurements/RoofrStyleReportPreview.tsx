@@ -593,7 +593,15 @@ export function RoofrStyleReportPreview({
       
     } catch (error: any) {
       console.error('Confirm error:', error);
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      const msg = error?.message || '';
+      const is413 = msg.includes('exceeded') || msg.includes('Payload too large') || msg.includes('413');
+      toast({ 
+        title: is413 ? "File Too Large" : "Error", 
+        description: is413 
+          ? "The report PDF is too large to upload. Try removing some attachment photos and retry." 
+          : msg, 
+        variant: "destructive" 
+      });
     } finally {
       setIsConfirming(false);
     }

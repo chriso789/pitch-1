@@ -156,8 +156,8 @@ export function useMultiPagePDFGeneration() {
         const isPhotoPage = pageElement.querySelector('.bg-teal-500') !== null; // Photo page has teal dot
         const isImageHeavy = isAttachmentPage || isPhotoPage;
         
-        // Use lower scale for image-heavy pages (photos are already raster data)
-        const captureScale = isImageHeavy ? 1.5 : 2.0;
+        // Use lower scale to keep PDF size manageable (prevents 413 errors on upload)
+        const captureScale = isImageHeavy ? 1.2 : 1.5;
 
         // Capture page to canvas with adaptive settings
         const canvas = await html2canvas(pageElement, {
@@ -195,14 +195,14 @@ export function useMultiPagePDFGeneration() {
         const xOffset = 10;
         const yOffset = 10;
         
-        // Use JPEG compression for image-heavy pages, PNG for text clarity
+        // Use JPEG compression for ALL pages to keep PDF size under storage limits
         const imageData = isImageHeavy
-          ? canvas.toDataURL('image/jpeg', 0.7)
-          : canvas.toDataURL('image/png');
+          ? canvas.toDataURL('image/jpeg', 0.6)
+          : canvas.toDataURL('image/jpeg', 0.75);
         
         pdf.addImage(
           imageData,
-          isImageHeavy ? 'JPEG' : 'PNG',
+          'JPEG',
           xOffset,
           yOffset,
           imgWidth,
