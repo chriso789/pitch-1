@@ -320,7 +320,7 @@ class DocumentationGeneratorService {
         format: 'a4',
       });
 
-      const imgData = canvas.toDataURL('image/jpeg', 0.95);
+      const imgData = canvas.toDataURL('image/jpeg', 0.70);
       const imgWidth = 210; // A4 width in mm
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       const pageHeight = 297; // A4 height in mm

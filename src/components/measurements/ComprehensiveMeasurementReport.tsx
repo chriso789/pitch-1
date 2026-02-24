@@ -86,12 +86,12 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
 
       // Generate PDF
       const canvas = await html2canvas(element, {
-        scale: 2,
+        scale: 1.5,
         useCORS: true,
         logging: false,
       });
 
-      const imgData = canvas.toDataURL('image/png');
+      const imgData = canvas.toDataURL('image/jpeg', 0.65);
       const pdf = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
@@ -100,7 +100,7 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
 
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+      pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
       
       const pdfBlob = pdf.output('blob');
       const fileName = `measurement-report-${measurement.id}.pdf`;
