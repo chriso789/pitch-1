@@ -190,6 +190,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [tradeSections, setTradeSections] = useState<TradeSection[]>([
     { id: crypto.randomUUID(), tradeType: 'roofing', templateId: '', label: 'Roofing', isCollapsed: false }
   ]);
+  // Per-trade line items storage keyed by trade section ID
+  const [tradeLineItems, setTradeLineItems] = useState<Record<string, LineItem[]>>({});
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
@@ -293,10 +295,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Determine if template content should be displayed
   // Only show when actively editing/viewing a loaded estimate, or creating new with template selected
   const shouldShowTemplateContent = useMemo(() => {
+    // Show content if any trade has a template selected
+    const anyTradeHasTemplate = tradeSections.some(t => !!t.templateId);
     return isEditingLoadedEstimate || 
-           (isCreatingNewEstimate && !!selectedTemplateId) || 
+           (isCreatingNewEstimate && (!!selectedTemplateId || anyTradeHasTemplate)) || 
            existingEstimateId !== null;
-  }, [isEditingLoadedEstimate, isCreatingNewEstimate, selectedTemplateId, existingEstimateId]);
+  }, [isEditingLoadedEstimate, isCreatingNewEstimate, selectedTemplateId, existingEstimateId, tradeSections]);
 
   // Track if there are unsaved changes (items with is_override flag)
   const hasUnsavedChanges = useMemo(() => {
@@ -342,6 +346,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          trade_type: item.trade_type,
+          trade_label: item.trade_label,
         })),
         labor: laborItems.map(item => ({
           id: item.id,
@@ -355,6 +361,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          trade_type: item.trade_type,
+          trade_label: item.trade_label,
         })),
       };
 
@@ -533,6 +541,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clearEditingEstimateId]);
 
+  // Merge all per-trade line items into the unified lineItems array
+  useEffect(() => {
+    // Skip merging when editing a loaded estimate (items come from DB)
+    if (isEditingLoadedEstimate) return;
+    const merged = Object.values(tradeLineItems).flat();
+    if (merged.length > 0 || lineItems.length > 0) {
+      setLineItems(merged);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradeLineItems, isEditingLoadedEstimate]);
 
   // Users must explicitly select a template from the dropdown to see content.
   // This keeps the template area blank until user action.
@@ -902,10 +920,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           line_total: lineTotal,
           is_override: false,
           sort_order: item.sort_order,
+          trade_type: 'roofing',
+          trade_label: 'Roofing',
         };
       });
       
-      setLineItems(items);
+      // Store in per-trade map for the roofing trade section
+      const roofingSection = tradeSections.find(t => t.tradeType === 'roofing');
+      if (roofingSection) {
+        setTradeLineItems(prev => ({ ...prev, [roofingSection.id]: items }));
+      } else {
+        setLineItems(items);
+      }
     } catch (error) {
       console.error('Error fetching template items:', error);
       setLineItems([]);
@@ -1016,8 +1042,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplateId(templateId);
     if (templateId === BLANK_TEMPLATE_ID) {
-      // Blank template: clear line items, skip fetching
-      setLineItems([]);
+      // Blank template: clear roofing line items in per-trade map
+      const roofingSection = tradeSections.find(t => t.tradeType === 'roofing');
+      if (roofingSection) {
+        setTradeLineItems(prev => ({ ...prev, [roofingSection.id]: [] }));
+      } else {
+        setLineItems([]);
+      }
       setTemplateAttachments([]);
       if (!isEditingLoadedEstimate && !existingEstimateId) {
         setIsCreatingNewEstimate(true);
@@ -1032,7 +1063,74 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
     resetToOriginal();
   };
-   
+
+  // Handle template selection for ANY trade (roofing or non-roofing)
+  const handleTradeTemplateSelect = async (tradeSectionId: string, tradeType: string, templateId: string) => {
+    const tradeConfig = AVAILABLE_TRADES.find(t => t.value === tradeType);
+    const tradeLabel = tradeConfig?.label || tradeType;
+
+    // For roofing trade, also maintain backward compat with selectedTemplateId
+    if (tradeType === 'roofing') {
+      handleTemplateSelect(templateId);
+    }
+
+    if (templateId === BLANK_TEMPLATE_ID) {
+      // Blank template: start with empty items tagged with trade context
+      setTradeLineItems(prev => ({ ...prev, [tradeSectionId]: [] }));
+      if (!isEditingLoadedEstimate && !existingEstimateId) {
+        setIsCreatingNewEstimate(true);
+      }
+      return;
+    }
+
+    // Fetch template items for this trade
+    try {
+      const { data, error } = await supabaseClient
+        .from('estimate_calc_template_items')
+        .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order')
+        .eq('calc_template_id', templateId)
+        .eq('active', true)
+        .order('item_type', { ascending: false })
+        .order('sort_order');
+
+      if (error) throw error;
+
+      const items: LineItem[] = (data || []).map((item: TemplateLineItem) => {
+        const calculatedQty = measurementContext 
+          ? evaluateFormula(item.qty_formula, measurementContext) 
+          : 0;
+        const lineTotal = calculatedQty * item.unit_cost;
+        const description = generateDynamicDescription(item, calculatedQty);
+
+        return {
+          id: `${tradeSectionId}_${item.id}`, // Prefix to avoid ID collisions across trades
+          item_name: item.item_name,
+          description,
+          item_type: item.item_type as 'material' | 'labor',
+          qty: calculatedQty,
+          qty_original: calculatedQty,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost,
+          line_total: lineTotal,
+          is_override: false,
+          sort_order: item.sort_order,
+          trade_type: tradeType,
+          trade_label: tradeLabel,
+        };
+      });
+
+      setTradeLineItems(prev => ({ ...prev, [tradeSectionId]: items }));
+
+      // Auto-enable creating mode
+      if (!isEditingLoadedEstimate && !existingEstimateId) {
+        setIsCreatingNewEstimate(true);
+      }
+    } catch (error) {
+      console.error(`Error fetching template items for trade ${tradeType}:`, error);
+    }
+  };
+
    // Fetch template attachments (e.g., metal roof flyer for 5V/Standing Seam templates)
    // Falls back to roof_type-based attachments if no template-specific ones found
    const fetchTemplateAttachments = async (templateId: string) => {
@@ -1120,7 +1218,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   const handleCreateEstimate = async () => {
-    if (!selectedTemplateId || lineItems.length === 0) return;
+    // Allow creation if there's a roofing template OR any trade has items
+    const hasAnyTemplate = selectedTemplateId || tradeSections.some(t => !!t.templateId);
+    if (!hasAnyTemplate || lineItems.length === 0) return;
     
     setCreating(true);
     try {
@@ -1233,6 +1333,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          trade_type: item.trade_type,
+          trade_label: item.trade_label,
         })),
         labor: laborItems.map(item => ({
           id: item.id,
@@ -1246,6 +1348,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          trade_type: item.trade_type,
+          trade_label: item.trade_label,
         })),
       };
 
@@ -2057,6 +2161,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                           onClick={(e) => {
                             e.stopPropagation();
                             setTradeSections(prev => prev.filter(t => t.id !== trade.id));
+                            // Remove this trade's line items from the per-trade map
+                            setTradeLineItems(prev => {
+                              const next = { ...prev };
+                              delete next[trade.id];
+                              return next;
+                            });
                             // If this was the active roofing trade, clear selectedTemplateId
                             if (trade.tradeType === 'roofing' && trade.templateId === selectedTemplateId) {
                               setSelectedTemplateId('');
@@ -2077,10 +2187,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                           setTradeSections(prev => prev.map(t =>
                             t.id === trade.id ? { ...t, templateId } : t
                           ));
-                          // For roofing trade, maintain backward compat with selectedTemplateId
-                          if (trade.tradeType === 'roofing') {
-                            handleTemplateSelect(templateId);
-                          }
+                          // Use unified handler for ALL trades
+                          handleTradeTemplateSelect(trade.id, trade.tradeType, templateId);
                         }}
                         placeholder={`Select ${trade.label} Template...`}
                         disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
