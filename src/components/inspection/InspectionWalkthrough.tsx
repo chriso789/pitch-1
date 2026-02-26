@@ -11,6 +11,7 @@ import { INSPECTION_STEPS } from './inspectionSteps';
 import { InspectionStepCard } from './InspectionStepCard';
 import { InspectionSummary } from './InspectionSummary';
 import { useSpeechRecognition } from '@/hooks/useSpeechRecognition';
+import { useInspectionConfig } from '@/hooks/useInspectionConfig';
 
 interface StepData {
   stepId: string;
@@ -30,8 +31,8 @@ interface InspectionWalkthroughProps {
   userLocation?: { lat: number; lng: number };
 }
 
-function initStepsData(): StepData[] {
-  return INSPECTION_STEPS.map((s) => ({
+function initStepsData(configSteps: { id: string }[]): StepData[] {
+  return configSteps.map((s) => ({
     stepId: s.id,
     photoUrls: [],
     notes: '',
@@ -51,8 +52,9 @@ export function InspectionWalkthrough({
 }: InspectionWalkthroughProps) {
   const { user } = useAuth();
   const tenantId = useEffectiveTenantId();
+  const { activeSteps } = useInspectionConfig();
   const [currentStep, setCurrentStep] = useState(0);
-  const [stepsData, setStepsData] = useState<StepData[]>(initStepsData);
+  const [stepsData, setStepsData] = useState<StepData[]>(() => initStepsData(activeSteps));
   const [inspectionId, setInspectionId] = useState<string | null>(null);
   const [showSummary, setShowSummary] = useState(false);
   const [capturing, setCapturing] = useState(false);
@@ -107,7 +109,7 @@ export function InspectionWalkthrough({
   useEffect(() => {
     if (open) {
       setCurrentStep(0);
-      setStepsData(initStepsData());
+      setStepsData(initStepsData(activeSteps));
       setInspectionId(null);
       setShowSummary(false);
       setShowCamera(false);
@@ -304,7 +306,7 @@ export function InspectionWalkthrough({
   };
 
   const handleNext = () => {
-    if (currentStep < INSPECTION_STEPS.length - 1) {
+    if (currentStep < activeSteps.length - 1) {
       setCurrentStep((p) => p + 1);
     } else {
       setShowSummary(true);
@@ -320,6 +322,11 @@ export function InspectionWalkthrough({
   };
 
   const handleSkip = () => {
+    const currentConfig = activeSteps[currentStep];
+    if (currentConfig?.is_required) {
+      toast.error(`"${currentConfig.title}" is required — you must take photos before proceeding.`);
+      return;
+    }
     setStepsData((prev) => {
       const next = [...prev];
       next[currentStep] = { ...next[currentStep], skipped: true };
@@ -331,6 +338,20 @@ export function InspectionWalkthrough({
   const handleFinish = async () => {
     if (!inspectionId) {
       toast.error('No inspection to finish');
+      return;
+    }
+    // Validate required steps
+    const missing = activeSteps
+      .map((step, i) => {
+        if (!step.is_required) return null;
+        const minRequired = step.min_photos > 0 ? step.min_photos : 1;
+        const photoCount = stepsData[i]?.photoUrls?.length || 0;
+        if (photoCount < minRequired) return `${step.title} (need ${minRequired} photo${minRequired > 1 ? 's' : ''})`;
+        return null;
+      })
+      .filter(Boolean);
+    if (missing.length > 0) {
+      toast.error(`Required steps incomplete: ${missing.join(', ')}`);
       return;
     }
     setFinishing(true);
@@ -361,10 +382,11 @@ export function InspectionWalkthrough({
   };
 
   const progressPercent =
-    (stepsData.filter((s) => s.photoUrls.length > 0 || s.skipped).length / INSPECTION_STEPS.length) * 100;
+    (stepsData.filter((s) => s.photoUrls.length > 0 || s.skipped).length / activeSteps.length) * 100;
 
-  const step = INSPECTION_STEPS[currentStep];
+  const step = activeSteps[currentStep];
   const currentData = stepsData[currentStep];
+  const currentStepIsRequired = step?.is_required;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -426,7 +448,7 @@ export function InspectionWalkthrough({
             <InspectionStepCard
               step={step}
               stepIndex={currentStep}
-              totalSteps={INSPECTION_STEPS.length}
+              totalSteps={activeSteps.length}
               data={currentData}
               onTakePhoto={startCamera}
               onRemovePhoto={handleRemovePhoto}
@@ -446,11 +468,17 @@ export function InspectionWalkthrough({
             <Button variant="ghost" size="sm" onClick={handleBack} disabled={currentStep === 0}>
               <ArrowLeft className="h-4 w-4 mr-1" /> Back
             </Button>
-            <Button variant="ghost" size="sm" onClick={handleSkip}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleSkip}
+              disabled={!!currentStepIsRequired}
+              title={currentStepIsRequired ? 'This step is required' : undefined}
+            >
               <SkipForward className="h-4 w-4 mr-1" /> Skip
             </Button>
             <Button size="sm" onClick={handleNext}>
-              {currentStep === INSPECTION_STEPS.length - 1 ? 'Review' : 'Next'}
+              {currentStep === activeSteps.length - 1 ? 'Review' : 'Next'}
               <ArrowRight className="h-4 w-4 ml-1" />
             </Button>
           </div>

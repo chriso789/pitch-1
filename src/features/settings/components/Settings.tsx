@@ -58,6 +58,8 @@ import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePri
 import { PipelineStageManager } from "@/components/settings/PipelineStageManager";
 import { ContactStatusManager } from "@/components/settings/ContactStatusManager";
 import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
+import { InspectionWalkthroughSettings } from "@/components/inspection/InspectionWalkthroughSettings";
+
 
 interface SettingsTab {
   id: string;
@@ -117,6 +119,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   reports: "system",
   measurements: "products",
   companies: "business",
+  inspections: "business",
 };
 
 export const Settings = () => {
@@ -356,6 +359,8 @@ export const Settings = () => {
         return <DemoRequestsPanel />;
       case "email":
         return <EmailDomainSettings />;
+      case "inspections":
+        return <InspectionWalkthroughSettings />;
       case "roof-training":
         return <RoofTrainingLab />;
       case "ai-agent":
