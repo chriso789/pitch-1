@@ -3288,6 +3288,7 @@ export type Database = {
           from_number: string | null
           handled_by: string | null
           id: string
+          list_item_id: string | null
           location_id: string | null
           notes: string | null
           raw_payload: Json | null
@@ -3320,6 +3321,7 @@ export type Database = {
           from_number?: string | null
           handled_by?: string | null
           id?: string
+          list_item_id?: string | null
           location_id?: string | null
           notes?: string | null
           raw_payload?: Json | null
@@ -3352,6 +3354,7 @@ export type Database = {
           from_number?: string | null
           handled_by?: string | null
           id?: string
+          list_item_id?: string | null
           location_id?: string | null
           notes?: string | null
           raw_payload?: Json | null
@@ -3413,6 +3416,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "calls_list_item_id_fkey"
+            columns: ["list_item_id"]
+            isOneToOne: false
+            referencedRelation: "dialer_list_items"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "calls_location_id_fkey"
@@ -9001,6 +9011,7 @@ export type Database = {
       }
       dialer_list_items: {
         Row: {
+          contact_id: string | null
           created_at: string
           created_by: string | null
           email: string | null
@@ -9015,6 +9026,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          contact_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -9029,6 +9041,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          contact_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -9043,6 +9056,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "dialer_list_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dialer_list_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
           {
             foreignKeyName: "dialer_list_items_list_id_fkey"
             columns: ["list_id"]
