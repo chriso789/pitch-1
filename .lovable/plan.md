@@ -1,94 +1,78 @@
 
+# Fix: Multi-Trade Line Items Not Merging Into Single Estimate
 
-# Inspection Walkthrough Configuration Settings
+## Problem
 
-## Overview
+When a user adds a second trade (e.g., Gutters with Blank Template), it only creates a UI section in the "Build Estimate" card but **never fetches or merges line items** into the estimate. The root cause:
 
-Build an admin settings panel where company owners can customize the inspection walkthrough steps -- reorder them, edit titles/descriptions/guidance, add new steps, remove steps, and mark steps as **mandatory** (requiring at least one photo before the rep can proceed or finish).
+1. **Only the `roofing` trade triggers `handleTemplateSelect`** (line 2081-2083) — non-roofing trades set `templateId` on the `TradeSection` object but nothing loads their items
+2. **Single `lineItems` state** — there's only one `lineItems` array driven by `selectedTemplateId`, which only tracks the roofing trade
+3. **Non-roofing templates with items are ignored** — their items are never fetched from `estimate_calc_template_items`
+4. **Blank Template for non-roofing trades** does nothing at all — no items appear, no section shows
 
-Currently, the 11 inspection steps are hardcoded in `src/components/inspection/inspectionSteps.ts`. This plan moves that configuration to the database per-tenant, with a settings UI for management and a hook that loads the tenant's config at runtime.
+## Solution
 
----
+Make every trade section independently fetch its template items, then **merge all trade line items into the unified `lineItems` array** that feeds the pricing engine, breakdown card, PDF, and save logic.
 
-## Database
+### Architecture: Per-Trade Item Storage + Merge
 
-### New table: `inspection_step_configs`
+Introduce a `tradeLineItems` map (`Record<string, LineItem[]>`) keyed by trade section ID. When any trade's template is selected:
+- Fetch that template's items (or start empty for Blank Template)
+- Store them in `tradeLineItems[sectionId]`
+- Tag each item with a `trade_type` field so they can be grouped in the UI
+- Merge all trade items into the single `lineItems` array via a `useEffect`
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | UUID PK | |
-| `tenant_id` | UUID FK → tenants | |
-| `step_key` | TEXT | Unique per tenant (e.g. `front`, `gutters`, `custom_1`) |
-| `title` | TEXT NOT NULL | |
-| `description` | TEXT | |
-| `guidance` | TEXT[] | Array of guidance bullets |
-| `is_required` | BOOLEAN DEFAULT false | If true, rep must take at least 1 photo |
-| `min_photos` | INTEGER DEFAULT 0 | Minimum photo count (0 = optional) |
-| `order_index` | INTEGER | Sort order |
-| `is_active` | BOOLEAN DEFAULT true | Soft delete |
-| `created_at` | TIMESTAMPTZ | |
-| `updated_at` | TIMESTAMPTZ | |
+This preserves backward compatibility — the pricing engine, breakdown card, PDF generation, and save logic all continue operating on the flat `lineItems` array.
 
-- RLS: tenant-scoped read/write for admin roles (owner, corporate, office_admin)
-- On first load for a tenant with no config rows, the system seeds the 11 default steps
+### Changes to `MultiTemplateSelector.tsx`
 
-### Settings tab registration
-
-Insert a row into `settings_tabs` for the new "Inspections" tab under the "business" category, restricted to owner/corporate/office_admin roles.
-
----
-
-## Frontend Components
-
-### 1. `InspectionWalkthroughSettings.tsx` (new)
-
-Settings panel rendered under the new "Inspections" settings tab. Features:
-
-- **Step list** with drag-and-drop reordering (using existing `@dnd-kit` dependency)
-- Each step card shows: title, description, required badge, min photos count
-- **Edit dialog** per step: title, description, guidance bullets (add/remove), toggle required, set min photos
-- **Add step** button to create custom steps
-- **Delete/deactivate** step (with confirmation; cannot delete if it's the only active step)
-- **Reset to defaults** button that re-seeds the 11 standard steps
-- Auto-saves order changes on drag-drop; form saves on confirm
-
-### 2. `useInspectionConfig.ts` hook (new)
-
+**1. New state:**
 ```typescript
-// Returns tenant-specific steps sorted by order_index
-// Falls back to hardcoded INSPECTION_STEPS if no config exists
-// Caches with React Query
+const [tradeLineItems, setTradeLineItems] = useState<Record<string, LineItem[]>>({});
 ```
 
-### 3. Modifications to existing inspection components
+**2. Extend `LineItem` type** (in `useEstimatePricing.ts`):
+Add optional `trade_type?: string` and `trade_label?: string` fields so items carry their trade context.
+
+**3. Make template selection work for ALL trades** (line ~2076-2083):
+Remove the `if (trade.tradeType === 'roofing')` guard. Instead, call a new `handleTradeTemplateSelect(trade.id, trade.tradeType, templateId)` function that:
+- Fetches template items for the given templateId (or sets empty array for blank)
+- Tags each item with `trade_type` and `trade_label`
+- Updates `tradeLineItems[trade.id]`
+- For roofing, also maintains `selectedTemplateId` for backward compat
+
+**4. Merge effect:**
+```typescript
+useEffect(() => {
+  const merged = Object.values(tradeLineItems).flat();
+  setLineItems(merged);
+}, [tradeLineItems]);
+```
+
+**5. Delete trade handler** (line ~2058-2063):
+When removing a trade section, also delete its items from `tradeLineItems`.
+
+**6. Line items table: Show trade headers**
+In the `SectionedLineItemsTable` or above it, group items by `trade_type` and show a trade header (e.g., "🏠 Roofing", "🔧 Gutters") before each group's materials/labor sections. This makes the combined estimate clear.
+
+**7. Save logic:**
+The `lineItemsJson` in `handleCreateEstimate` already serializes `materialItems` and `laborItems` from the pricing hook. Since items now carry `trade_type`, add it to the serialized JSON so the estimate record preserves trade context.
+
+**8. shouldShowTemplateContent:**
+Update to also trigger when any non-roofing trade has a template selected (currently only checks `selectedTemplateId` which is roofing-only).
+
+### Changes to `SectionedLineItemsTable.tsx`
+
+Add an optional `tradeSections` prop. When provided, group items by `trade_type` and render a trade header row before each group's materials/labor. When adding items inline, include a trade selector so the item goes to the correct trade.
+
+### Changes to `useEstimatePricing.ts`
+
+Add `trade_type?: string` and `trade_label?: string` to the `LineItem` interface. No calculation logic changes needed — the pricing engine already sums all items regardless.
+
+## Files to Modify
 
 | File | Change |
 |------|--------|
-| `InspectionWalkthrough.tsx` | Use `useInspectionConfig()` instead of `INSPECTION_STEPS`; enforce `is_required` -- block skip on required steps, block finish if required steps have fewer photos than `min_photos` |
-| `InspectionStepCard.tsx` | Show "Required" badge on mandatory steps; show minimum photo count hint |
-| `InspectionSummary.tsx` | Use dynamic steps from hook; show warning on required steps missing photos; disable "Finish" until all required steps are satisfied |
-| `useInspectionReportPDF.ts` | Use dynamic steps from hook instead of hardcoded array |
-| `Settings.tsx` | Add case for `"inspections"` tab rendering `InspectionWalkthroughSettings` |
-
-### 4. Settings tab category mapping
-
-Add `inspections: "business"` to `TAB_TO_CATEGORY` in `Settings.tsx`.
-
----
-
-## Enforcement Logic
-
-When a step has `is_required: true`:
-- The **Skip** button is hidden or disabled with tooltip "This step is required"
-- The **Finish Inspection** button checks all required steps have `photoUrls.length >= min_photos` (minimum 1 if `min_photos` is 0 but `is_required` is true)
-- A validation toast lists which required steps are incomplete
-
----
-
-## Technical Details
-
-- Drag-and-drop uses `@dnd-kit/core` and `@dnd-kit/sortable` (already installed)
-- Default seeding happens client-side: if the query returns 0 rows for the tenant, insert the 11 defaults via a single batch insert
-- The hardcoded `INSPECTION_STEPS` array remains as the fallback/seed source -- no existing behavior breaks if a tenant hasn't configured their steps yet
-- React Query key: `['inspection-config', tenantId]` with a 5-minute stale time
-
+| `src/hooks/useEstimatePricing.ts` | Add `trade_type` and `trade_label` to `LineItem` interface |
+| `src/components/estimates/MultiTemplateSelector.tsx` | Add `tradeLineItems` state, `handleTradeTemplateSelect`, merge effect, update shouldShowTemplateContent, update save serialization, update trade delete handler |
+| `src/components/estimates/SectionedLineItemsTable.tsx` | Add trade grouping headers when multi-trade items present |
