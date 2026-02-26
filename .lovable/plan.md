@@ -1,68 +1,94 @@
 
 
-# Compress All PDF Generation Across the System
+# Inspection Walkthrough Configuration Settings
 
-## Problem
+## Overview
 
-Multiple PDF generators still use high-resolution settings (scale 2-3, PNG format, quality 0.95+), producing 20MB+ files that are too large for email attachments (typical limit: 10-25MB, less with other attachments).
+Build an admin settings panel where company owners can customize the inspection walkthrough steps -- reorder them, edit titles/descriptions/guidance, add new steps, remove steps, and mark steps as **mandatory** (requiring at least one photo before the rep can proceed or finish).
 
-## Files Requiring Changes
+Currently, the 11 inspection steps are hardcoded in `src/components/inspection/inspectionSteps.ts`. This plan moves that configuration to the database per-tenant, with a settings UI for management and a hook that loads the tenant's config at runtime.
 
-| File | Current Settings | Problem |
-|------|-----------------|---------|
-| `src/hooks/usePDFGeneration.ts` | **scale: 3**, PNG format | Worst offender -- 3x capture + lossless PNG |
-| `src/components/measurements/ComprehensiveMeasurementReport.tsx` | scale: 2, PNG format | Lossless PNG inflates size |
-| `src/lib/proposalPdfGenerator.ts` | scale: 2, PNG quality 1.0 | Full resolution proposals |
-| `src/lib/export-utils.ts` | scale: 2, PNG format | Dashboard exports |
-| `src/services/documentationGenerator.ts` | scale: 2, JPEG 0.95 | Nearly lossless JPEG |
-| `src/hooks/useMultiPagePDFGeneration.ts` | scale: 1.2-1.5, JPEG 0.6-0.75 | Already optimized (recent fix) -- no change needed |
+---
 
-## Proposed Changes
+## Database
 
-All files will be standardized to these settings:
+### New table: `inspection_step_configs`
 
-- **Scale: 1.5** for text-heavy pages (clear enough for print, 56% fewer pixels than scale 2)
-- **Scale: 1.2** for image/photo-heavy pages
-- **Format: JPEG at 0.65 quality** (visually indistinguishable from PNG at normal viewing, ~80% smaller)
-- **Expected result: typical PDFs drop from 20MB+ to 3-8MB**
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | UUID PK | |
+| `tenant_id` | UUID FK → tenants | |
+| `step_key` | TEXT | Unique per tenant (e.g. `front`, `gutters`, `custom_1`) |
+| `title` | TEXT NOT NULL | |
+| `description` | TEXT | |
+| `guidance` | TEXT[] | Array of guidance bullets |
+| `is_required` | BOOLEAN DEFAULT false | If true, rep must take at least 1 photo |
+| `min_photos` | INTEGER DEFAULT 0 | Minimum photo count (0 = optional) |
+| `order_index` | INTEGER | Sort order |
+| `is_active` | BOOLEAN DEFAULT true | Soft delete |
+| `created_at` | TIMESTAMPTZ | |
+| `updated_at` | TIMESTAMPTZ | |
 
-### File-by-file changes:
+- RLS: tenant-scoped read/write for admin roles (owner, corporate, office_admin)
+- On first load for a tenant with no config rows, the system seeds the 11 default steps
 
-**1. `src/hooks/usePDFGeneration.ts`** (single-page estimate/measurement reports)
-- Change default `quality` from `3` to `1.5`
-- Switch from `canvas.toDataURL('image/png')` to `canvas.toDataURL('image/jpeg', 0.65)`
-- Switch `pdf.addImage(imgData, 'PNG', ...)` to `pdf.addImage(imgData, 'JPEG', ...)`
+### Settings tab registration
 
-**2. `src/components/measurements/ComprehensiveMeasurementReport.tsx`**
-- Change `scale: 2` to `scale: 1.5`
-- Switch from `toDataURL('image/png')` to `toDataURL('image/jpeg', 0.65)`
-- Switch `addImage(imgData, 'PNG', ...)` to `addImage(imgData, 'JPEG', ...)`
+Insert a row into `settings_tabs` for the new "Inspections" tab under the "business" category, restricted to owner/corporate/office_admin roles.
 
-**3. `src/lib/proposalPdfGenerator.ts`**
-- Change `scale: 2` to `scale: 1.5`
-- Change `toDataURL("image/png", 1.0)` to `toDataURL("image/jpeg", 0.65)`
-- Switch `addImage(imgData, "PNG", ...)` to `addImage(imgData, "JPEG", ...)`
+---
 
-**4. `src/lib/export-utils.ts`**
-- Change `scale: 2` to `scale: 1.5`
-- Switch from `toDataURL('image/png')` to `toDataURL('image/jpeg', 0.65)`
-- Switch `addImage(imgData, 'PNG', ...)` to `addImage(imgData, 'JPEG', ...)`
+## Frontend Components
 
-**5. `src/services/documentationGenerator.ts`**
-- Keep `scale: 2` (documentation is text-heavy, keep crisp) but reduce JPEG quality from `0.95` to `0.70`
+### 1. `InspectionWalkthroughSettings.tsx` (new)
 
-**6. `src/hooks/useMultiPagePDFGeneration.ts`**
-- No changes needed -- already optimized in the previous fix
+Settings panel rendered under the new "Inspections" settings tab. Features:
+
+- **Step list** with drag-and-drop reordering (using existing `@dnd-kit` dependency)
+- Each step card shows: title, description, required badge, min photos count
+- **Edit dialog** per step: title, description, guidance bullets (add/remove), toggle required, set min photos
+- **Add step** button to create custom steps
+- **Delete/deactivate** step (with confirmation; cannot delete if it's the only active step)
+- **Reset to defaults** button that re-seeds the 11 standard steps
+- Auto-saves order changes on drag-drop; form saves on confirm
+
+### 2. `useInspectionConfig.ts` hook (new)
+
+```typescript
+// Returns tenant-specific steps sorted by order_index
+// Falls back to hardcoded INSPECTION_STEPS if no config exists
+// Caches with React Query
+```
+
+### 3. Modifications to existing inspection components
+
+| File | Change |
+|------|--------|
+| `InspectionWalkthrough.tsx` | Use `useInspectionConfig()` instead of `INSPECTION_STEPS`; enforce `is_required` -- block skip on required steps, block finish if required steps have fewer photos than `min_photos` |
+| `InspectionStepCard.tsx` | Show "Required" badge on mandatory steps; show minimum photo count hint |
+| `InspectionSummary.tsx` | Use dynamic steps from hook; show warning on required steps missing photos; disable "Finish" until all required steps are satisfied |
+| `useInspectionReportPDF.ts` | Use dynamic steps from hook instead of hardcoded array |
+| `Settings.tsx` | Add case for `"inspections"` tab rendering `InspectionWalkthroughSettings` |
+
+### 4. Settings tab category mapping
+
+Add `inspections: "business"` to `TAB_TO_CATEGORY` in `Settings.tsx`.
+
+---
+
+## Enforcement Logic
+
+When a step has `is_required: true`:
+- The **Skip** button is hidden or disabled with tooltip "This step is required"
+- The **Finish Inspection** button checks all required steps have `photoUrls.length >= min_photos` (minimum 1 if `min_photos` is 0 but `is_required` is true)
+- A validation toast lists which required steps are incomplete
+
+---
 
 ## Technical Details
 
-### Why JPEG 0.65 is sufficient
-- PDF viewers render at 72-150 DPI; at scale 1.5 on a typical 800px-wide element, the effective resolution is 1200px -- well above what's needed
-- JPEG artifacts are invisible on printed documents at this quality level
-- The biggest savings come from eliminating PNG's lossless overhead on photo/satellite imagery embedded in reports
-
-### Size estimates
-- A 10-page estimate with satellite imagery: **~25MB today → ~5MB after**
-- A single-page measurement report: **~8MB today → ~2MB after**
-- Email-safe threshold: under 10MB comfortably, leaving room for other attachments
+- Drag-and-drop uses `@dnd-kit/core` and `@dnd-kit/sortable` (already installed)
+- Default seeding happens client-side: if the query returns 0 rows for the tenant, insert the 11 defaults via a single batch insert
+- The hardcoded `INSPECTION_STEPS` array remains as the fallback/seed source -- no existing behavior breaks if a tenant hasn't configured their steps yet
+- React Query key: `['inspection-config', tenantId]` with a 5-minute stale time
 
