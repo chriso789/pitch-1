@@ -293,6 +293,32 @@ class TelnyxService {
   }
 
   /**
+   * Mute current call audio
+   */
+  muteCall() {
+    if (this.currentCall) {
+      try {
+        this.currentCall.muteAudio();
+      } catch (error) {
+        console.error('Failed to mute call:', error);
+      }
+    }
+  }
+
+  /**
+   * Unmute current call audio
+   */
+  unmuteCall() {
+    if (this.currentCall) {
+      try {
+        this.currentCall.unmuteAudio();
+      } catch (error) {
+        console.error('Failed to unmute call:', error);
+      }
+    }
+  }
+
+  /**
    * Disconnect Telnyx client
    */
   async disconnect() {

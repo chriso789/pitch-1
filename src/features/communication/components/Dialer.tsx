@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ContactHeader } from "@/components/ContactHeader";
 import { QuickSMSDialog } from "@/components/communication/QuickSMSDialog";
 import { QuickEmailDialog } from "@/components/communication/QuickEmailDialog";
+import { PowerDialerSession } from "./PowerDialerSession";
 
 interface DialerList {
   id: string;
@@ -83,7 +84,7 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<Array<{number: string, label: string}>>([]);
   const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
-
+  const [isSessionActive, setIsSessionActive] = useState(false);
   // Load data on component mount
   useEffect(() => {
     loadData();
@@ -194,13 +195,16 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
 
   // Start a campaign
   const startCampaign = async (campaign: DialerCampaign) => {
+    if (!selectedCallerId) {
+      toast({
+        title: "No Caller ID",
+        description: "Please configure a caller ID phone number before starting.",
+        variant: "destructive",
+      });
+      return;
+    }
     setActiveCampaign(campaign);
-    loadNextContact();
-    
-    toast({
-      title: "Campaign Started",
-      description: `Starting campaign: ${campaign.name}`,
-    });
+    setIsSessionActive(true);
   };
 
   // Load next contact in campaign
@@ -366,6 +370,22 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
         <Loader2 className="h-8 w-8 animate-spin" />
         <span className="ml-2">Loading dialer...</span>
       </div>
+    );
+  }
+
+  // Render PowerDialerSession when a campaign is active
+  if (isSessionActive && activeCampaign) {
+    return (
+      <PowerDialerSession
+        campaignId={activeCampaign.id}
+        campaignName={activeCampaign.name}
+        listId={activeCampaign.list_id}
+        callerId={selectedCallerId}
+        onStopSession={() => {
+          setIsSessionActive(false);
+          setActiveCampaign(null);
+        }}
+      />
     );
   }
 
