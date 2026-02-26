@@ -3,6 +3,7 @@ import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { INSPECTION_STEPS } from './inspectionSteps';
+import { useInspectionConfig } from '@/hooks/useInspectionConfig';
 
 interface StepData {
   stepId: string;
@@ -48,7 +49,8 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
 }
 
 async function polishNotes(
-  stepsData: StepData[]
+  stepsData: StepData[],
+  steps: { id: string; title: string; description: string }[]
 ): Promise<Map<number, string>> {
   const polished = new Map<number, string>();
   const toPolish = stepsData
@@ -59,7 +61,7 @@ async function polishNotes(
 
   const results = await Promise.allSettled(
     toPolish.map(async ({ index, notes }) => {
-      const step = INSPECTION_STEPS[index];
+      const step = steps[index];
       const { data, error } = await supabase.functions.invoke('polish-inspection-notes', {
         body: { notes, stepTitle: step.title, stepDescription: step.description },
       });
@@ -97,6 +99,8 @@ function ensureSpace(pdf: jsPDF, y: number, needed: number, pageCount: { value: 
 
 export function useInspectionReportPDF() {
   const [generating, setGenerating] = useState(false);
+  const { activeSteps } = useInspectionConfig();
+  const reportSteps = activeSteps.length > 0 ? activeSteps : INSPECTION_STEPS.map(s => ({ ...s, is_required: false, min_photos: 0 }));
 
   const generateReport = useCallback(async (data: InspectionReportData): Promise<Blob | null> => {
     setGenerating(true);
@@ -164,7 +168,7 @@ export function useInspectionReportPDF() {
       pdf.setFontSize(9);
       const totalPhotos = data.stepsData.reduce((sum, s) => sum + s.photoUrls.length, 0);
       pdf.text(
-        `${INSPECTION_STEPS.length} steps  •  ${completedCount} completed  •  ${skippedCount} skipped  •  ${totalPhotos} photos`,
+        `${reportSteps.length} steps  •  ${completedCount} completed  •  ${skippedCount} skipped  •  ${totalPhotos} photos`,
         MARGIN + 4,
         y + 12
       );
@@ -182,7 +186,7 @@ export function useInspectionReportPDF() {
             return { url, b64 };
           })
         ),
-        polishNotes(data.stepsData).catch(() => new Map<number, string>()),
+        polishNotes(data.stepsData, reportSteps).catch(() => new Map<number, string>()),
       ]);
 
       for (const r of photoResults) {
@@ -191,8 +195,8 @@ export function useInspectionReportPDF() {
       toast.info('Building PDF...');
 
       // ── Render each step ──
-      for (let i = 0; i < INSPECTION_STEPS.length; i++) {
-        const step = INSPECTION_STEPS[i];
+      for (let i = 0; i < reportSteps.length; i++) {
+        const step = reportSteps[i];
         const stepData = data.stepsData[i];
         const photos = stepData.photoUrls.map((url) => photoMap.get(url)).filter(Boolean) as string[];
         const hasPhotos = photos.length > 0;

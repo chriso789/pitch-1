@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Camera, X, CheckCircle, Plus, Mic, MicOff } from 'lucide-react';
+import { Camera, X, CheckCircle, Plus, Mic, MicOff, Shield } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import type { InspectionStep } from './inspectionSteps';
 
@@ -14,7 +14,7 @@ interface StepData {
 }
 
 interface InspectionStepCardProps {
-  step: InspectionStep;
+  step: InspectionStep & { is_required?: boolean; min_photos?: number };
   stepIndex: number;
   totalSteps: number;
   data: StepData;
@@ -59,8 +59,14 @@ export function InspectionStepCard({
         <p className="text-xs text-muted-foreground font-medium mb-1">
           Step {stepIndex + 1} of {totalSteps}
         </p>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <h3 className="text-lg font-semibold">{step.title}</h3>
+          {step.is_required && (
+            <Badge variant="destructive" className="text-[10px] h-5 gap-1">
+              <Shield className="h-3 w-3" />
+              Required
+            </Badge>
+          )}
           {hasPhotos && (
             <Badge variant="secondary" className="text-[10px] h-5">
               {data.photoUrls.length} photo{data.photoUrls.length !== 1 ? 's' : ''}
@@ -68,6 +74,11 @@ export function InspectionStepCard({
           )}
         </div>
         <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
+        {step.is_required && step.min_photos && step.min_photos > 0 && (
+          <p className="text-xs text-destructive mt-0.5">
+            Minimum {step.min_photos} photo{step.min_photos > 1 ? 's' : ''} required
+          </p>
+        )}
       </div>
 
       {/* Guidance */}

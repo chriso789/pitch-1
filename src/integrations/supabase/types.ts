@@ -14988,6 +14988,59 @@ export type Database = {
           },
         ]
       }
+      inspection_step_configs: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          guidance: string[] | null
+          id: string
+          is_active: boolean | null
+          is_required: boolean | null
+          min_photos: number | null
+          order_index: number
+          step_key: string
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          guidance?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          min_photos?: number | null
+          order_index?: number
+          step_key: string
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          guidance?: string[] | null
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          min_photos?: number | null
+          order_index?: number
+          step_key?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inspection_step_configs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inspections: {
         Row: {
           canvass_property_id: string | null
