@@ -1,5 +1,5 @@
 // Sectioned line items table with Materials and Labor sections
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Table,
   TableBody,
@@ -364,6 +364,50 @@ export function SectionedLineItemsTable({
     </TableRow>
   );
 
+  // Group items by trade_type if multi-trade items are present
+  const hasMultipleTrades = useMemo(() => {
+    const allItems = [...materialItems, ...laborItems];
+    const tradeTypes = new Set(allItems.map(i => i.trade_type).filter(Boolean));
+    return tradeTypes.size > 1;
+  }, [materialItems, laborItems]);
+
+  // Get unique trade groups in order
+  const tradeGroups = useMemo(() => {
+    if (!hasMultipleTrades) return null;
+    const allItems = [...materialItems, ...laborItems];
+    const seen = new Map<string, string>(); // trade_type -> trade_label
+    allItems.forEach(item => {
+      if (item.trade_type && !seen.has(item.trade_type)) {
+        seen.set(item.trade_type, item.trade_label || item.trade_type);
+      }
+    });
+    return Array.from(seen.entries()).map(([type, label]) => ({
+      type,
+      label,
+      materials: materialItems.filter(i => i.trade_type === type),
+      labor: laborItems.filter(i => i.trade_type === type),
+    }));
+  }, [hasMultipleTrades, materialItems, laborItems]);
+
+  const TRADE_ICONS: Record<string, string> = {
+    roofing: '🏠',
+    gutters: '🔧',
+    siding: '🧱',
+    interior: '🏗️',
+    exterior: '🔨',
+  };
+
+  const renderTradeHeader = (tradeType: string, tradeLabel: string) => (
+    <TableRow className="bg-accent/30 hover:bg-accent/30 border-t-2 border-accent">
+      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+        <div className="flex items-center gap-2 font-bold text-sm">
+          <span>{TRADE_ICONS[tradeType] || '📋'}</span>
+          <span className="uppercase tracking-wide">{tradeLabel}</span>
+        </div>
+      </TableCell>
+    </TableRow>
+  );
+
   return (
     <div className={className}>
       <Table>
@@ -377,189 +421,235 @@ export function SectionedLineItemsTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {/* Materials Section */}
-          {renderSectionHeader(
-            'MATERIALS',
-            <Package className="h-4 w-4" />,
-            materialItems.length
-          )}
-          {materialItems.map(renderItemRow)}
-          {editable && onAddItem && (
-            <TableRow className="hover:bg-muted/30">
-              <TableCell colSpan={editable ? 5 : 4} className="py-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => onAddItem('material')}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Material Item
-                </Button>
-              </TableCell>
-            </TableRow>
-          )}
-          {/* Inline Add Material Form */}
-          {isAddingItem && addingItemType === 'material' && newItem && onNewItemChange && (
-            <TableRow className="bg-primary/5 border-2 border-primary/30">
-              <TableCell colSpan={editable ? 5 : 4} className="py-3">
-                <div className="flex items-end gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[200px]">
-                    <Label className="text-xs">Item Name</Label>
-                    <MaterialAutocomplete
-                      value={newItem.item_name}
-                      onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
-                      onSelectMaterial={(material) => {
-                        onNewItemChange({
-                          ...newItem,
-                          item_name: material.name,
-                          unit: material.uom,
-                          unit_cost: material.base_cost,
-                          material_id: material.id,
-                        });
-                      }}
-                      placeholder="Search materials..."
-                      autoFocus
-                    />
-                  </div>
-                  <div className="w-32">
-                    <Label className="text-xs">Color / Specs</Label>
-                    <Input
-                      value={newItem.notes || ''}
-                      onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
-                      placeholder="e.g. Charcoal"
-                    />
-                  </div>
-                  <div className="w-20">
-                    <Label className="text-xs">Qty</Label>
-                    <Input
-                      type="number"
-                      value={newItem.qty}
-                      onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                  <div className="w-16">
-                    <Label className="text-xs">Unit</Label>
-                    <Input
-                      value={newItem.unit}
-                      onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
-                      placeholder="ea"
-                    />
-                  </div>
-                  <div className="w-24">
-                    <Label className="text-xs">Unit Cost</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={newItem.unit_cost}
-                      onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                  <Button onClick={onSaveNewItem} size="sm">
-                    <Check className="h-4 w-4 mr-1" />
-                    Add
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          )}
-          {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
+          {/* Multi-trade layout: group by trade, then materials/labor within each */}
+          {hasMultipleTrades && tradeGroups ? (
+            <>
+              {tradeGroups.map(group => (
+                <React.Fragment key={group.type}>
+                  {renderTradeHeader(group.type, group.label)}
+                  
+                  {/* Materials for this trade */}
+                  {group.materials.length > 0 && (
+                    <>
+                      {renderSectionHeader(
+                        'MATERIALS',
+                        <Package className="h-4 w-4" />,
+                        group.materials.length
+                      )}
+                      {group.materials.map(renderItemRow)}
+                      {renderSectionSubtotal(
+                        'Materials Subtotal',
+                        group.materials.reduce((sum, i) => sum + i.line_total, 0)
+                      )}
+                    </>
+                  )}
 
-          {/* Labor Section */}
-          {renderSectionHeader(
-            'LABOR',
-            <Hammer className="h-4 w-4" />,
-            laborItems.length
-          )}
-          {laborItems.map(renderItemRow)}
-          {editable && onAddItem && (
-            <TableRow className="hover:bg-muted/30">
-              <TableCell colSpan={editable ? 5 : 4} className="py-2">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  onClick={() => onAddItem('labor')}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Labor Item
-                </Button>
-              </TableCell>
-            </TableRow>
-          )}
-          {/* Inline Add Labor Form */}
-          {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
-            <TableRow className="bg-primary/5 border-2 border-primary/30">
-              <TableCell colSpan={editable ? 5 : 4} className="py-3">
-                <div className="flex items-end gap-2 flex-wrap">
-                  <div className="flex-1 min-w-[180px]">
-                    <Label className="text-xs">Item Name</Label>
-                    <MaterialAutocomplete
-                      value={newItem.item_name}
-                      onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
-                      onSelectMaterial={(material) => {
-                        onNewItemChange({
-                          ...newItem,
-                          item_name: material.name,
-                          unit: material.uom,
-                          unit_cost: material.base_cost,
-                          material_id: material.id,
-                        });
-                      }}
-                      placeholder="Search items..."
-                      autoFocus
-                    />
-                  </div>
-                  <div className="w-32">
-                    <Label className="text-xs">Notes</Label>
-                    <Input
-                      value={newItem.notes || ''}
-                      onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
-                      placeholder="e.g. details"
-                    />
-                  </div>
-                  <div className="w-20">
-                    <Label className="text-xs">Qty</Label>
-                    <Input
-                      type="number"
-                      value={newItem.qty}
-                      onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                  <div className="w-16">
-                    <Label className="text-xs">Unit</Label>
-                    <Input
-                      value={newItem.unit}
-                      onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
-                      placeholder="ea"
-                    />
-                  </div>
-                  <div className="w-24">
-                    <Label className="text-xs">Unit Cost</Label>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={newItem.unit_cost}
-                      onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
-                    />
-                  </div>
-                  <Button onClick={onSaveNewItem} size="sm">
-                    <Check className="h-4 w-4 mr-1" />
-                    Add
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              </TableCell>
-            </TableRow>
-          )}
-          {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', laborTotal)}
+                  {/* Labor for this trade */}
+                  {group.labor.length > 0 && (
+                    <>
+                      {renderSectionHeader(
+                        'LABOR',
+                        <Hammer className="h-4 w-4" />,
+                        group.labor.length
+                      )}
+                      {group.labor.map(renderItemRow)}
+                      {renderSectionSubtotal(
+                        'Labor Subtotal',
+                        group.labor.reduce((sum, i) => sum + i.line_total, 0)
+                      )}
+                    </>
+                  )}
+                </React.Fragment>
+              ))}
+            </>
+          ) : (
+            <>
+              {/* Single-trade layout (original) */}
+              {/* Materials Section */}
+              {renderSectionHeader(
+                'MATERIALS',
+                <Package className="h-4 w-4" />,
+                materialItems.length
+              )}
+              {materialItems.map(renderItemRow)}
+              {editable && onAddItem && (
+                <TableRow className="hover:bg-muted/30">
+                  <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => onAddItem('material')}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Material Item
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              )}
+              {/* Inline Add Material Form */}
+              {isAddingItem && addingItemType === 'material' && newItem && onNewItemChange && (
+                <TableRow className="bg-primary/5 border-2 border-primary/30">
+                  <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <div className="flex-1 min-w-[200px]">
+                        <Label className="text-xs">Item Name</Label>
+                        <MaterialAutocomplete
+                          value={newItem.item_name}
+                          onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                          onSelectMaterial={(material) => {
+                            onNewItemChange({
+                              ...newItem,
+                              item_name: material.name,
+                              unit: material.uom,
+                              unit_cost: material.base_cost,
+                              material_id: material.id,
+                            });
+                          }}
+                          placeholder="Search materials..."
+                          autoFocus
+                        />
+                      </div>
+                      <div className="w-32">
+                        <Label className="text-xs">Color / Specs</Label>
+                        <Input
+                          value={newItem.notes || ''}
+                          onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                          placeholder="e.g. Charcoal"
+                        />
+                      </div>
+                      <div className="w-20">
+                        <Label className="text-xs">Qty</Label>
+                        <Input
+                          type="number"
+                          value={newItem.qty}
+                          onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div className="w-16">
+                        <Label className="text-xs">Unit</Label>
+                        <Input
+                          value={newItem.unit}
+                          onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                          placeholder="ea"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-xs">Unit Cost</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={newItem.unit_cost}
+                          onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <Button onClick={onSaveNewItem} size="sm">
+                        <Check className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
 
-          {/* Empty State - only show if no add buttons available */}
+              {/* Labor Section */}
+              {renderSectionHeader(
+                'LABOR',
+                <Hammer className="h-4 w-4" />,
+                laborItems.length
+              )}
+              {laborItems.map(renderItemRow)}
+              {editable && onAddItem && (
+                <TableRow className="hover:bg-muted/30">
+                  <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => onAddItem('labor')}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Labor Item
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              )}
+              {/* Inline Add Labor Form */}
+              {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
+                <TableRow className="bg-primary/5 border-2 border-primary/30">
+                  <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label className="text-xs">Item Name</Label>
+                        <MaterialAutocomplete
+                          value={newItem.item_name}
+                          onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                          onSelectMaterial={(material) => {
+                            onNewItemChange({
+                              ...newItem,
+                              item_name: material.name,
+                              unit: material.uom,
+                              unit_cost: material.base_cost,
+                              material_id: material.id,
+                            });
+                          }}
+                          placeholder="Search items..."
+                          autoFocus
+                        />
+                      </div>
+                      <div className="w-32">
+                        <Label className="text-xs">Notes</Label>
+                        <Input
+                          value={newItem.notes || ''}
+                          onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                          placeholder="e.g. details"
+                        />
+                      </div>
+                      <div className="w-20">
+                        <Label className="text-xs">Qty</Label>
+                        <Input
+                          type="number"
+                          value={newItem.qty}
+                          onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div className="w-16">
+                        <Label className="text-xs">Unit</Label>
+                        <Input
+                          value={newItem.unit}
+                          onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                          placeholder="ea"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-xs">Unit Cost</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={newItem.unit_cost}
+                          onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <Button onClick={onSaveNewItem} size="sm">
+                        <Check className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', laborTotal)}
+            </>
+          )}
+
+          {/* Empty State */}
           {materialItems.length === 0 && laborItems.length === 0 && !onAddItem && (
             <TableRow>
               <TableCell colSpan={editable ? 5 : 4} className="text-center py-8 text-muted-foreground">
@@ -580,9 +670,6 @@ export function SectionedLineItemsTable({
                 </TableCell>
                 {editable && <TableCell />}
               </TableRow>
-
-              {/* NOTE: Sales Tax is now BAKED INTO the selling price - not shown separately to customer */}
-              {/* The sellingPrice prop already includes tax when salesTaxEnabled is true */}
             </>
           )}
         </TableBody>

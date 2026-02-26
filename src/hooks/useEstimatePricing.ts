@@ -16,6 +16,8 @@ export interface LineItem {
   line_total: number;
   is_override?: boolean;
   sort_order?: number;
+  trade_type?: string;            // e.g. 'roofing', 'gutters', 'siding'
+  trade_label?: string;           // e.g. 'Roofing', 'Gutters'
 }
 
 export interface PricingConfig {
