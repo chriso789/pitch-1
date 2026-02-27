@@ -9,7 +9,7 @@ import {
   Phone, Mic, Bot, Clock, PhoneCall, PhoneOff, 
   Download, RefreshCw, Filter,
   ChevronDown, ChevronRight, FileText, ListPlus, Voicemail,
-  Search, Loader2, PlayCircle, Smartphone
+  Search, Loader2, PlayCircle
 } from 'lucide-react';
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -83,6 +83,22 @@ const CallCenterPage = () => {
         .order('name');
       if (error) throw error;
       return (data || []) as LocationPhone[];
+    },
+    enabled: !!tenantId,
+  });
+
+  // Fetch dialer lists for list selector dropdown
+  const { data: dialerLists } = useQuery({
+    queryKey: ['dialer-lists-header', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('dialer_lists')
+        .select('id, name, total_items')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!tenantId,
   });
@@ -312,7 +328,7 @@ const CallCenterPage = () => {
                   onClick={() => setEditingCallback(true)}
                   title="Your phone number the dialer calls"
                 >
-                  <Smartphone className="h-3.5 w-3.5" />
+                  <Phone className="h-3.5 w-3.5" />
                   {callbackNumber ? formatPhone(callbackNumber) : 'Set my #'}
                 </Button>
               )}
@@ -334,6 +350,22 @@ const CallCenterPage = () => {
                 </SelectContent>
               </Select>
             )}
+            {/* List Selector */}
+            <Select value={selectedListId || ''} onValueChange={(val) => setSelectedListId(val || null)}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Select a list..." />
+              </SelectTrigger>
+              <SelectContent>
+                {dialerLists?.map((list) => (
+                  <SelectItem key={list.id} value={list.id}>
+                    {list.name} ({list.total_items})
+                  </SelectItem>
+                ))}
+                {(!dialerLists || dialerLists.length === 0) && (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">No lists — build one first</div>
+                )}
+              </SelectContent>
+            </Select>
             <Button
               onClick={() => {
                 if (!callbackNumber || callbackNumber.replace(/\D/g, '').length < 10) {
@@ -342,11 +374,10 @@ const CallCenterPage = () => {
                   return;
                 }
                 if (!selectedListId) {
-                  setActiveTab('lists');
-                  toast({ title: 'Select a list first', description: 'Pick a list from the Lists tab to start dialing.' });
-                } else {
-                  setActiveTab('dialer');
+                  toast({ title: 'Select a list', description: 'Choose a dialer list from the dropdown.' });
+                  return;
                 }
+                setActiveTab('dialer');
               }}
               className="gap-2"
             >

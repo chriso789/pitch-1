@@ -65,11 +65,11 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
       if (!tenantId) return [];
       let query = supabase
         .from('contacts')
-        .select('id, first_name, last_name, phone, email, qualification_status, lead_source, address_city, address_state, updated_at')
+        .select('id, first_name, last_name, phone, email, qualification_status, lead_source, address_city, address_state, created_at')
         .eq('tenant_id', tenantId)
         .not('phone', 'is', null)
         .neq('is_deleted', true)
-        .order('updated_at', { ascending: true })
+        .order('created_at', { ascending: true })
         .limit(500);
 
       if (statusFilter !== 'all') {
@@ -80,7 +80,7 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
       }
       if (stagnantDays) {
         const threshold = subDays(new Date(), stagnantDays).toISOString();
-        query = query.lt('updated_at', threshold);
+        query = query.lt('created_at', threshold);
       }
 
       const { data, error } = await query;
