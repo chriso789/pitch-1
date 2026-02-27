@@ -101,8 +101,10 @@ const Pipeline = () => {
 
   // Fetch pipeline data from Supabase
   useEffect(() => {
-    fetchPipelineData();
-  }, [filters, currentLocationId]);
+    if (dynamicStages.length > 0) {
+      fetchPipelineData();
+    }
+  }, [filters, currentLocationId, dynamicStages]);
 
   // Listen for location changes
   useEffect(() => {
