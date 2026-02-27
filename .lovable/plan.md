@@ -1,22 +1,19 @@
 
 
-# Fix: Make "Edit Lead Details" More Visible
+# Unified "Edit Lead Details" Dialog — All Fields in One Place
 
 ## Problem
-
-The edit button for lead details (Priority, Roof Type, Roof Age, Est. Value) is a tiny 3px pencil icon at the end of the stats bar — nearly invisible. When most fields are empty, users can't find where to edit them.
+The Edit dialog only has project fields (Priority, Roof Type, Roof Age, Est. Value). There's no way to edit the contact's name, email, or phone from this page.
 
 ## Changes
 
+### `src/components/lead-details/EditProjectDetailsDialog.tsx`
+- **Add props**: `contactId`, `initialContactValues` (first_name, last_name, email, phone)
+- **Add fields** at the top of the form: First Name, Last Name, Email, Phone
+- **Save logic**: Update `contacts` table with name/email/phone, then update `pipeline_entries` with project fields — both in the same save handler
+- **Rename dialog title** to "Edit Lead Details"
+
 ### `src/pages/LeadDetails.tsx`
-
-**Replace the tiny pencil button with a labeled "Edit Details" button** in the stats bar, and always show placeholder text for empty fields so users know what can be edited:
-
-- Show "Priority: Medium" (or "Not set" if empty) — always visible
-- Show "Roof Type: Not set" when empty — always visible  
-- Show "Roof Age: Not set" when empty — always visible
-- Show "Est. Value: Not set" when empty — always visible
-- Replace the 3px ghost pencil with a visible `<Button variant="outline" size="sm">` labeled with a pencil icon + "Edit" text
-
-This ensures all four editable fields are always visible (with "Not set" placeholders) and the edit button is prominent and labeled.
+- **Pass contact data** to the dialog: `contactId={lead.contact?.id}`, `initialContactValues={{ first_name, last_name, email, phone }}`
+- **Move Edit button** from inside the stats bar to the header row (next to the contact name), so it's a single prominent "Edit" that covers everything
 
