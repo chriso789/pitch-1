@@ -1,19 +1,17 @@
 
 
-# Unified "Edit Lead Details" Dialog — All Fields in One Place
+# Fix: Phone number normalization regex bug causing all calls to fail
 
-## Problem
-The Edit dialog only has project fields (Priority, Roof Type, Roof Age, Est. Value). There's no way to edit the contact's name, email, or phone from this page.
+## Root Cause
 
-## Changes
+In `supabase/functions/_shared/phone.ts` line 17, the regex `/[^\\d+]/g` uses a double backslash inside a regex literal. In JavaScript regex literals, `\\d` means "literal backslash followed by d" — NOT the digit character class `\d`. This causes `normalizeE164("7708420812")` to strip all digits, returning an empty string, which fails E.164 validation.
 
-### `src/components/lead-details/EditProjectDetailsDialog.tsx`
-- **Add props**: `contactId`, `initialContactValues` (first_name, last_name, email, phone)
-- **Add fields** at the top of the form: First Name, Last Name, Email, Phone
-- **Save logic**: Update `contacts` table with name/email/phone, then update `pipeline_entries` with project fields — both in the same save handler
-- **Rename dialog title** to "Edit Lead Details"
+Edge function logs confirm: `"Invalid or missing phone number undefined"`
 
-### `src/pages/LeadDetails.tsx`
-- **Pass contact data** to the dialog: `contactId={lead.contact?.id}`, `initialContactValues={{ first_name, last_name, email, phone }}`
-- **Move Edit button** from inside the stats bar to the header row (next to the contact name), so it's a single prominent "Edit" that covers everything
+## Fix
+
+### `supabase/functions/_shared/phone.ts`
+- Line 17: Change `/[^\\d+]/g` to `/[^\d+]/g`
+
+This single character fix restores phone normalization, unblocking all outbound call flows (Quick Call, Power Dialer, KanbanCard calls).
 
