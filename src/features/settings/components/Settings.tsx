@@ -59,6 +59,7 @@ import { PipelineStageManager } from "@/components/settings/PipelineStageManager
 import { ContactStatusManager } from "@/components/settings/ContactStatusManager";
 import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
 import { InspectionWalkthroughSettings } from "@/components/inspection/InspectionWalkthroughSettings";
+import { DialerSettings } from "@/components/call-center/DialerSettings";
 
 
 interface SettingsTab {
@@ -120,6 +121,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   measurements: "products",
   companies: "business",
   inspections: "business",
+  dialer: "communications",
 };
 
 export const Settings = () => {
@@ -463,6 +465,8 @@ export const Settings = () => {
             </CardContent>
           </Card>
         );
+      case "dialer":
+        return <DialerSettings />;
       case "ai-admin":
         return <AIAdminChat />;
       default:

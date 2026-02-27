@@ -23,11 +23,13 @@ type DialerPhase = 'idle' | 'calling' | 'active' | 'disposition' | 'detail';
 interface CallCenterLiveDialerProps {
   selectedListId: string | null;
   onEndSession: () => void;
+  locationId?: string | null;
 }
 
 export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
   selectedListId,
   onEndSession,
+  locationId,
 }) => {
   const tenantId = useEffectiveTenantId();
   const queryClient = useQueryClient();
@@ -129,6 +131,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
         body: {
           tenant_id: tenantId,
           contact_id: contactId,
+          location_id: locationId || undefined,
           record: true,
           answering_machine_detection: 'premium',
         },

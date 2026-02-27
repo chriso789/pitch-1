@@ -3,13 +3,13 @@
  * Live dialer workspace with list building, calling, voicemail management, and call log
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   Phone, Mic, Bot, Clock, PhoneCall, PhoneOff, 
   Download, RefreshCw, Filter,
   ChevronDown, ChevronRight, FileText, ListPlus, Voicemail,
-  Search, Loader2
+  Search, Loader2, PlayCircle
 } from 'lucide-react';
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -29,6 +29,13 @@ import { CallCenterLiveDialer } from '@/components/call-center/CallCenterLiveDia
 import { CallCenterListsManager } from '@/components/call-center/CallCenterListsManager';
 import { VoicemailDropManager } from '@/components/call-center/VoicemailDropManager';
 import { toast } from '@/hooks/use-toast';
+
+interface LocationPhone {
+  id: string;
+  name: string;
+  telnyx_phone_number: string;
+  is_primary: boolean;
+}
 
 interface CallRecord {
   id: string;
@@ -59,6 +66,63 @@ const CallCenterPage = () => {
   const [showListBuilder, setShowListBuilder] = useState(false);
   const [activeTab, setActiveTab] = useState('dialer');
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
+  const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+
+  // Fetch locations with Telnyx numbers for caller ID selector
+  const { data: callerLocations } = useQuery({
+    queryKey: ['caller-id-locations', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('locations')
+        .select('id, name, telnyx_phone_number, is_primary')
+        .eq('tenant_id', tenantId)
+        .not('telnyx_phone_number', 'is', null)
+        .order('name');
+      if (error) throw error;
+      return (data || []) as LocationPhone[];
+    },
+    enabled: !!tenantId,
+  });
+
+  // Load default caller ID from app_settings
+  const { data: defaultCallerLocationId } = useQuery({
+    queryKey: ['default-dialer-caller-id', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return null;
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('tenant_id', tenantId)
+        .eq('setting_key', 'default_dialer_caller_id')
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.setting_value as any)?.location_id || null;
+    },
+    enabled: !!tenantId,
+  });
+
+  // Set default caller ID on load
+  useEffect(() => {
+    if (!selectedLocationId && defaultCallerLocationId) {
+      setSelectedLocationId(defaultCallerLocationId);
+    } else if (!selectedLocationId && callerLocations?.length) {
+      // Fallback to primary or first location
+      const primary = callerLocations.find(l => l.is_primary);
+      setSelectedLocationId(primary?.id || callerLocations[0].id);
+    }
+  }, [defaultCallerLocationId, callerLocations, selectedLocationId]);
+
+  const formatPhone = (phone: string) => {
+    const clean = phone.replace(/\D/g, '');
+    if (clean.length === 11 && clean.startsWith('1')) {
+      return `(${clean.slice(1, 4)}) ${clean.slice(4, 7)}-${clean.slice(7)}`;
+    }
+    if (clean.length === 10) {
+      return `(${clean.slice(0, 3)}) ${clean.slice(3, 6)}-${clean.slice(6)}`;
+    }
+    return phone;
+  };
 
   // Quick Call state
   const [quickCallNumber, setQuickCallNumber] = useState('');
@@ -190,7 +254,7 @@ const CallCenterPage = () => {
     <GlobalLayout>
       <div className="container mx-auto py-6 space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Phone className="h-6 w-6 text-primary" />
@@ -200,10 +264,42 @@ const CallCenterPage = () => {
               Build lists, dial contacts, and track call outcomes
             </p>
           </div>
-          <Button onClick={() => setShowListBuilder(true)}>
-            <ListPlus className="h-4 w-4 mr-2" />
-            Build List
-          </Button>
+          <div className="flex items-center gap-2">
+            {/* Caller ID Selector */}
+            {callerLocations && callerLocations.length > 0 && (
+              <Select value={selectedLocationId || ''} onValueChange={setSelectedLocationId}>
+                <SelectTrigger className="w-[220px]">
+                  <Phone className="h-4 w-4 mr-2 shrink-0" />
+                  <SelectValue placeholder="Select caller ID..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {callerLocations.map((loc) => (
+                    <SelectItem key={loc.id} value={loc.id}>
+                      {loc.name} — {formatPhone(loc.telnyx_phone_number)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            <Button
+              onClick={() => {
+                if (!selectedListId) {
+                  setActiveTab('lists');
+                  toast({ title: 'Select a list first', description: 'Pick a list from the Lists tab to start dialing.' });
+                } else {
+                  setActiveTab('dialer');
+                }
+              }}
+              className="gap-2"
+            >
+              <PlayCircle className="h-4 w-4" />
+              Start Dialer
+            </Button>
+            <Button variant="outline" onClick={() => setShowListBuilder(true)}>
+              <ListPlus className="h-4 w-4 mr-2" />
+              Build List
+            </Button>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -256,6 +352,7 @@ const CallCenterPage = () => {
             <CallCenterLiveDialer
               selectedListId={selectedListId}
               onEndSession={handleEndSession}
+              locationId={selectedLocationId}
             />
           </TabsContent>
 
