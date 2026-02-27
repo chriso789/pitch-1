@@ -829,37 +829,30 @@ const LeadDetails = () => {
             
             {/* Stats bar */}
             <div className="flex items-center gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2 flex-wrap">
-              {lead.priority && (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Priority:</span>
-                  <span className="capitalize font-medium">{lead.priority}</span>
-                </div>
-              )}
-              {lead.roof_type && (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Roof:</span>
-                  <span className="capitalize font-medium">{lead.roof_type.replace('_', ' ')}</span>
-                </div>
-              )}
-              {lead.metadata?.roof_age_years && (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Roof Age:</span>
-                  <span className="font-medium">{lead.metadata.roof_age_years} years</span>
-                </div>
-              )}
-              {lead.estimated_value && (
-                <div className="flex items-center gap-1">
-                  <span className="text-muted-foreground">Est. Value:</span>
-                  <span className="font-medium">${lead.estimated_value.toLocaleString()}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Priority:</span>
+                <span className="capitalize font-medium">{lead.priority || 'Not set'}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Roof:</span>
+                <span className="capitalize font-medium">{lead.roof_type ? lead.roof_type.replace('_', ' ') : 'Not set'}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Roof Age:</span>
+                <span className="font-medium">{lead.metadata?.roof_age_years ? `${lead.metadata.roof_age_years} years` : 'Not set'}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-muted-foreground">Est. Value:</span>
+                <span className="font-medium">{lead.estimated_value ? `$${lead.estimated_value.toLocaleString()}` : 'Not set'}</span>
+              </div>
               <Button 
-                variant="ghost" 
+                variant="outline" 
                 size="sm" 
-                className="h-5 w-5 p-0"
+                className="ml-auto h-7 px-2 gap-1"
                 onClick={() => setShowEditProjectDialog(true)}
               >
-                <Edit2 className="h-3 w-3" />
+                <Edit2 className="h-3.5 w-3.5" />
+                Edit
               </Button>
             </div>
 
