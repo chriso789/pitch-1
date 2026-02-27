@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Phone, MapPin, ArrowRight, CheckCircle2, Loader2 } from 'lucide-react';
+import { Phone, MapPin, ArrowRight, CheckCircle2, Loader2, Smartphone, Save } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from '@/hooks/use-toast';
@@ -93,6 +95,72 @@ export const DialerSettings: React.FC = () => {
     },
   });
 
+  // ---- My Dialer Number (callback number) ----
+  const { data: savedCallbackNumber } = useQuery({
+    queryKey: ['dialer-callback-number', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return null;
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', user.id)
+        .eq('setting_key', 'dialer_callback_number')
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.setting_value as any)?.phone || '';
+    },
+    enabled: !!tenantId,
+  });
+
+  const [callbackPhone, setCallbackPhone] = useState('');
+  useEffect(() => {
+    if (savedCallbackNumber) setCallbackPhone(savedCallbackNumber);
+  }, [savedCallbackNumber]);
+
+  const saveCallbackMutation = useMutation({
+    mutationFn: async (phone: string) => {
+      if (!tenantId) throw new Error('No tenant');
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: existing } = await supabase
+        .from('app_settings')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', user.id)
+        .eq('setting_key', 'dialer_callback_number')
+        .maybeSingle();
+
+      if (existing) {
+        const { error } = await supabase
+          .from('app_settings')
+          .update({ setting_value: { phone } as any })
+          .eq('id', existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('app_settings')
+          .insert({
+            tenant_id: tenantId,
+            user_id: user.id,
+            setting_key: 'dialer_callback_number',
+            setting_value: { phone } as any,
+          });
+        if (error) throw error;
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['dialer-callback-number'] });
+      toast({ title: 'Dialer callback number saved' });
+    },
+    onError: (err: any) => {
+      toast({ title: 'Error', description: err.message, variant: 'destructive' });
+    },
+  });
+
   const formatPhone = (phone: string) => {
     const clean = phone.replace(/\D/g, '');
     if (clean.length === 11 && clean.startsWith('1')) {
@@ -169,6 +237,57 @@ export const DialerSettings: React.FC = () => {
                 </label>
               ))}
             </RadioGroup>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* My Dialer Number */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5" />
+            My Dialer Number
+          </CardTitle>
+          <CardDescription>
+            Enter the phone number the dialer will call to connect you. Once you answer, the system will cycle through leads on your line.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="space-y-2">
+            <Label htmlFor="callback-phone">Your phone number</Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="callback-phone"
+                type="tel"
+                placeholder="(555) 123-4567"
+                value={callbackPhone}
+                onChange={(e) => setCallbackPhone(e.target.value)}
+                className="flex-1"
+              />
+              <Button
+                onClick={() => {
+                  const clean = callbackPhone.replace(/\D/g, '');
+                  if (clean.length < 10) {
+                    toast({ title: 'Invalid number', description: 'Enter a valid 10-digit phone number.', variant: 'destructive' });
+                    return;
+                  }
+                  saveCallbackMutation.mutate(callbackPhone);
+                }}
+                disabled={saveCallbackMutation.isPending}
+              >
+                {saveCallbackMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Save className="h-4 w-4 mr-2" />
+                )}
+                Save
+              </Button>
+            </div>
+          </div>
+          {savedCallbackNumber && (
+            <p className="text-sm text-muted-foreground">
+              Currently saved: <span className="font-medium text-foreground">{formatPhone(savedCallbackNumber)}</span>
+            </p>
           )}
         </CardContent>
       </Card>

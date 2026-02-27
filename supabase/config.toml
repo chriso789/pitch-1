@@ -673,6 +673,9 @@ verify_jwt = false
 [functions.telnyx-dial]
 verify_jwt = true
 
+[functions.telnyx-bridge-dial]
+verify_jwt = true
+
 [functions.ai-followup-worker]
 verify_jwt = false
 
