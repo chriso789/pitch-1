@@ -14,7 +14,7 @@ export function normalizeE164(input: string | null | undefined): string {
   if (!s) return '';
 
   // Remove all non-digit characters except leading +
-  let cleaned = s.replace(/[^\\d+]/g, '');
+  let cleaned = s.replace(/[^\d+]/g, '');
 
   // If already starts with +, just remove spaces
   if (cleaned.startsWith('+')) {
