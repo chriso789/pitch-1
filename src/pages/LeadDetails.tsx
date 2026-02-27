@@ -723,10 +723,19 @@ const LeadDetails = () => {
             respectHistory={true}
           />
           <div className="flex-1">
-            <div className="flex items-center space-x-3">
-              <h1 className="text-3xl font-bold">
-                {lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead'}
-              </h1>
+              <div className="flex items-center space-x-3">
+                <h1 className="text-3xl font-bold">
+                  {lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead'}
+                </h1>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 px-2 gap-1"
+                  onClick={() => setShowEditProjectDialog(true)}
+                >
+                  <Edit2 className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
               {isEditingStatus ? (
                 <Select 
                   value={lead.status} 
@@ -845,15 +854,6 @@ const LeadDetails = () => {
                 <span className="text-muted-foreground">Est. Value:</span>
                 <span className="font-medium">{lead.estimated_value ? `$${lead.estimated_value.toLocaleString()}` : 'Not set'}</span>
               </div>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="ml-auto h-7 px-2 gap-1"
-                onClick={() => setShowEditProjectDialog(true)}
-              >
-                <Edit2 className="h-3.5 w-3.5" />
-                Edit
-              </Button>
             </div>
 
             {/* Inline Lead Notes - compact one-liner */}
@@ -1334,12 +1334,19 @@ const LeadDetails = () => {
         open={showEditProjectDialog}
         onOpenChange={setShowEditProjectDialog}
         pipelineEntryId={id!}
+        contactId={lead.contact?.id}
         initialValues={{
           priority: lead.priority || 'medium',
           roof_type: lead.roof_type || null,
           roof_age_years: (lead.metadata as any)?.roof_age_years || null,
           estimated_value: lead.estimated_value || null,
         }}
+        initialContactValues={lead.contact ? {
+          first_name: lead.contact.first_name || '',
+          last_name: lead.contact.last_name || '',
+          email: lead.contact.email || null,
+          phone: lead.contact.phone || null,
+        } : undefined}
         existingMetadata={(lead.metadata as Record<string, unknown>) || {}}
         onSave={() => {
           refetchLead();

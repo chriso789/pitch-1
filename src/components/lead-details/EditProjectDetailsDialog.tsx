@@ -24,11 +24,18 @@ interface EditProjectDetailsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pipelineEntryId: string;
+  contactId?: string;
   initialValues: {
     priority: string | null;
     roof_type: string | null;
     roof_age_years: number | null;
     estimated_value: number | null;
+  };
+  initialContactValues?: {
+    first_name: string;
+    last_name: string;
+    email: string | null;
+    phone: string | null;
   };
   existingMetadata?: Record<string, unknown>;
   onSave: () => void;
@@ -54,11 +61,17 @@ export function EditProjectDetailsDialog({
   open,
   onOpenChange,
   pipelineEntryId,
+  contactId,
   initialValues,
+  initialContactValues,
   existingMetadata = {},
   onSave,
 }: EditProjectDetailsDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
+  const [firstName, setFirstName] = useState(initialContactValues?.first_name || '');
+  const [lastName, setLastName] = useState(initialContactValues?.last_name || '');
+  const [email, setEmail] = useState(initialContactValues?.email || '');
+  const [phone, setPhone] = useState(initialContactValues?.phone || '');
   const [priority, setPriority] = useState(initialValues.priority || 'medium');
   const [roofType, setRoofType] = useState(initialValues.roof_type || '');
   const [roofAge, setRoofAge] = useState(initialValues.roof_age_years?.toString() || '');
@@ -66,9 +79,39 @@ export function EditProjectDetailsDialog({
     initialValues.estimated_value?.toString() || ''
   );
 
+  // Sync state when dialog opens with new values
+  React.useEffect(() => {
+    if (open) {
+      setFirstName(initialContactValues?.first_name || '');
+      setLastName(initialContactValues?.last_name || '');
+      setEmail(initialContactValues?.email || '');
+      setPhone(initialContactValues?.phone || '');
+      setPriority(initialValues.priority || 'medium');
+      setRoofType(initialValues.roof_type || '');
+      setRoofAge(initialValues.roof_age_years?.toString() || '');
+      setEstimatedValue(initialValues.estimated_value?.toString() || '');
+    }
+  }, [open]);
+
   const handleSave = async () => {
     setIsLoading(true);
     try {
+      // Update contact info if contactId provided
+      if (contactId) {
+        const { error: contactError } = await supabase
+          .from('contacts')
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            email: email || null,
+            phone: phone || null,
+          })
+          .eq('id', contactId);
+
+        if (contactError) throw contactError;
+      }
+
+      // Update pipeline entry
       const updateData: Record<string, unknown> = {
         priority,
         roof_type: roofType || null,
@@ -87,16 +130,16 @@ export function EditProjectDetailsDialog({
       if (error) throw error;
 
       toast({
-        title: 'Project details updated',
-        description: 'The project information has been saved.',
+        title: 'Lead details updated',
+        description: 'All changes have been saved.',
       });
 
       onSave();
     } catch (error) {
-      console.error('Error updating project details:', error);
+      console.error('Error updating lead details:', error);
       toast({
         title: 'Error',
-        description: 'Failed to update project details.',
+        description: 'Failed to update lead details.',
         variant: 'destructive',
       });
     } finally {
@@ -108,10 +151,58 @@ export function EditProjectDetailsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Edit Project Details</DialogTitle>
+          <DialogTitle>Edit Lead Details</DialogTitle>
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
+          {/* Contact fields */}
+          {contactId && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-2">
+                  <Label htmlFor="first_name">First Name</Label>
+                  <Input
+                    id="first_name"
+                    placeholder="First name"
+                    value={firstName}
+                    onChange={(e) => setFirstName(e.target.value)}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="last_name">Last Name</Label>
+                  <Input
+                    id="last_name"
+                    placeholder="Last name"
+                    value={lastName}
+                    onChange={(e) => setLastName(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="email@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  type="tel"
+                  placeholder="+1 (555) 000-0000"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
+              <div className="border-t my-1" />
+            </>
+          )}
+
+          {/* Project fields */}
           <div className="grid gap-2">
             <Label htmlFor="priority">Priority</Label>
             <Select value={priority} onValueChange={setPriority}>
