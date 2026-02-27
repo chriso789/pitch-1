@@ -9,7 +9,7 @@ import {
   Phone, Mic, Bot, Clock, PhoneCall, PhoneOff, 
   Download, RefreshCw, Filter,
   ChevronDown, ChevronRight, FileText, ListPlus, Voicemail,
-  Search, Loader2, PlayCircle
+  Search, Loader2, PlayCircle, Smartphone
 } from 'lucide-react';
 import { format, formatDuration, intervalToDuration } from 'date-fns';
 import { supabase } from '@/integrations/supabase/client';
@@ -67,6 +67,8 @@ const CallCenterPage = () => {
   const [activeTab, setActiveTab] = useState('dialer');
   const [selectedListId, setSelectedListId] = useState<string | null>(null);
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
+  const [callbackNumber, setCallbackNumber] = useState('');
+  const [editingCallback, setEditingCallback] = useState(false);
 
   // Fetch locations with Telnyx numbers for caller ID selector
   const { data: callerLocations } = useQuery({
@@ -84,6 +86,30 @@ const CallCenterPage = () => {
     },
     enabled: !!tenantId,
   });
+
+  // Load saved callback number for current user
+  const { data: savedCallback } = useQuery({
+    queryKey: ['dialer-callback-number', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return null;
+      const user = (await supabase.auth.getUser()).data.user;
+      if (!user) return null;
+      const { data, error } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('tenant_id', tenantId)
+        .eq('user_id', user.id)
+        .eq('setting_key', 'dialer_callback_number')
+        .maybeSingle();
+      if (error) throw error;
+      return (data?.setting_value as any)?.phone || '';
+    },
+    enabled: !!tenantId,
+  });
+
+  useEffect(() => {
+    if (savedCallback && !callbackNumber) setCallbackNumber(savedCallback);
+  }, [savedCallback]);
 
   // Load default caller ID from app_settings
   const { data: defaultCallerLocationId } = useQuery({
@@ -265,6 +291,33 @@ const CallCenterPage = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            {/* Callback Number Display */}
+            <div className="flex items-center gap-1.5">
+              {editingCallback ? (
+                <Input
+                  type="tel"
+                  placeholder="Your cell #"
+                  value={callbackNumber}
+                  onChange={(e) => setCallbackNumber(e.target.value)}
+                  onBlur={() => setEditingCallback(false)}
+                  onKeyDown={(e) => e.key === 'Enter' && setEditingCallback(false)}
+                  className="w-[160px] h-9 text-sm"
+                  autoFocus
+                />
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 text-xs"
+                  onClick={() => setEditingCallback(true)}
+                  title="Your phone number the dialer calls"
+                >
+                  <Smartphone className="h-3.5 w-3.5" />
+                  {callbackNumber ? formatPhone(callbackNumber) : 'Set my #'}
+                </Button>
+              )}
+            </div>
+
             {/* Caller ID Selector */}
             {callerLocations && callerLocations.length > 0 && (
               <Select value={selectedLocationId || ''} onValueChange={setSelectedLocationId}>
@@ -283,6 +336,11 @@ const CallCenterPage = () => {
             )}
             <Button
               onClick={() => {
+                if (!callbackNumber || callbackNumber.replace(/\D/g, '').length < 10) {
+                  toast({ title: 'Set your dialer number', description: 'Enter your personal phone number so the dialer can call you first.' });
+                  setEditingCallback(true);
+                  return;
+                }
                 if (!selectedListId) {
                   setActiveTab('lists');
                   toast({ title: 'Select a list first', description: 'Pick a list from the Lists tab to start dialing.' });
@@ -353,6 +411,7 @@ const CallCenterPage = () => {
               selectedListId={selectedListId}
               onEndSession={handleEndSession}
               locationId={selectedLocationId}
+              callbackNumber={callbackNumber}
             />
           </TabsContent>
 

@@ -24,12 +24,14 @@ interface CallCenterLiveDialerProps {
   selectedListId: string | null;
   onEndSession: () => void;
   locationId?: string | null;
+  callbackNumber?: string;
 }
 
 export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
   selectedListId,
   onEndSession,
   locationId,
+  callbackNumber,
 }) => {
   const tenantId = useEffectiveTenantId();
   const queryClient = useQueryClient();
@@ -118,7 +120,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Initiate call via Telnyx
+  // Initiate call via Telnyx (bridge mode if callback number set)
   const handleCall = useCallback(async () => {
     if (!currentItem || !tenantId || !contactId) return;
 
@@ -127,15 +129,20 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     setCallDuration(0);
 
     try {
-      const { data, error } = await supabase.functions.invoke('telnyx-dial', {
-        body: {
-          tenant_id: tenantId,
-          contact_id: contactId,
-          location_id: locationId || undefined,
-          record: true,
-          answering_machine_detection: 'premium',
-        },
-      });
+      const useBridge = !!callbackNumber && callbackNumber.replace(/\D/g, '').length >= 10;
+      const fnName = useBridge ? 'telnyx-bridge-dial' : 'telnyx-dial';
+      const body: Record<string, unknown> = {
+        tenant_id: tenantId,
+        contact_id: contactId,
+        location_id: locationId || undefined,
+        record: true,
+        answering_machine_detection: 'premium',
+      };
+      if (useBridge) {
+        body.callback_number = callbackNumber;
+      }
+
+      const { data, error } = await supabase.functions.invoke(fnName, { body });
 
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Failed to initiate call');
@@ -144,7 +151,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
       setPhase('active');
       setCallStartTime(new Date());
 
-      toast({ title: 'Call connected', description: `Calling ${currentItem.first_name} ${currentItem.last_name}` });
+      toast({ title: useBridge ? 'Bridge call initiated' : 'Call connected', description: `Calling ${currentItem.first_name} ${currentItem.last_name}` });
 
       // Listen for AMD results via realtime
       const channel = supabase.channel(`amd-${data.call.id}`);
@@ -160,7 +167,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
       toast({ title: 'Call failed', description: err.message, variant: 'destructive' });
       setPhase('idle');
     }
-  }, [currentItem, tenantId, contactId]);
+  }, [currentItem, tenantId, contactId, callbackNumber, locationId]);
 
   // End call
   const handleHangup = useCallback(async () => {
