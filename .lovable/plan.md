@@ -1,95 +1,57 @@
 
 
-# Power Dialer: Telnyx WebRTC Calling with Auto-Cycle and Mini Lead Panel
+# Call Center: "Start Dialer" Button + Caller ID / Location Number Settings
 
 ## Problem
-The dialer currently has no real calling integration -- `initiateCall()` just sets a boolean. It doesn't use the existing `telnyxService` for WebRTC calls, doesn't auto-advance through list items, and shows only minimal contact info (name/phone) instead of the rich lead context reps need.
 
-## Architecture
+1. **No "Start Dialer" button** — The Dialer tab shows a list selection but no prominent action to begin dialing
+2. **Caller ID selection not tied to locations** — Currently reads from `app_settings` / `localStorage` with a manual phone number input, ignoring the Telnyx numbers already provisioned on locations
+3. **East Coast number vs porting number are separate** — Users need to see which location number they're calling through, select it on the Call Center page, and also manage it in Settings
 
-```text
-┌─────────────────────────────────────────────────────────────┐
-│  PowerDialerSession (new component, replaces active call UI)│
-│                                                             │
-│  ┌──────────────────┐  ┌──────────────────────────────────┐ │
-│  │  Call Controls    │  │  MiniLeadPanel                   │ │
-│  │  - Timer          │  │  - Contact name/phone/email      │ │
-│  │  - Hangup         │  │  - Address + map pin             │ │
-│  │  - Mute/Unmute    │  │  - Lead status / qualification   │ │
-│  │  - Next (skip)    │  │  - Estimated value / roof type   │ │
-│  │  - Disposition    │  │  - Recent notes (editable)       │ │
-│  │  - Caller ID      │  │  - Recent call history (3 max)   │ │
-│  └──────────────────┘  │  - Quick SMS / Email buttons      │ │
-│                         └──────────────────────────────────┘ │
-│  ┌──────────────────────────────────────────────────────────┐│
-│  │  Queue Bar: "3 of 47" ← current position + progress     ││
-│  └──────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
+## Changes
 
-## Database Changes
+### 1. Add "Start Dialer" button to Call Center Dialer tab
 
-### 1. Add `contact_id` to `dialer_list_items`
-```sql
-ALTER TABLE dialer_list_items ADD COLUMN contact_id UUID REFERENCES contacts(id);
-CREATE INDEX idx_dialer_list_items_contact_id ON dialer_list_items(contact_id);
-```
-This links list items to CRM contacts so we can pull full lead details.
+In `CallCenterPage.tsx`, add a prominent "Start Dialer" button next to "Build List" in the header. When clicked (and a list is selected), it sets the `selectedListId` and switches to the dialer tab. If no list is selected, prompt to pick one first.
 
-### 2. Add `list_item_id` to `dialer_list_items` (if not exists on `calls`)
-The `calls` table already has `campaign_id` -- verify `list_item_id` exists (migration defined it). If not, add it.
+Also add a **caller ID selector** dropdown in the Dialer tab header area that loads location phone numbers from the `locations` table (where `telnyx_phone_number IS NOT NULL`). This shows location name + number (e.g., "East Coast — (239) 919-4485") with a porting badge if applicable.
 
-## Frontend Changes
+### 2. Pass selected caller ID to `CallCenterLiveDialer`
 
-### 1. New: `PowerDialerSession.tsx`
-Full-screen session component that takes over when a campaign starts. Contains:
+Add a `callerId` prop to `CallCenterLiveDialer`. The `handleCall` function in that component currently calls `telnyx-dial` without specifying a `location_id` — update it to pass the selected location's ID so the edge function uses the correct from-number.
 
-**Call engine** — wraps `telnyxService`:
-- On mount, initializes Telnyx WebRTC via `telnyxService.initialize()`
-- Fetches the full queue of pending `dialer_list_items` for the campaign's list
-- Loads the first item, looks up its `contact_id` → fetches contact + pipeline_entry data
-- Calls `telnyxService.makeCall(phone, contactId)` using the configured caller ID
-- On call end → shows disposition dialog → on save → marks item as `called` → auto-loads next item and dials
+### 3. New Settings tab: "Dialer" under Communications
 
-**Auto-cycle flow:**
-1. Load next pending item from queue
-2. Fetch contact + lead details (via `contact_id` join to `pipeline_entries`)
-3. Display in MiniLeadPanel
-4. Auto-dial after 2-second preview (configurable)
-5. On hangup → disposition → next
+Register a `dialer` settings tab in the database and add to `TAB_TO_CATEGORY` as `communications`.
 
-### 2. New: `MiniLeadPanel.tsx`
-Compact lead detail card showing:
-- Contact: name, phone, email, address
-- Lead: status, priority, estimated value, roof type, assigned rep
-- Notes: recent notes with inline add-note textarea
-- History: last 3 calls/SMS for this contact
-- Actions: Quick SMS, Quick Email buttons
+Create `DialerSettings.tsx` with:
+- **Outbound Caller ID** section: Lists all locations with Telnyx numbers, shows number + porting status, lets user set a **default** outbound number (saved to `app_settings` key `default_dialer_caller_id` with `location_id`)
+- **Location Number Management** link: Button that navigates to Location Management settings for editing numbers
+- This keeps the two locations (Call Center page + Settings) in sync via the same `locations` table data
 
-Data source: single query joining `contacts` → `pipeline_entries` via `contact_id`.
+### 4. Update `CallCenterLiveDialer` to use location-based caller ID
 
-### 3. Modify: `Dialer.tsx`
-- When `startCampaign()` is called, set `isSessionActive = true` which renders `PowerDialerSession` instead of the tabs UI
-- Pass campaign, list_id, caller_id to the session
-- Session has a "Stop Campaign" button that returns to the tabs view
-
-### 4. Modify: `telnyxService.ts`
-- Add `muteCall()` / `unmuteCall()` methods (call `this.currentCall.muteAudio()`)
-- Surface the Telnyx `callerNumber` from config so the dialer can pass it
-
-## Edge Function: No new functions needed
-`telnyx-mint-jwt` already exists and mints WebRTC tokens. The `telnyxService` already calls it.
+Instead of the edge function falling back through location lookup, the dialer explicitly passes `location_id` from the selected caller ID. The `telnyx-dial` edge function already supports `location_id` — just need to pass it.
 
 ## Files to Create
+
 | File | Purpose |
 |------|---------|
-| `src/features/communication/components/PowerDialerSession.tsx` | Session orchestrator with call engine + queue management |
-| `src/features/communication/components/MiniLeadPanel.tsx` | Compact lead details panel synced to current contact |
+| `src/components/call-center/DialerSettings.tsx` | Settings panel for default outbound number + location number overview |
 
 ## Files to Modify
+
 | File | Change |
 |------|--------|
-| `src/features/communication/components/Dialer.tsx` | Add session state, render `PowerDialerSession` when active |
-| `src/services/telnyxService.ts` | Add `muteCall()`, `unmuteCall()` |
-| Migration SQL | Add `contact_id` column to `dialer_list_items` |
+| `src/pages/CallCenterPage.tsx` | Add "Start Dialer" button, caller ID selector dropdown (fetches locations with telnyx numbers), pass `callerId`/`locationId` to `CallCenterLiveDialer` |
+| `src/components/call-center/CallCenterLiveDialer.tsx` | Accept `callerId` and `locationId` props, pass `location_id` to `telnyx-dial` edge function |
+| `src/features/settings/components/Settings.tsx` | Add `dialer: "communications"` to `TAB_TO_CATEGORY`, add `case "dialer"` rendering `DialerSettings` |
+
+## Database
+
+Insert into `settings_tabs`:
+```sql
+INSERT INTO settings_tabs (tab_key, label, icon, description, is_active, required_role, display_order)
+VALUES ('dialer', 'Dialer', 'Phone', 'Configure outbound caller ID and dialing preferences', true, 'owner', 45);
+```
 
