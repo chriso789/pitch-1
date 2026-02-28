@@ -1,59 +1,59 @@
 
 
-# Fix: Trade sections not restoring when editing saved estimates
+# Fix: Adding trade wipes existing items + Remove stale editing UI
 
-## Problem
-The estimate `OBR-00036-il2y` was saved before the `trade_type`/`trade_label` fix was applied. The DB shows gutter items (`Install 6" Gutter`, `Install Aluminum Fascia`, `Install Aluminum Soffit`) in the `labor` array with **no** `trade_type` or `trade_label` fields. When `loadEstimateForEditing` runs, the restoration logic finds zero items with trade metadata, so `tradeTypesInEstimate.size` stays at 1 or 0, and everything renders as single-trade (merged).
+## Two Issues
 
-Additionally, when `isEditingLoadedEstimate` is true:
-1. The merge effect (line 548) is skipped, so `tradeLineItems` changes are ignored
-2. `handleSaveNewItem` adds to flat `lineItems` (line 787) but NOT to `tradeLineItems`, so new items don't appear under their trade section
+### Issue 1: Adding a trade clears existing line items
+When editing a loaded single-trade estimate, items live in `lineItems` state only (not in `tradeLineItems`). Adding a new trade creates a new `tradeSections` entry, which triggers the merge effect. The merge flattens `tradeLineItems` (which has no entries for the original roofing items) into `lineItems`, wiping everything.
 
-## Fix (2 changes in `MultiTemplateSelector.tsx`)
+**Fix in `MultiTemplateSelector.tsx`:**
 
-### Change 1: Restore `tradeLineItems` for editing mode
-In `loadEstimateForEditing`, after restoring `tradeSections`, also need to **re-set `lineItems`** after populating `tradeLineItems` — because the merge effect is skipped in edit mode. Instead, we should **not skip** the merge when we explicitly restored trade sections.
+In the "Add Trade" `onClick` handler (~line 2347-2354), before adding the new section, migrate existing `lineItems` into `tradeLineItems` under the current roofing section:
 
-Update the merge effect guard (line 546-554): Instead of blanket-skipping when `isEditingLoadedEstimate`, add a flag like `tradeRestored` that gets set to `true` when tradeSections are restored from saved data. When `tradeRestored` is true, allow the merge to run once.
-
-Simpler approach: After setting `tradeLineItems` in `loadEstimateForEditing`, set `isEditingLoadedEstimate` to `false` briefly so the merge runs, then back to `true`. 
-
-**Simplest approach**: Just don't rely on the merge effect at all for loaded estimates. The `SectionedLineItemsTable` already receives `materialItems` and `laborItems` which are derived from `lineItems`. The multi-trade grouping in the table uses `item.trade_type` to filter items into groups. So the real fix is: **the items themselves need `trade_type`**.
-
-### Change 2: `handleSaveNewItem` — also update `tradeLineItems` when editing loaded estimate
-Line 781: The condition `!isEditingLoadedEstimate` prevents adding to `tradeLineItems`. Remove this guard so items always go into the per-trade bucket, and trigger a one-time merge.
-
-## Actual minimal fix
-
-### `MultiTemplateSelector.tsx` — `loadEstimateForEditing` (~line 610-637)
-
-When `tradeTypesInEstimate.size > 1`, after setting `tradeLineItems`, also update the flat `lineItems` to ensure every item has its `trade_type` tag (they should already from DB, but this handles edge cases).
-
-When `tradeTypesInEstimate.size <= 1` but `tradeTypesInEstimate.size === 1`, still restore that single trade section so the system knows the trade context (this handles loading a single-trade estimate correctly).
-
-**The real fix for THIS estimate**: The data was saved without trade metadata. We need to handle this in `loadEstimateForEditing` by detecting items that came from a multi-trade context but lost their metadata. Since the user chose "no auto-tagging," the only way to fix this specific estimate is to re-add the gutter trade, re-assign items, and re-save.
-
-BUT — we can prevent this from happening again going forward. The `handleSaveLineItemChanges` fix (already applied) ensures `trade_type`/`trade_label` are saved. The remaining bug is:
-
-### Fix A: `handleSaveNewItem` — allow `tradeLineItems` update in edit mode
+```typescript
+onClick={() => {
+  // Migrate existing lineItems into tradeLineItems for the current trade
+  const currentRoofingSection = tradeSections.find(t => t.tradeType === 'roofing') || tradeSections[0];
+  if (currentRoofingSection && lineItems.length > 0) {
+    setTradeLineItems(prev => ({
+      ...prev,
+      [currentRoofingSection.id]: lineItems.map(item => ({
+        ...item,
+        trade_type: item.trade_type || currentRoofingSection.tradeType,
+        trade_label: item.trade_label || currentRoofingSection.label,
+      })),
+    }));
+  }
+  
+  const newSection = { id: crypto.randomUUID(), tradeType: trade.value, templateId: '', label: trade.label, isCollapsed: false };
+  setTradeSections(prev => [...prev, newSection]);
+  setTradeLineItems(prev => ({ ...prev, [newSection.id]: [] }));
+}
 ```
-Line 781: if (targetTradeSection && !isEditingLoadedEstimate) {
-Change to: if (targetTradeSection) {
-```
-This ensures items added while editing a loaded estimate also go into `tradeLineItems`.
 
-### Fix B: Allow merge effect to run after trade restoration
-```
-Line 548: if (isEditingLoadedEstimate) return;
-Change to: if (isEditingLoadedEstimate && Object.keys(tradeLineItems).length === 0) return;
-```
-When `tradeLineItems` has entries (from restoration), allow the merge to update `lineItems` with proper trade tags.
+### Issue 2: Remove "Recalculate" and "Create New Estimate" buttons when editing
+The bar showing "Viewing saved estimate. Select an action below." with Recalculate/Create New Estimate is confusing during editing. The system should auto-recalculate as items change, and editing mode should feel seamless.
 
-### Fix C: In `loadEstimateForEditing`, when restoring trade sections, set `isEditingLoadedEstimate` AFTER the trade state is set
-Move line 591 (`setIsEditingLoadedEstimate(true)`) to AFTER the trade restoration block (after line 636), so the merge effect can process the initial `tradeLineItems` before being locked out.
+**Fix:** Replace the entire block (~lines 2267-2309) with a simple "Editing estimate [number]" indicator, or remove it entirely. The Save button already handles persistence.
 
-## Implementation order
-1. Move `setIsEditingLoadedEstimate(true)` to after trade restoration (Fix C)
-2. Remove `!isEditingLoadedEstimate` guard from `handleSaveNewItem` (Fix A)  
-3. Update merge effect guard to allow merging when `tradeLineItems` has data (Fix B)
+Replace:
+```tsx
+{trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
+  <div className="flex items-center ...">
+    ...Viewing saved estimate...Recalculate...Create New Estimate...
+  </div>
+)}
+```
+
+With:
+```tsx
+{trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
+  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+    <p className="text-sm text-green-700">
+      Editing estimate {editingEstimateNumber}. Changes auto-save when you click Save Estimate.
+    </p>
+  </div>
+)}
+```
 
