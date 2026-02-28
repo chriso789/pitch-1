@@ -490,18 +490,22 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     if (editEstimateId && editEstimateId !== existingEstimateId) {
       // Reset previous editing state before loading new estimate
       setEditEstimateProcessed(true);
-      setLineItems([]); // Clear old line items
+      setLineItems([]);
       setFixedPrice(null);
       setEstimateDisplayName('');
       setEstimatePricingTier(null);
+      // Reset trade state before loading new estimate
+      setTradeSections([]);
+      setTradeLineItems({});
       
       loadEstimateForEditing(editEstimateId);
       
-      // Clear the editEstimate URL param after loading (but keep showPreview for now)
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('editEstimate');
-      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
-      window.history.replaceState({}, '', newUrl);
+      // Clear the editEstimate URL param after loading using React Router
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('editEstimate');
+        return next;
+      }, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, existingEstimateId]);
@@ -533,11 +537,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setEstimateDisplayName('');
       setLineItems([]);
       resetToOriginal();
-      // Clear editEstimate from URL
-      const newParams = new URLSearchParams(searchParams);
-      newParams.delete('editEstimate');
-      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
-      window.history.replaceState({}, '', newUrl);
+      // Clear editEstimate from URL using React Router
+      setSearchParams(prev => {
+        const next = new URLSearchParams(prev);
+        next.delete('editEstimate');
+        return next;
+      }, { replace: true });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clearEditingEstimateId]);
@@ -647,9 +652,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         repCommissionPercent: estimate.rep_commission_percent || 5,
       });
 
-      // Handle fixed price
+      // Handle fixed price - explicitly clear if not fixed price
       if (estimate.is_fixed_price && estimate.fixed_selling_price) {
         setFixedPrice(estimate.fixed_selling_price);
+      } else {
+        setFixedPrice(null);
       }
 
       // Load display name and pricing tier from the estimate
