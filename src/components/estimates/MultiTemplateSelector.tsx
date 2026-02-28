@@ -645,11 +645,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Mark as editing AFTER trade state is set so merge effect can process tradeLineItems once
       setIsEditingLoadedEstimate(true);
 
-      // Set pricing config from the estimate
+      // Set pricing config from the estimate - use target margin from calculation_metadata, not realized profit
+      const calcMetadata = estimate.calculation_metadata as any;
+      const targetMargin = calcMetadata?.pricing_config?.profitMarginPercent 
+        ?? estimate.actual_profit_percent 
+        ?? 30;
       setConfig({
         overheadPercent: estimate.overhead_percent || 15,
-        profitMarginPercent: estimate.actual_profit_percent || 30,
+        profitMarginPercent: targetMargin,
         repCommissionPercent: estimate.rep_commission_percent || 5,
+        salesTaxEnabled: (estimate.sales_tax_rate || 0) > 0,
+        salesTaxRate: estimate.sales_tax_rate || 0,
+        ...(calcMetadata?.pricing_config?.commissionStructure ? { commissionStructure: calcMetadata.pricing_config.commissionStructure } : {}),
       });
 
       // Handle fixed price - explicitly clear if not fixed price

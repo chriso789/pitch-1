@@ -397,16 +397,24 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     
     // In unified mode, combine materials + labor so all trades appear in scope
     const scopeItems = opts.showUnifiedItems
-      ? [...materialItems, ...laborItems].sort((a, b) => {
-          // Sort by trade_type first, then sort_order, then name
-          const tradeA = (a as any).trade_type || 'roofing';
-          const tradeB = (b as any).trade_type || 'roofing';
-          if (tradeA !== tradeB) return tradeA.localeCompare(tradeB);
-          const orderA = (a as any).sort_order ?? 0;
-          const orderB = (b as any).sort_order ?? 0;
-          if (orderA !== orderB) return orderA - orderB;
-          return (a.item_name || '').localeCompare(b.item_name || '');
-        })
+      ? (() => {
+          const combined = [...materialItems, ...laborItems];
+          // Build trade order map from first appearance (preserves builder order)
+          const tradeOrder = new Map<string, number>();
+          combined.forEach(item => {
+            const trade = (item as any).trade_type || 'roofing';
+            if (!tradeOrder.has(trade)) tradeOrder.set(trade, tradeOrder.size);
+          });
+          return combined.sort((a, b) => {
+            const tradeA = (a as any).trade_type || 'roofing';
+            const tradeB = (b as any).trade_type || 'roofing';
+            if (tradeA !== tradeB) return (tradeOrder.get(tradeA) ?? 0) - (tradeOrder.get(tradeB) ?? 0);
+            const orderA = (a as any).sort_order ?? 0;
+            const orderB = (b as any).sort_order ?? 0;
+            if (orderA !== orderB) return orderA - orderB;
+            return (a.item_name || '').localeCompare(b.item_name || '');
+          });
+        })()
       : materialItems;
     
     // Chunk scope items for pagination
