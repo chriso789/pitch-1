@@ -1639,6 +1639,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          trade_type: item.trade_type,
+          trade_label: item.trade_label,
         })),
         labor: laborItems.map(item => ({
           id: item.id,
@@ -1652,6 +1654,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          trade_type: item.trade_type,
+          trade_label: item.trade_label,
         })),
       };
 
