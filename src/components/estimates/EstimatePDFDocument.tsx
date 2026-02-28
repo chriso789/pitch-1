@@ -395,8 +395,22 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   const pages = useMemo(() => {
     const pageList: React.ReactNode[] = [];
     
-    // Chunk material items for pagination
-    const itemChunks = chunkItems(materialItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
+    // In unified mode, combine materials + labor so all trades appear in scope
+    const scopeItems = opts.showUnifiedItems
+      ? [...materialItems, ...laborItems].sort((a, b) => {
+          // Sort by trade_type first, then sort_order, then name
+          const tradeA = (a as any).trade_type || 'roofing';
+          const tradeB = (b as any).trade_type || 'roofing';
+          if (tradeA !== tradeB) return tradeA.localeCompare(tradeB);
+          const orderA = (a as any).sort_order ?? 0;
+          const orderB = (b as any).sort_order ?? 0;
+          if (orderA !== orderB) return orderA - orderB;
+          return (a.item_name || '').localeCompare(b.item_name || '');
+        })
+      : materialItems;
+    
+    // Chunk scope items for pagination
+    const itemChunks = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
     
     // Count total pages for page numbering
     let totalPageCount = itemChunks.length || 1; // At least 1 for main content
@@ -506,7 +520,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     }
 
     return { pages: pageList, totalPages: totalPageCount, signaturePageIdx };
-  }, [materialItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent]);
+  }, [materialItems, laborItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent]);
 
   const commonProps = {
     companyLogo,
@@ -654,8 +668,37 @@ const ItemsContinuationPage: React.FC<{
   );
 };
 
-// Items Table Component
+// Items Table Component - with trade grouping support
 const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions }> = ({ items, opts }) => {
+  // Group items by trade for section headers
+  const groupedByTrade = useMemo(() => {
+    const groups: { tradeLabel: string; tradeType: string; items: LineItem[] }[] = [];
+    const tradeMap = new Map<string, LineItem[]>();
+    const tradeLabelMap = new Map<string, string>();
+    
+    items.forEach(item => {
+      const tradeType = (item as any).trade_type || 'roofing';
+      const tradeLabel = (item as any).trade_label || tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
+      if (!tradeMap.has(tradeType)) {
+        tradeMap.set(tradeType, []);
+        tradeLabelMap.set(tradeType, tradeLabel);
+      }
+      tradeMap.get(tradeType)!.push(item);
+    });
+    
+    tradeMap.forEach((tradeItems, tradeType) => {
+      groups.push({
+        tradeType,
+        tradeLabel: tradeLabelMap.get(tradeType) || tradeType,
+        items: tradeItems.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+      });
+    });
+    
+    return groups;
+  }, [items]);
+
+  const hasMultipleTrades = groupedByTrade.length > 1;
+
   return (
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
@@ -675,28 +718,44 @@ const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions }> = (
           </tr>
         </thead>
         <tbody>
-          {items.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)).map((item, idx) => (
-            <tr key={item.id || idx} className="border-b border-gray-100">
-              <td className="py-1.5">
-                <div className="font-medium text-gray-900">{item.item_name}</div>
-                {opts.showItemDescriptions && item.description && (
-                  <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
-                    {item.description}
-                  </div>
-                )}
-                {item.notes && (
-                  <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
-                    {item.notes}
-                  </div>
-                )}
-              </td>
-              {opts.showLineItemQuantities && (
-                <>
-                  <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-                  <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
-                </>
+          {groupedByTrade.map((group) => (
+            <React.Fragment key={group.tradeType}>
+              {hasMultipleTrades && (
+                <tr>
+                  <td 
+                    colSpan={opts.showLineItemQuantities ? 3 : 1} 
+                    className="pt-3 pb-1"
+                  >
+                    <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
+                      {group.tradeLabel}
+                    </div>
+                  </td>
+                </tr>
               )}
-            </tr>
+              {group.items.map((item, idx) => (
+                <tr key={item.id || idx} className="border-b border-gray-100">
+                  <td className="py-1.5">
+                    <div className="font-medium text-gray-900">{item.item_name}</div>
+                    {opts.showItemDescriptions && item.description && (
+                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                        {item.description}
+                      </div>
+                    )}
+                    {item.notes && (
+                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+                        {item.notes}
+                      </div>
+                    )}
+                  </td>
+                  {opts.showLineItemQuantities && (
+                    <>
+                      <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+                      <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </React.Fragment>
           ))}
         </tbody>
       </table>
