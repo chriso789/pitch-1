@@ -38,6 +38,9 @@ interface SectionedLineItemsTableProps {
   onDeleteItem?: (id: string) => void;
   onResetItem?: (id: string) => void;
   onAddItem?: (type: 'material' | 'labor') => void;
+  onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void;
+  /** Active trade types declared by the parent — ensures multi-trade layout even for trades with zero items */
+  activeTrades?: Array<{ type: string; label: string }>;
   editable?: boolean;
   // Sales tax from company settings (read-only)
   salesTaxEnabled?: boolean;
@@ -50,6 +53,7 @@ interface SectionedLineItemsTableProps {
   // Inline add item form props
   isAddingItem?: boolean;
   addingItemType?: 'material' | 'labor';
+  addingTradeType?: string;
   newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string };
   onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string }) => void;
   onSaveNewItem?: () => void;
@@ -78,6 +82,8 @@ export function SectionedLineItemsTable({
   onDeleteItem,
   onResetItem,
   onAddItem,
+  onAddTradeItem,
+  activeTrades,
   editable = true,
   salesTaxEnabled = false,
   salesTaxRate = 0,
@@ -87,6 +93,7 @@ export function SectionedLineItemsTable({
   className = '',
   isAddingItem = false,
   addingItemType,
+  addingTradeType,
   newItem,
   onNewItemChange,
   onSaveNewItem,
@@ -366,16 +373,22 @@ export function SectionedLineItemsTable({
 
   // Group items by trade_type if multi-trade items are present
   const hasMultipleTrades = useMemo(() => {
+    // If parent declares multiple active trades, use that (even if some have zero items)
+    if (activeTrades && activeTrades.length > 1) return true;
     const allItems = [...materialItems, ...laborItems];
     const tradeTypes = new Set(allItems.map(i => i.trade_type).filter(Boolean));
     return tradeTypes.size > 1;
-  }, [materialItems, laborItems]);
+  }, [materialItems, laborItems, activeTrades]);
 
   // Get unique trade groups in order
   const tradeGroups = useMemo(() => {
     if (!hasMultipleTrades) return null;
     const allItems = [...materialItems, ...laborItems];
     const seen = new Map<string, string>(); // trade_type -> trade_label
+    // Start with activeTrades from parent to ensure all trades are represented
+    if (activeTrades) {
+      activeTrades.forEach(t => seen.set(t.type, t.label));
+    }
     allItems.forEach(item => {
       if (item.trade_type && !seen.has(item.trade_type)) {
         seen.set(item.trade_type, item.trade_label || item.trade_type);
@@ -458,6 +471,102 @@ export function SectionedLineItemsTable({
                         group.labor.reduce((sum, i) => sum + i.line_total, 0)
                       )}
                     </>
+                  )}
+
+                  {/* Per-trade Add Item buttons */}
+                  {editable && onAddTradeItem && (
+                    <TableRow className="hover:bg-muted/30">
+                      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                        <div className="flex gap-2">
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => onAddTradeItem(group.type, 'material')}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Material Item
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => onAddTradeItem(group.type, 'labor')}
+                            className="text-muted-foreground hover:text-foreground"
+                          >
+                            <Plus className="h-4 w-4 mr-2" />
+                            Add Labor Item
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  )}
+
+                  {/* Inline Add Form for this trade */}
+                  {isAddingItem && addingTradeType === group.type && newItem && onNewItemChange && (
+                    <TableRow className="bg-primary/5 border-2 border-primary/30">
+                      <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                        <div className="flex items-end gap-2 flex-wrap">
+                          <div className="flex-1 min-w-[200px]">
+                            <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : 'Labor'})</Label>
+                            <MaterialAutocomplete
+                              value={newItem.item_name}
+                              onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                              onSelectMaterial={(material) => {
+                                onNewItemChange({
+                                  ...newItem,
+                                  item_name: material.name,
+                                  unit: material.uom,
+                                  unit_cost: material.base_cost,
+                                  material_id: material.id,
+                                });
+                              }}
+                              placeholder="Search items..."
+                              autoFocus
+                            />
+                          </div>
+                          <div className="w-32">
+                            <Label className="text-xs">Notes</Label>
+                            <Input
+                              value={newItem.notes || ''}
+                              onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                              placeholder="e.g. details"
+                            />
+                          </div>
+                          <div className="w-20">
+                            <Label className="text-xs">Qty</Label>
+                            <Input
+                              type="number"
+                              value={newItem.qty}
+                              onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                            />
+                          </div>
+                          <div className="w-16">
+                            <Label className="text-xs">Unit</Label>
+                            <Input
+                              value={newItem.unit}
+                              onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                              placeholder="ea"
+                            />
+                          </div>
+                          <div className="w-24">
+                            <Label className="text-xs">Unit Cost</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={newItem.unit_cost}
+                              onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                            />
+                          </div>
+                          <Button onClick={onSaveNewItem} size="sm">
+                            <Check className="h-4 w-4 mr-1" />
+                            Add
+                          </Button>
+                          <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
                   )}
                 </React.Fragment>
               ))}
