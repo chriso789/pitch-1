@@ -545,7 +545,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Merge all per-trade line items into the unified lineItems array
   useEffect(() => {
     // Skip merging when editing a loaded estimate (items come from DB)
-    if (isEditingLoadedEstimate) return;
+    if (isEditingLoadedEstimate && Object.keys(tradeLineItems).length === 0) return;
     const merged = Object.values(tradeLineItems).flat();
     if (merged.length > 0 || lineItems.length > 0) {
       setLineItems(merged);
@@ -588,7 +588,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Set the existing estimate ID to enable save/update mode
       setExistingEstimateId(estimateId);
       setEditingEstimateNumber(estimate.estimate_number);
-      setIsEditingLoadedEstimate(true); // Mark as editing loaded estimate to prevent auto-recalculation
+      // setIsEditingLoadedEstimate is set AFTER trade restoration below
 
       // Load line items from the estimate
       const lineItemsData = estimate.line_items as any;
@@ -632,10 +632,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             restoredSections.forEach(section => {
               newTradeLineItems[section.id] = allItems.filter(i => i.trade_type === section.tradeType);
             });
-            setTradeLineItems(newTradeLineItems);
+          setTradeLineItems(newTradeLineItems);
           }
         }
       }
+
+      // Mark as editing AFTER trade state is set so merge effect can process tradeLineItems once
+      setIsEditingLoadedEstimate(true);
 
       // Set pricing config from the estimate
       setConfig({
@@ -778,7 +781,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     };
     
     // Add to the correct per-trade bucket so merge logic picks it up
-    if (targetTradeSection && !isEditingLoadedEstimate) {
+    if (targetTradeSection) {
       setTradeLineItems(prev => ({
         ...prev,
         [targetTradeSection.id]: [...(prev[targetTradeSection.id] || []), item]
