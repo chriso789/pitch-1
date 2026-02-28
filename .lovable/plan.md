@@ -1,33 +1,30 @@
 
 
-# Fix: Trade grouping in line items table + Move add-ons to Preview panel
+# Fix: Added trades (Gutters) not showing in line items table
 
-## Two Issues
+## Root Cause
 
-### Issue 1: Added trades not showing as categories in the line items table
-When manually adding items via "Add Material Item" / "Add Labor Item", `handleSaveNewItem` (line 716-726) creates items WITHOUT `trade_type` or `trade_label`. Since the `SectionedLineItemsTable` only activates multi-trade grouping when `tradeTypes.size > 1`, items missing `trade_type` break the grouping.
+Two related bugs:
 
-**Fix in `MultiTemplateSelector.tsx`:**
-- In `handleSaveNewItem`, determine the current active trade context (from the first trade section with a selected template, or the roofing default) and set `trade_type` + `trade_label` on the new item
-- Also update the item into the correct `tradeLineItems` bucket instead of appending to the flat `lineItems` directly
+1. **Blank Template for non-roofing trades produces zero items.** When a user selects "Blank Template" for Gutters, `handleTradeTemplateSelect` sets `tradeLineItems[guttersSectionId] = []`. Since there are zero gutter-tagged items, the merge produces only roofing items, and `tradeTypes.size` stays at 1 — no multi-trade headers appear.
 
-### Issue 2: Estimate Add-ons panel should be in Preview, not in the builder
-The `EstimateAddonsPanel` (Cover Page, Fine Print, Photos, Measurements, Warranty, Smart Sign) is currently rendered inline in the builder between line items and the breakdown card. These controls already exist in the `EstimatePreviewPanel`'s left sidebar under "Extra Pages". The builder should NOT show them — they belong in the Preview workflow only.
+2. **"Add Item" buttons always tag items as the first trade.** `handleSaveNewItem` picks `tradeSections.find(t => !!t.templateId)` which is always Roofing (it's first). Even if the user intended to add a gutter item, it gets tagged `trade_type: 'roofing'`.
 
-**Fix in `MultiTemplateSelector.tsx`:**
-- Remove the `EstimateAddonsPanel` render block (lines 2385-2393)
-- Remove the `EstimateAddonsPanel` import
-- Remove the `pdfOptions` state since it's only used by the add-ons panel (the Preview panel manages its own options state internally)
+3. **In multi-trade mode, "Add Material/Labor Item" buttons don't render.** The `SectionedLineItemsTable` only renders the "Add" buttons in the single-trade `else` branch (lines 475-488), never inside the multi-trade `tradeGroups.map()` loop.
 
-## Files to Change
+## Plan
 
-### `src/components/estimates/MultiTemplateSelector.tsx`
-1. **Remove** the `EstimateAddonsPanel` import and its render block (lines 2385-2393)
-2. **Update `handleSaveNewItem`** to include `trade_type` and `trade_label` from the active trade section, and push item into the correct `tradeLineItems` bucket
-3. Clean up unused `pdfOptions` state if no longer referenced elsewhere
+### File 1: `src/components/estimates/SectionedLineItemsTable.tsx`
 
-### No changes needed to:
-- `EstimateAddonsPanel.tsx` — keep the component, it may be reused later
-- `SectionedLineItemsTable.tsx` — grouping logic is already correct
-- `EstimatePreviewPanel.tsx` — already has all toggle controls in its sidebar
+- Add a new prop: `onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void`
+- Inside the multi-trade `tradeGroups.map()` loop, after each trade's labor section, render "Add Material Item" and "Add Labor Item" buttons that call `onAddTradeItem(group.type, 'material'|'labor')`
+- This ensures each trade section has its own add buttons
+
+### File 2: `src/components/estimates/MultiTemplateSelector.tsx`
+
+- Add state: `activeAddTradeType` to track which trade the user is adding an item to
+- Add handler: `handleAddTradeLineItem(tradeType: string, type: 'material' | 'labor')` that sets `activeAddTradeType` and opens the inline add form
+- Update `handleSaveNewItem`: when `activeAddTradeType` is set, use that trade's section instead of `tradeSections.find(t => !!t.templateId)` — ensuring the item gets the correct `trade_type` and goes into the correct `tradeLineItems` bucket
+- Pass the new `onAddTradeItem` prop down to `SectionedLineItemsTable`
+- Also fix `handleDeleteLineItem` to remove from `tradeLineItems` (not just `lineItems`), so deleted items don't get restored by the merge effect
 
