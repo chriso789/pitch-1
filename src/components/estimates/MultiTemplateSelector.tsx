@@ -27,7 +27,7 @@ import { EstimatePDFTemplate } from './EstimatePDFTemplate';
 import { EstimatePDFDocument } from './EstimatePDFDocument';
 import { PDFExportDialog } from './PDFExportDialog';
 import { EstimatePreviewPanel } from './EstimatePreviewPanel';
-import { EstimateAddonsPanel } from './EstimateAddonsPanel';
+// EstimateAddonsPanel removed from builder - controls live in EstimatePreviewPanel sidebar
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
@@ -713,6 +713,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       0
     );
 
+    // Determine trade context from the first trade section that has a template selected, or fall back to the first section
+    const activeTradeSection = tradeSections.find(t => !!t.templateId) || tradeSections[0];
+    const tradeType = activeTradeSection?.tradeType || 'roofing';
+    const tradeLabel = activeTradeSection?.label || 'Roofing';
+
     const item: LineItem = {
       id: crypto.randomUUID(),
       item_name: newItem.item_name,
@@ -722,10 +727,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       line_total: newItem.qty * newItem.unit_cost,
       item_type: newItemType,
       is_override: false,
-      sort_order: maxSortOrder + 1
+      sort_order: maxSortOrder + 1,
+      trade_type: tradeType,
+      trade_label: tradeLabel,
     };
     
-    setLineItems([...lineItems, item]);
+    // Add to the correct per-trade bucket so merge logic picks it up
+    if (activeTradeSection && !isEditingLoadedEstimate) {
+      setTradeLineItems(prev => ({
+        ...prev,
+        [activeTradeSection.id]: [...(prev[activeTradeSection.id] || []), item]
+      }));
+    } else {
+      setLineItems([...lineItems, item]);
+    }
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
     setIsAddingItem(false);
     toast({
@@ -2382,15 +2397,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Card>
       )}
 
-      {/* Estimate Add-ons Panel - for fine print, photos, etc. */}
-      {shouldShowTemplateContent && lineItems.length > 0 && (
-        <EstimateAddonsPanel
-          pipelineEntryId={pipelineEntryId}
-          pdfOptions={pdfOptions}
-          onOptionsChange={(changes) => setPdfOptions(prev => ({ ...prev, ...changes }))}
-          className="mb-4"
-        />
-      )}
+      {/* Add-ons (Cover Page, Fine Print, etc.) are managed in the Preview panel sidebar */}
 
       {/* Estimate Breakdown Card */}
       {shouldShowTemplateContent && lineItems.length > 0 && (
