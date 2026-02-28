@@ -1,38 +1,33 @@
 
 
-# Add Edit Capability to Saved Manual Measurements
+# Fix: Trade grouping in line items table + Move add-ons to Preview panel
 
-## Problem
-After saving a manual measurement, there's no way to fix typos or errors. Users must delete and re-enter the entire measurement.
+## Two Issues
 
-## Changes
+### Issue 1: Added trades not showing as categories in the line items table
+When manually adding items via "Add Material Item" / "Add Labor Item", `handleSaveNewItem` (line 716-726) creates items WITHOUT `trade_type` or `trade_label`. Since the `SectionedLineItemsTable` only activates multi-trade grouping when `tradeTypes.size > 1`, items missing `trade_type` break the grouping.
 
-### `src/components/measurements/UnifiedMeasurementPanel.tsx`
+**Fix in `MultiTemplateSelector.tsx`:**
+- In `handleSaveNewItem`, determine the current active trade context (from the first trade section with a selected template, or the roofing default) and set `trade_type` + `trade_label` on the new item
+- Also update the item into the correct `tradeLineItems` bucket instead of appending to the flat `lineItems` directly
 
-**MeasurementCard component** — Add an "Edit" button (Pencil icon) that only appears for `manual_entry` source measurements:
-- When clicked, opens a pre-filled `ManualMeasurementDialog` in "edit mode"
-- Pass the existing `saved_tags` values as initial form data
-- Pass the `approvalId` so the save logic updates instead of inserting
+### Issue 2: Estimate Add-ons panel should be in Preview, not in the builder
+The `EstimateAddonsPanel` (Cover Page, Fine Print, Photos, Measurements, Warranty, Smart Sign) is currently rendered inline in the builder between line items and the breakdown card. These controls already exist in the `EstimatePreviewPanel`'s left sidebar under "Extra Pages". The builder should NOT show them — they belong in the Preview workflow only.
 
-**MeasurementCard props** — Add `onEdit` callback, `isManual` boolean derived from `tags.source === 'manual_entry'`
+**Fix in `MultiTemplateSelector.tsx`:**
+- Remove the `EstimateAddonsPanel` render block (lines 2385-2393)
+- Remove the `EstimateAddonsPanel` import
+- Remove the `pdfOptions` state since it's only used by the add-ons panel (the Preview panel manages its own options state internally)
 
-### `src/components/estimates/ManualMeasurementDialog.tsx`
+## Files to Change
 
-Add edit mode support:
-- **New optional props**: `editMode?: boolean`, `approvalId?: string`, `initialValues?: MeasurementFormData`
-- When `initialValues` is provided, pre-fill the form with those values on open
-- When `editMode` is true and `approvalId` is set, the save handler **updates** the existing `measurement_approvals` row (`saved_tags`, `approval_notes`) and the corresponding `pipeline_entries` metadata instead of inserting new records
-- Dialog title changes to "Edit Measurement" in edit mode
-- The existing `roof_measurements` record does NOT need updating (it's historical); only the `measurement_approvals.saved_tags` and pipeline metadata are updated
+### `src/components/estimates/MultiTemplateSelector.tsx`
+1. **Remove** the `EstimateAddonsPanel` import and its render block (lines 2385-2393)
+2. **Update `handleSaveNewItem`** to include `trade_type` and `trade_label` from the active trade section, and push item into the correct `tradeLineItems` bucket
+3. Clean up unused `pdfOptions` state if no longer referenced elsewhere
 
-### `src/components/estimates/ManualMeasurementButton.tsx`
-
-No changes needed — the MeasurementCard will open the dialog directly.
-
-## Flow
-1. User sees saved measurement card with an Edit (pencil) button
-2. Clicks Edit → ManualMeasurementDialog opens pre-filled with current values
-3. User corrects the typo → clicks Save
-4. Dialog updates `measurement_approvals.saved_tags` + `pipeline_entries.metadata` in place
-5. Cache invalidated, card refreshes with corrected values
+### No changes needed to:
+- `EstimateAddonsPanel.tsx` — keep the component, it may be reused later
+- `SectionedLineItemsTable.tsx` — grouping logic is already correct
+- `EstimatePreviewPanel.tsx` — already has all toggle controls in its sidebar
 
