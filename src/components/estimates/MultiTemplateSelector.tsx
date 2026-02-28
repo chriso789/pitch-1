@@ -2264,50 +2264,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                         disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
                       />
 
-                      {/* Show note when editing roofing trade */}
-                      {trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
-                        <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
-                          <p className="text-sm text-muted-foreground">
-                            Viewing saved estimate. Select an action below.
-                          </p>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                setIsEditingLoadedEstimate(false);
-                                fetchLineItems(selectedTemplateId);
-                                toast({
-                                  title: 'Recalculating',
-                                  description: 'Line items recalculated from template measurements',
-                                });
-                              }}
-                            >
-                              <RotateCcw className="h-4 w-4 mr-1" />
-                              Recalculate
-                            </Button>
-                            <Button 
-                              variant="default" 
-                              size="sm"
-                              onClick={() => {
-                                setIsCreatingNewEstimate(true);
-                                setIsEditingLoadedEstimate(false);
-                                setSelectedTemplateId('');
-                                setLineItems([]);
-                                setExistingEstimateId(null);
-                                setEditingEstimateNumber(null);
-                                toast({
-                                  title: 'Ready for New Estimate',
-                                  description: 'Select a template to create a new estimate',
-                                });
-                              }}
-                            >
-                              <Plus className="h-4 w-4 mr-1" />
-                              Create New Estimate
-                            </Button>
-                          </div>
-                        </div>
-                      )}
 
                       {/* Hint for roofing when creating new */}
                       {trade.tradeType === 'roofing' && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
