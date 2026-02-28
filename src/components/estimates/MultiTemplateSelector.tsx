@@ -2265,46 +2265,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
                       {/* Show note when editing roofing trade */}
                       {trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
-                        <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
-                          <p className="text-sm text-muted-foreground">
-                            Viewing saved estimate. Select an action below.
+                        <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                          <p className="text-sm text-green-700">
+                            ✏️ Editing estimate {editingEstimateNumber}. Changes save when you click Save Estimate.
                           </p>
-                          <div className="flex gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm"
-                              onClick={() => {
-                                setIsEditingLoadedEstimate(false);
-                                fetchLineItems(selectedTemplateId);
-                                toast({
-                                  title: 'Recalculating',
-                                  description: 'Line items recalculated from template measurements',
-                                });
-                              }}
-                            >
-                              <RotateCcw className="h-4 w-4 mr-1" />
-                              Recalculate
-                            </Button>
-                            <Button 
-                              variant="default" 
-                              size="sm"
-                              onClick={() => {
-                                setIsCreatingNewEstimate(true);
-                                setIsEditingLoadedEstimate(false);
-                                setSelectedTemplateId('');
-                                setLineItems([]);
-                                setExistingEstimateId(null);
-                                setEditingEstimateNumber(null);
-                                toast({
-                                  title: 'Ready for New Estimate',
-                                  description: 'Select a template to create a new estimate',
-                                });
-                              }}
-                            >
-                              <Plus className="h-4 w-4 mr-1" />
-                              Create New Estimate
-                            </Button>
-                          </div>
                         </div>
                       )}
 
@@ -2345,13 +2309,31 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                     <DropdownMenuItem
                       key={trade.value}
                       onClick={() => {
-                        setTradeSections(prev => [...prev, {
+                        // Migrate existing lineItems into tradeLineItems for current trade before adding new one
+                        const currentSection = tradeSections[0];
+                        if (currentSection && lineItems.length > 0) {
+                          setTradeLineItems(prev => {
+                            // Only migrate if the current section doesn't already have items
+                            if (prev[currentSection.id] && prev[currentSection.id].length > 0) return prev;
+                            return {
+                              ...prev,
+                              [currentSection.id]: lineItems.map(item => ({
+                                ...item,
+                                trade_type: item.trade_type || currentSection.tradeType,
+                                trade_label: item.trade_label || currentSection.label,
+                              })),
+                            };
+                          });
+                        }
+                        const newSection = {
                           id: crypto.randomUUID(),
                           tradeType: trade.value,
                           templateId: '',
                           label: trade.label,
                           isCollapsed: false,
-                        }]);
+                        };
+                        setTradeSections(prev => [...prev, newSection]);
+                        setTradeLineItems(prev => ({ ...prev, [newSection.id]: [] }));
                       }}
                     >
                       <span className="mr-2">{trade.icon}</span>
