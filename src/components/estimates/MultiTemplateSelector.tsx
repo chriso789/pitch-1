@@ -609,6 +609,31 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
         if (allItems.length > 0) {
           setLineItems(allItems);
+
+          // Restore tradeSections from saved trade data
+          const tradeTypesInEstimate = new Map<string, string>();
+          allItems.forEach(item => {
+            if (item.trade_type && !tradeTypesInEstimate.has(item.trade_type)) {
+              tradeTypesInEstimate.set(item.trade_type, item.trade_label || item.trade_type);
+            }
+          });
+
+          if (tradeTypesInEstimate.size > 1) {
+            const restoredSections: TradeSection[] = Array.from(tradeTypesInEstimate.entries()).map(([type, label]) => ({
+              id: crypto.randomUUID(),
+              tradeType: type,
+              templateId: '',
+              label,
+              isCollapsed: false,
+            }));
+            setTradeSections(restoredSections);
+
+            const newTradeLineItems: Record<string, LineItem[]> = {};
+            restoredSections.forEach(section => {
+              newTradeLineItems[section.id] = allItems.filter(i => i.trade_type === section.tradeType);
+            });
+            setTradeLineItems(newTradeLineItems);
+          }
         }
       }
 
