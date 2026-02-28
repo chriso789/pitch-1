@@ -1,59 +1,28 @@
 
 
-# Fix: Adding trade wipes existing items + Remove stale editing UI
+# Fix: Can't Exit Editing Mode + Restore Template Area UI
 
-## Two Issues
+## Problem 1: Can't exit editing mode
+`handleCancelEdit` clears the `editEstimate` URL param using `window.history.replaceState`, but the load effect (line 484) reads from React Router's `searchParams` — which doesn't get updated by `replaceState`. So after cancel sets `existingEstimateId = null`, the effect sees `editEstimateId !== null` and re-triggers loading.
 
-### Issue 1: Adding a trade clears existing line items
-When editing a loaded single-trade estimate, items live in `lineItems` state only (not in `tradeLineItems`). Adding a new trade creates a new `tradeSections` entry, which triggers the merge effect. The merge flattens `tradeLineItems` (which has no entries for the original roofing items) into `lineItems`, wiping everything.
+**Fix:** In `handleCancelEdit`, use React Router's `setSearchParams` instead of `window.history.replaceState` to clear the URL param properly.
 
-**Fix in `MultiTemplateSelector.tsx`:**
+## Problem 2: Restore template area UI
+The previous edit removed the "Recalculate" and "Create New Estimate" buttons. These need to be restored so users can recalculate from the template or start fresh.
 
-In the "Add Trade" `onClick` handler (~line 2347-2354), before adding the new section, migrate existing `lineItems` into `tradeLineItems` under the current roofing section:
+**Fix:** Restore the original action bar with "Recalculate" and "Create New Estimate" buttons, replacing the green "Editing estimate" indicator.
 
-```typescript
-onClick={() => {
-  // Migrate existing lineItems into tradeLineItems for the current trade
-  const currentRoofingSection = tradeSections.find(t => t.tradeType === 'roofing') || tradeSections[0];
-  if (currentRoofingSection && lineItems.length > 0) {
-    setTradeLineItems(prev => ({
-      ...prev,
-      [currentRoofingSection.id]: lineItems.map(item => ({
-        ...item,
-        trade_type: item.trade_type || currentRoofingSection.tradeType,
-        trade_label: item.trade_label || currentRoofingSection.label,
-      })),
-    }));
-  }
-  
-  const newSection = { id: crypto.randomUUID(), tradeType: trade.value, templateId: '', label: trade.label, isCollapsed: false };
-  setTradeSections(prev => [...prev, newSection]);
-  setTradeLineItems(prev => ({ ...prev, [newSection.id]: [] }));
-}
-```
+## Problem 3: Keep trade separation when adding trades
+The existing migration logic in the "Add Trade" handler is correct — keep it as-is. When adding a new trade to a single-trade estimate, existing items migrate into `tradeLineItems` under the current section before the new section is created.
 
-### Issue 2: Remove "Recalculate" and "Create New Estimate" buttons when editing
-The bar showing "Viewing saved estimate. Select an action below." with Recalculate/Create New Estimate is confusing during editing. The system should auto-recalculate as items change, and editing mode should feel seamless.
+## Changes — `src/components/estimates/MultiTemplateSelector.tsx`
 
-**Fix:** Replace the entire block (~lines 2267-2309) with a simple "Editing estimate [number]" indicator, or remove it entirely. The Save button already handles persistence.
+### Change A: Fix `handleCancelEdit` URL clearing (~line 681-708)
+Replace `window.history.replaceState` with `setSearchParams` to properly clear the `editEstimate` param so React Router is aware.
 
-Replace:
-```tsx
-{trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
-  <div className="flex items-center ...">
-    ...Viewing saved estimate...Recalculate...Create New Estimate...
-  </div>
-)}
-```
-
-With:
-```tsx
-{trade.tradeType === 'roofing' && isEditingLoadedEstimate && selectedTemplateId && (
-  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-    <p className="text-sm text-green-700">
-      Editing estimate {editingEstimateNumber}. Changes auto-save when you click Save Estimate.
-    </p>
-  </div>
-)}
-```
+### Change B: Restore the "Viewing saved estimate" action bar (~lines 2267-2273)
+Replace the green editing indicator with the original block containing:
+- "Viewing saved estimate. Select an action below."
+- "Recalculate" button (resets to template and re-fetches items)
+- "Create New Estimate" button (clears everything for a fresh start)
 
