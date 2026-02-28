@@ -43,9 +43,12 @@ interface ManualMeasurementDialogProps {
   onOpenChange: (open: boolean) => void;
   pipelineEntryId: string;
   onSuccess?: () => void;
+  editMode?: boolean;
+  approvalId?: string;
+  initialValues?: MeasurementFormData;
 }
 
-interface MeasurementFormData {
+export interface MeasurementFormData {
   areaType: 'flat' | 'pitch_adjusted';
   area: number;
   pitch: string;
@@ -82,11 +85,15 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
   onOpenChange,
   pipelineEntryId,
   onSuccess,
+  editMode = false,
+  approvalId,
+  initialValues,
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [saving, setSaving] = useState(false);
-  const [formData, setFormData] = useState<MeasurementFormData>({
+
+  const defaultFormData: MeasurementFormData = {
     areaType: 'pitch_adjusted',
     area: 0,
     pitch: '6/12',
@@ -99,7 +106,18 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
     wallFlashing: 0,
     facets: 1,
     wastePercentage: 10,
-  });
+  };
+
+  const [formData, setFormData] = useState<MeasurementFormData>(initialValues || defaultFormData);
+
+  // Reset form when dialog opens with initialValues
+  useEffect(() => {
+    if (open && initialValues) {
+      setFormData(initialValues);
+    } else if (open && !editMode) {
+      setFormData(defaultFormData);
+    }
+  }, [open]);
 
   // Calculate adjusted area based on type
   const getAdjustedArea = () => {
@@ -174,6 +192,87 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
 
     setSaving(true);
     try {
+      // EDIT MODE: Update existing approval + pipeline metadata in place
+      if (editMode && approvalId) {
+        const perimeter = formData.eaves + formData.rakes;
+        const updatedTags = {
+          'roof.plan_area': adjustedArea,
+          'roof.total_sqft': adjustedArea,
+          'roof.squares': adjustedArea / 100,
+          'roof.predominant_pitch': formData.pitch,
+          'roof.faces_count': formData.facets,
+          'lf.ridge': formData.ridges,
+          'lf.hip': formData.hips,
+          'lf.valley': formData.valleys,
+          'lf.eave': formData.eaves,
+          'lf.rake': formData.rakes,
+          'lf.perimeter': perimeter,
+          'lf.step': formData.stepFlashing,
+          'source': 'manual_entry',
+        };
+
+        const { error: approvalUpdateError } = await supabase
+          .from('measurement_approvals')
+          .update({
+            saved_tags: updatedTags,
+            approval_notes: `Manual entry (edited) - ${adjustedArea.toLocaleString()} sqft`,
+          })
+          .eq('id', approvalId);
+
+        if (approvalUpdateError) throw approvalUpdateError;
+
+        // Also update pipeline_entries metadata
+        const { data: pipelineData } = await supabase
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
+          .single();
+
+        const currentMetadata = (pipelineData?.metadata as Record<string, any>) || {};
+        const updatedMetadata = {
+          ...currentMetadata,
+          roof_area_sq_ft: adjustedArea,
+          comprehensive_measurements: {
+            total_area_sqft: adjustedArea,
+            flat_area_sqft: flatArea,
+            pitched_area_sqft: adjustedArea,
+            pitch: formData.pitch,
+            ridges_lf: formData.ridges,
+            hips_lf: formData.hips,
+            valleys_lf: formData.valleys,
+            eaves_lf: formData.eaves,
+            rakes_lf: formData.rakes,
+            step_flashing_lf: formData.stepFlashing,
+            wall_flashing_lf: formData.wallFlashing,
+            drip_edge_lf: perimeter,
+            facets_count: formData.facets,
+            waste_percentage: formData.wastePercentage,
+          },
+          measurement_source: 'manual_entry',
+          measurement_date: new Date().toISOString(),
+        };
+
+        await supabase
+          .from('pipeline_entries')
+          .update({ metadata: updatedMetadata })
+          .eq('id', pipelineEntryId);
+
+        queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+        queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
+
+        toast({
+          title: 'Measurements Updated',
+          description: `${adjustedArea.toLocaleString()} sq ft with ${formData.pitch} pitch updated successfully`,
+        });
+
+        onSuccess?.();
+        onOpenChange(false);
+        setSaving(false);
+        return;
+      }
+
+      // CREATE MODE: Original insert logic
       // Get current pipeline metadata and contact info using correct column names
       const { data: pipelineData, error: fetchError } = await supabase
         .from('pipeline_entries')
@@ -362,10 +461,13 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Ruler className="h-5 w-5 text-primary" />
-            Manual Measurement Entry
+            {editMode ? 'Edit Measurement' : 'Manual Measurement Entry'}
           </DialogTitle>
           <DialogDescription>
-            Enter roof measurements manually when AI measurement fails or you have data from another source
+            {editMode 
+              ? 'Update the measurement values below and save to apply changes'
+              : 'Enter roof measurements manually when AI measurement fails or you have data from another source'
+            }
           </DialogDescription>
         </DialogHeader>
 
@@ -637,7 +739,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
             ) : (
               <>
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Save Measurements
+                {editMode ? 'Update Measurements' : 'Save Measurements'}
               </>
             )}
           </Button>
