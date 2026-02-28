@@ -1,30 +1,30 @@
 
 
-# Fix: Added trades (Gutters) not showing in line items table
+# Fix: Trade data missing from saved estimate line items
 
-## Root Cause
+## Problem
+When saving an existing estimate via `handleSaveLineItemChanges`, the `lineItemsJson` object strips `trade_type` and `trade_label` from both material and labor items. The create path (`handleCreateEstimate`) correctly includes these fields (lines 1373-1374, 1388-1389), but the update path (lines 1629-1656) omits them. This means when the estimate is reloaded or the PDF regenerated, all trade grouping information is lost.
 
-Two related bugs:
+## Fix
 
-1. **Blank Template for non-roofing trades produces zero items.** When a user selects "Blank Template" for Gutters, `handleTradeTemplateSelect` sets `tradeLineItems[guttersSectionId] = []`. Since there are zero gutter-tagged items, the merge produces only roofing items, and `tradeTypes.size` stays at 1 — no multi-trade headers appear.
+### `src/components/estimates/MultiTemplateSelector.tsx`
 
-2. **"Add Item" buttons always tag items as the first trade.** `handleSaveNewItem` picks `tradeSections.find(t => !!t.templateId)` which is always Roofing (it's first). Even if the user intended to add a gutter item, it gets tagged `trade_type: 'roofing'`.
+In `handleSaveLineItemChanges` (~lines 1629-1656), add `trade_type` and `trade_label` to both the `materials` and `labor` item maps — matching what `handleCreateEstimate` already does:
 
-3. **In multi-trade mode, "Add Material/Labor Item" buttons don't render.** The `SectionedLineItemsTable` only renders the "Add" buttons in the single-trade `else` branch (lines 475-488), never inside the multi-trade `tradeGroups.map()` loop.
+```diff
+  materials: materialItems.map(item => ({
+    ...existing fields...
+    is_override: item.is_override,
++   trade_type: item.trade_type,
++   trade_label: item.trade_label,
+  })),
+  labor: laborItems.map(item => ({
+    ...existing fields...
+    is_override: item.is_override,
++   trade_type: item.trade_type,
++   trade_label: item.trade_label,
+  })),
+```
 
-## Plan
-
-### File 1: `src/components/estimates/SectionedLineItemsTable.tsx`
-
-- Add a new prop: `onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void`
-- Inside the multi-trade `tradeGroups.map()` loop, after each trade's labor section, render "Add Material Item" and "Add Labor Item" buttons that call `onAddTradeItem(group.type, 'material'|'labor')`
-- This ensures each trade section has its own add buttons
-
-### File 2: `src/components/estimates/MultiTemplateSelector.tsx`
-
-- Add state: `activeAddTradeType` to track which trade the user is adding an item to
-- Add handler: `handleAddTradeLineItem(tradeType: string, type: 'material' | 'labor')` that sets `activeAddTradeType` and opens the inline add form
-- Update `handleSaveNewItem`: when `activeAddTradeType` is set, use that trade's section instead of `tradeSections.find(t => !!t.templateId)` — ensuring the item gets the correct `trade_type` and goes into the correct `tradeLineItems` bucket
-- Pass the new `onAddTradeItem` prop down to `SectionedLineItemsTable`
-- Also fix `handleDeleteLineItem` to remove from `tradeLineItems` (not just `lineItems`), so deleted items don't get restored by the merge effect
+This is a 4-line addition — the root cause of the missing trade categories in saved estimates.
 
