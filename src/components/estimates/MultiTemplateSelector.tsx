@@ -221,6 +221,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Add line item state
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [newItemType, setNewItemType] = useState<'material' | 'labor'>('material');
+  const [activeAddTradeType, setActiveAddTradeType] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
     item_name: '',
     qty: 1,
@@ -680,8 +681,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   
   // Delete a line item from the estimate
   const handleDeleteLineItem = (itemId: string) => {
-    const updatedItems = lineItems.filter(item => item.id !== itemId);
-    setLineItems(updatedItems);
+    // Remove from flat lineItems
+    setLineItems(lineItems.filter(item => item.id !== itemId));
+    // Also remove from tradeLineItems so the merge effect doesn't restore it
+    setTradeLineItems(prev => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        next[key] = next[key].filter(item => item.id !== itemId);
+      }
+      return next;
+    });
     toast({
       title: 'Item Removed',
       description: 'Line item deleted from estimate'
@@ -691,6 +700,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Handle adding a new line item
   const handleAddLineItem = (type: 'material' | 'labor') => {
     setNewItemType(type);
+    setActiveAddTradeType(null);
+    setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
+    setIsAddingItem(true);
+  };
+
+  // Handle adding a line item for a specific trade (multi-trade mode)
+  const handleAddTradeLineItem = (tradeType: string, type: 'material' | 'labor') => {
+    setNewItemType(type);
+    setActiveAddTradeType(tradeType);
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
     setIsAddingItem(true);
   };
@@ -713,10 +731,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       0
     );
 
-    // Determine trade context from the first trade section that has a template selected, or fall back to the first section
-    const activeTradeSection = tradeSections.find(t => !!t.templateId) || tradeSections[0];
-    const tradeType = activeTradeSection?.tradeType || 'roofing';
-    const tradeLabel = activeTradeSection?.label || 'Roofing';
+    // Use activeAddTradeType if set (per-trade add), otherwise fall back to first trade with template
+    const targetTradeSection = activeAddTradeType
+      ? tradeSections.find(t => t.tradeType === activeAddTradeType)
+      : (tradeSections.find(t => !!t.templateId) || tradeSections[0]);
+    const tradeType = targetTradeSection?.tradeType || 'roofing';
+    const tradeLabel = targetTradeSection?.label || 'Roofing';
 
     const item: LineItem = {
       id: crypto.randomUUID(),
@@ -733,16 +753,17 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     };
     
     // Add to the correct per-trade bucket so merge logic picks it up
-    if (activeTradeSection && !isEditingLoadedEstimate) {
+    if (targetTradeSection && !isEditingLoadedEstimate) {
       setTradeLineItems(prev => ({
         ...prev,
-        [activeTradeSection.id]: [...(prev[activeTradeSection.id] || []), item]
+        [targetTradeSection.id]: [...(prev[targetTradeSection.id] || []), item]
       }));
     } else {
       setLineItems([...lineItems, item]);
     }
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
     setIsAddingItem(false);
+    setActiveAddTradeType(null);
     toast({
       title: 'Item Added',
       description: `${newItem.item_name} added to ${newItemType}`
@@ -752,6 +773,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   // Cancel adding a new item
   const handleCancelAddItem = () => {
     setIsAddingItem(false);
+    setActiveAddTradeType(null);
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
   };
 
@@ -2359,6 +2381,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               onDeleteItem={handleDeleteLineItem}
               onResetItem={handleResetItem}
               onAddItem={handleAddLineItem}
+              onAddTradeItem={handleAddTradeLineItem}
+              activeTrades={tradeSections.length > 1 ? tradeSections.map(t => ({ type: t.tradeType, label: t.label })) : undefined}
               editable={true}
               salesTaxEnabled={config.salesTaxEnabled}
               salesTaxRate={config.salesTaxRate}
@@ -2367,6 +2391,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               totalWithTax={breakdown.totalWithTax}
               isAddingItem={isAddingItem}
               addingItemType={newItemType}
+              addingTradeType={activeAddTradeType || undefined}
               newItem={newItem}
               onNewItemChange={setNewItem}
               onSaveNewItem={handleSaveNewItem}
