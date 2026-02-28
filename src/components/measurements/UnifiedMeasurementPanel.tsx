@@ -22,6 +22,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
+import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
 import { QuickEstimateButton } from './QuickEstimateButton';
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
@@ -134,6 +135,40 @@ export function UnifiedMeasurementPanel({
   const [approvalToDelete, setApprovalToDelete] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
+  const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
+
+  // Build initialValues from saved_tags for edit mode
+  const getInitialValuesFromTags = (tags: Record<string, any>): MeasurementFormData => {
+    return {
+      areaType: 'pitch_adjusted',
+      area: tags['roof.total_sqft'] || tags['roof.plan_area'] || 0,
+      pitch: tags['roof.predominant_pitch'] || '6/12',
+      ridges: tags['lf.ridge'] || 0,
+      hips: tags['lf.hip'] || 0,
+      valleys: tags['lf.valley'] || 0,
+      eaves: tags['lf.eave'] || 0,
+      rakes: tags['lf.rake'] || 0,
+      stepFlashing: tags['lf.step'] || 0,
+      wallFlashing: tags['lf.wall'] || 0,
+      facets: tags['roof.faces_count'] || 1,
+      wastePercentage: 10,
+    };
+  };
+
+  const handleEditMeasurement = (measurement: SavedMeasurement) => {
+    setEditingApproval(measurement);
+    setEditDialogOpen(true);
+  };
+
+  const handleEditSuccess = async () => {
+    await refetch();
+    queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
+    onMeasurementChange?.();
+    setEditDialogOpen(false);
+    setEditingApproval(null);
+  };
 
   // Fetch current active approval from pipeline entry metadata
   useEffect(() => {
@@ -461,6 +496,7 @@ export function UnifiedMeasurementPanel({
               isPhone={layout.isPhone}
               onSetActive={() => {}}
               onDelete={() => handleDeleteClick(activeMeasurement.id)}
+              onEdit={() => handleEditMeasurement(activeMeasurement)}
               isSettingActive={false}
             />
           )}
@@ -483,6 +519,7 @@ export function UnifiedMeasurementPanel({
                       isPhone={layout.isPhone}
                       onSetActive={() => handleSetActive(measurement.id)}
                       onDelete={() => handleDeleteClick(measurement.id)}
+                      onEdit={() => handleEditMeasurement(measurement)}
                       isSettingActive={isSettingActive}
                     />
                   ))}
@@ -584,6 +621,22 @@ export function UnifiedMeasurementPanel({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Measurement Dialog */}
+      {editingApproval && (
+        <ManualMeasurementDialog
+          open={editDialogOpen}
+          onOpenChange={(open) => {
+            setEditDialogOpen(open);
+            if (!open) setEditingApproval(null);
+          }}
+          pipelineEntryId={pipelineEntryId}
+          onSuccess={handleEditSuccess}
+          editMode={true}
+          approvalId={editingApproval.id}
+          initialValues={getInitialValuesFromTags(editingApproval.saved_tags)}
+        />
+      )}
     </>
   );
 }
@@ -595,6 +648,7 @@ interface MeasurementCardProps {
   isPhone: boolean;
   onSetActive: () => void;
   onDelete: () => void;
+  onEdit?: () => void;
   isSettingActive: boolean;
 }
 
@@ -604,9 +658,11 @@ function MeasurementCard({
   isPhone,
   onSetActive, 
   onDelete,
+  onEdit,
   isSettingActive 
 }: MeasurementCardProps) {
   const tags = measurement.saved_tags || {};
+  const isManual = (tags.source || '').toLowerCase().includes('manual');
   const sourceConfig = getSourceConfig(tags);
   const SourceIcon = sourceConfig.icon;
 
@@ -720,6 +776,17 @@ function MeasurementCard({
                 Use for Estimates
               </>
             )}
+          </Button>
+        )}
+        {isManual && onEdit && (
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={onEdit}
+            style={{ minHeight: isPhone ? 44 : 32 }}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            <Pencil className="h-4 w-4" />
           </Button>
         )}
         <Button
