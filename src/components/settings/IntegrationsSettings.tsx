@@ -9,7 +9,8 @@ import { WebsiteIntegration } from "./WebsiteIntegration";
 import { SLAPolicyManager } from "./SLAPolicyManager";
 import { RoutingRulesManager } from "./RoutingRulesManager";
 import { SmsAutoResponseConfig } from "./SmsAutoResponseConfig";
-import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare } from "lucide-react";
+import { MetaCAPISettings } from "./MetaCAPISettings";
+import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare, Facebook } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -46,6 +47,10 @@ export const IntegrationsSettings = () => {
           <TabsTrigger value="sms-auto" className="flex items-center gap-2">
             <MessageSquare className="h-4 w-4" />
             SMS Auto-Reply
+          </TabsTrigger>
+          <TabsTrigger value="meta-capi" className="flex items-center gap-2">
+            <Facebook className="h-4 w-4" />
+            Meta CAPI
           </TabsTrigger>
           <TabsTrigger value="ai-analytics" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
@@ -87,6 +92,10 @@ export const IntegrationsSettings = () => {
 
         <TabsContent value="sms-auto" className="space-y-6">
           <SmsAutoResponseConfig />
+        </TabsContent>
+
+        <TabsContent value="meta-capi" className="space-y-6">
+          <MetaCAPISettings />
         </TabsContent>
 
         <TabsContent value="ai-analytics" className="space-y-6">

@@ -245,6 +245,30 @@ serve(async (req) => {
       },
     });
 
+    // Fire-and-forget: send Meta CAPI Lead event if enabled
+    try {
+      const supabaseUrl = getEnv('SUPABASE_URL', '');
+      const supabaseServiceKey = getEnv('SUPABASE_SERVICE_ROLE_KEY', '');
+      if (supabaseUrl && supabaseServiceKey) {
+        fetch(`${supabaseUrl}/functions/v1/meta-capi`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            event_name: 'Lead',
+            contact_id: contactId,
+            tenant_id: tenantId,
+            email: payload.email || '',
+            phone: payload.phone || '',
+          }),
+        }).catch((err) => console.error('[receive-lead] Meta CAPI fire-and-forget error:', err));
+      }
+    } catch (metaErr) {
+      console.error('[receive-lead] Meta CAPI setup error:', metaErr);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
