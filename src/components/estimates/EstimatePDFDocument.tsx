@@ -637,6 +637,13 @@ const FirstPage: React.FC<{
         <ItemsTable items={items} opts={opts} />
       )}
 
+      {/* Continuation hint when items overflow to next page */}
+      {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && !isOnlyChunk && (
+        <p className="text-[10px] text-gray-400 italic text-right mt-2">
+          Scope continues on next page…
+        </p>
+      )}
+
       {/* Summary (only show if this is the only/last items page) */}
       {!opts.showOnlyTotal && isOnlyChunk && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
@@ -660,12 +667,7 @@ const ItemsContinuationPage: React.FC<{
 }> = ({ items, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-        <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-        Project Scope (continued)
-      </h3>
-      
-      <ItemsTable items={items} opts={opts} />
+      <ItemsTable items={items} opts={opts} continued />
 
       {isLastPage && breakdown && config && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
@@ -677,7 +679,7 @@ const ItemsContinuationPage: React.FC<{
 };
 
 // Items Table Component - with trade grouping support
-const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions }> = ({ items, opts }) => {
+const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions; continued?: boolean }> = ({ items, opts, continued = false }) => {
   // Group items by trade for section headers
   const groupedByTrade = useMemo(() => {
     const groups: { tradeLabel: string; tradeType: string; items: LineItem[] }[] = [];
@@ -711,7 +713,7 @@ const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions }> = (
     <div>
       <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-        Project Scope
+        {continued ? 'Project Scope (continued)' : 'Project Scope'}
       </h3>
       <table className="w-full text-xs">
         <thead>
