@@ -1,53 +1,64 @@
 
 
-# Fix: Preview Trade Order + Incorrect Total
+# Meta Conversions API (CAPI) Integration
 
-## Root Causes Found
+## What This Does
+Sends lead events (and future conversion events) from PITCH CRM to Meta/Facebook in real-time using their server-side Conversions API. This fixes the error shown in your Meta Events Manager by sending properly hashed, server-side events with the correct payload format.
 
-### 1. Trade order reversed in preview
-`EstimatePDFDocument.tsx` line 404 sorts by `trade_type` alphabetically (`gutters` < `roofing`), so Gutters shows first. The builder shows Roofing first. Fix: sort by trade occurrence order in the original item arrays instead of alphabetically.
+## Architecture
 
-### 2. Wrong total in preview
-In `MultiTemplateSelector.tsx` line 651, when loading an estimate for editing:
-```
-profitMarginPercent: estimate.actual_profit_percent || 30
-```
-`actual_profit_percent` is the **realized** profit (11.23%), not the **target** margin (20%) used to derive the selling price. This causes `useEstimatePricing` to recalculate a much lower selling price ($41,917 vs $47,193).
-
-The correct source is `estimate.calculation_metadata.pricing_config.profitMarginPercent`.
+The integration stores Meta CAPI credentials (Pixel ID + Access Token) per tenant in the existing `tenants.settings` JSONB column. An edge function handles the actual API call to `graph.facebook.com`, and it gets called whenever a new lead is created.
 
 ---
 
-## Changes
+## Implementation Steps
 
-### A. Fix trade order in preview — `EstimatePDFDocument.tsx` (~line 400-408)
-Replace alphabetical `tradeA.localeCompare(tradeB)` with order-of-first-appearance sorting. Build a trade order map from the combined items array before sorting, preserving the original insertion order (Roofing items come before Gutters items in the saved data).
+### 1. Create `meta-capi` edge function
+- **New file:** `supabase/functions/meta-capi/index.ts`
+- Accepts: `{ event_name, contact_id, tenant_id, event_time, custom_data }`
+- Looks up tenant's Meta CAPI config from `tenants.settings.meta_capi` (pixel_id, access_token, enabled)
+- If not enabled, returns early
+- Hashes email/phone with SHA-256 per Meta requirements
+- Sends POST to `https://graph.facebook.com/v21.0/{pixel_id}/events` with the exact payload format Meta expects:
+  ```json
+  {
+    "data": [{
+      "event_name": "Lead",
+      "event_time": <unix_timestamp>,
+      "action_source": "system_generated",
+      "custom_data": { "event_source": "crm", "lead_event_source": "PITCH CRM" },
+      "user_data": { "em": ["<sha256_email>"], "ph": ["<sha256_phone>"], "lead_id": <contact_id> }
+    }]
+  }
+  ```
+- Logs success/failure to `audit_log`
+- Add to `config.toml` with `verify_jwt = true`
 
-### B. Fix profit margin loading — `MultiTemplateSelector.tsx` (~line 649-653)
-Change `profitMarginPercent` source from `estimate.actual_profit_percent` to `estimate.calculation_metadata?.pricing_config?.profitMarginPercent`, falling back to `estimate.actual_profit_percent` then `30`:
-```typescript
-const calcMetadata = estimate.calculation_metadata as any;
-const targetMargin = calcMetadata?.pricing_config?.profitMarginPercent 
-  ?? estimate.actual_profit_percent 
-  ?? 30;
+### 2. Wire into lead creation flow
+- **File:** `supabase/functions/receive-lead/index.ts`
+- After successfully creating a pipeline entry, call `meta-capi` via internal fetch if the tenant has Meta CAPI enabled
+- Non-blocking (fire-and-forget with error logging)
 
-setConfig({
-  overheadPercent: estimate.overhead_percent || 15,
-  profitMarginPercent: targetMargin,
-  repCommissionPercent: estimate.rep_commission_percent || 5,
-});
-```
+### 3. Create Meta CAPI settings UI tab
+- **New file:** `src/components/settings/MetaCAPISettings.tsx`
+- Fields: Pixel ID, Access Token (masked input), Enable/Disable toggle
+- Test Connection button that sends a test event
+- Saves to `tenants.settings.meta_capi` JSONB
+- **File:** `src/components/settings/IntegrationsSettings.tsx`
+- Add "Meta CAPI" tab alongside existing Telnyx, API Keys, etc.
 
-Also load `salesTaxEnabled` and `salesTaxRate` from the estimate record to ensure tax is applied:
-```typescript
-setConfig({
-  overheadPercent: estimate.overhead_percent || 15,
-  profitMarginPercent: targetMargin,
-  repCommissionPercent: estimate.rep_commission_percent || 5,
-  salesTaxEnabled: (estimate.sales_tax_rate || 0) > 0,
-  salesTaxRate: estimate.sales_tax_rate || 0,
-});
-```
+### 4. Support additional event types (future-ready)
+- The edge function accepts any `event_name` (Lead, Purchase, Subscribe, etc.)
+- Can be called from automation-processor for pipeline stage changes (e.g., "Contract Signed" → Purchase event)
 
-Also load `commissionStructure` from `calculation_metadata` if present.
+---
+
+## Technical Details
+
+- **No new DB tables needed** — uses existing `tenants.settings` JSONB column
+- **No new secrets needed** — each tenant stores their own Pixel ID and Access Token in settings (not shared env vars), since each company has different Meta ad accounts
+- **Hashing:** SHA-256 applied to email and phone before sending (Meta requirement)
+- **API version:** Meta Graph API v21.0
+- **Event deduplication:** Uses `contact_id` as `event_id` to prevent duplicates
+- **Error handling:** Retries once on 5xx, logs failures to audit_log
 
