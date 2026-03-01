@@ -1149,3 +1149,6 @@ verify_jwt = false
 
 [functions.request-quote-signature]
 verify_jwt = false
+
+[functions.meta-capi]
+verify_jwt = false
