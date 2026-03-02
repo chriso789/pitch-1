@@ -183,9 +183,13 @@ serve(async (req) => {
       repCommissionAmount = finalSellingPrice * (repCommissionRate / 100);
     }
 
-    // Calculate profit
-    const profitAmount = finalSellingPrice - directCost - overheadAmount - repCommissionAmount;
-    const profitPercent = finalSellingPrice > 0 ? (profitAmount / finalSellingPrice) * 100 : 0;
+    // Calculate gross profit (before commission) — this is the "actual profit" stored on the estimate
+    const grossProfit = finalSellingPrice - directCost - overheadAmount;
+    const grossProfitPercent = finalSellingPrice > 0 ? (grossProfit / finalSellingPrice) * 100 : 0;
+    // Net profit after commission (for logging/display only, not stored as actual_profit)
+    const netProfit = grossProfit - repCommissionAmount;
+    const profitAmount = grossProfit;
+    const profitPercent = grossProfitPercent;
 
     console.log(`[update-estimate-line-items] Calculations:`, {
       materialsTotal,
