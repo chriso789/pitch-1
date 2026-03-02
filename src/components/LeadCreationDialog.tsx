@@ -466,24 +466,60 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       let contactId = contact?.id;
 
+      // Determine effective tenant
+      const effectiveTenantId = userProfile.active_tenant_id || userProfile.tenant_id;
+
       // Create new contact if not provided
       if (!contactId) {
         const addressComponents = selectedAddress?.address_components || [];
         const getComponent = (type: string) => 
-          addressComponents.find(comp => comp.types.includes(type))?.long_name || '';
+          addressComponents.find((comp: any) => comp.types.includes(type))?.long_name || '';
 
         const streetAddress = (getComponent('street_number') + ' ' + getComponent('route')).trim();
 
-        // Check for existing contact at same address to prevent duplicates
-        const { data: existingContact } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name')
-          .eq('tenant_id', userProfile.tenant_id)
-          .eq('address_street', streetAddress)
-          .maybeSingle();
-
         // Determine the assigned rep - use first selected rep or fall back to current user
         const assignedRep = formData.assignedTo[0] || session.user.id;
+
+        // --- CROSS-LOCATION DEDUP: Check by normalized phone across ALL locations in tenant ---
+        let existingContact: any = null;
+        if (formData.phone) {
+          const normalizedPhone = formData.phone.replace(/\D/g, '').slice(-10);
+          if (normalizedPhone.length >= 7) {
+            const { data: phoneMatch } = await supabase
+              .from('contacts')
+              .select('id, first_name, last_name, location_id')
+              .eq('tenant_id', effectiveTenantId)
+              .eq('is_deleted', false)
+              .or(`phone.ilike.%${normalizedPhone}`)
+              .limit(1)
+              .maybeSingle();
+            
+            if (phoneMatch) {
+              existingContact = phoneMatch;
+            }
+          }
+        }
+
+        // Fallback: check by email across all locations
+        if (!existingContact && formData.phone) {
+          // (email check would go here if email field existed on this form)
+        }
+
+        // Fallback: check by address across all locations
+        if (!existingContact && streetAddress) {
+          const { data: addressMatch } = await supabase
+            .from('contacts')
+            .select('id, first_name, last_name, location_id')
+            .eq('tenant_id', effectiveTenantId)
+            .eq('is_deleted', false)
+            .eq('address_street', streetAddress)
+            .limit(1)
+            .maybeSingle();
+          
+          if (addressMatch) {
+            existingContact = addressMatch;
+          }
+        }
 
         if (existingContact) {
           // Use existing contact instead of creating duplicate
@@ -498,16 +534,21 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           if (updateError) {
             console.error('Failed to update contact assigned_to:', updateError);
           }
+
+          // Warn if contact is from a different location
+          const isCrossLocation = existingContact.location_id && currentLocationId && existingContact.location_id !== currentLocationId;
           
           toast({
-            title: "Using Existing Contact",
-            description: `Found existing contact "${existingContact.first_name} ${existingContact.last_name}" at this address.`,
+            title: isCrossLocation ? "Cross-Location Contact Found" : "Using Existing Contact",
+            description: isCrossLocation
+              ? `"${existingContact.first_name} ${existingContact.last_name}" exists in another location. Linking to existing record to prevent duplicates.`
+              : `Found existing contact "${existingContact.first_name} ${existingContact.last_name}".`,
           });
         } else {
           const { data: newContact, error: contactError } = await supabase
             .from('contacts')
             .insert({
-              tenant_id: userProfile.tenant_id,
+              tenant_id: effectiveTenantId,
               first_name: formData.name.split(' ')[0],
               last_name: formData.name.split(' ').slice(1).join(' ') || '',
               phone: formData.phone,
@@ -519,8 +560,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               longitude: selectedAddress?.geometry?.location?.lng,
               verified_address: selectedAddress,
               created_by: session.user.id,
-              assigned_to: assignedRep,  // Set assigned_to on new contacts
-              location_id: currentLocationId, // Set location from location switcher
+              assigned_to: assignedRep,
+              location_id: currentLocationId,
             } as any)
             .select()
             .single();
@@ -534,7 +575,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       const { data: pipelineEntry, error: pipelineError } = await supabase
         .from('pipeline_entries')
         .insert({
-          tenant_id: userProfile.tenant_id,
+          tenant_id: effectiveTenantId,
           contact_id: contactId,
           location_id: currentLocationId, // Set location from location switcher
           status: formData.status,
