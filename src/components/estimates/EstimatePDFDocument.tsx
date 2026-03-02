@@ -111,6 +111,7 @@ interface EstimatePDFDocumentProps {
   };
   createdAt?: string;
   finePrintContent?: string;
+  warrantyTerms?: string;
   options?: Partial<PDFComponentOptions>;
   measurementSummary?: MeasurementSummary;
   jobPhotos?: JobPhoto[];
@@ -126,21 +127,38 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-// Chunk items into pages
-function chunkItems<T>(items: T[], firstPageMax: number, continuationMax: number): T[][] {
+// Chunk items into pages — trade-aware to avoid orphaning a trade header at page bottom
+function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number): LineItem[][] {
   if (items.length === 0) return [];
   
-  const chunks: T[][] = [];
+  const chunks: LineItem[][] = [];
   let remaining = [...items];
   
+  // Helper: check if index is the first item of a new trade group
+  const isNewTradeStart = (idx: number, arr: LineItem[]) => {
+    if (idx === 0) return true;
+    const prev = arr[idx - 1]?.trade_type || 'roofing';
+    const cur = arr[idx]?.trade_type || 'roofing';
+    return prev !== cur;
+  };
+  
   // First chunk
-  chunks.push(remaining.slice(0, firstPageMax));
-  remaining = remaining.slice(firstPageMax);
+  let size = Math.min(firstPageMax, remaining.length);
+  // If the last item starts a new trade, pull it to next chunk so header isn't orphaned
+  while (size > 1 && size < remaining.length && isNewTradeStart(size - 1, remaining)) {
+    size--;
+  }
+  chunks.push(remaining.slice(0, size));
+  remaining = remaining.slice(size);
   
   // Continuation chunks
   while (remaining.length > 0) {
-    chunks.push(remaining.slice(0, continuationMax));
-    remaining = remaining.slice(continuationMax);
+    let cSize = Math.min(continuationMax, remaining.length);
+    while (cSize > 1 && cSize < remaining.length && isNewTradeStart(cSize - 1, remaining)) {
+      cSize--;
+    }
+    chunks.push(remaining.slice(0, cSize));
+    remaining = remaining.slice(cSize);
   }
   
   return chunks;
@@ -372,6 +390,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   config,
   createdAt,
   finePrintContent,
+  warrantyTerms,
   options: partialOptions,
   measurementSummary,
   jobPhotos,
@@ -498,7 +517,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Warranty page
     if (opts.showWarrantyInfo) {
       currentPage++;
-      pageList.push(<WarrantyPage key="warranty-page" />);
+      pageList.push(<WarrantyPage key="warranty-page" warrantyTerms={warrantyTerms} />);
     }
 
     // Measurement details page
@@ -878,7 +897,17 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
 };
 
 // Warranty Page
-const WarrantyPage: React.FC = () => {
+const WarrantyPage: React.FC<{ warrantyTerms?: string }> = ({ warrantyTerms }) => {
+  // Try to parse structured warranty from tenant settings
+  const parsed = useMemo(() => {
+    if (!warrantyTerms) return null;
+    try {
+      const obj = JSON.parse(warrantyTerms);
+      if (obj && (obj.manufacturer || obj.workmanship)) return obj as { manufacturer?: string; workmanship?: string };
+    } catch { /* not JSON, ignore */ }
+    return null;
+  }, [warrantyTerms]);
+
   return (
     <div className="space-y-4">
       <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
@@ -888,11 +917,15 @@ const WarrantyPage: React.FC = () => {
       <div className="text-xs text-gray-600 space-y-3">
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
           <h4 className="font-medium text-amber-900 mb-1.5">Manufacturer Warranty</h4>
-          <p className="text-amber-800">All roofing materials include the full manufacturer's warranty as specified by the selected product line.</p>
+          <p className="text-amber-800 whitespace-pre-line">
+            {parsed?.manufacturer || "All roofing materials include the full manufacturer's warranty as specified by the selected product line."}
+          </p>
         </div>
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
           <h4 className="font-medium text-blue-900 mb-1.5">Workmanship Warranty</h4>
-          <p className="text-blue-800">Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality.</p>
+          <p className="text-blue-800 whitespace-pre-line">
+            {parsed?.workmanship || "Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality."}
+          </p>
         </div>
       </div>
     </div>

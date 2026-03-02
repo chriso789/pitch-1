@@ -55,6 +55,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
 import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
+import { WarrantySettings } from "@/components/settings/WarrantySettings";
 import { PipelineStageManager } from "@/components/settings/PipelineStageManager";
 import { ContactStatusManager } from "@/components/settings/ContactStatusManager";
 import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
@@ -266,7 +267,10 @@ export const Settings = () => {
               <ApprovalRequirementsSettings />
             </TabsContent>
             <TabsContent value="estimate-pdf">
-              <EstimateFinePrintSettings />
+              <div className="space-y-6">
+                <EstimateFinePrintSettings />
+                <WarrantySettings />
+              </div>
             </TabsContent>
           </Tabs>
         );
