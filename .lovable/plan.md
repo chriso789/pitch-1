@@ -1,39 +1,44 @@
 
 
-# Cleaner Estimate Page Splits + Dynamic Warranty from Settings
+# Fix Cross-Location Data Integrity Issues
 
-## Three changes:
+## Problem Summary
+- 15 pipeline entries point to contacts in the wrong location
+- 5 contacts are duplicated across both locations
+- Need ongoing prevention
 
-### 1. Trade-aware page chunking (avoid splitting a trade header from its first item)
-**File:** `EstimatePDFDocument.tsx` — Replace `chunkItems` (lines 130-147)
+## Phase 1: Data Correction (SQL updates via insert tool)
 
-Replace the naive slice-based chunker with a trade-aware version:
-- After building each chunk, check if the last item in a chunk is the first item of a new trade (meaning the trade header would render at the bottom of a page with no items following it)
-- If so, pull that item back to the next chunk so the trade header + at least its first item stay together
-- This prevents orphaned trade headers at page bottoms
+### A. Fix 15 location-mismatched pipeline entries
+For each mismatched pipeline entry, update the contact's `location_id` to match the pipeline entry's location — OR — update the pipeline entry's `location_id` to match the contact. The correct approach depends on where the work is actually happening.
 
-### 2. Warranty page uses tenant's saved warranty_terms (not hardcoded)
-**File:** `EstimatePDFDocument.tsx`
+**Recommended logic:** The pipeline entry's location represents where the job is being serviced. So the contact should be updated to match the pipeline entry location, unless the contact already has other pipeline entries in their current location.
 
-- Add `warrantyTerms?: string` prop to `EstimatePDFDocumentProps`
-- Pass it through to `WarrantyPage`
-- If `warrantyTerms` is provided (from `tenants.warranty_terms`), render that content instead of the hardcoded manufacturer/workmanship cards
-- Keep hardcoded content as fallback when no tenant warranty text is saved
+### B. Merge 5 cross-location duplicate contacts
+For each duplicate pair:
+1. Keep the older record as primary (or the one with more activity)
+2. Re-link any pipeline entries from the duplicate to the primary
+3. Soft-delete the duplicate contact (`is_deleted = true`)
 
-**File:** `EstimatePreviewPanel.tsx`
-- Fetch tenant's `warranty_terms` from the tenants table (tenant data is likely already loaded nearby)
-- Pass `warrantyTerms` to `EstimatePDFDocument`
+## Phase 2: Prevention (code changes)
 
-### 3. Warranty Settings UI
-**New file:** `src/components/settings/WarrantySettings.tsx`
-- Text area for manufacturer warranty description
-- Text area for workmanship warranty description  
-- Save button that writes to `tenants.warranty_terms` as a JSON string (e.g., `{ manufacturer: "...", workmanship: "..." }`)
+### A. `src/hooks/useCreateLead.ts` or lead creation logic
+- Before creating a new contact during lead creation, normalize the phone number and check for existing contacts **across all locations within the tenant** (not just the current location)
+- If a match is found in another location, prompt the user: "This contact already exists in [Other Location]. Use existing contact?"
 
-**File:** Add warranty settings to the appropriate settings page (likely alongside EstimateFinePrintSettings or under a Company tab)
+### B. Contact import dedup enhancement
+- Extend the existing import dedup logic to also flag cross-location matches (it currently checks within the target location per memory)
 
-### Technical Notes
-- `tenants.warranty_terms` column already exists (type TEXT, currently NULL for all tenants)
-- Store as JSON string: `{"manufacturer": "...", "workmanship": "..."}` to support structured warranty sections
-- The `chunkItems` trade-awareness uses the existing `trade_type` metadata already on line items
+### C. Webhook lead ingestion
+- Apply the same cross-tenant phone/email dedup check when leads arrive from external sources
+
+## Phase 3: Admin Data Health Dashboard (optional, future)
+- Add a "Data Health" card to the admin dashboard showing:
+  - Cross-location duplicate count
+  - Location-mismatched pipeline entries
+  - Contacts without pipeline entries
+  - Pipeline entries without projects
+
+## Immediate Action
+I'll run the data corrections first (Phase 1A + 1B), then implement the prevention logic in code (Phase 2A).
 
