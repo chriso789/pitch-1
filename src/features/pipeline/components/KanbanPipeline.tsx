@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { Button } from "@/components/ui/button";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
+
 import { KanbanCard } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
 import { PipelineSkeleton } from './PipelineSkeleton';
@@ -243,8 +243,8 @@ const KanbanPipeline = () => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <ScrollArea className="w-full">
-          <div className="flex gap-2 min-h-[600px] pb-4" style={{ minWidth: `${stages.length * 60}px` }}>
+        <div className="w-full overflow-x-auto pb-4" style={{ WebkitOverflowScrolling: 'touch', overscrollBehaviorX: 'contain' }}>
+          <div className="flex gap-2 min-h-[600px]" style={{ minWidth: `${stages.length * 60}px` }}>
             {stages.map((stage) => {
               const stageEntries = groupedData[stage.key] || [];
 
@@ -274,8 +274,7 @@ const KanbanPipeline = () => {
               );
             })}
           </div>
-          <ScrollBar orientation="horizontal" />
-        </ScrollArea>
+        </div>
 
         <DragOverlay dropAnimation={null}>
           {activeId ? (
