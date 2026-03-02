@@ -195,6 +195,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
   const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
+  const [warrantyTerms, setWarrantyTerms] = useState<string | undefined>(undefined);
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
   const [contactId, setContactId] = useState<string | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -844,12 +845,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Fetch tenant info for company branding
       const { data: tenant } = await supabaseClient
         .from('tenants')
-        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number')
+        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms')
         .eq('id', tenantId)
         .single();
 
       if (tenant) {
-        setCompanyInfo(tenant as CompanyInfo);
+        const { warranty_terms, ...companyData } = tenant;
+        setCompanyInfo(companyData as CompanyInfo);
+        if (warranty_terms) setWarrantyTerms(warranty_terms);
       }
 
       // Fetch all company locations
@@ -1450,6 +1453,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         breakdown,
         config,
         finePrintContent,
+        warrantyTerms,
         options: pdfOptions,
         templateAttachments,
       });
@@ -1779,6 +1783,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             breakdown,
             config,
             finePrintContent,
+            warrantyTerms,
             options: pdfOptions,
             templateAttachments,
           });
@@ -2094,6 +2099,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         breakdown,
         config,
         finePrintContent: options.showCustomFinePrint ? finePrintContent : undefined,
+        warrantyTerms,
         options,
         measurementSummary,
         templateAttachments,
@@ -2572,6 +2578,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             breakdown={pdfData.breakdown}
             config={pdfData.config}
             finePrintContent={pdfData.finePrintContent}
+            warrantyTerms={pdfData.warrantyTerms}
             options={pdfData.options}
             measurementSummary={pdfData.measurementSummary}
             templateAttachments={pdfData.templateAttachments}
@@ -2597,6 +2604,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         breakdown={breakdown}
         config={config}
         finePrintContent={finePrintContent}
+        warrantyTerms={warrantyTerms}
         measurementSummary={measurementSummary}
         templateAttachments={templateAttachments}
         estimateId={existingEstimateId || undefined}

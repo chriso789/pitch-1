@@ -112,6 +112,7 @@ interface EstimatePreviewPanelProps {
     salesTaxRate?: number;
   };
   finePrintContent?: string;
+  warrantyTerms?: string;
   measurementSummary?: MeasurementSummary | null;
   templateAttachments?: TemplateAttachment[];
   // Callbacks for managing attachments
@@ -141,6 +142,7 @@ export function EstimatePreviewPanel({
   breakdown,
   config,
   finePrintContent,
+  warrantyTerms,
   measurementSummary,
   templateAttachments = [],
   onAttachmentsChange,
@@ -919,6 +921,7 @@ export function EstimatePreviewPanel({
                     breakdown={breakdown}
                     config={config}
                     finePrintContent={options.showCustomFinePrint ? finePrintContent : undefined}
+                    warrantyTerms={warrantyTerms}
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
