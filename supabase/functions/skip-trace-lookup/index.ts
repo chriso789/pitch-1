@@ -1,9 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 serve(async (req) => {
@@ -12,7 +12,8 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
+    // Auth client to verify user
+    const authClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
@@ -22,10 +23,16 @@ serve(async (req) => {
       }
     );
 
-    const { data: { user } } = await supabaseClient.auth.getUser();
+    const { data: { user } } = await authClient.auth.getUser();
     if (!user) {
       throw new Error('Unauthorized');
     }
+
+    // Service role client for data access (bypasses RLS)
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
     const { contact_id, search_params } = await req.json();
     
@@ -35,14 +42,17 @@ serve(async (req) => {
 
     console.log('Skip trace lookup for contact:', contact_id);
 
-    // Get contact details
+    // Get contact details using service role
     const { data: contact, error: contactError } = await supabaseClient
       .from('contacts')
       .select('*')
       .eq('id', contact_id)
       .single();
 
-    if (contactError) throw contactError;
+    if (contactError) {
+      console.error('Contact fetch error:', contactError);
+      throw new Error(`Contact not found: ${contactError.message}`);
+    }
 
     // Prepare SearchBug API request
     const searchBugApiKey = Deno.env.get('SEARCHBUG_API_KEY');
