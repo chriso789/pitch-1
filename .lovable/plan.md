@@ -1,62 +1,54 @@
 
 
-# Prevent Duplicate Contacts with Same Name + Address
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-The system currently has no database-level constraint preventing two contacts with the same name and address within a tenant. This allows duplicates like the two "Wendell King" records seen in the Kanban board.
+Three issues to address:
 
-## Solution
-Add a **unique index** on `(tenant_id, lower(first_name), lower(last_name), lower(address_street))` so the database itself rejects duplicates. Using a partial unique index (only where these fields are NOT NULL) avoids blocking contacts that don't have an address yet.
+## 1. Contact Profile Pipeline Area Overflowing
 
-Additionally, add a **validation trigger** that checks for name+address duplicates before insert/update and returns a clear error message, so the frontend can display a meaningful toast instead of a raw DB error.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-### Database Migration
+**File: `src/pages/ContactProfile.tsx`**
 
-```sql
--- Unique index: same tenant + same name + same street = duplicate
-CREATE UNIQUE INDEX idx_contacts_unique_name_address
-ON public.contacts (
-  tenant_id,
-  lower(trim(first_name)),
-  lower(trim(coalesce(last_name, ''))),
-  lower(trim(address_street))
-)
-WHERE first_name IS NOT NULL
-  AND address_street IS NOT NULL
-  AND tenant_id IS NOT NULL;
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
--- Validation function with friendly error
-CREATE OR REPLACE FUNCTION check_contact_duplicate()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.first_name IS NOT NULL AND NEW.address_street IS NOT NULL AND NEW.tenant_id IS NOT NULL THEN
-    IF EXISTS (
-      SELECT 1 FROM public.contacts
-      WHERE tenant_id = NEW.tenant_id
-        AND lower(trim(first_name)) = lower(trim(NEW.first_name))
-        AND lower(trim(coalesce(last_name, ''))) = lower(trim(coalesce(NEW.last_name, '')))
-        AND lower(trim(address_street)) = lower(trim(NEW.address_street))
-        AND id != coalesce(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)
-    ) THEN
-      RAISE EXCEPTION 'A contact named "% %" at "%" already exists',
-        NEW.first_name, coalesce(NEW.last_name, ''), NEW.address_street;
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+## 2. Show Who Saved Each Estimate (Under Title)
 
-CREATE TRIGGER trg_check_contact_duplicate
-BEFORE INSERT OR UPDATE ON public.contacts
-FOR EACH ROW EXECUTE FUNCTION check_contact_duplicate();
-```
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### Frontend — No code changes needed
-The existing error handling in `ContactForm`, `ContactBulkImport`, and `CreateContactDialog` already catches insert/update errors and displays them via `toast.error()`. The trigger's RAISE EXCEPTION message will surface naturally.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-### What this covers
-- Manual contact creation (ContactForm, CreateContactDialog)
-- Bulk imports (will reject rows that match existing name+address)
-- Contact updates (prevents editing into a duplicate)
-- Case-insensitive and trim-aware matching
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
