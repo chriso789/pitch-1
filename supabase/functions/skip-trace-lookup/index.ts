@@ -56,38 +56,37 @@ serve(async (req) => {
 
     // Prepare SearchBug API request
     const searchBugApiKey = Deno.env.get('SEARCHBUG_API_KEY');
-    if (!searchBugApiKey) {
-      throw new Error('SearchBug API key not configured');
+    const searchBugCoCode = Deno.env.get('SEARCHBUG_CO_CODE');
+    if (!searchBugApiKey || !searchBugCoCode) {
+      throw new Error('SearchBug API credentials not configured (SEARCHBUG_API_KEY and SEARCHBUG_CO_CODE required)');
     }
 
-    // Build search query from contact data
-    const searchQuery: any = {
-      name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
-    };
+    // Build form data per SearchBug People Trace API docs
+    // Endpoint: https://data.searchbug.com/api/search.aspx
+    const formData = new FormData();
+    formData.append('CO_CODE', searchBugCoCode);
+    formData.append('PASS', searchBugApiKey);
+    formData.append('TYPE', 'api_trace');
+    formData.append('FORMAT', 'JSON');
 
-    if (search_params?.phone || contact.phone) {
-      searchQuery.phone = search_params?.phone || contact.phone;
-    }
-    if (search_params?.email || contact.email) {
-      searchQuery.email = search_params?.email || contact.email;
-    }
-    if (search_params?.address || contact.address_street) {
-      searchQuery.address = search_params?.address || contact.address_street;
-      searchQuery.city = contact.address_city;
-      searchQuery.state = contact.address_state;
-      searchQuery.zip = contact.address_zip;
-    }
+    if (contact.first_name) formData.append('FNAME', contact.first_name);
+    if (contact.last_name) formData.append('LNAME', contact.last_name);
+    
+    // Use search_params overrides or contact data
+    const address = search_params?.address || contact.address_street;
+    const city = contact.address_city;
+    const state = contact.address_state;
 
-    console.log('SearchBug API request:', searchQuery);
+    if (address) formData.append('ADDRESS', address);
+    if (city) formData.append('CITY', city);
+    if (state) formData.append('STATE', state);
 
-    // Call SearchBug API
-    const searchBugResponse = await fetch('https://api.searchbug.com/api/v1/search', {
+    console.log('SearchBug API request - FNAME:', contact.first_name, 'LNAME:', contact.last_name, 'ADDRESS:', address, 'CITY:', city, 'STATE:', state);
+
+    // Call SearchBug People Trace API
+    const searchBugResponse = await fetch('https://data.searchbug.com/api/search.aspx', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${searchBugApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(searchQuery),
+      body: formData,
     });
 
     if (!searchBugResponse.ok) {
@@ -97,19 +96,45 @@ serve(async (req) => {
     }
 
     const searchBugData = await searchBugResponse.json();
-    console.log('SearchBug API response:', searchBugData);
+    console.log('SearchBug API response:', JSON.stringify(searchBugData));
 
     // Calculate cost (estimate $0.35 per lookup)
     const estimatedCost = 0.35;
 
-    // Parse and structure the results
+    // Parse SearchBug People Trace response format
+    // Response contains: RESULTS.response.record[] with fields like
+    // name-first, name-last, phone_phone10, street-number, street-name, etc.
+    const records = searchBugData?.RESULTS?.response?.record || searchBugData?.response?.record || [];
+    const recordList = Array.isArray(records) ? records : records ? [records] : [];
+
+    const phones: string[] = [];
+    const addresses: any[] = [];
+    
+    for (const rec of recordList) {
+      if (rec['phone_phone10']) {
+        const phone = rec['phone_phone10'];
+        if (!phones.includes(phone)) phones.push(phone);
+      }
+      const street = [rec['street-number'], rec['street-name'], rec['street-suffix']].filter(Boolean).join(' ');
+      if (street) {
+        addresses.push({
+          street,
+          unit: rec['unit-number'] || '',
+          city: rec['City'] || rec['city'] || '',
+          state: rec['state'] || rec['State'] || '',
+          zip: rec['zip'] || '',
+        });
+      }
+    }
+
     const enrichedData = {
-      phones: searchBugData.phones || [],
-      emails: searchBugData.emails || [],
-      addresses: searchBugData.addresses || [],
-      relatives: searchBugData.relatives || [],
-      demographics: searchBugData.demographics || {},
-      confidence_score: searchBugData.confidence || 0,
+      phones,
+      emails: [] as string[],
+      addresses,
+      relatives: [] as string[],
+      demographics: {},
+      confidence_score: recordList.length > 0 ? 85 : 0,
+      raw_records: recordList,
     };
 
     // Store results in skip_trace_results table
@@ -146,14 +171,6 @@ serve(async (req) => {
       });
     }
     
-    if (enrichedData.emails.length > 0 && !contact.email) {
-      suggestions.push({
-        field: 'email',
-        value: enrichedData.emails[0],
-        confidence: enrichedData.confidence_score,
-      });
-    }
-    
     if (enrichedData.addresses.length > 0 && !contact.address_street) {
       const primaryAddress = enrichedData.addresses[0];
       suggestions.push({
@@ -170,7 +187,7 @@ serve(async (req) => {
         enriched_data: enrichedData,
         suggestions: suggestions,
         cost: estimatedCost,
-        message: `Found ${enrichedData.phones.length} phone(s), ${enrichedData.emails.length} email(s), ${enrichedData.addresses.length} address(es)`,
+        message: `Found ${enrichedData.phones.length} phone(s), ${enrichedData.addresses.length} address(es)`,
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
