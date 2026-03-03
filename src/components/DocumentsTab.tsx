@@ -12,12 +12,13 @@ import {
   File, Image as ImageIcon, FileCheck, FileLock, X,
   Package, Wrench, DollarSign, Loader2, Sparkles,
   ChevronDown, FolderOpen, ArrowLeft, CheckCircle, Clock,
-  Camera
+  Camera, Pencil
 } from 'lucide-react';
 import { DocumentScannerDialog } from '@/components/documents/DocumentScannerDialog';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
+import { DocumentRenameDialog } from '@/features/documents/components/DocumentRenameDialog';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
 import { AddSmartDocToProjectDialog } from '@/components/documents/AddSmartDocToProjectDialog';
 import {
@@ -147,6 +148,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const [uploading, setUploading] = useState(false);
   const [showAllDocs, setShowAllDocs] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  const [renameDoc, setRenameDoc] = useState<{ id: string; filename: string } | null>(null);
   
   // Folder navigation state
   const [activeFolder, setActiveFolder] = useState<string | null>(null);
@@ -842,6 +844,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                         )}
                       </div>
                       <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setRenameDoc({ id: doc.id, filename: doc.filename })} title="Rename">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <Button size="icon" variant="ghost" onClick={() => setPreviewDoc(doc)}>
                           <Eye className="h-4 w-4" />
                         </Button>
@@ -1143,6 +1148,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                       <Button
                         size="icon"
                         variant="ghost"
+                        onClick={() => setRenameDoc({ id: doc.id, filename: doc.filename })}
+                        title="Rename"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         onClick={() => setPreviewDoc(doc)}
                         title="Preview"
                       >
@@ -1294,6 +1307,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Document Rename Dialog */}
+      <DocumentRenameDialog
+        open={!!renameDoc}
+        onOpenChange={(open) => !open && setRenameDoc(null)}
+        document={renameDoc}
+        onRenameComplete={() => { setRenameDoc(null); fetchDocuments(); }}
+      />
 
       {/* Document Scanner Dialog */}
       <DocumentScannerDialog
