@@ -58,7 +58,13 @@ serve(async (req) => {
     const searchBugApiKey = Deno.env.get('SEARCHBUG_API_KEY');
     const searchBugCoCode = Deno.env.get('SEARCHBUG_CO_CODE');
     if (!searchBugApiKey || !searchBugCoCode) {
-      throw new Error('SearchBug API credentials not configured (SEARCHBUG_API_KEY and SEARCHBUG_CO_CODE required)');
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Skip trace is not configured. Please add your SearchBug API Key and CO_CODE in Settings > Integrations.',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Build form data per SearchBug People Trace API docs

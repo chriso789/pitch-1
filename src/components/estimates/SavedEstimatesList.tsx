@@ -40,6 +40,7 @@ interface SavedEstimate {
   pdf_url: string | null;
   created_at: string;
   template_name?: string;
+  created_by_name?: string;
 }
 
 interface SavedEstimatesListProps {
@@ -118,7 +119,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           pdf_url,
           created_at,
           template_id,
-          estimate_calculation_templates(name)
+          estimate_calculation_templates(name),
+          profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
         `)
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('created_at', { ascending: false });
@@ -127,7 +129,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
 
       return (data || []).map((est: any) => ({
         ...est,
-        template_name: est.estimate_calculation_templates?.name || 'Custom'
+        template_name: est.estimate_calculation_templates?.name || 'Custom',
+        created_by_name: est.profiles ? `${est.profiles.first_name || ''} ${est.profiles.last_name || ''}`.trim() : undefined,
       })) as SavedEstimate[];
     },
     enabled: !!pipelineEntryId,
@@ -413,6 +416,11 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                     {estimate.short_description || estimate.template_name}
                   </span>
                 </div>
+                {estimate.created_by_name && (
+                  <span className="text-xs text-muted-foreground">
+                    Created by {estimate.created_by_name}
+                  </span>
+                )}
                 <div className="flex items-center gap-3 text-xs flex-wrap">
                   <Badge className={getStatusBadge(estimate.status)} variant="secondary">
                     {estimate.status}

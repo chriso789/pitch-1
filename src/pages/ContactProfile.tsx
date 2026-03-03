@@ -249,7 +249,7 @@ const ContactProfile = () => {
 
   return (
     <GlobalLayout>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto p-6 space-y-6 overflow-hidden">
         {/* Header Section */}
         <div className="flex items-center gap-4 mb-8">
           <BackButton respectHistory={true} fallbackPath="/" />
@@ -319,7 +319,7 @@ const ContactProfile = () => {
               )}
             </div>
 
-            <div className="flex items-center gap-2 mt-2">
+            <div className="flex flex-wrap items-center gap-2 mt-2">
               {contact.phone && (
                 <CallButton 
                   phoneNumber={contact.phone}
@@ -381,7 +381,7 @@ const ContactProfile = () => {
         {pipelineEntries.length > 0 && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {pipelineEntries.slice(0, 2).map((entry) => (
-              <Card key={entry.id} className="shadow-soft border-l-4 border-l-primary">
+              <Card key={entry.id} className="shadow-soft border-l-4 border-l-primary overflow-hidden">
                 <CardContent className="pt-6">
                   <div className="space-y-4">
                     {/* Pipeline Bubble Header */}
