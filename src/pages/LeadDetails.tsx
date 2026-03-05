@@ -725,7 +725,7 @@ const LeadDetails = () => {
           <div className="flex-1">
               <div className="flex items-center space-x-3">
                 <h1 className="text-3xl font-bold">
-                  {lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead'}
+                  {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
                 </h1>
                 <Button 
                   variant="outline" 
