@@ -230,6 +230,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         .eq('tenant_id', effectiveTenantId)
         .in('role', ['sales_manager', 'regional_manager', 'corporate', 'owner', 'project_manager', 'office_admin'])
         .eq('is_active', true)
+        .neq('is_developer', true)
         .order('first_name');
 
       // If we have location-based rep IDs, filter by them
@@ -241,8 +242,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       if (error) throw error;
       
-      // Completely exclude master role from assignments
-      const filteredProfiles = (profiles || []).filter(rep => rep.role !== 'master');
+      // Master and developer accounts already filtered at DB level
+      const filteredProfiles = profiles || [];
       
       setSalesReps(filteredProfiles);
     } catch (error) {
