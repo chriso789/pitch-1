@@ -37,6 +37,7 @@ interface EditProjectDetailsDialogProps {
     email: string | null;
     phone: string | null;
   };
+  initialLeadName?: string | null;
   existingMetadata?: Record<string, unknown>;
   onSave: () => void;
 }
