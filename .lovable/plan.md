@@ -1,54 +1,26 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# The Lead Name "VCA Palm Beach" Is Not Stored in the Database
 
-Three issues to address:
+After investigating, the `lead_name` column for this pipeline entry (`3ffe4e61-58ff-45b0-9925-540a14aa994b`) is currently **null** in the database. The previous name change happened before the `lead_name` column was added, so it was either lost or applied to the contact record (which still shows "Kyle Kadis").
 
-## 1. Contact Profile Pipeline Area Overflowing
+## What needs to happen
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+**Set the `lead_name` value in the database** for this entry. This is a one-line SQL update — no code changes needed since the UI already displays `lead_name` when it has a value.
 
-**File: `src/pages/ContactProfile.tsx`**
+```sql
+UPDATE pipeline_entries 
+SET lead_name = 'VCA Palm Beach' 
+WHERE id = '3ffe4e61-58ff-45b0-9925-540a14aa994b';
+```
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+Once this runs:
+- The header card will show "VCA Palm Beach" instead of "Kyle Kadis"
+- The Pipeline tab card will show "VCA Palm Beach" instead of "Kyle Kadis - flat Lead"
+- The Kanban board card will show "VCA Palm Beach"
 
-## 2. Show Who Saved Each Estimate (Under Title)
+Going forward, users can set/change lead names through the **Edit Lead Details** dialog, which now correctly writes to `pipeline_entries.lead_name`.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
-
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
-
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
-
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
-
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### Files Changed
+- **Migration file only** — a single UPDATE statement to set the lead name that was lost during the architectural change.
 
