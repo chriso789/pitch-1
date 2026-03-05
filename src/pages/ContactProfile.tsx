@@ -394,7 +394,7 @@ const ContactProfile = () => {
                           <Activity className="h-5 w-5 text-warning-foreground" />
                         </div>
                         <div>
-                          <div className="text-sm text-muted-foreground">Pipeline Lead</div>
+                          <div className="text-sm font-medium">{(entry as any).lead_name || 'Pipeline Lead'}</div>
                           <Badge className="bg-primary text-primary-foreground mt-1">
                             {entry.status}
                           </Badge>
