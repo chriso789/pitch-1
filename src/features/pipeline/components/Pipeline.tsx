@@ -173,10 +173,12 @@ const Pipeline = () => {
     return data.filter(job => {
       const contact = job.contacts;
       const fullName = `${contact?.first_name || ''} ${contact?.last_name || ''}`.toLowerCase();
+      const leadName = (job.lead_name || '').toLowerCase();
       const cljNumber = (job.clj_formatted_number || '').toLowerCase();
       const address = `${contact?.address_street || ''} ${contact?.address_city || ''}`.toLowerCase();
       
       return fullName.includes(query) || 
+             leadName.includes(query) ||
              cljNumber.includes(query) || 
              address.includes(query);
     });
