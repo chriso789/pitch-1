@@ -56,7 +56,7 @@ interface UnifiedJobItem {
 }
 
 export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpdate }: ContactJobsTabProps) => {
-  const [showLeadDialog, setShowLeadDialog] = useState(false);
+  
   const [unifiedJobs, setUnifiedJobs] = useState<UnifiedJobItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
@@ -670,10 +670,16 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
                     <p className="text-muted-foreground mb-4 text-center">
                       Create the first lead for this contact to get started.
                     </p>
-                    <Button onClick={() => setShowLeadDialog(true)}>
-                      <Plus className="h-4 w-4 mr-2" />
-                      Create Lead
-                    </Button>
+                    <LeadCreationDialog
+                      contact={contact}
+                      onLeadCreated={handleLeadCreated}
+                      trigger={
+                        <Button>
+                          <Plus className="h-4 w-4 mr-2" />
+                          Create Lead
+                        </Button>
+                      }
+                    />
                   </CardContent>
                 </Card>
               )}
