@@ -131,7 +131,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
       // If the profiles join fails (missing FK), retry without it
       if (result.error) {
         console.warn('Estimates query with profiles join failed, retrying without:', result.error.message);
-        result = await supabase
+        result = await supabase as any
           .from('enhanced_estimates')
           .select(`
             id,
