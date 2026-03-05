@@ -131,7 +131,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
       // If the profiles join fails (missing FK), retry without it
       if (result.error) {
         console.warn('Estimates query with profiles join failed, retrying without:', result.error.message);
-        result = await supabase as any
+        const fallback = await supabase
           .from('enhanced_estimates')
           .select(`
             id,
@@ -150,7 +150,12 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           .eq('pipeline_entry_id', pipelineEntryId)
           .order('created_at', { ascending: false });
 
-        if (result.error) throw result.error;
+        if (fallback.error) throw fallback.error;
+        return (fallback.data || []).map((est: any) => ({
+          ...est,
+          template_name: est.estimate_calculation_templates?.name || 'Custom',
+          created_by_name: undefined,
+        })) as SavedEstimate[];
       }
 
       return (result.data || []).map((est: any) => ({
