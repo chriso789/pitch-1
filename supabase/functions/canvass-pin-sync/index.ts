@@ -93,9 +93,17 @@ Deno.serve(async (req) => {
           },
           notes: notes,
           created_by: repId,
+          assigned_to: repId,
+          qualification_status: pin_metadata.disposition ? 
+            (['interested', 'new_roof'].includes(pin_metadata.disposition) ? 'qualified' : 
+             ['follow_up', 'callback'].includes(pin_metadata.disposition) ? 'follow_up' :
+             ['not_interested', 'unqualified'].includes(pin_metadata.disposition) ? 'unqualified' : 'new_lead')
+            : 'new_lead',
           metadata: {
             canvassing_data: pin_metadata,
-            property_details: property_details
+            property_details: property_details,
+            canvassed_by: repId,
+            canvassed_by_name: `${rep.first_name || ''} ${rep.last_name || ''}`.trim(),
           }
         };
 
