@@ -40063,6 +40063,7 @@ export type Database = {
       }
       normalize_email: { Args: { email_text: string }; Returns: string }
       normalize_phone: { Args: { phone_text: string }; Returns: string }
+      normalize_street: { Args: { street: string }; Returns: string }
       populate_geometry_columns:
         | { Args: { tbl_oid: unknown; use_typmod?: boolean }; Returns: number }
         | { Args: { use_typmod?: boolean }; Returns: string }
