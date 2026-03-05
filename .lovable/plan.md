@@ -1,54 +1,35 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: "Total Jobs" Showing Wrong Count
 
-Three issues to address:
+## Root Cause
 
-## 1. Contact Profile Pipeline Area Overflowing
+In `ContactDetailsTab.tsx` line 89-93, the `projects` query fetches **ALL projects across the entire tenant** — it has no filter for the current contact:
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+```typescript
+supabase
+  .from('projects')
+  .select('id, pipeline_entry_id')
+  .not('pipeline_entry_id', 'is', null)  // ← no contact filter!
+```
 
-**File: `src/pages/ContactProfile.tsx`**
+Then line 97 adds `pipelineCount + jobsCount`, double-counting pipeline entries AND adding every project in the system.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+## Fix
 
-## 2. Show Who Saved Each Estimate (Under Title)
+Replace the `fetchJobCount` function to only count pipeline entries for this contact (which already includes converted projects). The `pipeline_entries` query already correctly filters by `contact_id` — we just need to stop adding the unfiltered projects count.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+**Option A (simplest):** Just use the pipeline entries count, since every project originates from a pipeline entry:
+```typescript
+const { count } = await supabase
+  .from('pipeline_entries')
+  .select('id', { count: 'exact', head: true })
+  .eq('contact_id', contact.id)
+  .eq('is_deleted', false);
+setJobCount(count || 0);
+```
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+Also adds `is_deleted = false` filter so soft-deleted entries aren't counted.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
-
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
-
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+**File:** `src/components/contact-profile/ContactDetailsTab.tsx` — lines 82-100
 
