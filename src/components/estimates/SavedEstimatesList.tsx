@@ -107,7 +107,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     refetchOnMount: 'always',
     staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Try with profiles join first; fall back without it if FK is missing
+      let result = await supabase
         .from('enhanced_estimates')
         .select(`
           id,
@@ -127,9 +128,32 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      // If the profiles join fails (missing FK), retry without it
+      if (result.error) {
+        console.warn('Estimates query with profiles join failed, retrying without:', result.error.message);
+        result = await supabase
+          .from('enhanced_estimates')
+          .select(`
+            id,
+            estimate_number,
+            short_description,
+            display_name,
+            pricing_tier,
+            selling_price,
+            actual_profit_percent,
+            status,
+            pdf_url,
+            created_at,
+            template_id,
+            estimate_calculation_templates(name)
+          `)
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('created_at', { ascending: false });
 
-      return (data || []).map((est: any) => ({
+        if (result.error) throw result.error;
+      }
+
+      return (result.data || []).map((est: any) => ({
         ...est,
         template_name: est.estimate_calculation_templates?.name || 'Custom',
         created_by_name: est.profiles ? `${est.profiles.first_name || ''} ${est.profiles.last_name || ''}`.trim() : undefined,
