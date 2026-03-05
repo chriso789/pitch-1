@@ -1043,7 +1043,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.update-user-role]
-verify_jwt = true
+verify_jwt = false
 
 [functions.validate-view-token]
 verify_jwt = false
