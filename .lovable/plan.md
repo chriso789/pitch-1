@@ -1,58 +1,54 @@
 
 
-# Restore Missing Estimates for VCA Palm Beach
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-The Estimate tab shows "$0" and no saved estimates because the `enhanced_estimates` records for this pipeline entry (`3ffe4e61-...`) are missing from the database. The PDFs were saved to the `documents` table (two "Paver System" / BETTER tier estimates), but the corresponding `enhanced_estimates` rows either failed to insert or were deleted.
+Three issues to address:
 
-The `SavedEstimatesList` component only queries `enhanced_estimates`, so without those records, nothing shows up — even though the PDFs exist in Documents.
+## 1. Contact Profile Pipeline Area Overflowing
 
-## What happened
-The estimate number prefix `OBR-00038` has one surviving record in `enhanced_estimates` but it's linked to a **different** pipeline entry (`704a5a06-...`), not `3ffe4e61-...`. The two PDFs (`OBR-00038-38e0.pdf`, `OBR-00038-z85r.pdf`) were saved to the documents table with `estimate_display_name: 'Paver System'` and `estimate_pricing_tier: 'better'`, but no matching `enhanced_estimates` rows exist.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Fix
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. Insert the missing `enhanced_estimates` records
-Create a migration that inserts two `enhanced_estimates` rows for this pipeline entry, using the metadata from the existing `documents` records (display name, pricing tier, estimate number). The selling price and other financial fields will need to default to 0 since we don't have the original calculation data — the user can edit them afterward.
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### 2. Link pdf_url to the documents storage paths
-Set `pdf_url` on each new `enhanced_estimates` record to match the existing document file paths so the "View" button works.
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### SQL Migration
-```sql
--- Restore estimate records from existing document metadata
-INSERT INTO enhanced_estimates (
-  pipeline_entry_id, tenant_id, estimate_number, display_name,
-  pricing_tier, selling_price, status, pdf_url, created_at, created_by,
-  customer_name, customer_address, roof_area_sq_ft, roof_pitch,
-  material_cost, material_total, labor_cost, labor_total,
-  overhead_percent, overhead_amount, subtotal,
-  target_profit_percent, actual_profit_percent,
-  line_items
-)
-SELECT
-  d.pipeline_entry_id,
-  d.tenant_id,
-  REPLACE(d.filename, '.pdf', ''),
-  d.estimate_display_name,
-  d.estimate_pricing_tier,
-  0, -- selling_price unknown, user can edit
-  'draft',
-  d.file_path,
-  d.created_at,
-  d.uploaded_by,
-  '', '', 0, '4/12',
-  0, 0, 0, 0,
-  20, 0, 0,
-  30, 0,
-  '[]'::jsonb
-FROM documents d
-WHERE d.pipeline_entry_id = '3ffe4e61-58ff-45b0-9925-540a14aa994b'
-  AND d.document_type = 'estimate';
-```
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### Files Changed
-- One SQL migration file to restore the two `enhanced_estimates` records.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-After this, the Estimate tab will show both "Paver System" estimates with edit/share capabilities. The user can then open each one and update the financial details if needed.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
