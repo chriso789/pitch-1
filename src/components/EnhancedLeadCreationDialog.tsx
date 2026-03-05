@@ -669,69 +669,24 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
             {/* Right Column */}
             <div className="space-y-4">
-              <div className="relative">
-                <div className="flex items-center justify-between mb-1">
-                  <Label htmlFor="address" className="flex items-center gap-1">
-                    Lead Address <span className="text-destructive">*</span>
-                  </Label>
-                  {formData.address.trim() && (
-                    addressVerified ? (
-                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Manual Entry
-                      </Badge>
-                    )
-                  )}
-                </div>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, address: e.target.value }));
-                    setSelectedAddress(null);
-                    setAddressVerified(false);
-                    if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
-                  }}
-                  placeholder="Start typing address..."
-                  disabled={formData.useSameInfo}
-                  className={fieldErrors.address ? "border-destructive focus-visible:ring-destructive" : ""}
-                />
-                
-                {/* Real-time address suggestions dropdown */}
-                {showAddressPicker && addressSuggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {addressSuggestions.map((suggestion, index) => (
-                      <div
-                        key={suggestion.place_id || index}
-                        className={`p-3 cursor-pointer hover:bg-accent flex items-center gap-2 ${
-                          selectedAddress?.place_id === suggestion.place_id ? 'bg-primary/10' : ''
-                        }`}
-                        onClick={() => handleAddressSelect(suggestion)}
-                      >
-                        <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
-                        <span className="text-sm">{suggestion.formatted_address}</span>
-                        {selectedAddress?.place_id === suggestion.place_id && (
-                          <Check className="h-4 w-4 text-primary ml-auto" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {fieldErrors.address && (
-                  <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
-                )}
-                {!addressVerified && formData.address.trim() && !showAddressPicker && !fieldErrors.address && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Start typing to see suggestions, or click "Verify" to search
-                  </p>
-                )}
-              </div>
+              <AddressVerification
+                label="Lead Address"
+                required
+                initialAddress={verifiedAddress ? {
+                  street: verifiedAddress.street,
+                  city: verifiedAddress.city,
+                  state: verifiedAddress.state,
+                  zip: verifiedAddress.zip,
+                } : undefined}
+                onAddressVerified={(addressData) => {
+                  setVerifiedAddress(addressData);
+                  setFormData(prev => ({ ...prev, address: addressData.formatted_address || `${addressData.street}, ${addressData.city}, ${addressData.state} ${addressData.zip}` }));
+                  if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
+                }}
+              />
+              {fieldErrors.address && (
+                <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
+              )}
 
               <div>
                 <Label>Sales Representatives</Label>
@@ -767,13 +722,6 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
               </div>
             </div>
           </div>
-
-          {selectedAddress && (
-            <div className="flex items-center gap-2 text-sm text-success">
-              <Check className="h-4 w-4" />
-              Address verified with Google Maps
-            </div>
-          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setOpen(false)}>
