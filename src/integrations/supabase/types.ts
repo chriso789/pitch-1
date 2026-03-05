@@ -40894,6 +40894,8 @@ export type Database = {
         | "supplier"
         | "inspector"
         | "other"
+        | "business"
+        | "renter"
       estimate_status:
         | "draft"
         | "preview"
@@ -41221,6 +41223,8 @@ export const Constants = {
         "supplier",
         "inspector",
         "other",
+        "business",
+        "renter",
       ],
       estimate_status: [
         "draft",
