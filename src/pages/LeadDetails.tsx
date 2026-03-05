@@ -1347,6 +1347,7 @@ const LeadDetails = () => {
           email: lead.contact.email || null,
           phone: lead.contact.phone || null,
         } : undefined}
+        initialLeadName={(lead as any).lead_name || null}
         existingMetadata={(lead.metadata as Record<string, unknown>) || {}}
         onSave={() => {
           refetchLead();
