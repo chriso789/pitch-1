@@ -97,10 +97,10 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
       return;
     }
 
-    if (!selectedAddress) {
+    if (!verifiedAddress) {
       toast({
         title: "Address Required",
-        description: "Please select a verified address from the suggestions",
+        description: "Please verify an address using the address field",
         variant: "destructive",
       });
       return;
@@ -130,7 +130,7 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
           status: 'lead',
           priority: 'medium',
           created_by: userData.user?.id,
-          address_street: selectedAddress.formatted_address,
+          address_street: verifiedAddress.formatted_address || `${verifiedAddress.street}, ${verifiedAddress.city}, ${verifiedAddress.state} ${verifiedAddress.zip}`,
           estimated_value: 0,
           assigned_to: selectedSalesRep || null
         }])
@@ -146,9 +146,8 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
 
       onJobCreated?.(newJob);
       setOpen(false);
-      setFormData({ name: "", description: "", address: "", useSameAddress: false });
-      setSelectedAddress(null);
-      setShowAddressPicker(false);
+      setFormData({ name: "", description: "", useSameAddress: false });
+      setVerifiedAddress(null);
       setSelectedSalesRep('');
     } catch (error) {
       console.error('Error creating job:', error);
@@ -241,63 +240,20 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
             </Select>
           </div>
 
-          <div>
-            <Label htmlFor="address">Job Address *</Label>
-            <Input
-              id="address"
-              value={formData.address}
-              onChange={(e) => {
-                setFormData(prev => ({ ...prev, address: e.target.value }));
-                setSelectedAddress(null);
-              }}
-              placeholder="Start typing address..."
-              disabled={formData.useSameAddress}
-            />
-          </div>
-
-          {showAddressPicker && addressSuggestions.length > 0 && (
-            <div className="space-y-2">
-              <Label>Select Verified Address:</Label>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {addressSuggestions.map((suggestion, index) => (
-                  <Card
-                    key={suggestion.place_id || index}
-                    className={`cursor-pointer transition-all hover:shadow-md ${
-                      selectedAddress?.place_id === suggestion.place_id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border'
-                    }`}
-                    onClick={() => handleAddressSelect(suggestion)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
-                          <p className="text-sm">{suggestion.formatted_address}</p>
-                        </div>
-                        {selectedAddress?.place_id === suggestion.place_id && (
-                          <Check className="h-4 w-4 text-primary" />
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {selectedAddress && (
-            <div className="flex items-center gap-2 text-sm text-success">
-              <Check className="h-4 w-4" />
-              Address verified with Google Maps
-            </div>
-          )}
+          <AddressVerification
+            label="Job Address"
+            required
+            initialAddress={getContactInitialAddress()}
+            onAddressVerified={(addressData) => {
+              setVerifiedAddress(addressData);
+            }}
+          />
 
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={loading || !selectedAddress}>
+            <Button onClick={handleSubmit} disabled={loading || !verifiedAddress}>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />

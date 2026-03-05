@@ -25,6 +25,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { HomeownerPortalAccess } from "./HomeownerPortalAccess";
+import { AddressVerification } from "@/shared/components/forms";
 
 interface ContactDetailsTabProps {
   contact: any;
