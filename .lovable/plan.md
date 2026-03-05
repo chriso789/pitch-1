@@ -1,54 +1,115 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Auto-Lead Creation & Duplicate Contacts Despite Constraint
 
-Three issues to address:
+## Issue 1: Contacts Automatically Getting Leads
 
-## 1. Contact Profile Pipeline Area Overflowing
+**Root cause**: The `sync_new_contact_to_pipeline` trigger on the `contacts` table fires on INSERT when `qualification_status IN ('qualified', 'interested')`. While the default is `'unqualified'`, some creation flows (bulk import, webhooks, CanvassIQ) may set a non-default qualification status at insert time, causing an automatic pipeline entry.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+Additionally, when a user changes the qualification dropdown on the Contact Profile to "qualified" or "interested," the `sync_contact_to_pipeline` UPDATE trigger fires and creates a lead silently — without confirmation.
 
-**File: `src/pages/ContactProfile.tsx`**
+**Fix**: Remove the automatic INSERT trigger (`sync_new_contact_to_pipeline`). Leads should only be created via explicit user action ("Create Lead" button). The UPDATE trigger can remain but should be gated so it only fires when the user explicitly creates a lead, not just from changing a dropdown.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+### Database Migration
 
-## 2. Show Who Saved Each Estimate (Under Title)
+```sql
+-- Remove the auto-create-lead-on-insert trigger
+DROP TRIGGER IF EXISTS sync_new_contact_to_pipeline ON contacts;
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+-- Update the UPDATE trigger to NOT auto-create leads 
+-- when qualification_status changes — leads should only be 
+-- created via explicit "Create Lead" action
+DROP TRIGGER IF EXISTS sync_contact_to_pipeline ON contacts;
+```
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+This means leads are only created when a user clicks "Create Lead" on the Contact Profile or Pipeline page — never silently from a status change or contact insert.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+---
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+## Issue 2: Duplicate "jean louis" Despite Unique Constraint
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+**Root cause**: The unique index `idx_contacts_unique_name_address` compares `lower(trim(address_street))` exactly. The two records have:
+- "634 Angler Dr" 
+- "634 Angler Drive"
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+These are different strings, so the index allows both. Street suffix abbreviations (Dr/Drive, St/Street, Ave/Avenue, etc.) are not normalized.
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+**Fix**: Create a SQL function that normalizes common street suffixes before comparison, and use it in both the unique index and the validation trigger.
+
+### Database Migration
+
+```sql
+-- Street normalization function
+CREATE OR REPLACE FUNCTION normalize_street(street text)
+RETURNS text AS $$
+BEGIN
+  RETURN lower(trim(
+    regexp_replace(
+      regexp_replace(
+        regexp_replace(
+          regexp_replace(
+            regexp_replace(
+              regexp_replace(
+                regexp_replace(
+                  regexp_replace(street,
+                    '\y(drive)\y', 'dr', 'gi'),
+                  '\y(street)\y', 'st', 'gi'),
+                '\y(avenue)\y', 'ave', 'gi'),
+              '\y(boulevard)\y', 'blvd', 'gi'),
+            '\y(court)\y', 'ct', 'gi'),
+          '\y(place)\y', 'pl', 'gi'),
+        '\y(lane)\y', 'ln', 'gi'),
+      '\y(road)\y', 'rd', 'gi')
+  ));
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Drop old index
+DROP INDEX IF EXISTS idx_contacts_unique_name_address;
+
+-- Recreate with normalized street
+CREATE UNIQUE INDEX idx_contacts_unique_name_address
+ON public.contacts (
+  tenant_id,
+  lower(trim(first_name)),
+  lower(trim(coalesce(last_name, ''))),
+  normalize_street(address_street)
+)
+WHERE first_name IS NOT NULL
+  AND address_street IS NOT NULL
+  AND tenant_id IS NOT NULL;
+
+-- Update validation trigger to use normalize_street
+CREATE OR REPLACE FUNCTION check_contact_duplicate()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.first_name IS NOT NULL AND NEW.address_street IS NOT NULL 
+     AND NEW.tenant_id IS NOT NULL THEN
+    IF EXISTS (
+      SELECT 1 FROM public.contacts
+      WHERE tenant_id = NEW.tenant_id
+        AND lower(trim(first_name)) = lower(trim(NEW.first_name))
+        AND lower(trim(coalesce(last_name, ''))) = lower(trim(coalesce(NEW.last_name, '')))
+        AND normalize_street(address_street) = normalize_street(NEW.address_street)
+        AND id != coalesce(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid)
+    ) THEN
+      RAISE EXCEPTION 'A contact named "% %" at "%" already exists',
+        NEW.first_name, coalesce(NEW.last_name, ''), NEW.address_street;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+Before creating the new index, merge the existing "jean louis" duplicates (reassign pipeline entries, documents, etc. from the newer record to the older one, then delete the newer record) — same pattern used in the previous duplicate cleanup migration.
+
+---
+
+## Summary
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Contacts auto-getting leads | INSERT trigger on contacts creates pipeline entry | Drop the auto-create triggers; leads only via explicit action |
+| Duplicate "jean louis" | "Dr" vs "Drive" bypasses exact-match index | Normalize street suffixes in index and trigger |
 
