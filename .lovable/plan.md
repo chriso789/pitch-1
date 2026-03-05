@@ -1,54 +1,50 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Pipeline Search Not Finding Leads + Lead Name vs Contact Name
 
-Three issues to address:
+## Two Issues Found
 
-## 1. Contact Profile Pipeline Area Overflowing
+### Issue 1: Pipeline Search Doesn't Show Dropdown
+The pipeline search bar only searches entries loaded for the **currently selected location**. The VCA Palm Beach lead (3412-1-0) is assigned to location `acb2ee85...`. If you're viewing a different location, it won't appear in the pipeline data, so the search dropdown has nothing to match against.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+**Fix:** The pipeline search dropdown should search **all leads across all locations** (for users with permission), not just the currently filtered view. When a result is clicked, navigate to the lead detail page regardless of which location it belongs to.
 
-**File: `src/pages/ContactProfile.tsx`**
+This means PipelineSearch needs its own independent query to supabase instead of relying on the pre-filtered `pipelineData` prop.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+### Issue 2: Lead Name vs Contact Name Architecture
+Currently, there's no separate "lead name" field on `pipeline_entries`. When you rename a lead (e.g., to "VCA Palm Beach"), it changes the **contact** record's `first_name`/`last_name` directly. This is wrong because:
+- A property manager (contact) can have multiple properties (leads)
+- Renaming a lead shouldn't change the contact's name
+- Each lead should have its own display name independent of the contact
 
-## 2. Show Who Saved Each Estimate (Under Title)
+**Fix:** Add a `lead_name` column to `pipeline_entries`. When set, the pipeline cards display the lead name; when null, they fall back to the contact's name. The search should check both.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+## Technical Plan
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### Step 1: Add `lead_name` column to `pipeline_entries`
+```sql
+ALTER TABLE pipeline_entries ADD COLUMN lead_name TEXT;
+```
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### Step 2: Update PipelineSearch to query independently
+Instead of filtering the `pipelineData` prop, do a direct Supabase query searching across:
+- `pipeline_entries.lead_name`
+- `contacts.first_name` + `contacts.last_name`
+- `pipeline_entries.clj_formatted_number`
+- `contacts.address_street`, `address_city`
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+This ensures leads from ALL locations are searchable. The location filter only affects the Kanban board view, not search.
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+### Step 3: Update KanbanCard to display `lead_name` when available
+Show `entry.lead_name` if set, otherwise fall back to `contacts.first_name + last_name`.
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+### Step 4: Update Lead Details page to allow editing lead name separately
+The lead name edit should write to `pipeline_entries.lead_name`, NOT to `contacts.first_name`/`last_name`.
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### Files Changed
+- **Migration**: Add `lead_name` column to `pipeline_entries`
+- **`src/features/pipeline/components/PipelineSearch.tsx`**: Replace prop-based filtering with direct Supabase search query
+- **`src/features/pipeline/components/KanbanCard.tsx`**: Display `lead_name` with contact name fallback
+- **`src/features/pipeline/components/Pipeline.tsx`**: Include `lead_name` in the pipeline query select; pass it through to cards
+- **Lead detail page**: Update name editing to write to `lead_name` instead of contact name (needs investigation on which file handles this)
 
