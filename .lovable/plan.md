@@ -1,41 +1,54 @@
 
 
-# Fix Canvass-to-CRM Data Transfer and Pipeline Consistency
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Three Issues Identified
+Three issues to address:
 
-### Issue 1: Contact created as "Unknown Owner" from canvass pins
-**Root cause**: In `PropertyInfoPanel.tsx`, when a contact is auto-created from a disposition or via "Add Customer," the owner name resolution falls through to `parseFirstName(undefined)` = "Unknown" / `parseLastName(undefined)` = "Owner". The canvassiq_properties record may have `owner_name`, `property_data`, `phone_numbers`, `emails`, and enrichment data that should be used.
+## 1. Contact Profile Pipeline Area Overflowing
 
-**Fix** (`src/components/storm-canvass/PropertyInfoPanel.tsx`):
-- In both `handleDisposition` (line ~486-513) and `handleAddCustomer` (line ~559-604), ensure the contact insert includes:
-  - Enriched phone numbers and emails from the property record
-  - Property metadata (year_built, assessed_value, parcel_id, etc.) stored in contact's `metadata` field
-  - `lead_source_details` with canvass context (property_id, disposition, enrichment source)
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-The `ownerFullName` variable is already resolved, but the `parseFirstName`/`parseLastName` helpers return "Unknown"/"Owner" for null/undefined input. The real issue is that if the `validOwner()` chain returns null, the ownerFullName fed to the parsers is undefined. This is expected when no owner data exists -- but the phone, email, address, and property data should still carry over correctly. The name fallback should use address-based naming instead (e.g., "Homeowner at 4272 Winfall Ave").
+**File: `src/pages/ContactProfile.tsx`**
 
-### Issue 2: Rep who dropped the pin not tagged on the contact
-**Root cause**: The contact insert in both `handleDisposition` and `handleAddCustomer` sets `created_by: profile.id` but omits `assigned_to: profile.id`.
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-**Fix** (`src/components/storm-canvass/PropertyInfoPanel.tsx`):
-- Add `assigned_to: profile.id` to the contact insert object in both `handleDisposition` (line ~489) and `handleAddCustomer` (line ~566)
-- Also add `location_id` from the user's active location assignment so the contact lands in the correct CRM location
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### Issue 3: Cesar Yax has Production job but Pipeline shows (0)
-**Root cause**: The job exists in the `jobs` table linked to this contact, but there's no corresponding `pipeline_entries` record (or it's been deleted). The pipeline entry count comes from `pipeline_entries` where `is_deleted = false`. When the system approved the lead and created a project/job, the pipeline entry either wasn't created or was deleted.
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-**Fix**: This is a data fix -- create a pipeline entry for Cesar Yax's contact with status `project` to reflect the active production job. This also needs a systemic fix: when the `api-approve-job-from-lead` or job creation flow creates a job, it must ensure a pipeline entry exists with `status = 'project'`.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-## Files to Change
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-### 1. `src/components/storm-canvass/PropertyInfoPanel.tsx`
-- **`handleDisposition` contact creation** (~line 489-513): Add `assigned_to: profile.id`, pass location_id, improve name fallback to use address
-- **`handleAddCustomer`** (~line 566-583): Same changes -- add `assigned_to`, `location_id`, improve name fallback
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-### 2. Data fix (SQL migration)
-- Query for Cesar Yax's contact and create a pipeline entry with `status = 'project'` linked to the existing job
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-### 3. `supabase/functions/canvass-pin-sync/index.ts` (consistency)
-- The bulk sync function (line 77-100) already sets `created_by: repId` but also omits `assigned_to`. Add `assigned_to: repId` to the contact insert.
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

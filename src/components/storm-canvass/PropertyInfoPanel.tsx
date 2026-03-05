@@ -381,13 +381,21 @@ export default function PropertyInfoPanel({
 
   // Helper to parse first/last name from owner name
   const parseFirstName = (name: string | undefined): string => {
-    if (!name) return 'Unknown';
+    if (!name) {
+      // Fallback: use street address instead of "Unknown"
+      const street = address?.street || address?.formatted;
+      return street ? 'Homeowner' : 'Unknown';
+    }
     const parts = name.trim().split(/\s+/);
     return parts[0] || 'Unknown';
   };
 
   const parseLastName = (name: string | undefined): string => {
-    if (!name) return 'Owner';
+    if (!name) {
+      // Fallback: use street address instead of "Owner"
+      const street = address?.street || address?.formatted;
+      return street ? `at ${street}` : 'Owner';
+    }
     const parts = name.trim().split(/\s+/);
     return parts.slice(1).join(' ') || 'Owner';
   };
@@ -486,6 +494,7 @@ export default function PropertyInfoPanel({
           const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
           const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
 
+          const propData = localProperty?.property_data || {};
           const newContact = {
             tenant_id: profile.tenant_id,
             type: 'homeowner' as const,
@@ -503,12 +512,24 @@ export default function PropertyInfoPanel({
             qualification_status: mapDispositionToStatus(dispositionId),
             canvassiq_property_id: property.id,
             created_by: profile.id,
+            assigned_to: profile.id,
             metadata: {
               canvass_disposition: dispositionId,
               canvassed_at: new Date().toISOString(),
               canvassed_by: profile.id,
+              canvassed_by_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
               distance_meters: verification.distanceMeters,
               is_verified: verification.isWithinRange,
+              property_data: {
+                parcel_id: propData.parcel_id || null,
+                assessed_value: propData.assessed_value || null,
+                year_built: propData.year_built || null,
+                living_sqft: propData.living_sqft || null,
+                homestead: propData.homestead || null,
+                lot_size: propData.lot_size || null,
+                land_use: propData.land_use || null,
+              },
+              enrichment_sources: propData.sources || null,
             }
           };
 
@@ -563,6 +584,7 @@ export default function PropertyInfoPanel({
       const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
       const ownerFullName = selectedOwnerData?.name || property?.owner_name || homeowner?.name;
 
+      const propData = localProperty?.property_data || {};
       const newContact = {
         tenant_id: profile.tenant_id,
         type: 'homeowner' as const,
@@ -580,6 +602,23 @@ export default function PropertyInfoPanel({
         qualification_status: property.disposition ? mapDispositionToStatus(property.disposition) : 'new_lead',
         canvassiq_property_id: property.id,
         created_by: profile.id,
+        assigned_to: profile.id,
+        metadata: {
+          canvassed_at: new Date().toISOString(),
+          canvassed_by: profile.id,
+          canvassed_by_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+          canvass_disposition: property.disposition || null,
+          property_data: {
+            parcel_id: propData.parcel_id || null,
+            assessed_value: propData.assessed_value || null,
+            year_built: propData.year_built || null,
+            living_sqft: propData.living_sqft || null,
+            homestead: propData.homestead || null,
+            lot_size: propData.lot_size || null,
+            land_use: propData.land_use || null,
+          },
+          enrichment_sources: propData.sources || null,
+        }
       };
 
       const { data: createdContact, error } = await supabase
