@@ -1573,7 +1573,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           pipeline_entry_id: pipelineEntryId,
           estimate_number: estimateNumber,
           status: 'draft',
-          template_id: selectedTemplateId,
+          template_id: selectedTemplateId === '__blank__' ? null : selectedTemplateId,
           display_name: estimateDisplayName.trim() || null,
           pricing_tier: estimatePricingTier || null,
           customer_name: customerName,
