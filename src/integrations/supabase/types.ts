@@ -16237,38 +16237,55 @@ export type Database = {
       internal_notes: {
         Row: {
           author_id: string
+          contact_id: string | null
           content: string
           created_at: string | null
           id: string
           is_pinned: boolean | null
           mentioned_user_ids: string[] | null
-          pipeline_entry_id: string
+          pipeline_entry_id: string | null
           tenant_id: string
           updated_at: string | null
         }
         Insert: {
           author_id: string
+          contact_id?: string | null
           content: string
           created_at?: string | null
           id?: string
           is_pinned?: boolean | null
           mentioned_user_ids?: string[] | null
-          pipeline_entry_id: string
+          pipeline_entry_id?: string | null
           tenant_id: string
           updated_at?: string | null
         }
         Update: {
           author_id?: string
+          contact_id?: string | null
           content?: string
           created_at?: string | null
           id?: string
           is_pinned?: boolean | null
           mentioned_user_ids?: string[] | null
-          pipeline_entry_id?: string
+          pipeline_entry_id?: string | null
           tenant_id?: string
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "internal_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_notes_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
           {
             foreignKeyName: "internal_notes_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
