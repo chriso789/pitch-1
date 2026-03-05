@@ -17,6 +17,7 @@ import { Plus, MapPin, Check, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AddressVerification } from "@/shared/components/forms";
 
 interface JobCreationDialogProps {
   trigger?: React.ReactNode;
@@ -24,16 +25,15 @@ interface JobCreationDialogProps {
   onJobCreated?: (job: any) => void;
 }
 
-interface AddressSuggestion {
-  place_id: string;
-  formatted_address: string;
-  geometry: {
-    location: {
-      lat: number;
-      lng: number;
-    };
-  };
-  address_components: any[];
+interface VerifiedAddress {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  lat?: number;
+  lng?: number;
+  place_id?: string;
+  formatted_address?: string;
 }
 
 export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
@@ -43,16 +43,12 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
 }) => {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [addressLoading, setAddressLoading] = useState(false);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
-    address: "",
     useSameAddress: false,
   });
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
-  const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddress | null>(null);
   const [salesReps, setSalesReps] = useState<any[]>([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<string>('');
   const { toast } = useToast();
@@ -79,75 +75,16 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
     }
   };
 
-  useEffect(() => {
-    if (contact && formData.useSameAddress) {
-      const fullAddress = [
-        contact.address_street,
-        contact.address_city,
-        contact.address_state,
-        contact.address_zip
-      ].filter(Boolean).join(", ");
-      
-      setFormData(prev => ({ ...prev, address: fullAddress }));
-      if (fullAddress) {
-        handleAddressVerification(fullAddress);
-      }
+  const getContactInitialAddress = (): Partial<VerifiedAddress> | undefined => {
+    if (contact && formData.useSameAddress && contact.address_street) {
+      return {
+        street: contact.address_street || '',
+        city: contact.address_city || '',
+        state: contact.address_state || '',
+        zip: contact.address_zip || '',
+      };
     }
-  }, [formData.useSameAddress, contact]);
-
-  const handleAddressVerification = async (address: string) => {
-    if (!address.trim()) return;
-    
-    setAddressLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-        body: {
-          endpoint: 'autocomplete',
-          params: {
-            input: address,
-            types: 'address'
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      if (data?.predictions) {
-        // Get detailed info for each prediction
-        const detailedSuggestions = await Promise.all(
-          data.predictions.slice(0, 5).map(async (prediction: any) => {
-            const { data: details } = await supabase.functions.invoke('google-maps-proxy', {
-              body: {
-                endpoint: 'details',
-                params: {
-                  place_id: prediction.place_id,
-                  fields: 'formatted_address,geometry,address_components'
-                }
-              }
-            });
-            return details?.result;
-          })
-        );
-
-        setAddressSuggestions(detailedSuggestions.filter(Boolean));
-        setShowAddressPicker(true);
-      }
-    } catch (error) {
-      console.error('Address verification error:', error);
-      toast({
-        title: "Address Verification Error",
-        description: "Unable to verify address. Please check and try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setAddressLoading(false);
-    }
-  };
-
-  const handleAddressSelect = (suggestion: AddressSuggestion) => {
-    setSelectedAddress(suggestion);
-    setFormData(prev => ({ ...prev, address: suggestion.formatted_address }));
-    setShowAddressPicker(false);
+    return undefined;
   };
 
   const handleSubmit = async () => {
