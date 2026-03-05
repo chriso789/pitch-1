@@ -147,6 +147,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   // Pipeline statuses from the database
   const pipelineStatuses = [
     { value: "lead", label: "Lead" },
+    { value: "estimate_sent", label: "Estimate Sent" },
     { value: "legal_review", label: "Legal Review" },
     { value: "contingency_signed", label: "Contingency Signed" },
     { value: "project", label: "Project" },
