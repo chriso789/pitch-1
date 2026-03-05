@@ -25,6 +25,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { HomeownerPortalAccess } from "./HomeownerPortalAccess";
+import { AddressVerification } from "@/shared/components/forms";
 
 interface ContactDetailsTabProps {
   contact: any;
@@ -592,63 +593,21 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                 </div>
 
                 <div className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="address_street"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Street Address</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
+                  <AddressVerification
+                    label="Property Address"
+                    initialAddress={{
+                      street: form.getValues('address_street') || '',
+                      city: form.getValues('address_city') || '',
+                      state: form.getValues('address_state') || '',
+                      zip: form.getValues('address_zip') || '',
+                    }}
+                    onAddressVerified={(addressData) => {
+                      form.setValue('address_street', addressData.street, { shouldDirty: true });
+                      form.setValue('address_city', addressData.city, { shouldDirty: true });
+                      form.setValue('address_state', addressData.state, { shouldDirty: true });
+                      form.setValue('address_zip', addressData.zip, { shouldDirty: true });
+                    }}
                   />
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <FormField
-                      control={form.control}
-                      name="address_city"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>City</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="address_state"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>State</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    
-                    <FormField
-                      control={form.control}
-                      name="address_zip"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>ZIP Code</FormLabel>
-                          <FormControl>
-                            <Input {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  </div>
                   
                   <FormField
                     control={form.control}

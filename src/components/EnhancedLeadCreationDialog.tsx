@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -28,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ContactSearchSelect } from "@/components/ContactSearchSelect";
 import { useLocation } from "@/contexts/LocationContext";
+import { AddressVerification } from "@/shared/components/forms";
 
 interface EnhancedLeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -37,16 +38,15 @@ interface EnhancedLeadCreationDialogProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-interface AddressSuggestion {
-  place_id: string;
-  formatted_address: string;
-  geometry: {
-    location: {
-      lat: number;
-      lng: number;
-    };
-  };
-  address_components: any[];
+interface VerifiedAddressData {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  lat?: number;
+  lng?: number;
+  place_id?: string;
+  formatted_address?: string;
 }
 
 interface SalesRep {
@@ -89,11 +89,14 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
   const [loading, setLoading] = useState(false);
-  const [addressLoading, setAddressLoading] = useState(false);
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [selectedContact, setSelectedContact] = useState<SelectedContact | null>(contact || null);
-  
+  const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddressData | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const { toast } = useToast();
+  const { currentLocationId } = useLocation();
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -109,82 +112,37 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     useSameInfo: false,
   });
 
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
-  const [showAddressPicker, setShowAddressPicker] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [addressVerified, setAddressVerified] = useState(false);
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
-  const { toast } = useToast();
-  const { currentLocationId } = useLocation();
-
-  // Real-time address autocomplete with debounce
+  // Handle using same info as contact
   useEffect(() => {
-    // Skip if using same info as contact, or address is too short
-    if (formData.useSameInfo || formData.address.length < 3 || addressVerified) {
-      if (formData.address.length < 3) {
-        setAddressSuggestions([]);
-        setShowAddressPicker(false);
-      }
-      return;
-    }
-
-    // Debounce API calls (300ms)
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    debounceTimer.current = setTimeout(async () => {
-      setAddressLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-          body: {
-            endpoint: 'autocomplete',
-            params: {
-              input: formData.address,
-              types: 'address'
-            }
-          }
+    if (contact && formData.useSameInfo) {
+      const fullAddress = [
+        contact.address_street,
+        contact.address_city,
+        contact.address_state,
+        contact.address_zip
+      ].filter(Boolean).join(", ");
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        address: fullAddress,
+        phone: contact.phone || "",
+        email: contact.email || "",
+        name: `${contact.first_name} ${contact.last_name} - Roofing Project`
+      }));
+      
+      if (fullAddress && contact.latitude && contact.longitude) {
+        setVerifiedAddress({
+          street: contact.address_street || '',
+          city: contact.address_city || '',
+          state: contact.address_state || '',
+          zip: contact.address_zip || '',
+          lat: contact.latitude,
+          lng: contact.longitude,
+          formatted_address: fullAddress,
         });
-
-        if (error) throw error;
-
-        if (data?.predictions && data.predictions.length > 0) {
-          // Fetch details for each prediction to get coordinates
-          const detailedSuggestions = await Promise.all(
-            data.predictions.slice(0, 5).map(async (prediction: any) => {
-              const { data: details } = await supabase.functions.invoke('google-maps-proxy', {
-                body: {
-                  endpoint: 'details',
-                  params: {
-                    place_id: prediction.place_id,
-                    fields: 'formatted_address,geometry,address_components'
-                  }
-                }
-              });
-              return details?.result;
-            })
-          );
-
-          setAddressSuggestions(detailedSuggestions.filter(Boolean));
-          setShowAddressPicker(true);
-        } else {
-          setAddressSuggestions([]);
-          setShowAddressPicker(false);
-        }
-      } catch (error) {
-        console.error('Address autocomplete error:', error);
-      } finally {
-        setAddressLoading(false);
       }
-    }, 300);
-
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
-    };
-  }, [formData.address, formData.useSameInfo, addressVerified]);
+    }
+  }, [formData.useSameInfo, contact]);
 
   // Pipeline statuses from the database
   const pipelineStatuses = [
@@ -232,25 +190,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         name: `${contact.first_name} ${contact.last_name} - Roofing Project`
       }));
       
-      // Create a mock address object for validation when using contact info
-      if (fullAddress) {
-        const mockAddress: AddressSuggestion = {
-          place_id: `contact_${contact.id}`,
+      if (fullAddress && contact.latitude && contact.longitude) {
+        setVerifiedAddress({
+          street: contact.address_street || '',
+          city: contact.address_city || '',
+          state: contact.address_state || '',
+          zip: contact.address_zip || '',
+          lat: contact.latitude,
+          lng: contact.longitude,
           formatted_address: fullAddress,
-          geometry: {
-            location: {
-              lat: contact.latitude || 0,
-              lng: contact.longitude || 0
-            }
-          },
-          address_components: []
-        };
-        setSelectedAddress(mockAddress);
-        handleAddressVerification(fullAddress);
+        });
       }
     } else if (!formData.useSameInfo) {
-      // Clear address when unchecking useSameInfo
-      setSelectedAddress(null);
+      setVerifiedAddress(null);
       setFormData(prev => ({ 
         ...prev, 
         address: "",
@@ -349,60 +301,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
 
-  const handleAddressVerification = async (address: string) => {
-    if (!address.trim()) return;
-    
-    setAddressLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-        body: {
-          endpoint: 'autocomplete',
-          params: {
-            input: address,
-            types: 'address'
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      if (data?.predictions) {
-        const detailedSuggestions = await Promise.all(
-          data.predictions.slice(0, 5).map(async (prediction: any) => {
-            const { data: details } = await supabase.functions.invoke('google-maps-proxy', {
-              body: {
-                endpoint: 'details',
-                params: {
-                  place_id: prediction.place_id,
-                  fields: 'formatted_address,geometry,address_components'
-                }
-              }
-            });
-            return details?.result;
-          })
-        );
-
-        setAddressSuggestions(detailedSuggestions.filter(Boolean));
-        setShowAddressPicker(true);
-      }
-    } catch (error) {
-      console.error('Address verification error:', error);
-      toast({
-        title: "Address Verification Error",
-        description: "Unable to verify address. Please check and try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setAddressLoading(false);
-    }
-  };
-
-  const handleAddressSelect = (suggestion: AddressSuggestion) => {
-    setSelectedAddress(suggestion);
-    setAddressVerified(true);
-    setFormData(prev => ({ ...prev, address: suggestion.formatted_address }));
-    setShowAddressPicker(false);
-  };
+  // handleAddressVerification and handleAddressSelect removed - now handled by AddressVerification component
 
   const handleSalesRepToggle = (repId: string) => {
     setFormData(prev => ({
@@ -432,7 +331,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       }
     }
     // Allow either: verified address, selected contact with address, OR manual address text
-    if (!selectedAddress && !selectedContact && !formData.address.trim()) {
+    if (!verifiedAddress && !selectedContact && !formData.address.trim()) {
       errors.address = "Address is required";
     }
     if (!formData.status) {
@@ -449,7 +348,6 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const handleContactSelect = (contact: SelectedContact | null) => {
     setSelectedContact(contact);
     if (contact) {
-      // Auto-fill form from selected contact
       const fullAddress = [
         contact.address_street,
         contact.address_city,
@@ -466,18 +364,15 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       }));
       
       if (fullAddress && contact.latitude && contact.longitude) {
-        setSelectedAddress({
-          place_id: `contact_${contact.id}`,
+        setVerifiedAddress({
+          street: contact.address_street || '',
+          city: contact.address_city || '',
+          state: contact.address_state || '',
+          zip: contact.address_zip || '',
+          lat: contact.latitude,
+          lng: contact.longitude,
           formatted_address: fullAddress,
-          geometry: {
-            location: {
-              lat: contact.latitude,
-              lng: contact.longitude
-            }
-          },
-          address_components: []
         });
-        setAddressVerified(true);
       }
     }
   };
@@ -510,7 +405,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           priority: formData.priority,
           estimatedValue: formData.estimatedValue,
           salesReps: formData.salesReps,
-          selectedAddress: selectedAddress,
+          selectedAddress: verifiedAddress ? { place_id: verifiedAddress.place_id, formatted_address: verifiedAddress.formatted_address, geometry: { location: { lat: verifiedAddress.lat || 0, lng: verifiedAddress.lng || 0 } }, address_components: [] } : null,
           existingContactId: selectedContact?.id || contact?.id,
           locationId: currentLocationId, // Pass current location from location switcher
         }
@@ -558,10 +453,8 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         salesReps: [],
         useSameInfo: false,
       });
-      setSelectedAddress(null);
+      setVerifiedAddress(null);
       setSelectedContact(null);
-      setShowAddressPicker(false);
-      setAddressVerified(false);
       
     } catch (error: any) {
       console.error('Error creating lead:', error);
@@ -776,69 +669,24 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
             {/* Right Column */}
             <div className="space-y-4">
-              <div className="relative">
-                <div className="flex items-center justify-between mb-1">
-                  <Label htmlFor="address" className="flex items-center gap-1">
-                    Lead Address <span className="text-destructive">*</span>
-                  </Label>
-                  {formData.address.trim() && (
-                    addressVerified ? (
-                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30 flex items-center gap-1">
-                        <CheckCircle2 className="h-3 w-3" />
-                        Verified
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
-                        <AlertCircle className="h-3 w-3" />
-                        Manual Entry
-                      </Badge>
-                    )
-                  )}
-                </div>
-                <Input
-                  id="address"
-                  value={formData.address}
-                  onChange={(e) => {
-                    setFormData(prev => ({ ...prev, address: e.target.value }));
-                    setSelectedAddress(null);
-                    setAddressVerified(false);
-                    if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
-                  }}
-                  placeholder="Start typing address..."
-                  disabled={formData.useSameInfo}
-                  className={fieldErrors.address ? "border-destructive focus-visible:ring-destructive" : ""}
-                />
-                
-                {/* Real-time address suggestions dropdown */}
-                {showAddressPicker && addressSuggestions.length > 0 && (
-                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                    {addressSuggestions.map((suggestion, index) => (
-                      <div
-                        key={suggestion.place_id || index}
-                        className={`p-3 cursor-pointer hover:bg-accent flex items-center gap-2 ${
-                          selectedAddress?.place_id === suggestion.place_id ? 'bg-primary/10' : ''
-                        }`}
-                        onClick={() => handleAddressSelect(suggestion)}
-                      >
-                        <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
-                        <span className="text-sm">{suggestion.formatted_address}</span>
-                        {selectedAddress?.place_id === suggestion.place_id && (
-                          <Check className="h-4 w-4 text-primary ml-auto" />
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                {fieldErrors.address && (
-                  <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
-                )}
-                {!addressVerified && formData.address.trim() && !showAddressPicker && !fieldErrors.address && (
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Start typing to see suggestions, or click "Verify" to search
-                  </p>
-                )}
-              </div>
+              <AddressVerification
+                label="Lead Address"
+                required
+                initialAddress={verifiedAddress ? {
+                  street: verifiedAddress.street,
+                  city: verifiedAddress.city,
+                  state: verifiedAddress.state,
+                  zip: verifiedAddress.zip,
+                } : undefined}
+                onAddressVerified={(addressData) => {
+                  setVerifiedAddress(addressData);
+                  setFormData(prev => ({ ...prev, address: addressData.formatted_address || `${addressData.street}, ${addressData.city}, ${addressData.state} ${addressData.zip}` }));
+                  if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
+                }}
+              />
+              {fieldErrors.address && (
+                <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
+              )}
 
               <div>
                 <Label>Sales Representatives</Label>
@@ -874,13 +722,6 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
               </div>
             </div>
           </div>
-
-          {selectedAddress && (
-            <div className="flex items-center gap-2 text-sm text-success">
-              <Check className="h-4 w-4" />
-              Address verified with Google Maps
-            </div>
-          )}
 
           <div className="flex justify-end gap-2 pt-4">
             <Button variant="outline" onClick={() => setOpen(false)}>

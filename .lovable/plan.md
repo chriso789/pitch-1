@@ -1,68 +1,54 @@
 
 
-# Integrate Google Address Verification Across All Address Entry Points
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Current State
+Three issues to address:
 
-There are two existing address verification components:
-1. **`AddressVerification`** (`src/shared/components/forms/AddressVerification.tsx`) -- Full component with street/city/state/zip fields, autocomplete on street input, and a "Verify" button that calls the Google Address Validation API. Used in **ContactForm** and **LocationManagement**.
-2. **`AddressAutocomplete`** (`src/components/AddressAutocomplete.tsx`) -- Single-field autocomplete that returns parsed address components. Used in **LeadForm**.
+## 1. Contact Profile Pipeline Area Overflowing
 
-Several forms currently use **plain text inputs** for addresses with no Google verification:
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Forms That Need Updating
+**File: `src/pages/ContactProfile.tsx`**
 
-| Form | File | Current Approach |
-|------|------|-----------------|
-| **Contact Details Tab** (edit contact) | `src/components/contact-profile/ContactDetailsTab.tsx` | Plain `<Input>` for street, city, state, zip (lines 595-651) |
-| **Job Creation Dialog** | `src/components/JobCreationDialog.tsx` | Plain `<Input>` + manual autocomplete/verification logic (lines 307-318) |
-| **Enhanced Lead Creation Dialog** | `src/components/EnhancedLeadCreationDialog.tsx` | Plain `<Input>` + manual autocomplete/verification logic (lines 798-800+) |
-| **Company Admin Page** | `src/pages/admin/CompanyAdminPage.tsx` | Plain `<Input>` fields for company address |
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-Forms **already** using verification (no changes needed):
-- **ContactForm** -- uses `AddressVerification`
-- **LeadForm** -- uses `AddressAutocomplete`
-- **LocationManagement** -- uses `AddressVerification`
+## 2. Show Who Saved Each Estimate (Under Title)
 
-## Plan
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### 1. ContactDetailsTab -- Replace plain inputs with `AddressVerification`
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-**File: `src/components/contact-profile/ContactDetailsTab.tsx`**
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-- Import `AddressVerification` from `@/shared/components/forms/AddressVerification`
-- Replace the 4 separate `FormField` blocks for street/city/state/zip (lines 595-651) with a single `AddressVerification` component
-- Pass `initialAddress` from the current form values
-- On `onAddressVerified`, update all 4 form fields (`address_street`, `address_city`, `address_state`, `address_zip`) via `form.setValue()`
-- Keep the form fields in state so they still submit correctly
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-### 2. JobCreationDialog -- Replace plain input with `AddressVerification`
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-**File: `src/components/JobCreationDialog.tsx`**
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-- Import `AddressVerification`
-- Replace the plain `<Input>` for address (line 309) and the manual autocomplete/suggestion logic with `AddressVerification`
-- Remove the manual `handleAddressVerification`, `addressSuggestions`, `showAddressPicker` state and related code
-- On `onAddressVerified`, store the structured address + lat/lng in `selectedAddress`
-- When `useSameAddress` is checked, pass contact's address as `initialAddress`
-
-### 3. EnhancedLeadCreationDialog -- Replace plain input with `AddressVerification`
-
-**File: `src/components/EnhancedLeadCreationDialog.tsx`**
-
-- Import `AddressVerification`
-- Replace the plain address `<Input>` (line 798) and all manual verification logic (`handleAddressVerification`, `addressSuggestions`, `showAddressPicker`, etc.) with `AddressVerification`
-- On `onAddressVerified`, update `formData.address` and store parsed components + lat/lng
-- Keep the verified/manual badge logic but tie it to the verification status from the component
-
-### 4. CompanyAdminPage -- Replace plain inputs with `AddressVerification`
-
-**File: `src/pages/admin/CompanyAdminPage.tsx`**
-
-- Import `AddressVerification`
-- In the edit dialog, replace the plain address input fields with `AddressVerification`
-- Pass `initialAddress` from the company's existing address
-- On `onAddressVerified`, update `formData.address_street/city/state/zip`
-
-Each replacement removes ~30-60 lines of manual address handling and replaces it with 10-15 lines using the shared component, ensuring consistent Google-verified addresses everywhere.
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
