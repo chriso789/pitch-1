@@ -130,6 +130,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
           .from('profiles')
           .select('id, first_name, last_name, email')
           .eq('tenant_id', tenantToUse)
+          .neq('role', 'master')
+          .neq('is_developer', true)
           .order('first_name');
 
         if (error) throw error;

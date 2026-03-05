@@ -66,6 +66,7 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
         .select('id, first_name, last_name')
         .in('role', ['sales_manager', 'regional_manager', 'corporate'])
         .eq('is_active', true)
+        .neq('is_developer', true)
         .order('first_name');
       
       if (error) throw error;
