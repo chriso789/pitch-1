@@ -1,54 +1,38 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Saved Estimates Not Showing — Missing Foreign Key
 
-Three issues to address:
+## Root Cause
 
-## 1. Contact Profile Pipeline Area Overflowing
+The query in `SavedEstimatesList.tsx` (line 125) uses a PostgREST relational embed:
+```
+profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+```
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+But **no foreign key named `enhanced_estimates_created_by_fkey` exists** on the `enhanced_estimates` table. The actual FK constraints are only for `labor_cost_locked_by`, `material_cost_locked_by`, `measurement_report_id`, `signature_envelope_id`, `template_id`, and `tenant_id`.
 
-**File: `src/pages/ContactProfile.tsx`**
+When PostgREST encounters a reference to a non-existent FK hint, the query **fails with an error**, which is caught by the `if (error) throw error` line. React Query then treats this as a failed query, so `estimates` remains undefined, and the component renders nothing (`return null` on line 358).
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+The estimate data IS in the database (confirmed: `OBR-00038-zlvg`, $16,000, pipeline_entry_id matches) — it's purely a query failure.
 
-## 2. Show Who Saved Each Estimate (Under Title)
+## Fix (2 changes)
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### 1. Database Migration: Add missing FK constraint
+```sql
+ALTER TABLE public.enhanced_estimates
+ADD CONSTRAINT enhanced_estimates_created_by_fkey
+FOREIGN KEY (created_by) REFERENCES public.profiles(id);
+```
+This makes the PostgREST relational embed `profiles!enhanced_estimates_created_by_fkey(...)` valid.
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 2. Defensive query fallback in `SavedEstimatesList.tsx`
+Even with the FK added, make the query resilient by catching the join failure and falling back gracefully. If the profiles join fails for any reason, the estimates should still display — just without the "Created by" attribution.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+In the `queryFn` (line 109-137): wrap the profiles join in a try/catch, or use a two-query approach where the main estimate query doesn't include the profiles join, and a secondary query fetches creator names separately.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+**Recommended approach**: Keep the relational embed (it's cleaner) but add the FK so it works. No code change needed beyond the migration.
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+## Files Changed
+- **SQL Migration**: Add `enhanced_estimates_created_by_fkey` foreign key
+- **`src/components/estimates/SavedEstimatesList.tsx`**: No change needed if FK is added; optionally add error logging for debugging
 
