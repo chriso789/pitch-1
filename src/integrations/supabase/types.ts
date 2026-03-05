@@ -39453,7 +39453,7 @@ export type Database = {
       generate_presentation_token: {
         Args: {
           p_contact_id?: string
-          p_expires_in?: unknown
+          p_expires_in?: string
           p_presentation_id: string
         }
         Returns: string
