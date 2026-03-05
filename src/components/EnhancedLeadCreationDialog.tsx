@@ -190,25 +190,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         name: `${contact.first_name} ${contact.last_name} - Roofing Project`
       }));
       
-      // Create a mock address object for validation when using contact info
-      if (fullAddress) {
-        const mockAddress: AddressSuggestion = {
-          place_id: `contact_${contact.id}`,
+      if (fullAddress && contact.latitude && contact.longitude) {
+        setVerifiedAddress({
+          street: contact.address_street || '',
+          city: contact.address_city || '',
+          state: contact.address_state || '',
+          zip: contact.address_zip || '',
+          lat: contact.latitude,
+          lng: contact.longitude,
           formatted_address: fullAddress,
-          geometry: {
-            location: {
-              lat: contact.latitude || 0,
-              lng: contact.longitude || 0
-            }
-          },
-          address_components: []
-        };
-        setSelectedAddress(mockAddress);
-        handleAddressVerification(fullAddress);
+        });
       }
     } else if (!formData.useSameInfo) {
-      // Clear address when unchecking useSameInfo
-      setSelectedAddress(null);
+      setVerifiedAddress(null);
       setFormData(prev => ({ 
         ...prev, 
         address: "",
@@ -307,60 +301,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
 
-  const handleAddressVerification = async (address: string) => {
-    if (!address.trim()) return;
-    
-    setAddressLoading(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-        body: {
-          endpoint: 'autocomplete',
-          params: {
-            input: address,
-            types: 'address'
-          }
-        }
-      });
-
-      if (error) throw error;
-
-      if (data?.predictions) {
-        const detailedSuggestions = await Promise.all(
-          data.predictions.slice(0, 5).map(async (prediction: any) => {
-            const { data: details } = await supabase.functions.invoke('google-maps-proxy', {
-              body: {
-                endpoint: 'details',
-                params: {
-                  place_id: prediction.place_id,
-                  fields: 'formatted_address,geometry,address_components'
-                }
-              }
-            });
-            return details?.result;
-          })
-        );
-
-        setAddressSuggestions(detailedSuggestions.filter(Boolean));
-        setShowAddressPicker(true);
-      }
-    } catch (error) {
-      console.error('Address verification error:', error);
-      toast({
-        title: "Address Verification Error",
-        description: "Unable to verify address. Please check and try again.",
-        variant: "destructive",
-      });
-    } finally {
-      setAddressLoading(false);
-    }
-  };
-
-  const handleAddressSelect = (suggestion: AddressSuggestion) => {
-    setSelectedAddress(suggestion);
-    setAddressVerified(true);
-    setFormData(prev => ({ ...prev, address: suggestion.formatted_address }));
-    setShowAddressPicker(false);
-  };
+  // handleAddressVerification and handleAddressSelect removed - now handled by AddressVerification component
 
   const handleSalesRepToggle = (repId: string) => {
     setFormData(prev => ({
@@ -390,7 +331,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       }
     }
     // Allow either: verified address, selected contact with address, OR manual address text
-    if (!selectedAddress && !selectedContact && !formData.address.trim()) {
+    if (!verifiedAddress && !selectedContact && !formData.address.trim()) {
       errors.address = "Address is required";
     }
     if (!formData.status) {
@@ -407,7 +348,6 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const handleContactSelect = (contact: SelectedContact | null) => {
     setSelectedContact(contact);
     if (contact) {
-      // Auto-fill form from selected contact
       const fullAddress = [
         contact.address_street,
         contact.address_city,
@@ -424,18 +364,15 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       }));
       
       if (fullAddress && contact.latitude && contact.longitude) {
-        setSelectedAddress({
-          place_id: `contact_${contact.id}`,
+        setVerifiedAddress({
+          street: contact.address_street || '',
+          city: contact.address_city || '',
+          state: contact.address_state || '',
+          zip: contact.address_zip || '',
+          lat: contact.latitude,
+          lng: contact.longitude,
           formatted_address: fullAddress,
-          geometry: {
-            location: {
-              lat: contact.latitude,
-              lng: contact.longitude
-            }
-          },
-          address_components: []
         });
-        setAddressVerified(true);
       }
     }
   };
@@ -468,7 +405,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           priority: formData.priority,
           estimatedValue: formData.estimatedValue,
           salesReps: formData.salesReps,
-          selectedAddress: selectedAddress,
+          selectedAddress: verifiedAddress ? { place_id: verifiedAddress.place_id, formatted_address: verifiedAddress.formatted_address, geometry: { location: { lat: verifiedAddress.lat || 0, lng: verifiedAddress.lng || 0 } }, address_components: [] } : null,
           existingContactId: selectedContact?.id || contact?.id,
           locationId: currentLocationId, // Pass current location from location switcher
         }
@@ -516,10 +453,8 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         salesReps: [],
         useSameInfo: false,
       });
-      setSelectedAddress(null);
+      setVerifiedAddress(null);
       setSelectedContact(null);
-      setShowAddressPicker(false);
-      setAddressVerified(false);
       
     } catch (error: any) {
       console.error('Error creating lead:', error);
