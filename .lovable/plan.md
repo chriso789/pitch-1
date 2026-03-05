@@ -1,29 +1,54 @@
 
 
-# Fix: Lead Name Not Displaying on Contact Profile
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-Two places show wrong names:
+Three issues to address:
 
-1. **Header card** (line 397): Shows "Pipeline Lead" because `lead_name` is `null` in the database for this entry. It should fall back to the contact's name (which is already available on the page), not a generic label.
+## 1. Contact Profile Pipeline Area Overflowing
 
-2. **Pipeline tab list** (ContactJobsTab line 132): Shows "Unknown Customer" because it tries `entry.contacts?.first_name` but the pipeline entries are fetched with `select('*')` (no join), so `contacts` is undefined.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Fix
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. ContactProfile.tsx header card (line 397)
-Change the fallback from `'Pipeline Lead'` to use the contact's actual name:
-```tsx
-{(entry as any).lead_name || `${contact.first_name} ${contact.last_name}` || 'Pipeline Lead'}
-```
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### 2. ContactJobsTab.tsx pipeline name (line 132)
-Use `entry.lead_name` first, then fall back to the contact prop (which is always available since we're on the contact profile page):
-```tsx
-name: entry.lead_name || `${contact.first_name || ''} ${contact.last_name || ''} - ${entry.roof_type || 'Roofing'} Lead`,
-```
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### Files Changed
-- `src/pages/ContactProfile.tsx` -- line 397 fallback
-- `src/components/contact-profile/ContactJobsTab.tsx` -- line 132 name construction
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
+
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

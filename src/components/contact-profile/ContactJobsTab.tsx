@@ -129,7 +129,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
         return {
           id: entry.id,
           type: 'pipeline' as const,
-          name: `${entry.contacts?.first_name || 'Unknown'} ${entry.contacts?.last_name || 'Customer'} - ${entry.roof_type || 'Roofing'} Lead`,
+          name: entry.lead_name || `${contact.first_name || ''} ${contact.last_name || ''} - ${entry.roof_type || 'Roofing'} Lead`,
           status: mapPipelineStatusToJobStatus(entry.status),
           description: `${entry.roof_type || 'Roofing'} project${entry.estimated_value ? ` - Est. $${entry.estimated_value.toLocaleString()}` : ''}`,
           created_at: entry.created_at,
