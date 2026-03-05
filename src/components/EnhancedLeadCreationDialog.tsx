@@ -28,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ContactSearchSelect } from "@/components/ContactSearchSelect";
 import { useLocation } from "@/contexts/LocationContext";
+import { AddressVerification } from "@/shared/components/forms";
 
 interface EnhancedLeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -37,16 +38,15 @@ interface EnhancedLeadCreationDialogProps {
   onOpenChange?: (open: boolean) => void;
 }
 
-interface AddressSuggestion {
-  place_id: string;
-  formatted_address: string;
-  geometry: {
-    location: {
-      lat: number;
-      lng: number;
-    };
-  };
-  address_components: any[];
+interface VerifiedAddressData {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  lat?: number;
+  lng?: number;
+  place_id?: string;
+  formatted_address?: string;
 }
 
 interface SalesRep {
@@ -89,11 +89,14 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
   const [loading, setLoading] = useState(false);
-  const [addressLoading, setAddressLoading] = useState(false);
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [selectedContact, setSelectedContact] = useState<SelectedContact | null>(contact || null);
-  
+  const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddressData | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const { toast } = useToast();
+  const { currentLocationId } = useLocation();
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -109,82 +112,37 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     useSameInfo: false,
   });
 
-  const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
-  const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
-  const [showAddressPicker, setShowAddressPicker] = useState(false);
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [addressVerified, setAddressVerified] = useState(false);
-  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
-  const { toast } = useToast();
-  const { currentLocationId } = useLocation();
-
-  // Real-time address autocomplete with debounce
+  // Handle using same info as contact
   useEffect(() => {
-    // Skip if using same info as contact, or address is too short
-    if (formData.useSameInfo || formData.address.length < 3 || addressVerified) {
-      if (formData.address.length < 3) {
-        setAddressSuggestions([]);
-        setShowAddressPicker(false);
-      }
-      return;
-    }
-
-    // Debounce API calls (300ms)
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current);
-    }
-
-    debounceTimer.current = setTimeout(async () => {
-      setAddressLoading(true);
-      try {
-        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-          body: {
-            endpoint: 'autocomplete',
-            params: {
-              input: formData.address,
-              types: 'address'
-            }
-          }
+    if (contact && formData.useSameInfo) {
+      const fullAddress = [
+        contact.address_street,
+        contact.address_city,
+        contact.address_state,
+        contact.address_zip
+      ].filter(Boolean).join(", ");
+      
+      setFormData(prev => ({ 
+        ...prev, 
+        address: fullAddress,
+        phone: contact.phone || "",
+        email: contact.email || "",
+        name: `${contact.first_name} ${contact.last_name} - Roofing Project`
+      }));
+      
+      if (fullAddress && contact.latitude && contact.longitude) {
+        setVerifiedAddress({
+          street: contact.address_street || '',
+          city: contact.address_city || '',
+          state: contact.address_state || '',
+          zip: contact.address_zip || '',
+          lat: contact.latitude,
+          lng: contact.longitude,
+          formatted_address: fullAddress,
         });
-
-        if (error) throw error;
-
-        if (data?.predictions && data.predictions.length > 0) {
-          // Fetch details for each prediction to get coordinates
-          const detailedSuggestions = await Promise.all(
-            data.predictions.slice(0, 5).map(async (prediction: any) => {
-              const { data: details } = await supabase.functions.invoke('google-maps-proxy', {
-                body: {
-                  endpoint: 'details',
-                  params: {
-                    place_id: prediction.place_id,
-                    fields: 'formatted_address,geometry,address_components'
-                  }
-                }
-              });
-              return details?.result;
-            })
-          );
-
-          setAddressSuggestions(detailedSuggestions.filter(Boolean));
-          setShowAddressPicker(true);
-        } else {
-          setAddressSuggestions([]);
-          setShowAddressPicker(false);
-        }
-      } catch (error) {
-        console.error('Address autocomplete error:', error);
-      } finally {
-        setAddressLoading(false);
       }
-    }, 300);
-
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current);
-      }
-    };
-  }, [formData.address, formData.useSameInfo, addressVerified]);
+    }
+  }, [formData.useSameInfo, contact]);
 
   // Pipeline statuses from the database
   const pipelineStatuses = [
