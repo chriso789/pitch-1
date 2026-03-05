@@ -1,55 +1,54 @@
 
 
-# Fix Role Update Edge Function Error
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Root Cause
+Three issues to address:
 
-The edge function logs show the exact error:
+## 1. Contact Profile Pipeline Area Overflowing
 
-```
-Could not find the 'updated_at' column of 'user_roles' in the schema cache
-```
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-The `user_roles` table only has columns: `id`, `user_id`, `tenant_id`, `created_at`, `created_by`, `role`. There is no `updated_at` column, but the edge function tries to upsert with `updated_at: new Date().toISOString()`.
+**File: `src/pages/ContactProfile.tsx`**
 
-Additionally, the page gets stuck on "Loading profile..." after save because the role update fails silently (returns 500), but the profile save succeeds and triggers a reload -- the reload then hangs or shows stale data.
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-A secondary concern: `verify_jwt = true` in config.toml can cause issues on Lovable Cloud due to ES256 token signing. The function already validates the JWT in code via `getUser()`, so gateway verification is redundant.
+## 2. Show Who Saved Each Estimate (Under Title)
 
-## Fix
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### 1. Edge Function: Remove `updated_at` from upsert (supabase/functions/update-user-role/index.ts)
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-**Line 139-148**: Remove `updated_at` from the upsert payload:
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-```typescript
-const { error: roleUpdateError } = await supabaseAdmin
-  .from('user_roles')
-  .upsert({
-    user_id: userId,
-    role: newRole,
-    tenant_id: effectiveTenantId
-  }, {
-    onConflict: 'user_id,tenant_id'
-  });
-```
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-### 2. Update CORS headers to include all Supabase client headers (same file, line 4-5)
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-```typescript
-'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-```
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-### 3. Config: Set `verify_jwt = false` for update-user-role (supabase/config.toml)
-
-Since the function already validates JWT in code via `getUser()`, disable gateway verification to prevent ES256 token issues:
-
-```toml
-[functions.update-user-role]
-verify_jwt = false
-```
-
-### 4. Redeploy the edge function
-
-These three changes fix the 500 error and ensure role updates persist immediately.
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
