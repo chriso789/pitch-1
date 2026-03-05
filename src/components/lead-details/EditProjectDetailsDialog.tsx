@@ -65,12 +65,12 @@ export function EditProjectDetailsDialog({
   contactId,
   initialValues,
   initialContactValues,
+  initialLeadName,
   existingMetadata = {},
   onSave,
 }: EditProjectDetailsDialogProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [firstName, setFirstName] = useState(initialContactValues?.first_name || '');
-  const [lastName, setLastName] = useState(initialContactValues?.last_name || '');
+  const [leadName, setLeadName] = useState(initialLeadName || '');
   const [email, setEmail] = useState(initialContactValues?.email || '');
   const [phone, setPhone] = useState(initialContactValues?.phone || '');
   const [priority, setPriority] = useState(initialValues.priority || 'medium');
@@ -83,8 +83,7 @@ export function EditProjectDetailsDialog({
   // Sync state when dialog opens with new values
   React.useEffect(() => {
     if (open) {
-      setFirstName(initialContactValues?.first_name || '');
-      setLastName(initialContactValues?.last_name || '');
+      setLeadName(initialLeadName || `${initialContactValues?.first_name || ''} ${initialContactValues?.last_name || ''}`.trim());
       setEmail(initialContactValues?.email || '');
       setPhone(initialContactValues?.phone || '');
       setPriority(initialValues.priority || 'medium');
