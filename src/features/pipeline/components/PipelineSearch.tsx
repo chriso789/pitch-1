@@ -1,14 +1,28 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, X, ArrowRight } from "lucide-react";
+import { Search, X, ArrowRight, Loader2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useDebounce } from "@/hooks/useDebounce";
+import { supabase } from "@/integrations/supabase/client";
 
 interface JobStage {
   name: string;
   key: string;
   color: string;
+}
+
+interface SearchResult {
+  id: string;
+  clj_formatted_number: string;
+  status: string;
+  lead_name: string | null;
+  contacts: {
+    first_name: string;
+    last_name: string;
+    address_city: string | null;
+    address_state: string | null;
+  };
 }
 
 interface PipelineSearchProps {
@@ -26,6 +40,8 @@ export const PipelineSearch = ({
 }: PipelineSearchProps) => {
   const navigate = useNavigate();
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestions, setSuggestions] = useState<SearchResult[]>([]);
+  const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
   const debouncedQuery = useDebounce(searchQuery, 300);
@@ -36,33 +52,60 @@ export const PipelineSearch = ({
     return map;
   }, [jobStages]);
 
-  // Flatten all entries from the grouped pipeline data
-  const allEntries = useMemo(() => {
-    const entries: any[] = [];
-    for (const [, stageEntries] of Object.entries(pipelineData)) {
-      if (Array.isArray(stageEntries)) {
-        entries.push(...stageEntries);
-      }
-    }
-    return entries;
-  }, [pipelineData]);
-
-  const suggestions = useMemo(() => {
-    if (debouncedQuery.length < 2) return [];
-    const q = debouncedQuery.toLowerCase();
-    return allEntries
-      .filter(entry => {
-        const name = `${entry.contacts?.first_name || ""} ${entry.contacts?.last_name || ""}`.toLowerCase();
-        const clj = (entry.clj_formatted_number || "").toLowerCase();
-        const addr = `${entry.contacts?.address_street || ""} ${entry.contacts?.address_city || ""} ${entry.contacts?.address_state || ""}`.toLowerCase();
-        return name.includes(q) || clj.includes(q) || addr.includes(q);
-      })
-      .slice(0, 8);
-  }, [debouncedQuery, allEntries]);
-
+  // Independent Supabase search across ALL locations
   useEffect(() => {
-    setShowSuggestions(suggestions.length > 0 && debouncedQuery.length >= 2);
-  }, [suggestions, debouncedQuery]);
+    const searchPipeline = async () => {
+      if (debouncedQuery.length < 2) {
+        setSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const q = `%${debouncedQuery}%`;
+        
+        const { data, error } = await supabase
+          .from('pipeline_entries')
+          .select(`
+            id,
+            clj_formatted_number,
+            status,
+            lead_name,
+            contacts!inner (
+              first_name,
+              last_name,
+              address_city,
+              address_state
+            )
+          `)
+          .eq('is_deleted', false)
+          .or(`lead_name.ilike.${q},clj_formatted_number.ilike.${q},contacts.first_name.ilike.${q},contacts.last_name.ilike.${q},contacts.address_city.ilike.${q}`)
+          .order('updated_at', { ascending: false })
+          .limit(10);
+
+        if (error) throw error;
+
+        const results: SearchResult[] = (data || []).map(entry => ({
+          id: entry.id,
+          clj_formatted_number: entry.clj_formatted_number,
+          status: entry.status,
+          lead_name: entry.lead_name,
+          contacts: Array.isArray(entry.contacts) ? entry.contacts[0] : entry.contacts,
+        }));
+
+        setSuggestions(results);
+        setShowSuggestions(results.length > 0);
+      } catch (error) {
+        console.error('Pipeline search error:', error);
+        setSuggestions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    searchPipeline();
+  }, [debouncedQuery]);
 
   // Click outside to close
   useEffect(() => {
@@ -78,9 +121,15 @@ export const PipelineSearch = ({
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const handleSelect = (entry: any) => {
+  const handleSelect = (entry: SearchResult) => {
     setShowSuggestions(false);
     navigate(`/lead/${entry.id}`);
+  };
+
+  const getDisplayName = (entry: SearchResult) => {
+    if (entry.lead_name) return entry.lead_name;
+    const c = entry.contacts;
+    return `${c?.first_name || ""} ${c?.last_name || ""}`.trim() || "Unknown";
   };
 
   return (
@@ -112,9 +161,15 @@ export const PipelineSearch = ({
           ref={suggestionsRef}
           className="absolute z-50 w-full mt-1 bg-popover border border-border rounded-md shadow-lg max-h-72 overflow-auto"
         >
-          {suggestions.map((entry) => {
+          {loading && (
+            <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Searching...
+            </div>
+          )}
+          {!loading && suggestions.map((entry) => {
             const stage = stageMap[entry.status];
-            const name = `${entry.contacts?.first_name || ""} ${entry.contacts?.last_name || ""}`.trim();
+            const name = getDisplayName(entry);
             const addr = [entry.contacts?.address_city, entry.contacts?.address_state]
               .filter(Boolean)
               .join(", ");

@@ -725,7 +725,7 @@ const LeadDetails = () => {
           <div className="flex-1">
               <div className="flex items-center space-x-3">
                 <h1 className="text-3xl font-bold">
-                  {lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead'}
+                  {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
                 </h1>
                 <Button 
                   variant="outline" 
@@ -1347,6 +1347,7 @@ const LeadDetails = () => {
           email: lead.contact.email || null,
           phone: lead.contact.phone || null,
         } : undefined}
+        initialLeadName={(lead as any).lead_name || null}
         existingMetadata={(lead.metadata as Record<string, unknown>) || {}}
         onSave={() => {
           refetchLead();

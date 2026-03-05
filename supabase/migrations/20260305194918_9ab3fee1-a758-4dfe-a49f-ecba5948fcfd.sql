@@ -1,0 +1,1 @@
+ALTER TABLE pipeline_entries ADD COLUMN IF NOT EXISTS lead_name TEXT;

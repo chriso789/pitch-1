@@ -22191,6 +22191,7 @@ export type Database = {
           id: string
           is_deleted: boolean | null
           last_status_change_reason: string | null
+          lead_name: string | null
           lead_number: number | null
           lead_quality_score: number | null
           lead_temperature: string | null
@@ -22233,6 +22234,7 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           last_status_change_reason?: string | null
+          lead_name?: string | null
           lead_number?: number | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
@@ -22275,6 +22277,7 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           last_status_change_reason?: string | null
+          lead_name?: string | null
           lead_number?: number | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
