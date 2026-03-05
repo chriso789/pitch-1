@@ -2517,7 +2517,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         {shouldShowTemplateContent && (
           <Button
             onClick={handleSaveEstimate}
-            disabled={!selectedTemplateId || lineItems.length === 0 || saving || creating || savingLineItems}
+            disabled={(!selectedTemplateId && !existingEstimateId) || lineItems.length === 0 || saving || creating || savingLineItems}
             className="flex-1 min-w-[140px]"
           >
             {(saving || creating || savingLineItems) ? (
