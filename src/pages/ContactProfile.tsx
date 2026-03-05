@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { BackButton } from "@/shared/components/BackButton";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
+import { ContactNotesSection } from "@/components/contact-profile/ContactNotesSection";
 import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { SkipTraceButton } from "@/components/skip-trace/SkipTraceButton";
@@ -93,19 +94,21 @@ const ContactProfile = () => {
       // Build query: active profiles only
       let query = supabase
         .from('profiles')
-        .select('id, first_name, last_name, role')
+        .select('id, first_name, last_name, role, is_developer')
         .eq('tenant_id', activeTenantId)
         .eq('is_active', true)
         .order('first_name');
 
       const { data } = await query;
       if (data) {
+        // Exclude master/developer accounts from rep selection
+        const operational = data.filter((p: any) => p.role !== 'master' && !p.is_developer);
         // Filter: include elevated roles always + location-assigned users
         const filtered = contact.location_id
-          ? data.filter((p: any) =>
+          ? operational.filter((p: any) =>
               ELEVATED_ROLES.includes(p.role) || locationUserIds.includes(p.id)
             )
-          : data;
+          : operational;
         setTeamMembers(filtered);
       }
     };
@@ -452,7 +455,7 @@ const ContactProfile = () => {
 
         {/* Tabbed Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-4 h-12">
+          <TabsList className="grid w-full grid-cols-5 h-12">
             <TabsTrigger value="details" className="flex items-center gap-2">
               <User className="h-4 w-4" />
               Details
@@ -461,8 +464,12 @@ const ContactProfile = () => {
               <Activity className="h-4 w-4" />
               Pipeline ({pipelineEntries.length})
             </TabsTrigger>
-            <TabsTrigger value="communication" className="flex items-center gap-2">
+            <TabsTrigger value="notes" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
+              Notes
+            </TabsTrigger>
+            <TabsTrigger value="communication" className="flex items-center gap-2">
+              <Phone className="h-4 w-4" />
               Communication
             </TabsTrigger>
             <TabsTrigger value="documents" className="flex items-center gap-2">
@@ -487,6 +494,12 @@ const ContactProfile = () => {
               pipelineEntries={pipelineEntries}
               onJobsUpdate={handleJobsUpdate}
             />
+          </TabsContent>
+
+          <TabsContent value="notes" className="space-y-0">
+            {activeTenantId && (
+              <ContactNotesSection contactId={contact.id} tenantId={activeTenantId} />
+            )}
           </TabsContent>
 
           <TabsContent value="communication" className="space-y-0">
