@@ -45,6 +45,7 @@ async function fetchPipelineEntries(locationId: string | null): Promise<Pipeline
       created_at,
       updated_at,
       location_id,
+      lead_name,
       contacts!inner (
         id,
         contact_number,
