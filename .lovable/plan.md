@@ -1,33 +1,54 @@
 
 
-# Fix: Saved Estimates Not Appearing After Creation
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Root Cause
+Three issues to address:
 
-The global React Query config (`src/lib/queryClient.ts`) sets `refetchOnMount: false` and `staleTime: 5 minutes`. Here's what happens:
+## 1. Contact Profile Pipeline Area Overflowing
 
-1. User opens lead detail page → `SavedEstimatesList` mounts, queries `['saved-estimates', pipelineEntryId]`, gets empty array
-2. User scrolls down to estimate builder, creates estimate → `invalidateQueries` marks the cache as stale
-3. If `SavedEstimatesList` is not actively mounted (scrolled off screen or during state transitions), invalidation marks data stale but no active observer triggers refetch
-4. When `SavedEstimatesList` re-renders, `refetchOnMount: false` prevents it from refetching the stale/invalidated data — it shows the cached empty array
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-The estimate **is** in the database (confirmed: `OBR-00038-zlvg`, $16,000, created by Chris O'Brien) but the UI query never re-fetches.
+**File: `src/pages/ContactProfile.tsx`**
 
-## Fix
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`** (~line 105)
+## 2. Show Who Saved Each Estimate (Under Title)
 
-Override the global `refetchOnMount` setting for this specific query to ensure it always refetches when the component mounts or when data is stale:
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-```typescript
-const { data: estimates, isLoading } = useQuery({
-  queryKey: ['saved-estimates', pipelineEntryId],
-  queryFn: async () => { ... },
-  enabled: !!pipelineEntryId,
-  refetchOnMount: 'always',  // Override global setting — always refetch on mount
-  staleTime: 30_000,         // 30s stale time (shorter than global 5min)
-});
-```
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-This ensures that every time the user scrolls back up or the tab re-renders, the estimates list reflects the latest data. The 30-second stale time still prevents excessive API calls during normal browsing.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

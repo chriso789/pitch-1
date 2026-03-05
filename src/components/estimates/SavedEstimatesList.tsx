@@ -104,6 +104,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
 
   const { data: estimates, isLoading } = useQuery({
     queryKey: ['saved-estimates', pipelineEntryId],
+    refetchOnMount: 'always',
+    staleTime: 30_000,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enhanced_estimates')
