@@ -171,7 +171,6 @@ export function EditProjectDetailsDialog({
           {/* Contact fields (email/phone only) */}
           {contactId && (
             <>
-              </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
                 <Input
