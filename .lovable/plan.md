@@ -1,54 +1,58 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Two Changes: Filter Developer Accounts from Rep Dropdowns + Contact Internal Notes
 
-Three issues to address:
+## 1. Filter Developer/Master Accounts from Rep Selection
 
-## 1. Contact Profile Pipeline Area Overflowing
+**Problem:** The rep assignment dropdown on Contact Profile shows both "Chris O'Brien" accounts — one is the `owner` role, the other is a `master`/developer account. Only operational staff should appear.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+**Fix:** In `src/pages/ContactProfile.tsx` lines 94-109, add filters to exclude `role = 'master'` and `is_developer = true` from the profiles query. This matches the pattern already used in `InternalNotesSection.tsx` (line 122-123).
 
-**File: `src/pages/ContactProfile.tsx`**
+**Changes:**
+- `src/pages/ContactProfile.tsx` — Update the team members query (line 96) to add `.select('id, first_name, last_name, role, is_developer')` and filter results to exclude `role === 'master'` or `is_developer === true` in the post-fetch filter (line 104-108).
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+Also audit the same pattern in `src/pages/LeadDetails.tsx` rep dropdowns to ensure consistency.
 
-## 2. Show Who Saved Each Estimate (Under Title)
+---
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+## 2. Contact-Level Internal Notes
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+**Problem:** Internal notes currently only exist on leads/pipeline entries. The user needs a separate notes area on the Contact Profile to track follow-up independently of any lead.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+**Approach:** Add an optional `contact_id` column to the existing `internal_notes` table, then create a `ContactNotesSection` component (adapted from the existing `InternalNotesSection`) and add it as a new tab on the Contact Profile page.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+**Database Migration:**
+```sql
+ALTER TABLE internal_notes 
+  ADD COLUMN contact_id UUID REFERENCES contacts(id) ON DELETE CASCADE;
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+-- Make pipeline_entry_id nullable (notes can belong to contact OR pipeline entry)
+ALTER TABLE internal_notes 
+  ALTER COLUMN pipeline_entry_id DROP NOT NULL;
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+-- Add check: at least one parent must be set
+ALTER TABLE internal_notes 
+  ADD CONSTRAINT internal_notes_parent_check 
+  CHECK (pipeline_entry_id IS NOT NULL OR contact_id IS NOT NULL);
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+-- RLS policy for contact notes
+CREATE POLICY "Users can manage contact notes in their tenant"
+  ON internal_notes FOR ALL USING (tenant_id IN (
+    SELECT tenant_id FROM profiles WHERE id = auth.uid()
+  ));
+```
+
+**New Component:** `src/components/contact-profile/ContactNotesSection.tsx`
+- Adapted from `InternalNotesSection.tsx` but queries by `contact_id` instead of `pipeline_entry_id`
+- Same features: add note, pin, delete, @mention, search
+
+**UI Change:** `src/pages/ContactProfile.tsx`
+- Add a "Notes" tab between "Communication" and "Documents"
+- Render `ContactNotesSection` with `contactId` and `tenantId` props
+
+**Files changed:**
+- SQL migration (new) — add `contact_id` column, make `pipeline_entry_id` nullable, add check constraint
+- `src/components/contact-profile/ContactNotesSection.tsx` (new) — contact-scoped notes component
+- `src/pages/ContactProfile.tsx` — filter master/developer from rep dropdown + add Notes tab
+- `src/integrations/supabase/types.ts` — update `internal_notes` type to include optional `contact_id`
 
