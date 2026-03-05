@@ -1,54 +1,36 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Merge Duplicate Benedict Lal Contacts
 
-Three issues to address:
+## Problem
+"Benedict Lal" at 512 Park Ave exists as two separate contact records:
 
-## 1. Contact Profile Pipeline Area Overflowing
+| Record | ID | address_street | city | state | zip | Created |
+|--------|----|---------------|------|-------|-----|---------|
+| **Original** | `27e41e33...` | `512 Park Avenue, West Palm Beach, FL 33403 US` | West Palm Beach | null | null | Jan 19 |
+| **Duplicate** | `eee5494d...` | `512 park ave` | west palm beach | FL | 33403 | Feb 12 |
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+The duplicate slipped past the unique index because the street normalization differs (`512 park avenue west palm beach fl 33403 us` vs `512 park ave`).
 
-**File: `src/pages/ContactProfile.tsx`**
+The duplicate has 1 pipeline entry (lead 3352-1-0) and no other related data.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+## Data Fix (SQL operations)
 
-## 2. Show Who Saved Each Estimate (Under Title)
+### 1. Re-link the duplicate's pipeline entry to the original contact
+Move pipeline entry `3f20dcd4...` from duplicate `eee5494d` to original `27e41e33`.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### 2. Delete the duplicate contact
+Remove `eee5494d` after its pipeline entry is moved.
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 3. Fix the original contact's address fields
+The original has the full formatted address crammed into `address_street` with null state/zip. Update to properly parsed fields:
+- `address_street` → `512 Park Avenue`
+- `address_city` → `West Palm Beach`
+- `address_state` → `FL`
+- `address_zip` → `33403`
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### 4. Clean up duplicate pipeline entries on the original
+The original contact `27e41e33` already has TWO pipeline entries (contact_number 3099 and 3290, both "lead" status). After merging, it will have three. The two older ones should be reviewed — if both are duplicates, soft-delete or remove the extra one.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
-
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+This is a data-only fix via SQL. No code changes needed.
 
