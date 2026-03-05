@@ -96,13 +96,11 @@ export function EditProjectDetailsDialog({
   const handleSave = async () => {
     setIsLoading(true);
     try {
-      // Update contact info if contactId provided
+      // Update contact email/phone only (NOT name - name is on lead)
       if (contactId) {
         const { error: contactError } = await supabase
           .from('contacts')
           .update({
-            first_name: firstName,
-            last_name: lastName,
             email: email || null,
             phone: phone || null,
           })
@@ -111,8 +109,9 @@ export function EditProjectDetailsDialog({
         if (contactError) throw contactError;
       }
 
-      // Update pipeline entry
+      // Update pipeline entry with lead_name
       const updateData: Record<string, unknown> = {
+        lead_name: leadName.trim() || null,
         priority,
         roof_type: roofType || null,
         estimated_value: estimatedValue ? parseFloat(estimatedValue) : null,
@@ -155,28 +154,23 @@ export function EditProjectDetailsDialog({
         </DialogHeader>
 
         <div className="grid gap-4 py-4">
-          {/* Contact fields */}
+          {/* Lead Name (stored on pipeline_entries, independent of contact) */}
+          <div className="grid gap-2">
+            <Label htmlFor="lead_name">Lead / Property Name</Label>
+            <Input
+              id="lead_name"
+              placeholder="e.g. VCA Palm Beach, 123 Main St Roof"
+              value={leadName}
+              onChange={(e) => setLeadName(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              This name is specific to this lead. Changing it won't affect the contact record.
+            </p>
+          </div>
+
+          {/* Contact fields (email/phone only) */}
           {contactId && (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="grid gap-2">
-                  <Label htmlFor="first_name">First Name</Label>
-                  <Input
-                    id="first_name"
-                    placeholder="First name"
-                    value={firstName}
-                    onChange={(e) => setFirstName(e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="last_name">Last Name</Label>
-                  <Input
-                    id="last_name"
-                    placeholder="Last name"
-                    value={lastName}
-                    onChange={(e) => setLastName(e.target.value)}
-                  />
-                </div>
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
