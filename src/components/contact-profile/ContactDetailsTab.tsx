@@ -81,20 +81,12 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
 
   const fetchJobCount = async () => {
     try {
-      const [pipelineResult, jobsResult] = await Promise.all([
-        supabase
-          .from('pipeline_entries')
-          .select('id')
-          .eq('contact_id', contact.id),
-        supabase
-          .from('projects')
-          .select('id, pipeline_entry_id')
-          .not('pipeline_entry_id', 'is', null)
-      ]);
-
-      const pipelineCount = pipelineResult.data?.length || 0;
-      const jobsCount = jobsResult.data?.length || 0;
-      setJobCount(pipelineCount + jobsCount);
+      const { count } = await supabase
+        .from('pipeline_entries')
+        .select('id', { count: 'exact', head: true })
+        .eq('contact_id', contact.id)
+        .eq('is_deleted', false);
+      setJobCount(count || 0);
     } catch (error) {
       console.error('Error fetching job count:', error);
     }
