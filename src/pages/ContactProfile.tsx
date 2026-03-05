@@ -496,6 +496,12 @@ const ContactProfile = () => {
             />
           </TabsContent>
 
+          <TabsContent value="notes" className="space-y-0">
+            {activeTenantId && (
+              <ContactNotesSection contactId={contact.id} tenantId={activeTenantId} />
+            )}
+          </TabsContent>
+
           <TabsContent value="communication" className="space-y-0">
             <div className="space-y-6">
               <ContactCommunicationTab contact={contact} />
