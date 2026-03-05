@@ -117,8 +117,10 @@ export function InternalNotesSection({ pipelineEntryId, tenantId }: InternalNote
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, email')
+        .select('id, first_name, last_name, email, role, is_developer')
         .eq('tenant_id', tenantId)
+        .neq('role', 'master')
+        .neq('is_developer', true)
         .order('first_name');
 
       if (error) return [];
