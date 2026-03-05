@@ -1,58 +1,54 @@
 
 
-# Fix: Pipeline Entries Not Showing for Converted Leads
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Root Cause
+Three issues to address:
 
-Jean Derilus's pipeline entry (`be2da4f5-98ab-43ed-9f99-de71d3feb4e2`) has `is_deleted = true`, even though it has an active job and project linked to it. This happened because a batch cleanup migration (`20260121014536`) soft-deleted orphan pipeline entries using broad criteria (East Coast location, created 2026-01-19, `created_by IS NULL`). It accidentally caught entries that had already been converted to projects.
+## 1. Contact Profile Pipeline Area Overflowing
 
-The Contact Profile page queries `pipeline_entries` with `.eq('is_deleted', false)`, so these converted entries don't appear. Meanwhile, the `jobs` table query has no such filter, so the job card still shows — creating the confusing state where "Pipeline (0)" is displayed but a job card appears below.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-There are **2 pipeline entries** with `deleted_by IS NULL` (accidentally deleted) and **3 more** that were manually deleted but still have active jobs/projects — totaling **5 affected records**.
+**File: `src/pages/ContactProfile.tsx`**
 
-## Fix (2 parts)
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### 1. Data Repair: Restore accidentally deleted pipeline entries
-Restore all pipeline entries that were soft-deleted but still have active jobs or projects linked to them.
+## 2. Show Who Saved Each Estimate (Under Title)
 
-```sql
-UPDATE pipeline_entries
-SET is_deleted = false, deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
-WHERE is_deleted = true
-  AND (
-    EXISTS (SELECT 1 FROM jobs j WHERE j.pipeline_entry_id = pipeline_entries.id)
-    OR EXISTS (SELECT 1 FROM projects p WHERE p.pipeline_entry_id = pipeline_entries.id)
-  );
-```
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-This will restore all 5 affected records. The criteria is safe: if a pipeline entry has a linked job or project, it should never be marked as deleted.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-### 2. Preventive Guard: Protect converted entries from future deletions
-Add a database trigger that prevents soft-deleting pipeline entries that have linked projects or jobs, unless the user explicitly force-deletes.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-**File: New SQL migration**
-```sql
-CREATE OR REPLACE FUNCTION prevent_delete_converted_pipeline()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW.is_deleted = true AND OLD.is_deleted = false THEN
-    IF EXISTS (SELECT 1 FROM projects WHERE pipeline_entry_id = OLD.id)
-       OR EXISTS (SELECT 1 FROM jobs WHERE pipeline_entry_id = OLD.id) THEN
-      RAISE EXCEPTION 'Cannot delete pipeline entry with linked projects/jobs';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-CREATE TRIGGER guard_converted_pipeline_delete
-BEFORE UPDATE ON pipeline_entries
-FOR EACH ROW
-EXECUTE FUNCTION prevent_delete_converted_pipeline();
-```
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-## Scope
-- Data repair via SQL (affects 5 records)
-- One new migration for the protective trigger
-- No frontend code changes needed — once data is restored, existing queries will pick it up
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
