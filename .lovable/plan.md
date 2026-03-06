@@ -1,54 +1,81 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix Tristate Pipeline: Populate Stage Keys + Add Orphan Handling
 
-Three issues to address:
+## Problem
+Tristate's 9 pipeline stages all have `key = NULL`. The code auto-generates keys from names (e.g., "New Lead" → `new_lead`), but existing entries have statuses like `lead`, `project`, `completed`, `legal_review` — none of which match auto-generated keys. Result: all 10 entries are invisible.
 
-## 1. Contact Profile Pipeline Area Overflowing
+**9 other tenants** have the same NULL key issue.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+## Data Currently in Pipeline
 
-**File: `src/pages/ContactProfile.tsx`**
+| Contact | Status | Needs Key Mapping |
+|---|---|---|
+| test Contact | `lead` | "New Lead" stage |
+| Andrea Iacono | `lead` | "New Lead" stage |
+| QUALITY MEATS | `lead` | "New Lead" stage |
+| Rich Biedrzycki | `lead` | "New Lead" stage |
+| KEVIN MARIOTTI | `legal_review` | No matching stage — orphan |
+| Cherie Stutz | `project` | "In Production" stage |
+| Christian Morrissette | `project` | "In Production" stage |
+| MICHAEL HENKIN | `project` | "In Production" stage |
+| Patti & Michael Attanasio | `project` | "In Production" stage |
+| Michelle McGonigle | `completed` | "Complete" stage |
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+## Fix — Two Parts
 
-## 2. Show Who Saved Each Estimate (Under Title)
+### Part 1: Data Fix — Populate `key` column for all 9 affected tenants
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+Update Tristate's pipeline_stages keys to match the statuses their entries actually use:
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+| Stage Name | Key to Set |
+|---|---|
+| New Lead | `lead` |
+| Contacted | `contacted` |
+| Inspection Scheduled | `inspection_scheduled` |
+| Estimate Sent | `estimate_sent` |
+| Negotiation | `negotiation` |
+| Sold | `sold` |
+| In Production | `project` |
+| Complete | `completed` |
+| Lost | `lost` |
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+For the other 8 tenants with NULL keys, auto-generate keys from names (lowercase, spaces→underscores) since they likely don't have existing entries with legacy statuses.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+Use the **insert/update tool** (not migration) since this is a data update.
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+### Part 2: Code Fix — Orphan handling in Pipeline.tsx
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+**File: `src/features/pipeline/components/Pipeline.tsx`** (~line 354-364)
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+After grouping entries by stage key, add a pass that collects any entries whose `status` doesn't match any stage key and pushes them into the first column. This prevents future data mismatches from making entries invisible.
+
+```tsx
+// After the forEach that groups by stage key:
+const allStageKeys = jobStages.map(s => s.key);
+const orphaned = filteredData.filter(e => !allStageKeys.includes(e.status));
+if (orphaned.length > 0 && jobStages.length > 0) {
+  const firstKey = jobStages[0].key;
+  groupedData[firstKey] = [...(groupedData[firstKey] || []), ...filterBySearch(orphaned)];
+}
+```
+
+### Part 3: Schema safeguard (migration)
+
+Add a NOT NULL constraint with a default on `pipeline_stages.key` to prevent this from recurring:
+
+```sql
+-- Set remaining NULL keys to auto-generated values
+UPDATE pipeline_stages SET key = lower(regexp_replace(name, '\s+', '_', 'g'))
+WHERE key IS NULL;
+
+-- Add NOT NULL + default
+ALTER TABLE pipeline_stages ALTER COLUMN key SET NOT NULL;
+ALTER TABLE pipeline_stages ALTER COLUMN key SET DEFAULT '';
+```
+
+### Files Changed
+- Data update: `pipeline_stages` rows for 9 tenants (Tristate gets custom mapping, others get auto-generated)
+- `src/features/pipeline/components/Pipeline.tsx` — orphan entry handling (~4 lines added)
+- 1 SQL migration — NOT NULL constraint on `key` column
 
