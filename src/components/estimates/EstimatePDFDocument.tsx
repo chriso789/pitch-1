@@ -909,21 +909,21 @@ const WarrantyPage: React.FC<{ warrantyTerms?: string }> = ({ warrantyTerms }) =
   }, [warrantyTerms]);
 
   return (
-    <div className="space-y-4">
-      <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
         <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
         Warranty Information
       </h3>
-      <div className="text-xs text-gray-600 space-y-3">
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-          <h4 className="font-medium text-amber-900 mb-1.5">Manufacturer Warranty</h4>
-          <p className="text-amber-800 whitespace-pre-line">
+      <div className="text-xs text-gray-600 space-y-2">
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
+          <h4 className="font-medium text-amber-900 mb-1">Manufacturer Warranty</h4>
+          <p className="text-amber-800 whitespace-pre-line leading-tight">
             {parsed?.manufacturer || "All roofing materials include the full manufacturer's warranty as specified by the selected product line."}
           </p>
         </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-          <h4 className="font-medium text-blue-900 mb-1.5">Workmanship Warranty</h4>
-          <p className="text-blue-800 whitespace-pre-line">
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+          <h4 className="font-medium text-blue-900 mb-1">Workmanship Warranty</h4>
+          <p className="text-blue-800 whitespace-pre-line leading-tight">
             {parsed?.workmanship || "Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality."}
           </p>
         </div>
