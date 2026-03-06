@@ -22399,7 +22399,7 @@ export type Database = {
           id: string
           is_active: boolean | null
           is_terminal: boolean | null
-          key: string | null
+          key: string
           name: string
           probability_percent: number
           stage_order: number
@@ -22415,7 +22415,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_terminal?: boolean | null
-          key?: string | null
+          key?: string
           name: string
           probability_percent?: number
           stage_order?: number
@@ -22431,7 +22431,7 @@ export type Database = {
           id?: string
           is_active?: boolean | null
           is_terminal?: boolean | null
-          key?: string | null
+          key?: string
           name?: string
           probability_percent?: number
           stage_order?: number

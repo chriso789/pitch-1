@@ -363,6 +363,18 @@ const Pipeline = () => {
         totals[stage.key] = stageTotal;
       });
 
+      // Handle orphaned entries (status doesn't match any stage key)
+      const allStageKeys = jobStages.map(s => s.key);
+      const orphaned = filteredData.filter(e => !allStageKeys.includes(e.status));
+      if (orphaned.length > 0 && jobStages.length > 0) {
+        const firstKey = jobStages[0].key;
+        const orphanedFiltered = filterBySearch(orphaned);
+        groupedData[firstKey] = [...(groupedData[firstKey] || []), ...orphanedFiltered];
+        // Add orphaned values to first stage total
+        const orphanedTotal = orphanedFiltered.reduce((sum, entry) => sum + (parseFloat(entry.selling_price) || 0), 0);
+        totals[firstKey] = (totals[firstKey] || 0) + orphanedTotal;
+      }
+
       setPipelineData(groupedData);
       setStageTotals(totals);
     } catch (error) {
