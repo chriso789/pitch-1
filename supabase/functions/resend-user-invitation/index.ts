@@ -8,30 +8,6 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-/**
- * Convert Supabase action_link to direct app setup link
- * This bypasses Supabase redirect configuration entirely.
- */
-function buildDirectSetupLink(actionLink: string): string {
-  try {
-    const url = new URL(actionLink);
-    const tokenHash = url.searchParams.get('token');
-    const type = url.searchParams.get('type') || 'invite';
-    
-    if (!tokenHash) {
-      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
-      return actionLink;
-    }
-    
-    const appUrl = EMAIL_CONFIG.urls.app;
-    const directLink = `${appUrl}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
-    console.log('[buildDirectSetupLink] Converted to direct link');
-    return directLink;
-  } catch (err) {
-    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
-    return actionLink;
-  }
-}
 
 interface ResendInvitationRequest {
   userId: string;
