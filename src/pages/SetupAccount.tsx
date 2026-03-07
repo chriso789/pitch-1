@@ -30,88 +30,91 @@ export default function SetupAccount() {
   const [companyLogo, setCompanyLogo] = useState<string | null>(null);
   const [userFirstName, setUserFirstName] = useState<string | null>(null);
 
-  // Get token from URL
-  const tokenHash = searchParams.get('token_hash');
-  const type = searchParams.get('type') || 'invite';
+  // Get token from URL — support both custom setup_token and legacy token_hash
+  const setupToken = searchParams.get('setup_token');
+  const legacyTokenHash = searchParams.get('token_hash');
+  const type = searchParams.get('type') || 'setup';
 
   useEffect(() => {
     async function verifyToken() {
-      if (!tokenHash) {
-        setSetupState('error');
-        setErrorMessage('Invalid link. No token found in URL.');
+      // Custom setup token flow (new)
+      if (setupToken) {
+        console.log('[SetupAccount] Custom setup token detected, ready for password entry');
+        // We don't verify the token upfront — validation happens when submitting password
+        // This avoids consuming the token before the user sets their password
+        setSetupState('ready');
+        return;
+      }
+      
+      // Legacy OTP token flow (backward compatibility)
+      if (legacyTokenHash) {
+        try {
+          console.log('[SetupAccount] Legacy token_hash detected, verifying via OTP...');
+          
+          // Sign out any existing session
+          try {
+            const { data: existingSession } = await supabase.auth.getSession();
+            if (existingSession?.session) {
+              await supabase.auth.signOut({ scope: 'local' });
+            }
+          } catch (signOutError) {
+            console.warn('[SetupAccount] Pre-validation signout error:', signOutError);
+          }
+          
+          const { data, error } = await supabase.auth.verifyOtp({
+            token_hash: legacyTokenHash,
+            type: type as 'invite' | 'recovery' | 'signup' | 'magiclink' | 'email_change',
+          });
+
+          if (error) {
+            console.error('[SetupAccount] Legacy token verification failed:', error);
+            setSetupState('error');
+            setErrorMessage(error.message || 'This link is invalid or has expired. Please request a new one.');
+            return;
+          }
+
+          if (data?.user) {
+            console.log('[SetupAccount] Legacy token verified, user:', data.user.email);
+            localStorage.setItem('pitch_password_setup_in_progress', 'true');
+            setUserEmail(data.user.email || null);
+            
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('tenant_id, first_name')
+              .eq('id', data.user.id)
+              .single();
+              
+            if (profileData?.tenant_id) {
+              const { data: tenantData } = await supabase
+                .from('tenants')
+                .select('name, logo_url')
+                .eq('id', profileData.tenant_id)
+                .single();
+                
+              setCompanyName(tenantData?.name || null);
+              setCompanyLogo(tenantData?.logo_url || null);
+            }
+            setUserFirstName(profileData?.first_name || null);
+            setSetupState('ready');
+          } else {
+            setSetupState('error');
+            setErrorMessage('Unable to verify your account. Please request a new link.');
+          }
+        } catch (err) {
+          console.error('[SetupAccount] Legacy verification error:', err);
+          setSetupState('error');
+          setErrorMessage('An unexpected error occurred. Please try again.');
+        }
         return;
       }
 
-      try {
-        console.log('[SetupAccount] Verifying token:', { type, hasToken: !!tokenHash });
-        
-        // CRITICAL: Sign out any existing session FIRST to prevent bypass
-        // This ensures user must complete password setup even if they were already logged in
-        try {
-          const { data: existingSession } = await supabase.auth.getSession();
-          if (existingSession?.session) {
-            console.log('[SetupAccount] Found existing session, signing out to enforce password setup...');
-            await supabase.auth.signOut({ scope: 'local' });
-          }
-        } catch (signOutError) {
-          console.warn('[SetupAccount] Error during pre-validation signout:', signOutError);
-          // Continue anyway - the main validation will handle it
-        }
-        
-        // Verify the OTP token
-        const { data, error } = await supabase.auth.verifyOtp({
-          token_hash: tokenHash,
-          type: type as 'invite' | 'recovery' | 'signup' | 'magiclink' | 'email_change',
-        });
-
-        if (error) {
-          console.error('[SetupAccount] Token verification failed:', error);
-          setSetupState('error');
-          setErrorMessage(error.message || 'This link is invalid or has expired. Please request a new one.');
-          return;
-        }
-
-        if (data?.user) {
-          console.log('[SetupAccount] Token verified, user:', data.user.email);
-          
-          // CRITICAL: Set flag to prevent ProtectedRoute from redirecting during password setup
-          localStorage.setItem('pitch_password_setup_in_progress', 'true');
-          
-          setUserEmail(data.user.email || null);
-          
-          // Fetch user's company info for branding
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('tenant_id, first_name')
-            .eq('id', data.user.id)
-            .single();
-            
-          if (profileData?.tenant_id) {
-            const { data: tenantData } = await supabase
-              .from('tenants')
-              .select('name, logo_url')
-              .eq('id', profileData.tenant_id)
-              .single();
-              
-            setCompanyName(tenantData?.name || null);
-            setCompanyLogo(tenantData?.logo_url || null);
-          }
-          setUserFirstName(profileData?.first_name || null);
-          
-          setSetupState('ready');
-        } else {
-          setSetupState('error');
-          setErrorMessage('Unable to verify your account. Please request a new link.');
-        }
-      } catch (err) {
-        console.error('[SetupAccount] Unexpected error:', err);
-        setSetupState('error');
-        setErrorMessage('An unexpected error occurred. Please try again.');
-      }
+      // No token at all
+      setSetupState('error');
+      setErrorMessage('Invalid link. No token found in URL.');
     }
 
     verifyToken();
-  }, [tokenHash, type]);
+  }, [setupToken, legacyTokenHash, type]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
