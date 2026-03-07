@@ -317,9 +317,36 @@ export default function SetupAccount() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <Button onClick={handleRequestNewLink} className="w-full">
-                Request New Setup Link
-              </Button>
+              {resendSuccess ? (
+                <div className="text-center py-2">
+                  <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    A new setup link has been sent. Please check your email.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Enter your email to receive a new setup link:
+                  </p>
+                  <Input
+                    type="email"
+                    placeholder="your@email.com"
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                  />
+                  <Button onClick={handleResendLink} className="w-full" disabled={isResending}>
+                    {isResending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Send New Setup Link'
+                    )}
+                  </Button>
+                </>
+              )}
               <Button variant="outline" onClick={() => navigate('/login')} className="w-full">
                 Go to Login
               </Button>
