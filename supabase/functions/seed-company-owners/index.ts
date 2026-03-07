@@ -230,7 +230,9 @@ serve(async (req: Request) => {
         } catch (tokenErr) {
           console.error(`Setup token error for ${owner.email}:`, tokenErr);
         }
-          
+
+        // Send personalized welcome email with company branding
+        if (directSetupLink) {
           try {
             const emailPayload = {
               email: owner.email,
@@ -242,7 +244,6 @@ serve(async (req: Request) => {
               companyPrimaryColor: companyData?.primary_color || "#1e3a5f",
               companySecondaryColor: companyData?.secondary_color || "#3b82f6",
               passwordSetupLink: directSetupLink,
-              // Platform admin as the sender for owner invitations
               ownerName: "Chris O'Brien",
               ownerHeadshot: null,
               ownerTitle: "Platform Administrator",
@@ -274,7 +275,7 @@ serve(async (req: Request) => {
         results.push({ 
           email: owner.email, 
           status: "created",
-          error: linkData?.properties?.action_link ? undefined : "Could not generate invite link"
+          error: directSetupLink ? undefined : "Could not generate setup link"
         });
 
         console.log(`Successfully created owner: ${owner.firstName} ${owner.lastName} for ${owner.companyName}`);
