@@ -21,6 +21,9 @@ export default function SetupAccount() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [resendEmail, setResendEmail] = useState('');
+  const [isResending, setIsResending] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
   
   // Company branding state
   const [companyName, setCompanyName] = useState<string | null>(null);
@@ -231,8 +234,45 @@ export default function SetupAccount() {
     }
   };
 
-  const handleRequestNewLink = () => {
-    navigate('/request-setup-link');
+  const handleResendLink = async () => {
+    const emailToUse = resendEmail.trim();
+    if (!emailToUse) {
+      toast.error('Please enter your email address');
+      return;
+    }
+    
+    setIsResending(true);
+    try {
+      // Look up user by email to get their userId
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', emailToUse)
+        .maybeSingle();
+      
+      if (profileError || !profile) {
+        toast.error('No account found with that email. Please contact your administrator.');
+        setIsResending(false);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('resend-user-invitation', {
+        body: { userId: profile.id }
+      });
+
+      if (error) {
+        toast.error('Failed to send new link. Please contact your administrator.');
+        console.error('[SetupAccount] Resend error:', error);
+      } else {
+        setResendSuccess(true);
+        toast.success('A new setup link has been sent to your email!');
+      }
+    } catch (err) {
+      console.error('[SetupAccount] Resend unexpected error:', err);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setIsResending(false);
+    }
   };
 
   // PITCH CRM Branding Header
@@ -277,9 +317,36 @@ export default function SetupAccount() {
               </CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
-              <Button onClick={handleRequestNewLink} className="w-full">
-                Request New Setup Link
-              </Button>
+              {resendSuccess ? (
+                <div className="text-center py-2">
+                  <CheckCircle2 className="h-8 w-8 text-green-600 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    A new setup link has been sent. Please check your email.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground text-center">
+                    Enter your email to receive a new setup link:
+                  </p>
+                  <Input
+                    type="email"
+                    placeholder="your@email.com"
+                    value={resendEmail}
+                    onChange={(e) => setResendEmail(e.target.value)}
+                  />
+                  <Button onClick={handleResendLink} className="w-full" disabled={isResending}>
+                    {isResending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Send New Setup Link'
+                    )}
+                  </Button>
+                </>
+              )}
               <Button variant="outline" onClick={() => navigate('/login')} className="w-full">
                 Go to Login
               </Button>
