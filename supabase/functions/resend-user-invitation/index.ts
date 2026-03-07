@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 import { EMAIL_CONFIG, getFromEmail } from "../_shared/email-config.ts";
+import { createSetupToken } from "../_shared/setup-tokens.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -106,30 +107,23 @@ serve(async (req) => {
     console.log("Using email from profile:", profile.email, "| Auth email:", authUser.email, "| Selected:", email);
     console.log("User exists, last_sign_in_at:", authUser.last_sign_in_at);
 
-    // Since user already exists in auth.users, we MUST use 'recovery' type
-    // 'invite' only works for creating new users
+    // Generate custom setup token (24-hour validity, bypasses Supabase OTP expiry)
     const appUrl = Deno.env.get("APP_URL") || EMAIL_CONFIG.urls.app;
     
-    console.log("Generating recovery link for existing user:", email);
+    console.log("Generating custom setup token for existing user:", email);
     
-    const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'recovery',
-      email: email,
-    });
-
-    if (linkError) {
-      console.error("Error generating recovery link:", linkError);
+    let passwordSetupLink = '';
+    try {
+      const { setupUrl } = await createSetupToken(supabaseAdmin, userId);
+      passwordSetupLink = setupUrl;
+      console.log("Custom setup token generated successfully");
+    } catch (tokenErr) {
+      console.error("Error generating setup token:", tokenErr);
       return new Response(
-        JSON.stringify({ error: "Failed to generate password setup link", details: linkError.message }),
+        JSON.stringify({ error: "Failed to generate password setup link", details: String(tokenErr) }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
-
-    // Convert to direct link that bypasses Supabase redirect config
-    const passwordSetupLink = linkData?.properties?.action_link 
-      ? buildDirectSetupLink(linkData.properties.action_link)
-      : '';
-    console.log("Recovery link generated and converted to direct link");
 
     // Send email via send-user-invitation function
     const emailPayload = {

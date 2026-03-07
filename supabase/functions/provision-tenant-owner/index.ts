@@ -202,28 +202,16 @@ serve(async (req) => {
       console.log("[provision-tenant-owner] Company access granted for user:", userId);
     }
 
-    // Step 5: Generate invite link (for password setup)
-    const { data: inviteData, error: inviteError } = await supabase.auth.admin.generateLink({
-      type: "invite",
-      email: ownerEmail,
-    });
-
+    // Step 5: Generate custom setup token (24-hour validity)
     let inviteLink: string | null = null;
-    if (inviteError) {
-      console.error("[provision-tenant-owner] Error generating invite link:", inviteError);
-      // Try recovery link as fallback
-      const { data: recoveryData } = await supabase.auth.admin.generateLink({
-        type: "recovery",
-        email: ownerEmail,
-      });
-      if (recoveryData?.properties?.action_link) {
-        inviteLink = buildDirectSetupLink(recoveryData.properties.action_link);
-      }
-    } else if (inviteData?.properties?.action_link) {
-      inviteLink = buildDirectSetupLink(inviteData.properties.action_link);
+    try {
+      const { setupUrl } = await createSetupToken(supabase, userId);
+      inviteLink = setupUrl;
+    } catch (tokenErr) {
+      console.error("[provision-tenant-owner] Error generating setup token:", tokenErr);
     }
 
-    console.log("[provision-tenant-owner] Generated invite link:", inviteLink ? "Yes" : "No");
+    console.log("[provision-tenant-owner] Generated setup link:", inviteLink ? "Yes" : "No");
 
     // Step 6: Send email if requested and we have a link
     let emailSent = false;

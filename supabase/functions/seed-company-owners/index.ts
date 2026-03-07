@@ -222,20 +222,14 @@ serve(async (req: Request) => {
           .eq("id", owner.tenantId)
           .single();
 
-        // Generate invite link for password setup
-        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-          type: "invite",
-          email: owner.email,
-        });
-
-        if (linkError) {
-          console.error(`Invite link error for ${owner.email}:`, linkError);
+        // Generate custom setup token for password setup
+        let directSetupLink: string | null = null;
+        try {
+          const { setupUrl } = await createSetupToken(supabaseAdmin, userId);
+          directSetupLink = setupUrl;
+        } catch (tokenErr) {
+          console.error(`Setup token error for ${owner.email}:`, tokenErr);
         }
-
-        // Send personalized welcome email with company branding
-        if (linkData?.properties?.action_link) {
-          // Convert to direct link that bypasses Supabase redirect config
-          const directSetupLink = buildDirectSetupLink(linkData.properties.action_link);
           
           try {
             const emailPayload = {
