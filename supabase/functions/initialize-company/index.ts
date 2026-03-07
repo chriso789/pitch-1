@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { Resend } from "npm:resend@2.0.0";
+import { createSetupToken } from "../_shared/setup-tokens.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -535,24 +536,22 @@ serve(async (req) => {
 
         // Generate password reset link for new users and send email
         if (isNewUser) {
-          const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
-            type: 'recovery',
-            email: ownerEmail,
-          });
+          // Generate custom setup token (24-hour validity)
+          let directSetupLink: string | null = null;
+          try {
+            const { setupUrl } = await createSetupToken(supabase, userId);
+            directSetupLink = setupUrl;
+          } catch (tokenErr) {
+            console.error('[initialize-company] Setup token error:', tokenErr);
+          }
 
-          if (resetError) {
-            console.error('[initialize-company] Reset link error:', resetError);
-          } else if (resetData?.properties?.action_link) {
-            // Convert to direct link that bypasses Supabase redirect config
-            const directSetupLink = buildDirectSetupLink(resetData.properties.action_link);
-            
+          if (directSetupLink) {
             // Send owner setup email
             const resendApiKey = Deno.env.get("RESEND_API_KEY");
             
             if (resendApiKey) {
               const resend = new Resend(resendApiKey);
               const fromEmail = getFromEmail();
-              const expiresAt = new Date(Date.now() + EMAIL_CONFIG.linkExpirationHours * 60 * 60 * 1000);
               
               // Generate the email HTML with direct setup link
               const emailHtml = generateOwnerWelcomeEmail(
