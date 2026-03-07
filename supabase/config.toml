@@ -1152,3 +1152,6 @@ verify_jwt = false
 
 [functions.meta-capi]
 verify_jwt = false
+
+[functions.validate-setup-token]
+verify_jwt = false
