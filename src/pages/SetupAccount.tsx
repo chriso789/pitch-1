@@ -234,8 +234,45 @@ export default function SetupAccount() {
     }
   };
 
-  const handleRequestNewLink = () => {
-    navigate('/request-setup-link');
+  const handleResendLink = async () => {
+    const emailToUse = resendEmail.trim();
+    if (!emailToUse) {
+      toast.error('Please enter your email address');
+      return;
+    }
+    
+    setIsResending(true);
+    try {
+      // Look up user by email to get their userId
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', emailToUse)
+        .maybeSingle();
+      
+      if (profileError || !profile) {
+        toast.error('No account found with that email. Please contact your administrator.');
+        setIsResending(false);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('resend-user-invitation', {
+        body: { userId: profile.id }
+      });
+
+      if (error) {
+        toast.error('Failed to send new link. Please contact your administrator.');
+        console.error('[SetupAccount] Resend error:', error);
+      } else {
+        setResendSuccess(true);
+        toast.success('A new setup link has been sent to your email!');
+      }
+    } catch (err) {
+      console.error('[SetupAccount] Resend unexpected error:', err);
+      toast.error('Something went wrong. Please try again.');
+    } finally {
+      setIsResending(false);
+    }
   };
 
   // PITCH CRM Branding Header
