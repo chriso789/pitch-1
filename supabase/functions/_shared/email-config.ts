@@ -30,9 +30,9 @@ export const EMAIL_CONFIG = {
     logo: 'https://pitch-1.lovable.app/lovable-uploads/pitch-logo.png',
   },
   
-  // Link expiration (in hours)
+  // Link expiration (in hours) — custom setup tokens use 24h
   linkExpiration: {
-    passwordSetup: 24,
+    passwordSetup: 24, // Custom setup_tokens table, not Supabase OTP
     passwordReset: 1,
   },
   

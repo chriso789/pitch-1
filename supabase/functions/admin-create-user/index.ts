@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { createSetupToken } from "../_shared/setup-tokens.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -224,23 +225,17 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('User creation failed');
     }
 
-    // Generate invite link for password setup
-    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
-      type: 'invite',
-      email: email,
-    });
-
-    if (inviteError) {
-      console.error('Error generating invite link:', inviteError);
+    // Generate custom setup token (24-hour validity)
+    let passwordSetupLink = '';
+    try {
+      const { setupUrl } = await createSetupToken(supabaseAdmin, newUser.user.id);
+      passwordSetupLink = setupUrl;
+      console.log('User created, setup token generated');
+    } catch (tokenErr) {
+      console.error('Error generating setup token:', tokenErr);
       await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
-      throw new Error('Failed to generate invite link');
+      throw new Error('Failed to generate setup link');
     }
-
-    // Convert to direct link that bypasses Supabase redirect config
-    const passwordSetupLink = inviteData?.properties?.action_link 
-      ? buildDirectSetupLink(inviteData.properties.action_link)
-      : '';
-    console.log('User created, invite link generated');
 
     // Create profile data
     const profileData: Record<string, unknown> = {

@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { createSetupToken } from "../_shared/setup-tokens.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -222,21 +223,17 @@ serve(async (req: Request) => {
           .eq("id", owner.tenantId)
           .single();
 
-        // Generate invite link for password setup
-        const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
-          type: "invite",
-          email: owner.email,
-        });
-
-        if (linkError) {
-          console.error(`Invite link error for ${owner.email}:`, linkError);
+        // Generate custom setup token for password setup
+        let directSetupLink: string | null = null;
+        try {
+          const { setupUrl } = await createSetupToken(supabaseAdmin, userId);
+          directSetupLink = setupUrl;
+        } catch (tokenErr) {
+          console.error(`Setup token error for ${owner.email}:`, tokenErr);
         }
 
         // Send personalized welcome email with company branding
-        if (linkData?.properties?.action_link) {
-          // Convert to direct link that bypasses Supabase redirect config
-          const directSetupLink = buildDirectSetupLink(linkData.properties.action_link);
-          
+        if (directSetupLink) {
           try {
             const emailPayload = {
               email: owner.email,
@@ -248,7 +245,6 @@ serve(async (req: Request) => {
               companyPrimaryColor: companyData?.primary_color || "#1e3a5f",
               companySecondaryColor: companyData?.secondary_color || "#3b82f6",
               passwordSetupLink: directSetupLink,
-              // Platform admin as the sender for owner invitations
               ownerName: "Chris O'Brien",
               ownerHeadshot: null,
               ownerTitle: "Platform Administrator",
@@ -280,7 +276,7 @@ serve(async (req: Request) => {
         results.push({ 
           email: owner.email, 
           status: "created",
-          error: linkData?.properties?.action_link ? undefined : "Could not generate invite link"
+          error: directSetupLink ? undefined : "Could not generate setup link"
         });
 
         console.log(`Successfully created owner: ${owner.firstName} ${owner.lastName} for ${owner.companyName}`);

@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
-import { buildDirectSetupLink } from "../_shared/email-config.ts";
+import { createSetupToken } from "../_shared/setup-tokens.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -123,27 +123,16 @@ serve(async (req) => {
       console.log("[create-company-user] Company access granted for:", userId, "to tenant:", tenant_id);
     }
 
-    // Generate password reset link - use APP_URL env var with reliable production fallback
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
-    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
-
-    const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
-      type: "recovery",
-      email,
-      options: {
-        redirectTo: resetRedirectUrl,
-      },
-    });
-
-    if (resetError) {
-      console.error("[create-company-user] Error generating reset link:", resetError);
+    // Generate custom setup token (24-hour validity, bypasses Supabase OTP expiry)
+    let resetLink: string | null = null;
+    try {
+      const { setupUrl } = await createSetupToken(supabase, userId);
+      resetLink = setupUrl;
+      console.log("[create-company-user] Generated setup token for:", email);
+    } catch (tokenErr) {
+      console.error("[create-company-user] Error generating setup token:", tokenErr);
       // Don't fail - we can still return the user ID
     }
-
-    // Convert the raw Supabase action link to a direct setup link
-    const rawResetLink = resetData?.properties?.action_link;
-    const resetLink = rawResetLink ? buildDirectSetupLink(rawResetLink) : null;
-    console.log("[create-company-user] Generated reset link for:", email);
 
     return new Response(
       JSON.stringify({

@@ -1,81 +1,54 @@
 
 
-# Fix: Custom Setup Token System for 4-Hour Link Validity
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-Supabase's OTP token expiry setting is not visible/configurable in your dashboard. The default is 1 hour, causing setup links to expire too quickly. This is a server-side constraint that can't be changed from code alone.
+Three issues to address:
 
-## Solution: Bypass Supabase OTP tokens entirely
+## 1. Contact Profile Pipeline Area Overflowing
 
-Create a custom `setup_tokens` table with our own expiry (24 hours), and modify the setup flow to validate against this table instead of calling `supabase.auth.verifyOtp()`. Use `admin.updateUserById` (already proven in `admin-update-password`) to set the password server-side.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Changes
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. Database Migration: Create `setup_tokens` table
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-```sql
-CREATE TABLE public.setup_tokens (
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  token TEXT NOT NULL UNIQUE,
-  expires_at TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '24 hours'),
-  used_at TIMESTAMPTZ,
-  created_at TIMESTAMPTZ DEFAULT now()
-);
+## 2. Show Who Saved Each Estimate (Under Title)
 
-CREATE INDEX idx_setup_tokens_token ON public.setup_tokens(token);
-CREATE INDEX idx_setup_tokens_user ON public.setup_tokens(user_id);
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-ALTER TABLE public.setup_tokens ENABLE ROW LEVEL SECURITY;
--- No client-side access needed — only edge functions use service role
-```
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-### 2. New Edge Function: `validate-setup-token`
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-Accepts `{ token, password }`. Validates token against `setup_tokens` table (not expired, not used). If valid, calls `admin.updateUserById` to set the password, marks token as used, and returns a session via `admin.generateLink({ type: 'magiclink' })` or signs the user in.
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-### 3. New Edge Function: `create-setup-token`
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-Called internally by existing invitation edge functions. Generates a crypto-random token, stores it in `setup_tokens` with 24-hour expiry, returns the token for URL construction.
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-### 4. Update All Invitation Edge Functions (7 files)
-
-Replace `generateLink({ type: 'recovery' })` + `buildDirectSetupLink()` pattern with a call to insert into `setup_tokens` and build URL using our custom token:
-
-```
-https://pitch-1.lovable.app/setup-account?setup_token=<random>&type=setup
-```
-
-**Files to update:**
-- `supabase/functions/create-company-user/index.ts`
-- `supabase/functions/resend-user-invitation/index.ts`
-- `supabase/functions/admin-create-user/index.ts`
-- `supabase/functions/provision-tenant-owner/index.ts`
-- `supabase/functions/seed-company-owners/index.ts`
-- `supabase/functions/initialize-company/index.ts`
-- `supabase/functions/send-user-invitation/index.ts` (update `linkExpirationHours` reference)
-
-### 5. Update `SetupAccount.tsx`
-
-Replace `verifyOtp()` flow with:
-1. Read `setup_token` from URL params
-2. Call `validate-setup-token` edge function with `{ token, password }`
-3. Edge function validates, sets password, returns user info + session
-4. Client signs in with returned session and proceeds to dashboard
-
-The error/resend flow stays the same — `handleResendLink` already calls `resend-user-invitation` which will now generate a new custom token.
-
-### 6. Update `_shared/email-config.ts`
-
-Update `linkExpiration.passwordSetup` comment and `buildDirectSetupLink` to support the new token format. Keep backward compatibility for any existing links still using OTP tokens.
-
-## Summary of Files Changed
-
-| File | Change |
-|---|---|
-| New migration | Create `setup_tokens` table |
-| New `validate-setup-token/index.ts` | Validate token + set password |
-| 6 edge functions | Replace `generateLink` with custom token insert |
-| `src/pages/SetupAccount.tsx` | Use custom token validation instead of `verifyOtp` |
-| `supabase/config.toml` | Add `validate-setup-token` function config |
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
