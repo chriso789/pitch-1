@@ -589,7 +589,7 @@ serve(async (req) => {
                 sent_by: created_by || null,
                 email_type: 'owner_invite',
                 email_body: emailHtml,
-                expires_at: expiresAt.toISOString(),
+                expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
                 metadata: {
                   company_name: tenant.name,
                   is_new_user: isNewUser,
