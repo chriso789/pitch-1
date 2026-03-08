@@ -90,14 +90,14 @@ serve(async (req) => {
     if (!fromNumber) {
       const { data: primaryLocation } = await admin
         .from('locations')
-        .select('id, telnyx_phone_number, telnyx_connection_id')
+        .select('id, telnyx_phone_number, telnyx_voice_app_id')
         .eq('tenant_id', body.tenant_id)
         .eq('is_primary', true)
         .single();
 
       if (primaryLocation?.telnyx_phone_number) {
         fromNumber = primaryLocation.telnyx_phone_number;
-        connectionId = primaryLocation.telnyx_connection_id;
+        connectionId = primaryLocation.telnyx_voice_app_id;
         locationId = primaryLocation.id;
       }
     }
