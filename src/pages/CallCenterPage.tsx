@@ -750,6 +750,40 @@ const CallCenterPage = () => {
           setActiveTab('lists');
         }}
       />
+
+      {/* Set Your Number Dialog */}
+      <Dialog open={showSetNumberDialog} onOpenChange={setShowSetNumberDialog}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Phone className="h-5 w-5 text-primary" />
+              Set Your Dialer Number
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <Label htmlFor="callback-phone">Your personal phone number</Label>
+            <Input
+              id="callback-phone"
+              type="tel"
+              placeholder="(555) 123-4567"
+              value={tempCallbackNumber}
+              onChange={(e) => setTempCallbackNumber(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleConfirmCallbackAndStart()}
+              autoFocus
+            />
+            <p className="text-xs text-muted-foreground">
+              The dialer will call this number first, then bridge you to the lead.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowSetNumberDialog(false)}>Cancel</Button>
+            <Button onClick={handleConfirmCallbackAndStart}>
+              <PlayCircle className="h-4 w-4 mr-2" />
+              Save &amp; Start Dialing
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </GlobalLayout>
   );
 };

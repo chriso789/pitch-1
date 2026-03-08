@@ -109,6 +109,17 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
   });
 
   const pendingItems = useMemo(() => items?.filter(i => i.status === 'pending') || [], [items]);
+
+  // Auto-start: trigger first call when autoStart is set and items are loaded
+  const [autoStartFired, setAutoStartFired] = useState(false);
+  useEffect(() => {
+    if (autoStart && !autoStartFired && pendingItems.length > 0 && phase === 'idle') {
+      setAutoStartFired(true);
+      // Small delay to let UI render
+      const timer = setTimeout(() => handleCall(), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart, autoStartFired, pendingItems.length, phase, handleCall]);
   const completedCount = useMemo(() => items?.filter(i => i.status !== 'pending').length || 0, [items]);
   const totalCount = items?.length || 0;
   const currentItem = pendingItems[currentIndex] || null;
