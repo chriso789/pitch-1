@@ -124,16 +124,17 @@ serve(async (req) => {
           if (digits === '9') {
             // Rep confirmed — transfer to lead
             const leadNumber = clientState.lead_number;
-            const fromNumber = payload.from || clientState.from_number;
+            const fromNumber = clientState.from_number || payload.from;
 
             if (leadNumber) {
-              console.log(`[telnyx-call-webhook] Rep confirmed (9). Transferring to lead ${leadNumber}`);
+              console.log(`[telnyx-call-webhook] Rep confirmed (9). Transferring to lead ${leadNumber} from ${fromNumber}`);
               try {
                 await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
                   method: 'POST',
                   body: JSON.stringify({
                     to: leadNumber,
                     from: fromNumber,
+                    caller_id_number: fromNumber,
                     client_state: payload.client_state,
                   }),
                 });
