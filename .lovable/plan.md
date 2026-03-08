@@ -1,54 +1,63 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Add DTMF Confirmation Prompt + Fix Recording on Bridge Calls
 
-Three issues to address:
+## Two Issues
 
-## 1. Contact Profile Pipeline Area Overflowing
+### 1. No confirmation prompt before bridging
+Currently, when the rep answers their phone, the webhook immediately transfers to the lead. The rep needs a "Press 9 to start calling" gate so they can confirm readiness.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+### 2. Recordings not saving
+The `record: 'record-from-answer'` parameter is passed on the initial call to the rep's phone. However, when the call is **transferred** to the lead via `call.answered`, the transfer command doesn't include a `record` parameter -- so Telnyx stops recording on the new leg. The recording needs to be explicitly started on the bridged leg.
 
-**File: `src/pages/ContactProfile.tsx`**
+## Changes
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+### A. Webhook: Replace immediate transfer with gather (DTMF prompt)
+In `telnyx-call-webhook/index.ts`, when `call.answered` fires in bridge mode:
 
-## 2. Show Who Saved Each Estimate (Under Title)
+- Instead of immediately calling `/actions/transfer`, call `/actions/gather` with:
+  - `audio_url` pointing to a TTS or pre-recorded prompt ("Press 9 to connect to your next lead")
+  - `valid_digits: "9"`
+  - `timeout_millis: 15000`
+  - Pass `client_state` through so the gather response correlates back
+- Update call status to `awaiting_confirmation` instead of `bridging`
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### B. Webhook: Handle `call.gather.ended` event
+Add a new case in the webhook switch:
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+- When `call.gather.ended` fires:
+  - Check if the digit pressed is `"9"`
+  - If yes: initiate the transfer to the lead number (same logic currently in `call.answered`)
+  - Also send a `/actions/record_start` command on the call to ensure recording captures the bridged conversation
+  - If no/timeout: hang up the call and mark it as `no_confirmation`
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### C. Webhook: Use `call.speak.started` instead of `audio_url` (simpler)
+Since we may not have a hosted audio file, use Telnyx's `/actions/speak` + `/actions/gather` combo:
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+- On `call.answered` (bridge mode): call `/actions/gather` with `speak` payload using Telnyx TTS: "Press 9 to connect to your next lead"
+- This avoids needing to host an audio file
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+### D. Fix recording on transfer
+In the transfer command (now inside `call.gather.ended`):
+- After initiating transfer, send `/actions/record_start` with `format: 'mp3'` and `channels: 'dual'`
+- This ensures the bridged conversation is recorded
+- Alternative: pass `record: 'record-from-answer'` in the transfer body if Telnyx supports it
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+## Flow After Fix
+```text
+Rep clicks "Call"
+  → telnyx-bridge-dial calls rep's phone
+  → Rep answers → webhook: call.answered
+  → Webhook sends gather+speak: "Press 9 to connect"
+  → Rep presses 9 → webhook: call.gather.ended
+  → Webhook transfers to lead + starts recording
+  → Lead answers → conversation recorded
+  → call.hangup → recording saved to DB
+```
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+## Files Modified
+- `supabase/functions/telnyx-call-webhook/index.ts` -- add gather prompt on answer, handle `call.gather.ended`, start recording on bridge
+
+## No Frontend Changes Required
+The UI already handles the call states. The `awaiting_confirmation` status is cosmetic and will show as "in-progress" in the call log.
 
