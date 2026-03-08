@@ -1,54 +1,40 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Wrong Caller ID + Call Hangup — Root Cause Found
 
-Three issues to address:
+## Root Cause
 
-## 1. Contact Profile Pipeline Area Overflowing
+The `locations` table has **no column named `telnyx_connection_id`**. The actual column is `telnyx_voice_app_id`. Both `telnyx-bridge-dial` and `telnyx-dial` edge functions query `telnyx_connection_id`, which causes PostgREST to return an error. This makes every location lookup fail silently, so:
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+- `fromNumber` falls back to `ENV.TELNYX_PHONE_NUMBER` = `+12399194485` (the 239 number) instead of the East Coast location's `+15613144201`
+- `connectionId` falls back to `ENV.TELNYX_CONNECTION_ID` (which may or may not be correct)
 
-**File: `src/pages/ContactProfile.tsx`**
+This is why the caller ID always shows the 239 number regardless of which location is selected.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+The call hanging up instantly is likely related to the webhook not being properly deployed with the DTMF logic, or a Telnyx connection issue. The webhook logs show only `call.initiated` → `call.hangup` with no `call.answered` in between (8 seconds total).
 
-## 2. Show Who Saved Each Estimate (Under Title)
+## Changes
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### 1. Fix `telnyx-bridge-dial/index.ts` — Use correct column name
+Replace all three location queries to select `telnyx_voice_app_id` instead of `telnyx_connection_id`. Map the result to `connectionId` from the correct column.
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 2. Fix `telnyx-dial/index.ts` — Same column fix
+Same change in all three location lookup queries.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### 3. Fix `telnyx-call-webhook/index.ts` — Ensure DTMF gate works
+The bridge_mode check on line 65 compares `clientState.bridge_mode` against the string `'true'`. Since the bridge-dial encodes `bridge_mode: true` (boolean), when decoded from JSON it's a boolean. The current check `=== 'true'` would fail for a real boolean. Fix to handle both.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+### 4. Redeploy all three edge functions
+Deploy `telnyx-bridge-dial`, `telnyx-dial`, and `telnyx-call-webhook` together.
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+## Technical Detail
+```text
+locations table columns (relevant):
+  telnyx_phone_number        ← exists ✅
+  telnyx_voice_app_id        ← exists ✅ (this is the connection ID)
+  telnyx_connection_id       ← DOES NOT EXIST ❌
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+Current queries select telnyx_connection_id → PostgREST 400 → fallback to ENV
+Fix: select telnyx_voice_app_id instead
+```
 
