@@ -25,6 +25,7 @@ interface CallCenterLiveDialerProps {
   onEndSession: () => void;
   locationId?: string | null;
   callbackNumber?: string;
+  autoStart?: boolean;
 }
 
 export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
@@ -32,6 +33,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
   onEndSession,
   locationId,
   callbackNumber,
+  autoStart,
 }) => {
   const tenantId = useEffectiveTenantId();
   const queryClient = useQueryClient();
