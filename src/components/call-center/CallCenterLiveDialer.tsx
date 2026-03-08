@@ -171,6 +171,16 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     }
   }, [currentItem, tenantId, contactId, callbackNumber, locationId]);
 
+  // Auto-start: trigger first call when autoStart is set and items are loaded
+  const [autoStartFired, setAutoStartFired] = useState(false);
+  useEffect(() => {
+    if (autoStart && !autoStartFired && pendingItems.length > 0 && phase === 'idle') {
+      setAutoStartFired(true);
+      const timer = setTimeout(() => handleCall(), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [autoStart, autoStartFired, pendingItems.length, phase, handleCall]);
+
   // End call — send Telnyx hangup command
   const handleHangup = useCallback(async () => {
     if (activeCallId) {
