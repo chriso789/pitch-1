@@ -152,6 +152,7 @@ export interface TelnyxDialParams {
   connection_id: string;
   from: string;
   to: string;
+  caller_id_number?: string;
   client_state?: string;
   record?: 'record-from-answer' | 'record-from-answer-dual' | 'record-from-answer-mono';
   answering_machine_detection?: 'disabled' | 'detect' | 'detect_beep' | 'premium';
@@ -172,6 +173,10 @@ export async function initiateCall(params: TelnyxDialParams): Promise<TelnyxCall
     from: params.from,
     to: params.to,
   };
+
+  if (params.caller_id_number) {
+    body.caller_id_number = params.caller_id_number;
+  }
   
   if (params.client_state) {
     body.client_state = params.client_state;

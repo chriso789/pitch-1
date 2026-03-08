@@ -1,43 +1,54 @@
 
 
-# Fix DTMF Prompt Deployment + Caller ID on Bridge Calls
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Issues Found
+Three issues to address:
 
-1. **DTMF prompt not working**: The webhook logs still show the old "transferring to lead" message, meaning the updated `telnyx-call-webhook` with gather/speak was never deployed. It needs to be redeployed.
+## 1. Contact Profile Pipeline Area Overflowing
 
-2. **Caller ID shows 239-919-4485**: The `initiateCall()` helper in `_shared/telnyx.ts` only passes `from` to Telnyx, but does **not** pass `caller_id_number`. Telnyx uses the connection's default caller ID instead of the `from` number. The fix is to explicitly set `caller_id_number` in the Telnyx API call body.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-3. **Recording not saving**: Related to issue #1 — the `record_start` command added in `call.gather.ended` was never deployed either. Additionally, the initial `record: 'record-from-answer'` on the rep leg may not carry over to the transferred leg. The deployed gather+record_start fix will address this.
+**File: `src/pages/ContactProfile.tsx`**
 
-## Changes
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### A. Update `_shared/telnyx.ts` — Add `caller_id_number` support
-- Add optional `caller_id_number` field to `TelnyxDialParams` interface
-- Pass it through in the `initiateCall()` function body when provided
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### B. Update `telnyx-bridge-dial/index.ts` — Pass `caller_id_number`
-- When calling `initiateCall()`, add `caller_id_number: formattedFrom` so the rep's phone displays the Telnyx number, not the 239 number
-- Also store `from_number` in the `clientState` so the webhook can use it for the transfer's `from` field
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### C. Redeploy `telnyx-call-webhook/index.ts`
-- The gather/speak DTMF code is already in the file — it just needs redeployment
-- Small fix: ensure `clientState` includes `from_number` for the transfer step so the lead also sees the Telnyx number as caller ID
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-## Flow After Fix
-```text
-Rep clicks Call → bridge-dial sends call to rep's phone
-  → Caller ID shows Telnyx number (not 239)
-  → Rep answers → webhook: call.answered
-  → Gather+Speak: "Press 9 to connect"
-  → Rep presses 9 → webhook: call.gather.ended
-  → Transfer to lead + record_start
-  → Lead sees Telnyx number as caller ID
-  → Recording saves on hangup
-```
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-## Files Modified
-- `supabase/functions/_shared/telnyx.ts` — add `caller_id_number` to dial params
-- `supabase/functions/telnyx-bridge-dial/index.ts` — pass `caller_id_number` and `from_number` in client state
-- `supabase/functions/telnyx-call-webhook/index.ts` — use `from_number` from client state in transfer; redeploy triggers the gather/speak fix
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

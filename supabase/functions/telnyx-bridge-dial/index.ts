@@ -181,6 +181,7 @@ serve(async (req) => {
       user_id: user.id,
       bridge_mode: true,
       lead_number: leadNumber,
+      from_number: formattedFrom,
     }));
 
     // Step 1: Call the rep's personal phone
@@ -190,6 +191,7 @@ serve(async (req) => {
       connection_id: connectionId,
       from: formattedFrom,
       to: callbackE164,
+      caller_id_number: formattedFrom,
       client_state: clientState,
       record: body.record ? 'record-from-answer' : undefined,
       answering_machine_detection: body.answering_machine_detection,
