@@ -61,42 +61,135 @@ serve(async (req) => {
           }).eq('id', callId);
         }
 
-        // ---- BRIDGE LEG 2: Transfer rep to lead ----
+        // ---- BRIDGE MODE: Prompt rep with DTMF gate before connecting to lead ----
         if (clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string) {
-          const leadNumber = clientState.lead_number;
           const callControlId = payload.call_control_id;
 
-          if (leadNumber && callControlId) {
-            console.log(`[telnyx-call-webhook] Bridge mode: transferring to lead ${leadNumber}`);
+          if (callControlId) {
+            console.log(`[telnyx-call-webhook] Bridge mode: sending DTMF prompt to rep`);
             try {
-              await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
+              // Use gather + speak to ask rep to press 9
+              await telnyxFetch(`/v2/calls/${callControlId}/actions/gather`, {
                 method: 'POST',
                 body: JSON.stringify({
-                  to: leadNumber,
-                  from: payload.from || clientState.from_number,
-                  // Pass client_state through so hangup events still correlate
+                  valid_digits: '9',
+                  timeout_millis: 15000,
+                  inter_digit_timeout_millis: 10000,
+                  maximum_digits: 1,
+                  minimum_digits: 1,
                   client_state: payload.client_state,
                 }),
               });
-              console.log(`[telnyx-call-webhook] Transfer initiated to ${leadNumber}`);
 
-              // Update call record
+              // Speak the prompt after gather is listening
+              await telnyxFetch(`/v2/calls/${callControlId}/actions/speak`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  payload: 'Press 9 to connect to your next lead.',
+                  voice: 'female',
+                  language: 'en-US',
+                  client_state: payload.client_state,
+                }),
+              });
+
+              console.log(`[telnyx-call-webhook] DTMF gather + speak sent`);
+
               if (callId) {
                 await admin.from('calls').update({
-                  status: 'bridging',
+                  status: 'awaiting_confirmation',
                 }).eq('id', callId);
               }
-            } catch (transferErr) {
-              console.error('[telnyx-call-webhook] Transfer failed:', transferErr);
-              // Update call with error info
+            } catch (gatherErr) {
+              console.error('[telnyx-call-webhook] Gather/speak failed:', gatherErr);
               if (callId) {
                 await admin.from('calls').update({
-                  raw_payload: { bridge_transfer_error: String(transferErr) },
+                  raw_payload: { gather_error: String(gatherErr) },
                 }).eq('id', callId);
               }
             }
           } else {
-            console.warn('[telnyx-call-webhook] Bridge mode but missing lead_number or call_control_id');
+            console.warn('[telnyx-call-webhook] Bridge mode but missing call_control_id');
+          }
+        }
+        break;
+      }
+
+      case 'call.gather.ended': {
+        // Rep pressed a digit (or timed out) during the DTMF gate
+        const digits = payload.digits;
+        const callControlId = payload.call_control_id;
+        const isBridge = clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string;
+
+        if (isBridge && callControlId) {
+          if (digits === '9') {
+            // Rep confirmed — transfer to lead
+            const leadNumber = clientState.lead_number;
+            const fromNumber = payload.from || clientState.from_number;
+
+            if (leadNumber) {
+              console.log(`[telnyx-call-webhook] Rep confirmed (9). Transferring to lead ${leadNumber}`);
+              try {
+                await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    to: leadNumber,
+                    from: fromNumber,
+                    client_state: payload.client_state,
+                  }),
+                });
+                console.log(`[telnyx-call-webhook] Transfer initiated to ${leadNumber}`);
+
+                // Start recording on the bridged conversation
+                try {
+                  await telnyxFetch(`/v2/calls/${callControlId}/actions/record_start`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                      format: 'mp3',
+                      channels: 'dual',
+                      client_state: payload.client_state,
+                    }),
+                  });
+                  console.log(`[telnyx-call-webhook] Recording started for bridged call`);
+                } catch (recErr) {
+                  console.error('[telnyx-call-webhook] record_start failed:', recErr);
+                }
+
+                if (callId) {
+                  await admin.from('calls').update({
+                    status: 'bridging',
+                  }).eq('id', callId);
+                }
+              } catch (transferErr) {
+                console.error('[telnyx-call-webhook] Transfer failed:', transferErr);
+                if (callId) {
+                  await admin.from('calls').update({
+                    raw_payload: { bridge_transfer_error: String(transferErr) },
+                  }).eq('id', callId);
+                }
+              }
+            } else {
+              console.warn('[telnyx-call-webhook] Gather confirmed but no lead_number in state');
+            }
+          } else {
+            // Rep didn't press 9 (timeout or wrong digit) — hang up
+            console.log(`[telnyx-call-webhook] Rep did not confirm (digits: ${digits}). Hanging up.`);
+            try {
+              await telnyxFetch(`/v2/calls/${callControlId}/actions/hangup`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  client_state: payload.client_state,
+                }),
+              });
+            } catch (hangupErr) {
+              console.error('[telnyx-call-webhook] Hangup failed:', hangupErr);
+            }
+
+            if (callId) {
+              await admin.from('calls').update({
+                status: 'no_confirmation',
+                ended_at: new Date().toISOString(),
+              }).eq('id', callId);
+            }
           }
         }
         break;
