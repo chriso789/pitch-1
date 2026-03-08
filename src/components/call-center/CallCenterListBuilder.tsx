@@ -31,6 +31,7 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
   onListCreated,
 }) => {
   const tenantId = useEffectiveTenantId();
+  const { activeCompany } = useCompanySwitcher();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
