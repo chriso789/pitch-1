@@ -157,6 +157,7 @@ export interface TelnyxDialParams {
   record?: 'record-from-answer' | 'record-from-answer-dual' | 'record-from-answer-mono';
   answering_machine_detection?: 'disabled' | 'detect' | 'detect_beep' | 'premium';
   webhook_url?: string;
+  timeout_secs?: number;
 }
 
 export interface TelnyxCallResponse {
