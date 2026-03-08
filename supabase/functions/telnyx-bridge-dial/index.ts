@@ -184,7 +184,8 @@ serve(async (req) => {
     }));
 
     // Step 1: Call the rep's personal phone
-    console.log(`Bridge: calling rep at ${callbackE164} from ${formattedFrom}`);
+    const webhookUrl = `${ENV.SUPABASE_URL}/functions/v1/telnyx-call-webhook`;
+    console.log(`Bridge: calling rep at ${callbackE164} from ${formattedFrom}, webhook: ${webhookUrl}`);
     const telnyxResp = await initiateCall({
       connection_id: connectionId,
       from: formattedFrom,
@@ -192,6 +193,7 @@ serve(async (req) => {
       client_state: clientState,
       record: body.record ? 'record-from-answer' : undefined,
       answering_machine_detection: body.answering_machine_detection,
+      webhook_url: webhookUrl,
     });
 
     console.log('Telnyx bridge call initiated (rep leg):', telnyxResp);

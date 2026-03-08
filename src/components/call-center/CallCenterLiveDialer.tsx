@@ -169,20 +169,45 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
     }
   }, [currentItem, tenantId, contactId, callbackNumber, locationId]);
 
-  // End call
+  // End call — send Telnyx hangup command
   const handleHangup = useCallback(async () => {
     if (activeCallId) {
-      // Update call record to completed
-      await supabase.from('calls').update({
-        status: 'completed',
-        ended_at: new Date().toISOString(),
-        duration_seconds: callDuration,
-      }).eq('id', activeCallId);
+      try {
+        const { data, error } = await supabase.functions.invoke('telnyx-call-control', {
+          body: { action: 'hangup', call_id: activeCallId },
+        });
+        if (error) console.error('Hangup API error:', error);
+        if (!data?.ok) console.warn('Hangup response:', data);
+      } catch (err) {
+        console.error('Failed to send hangup:', err);
+        // Fallback: update DB directly
+        await supabase.from('calls').update({
+          status: 'completed',
+          ended_at: new Date().toISOString(),
+          duration_seconds: callDuration,
+        }).eq('id', activeCallId);
+      }
     }
 
     setPhase('disposition');
     setCallStartTime(null);
   }, [activeCallId, callDuration]);
+
+  // Mute/unmute via Telnyx call control
+  const handleToggleMute = useCallback(async () => {
+    const newMuted = !isMuted;
+    setIsMuted(newMuted);
+
+    if (activeCallId) {
+      try {
+        await supabase.functions.invoke('telnyx-call-control', {
+          body: { action: newMuted ? 'mute' : 'unmute', call_id: activeCallId },
+        });
+      } catch (err) {
+        console.error('Mute toggle failed:', err);
+      }
+    }
+  }, [activeCallId, isMuted]);
 
   // Drop voicemail
   const handleDropVoicemail = async () => {
@@ -457,7 +482,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
                 <>
                   <Button
                     variant={isMuted ? 'destructive' : 'outline'}
-                    onClick={() => setIsMuted(!isMuted)}
+                    onClick={handleToggleMute}
                   >
                     {isMuted ? <MicOff className="h-4 w-4 mr-2" /> : <Mic className="h-4 w-4 mr-2" />}
                     {isMuted ? 'Unmute' : 'Mute'}
