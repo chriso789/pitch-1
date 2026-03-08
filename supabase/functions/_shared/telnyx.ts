@@ -173,6 +173,10 @@ export async function initiateCall(params: TelnyxDialParams): Promise<TelnyxCall
     from: params.from,
     to: params.to,
   };
+
+  if (params.caller_id_number) {
+    body.caller_id_number = params.caller_id_number;
+  }
   
   if (params.client_state) {
     body.client_state = params.client_state;
