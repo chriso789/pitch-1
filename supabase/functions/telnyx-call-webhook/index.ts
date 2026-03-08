@@ -62,7 +62,7 @@ serve(async (req) => {
         }
 
         // ---- BRIDGE MODE: Prompt rep with DTMF gate before connecting to lead ----
-        if (clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string) {
+        if (clientState.bridge_mode === true || clientState.bridge_mode === 'true') {
           const callControlId = payload.call_control_id;
 
           if (callControlId) {
