@@ -264,10 +264,75 @@ serve(async (req) => {
       case 'call.recording.saved': {
         const recordingUrl = payload.recording_urls?.mp3;
         if (callId && recordingUrl) {
-          await admin.from('calls').update({
-            recording_url: recordingUrl,
-          }).eq('id', callId);
-          console.log(`[telnyx-call-webhook] Recording saved for call ${callId}`);
+          console.log(`[telnyx-call-webhook] Downloading recording for call ${callId}`);
+          try {
+            // 1. Download from Telnyx before presigned URL expires
+            const audioRes = await fetch(recordingUrl);
+            if (!audioRes.ok) {
+              throw new Error(`Failed to fetch recording: ${audioRes.status}`);
+            }
+            const audioBytes = new Uint8Array(await audioRes.arrayBuffer());
+            const storagePath = `${clientState.tenant_id || 'unknown'}/${callId}.mp3`;
+
+            // 2. Upload to Supabase Storage
+            const { error: uploadErr } = await admin.storage
+              .from('call-recordings')
+              .upload(storagePath, audioBytes, {
+                contentType: 'audio/mpeg',
+                upsert: true,
+              });
+            if (uploadErr) {
+              console.error('[telnyx-call-webhook] Storage upload error:', uploadErr.message);
+              // Fallback: store original URL anyway
+              await admin.from('calls').update({ recording_url: recordingUrl }).eq('id', callId);
+              break;
+            }
+
+            // 3. Get permanent public URL
+            const { data: publicUrlData } = admin.storage
+              .from('call-recordings')
+              .getPublicUrl(storagePath);
+            const permanentUrl = publicUrlData?.publicUrl || recordingUrl;
+
+            await admin.from('calls').update({
+              recording_url: permanentUrl,
+            }).eq('id', callId);
+            console.log(`[telnyx-call-webhook] Recording stored permanently for call ${callId}`);
+
+            // 4. Trigger transcription
+            try {
+              const base64Audio = btoa(
+                audioBytes.reduce((data, byte) => data + String.fromCharCode(byte), '')
+              );
+
+              const { data: transcriptData, error: transcriptErr } = await admin.functions.invoke(
+                'voice-transcribe',
+                {
+                  body: {
+                    audio: base64Audio,
+                    callId,
+                    tenantId: clientState.tenant_id || null,
+                    contactId: clientState.contact_id || null,
+                  },
+                }
+              );
+
+              if (transcriptErr) {
+                console.error('[telnyx-call-webhook] Transcription error:', transcriptErr);
+              } else if (transcriptData?.text) {
+                await admin.from('calls').update({
+                  transcript: transcriptData.text,
+                }).eq('id', callId);
+                console.log(`[telnyx-call-webhook] Transcript saved for call ${callId}`);
+              }
+            } catch (txErr) {
+              console.error('[telnyx-call-webhook] Transcription invoke failed:', txErr);
+            }
+          } catch (dlErr) {
+            console.error('[telnyx-call-webhook] Recording download failed:', dlErr);
+            // Fallback: store original URL
+            await admin.from('calls').update({ recording_url: recordingUrl }).eq('id', callId);
+          }
         }
         break;
       }

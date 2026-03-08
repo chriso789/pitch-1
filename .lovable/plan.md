@@ -1,42 +1,54 @@
 
 
-# Fix: Recording Playback (No Sound) + Missing Transcripts
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Root Cause
+Three issues to address:
 
-### 1. Recording URLs Expire
-Telnyx stores recordings on S3 with **presigned URLs that expire in 10 minutes** (`X-Amz-Expires=600`). The webhook saves these temporary URLs directly to the `calls.recording_url` column. By the time the user views the call log, the URL is dead — the `<audio>` element shows a player but produces no sound.
+## 1. Contact Profile Pipeline Area Overflowing
 
-### 2. No Transcription
-The `call.recording.saved` handler only saves the URL. It never triggers the existing `voice-transcribe` edge function, so `transcript` is always NULL.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Solution
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. `telnyx-call-webhook/index.ts` — Download recording to Supabase Storage
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-In the `call.recording.saved` handler (lines 264-272):
-- Fetch the MP3 from the Telnyx presigned URL before it expires
-- Upload it to the existing `call-recordings` Supabase Storage bucket
-- Generate a permanent public/signed URL
-- Store that permanent URL in `calls.recording_url`
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### 2. `telnyx-call-webhook/index.ts` — Trigger transcription after saving
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-After uploading the recording to storage:
-- Invoke the existing `voice-transcribe` edge function with the audio
-- Save the returned transcript text to `calls.transcript`
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-### 3. Flow After Fix
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-```text
-Telnyx fires call.recording.saved
-  → Webhook downloads MP3 from Telnyx S3 (before expiry)
-  → Uploads to Supabase Storage (call-recordings bucket)
-  → Stores permanent URL in calls.recording_url
-  → Sends audio to voice-transcribe function
-  → Saves transcript to calls.transcript
-```
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-## Files Modified
-- `supabase/functions/telnyx-call-webhook/index.ts` — download + store recording, trigger transcription
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
