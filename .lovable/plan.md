@@ -1,54 +1,41 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Call Hanging Up After 2 Rings
 
-Three issues to address:
+## Root Cause
 
-## 1. Contact Profile Pipeline Area Overflowing
+Two issues causing premature hangup on the **rep leg**:
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+1. **Answering Machine Detection (AMD) on the rep leg**: The frontend sends `answering_machine_detection: 'premium'` to `telnyx-bridge-dial`. This causes Telnyx to analyze the rep's ringing/answer and may terminate the call early thinking it's a machine. **AMD should NOT be applied to the rep leg** — it's meant for the lead leg only.
 
-**File: `src/pages/ContactProfile.tsx`**
+2. **No `timeout_secs` parameter**: The `initiateCall()` function doesn't pass a `timeout_secs` to Telnyx. Without it, Telnyx may use a short default ring timeout, especially when AMD is active.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+Evidence from logs: `call.initiated` → `call.hangup` (~10 seconds, no `call.answered`). The call never connects because Telnyx terminates it during ringing.
 
-## 2. Show Who Saved Each Estimate (Under Title)
+## Changes
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### 1. `telnyx-bridge-dial/index.ts` — Strip AMD from the rep leg
+- Remove the `answering_machine_detection` parameter from the `initiateCall()` call for bridge mode
+- Add `timeout_secs: 60` so the rep has a full minute to pick up
+- Store the AMD preference in `client_state` so it can be applied later on the lead leg (during transfer)
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 2. `_shared/telnyx.ts` — Add `timeout_secs` support
+- Add optional `timeout_secs` field to `TelnyxDialParams`
+- Pass it through in `initiateCall()` when provided
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### 3. `telnyx-call-webhook/index.ts` — Apply AMD on the lead transfer
+- In the `call.gather.ended` handler (when rep presses 9), pass `answering_machine_detection` from `client_state` to the transfer command so AMD runs on the lead's phone instead
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+## Flow After Fix
+```text
+Rep clicks Call → bridge-dial calls rep (NO AMD, 60s timeout)
+  → Rep answers → "Press 9 to connect"
+  → Rep presses 9 → Transfer to lead (WITH AMD + recording)
+  → Lead answers → conversation recorded
+```
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+## Files Modified
+- `supabase/functions/_shared/telnyx.ts` — add `timeout_secs` to dial params
+- `supabase/functions/telnyx-bridge-dial/index.ts` — remove AMD, add timeout, store AMD pref in client_state
+- `supabase/functions/telnyx-call-webhook/index.ts` — apply AMD on lead transfer leg
 
