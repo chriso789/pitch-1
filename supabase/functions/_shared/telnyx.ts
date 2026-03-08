@@ -195,6 +195,10 @@ export async function initiateCall(params: TelnyxDialParams): Promise<TelnyxCall
     body.webhook_url = params.webhook_url;
   }
 
+  if (params.timeout_secs) {
+    body.timeout_secs = params.timeout_secs;
+  }
+
   const response = await telnyxFetch<TelnyxCallResponse>('/v2/calls', {
     method: 'POST',
     body: JSON.stringify(body),

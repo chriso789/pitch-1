@@ -182,9 +182,11 @@ serve(async (req) => {
       bridge_mode: true,
       lead_number: leadNumber,
       from_number: formattedFrom,
+      amd_pref: body.answering_machine_detection || 'disabled',
+      record_pref: body.record || false,
     }));
 
-    // Step 1: Call the rep's personal phone
+    // Step 1: Call the rep's personal phone (NO AMD — AMD is for the lead leg only)
     const webhookUrl = `${ENV.SUPABASE_URL}/functions/v1/telnyx-call-webhook`;
     console.log(`Bridge: calling rep at ${callbackE164} from ${formattedFrom}, webhook: ${webhookUrl}`);
     const telnyxResp = await initiateCall({
@@ -193,8 +195,7 @@ serve(async (req) => {
       to: callbackE164,
       caller_id_number: formattedFrom,
       client_state: clientState,
-      record: body.record ? 'record-from-answer' : undefined,
-      answering_machine_detection: body.answering_machine_detection,
+      timeout_secs: 60,
       webhook_url: webhookUrl,
     });
 
