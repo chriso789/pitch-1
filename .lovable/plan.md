@@ -1,42 +1,54 @@
 
 
-# Fix Dialer to Use Bridge-Call Flow
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-Currently, the Quick Call on `CallCenterPage` and `KanbanCard` call the lead's phone directly via `telnyx-dial`. The correct flow is:
+Three issues to address:
 
-1. System calls the **rep's callback number** first
-2. Rep answers and the call is confirmed/connected
-3. System then **bridges (transfers)** to the lead's number
+## 1. Contact Profile Pipeline Area Overflowing
 
-The `telnyx-bridge-dial` edge function and the webhook bridge logic already exist and work correctly. The `CallCenterLiveDialer` component already uses bridge mode when a callback number is set. The problem is only in `CallCenterPage.handleQuickCall` and `KanbanCard.handleQuickCall` -- they bypass bridge mode entirely.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Changes
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. Update `CallCenterPage.tsx` Quick Call handler
-- Change `handleQuickCall` to use `telnyx-bridge-dial` instead of `telnyx-dial`
-- Pull the user's `dialer_callback_number` from `app_settings` (already fetched on the page)
-- If no callback number is set, prompt the user to set one before calling
-- Pass the callback number and location_id to the bridge-dial function
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### 2. Update `KanbanCard.tsx` Quick Call handler  
-- Same change: use `telnyx-bridge-dial` with the rep's callback number
-- Fetch callback number from `app_settings` or require it to be set
-- Fall back to prompting the user if not configured
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### 3. Verify webhook bridge logic
-The webhook at `telnyx-call-webhook` already handles the `call.answered` event for bridge mode by transferring to the lead number. No changes needed there.
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-## Flow After Fix
-```text
-Rep clicks "Call" → telnyx-bridge-dial called
-  → Telnyx calls rep's personal phone
-  → Rep answers → webhook fires call.answered
-  → Webhook sees bridge_mode=true → transfers to lead
-  → Lead's phone rings → conversation begins
-```
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-## Technical Notes
-- The `dialer_callback_number` is already stored per-user in `app_settings` and the UI already has a "My Dialer Number" input on the Call Center page
-- `CallCenterLiveDialer` already implements this correctly -- we're aligning the other call points to match
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

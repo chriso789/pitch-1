@@ -313,7 +313,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     }
   };
 
-  // Quick Call - Initiates recorded call via Telnyx + opens device dialer
+  // Quick Call - Bridge-dial: calls rep first, then bridges to lead
   const handleQuickCall = async (e: React.MouseEvent) => {
     e.stopPropagation();
     
@@ -325,7 +325,6 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     setInitiatingCall(true);
     
     try {
-      // Get user's tenant_id from profile
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
       
@@ -336,31 +335,44 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         .single();
       
       if (!profile?.tenant_id) throw new Error('No tenant found');
-      
-      // Initiate recorded call via Telnyx
-      const { data, error } = await supabase.functions.invoke('telnyx-dial', {
+
+      // Fetch rep's callback number from app_settings
+      const { data: cbSetting } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('user_id', user.id)
+        .eq('setting_key', 'dialer_callback_number')
+        .maybeSingle();
+
+      const callbackNumber = (cbSetting?.setting_value as any)?.phone as string | undefined;
+
+      if (!callbackNumber) {
+        toast.error('Set your dialer number first in the Call Center before making calls.');
+        setInitiatingCall(false);
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('telnyx-bridge-dial', {
         body: {
           tenant_id: profile.tenant_id,
           contact_id: contact.id,
-          to_e164: contact.phone,
-          record: true, // Enable call recording with consent message
+          callback_number: callbackNumber,
+          record: true,
         }
       });
       
       if (error) {
-        console.error('Telnyx dial error:', error);
-        // Still open device dialer as fallback
+        console.error('Bridge dial error:', error);
+        toast.error('Call failed: ' + (error.message || 'Unknown error'));
+      } else if (data?.ok) {
+        toast.success(`Your phone will ring first, then we'll bridge to ${contact.first_name}.`);
       } else {
-        toast.success(`Calling ${contact.first_name}... Call will be recorded.`);
+        toast.error(data?.error || 'Call failed');
       }
-      
-      // Open device dialer
-      window.location.href = `tel:${contact.phone}`;
-      
-    } catch (error) {
+    } catch (error: any) {
       console.error('Call initiation error:', error);
-      // Fallback to simple tel: link
-      window.location.href = `tel:${contact.phone}`;
+      toast.error(error.message || 'Call failed');
     } finally {
       setInitiatingCall(false);
     }

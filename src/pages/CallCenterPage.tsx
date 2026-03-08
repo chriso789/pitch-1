@@ -204,9 +204,15 @@ const CallCenterPage = () => {
   const callRecordings: any[] = [];
   const callTranscripts: any[] = [];
 
-  // Quick Call handler
+  // Quick Call handler — uses bridge-dial so rep's phone rings first
   const handleQuickCall = async () => {
     if (!quickCallNumber.trim() || !tenantId) return;
+
+    if (!callbackNumber) {
+      toast({ title: 'Set your dialer number first', description: 'Enter your personal phone in "My Dialer Number" so the system can call you before bridging to the lead.', variant: 'destructive' });
+      return;
+    }
+
     setQuickCalling(true);
     try {
       // Search for a contact with this phone number
@@ -221,16 +227,17 @@ const CallCenterPage = () => {
       const contactId = contacts?.[0]?.id;
 
       if (!contactId) {
-        toast({ title: 'Contact not found', description: 'No contact matches this number. Call will proceed without linking.', variant: 'default' });
-        // Could still call but telnyx-dial requires contact_id for now
+        toast({ title: 'Contact not found', description: 'No contact matches this number.', variant: 'default' });
         setQuickCalling(false);
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('telnyx-dial', {
+      const { data, error } = await supabase.functions.invoke('telnyx-bridge-dial', {
         body: {
           tenant_id: tenantId,
           contact_id: contactId,
+          callback_number: callbackNumber,
+          location_id: selectedLocationId || undefined,
           record: true,
         },
       });
@@ -238,9 +245,8 @@ const CallCenterPage = () => {
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Call failed');
 
-      toast({ title: 'Call initiated', description: `Calling ${quickCallNumber}` });
+      toast({ title: 'Call initiated', description: `Your phone will ring first, then we'll bridge to ${quickCallNumber}` });
       setQuickCallNumber('');
-      // Refresh call log
       setTimeout(() => refetch(), 2000);
     } catch (err: any) {
       toast({ title: 'Call failed', description: err.message, variant: 'destructive' });
