@@ -181,6 +181,7 @@ serve(async (req) => {
       user_id: user.id,
       bridge_mode: true,
       lead_number: leadNumber,
+      from_number: formattedFrom,
     }));
 
     // Step 1: Call the rep's personal phone
