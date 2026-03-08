@@ -29,7 +29,7 @@ serve(async (req) => {
     console.log(`[telnyx-call-webhook] Event: ${eventType}`);
 
     // Decode client_state to correlate back to our records
-    let clientState: Record<string, string> = {};
+    let clientState: Record<string, unknown> = {};
     if (payload.client_state) {
       try {
         clientState = JSON.parse(atob(payload.client_state));
