@@ -190,8 +190,15 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
             <ListPlus className="h-5 w-5" />
             Build Dialer List
           </DialogTitle>
-          <DialogDescription>Filter and select contacts to create a callable list. Contacts with active projects are excluded.</DialogDescription>
-        </DialogHeader>
+           <DialogDescription>
+             Filter and select contacts to create a callable list. Contacts with active projects are excluded.
+           </DialogDescription>
+           {activeCompany && (
+             <Badge variant="secondary" className="w-fit text-xs mt-1">
+               {activeCompany.tenant_name}
+             </Badge>
+           )}
+         </DialogHeader>
 
         <div className="space-y-4 flex-1 min-h-0">
           <div className="space-y-1.5">
