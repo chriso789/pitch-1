@@ -76,14 +76,14 @@ serve(async (req) => {
     if (locationId) {
       const { data: location } = await admin
         .from('locations')
-        .select('id, telnyx_phone_number, telnyx_connection_id')
+        .select('id, telnyx_phone_number, telnyx_voice_app_id')
         .eq('id', locationId)
         .eq('tenant_id', body.tenant_id)
         .single();
 
       if (location) {
         fromNumber = location.telnyx_phone_number;
-        connectionId = location.telnyx_connection_id;
+        connectionId = location.telnyx_voice_app_id;
       }
     }
 
