@@ -39222,6 +39222,14 @@ export type Database = {
         }
         Returns: Json
       }
+      api_respond_to_approval_request: {
+        Args: {
+          action_param: string
+          approval_id_param: string
+          manager_notes_param?: string
+        }
+        Returns: Json
+      }
       api_save_call_disposition: {
         Args: { p_call_id: string; p_disposition: string; p_notes?: string }
         Returns: undefined

@@ -118,9 +118,9 @@ export const ManagerApprovalQueue: React.FC = () => {
     setProcessing(true);
     try {
       const { data, error } = await supabase.rpc('api_respond_to_approval_request' as any, {
-        p_approval_id: selectedRequest.id,
-        p_approved: approved,
-        p_manager_notes: managerNotes || null
+        approval_id_param: selectedRequest.id,
+        action_param: approved ? 'approve' : 'reject',
+        manager_notes_param: managerNotes || null
       });
 
       if (error) throw error;
