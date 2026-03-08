@@ -1,11 +1,12 @@
 // ============================================
 // TELNYX CALL WEBHOOK -- Receives call events from Telnyx
-// Updates call records, stores recordings, handles AMD
+// Updates call records, stores recordings, handles AMD, bridges calls
 // ============================================
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleOptions, json, badRequest, serverError } from '../_shared/http.ts';
 import { supabaseService } from '../_shared/supabase.ts';
+import { telnyxFetch } from '../_shared/telnyx.ts';
 
 serve(async (req) => {
   const opt = handleOptions(req);
@@ -59,13 +60,62 @@ serve(async (req) => {
             answered_at: new Date().toISOString(),
           }).eq('id', callId);
         }
+
+        // ---- BRIDGE LEG 2: Transfer rep to lead ----
+        if (clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string) {
+          const leadNumber = clientState.lead_number;
+          const callControlId = payload.call_control_id;
+
+          if (leadNumber && callControlId) {
+            console.log(`[telnyx-call-webhook] Bridge mode: transferring to lead ${leadNumber}`);
+            try {
+              await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
+                method: 'POST',
+                body: JSON.stringify({
+                  to: leadNumber,
+                  from: payload.from || clientState.from_number,
+                  // Pass client_state through so hangup events still correlate
+                  client_state: payload.client_state,
+                }),
+              });
+              console.log(`[telnyx-call-webhook] Transfer initiated to ${leadNumber}`);
+
+              // Update call record
+              if (callId) {
+                await admin.from('calls').update({
+                  status: 'bridging',
+                }).eq('id', callId);
+              }
+            } catch (transferErr) {
+              console.error('[telnyx-call-webhook] Transfer failed:', transferErr);
+              // Update call with error info
+              if (callId) {
+                await admin.from('calls').update({
+                  raw_payload: { bridge_transfer_error: String(transferErr) },
+                }).eq('id', callId);
+              }
+            }
+          } else {
+            console.warn('[telnyx-call-webhook] Bridge mode but missing lead_number or call_control_id');
+          }
+        }
+        break;
+      }
+
+      case 'call.bridged': {
+        // Fires when the transfer/bridge connects to the lead
+        if (callId) {
+          await admin.from('calls').update({
+            status: 'in-progress',
+          }).eq('id', callId);
+          console.log(`[telnyx-call-webhook] Call ${callId} bridged successfully`);
+        }
         break;
       }
 
       case 'call.hangup': {
         if (callId) {
           const endedAt = new Date();
-          // Calculate duration if we have answered_at
           const { data: callRow } = await admin
             .from('calls')
             .select('answered_at')
@@ -91,24 +141,21 @@ serve(async (req) => {
       case 'call.recording.saved': {
         const recordingUrl = payload.recording_urls?.mp3;
         if (callId && recordingUrl) {
-          // Store the recording URL directly
           await admin.from('calls').update({
             recording_url: recordingUrl,
           }).eq('id', callId);
-
           console.log(`[telnyx-call-webhook] Recording saved for call ${callId}`);
         }
         break;
       }
 
       case 'call.machine.detection.ended': {
-        const result = payload.result; // human | machine | not_sure
+        const result = payload.result;
         if (callId) {
           await admin.from('calls').update({
             raw_payload: { amd_result: result },
           }).eq('id', callId);
 
-          // Broadcast AMD result via Realtime for frontend to react
           if (clientState.tenant_id) {
             const channel = admin.channel(`amd-${callId}`);
             await channel.send({
