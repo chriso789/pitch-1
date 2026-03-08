@@ -1155,3 +1155,6 @@ verify_jwt = false
 
 [functions.validate-setup-token]
 verify_jwt = false
+
+[functions.telnyx-call-control]
+verify_jwt = true
