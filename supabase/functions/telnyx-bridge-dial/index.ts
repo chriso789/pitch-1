@@ -107,7 +107,7 @@ serve(async (req) => {
     if (!fromNumber) {
       const { data: anyLocation } = await admin
         .from('locations')
-        .select('id, telnyx_phone_number, telnyx_connection_id')
+        .select('id, telnyx_phone_number, telnyx_voice_app_id')
         .eq('tenant_id', body.tenant_id)
         .not('telnyx_phone_number', 'is', null)
         .limit(1)
@@ -115,7 +115,7 @@ serve(async (req) => {
 
       if (anyLocation?.telnyx_phone_number) {
         fromNumber = anyLocation.telnyx_phone_number;
-        connectionId = anyLocation.telnyx_connection_id;
+        connectionId = anyLocation.telnyx_voice_app_id;
         locationId = anyLocation.id;
       }
     }

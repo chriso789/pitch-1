@@ -118,7 +118,7 @@ serve(async (req) => {
         // Rep pressed a digit (or timed out) during the DTMF gate
         const digits = payload.digits;
         const callControlId = payload.call_control_id;
-        const isBridge = clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string;
+        const isBridge = clientState.bridge_mode === true || clientState.bridge_mode === 'true';
 
         if (isBridge && callControlId) {
           if (digits === '9') {
