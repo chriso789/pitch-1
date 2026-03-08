@@ -171,24 +171,54 @@ serve(async (req) => {
               console.warn('[telnyx-call-webhook] Gather confirmed but no lead_number in state');
             }
           } else {
-            // Rep didn't press 9 (timeout or wrong digit) — hang up
-            console.log(`[telnyx-call-webhook] Rep did not confirm (digits: ${digits}). Hanging up.`);
-            try {
-              await telnyxFetch(`/v2/calls/${callControlId}/actions/hangup`, {
-                method: 'POST',
-                body: JSON.stringify({
-                  client_state: payload.client_state,
-                }),
-              });
-            } catch (hangupErr) {
-              console.error('[telnyx-call-webhook] Hangup failed:', hangupErr);
-            }
+            // Rep didn't press 9 (timeout or wrong digit)
+            const alreadyRetried = clientState.gather_retry === true || clientState.gather_retry === 'true';
 
-            if (callId) {
-              await admin.from('calls').update({
-                status: 'no_confirmation',
-                ended_at: new Date().toISOString(),
-              }).eq('id', callId);
+            if (!alreadyRetried && (!digits || digits === '')) {
+              // Empty digits on first attempt — reprompt once
+              console.log(`[telnyx-call-webhook] Empty digits, reprompting once...`);
+              try {
+                // Build new client_state with gather_retry flag
+                const retryState = { ...clientState, gather_retry: true };
+                const retryClientState = btoa(JSON.stringify(retryState));
+
+                await telnyxFetch(`/v2/calls/${callControlId}/actions/gather_using_speak`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    payload: 'Sorry, I didn\'t catch that. Press 9 to connect to your next lead.',
+                    voice: 'female',
+                    language: 'en-US',
+                    valid_digits: '9',
+                    maximum_digits: 1,
+                    minimum_digits: 1,
+                    timeout_secs: 15,
+                    client_state: retryClientState,
+                  }),
+                });
+                console.log(`[telnyx-call-webhook] Reprompt sent`);
+              } catch (repromptErr) {
+                console.error('[telnyx-call-webhook] Reprompt failed:', repromptErr);
+              }
+            } else {
+              // Already retried or wrong digit — hang up
+              console.log(`[telnyx-call-webhook] Rep did not confirm (digits: ${digits}, retried: ${alreadyRetried}). Hanging up.`);
+              try {
+                await telnyxFetch(`/v2/calls/${callControlId}/actions/hangup`, {
+                  method: 'POST',
+                  body: JSON.stringify({
+                    client_state: payload.client_state,
+                  }),
+                });
+              } catch (hangupErr) {
+                console.error('[telnyx-call-webhook] Hangup failed:', hangupErr);
+              }
+
+              if (callId) {
+                await admin.from('calls').update({
+                  status: 'no_confirmation',
+                  ended_at: new Date().toISOString(),
+                }).eq('id', callId);
+              }
             }
           }
         }
