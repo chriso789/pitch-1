@@ -152,6 +152,7 @@ export interface TelnyxDialParams {
   connection_id: string;
   from: string;
   to: string;
+  caller_id_number?: string;
   client_state?: string;
   record?: 'record-from-answer' | 'record-from-answer-dual' | 'record-from-answer-mono';
   answering_machine_detection?: 'disabled' | 'detect' | 'detect_beep' | 'premium';
