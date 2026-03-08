@@ -11,6 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Search, Users, Loader2, ListPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
+import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { StagnantLeadFilter } from './StagnantLeadFilter';
 import { toast } from '@/hooks/use-toast';
 import { subDays } from 'date-fns';
@@ -30,6 +31,7 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
   onListCreated,
 }) => {
   const tenantId = useEffectiveTenantId();
+  const { activeCompany } = useCompanySwitcher();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -188,8 +190,15 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
             <ListPlus className="h-5 w-5" />
             Build Dialer List
           </DialogTitle>
-          <DialogDescription>Filter and select contacts to create a callable list. Contacts with active projects are excluded.</DialogDescription>
-        </DialogHeader>
+           <DialogDescription>
+             Filter and select contacts to create a callable list. Contacts with active projects are excluded.
+           </DialogDescription>
+           {activeCompany && (
+             <Badge variant="secondary" className="w-fit text-xs mt-1">
+               {activeCompany.tenant_name}
+             </Badge>
+           )}
+         </DialogHeader>
 
         <div className="space-y-4 flex-1 min-h-0">
           <div className="space-y-1.5">
