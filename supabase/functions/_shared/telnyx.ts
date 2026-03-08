@@ -157,6 +157,7 @@ export interface TelnyxDialParams {
   record?: 'record-from-answer' | 'record-from-answer-dual' | 'record-from-answer-mono';
   answering_machine_detection?: 'disabled' | 'detect' | 'detect_beep' | 'premium';
   webhook_url?: string;
+  timeout_secs?: number;
 }
 
 export interface TelnyxCallResponse {
@@ -192,6 +193,10 @@ export async function initiateCall(params: TelnyxDialParams): Promise<TelnyxCall
   
   if (params.webhook_url) {
     body.webhook_url = params.webhook_url;
+  }
+
+  if (params.timeout_secs) {
+    body.timeout_secs = params.timeout_secs;
   }
 
   const response = await telnyxFetch<TelnyxCallResponse>('/v2/calls', {

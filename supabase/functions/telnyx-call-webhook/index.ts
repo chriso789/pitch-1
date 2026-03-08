@@ -129,14 +129,22 @@ serve(async (req) => {
             if (leadNumber) {
               console.log(`[telnyx-call-webhook] Rep confirmed (9). Transferring to lead ${leadNumber} from ${fromNumber}`);
               try {
-                await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
-                  method: 'POST',
-                  body: JSON.stringify({
+              const transferBody: Record<string, unknown> = {
                     to: leadNumber,
                     from: fromNumber,
                     caller_id_number: fromNumber,
                     client_state: payload.client_state,
-                  }),
+                  };
+
+                  // Apply AMD to the lead leg (stored from bridge-dial)
+                  const amdPref = clientState.amd_pref;
+                  if (amdPref && amdPref !== 'disabled') {
+                    transferBody.answering_machine_detection = amdPref;
+                  }
+
+                  await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
+                  method: 'POST',
+                  body: JSON.stringify(transferBody),
                 });
                 console.log(`[telnyx-call-webhook] Transfer initiated to ${leadNumber}`);
 
