@@ -190,6 +190,7 @@ serve(async (req) => {
     }));
 
     // Initiate call via Telnyx
+    const webhookUrl = `${ENV.SUPABASE_URL}/functions/v1/telnyx-call-webhook`;
     const telnyxResp = await initiateCall({
       connection_id: connectionId,
       from: formattedFrom,
@@ -197,6 +198,7 @@ serve(async (req) => {
       client_state: clientState,
       record: body.record ? 'record-from-answer' : undefined,
       answering_machine_detection: body.answering_machine_detection,
+      webhook_url: webhookUrl,
     });
 
     console.log('Telnyx call initiated:', telnyxResp);
