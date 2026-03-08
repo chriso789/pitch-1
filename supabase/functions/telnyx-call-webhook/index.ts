@@ -29,7 +29,7 @@ serve(async (req) => {
     console.log(`[telnyx-call-webhook] Event: ${eventType}`);
 
     // Decode client_state to correlate back to our records
-    let clientState: Record<string, string> = {};
+    let clientState: Record<string, unknown> = {};
     if (payload.client_state) {
       try {
         clientState = JSON.parse(atob(payload.client_state));
@@ -62,7 +62,7 @@ serve(async (req) => {
         }
 
         // ---- BRIDGE MODE: Prompt rep with DTMF gate before connecting to lead ----
-        if (clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string) {
+        if (clientState.bridge_mode === true || clientState.bridge_mode === 'true') {
           const callControlId = payload.call_control_id;
 
           if (callControlId) {
@@ -118,7 +118,7 @@ serve(async (req) => {
         // Rep pressed a digit (or timed out) during the DTMF gate
         const digits = payload.digits;
         const callControlId = payload.call_control_id;
-        const isBridge = clientState.bridge_mode === 'true' || clientState.bridge_mode === true as unknown as string;
+        const isBridge = clientState.bridge_mode === true || clientState.bridge_mode === 'true';
 
         if (isBridge && callControlId) {
           if (digits === '9') {

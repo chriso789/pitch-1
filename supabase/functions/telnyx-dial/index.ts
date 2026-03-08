@@ -75,14 +75,14 @@ serve(async (req) => {
     if (locationId) {
       const { data: location } = await admin
         .from('locations')
-        .select('id, telnyx_phone_number, telnyx_connection_id')
+        .select('id, telnyx_phone_number, telnyx_voice_app_id')
         .eq('id', locationId)
         .eq('tenant_id', body.tenant_id)
         .single();
 
       if (location) {
         fromNumber = location.telnyx_phone_number;
-        connectionId = location.telnyx_connection_id;
+        connectionId = location.telnyx_voice_app_id;
       }
     }
 
@@ -90,14 +90,14 @@ serve(async (req) => {
     if (!fromNumber) {
       const { data: primaryLocation } = await admin
         .from('locations')
-        .select('id, telnyx_phone_number, telnyx_connection_id')
+        .select('id, telnyx_phone_number, telnyx_voice_app_id')
         .eq('tenant_id', body.tenant_id)
         .eq('is_primary', true)
         .single();
 
       if (primaryLocation?.telnyx_phone_number) {
         fromNumber = primaryLocation.telnyx_phone_number;
-        connectionId = primaryLocation.telnyx_connection_id;
+        connectionId = primaryLocation.telnyx_voice_app_id;
         locationId = primaryLocation.id;
       }
     }
@@ -106,7 +106,7 @@ serve(async (req) => {
     if (!fromNumber) {
       const { data: anyLocation } = await admin
         .from('locations')
-        .select('id, telnyx_phone_number, telnyx_connection_id')
+        .select('id, telnyx_phone_number, telnyx_voice_app_id')
         .eq('tenant_id', body.tenant_id)
         .not('telnyx_phone_number', 'is', null)
         .limit(1)
@@ -114,7 +114,7 @@ serve(async (req) => {
 
       if (anyLocation?.telnyx_phone_number) {
         fromNumber = anyLocation.telnyx_phone_number;
-        connectionId = anyLocation.telnyx_connection_id;
+        connectionId = anyLocation.telnyx_voice_app_id;
         locationId = anyLocation.id;
       }
     }
