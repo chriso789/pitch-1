@@ -611,6 +611,20 @@ const CallCenterPage = () => {
                                       <Mic className="h-4 w-4 text-green-500" />
                                     )}
                                   </div>
+                                  {(() => {
+                                    const rawNum = call.direction === 'inbound' ? call.from_number : call.to_number;
+                                    if (rawNum) {
+                                      const formatted = rawNum.startsWith('+1') && rawNum.length === 12
+                                        ? `(${rawNum.slice(2,5)}) ${rawNum.slice(5,8)}-${rawNum.slice(8)}`
+                                        : rawNum;
+                                      return (
+                                        <div className="text-xs text-muted-foreground">
+                                          {formatted}
+                                        </div>
+                                      );
+                                    }
+                                    return null;
+                                  })()}
                                   <div className="text-sm text-muted-foreground flex items-center gap-2">
                                     <Clock className="h-3 w-3" />
                                     {format(new Date(call.created_at), 'MMM d, h:mm a')}

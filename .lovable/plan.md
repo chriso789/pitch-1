@@ -1,29 +1,54 @@
 
 
-# Show Dialed Number + Contact Name in Call Log
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-The call log currently shows only the contact name (e.g., "Christopher OBrien") but not the phone number that was called. Users need to see both the number and the associated contact name.
+Three issues to address:
 
-## Tenant Isolation (Already Correct)
-The calls query in `CallCenterPage.tsx` already filters by `tenant_id` via `useEffectiveTenantId()`, and the `contacts` join is scoped by the foreign key `contact_id`. Each company's calls and contacts are already isolated. No changes needed here.
+## 1. Contact Profile Pipeline Area Overflowing
 
-## UI Change: `src/pages/CallCenterPage.tsx`
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-In the call list item (around lines 601-619), update the display to show:
-- **Primary line**: Contact name (if found) — keep as-is
-- **Secondary line**: Add the dialed phone number (`to_number` for outbound, `from_number` for inbound) below or next to the contact name
-- When no contact is found, show just the phone number (current behavior)
+**File: `src/pages/ContactProfile.tsx`**
 
-The change is roughly:
-```
-Christopher OBrien              →    Christopher OBrien
-Mar 8, 3:26 AM · 40 seconds         +1 (770) 842-0812
-                                     Mar 8, 3:26 AM · 40 seconds
-```
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-Format the phone number for readability (e.g., `+17708420812` → `(770) 842-0812`).
+## 2. Show Who Saved Each Estimate (Under Title)
 
-## Files Modified
-- `src/pages/CallCenterPage.tsx` — add phone number display to each call row
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
+
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
