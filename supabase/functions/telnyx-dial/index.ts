@@ -162,7 +162,7 @@ serve(async (req) => {
         contact_id: body.contact_id,
         conversation_id: conversationId,
         location_id: locationId,
-        user_id: user.id,
+        created_by: user.id,
         direction: 'outbound',
         from_number: formattedFrom,
         to_number: toNumber,
