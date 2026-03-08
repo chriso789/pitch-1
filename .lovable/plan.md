@@ -1,54 +1,50 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Press 9 Not Registering — Root Cause Found
 
-Three issues to address:
+## Root Cause
 
-## 1. Contact Profile Pipeline Area Overflowing
+The logs confirm the issue clearly:
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+```
+[telnyx-call-webhook] Rep did not confirm (digits: ). Hanging up.
+```
 
-**File: `src/pages/ContactProfile.tsx`**
+The rep pressed 9, but Telnyx returned **empty digits**. This happens because the webhook uses **two separate API calls** — `gather` then `speak` — which creates a race condition:
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+1. `gather` starts listening immediately (before any audio plays)
+2. `speak` fires next, but the gather may have already timed out or the digit press doesn't register properly because the two commands are not synchronized
 
-## 2. Show Who Saved Each Estimate (Under Title)
+The `ai-project-status-answer` function in this same project uses `gather_using_speak` — a **single atomic command** that plays audio AND listens for digits simultaneously. This is the correct Telnyx pattern.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+## Changes
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 1. `telnyx-call-webhook/index.ts` — Replace gather+speak with `gather_using_speak`
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+In the `call.answered` bridge mode block (lines 72-92), replace the two separate `gather` + `speak` calls with a single `gather_using_speak` call:
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+```typescript
+await telnyxFetch(`/v2/calls/${callControlId}/actions/gather_using_speak`, {
+  method: 'POST',
+  body: JSON.stringify({
+    payload: 'Press 9 to connect to your next lead.',
+    voice: 'female',
+    language: 'en-US',
+    valid_digits: '9',
+    maximum_digits: 1,
+    minimum_digits: 1,
+    timeout_secs: 15,
+    client_state: payload.client_state,
+  }),
+});
+```
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+### 2. Add retry on empty digits
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+In the `call.gather.ended` handler, when `digits` is empty and it's a bridge call, instead of hanging up, reprompt once using `gather_using_speak` again. Track retry via a `gather_retry` flag in client_state so it only retries once.
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### 3. Redeploy `telnyx-call-webhook`
+
+## Files Modified
+- `supabase/functions/telnyx-call-webhook/index.ts`
 
