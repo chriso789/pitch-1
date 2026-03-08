@@ -3,7 +3,7 @@
  * Live dialer workspace with list building, calling, voicemail management, and call log
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { 
   Phone, Mic, Bot, Clock, PhoneCall, PhoneOff, 
@@ -24,6 +24,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/component
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { CallCenterListBuilder } from '@/components/call-center/CallCenterListBuilder';
 import { CallCenterLiveDialer } from '@/components/call-center/CallCenterLiveDialer';
 import { CallCenterListsManager } from '@/components/call-center/CallCenterListsManager';
@@ -69,6 +71,9 @@ const CallCenterPage = () => {
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [callbackNumber, setCallbackNumber] = useState('');
   const [editingCallback, setEditingCallback] = useState(false);
+  const [isSessionActive, setIsSessionActive] = useState(false);
+  const [showSetNumberDialog, setShowSetNumberDialog] = useState(false);
+  const [tempCallbackNumber, setTempCallbackNumber] = useState('');
 
   // Fetch locations with Telnyx numbers for caller ID selector
   const { data: callerLocations } = useQuery({
@@ -289,8 +294,54 @@ const CallCenterPage = () => {
 
   const handleEndSession = () => {
     setSelectedListId(null);
+    setIsSessionActive(false);
     setActiveTab('lists');
   };
+
+  // Save callback number to app_settings
+  const saveCallbackNumber = useCallback(async (phone: string) => {
+    if (!tenantId) return;
+    const user = (await supabase.auth.getUser()).data.user;
+    if (!user) return;
+    await supabase.from('app_settings').upsert({
+      tenant_id: tenantId,
+      user_id: user.id,
+      setting_key: 'dialer_callback_number',
+      setting_value: { phone },
+    }, { onConflict: 'tenant_id,user_id,setting_key' });
+  }, [tenantId]);
+
+  // Start Dialer handler — validates inputs, prompts for number if missing, activates session
+  const handleStartDialer = useCallback(async () => {
+    if (!selectedListId) {
+      toast({ title: 'Select a list', description: 'Choose a dialer list from the dropdown.' });
+      return;
+    }
+    const cleanCb = callbackNumber.replace(/\D/g, '');
+    if (!cleanCb || cleanCb.length < 10) {
+      // Open dialog to set number
+      setTempCallbackNumber(callbackNumber);
+      setShowSetNumberDialog(true);
+      return;
+    }
+    // All good — activate session
+    setIsSessionActive(true);
+    setActiveTab('dialer');
+  }, [selectedListId, callbackNumber]);
+
+  // Confirm callback number from dialog and start session
+  const handleConfirmCallbackAndStart = useCallback(async () => {
+    const clean = tempCallbackNumber.replace(/\D/g, '');
+    if (clean.length < 10) {
+      toast({ title: 'Invalid number', description: 'Enter a valid 10+ digit phone number.', variant: 'destructive' });
+      return;
+    }
+    setCallbackNumber(tempCallbackNumber);
+    await saveCallbackNumber(tempCallbackNumber);
+    setShowSetNumberDialog(false);
+    setIsSessionActive(true);
+    setActiveTab('dialer');
+  }, [tempCallbackNumber, saveCallbackNumber]);
 
   return (
     <GlobalLayout>
@@ -367,22 +418,12 @@ const CallCenterPage = () => {
               </SelectContent>
             </Select>
             <Button
-              onClick={() => {
-                if (!callbackNumber || callbackNumber.replace(/\D/g, '').length < 10) {
-                  toast({ title: 'Set your dialer number', description: 'Enter your personal phone number so the dialer can call you first.' });
-                  setEditingCallback(true);
-                  return;
-                }
-                if (!selectedListId) {
-                  toast({ title: 'Select a list', description: 'Choose a dialer list from the dropdown.' });
-                  return;
-                }
-                setActiveTab('dialer');
-              }}
+              onClick={handleStartDialer}
               className="gap-2"
+              disabled={isSessionActive}
             >
               <PlayCircle className="h-4 w-4" />
-              Start Dialer
+              {isSessionActive ? 'Session Active' : 'Start Dialer'}
             </Button>
             <Button variant="outline" onClick={() => setShowListBuilder(true)}>
               <ListPlus className="h-4 w-4 mr-2" />
@@ -438,12 +479,25 @@ const CallCenterPage = () => {
             </Card>
 
             {/* Live Dialer */}
-            <CallCenterLiveDialer
-              selectedListId={selectedListId}
-              onEndSession={handleEndSession}
-              locationId={selectedLocationId}
-              callbackNumber={callbackNumber}
-            />
+            {isSessionActive ? (
+              <CallCenterLiveDialer
+                selectedListId={selectedListId}
+                onEndSession={handleEndSession}
+                locationId={selectedLocationId}
+                callbackNumber={callbackNumber}
+                autoStart
+              />
+            ) : (
+              <Card>
+                <CardContent className="py-16 text-center">
+                  <PlayCircle className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+                  <p className="text-lg font-medium">Ready to Dial</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Select a list and click <strong>Start Dialer</strong> to begin calling.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </TabsContent>
 
           {/* Call Log Tab */}
