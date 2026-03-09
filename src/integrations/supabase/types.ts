@@ -17561,6 +17561,205 @@ export type Database = {
           },
         ]
       }
+      loyalty_points: {
+        Row: {
+          balance_after: number
+          contact_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          points: number
+          reference_id: string | null
+          reference_type: string | null
+          tenant_id: string
+          transaction_type: string
+        }
+        Insert: {
+          balance_after?: number
+          contact_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          points: number
+          reference_id?: string | null
+          reference_type?: string | null
+          tenant_id: string
+          transaction_type: string
+        }
+        Update: {
+          balance_after?: number
+          contact_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          points?: number
+          reference_id?: string | null
+          reference_type?: string | null
+          tenant_id?: string
+          transaction_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_points_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_points_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "loyalty_points_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_points_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "loyalty_points_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_redemptions: {
+        Row: {
+          contact_id: string
+          created_at: string
+          discount_amount: number
+          expires_at: string | null
+          id: string
+          points_redeemed: number
+          redemption_code: string
+          status: string
+          tenant_id: string
+          used_at: string | null
+          used_on_job_id: string | null
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          discount_amount: number
+          expires_at?: string | null
+          id?: string
+          points_redeemed: number
+          redemption_code: string
+          status?: string
+          tenant_id: string
+          used_at?: string | null
+          used_on_job_id?: string | null
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          discount_amount?: number
+          expires_at?: string | null
+          id?: string
+          points_redeemed?: number
+          redemption_code?: string
+          status?: string
+          tenant_id?: string
+          used_at?: string | null
+          used_on_job_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_redemptions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_redemptions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "loyalty_redemptions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "loyalty_redemptions_used_on_job_id_fkey"
+            columns: ["used_on_job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      loyalty_settings: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          min_redeem_points: number
+          points_per_dollar_redemption: number
+          points_per_job: number
+          points_per_referral: number
+          points_per_review: number
+          points_per_survey: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          min_redeem_points?: number
+          points_per_dollar_redemption?: number
+          points_per_job?: number
+          points_per_referral?: number
+          points_per_review?: number
+          points_per_survey?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          min_redeem_points?: number
+          points_per_dollar_redemption?: number
+          points_per_job?: number
+          points_per_referral?: number
+          points_per_review?: number
+          points_per_survey?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "loyalty_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       maintenance_plans: {
         Row: {
           contact_id: string | null
@@ -27653,6 +27852,92 @@ export type Database = {
           },
           {
             foreignKeyName: "report_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      review_requests: {
+        Row: {
+          completed_at: string | null
+          contact_id: string
+          created_at: string
+          id: string
+          last_sent_at: string | null
+          max_reminders: number | null
+          platform: string
+          project_id: string | null
+          rating: number | null
+          reminder_count: number | null
+          review_url: string | null
+          scheduled_for: string | null
+          send_count: number
+          sent_via: string[] | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_id: string
+          created_at?: string
+          id?: string
+          last_sent_at?: string | null
+          max_reminders?: number | null
+          platform: string
+          project_id?: string | null
+          rating?: number | null
+          reminder_count?: number | null
+          review_url?: string | null
+          scheduled_for?: string | null
+          send_count?: number
+          sent_via?: string[] | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          contact_id?: string
+          created_at?: string
+          id?: string
+          last_sent_at?: string | null
+          max_reminders?: number | null
+          platform?: string
+          project_id?: string | null
+          rating?: number | null
+          reminder_count?: number | null
+          review_url?: string | null
+          scheduled_for?: string | null
+          send_count?: number
+          sent_via?: string[] | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "review_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "review_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "review_requests_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -39829,6 +40114,7 @@ export type Database = {
         }[]
       }
       get_default_brand_id: { Args: { _tenant_id: string }; Returns: string }
+      get_loyalty_balance: { Args: { p_contact_id: string }; Returns: number }
       get_next_contact_number: {
         Args: { tenant_id_param: string }
         Returns: number
