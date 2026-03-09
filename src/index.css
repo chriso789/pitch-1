@@ -156,6 +156,16 @@
     --glow-primary: 0 0 20px hsl(214 80% 45% / 0.4);
     --shadow-glow: 0 0 25px hsl(214 80% 45% / 0.35);
 
+    /* Dark mode 3D Depth System */
+    --shadow-3d: 0 1px 2px hsl(0 0% 0% / 0.2), 0 4px 8px hsl(0 0% 0% / 0.25), 0 8px 24px hsl(0 0% 0% / 0.3);
+    --shadow-3d-hover: 0 2px 4px hsl(0 0% 0% / 0.25), 0 8px 16px hsl(0 0% 0% / 0.3), 0 16px 32px hsl(0 0% 0% / 0.35);
+    --shadow-3d-active: 0 1px 1px hsl(0 0% 0% / 0.3), 0 2px 4px hsl(0 0% 0% / 0.25);
+    --shadow-inset: inset 0 2px 4px hsl(0 0% 0% / 0.2);
+    --shadow-emboss: inset 0 1px 0 hsl(0 0% 100% / 0.06), 0 1px 3px hsl(0 0% 0% / 0.3);
+    --glass-bg: hsl(214 50% 12% / 0.75);
+    --glass-bg-heavy: hsl(214 50% 12% / 0.88);
+    --glass-border: hsl(0 0% 100% / 0.08);
+
     --sidebar-background: 214 50% 12%;
     --sidebar-foreground: 210 25% 95%;
     --sidebar-primary: 214 80% 45%;
