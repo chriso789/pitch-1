@@ -100,6 +100,12 @@ Deno.serve(async (req) => {
       userData.lead_id = contact_id;
     }
 
+    // Accept fbc/fbp cookies for cross-device matching
+    const fbc = custom_data?.fbc;
+    const fbp = custom_data?.fbp;
+    if (fbc) userData.fbc = fbc;
+    if (fbp) userData.fbp = fbp;
+
     // 4. Build the Meta CAPI event payload
     const eventPayload = {
       data: [
