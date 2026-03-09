@@ -69,14 +69,14 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
   // Desktop: Collapsible sidebar
   return (
     <div className={cn(
-      "relative bg-card border-r border-border shadow-soft h-screen flex flex-col transition-all duration-300 hidden md:flex",
+      "relative bg-card border-r border-border shadow-3d h-screen flex flex-col transition-all duration-300 hidden md:flex",
       isCollapsed ? "w-16" : "w-64"
     )}>
       {/* Toggle Button */}
       <Button
         variant="ghost"
         size="sm"
-        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full border bg-background shadow-md hover:bg-accent"
+        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full border bg-background shadow-3d hover:shadow-3d-hover hover:bg-accent"
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
         {isCollapsed ? (

@@ -21,9 +21,10 @@ export function MetricCard({ title, count, icon: Icon, onClick, variant = "defau
 
   return (
     <Card 
+      variant="elevated"
       className={cn(
-        "cursor-pointer transition-all hover:shadow-md",
-        onClick && "hover:border-primary"
+        "cursor-pointer",
+        onClick && "hover:border-primary/30"
       )}
       onClick={onClick}
     >
@@ -33,7 +34,7 @@ export function MetricCard({ title, count, icon: Icon, onClick, variant = "defau
             <div className={cn(
               "text-2xl font-bold",
               isZero ? "text-muted-foreground" : variantStyles[variant]
-            )}>
+            )} style={{ textShadow: isZero ? 'none' : '0 1px 2px hsl(214 100% 25% / 0.08)' }}>
               {count}
             </div>
             <div className="text-sm text-muted-foreground truncate" title={title}>
@@ -41,8 +42,8 @@ export function MetricCard({ title, count, icon: Icon, onClick, variant = "defau
             </div>
           </div>
           <div className={cn(
-            "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0",
-            isZero ? "bg-muted" : "bg-primary/10"
+            "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 embossed",
+            isZero ? "bg-muted" : "bg-gradient-to-br from-primary/15 to-primary/5"
           )}>
             <Icon className={cn(
               "h-5 w-5",

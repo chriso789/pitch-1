@@ -89,6 +89,19 @@
     --shadow-strong: 0 8px 32px -8px hsl(214 100% 25% / 0.16);
     --shadow-glow: 0 0 20px hsl(214 80% 45% / 0.25);
 
+    /* 3D Depth System */
+    --shadow-3d: 0 1px 2px hsl(214 100% 25% / 0.04), 0 4px 8px hsl(214 100% 25% / 0.06), 0 8px 24px hsl(214 100% 25% / 0.08);
+    --shadow-3d-hover: 0 2px 4px hsl(214 100% 25% / 0.06), 0 8px 16px hsl(214 100% 25% / 0.1), 0 16px 32px hsl(214 100% 25% / 0.12);
+    --shadow-3d-active: 0 1px 1px hsl(214 100% 25% / 0.06), 0 2px 4px hsl(214 100% 25% / 0.08);
+    --shadow-inset: inset 0 2px 4px hsl(214 100% 25% / 0.06);
+    --shadow-emboss: inset 0 1px 0 hsl(0 0% 100% / 0.15), 0 1px 3px hsl(214 100% 25% / 0.1);
+
+    /* Glass Morphism */
+    --glass-bg: hsl(0 0% 100% / 0.72);
+    --glass-bg-heavy: hsl(0 0% 100% / 0.85);
+    --glass-border: hsl(0 0% 100% / 0.25);
+    --glass-blur: 12px;
+
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-quick: all 0.15s ease-out;
@@ -142,6 +155,16 @@
     --glow-progress: 0 0 25px hsl(260 85% 65% / 0.5);
     --glow-primary: 0 0 20px hsl(214 80% 45% / 0.4);
     --shadow-glow: 0 0 25px hsl(214 80% 45% / 0.35);
+
+    /* Dark mode 3D Depth System */
+    --shadow-3d: 0 1px 2px hsl(0 0% 0% / 0.2), 0 4px 8px hsl(0 0% 0% / 0.25), 0 8px 24px hsl(0 0% 0% / 0.3);
+    --shadow-3d-hover: 0 2px 4px hsl(0 0% 0% / 0.25), 0 8px 16px hsl(0 0% 0% / 0.3), 0 16px 32px hsl(0 0% 0% / 0.35);
+    --shadow-3d-active: 0 1px 1px hsl(0 0% 0% / 0.3), 0 2px 4px hsl(0 0% 0% / 0.25);
+    --shadow-inset: inset 0 2px 4px hsl(0 0% 0% / 0.2);
+    --shadow-emboss: inset 0 1px 0 hsl(0 0% 100% / 0.06), 0 1px 3px hsl(0 0% 0% / 0.3);
+    --glass-bg: hsl(214 50% 12% / 0.75);
+    --glass-bg-heavy: hsl(214 50% 12% / 0.88);
+    --glass-border: hsl(0 0% 100% / 0.08);
 
     --sidebar-background: 214 50% 12%;
     --sidebar-foreground: 210 25% 95%;
@@ -207,7 +230,57 @@
   .shadow-glow {
     box-shadow: var(--shadow-glow);
   }
-  
+
+  .shadow-3d {
+    box-shadow: var(--shadow-3d);
+  }
+
+  .shadow-3d-hover {
+    box-shadow: var(--shadow-3d-hover);
+  }
+
+  /* Glass Morphism Utility */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-color: var(--glass-border);
+  }
+
+  .glass-heavy {
+    background: var(--glass-bg-heavy);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-color: var(--glass-border);
+  }
+
+  /* Elevated card with 3D depth */
+  .elevated {
+    box-shadow: var(--shadow-3d);
+    border-top: 1px solid hsl(0 0% 100% / 0.1);
+    transition: var(--transition-smooth);
+  }
+
+  .elevated:hover {
+    box-shadow: var(--shadow-3d-hover);
+    transform: translateY(-2px);
+  }
+
+  /* Embossed icon container */
+  .embossed {
+    box-shadow: var(--shadow-emboss);
+  }
+
+  /* Inset/pressed input style */
+  .input-3d {
+    box-shadow: var(--shadow-inset);
+    transition: var(--transition-smooth);
+  }
+
+  .input-3d:focus-within {
+    box-shadow: var(--shadow-inset), 0 0 0 2px hsl(var(--ring) / 0.3);
+  }
+
   .transition-smooth {
     transition: var(--transition-smooth);
   }

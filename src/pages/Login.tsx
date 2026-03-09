@@ -557,13 +557,18 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   };
 
   return (
-    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center gradient-hero p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
-      <div className="w-full max-w-md space-y-6">
+    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center gradient-hero p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] relative overflow-hidden">
+      {/* Animated gradient orbs for depth */}
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-[hsl(214_80%_45%/0.3)] blur-[80px] animate-pulse" />
+      <div className="absolute bottom-[-15%] right-[-10%] w-[45%] h-[45%] rounded-full bg-[hsl(142_76%_36%/0.2)] blur-[80px] animate-pulse [animation-delay:1s]" />
+      <div className="absolute top-[30%] right-[10%] w-[30%] h-[30%] rounded-full bg-[hsl(25_95%_53%/0.15)] blur-[60px] animate-pulse [animation-delay:2s]" />
+
+      <div className="w-full max-w-md space-y-6 relative z-10">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-white mb-2">
+          <h1 className="text-4xl font-bold text-white mb-2" style={{ textShadow: '0 2px 8px hsl(214 100% 15% / 0.4), 0 4px 16px hsl(214 100% 15% / 0.2)' }}>
             PITCH
           </h1>
-          <p className="text-white/90 text-lg">
+          <p className="text-white/90 text-lg" style={{ textShadow: '0 1px 4px hsl(214 100% 15% / 0.3)' }}>
             Professional Roofing CRM
           </p>
           
@@ -587,7 +592,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           </div>
         </div>
 
-        <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
+        <Card className="border-[hsl(0_0%_100%/0.2)] bg-[hsl(0_0%_100%/0.82)] backdrop-blur-xl shadow-[0_4px_8px_hsl(214_100%_25%/0.08),0_8px_24px_hsl(214_100%_25%/0.12),0_24px_48px_hsl(214_100%_25%/0.08)]">
           <CardHeader className="space-y-1 text-center">
             <CardTitle className="text-2xl font-semibold">Welcome Back</CardTitle>
             <CardDescription className="text-base">
