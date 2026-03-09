@@ -137,6 +137,7 @@ import Security from "./pages/legal/Security";
 import PermitExpediter from "./pages/PermitExpediter";
 import SurveyDashboard from "./pages/SurveyDashboard";
 import ReferralDashboard from "./pages/ReferralDashboard";
+import FacebookMarketingDashboard from "./pages/FacebookMarketingDashboard";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
