@@ -398,9 +398,50 @@ serve(async (req) => {
         });
     }
 
+    // Fire Meta CAPI events on key funnel transitions (fire-and-forget)
+    const capiEventMap: Record<string, { event: string; value?: number }> = {};
+    if (newStatus === 'appointment_set' || newStatus === 'appointment_scheduled') {
+      capiEventMap[newStatus] = { event: 'Schedule' };
+    } else if (newStatus === 'proposal_sent' || newStatus === 'contingency') {
+      capiEventMap[newStatus] = { event: 'InitiateCheckout' };
+    } else if (newStatus === 'project') {
+      capiEventMap[newStatus] = { event: 'Purchase', value: pipelineEntry.estimated_value || 0 };
+    }
+
+    const capiMapping = capiEventMap[newStatus];
+    if (capiMapping && pipelineEntry?.contact_id) {
+      try {
+        const metaCapiUrl = `${supabaseUrl}/functions/v1/meta-capi`;
+        fetch(metaCapiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+          },
+          body: JSON.stringify({
+            event_name: capiMapping.event,
+            tenant_id: profile.tenant_id,
+            contact_id: pipelineEntry.contact_id,
+            event_time: Math.floor(Date.now() / 1000),
+            custom_data: {
+              event_source: 'crm',
+              lead_event_source: 'PITCH CRM',
+              value: capiMapping.value || 0,
+              currency: 'USD',
+              pipeline_entry_id: pipelineEntryId,
+              from_status: fromStatus,
+              to_status: newStatus,
+            },
+          }),
+        }).catch(e => console.warn('[pipeline-drag-handler] CAPI error:', e));
+      } catch (capiErr) {
+        console.warn('[pipeline-drag-handler] CAPI error (non-fatal):', capiErr);
+      }
+    }
+
     console.log(`[pipeline-drag-handler] Success: ${fromStatus} -> ${newStatus}`);
 
-    return new Response(JSON.stringify({ 
+    return new Response(JSON.stringify({
       success: true,
       message: `Pipeline entry moved to ${newStatus}`,
       newStatus: newStatus,

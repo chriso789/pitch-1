@@ -337,6 +337,7 @@ const AppContent = () => {
         <Route path="/report-import" element={<ProtectedRoute><ReportImportDashboard /></ProtectedRoute>} />
         <Route path="/surveys" element={<ProtectedRoute><SurveyDashboard /></ProtectedRoute>} />
         <Route path="/referrals" element={<ProtectedRoute><ReferralDashboard /></ProtectedRoute>} />
+        <Route path="/marketing/facebook" element={<ProtectedRoute><FacebookMarketingDashboard /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />

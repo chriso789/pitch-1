@@ -433,6 +433,35 @@ serve(async (req: Request) => {
 
     console.log("[create-lead-with-contact] Lead created successfully:", pipelineEntry.id);
 
+    // Fire Meta CAPI "Lead" event (fire-and-forget)
+    try {
+      const metaCapiUrl = `${supabaseUrl}/functions/v1/meta-capi`;
+      fetch(metaCapiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${supabaseKey}`,
+        },
+        body: JSON.stringify({
+          event_name: 'Lead',
+          tenant_id: tenantId,
+          contact_id: contactId,
+          event_time: Math.floor(Date.now() / 1000),
+          email: body.email,
+          phone: body.phone,
+          custom_data: {
+            event_source: 'crm',
+            lead_event_source: 'PITCH CRM',
+            value: body.estimatedValue ? parseFloat(body.estimatedValue) : 0,
+            currency: 'USD',
+            pipeline_entry_id: pipelineEntry.id,
+          },
+        }),
+      }).catch(e => console.warn('[create-lead-with-contact] CAPI fire-and-forget error:', e));
+    } catch (capiErr) {
+      console.warn('[create-lead-with-contact] CAPI error (non-fatal):', capiErr);
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
