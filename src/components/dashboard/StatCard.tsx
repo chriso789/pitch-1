@@ -29,9 +29,10 @@ export function StatCard({
 }: StatCardProps) {
   return (
     <Card
+      variant="elevated"
       className={cn(
-        "shadow-soft transition-smooth hover:shadow-medium",
-        onClick && "cursor-pointer hover:border-primary"
+        "transition-smooth",
+        onClick && "cursor-pointer hover:border-primary/30"
       )}
       onClick={onClick}
     >
@@ -50,11 +51,11 @@ export function StatCard({
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-            <p className={cn("text-2xl font-bold", valueClass)}>{value}</p>
+            <p className={cn("text-2xl font-bold", valueClass)} style={{ textShadow: '0 1px 2px hsl(214 100% 25% / 0.06)' }}>{value}</p>
           </div>
           <div
             className={cn(
-              "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0",
+              "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0 embossed",
               iconBgClass
             )}
           >
