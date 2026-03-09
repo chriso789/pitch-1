@@ -1,54 +1,73 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# 3D UI Refresh Plan
 
-Three issues to address:
+## Goal
+Add depth, glass morphism, and elevated visual effects across the application to create a modern, premium 3D appearance. Changes will be CSS/component-level only -- no backend or database changes.
 
-## 1. Contact Profile Pipeline Area Overflowing
+## Approach
+Layer subtle 3D effects using CSS techniques: `backdrop-blur`, layered `box-shadow`, subtle gradients for lighting simulation, and `perspective`/`transform` for depth cues. No heavy 3D libraries needed.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+## Changes
 
-**File: `src/pages/ContactProfile.tsx`**
+### 1. Global Design Tokens (`src/index.css`)
+Add new CSS variables for 3D depth system:
+- `--shadow-3d`: Multi-layer shadow simulating elevation (e.g., `0 1px 2px rgba(...), 0 4px 8px rgba(...), 0 8px 24px rgba(...)`)
+- `--shadow-3d-hover`: Intensified version for hover states
+- `--glass-bg`: `rgba(255,255,255,0.7)` with `backdrop-filter: blur(12px)`
+- `--glass-border`: `rgba(255,255,255,0.2)` for frosted edge
+- New utility classes: `.glass`, `.elevated`, `.elevated-hover`, `.depth-card`
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+### 2. Card Component (`src/components/ui/card.tsx`)
+- Add new variant `"elevated"` with multi-layer 3D shadow, subtle top-border highlight (1px white/10% for light edge simulation)
+- Add variant `"glass"` with backdrop-blur, semi-transparent background, frosted border
+- Default cards get slightly enhanced shadow stack
 
-## 2. Show Who Saved Each Estimate (Under Title)
+### 3. Login Page (`src/pages/Login.tsx`)
+- Card gets glass morphism treatment: `bg-white/80 backdrop-blur-xl border-white/20`
+- Add subtle animated gradient orbs in background behind the card (CSS-only using `::before`/`::after` pseudo-elements with blur)
+- "PITCH" heading gets text-shadow for depth
+- Input fields get inset shadow for "pressed in" 3D look
+- Sign-in button gets gradient + layered shadow for "raised button" effect
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### 4. Sidebar (`src/components/ui/collapsible-sidebar.tsx`)
+- Add subtle inner shadow on the right edge for depth
+- Desktop sidebar gets `shadow-3d` instead of `shadow-soft`
+- Toggle button gets elevated pill style with layered shadow
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 5. Header Bar (`src/shared/components/layout/GlobalLayout.tsx`)
+- Top bar gets glass morphism: `bg-background/70 backdrop-blur-xl` with subtle bottom shadow
+- Adds floating appearance over content
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### 6. MetricCard (`src/components/dashboard/MetricCard.tsx`)
+- Icon container gets gradient background + inner shadow for "embossed" look
+- Card gets `elevated` variant with hover lift effect (translateY + shadow increase)
+- Count number gets subtle text-shadow
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+### 7. Button Component (`src/components/ui/button.tsx`)
+- Default variant gets layered shadow: light top highlight + bottom shadow for "raised" 3D button
+- Hover intensifies shadow; active presses down (translateY(1px) + reduced shadow)
+- Add `"elevated"` variant with pronounced 3D effect
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+## Technical Details
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+All effects use standard CSS properties (no JS animation libraries needed):
+- `box-shadow` with multiple layers for realistic depth
+- `backdrop-filter: blur()` for glass morphism
+- `border-top: 1px solid rgba(255,255,255,0.1)` for light-edge simulation
+- `transform: translateY()` for press/lift effects
+- `transition` for smooth state changes
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+Dark mode variants will use adjusted opacity and color values in the `.dark` selector block.
+
+## Files Modified
+| File | Change |
+|---|---|
+| `src/index.css` | Add 3D depth variables, glass/elevated utility classes |
+| `src/components/ui/card.tsx` | Add `elevated` and `glass` variants |
+| `src/components/ui/button.tsx` | Add `elevated` variant, enhance default shadow |
+| `src/pages/Login.tsx` | Glass card, gradient orb background, 3D inputs/buttons |
+| `src/components/ui/collapsible-sidebar.tsx` | Enhanced depth shadow |
+| `src/shared/components/layout/GlobalLayout.tsx` | Glass morphism header |
+| `src/components/dashboard/MetricCard.tsx` | Embossed icon, elevated card |
 
