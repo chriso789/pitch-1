@@ -4,13 +4,15 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const cardVariants = cva(
-  "rounded-lg border bg-card text-card-foreground shadow-sm",
+  "rounded-lg border bg-card text-card-foreground shadow-3d transition-smooth",
   {
     variants: {
       variant: {
         default: "",
         interactive: "card-interactive cursor-pointer",
         gamified: "card-interactive hover:shadow-glow cursor-pointer",
+        elevated: "elevated cursor-pointer",
+        glass: "glass border-[var(--glass-border)]",
       },
     },
     defaultVariants: {

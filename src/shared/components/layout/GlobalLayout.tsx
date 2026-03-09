@@ -24,7 +24,7 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
         "flex-1 overflow-auto",
         isMobile && "pt-14" // Add padding for mobile menu button
       )}>
-        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
+        <div className="border-b glass-heavy sticky top-0 z-40 shadow-[0_1px_3px_hsl(214_100%_25%/0.06),0_4px_12px_hsl(214_100%_25%/0.04)]">
           {isMobile ? (
             /* Mobile: Two-row header */
             <div className="flex flex-col">

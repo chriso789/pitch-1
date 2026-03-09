@@ -9,13 +9,14 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98]",
-        destructive: "bg-destructive text-destructive-foreground hover:bg-destructive/90 active:scale-[0.98]",
-        outline: "border border-input bg-background hover:bg-accent hover:text-accent-foreground active:scale-[0.98]",
-        secondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:scale-[0.98]",
+        default: "bg-primary text-primary-foreground shadow-[0_1px_0_0_hsl(0_0%_100%/0.15)_inset,0_2px_4px_hsl(214_100%_25%/0.2)] hover:bg-primary/90 hover:shadow-[0_1px_0_0_hsl(0_0%_100%/0.15)_inset,0_4px_8px_hsl(214_100%_25%/0.25)] active:shadow-[0_1px_0_0_hsl(0_0%_100%/0.1)_inset,0_1px_2px_hsl(214_100%_25%/0.15)] active:translate-y-px",
+        destructive: "bg-destructive text-destructive-foreground shadow-[0_1px_0_0_hsl(0_0%_100%/0.1)_inset,0_2px_4px_hsl(0_84%_60%/0.2)] hover:bg-destructive/90 hover:shadow-[0_1px_0_0_hsl(0_0%_100%/0.1)_inset,0_4px_8px_hsl(0_84%_60%/0.25)] active:translate-y-px",
+        outline: "border border-input bg-background shadow-[0_1px_2px_hsl(214_100%_25%/0.05)] hover:bg-accent hover:text-accent-foreground hover:shadow-[0_2px_4px_hsl(214_100%_25%/0.08)] active:translate-y-px active:shadow-none",
+        secondary: "bg-secondary text-secondary-foreground shadow-[0_1px_0_0_hsl(0_0%_100%/0.1)_inset,0_2px_4px_hsl(25_95%_53%/0.15)] hover:bg-secondary/80 hover:shadow-[0_1px_0_0_hsl(0_0%_100%/0.1)_inset,0_4px_8px_hsl(25_95%_53%/0.2)] active:translate-y-px",
         ghost: "hover:bg-accent hover:text-accent-foreground active:scale-[0.98]",
         link: "text-primary underline-offset-4 hover:underline",
         headerIcon: "h-9 w-9 p-0 hover:bg-accent hover:text-accent-foreground rounded-md active:scale-95",
+        elevated: "bg-primary text-primary-foreground shadow-3d hover:shadow-3d-hover hover:-translate-y-0.5 active:translate-y-px active:shadow-[var(--shadow-3d-active)]",
         // Gamified variants with dopamine-triggering effects
         gamified: "bg-primary text-primary-foreground hover:bg-primary/90 btn-gamified",
         gamifiedSecondary: "bg-secondary text-secondary-foreground hover:bg-secondary/80 btn-gamified",

@@ -230,7 +230,57 @@
   .shadow-glow {
     box-shadow: var(--shadow-glow);
   }
-  
+
+  .shadow-3d {
+    box-shadow: var(--shadow-3d);
+  }
+
+  .shadow-3d-hover {
+    box-shadow: var(--shadow-3d-hover);
+  }
+
+  /* Glass Morphism Utility */
+  .glass {
+    background: var(--glass-bg);
+    backdrop-filter: blur(var(--glass-blur));
+    -webkit-backdrop-filter: blur(var(--glass-blur));
+    border-color: var(--glass-border);
+  }
+
+  .glass-heavy {
+    background: var(--glass-bg-heavy);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-color: var(--glass-border);
+  }
+
+  /* Elevated card with 3D depth */
+  .elevated {
+    box-shadow: var(--shadow-3d);
+    border-top: 1px solid hsl(0 0% 100% / 0.1);
+    transition: var(--transition-smooth);
+  }
+
+  .elevated:hover {
+    box-shadow: var(--shadow-3d-hover);
+    transform: translateY(-2px);
+  }
+
+  /* Embossed icon container */
+  .embossed {
+    box-shadow: var(--shadow-emboss);
+  }
+
+  /* Inset/pressed input style */
+  .input-3d {
+    box-shadow: var(--shadow-inset);
+    transition: var(--transition-smooth);
+  }
+
+  .input-3d:focus-within {
+    box-shadow: var(--shadow-inset), 0 0 0 2px hsl(var(--ring) / 0.3);
+  }
+
   .transition-smooth {
     transition: var(--transition-smooth);
   }

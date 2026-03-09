@@ -76,7 +76,7 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
       <Button
         variant="ghost"
         size="sm"
-        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full border bg-background shadow-md hover:bg-accent"
+        className="absolute -right-3 top-6 z-10 h-6 w-6 rounded-full border bg-background shadow-3d hover:shadow-3d-hover hover:bg-accent"
         onClick={() => setIsCollapsed(!isCollapsed)}
       >
         {isCollapsed ? (
