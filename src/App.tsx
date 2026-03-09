@@ -138,6 +138,9 @@ import PermitExpediter from "./pages/PermitExpediter";
 import SurveyDashboard from "./pages/SurveyDashboard";
 import ReferralDashboard from "./pages/ReferralDashboard";
 import FacebookMarketingDashboard from "./pages/FacebookMarketingDashboard";
+import GoodBetterBestBuilderPage from "./pages/GoodBetterBestBuilderPage";
+import AutomatedReviewCollectionPage from "./pages/AutomatedReviewCollectionPage";
+import LoyaltyPointsPage from "./pages/LoyaltyPointsPage";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
