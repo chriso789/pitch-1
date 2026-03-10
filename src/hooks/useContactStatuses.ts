@@ -48,7 +48,7 @@ export function useContactStatuses() {
         return DEFAULT_CONTACT_STATUSES;
       }
 
-      return data.map(status => ({
+      const mapped = data.map(status => ({
         id: status.id,
         name: status.name,
         key: status.key,
@@ -57,6 +57,21 @@ export function useContactStatuses() {
         status_order: status.status_order,
         is_active: status.is_active,
       }));
+
+      // Ensure "Past Customer" is always present
+      if (!mapped.some(s => s.key === 'past_customer')) {
+        mapped.push({
+          id: 'default-past-customer',
+          name: 'Past Customer',
+          key: 'past_customer',
+          color: '#10b981',
+          description: null,
+          status_order: 999,
+          is_active: true,
+        });
+      }
+
+      return mapped;
     },
     staleTime: 5 * 60 * 1000,
     gcTime: 10 * 60 * 1000,
