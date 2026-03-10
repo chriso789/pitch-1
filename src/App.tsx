@@ -141,6 +141,7 @@ import FacebookMarketingDashboard from "./pages/FacebookMarketingDashboard";
 import GoodBetterBestBuilderPage from "./pages/GoodBetterBestBuilderPage";
 import AutomatedReviewCollectionPage from "./pages/AutomatedReviewCollectionPage";
 import LoyaltyPointsPage from "./pages/LoyaltyPointsPage";
+import MarketingAssetsPage from "./pages/MarketingAssetsPage";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
