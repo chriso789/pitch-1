@@ -342,7 +342,7 @@ const AppContent = () => {
         <Route path="/surveys" element={<ProtectedRoute><SurveyDashboard /></ProtectedRoute>} />
         <Route path="/referrals" element={<ProtectedRoute><ReferralDashboard /></ProtectedRoute>} />
         <Route path="/marketing/facebook" element={<ProtectedRoute><FacebookMarketingDashboard /></ProtectedRoute>} />
-        <Route path="/marketing-assets" element={<MarketingAssetsPage />} />
+        <Route path="/marketing-assets" element={<ProtectedRoute><MarketingAssetsPage /></ProtectedRoute>} />
         <Route path="/proposals/good-better-best" element={<ProtectedRoute><GoodBetterBestBuilderPage /></ProtectedRoute>} />
         <Route path="/reviews/automated" element={<ProtectedRoute><AutomatedReviewCollectionPage /></ProtectedRoute>} />
         <Route path="/loyalty" element={<ProtectedRoute><LoyaltyPointsPage /></ProtectedRoute>} />
