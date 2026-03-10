@@ -295,6 +295,7 @@ const ContactProfile = () => {
                       ))}
                     </SelectContent>
                   </Select>
+                  </div>
                 </div>
               </div>
             </div>
