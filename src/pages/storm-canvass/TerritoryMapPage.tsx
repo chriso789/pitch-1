@@ -147,6 +147,8 @@ const TerritoryMapPage = () => {
       case 'callback':
       case 'follow_up':
         return '#f59e0b'; // yellow
+      case 'past_customer':
+        return '#0d9488'; // teal
       default:
         return '#9ca3af'; // gray
     }
