@@ -35,6 +35,7 @@ const DISPOSITION_COLORS: Record<string, string> = {
   not_home: '#6B7280',
   callback: '#8B5CF6',
   converted: '#10B981',
+  past_customer: '#0D9488',
 };
 
 const DEFAULT_COLOR = '#D4A84B';

@@ -41,6 +41,7 @@ const DISPOSITION_COLORS: Record<string, string> = {
   not_interested: '#DC2626',   // Red
   not_home: '#9CA3AF',         // Gray
   follow_up: '#EAB308',        // Yellow
+  past_customer: '#0D9488',    // Teal - completed project
   default: '#D4A84B',          // Yellow outline (not contacted)
 };
 

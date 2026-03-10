@@ -1035,6 +1035,14 @@ function normalizeStatus(status: string | undefined): string | null {
     'unqualified': 'unqualified',
     'disqualified': 'unqualified',
     'bad lead': 'unqualified',
+    
+    // Past Customer / Completed
+    'past customer': 'past_customer',
+    'past_customer': 'past_customer',
+    'completed': 'past_customer',
+    'finished': 'past_customer',
+    'done': 'past_customer',
+    'previous customer': 'past_customer',
   };
   
   // Direct match

@@ -270,11 +270,12 @@ const ContactProfile = () => {
                   {contact.contact_number && (
                     <Badge variant="secondary" className="text-sm">#{contact.contact_number}</Badge>
                   )}
+                  <div onClick={e => e.stopPropagation()}>
                   <Select
                     value={contact.qualification_status || 'unqualified'}
                     onValueChange={handleStatusChange}
                   >
-                    <SelectTrigger className="h-7 w-auto min-w-[140px] text-sm border-input bg-background">
+                    <SelectTrigger className="h-8 w-auto min-w-[140px] text-sm border-input bg-background cursor-pointer">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-popover border z-[200]">

@@ -604,6 +604,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 <SelectItem value="not_interested">Not Interested</SelectItem>
                 <SelectItem value="follow_up">Follow Up</SelectItem>
                 <SelectItem value="contacted">Contacted</SelectItem>
+                <SelectItem value="past_customer">Past Customer</SelectItem>
               </SelectContent>
             </Select>
           </div>
