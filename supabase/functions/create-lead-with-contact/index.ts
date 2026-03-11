@@ -275,15 +275,18 @@ serve(async (req: Request) => {
       // --- DEDUP: Check by phone number first (primary identifier) ---
       if (body.phone) {
         const normalizedPhone = body.phone.replace(/\D/g, '').slice(-10);
-        if (normalizedPhone.length >= 7) {
-          const { data: phoneMatch } = await supabase
+        if (normalizedPhone.length === 10) {
+          // Fetch candidate contacts and match on exact last-10-digit normalized phone
+          const { data: phoneCandidates } = await supabase
             .from("contacts")
-            .select("id, first_name, last_name, assigned_to")
+            .select("id, first_name, last_name, assigned_to, phone")
             .eq("tenant_id", tenantId)
             .eq("is_deleted", false)
-            .or(`phone.ilike.%${normalizedPhone}`)
-            .limit(1)
-            .maybeSingle();
+            .limit(100);
+
+          const phoneMatch = phoneCandidates?.find(c =>
+            c.phone?.replace(/\D/g, '').slice(-10) === normalizedPhone
+          ) || null;
 
           if (phoneMatch) {
             console.log("[create-lead-with-contact] Found existing contact by phone:", phoneMatch.id);
@@ -399,6 +402,7 @@ serve(async (req: Request) => {
       tenant_id: tenantId,
       contact_id: contactId,
       location_id: locationId,
+      lead_name: body.name || null,
       status: body.status || "lead",
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,

@@ -1,67 +1,54 @@
 
 
-# Plan: Fix Lead Creation — Missing `lead_name` + Phone Dedup False Match
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Root Cause (Two Bugs Found)
+Three issues to address:
 
-The "David Ramage" lead **was created successfully** (ID: `e9a27514-bc6f-4b42-9dd9-fa9d74c6a886`) but is invisible because:
+## 1. Contact Profile Pipeline Area Overflowing
 
-1. **`lead_name` is never set** — The edge function `create-lead-with-contact` builds the pipeline entry without `lead_name: body.name`. The pipeline UI falls back to the linked contact's name, and search queries on `lead_name` return nothing.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-2. **Phone dedup matched the wrong contact** — Phone `11111111` matched "Punit Shah" (phone `111111111`) via loose `ilike` matching. So David Ramage's lead is linked to Punit Shah's contact record, not a new "David Ramage" contact. The card shows "Punit Shah" instead of "David Ramage."
+**File: `src/pages/ContactProfile.tsx`**
 
-## Fix
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### 1. `supabase/functions/create-lead-with-contact/index.ts`
+## 2. Show Who Saved Each Estimate (Under Title)
 
-**Add `lead_name` to pipeline insert** (line 398-416):
-```typescript
-const pipelineData: any = {
-  tenant_id: tenantId,
-  contact_id: contactId,
-  location_id: locationId,
-  lead_name: body.name || null,  // <-- ADD THIS
-  status: body.status || "lead",
-  ...
-};
-```
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-**Fix phone dedup to require exact 10-digit match** (line 276-292):
-Currently uses `or('phone.ilike.%${normalizedPhone}')` which is a substring match — `11111111` matches `111111111`. Change to exact normalized comparison:
-```typescript
-const normalizedPhone = body.phone.replace(/\D/g, '').slice(-10);
-if (normalizedPhone.length === 10) {
-  // Use exact match on last 10 digits instead of substring ilike
-  const { data: phoneMatch } = await supabase
-    .from("contacts")
-    .select("id, first_name, last_name, assigned_to, phone")
-    .eq("tenant_id", tenantId)
-    .eq("is_deleted", false)
-    .limit(10);
-  
-  // Filter in JS for exact 10-digit match
-  const exactMatch = phoneMatch?.find(c => 
-    c.phone?.replace(/\D/g, '').slice(-10) === normalizedPhone
-  );
-}
-```
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-Alternatively, a simpler approach: only match if the normalized phone is at least 10 digits long, and use a tighter SQL filter.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-### 2. Fix the existing David Ramage record
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-Run a SQL update to set the `lead_name` on the existing entry:
-```sql
-UPDATE pipeline_entries 
-SET lead_name = 'David Ramage' 
-WHERE id = 'e9a27514-bc6f-4b42-9dd9-fa9d74c6a886';
-```
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-### 3. Redeploy the edge function
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-After editing, the `create-lead-with-contact` function must be redeployed.
-
----
-
-**Summary**: Two lines of change in the edge function — add `lead_name` to the insert and tighten phone dedup to require 10-digit exact match. Plus a one-time data fix for the existing record.
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
