@@ -440,9 +440,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     const itemChunks = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
     
     // Count total pages for page numbering
+    // Pre-build warranty pages to know their count
+    const warrantyPages = opts.showWarrantyInfo ? buildWarrantyPages(warrantyTerms) : [];
+
     let totalPageCount = itemChunks.length || 1; // At least 1 for main content
     if (opts.showCoverPage) totalPageCount++;
-    if (opts.showWarrantyInfo) totalPageCount++;
+    totalPageCount += warrantyPages.length;
     if (opts.showMeasurementDetails && measurementSummary) totalPageCount++;
     // Photos page count calculated below
     
@@ -514,11 +517,11 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       );
     }
 
-    // Warranty page
-    if (opts.showWarrantyInfo) {
+    // Warranty page(s)
+    warrantyPages.forEach((page, i) => {
       currentPage++;
-      pageList.push(<WarrantyPage key="warranty-page" warrantyTerms={warrantyTerms} />);
-    }
+      pageList.push(page);
+    });
 
     // Measurement details page
     if (opts.showMeasurementDetails && measurementSummary) {
