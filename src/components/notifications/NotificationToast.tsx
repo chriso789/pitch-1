@@ -6,6 +6,7 @@ import {
   Calendar, 
   Trophy, 
   Shield,
+  MessageCircle,
   X,
   ExternalLink
 } from 'lucide-react';
