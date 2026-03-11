@@ -8,7 +8,7 @@ import confetti from 'canvas-confetti';
 
 interface Notification {
   id: string;
-  type: 'lead_hot' | 'estimate_viewed' | 'proposal_signed' | 'appointment_scheduled' | 'deal_closed' | 'security_alert';
+  type: 'lead_hot' | 'estimate_viewed' | 'proposal_signed' | 'appointment_scheduled' | 'deal_closed' | 'security_alert' | 'mention';
   title: string;
   message: string;
   data?: Record<string, any>;
