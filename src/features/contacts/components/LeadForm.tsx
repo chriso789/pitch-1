@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from '@/contexts/LocationContext';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,6 +77,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [leadSources, setLeadSources] = useState(fallbackLeadSources);
   const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const { currentLocationId } = useLocation();
   const { toast } = useToast();
 
   // Fetch lead sources from database
@@ -196,6 +198,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         .from('contacts')
         .insert({
           tenant_id: profile.tenant_id,
+          location_id: currentLocationId || null,
           first_name: formData.firstName,
           last_name: formData.lastName,
           email: formData.email || null,
@@ -231,6 +234,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         .from('pipeline_entries')
         .insert({
           tenant_id: profile.tenant_id,
+          location_id: currentLocationId || null,
           contact_id: contact.id,
           status: 'lead',
           priority: formData.urgency === 'immediate' ? 'urgent' : 'medium',
@@ -284,7 +288,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
       console.error('Error creating lead:', error);
       toast({
         title: "Error creating lead",
-        description: "Please try again or contact support.",
+        description: error instanceof Error ? error.message : (error as any)?.message || "Please try again or contact support.",
         variant: "destructive",
       });
     } finally {

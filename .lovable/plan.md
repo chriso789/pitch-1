@@ -1,34 +1,54 @@
 
 
-# Plan: Fix Missing `location_id` on Lead Creation
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Root Cause
+Three issues to address:
 
-The `LeadForm.tsx` creates pipeline entries **without setting `location_id`**. The pipeline view (`usePipelineData.ts` line 71-72) filters entries by `location_id` when a location is selected. Since the new entry has `location_id = NULL`, it's invisible when viewing "West Coast" or any specific location.
+## 1. Contact Profile Pipeline Area Overflowing
 
-The "David Ramage" lead likely failed due to a different issue (possibly a unique constraint on contacts or a validation error that was caught but not surfaced properly), since it doesn't exist in the DB at all. But the core visibility bug remains: even leads that DO get created are missing their `location_id`.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Fix
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. `src/features/contacts/components/LeadForm.tsx`
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-- Import `useLocation` from `@/contexts/LocationContext`
-- Get `currentLocationId` from the context
-- Pass `location_id: currentLocationId` in both the `contacts` insert (line 197) and the `pipeline_entries` insert (line 232)
-- This ensures leads are assigned to the user's currently selected location
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### 2. Improve Error Surfacing
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-- In the `catch` block (line 283), add the actual error message to the toast description so failures are never silent again:
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
+
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
   ```
-  description: error?.message || "Please try again or contact support."
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
   ```
 
-### 3. Fix Existing Orphaned Records
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-- Run a one-time SQL migration to assign `location_id` to any `pipeline_entries` rows where it's NULL, using the user's default location or the tenant's first location as a fallback.
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
----
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-Two file changes (`LeadForm.tsx`) plus one optional DB migration. The fix ensures every new lead inherits the active location context.
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
