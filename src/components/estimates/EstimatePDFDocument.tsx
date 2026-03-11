@@ -441,7 +441,9 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     
     // Count total pages for page numbering
     // Pre-build warranty pages to know their count
-    const warrantyPages = opts.showWarrantyInfo ? buildWarrantyPages(warrantyTerms) : [];
+    const warrantyPages = (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty)
+      ? buildWarrantyPages(warrantyTerms, opts.showManufacturerWarranty, opts.showWorkmanshipWarranty)
+      : [];
 
     let totalPageCount = itemChunks.length || 1; // At least 1 for main content
     if (opts.showCoverPage) totalPageCount++;
