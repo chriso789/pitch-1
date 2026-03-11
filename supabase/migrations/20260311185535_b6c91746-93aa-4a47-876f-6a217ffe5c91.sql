@@ -1,0 +1,1 @@
+UPDATE public.pipeline_entries SET is_deleted = true, deleted_at = now() WHERE id = 'e9f68776-f3e3-425d-9289-94c8e44d9beb';
