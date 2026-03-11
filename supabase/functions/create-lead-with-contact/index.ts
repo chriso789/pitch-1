@@ -18,6 +18,7 @@ interface LeadRequest {
   priority: string;
   estimatedValue?: string;
   salesReps: string[];
+  forceDuplicate?: boolean;
   selectedAddress?: {
     place_id: string;
     formatted_address: string;
