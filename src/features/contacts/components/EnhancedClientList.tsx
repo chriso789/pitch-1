@@ -432,8 +432,14 @@ export const EnhancedClientList = () => {
         if (currentLocationId && locations.length > 0) {
           console.log("Applying location filter:", currentLocationId);
           batchQuery = batchQuery.eq('location_id', currentLocationId);
+        } else if (locations.length > 0) {
+          // Locations exist but none selected yet — don't show unfiltered cross-location data
+          console.log("Waiting for location selection - locations exist but none selected");
+          setContacts([]);
+          setLoading(false);
+          return;
         } else {
-          console.log("No location filter applied - currentLocationId:", currentLocationId, "locations.length:", locations.length);
+          console.log("No locations configured - showing all contacts (backward compat)");
         }
         
         const { data: batchData, error: batchError } = await batchQuery;
