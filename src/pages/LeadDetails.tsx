@@ -736,44 +736,35 @@ const LeadDetails = () => {
                   <Edit2 className="h-3.5 w-3.5" />
                   Edit
                 </Button>
-              {isEditingStatus ? (
-                <Select 
-                  value={lead.status} 
-                  onValueChange={handleStatusUpdateWithCheck}
-                >
-                  <SelectTrigger className="h-7 w-[180px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(() => {
-                      const availableStatuses = getAvailableStatuses(lead.status);
-                      const filteredStages = stages.filter(stage => 
-                        availableStatuses.includes(stage.key) || stage.key === lead.status
-                      );
-                      
-                      return filteredStages.map((stage) => (
-                        <SelectItem key={stage.key} value={stage.key}>
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${stage.color}`} />
-                            {stage.name}
-                          </div>
-                        </SelectItem>
-                      ));
-                    })()}
-                  </SelectContent>
-                </Select>
-              ) : (
-                <div 
-                  className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors"
-                  onClick={() => setIsEditingStatus(true)}
-                >
+              <Select 
+                value={lead.status} 
+                onValueChange={handleStatusUpdateWithCheck}
+              >
+                <SelectTrigger className="h-auto w-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors [&>svg:last-child]:hidden">
                   <div className={`w-2 h-2 rounded-full ${stages.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
                   <span className="text-sm font-medium capitalize">
                     {stages.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
                   </span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </div>
-              )}
+                </SelectTrigger>
+                <SelectContent>
+                  {(() => {
+                    const availableStatuses = getAvailableStatuses(lead.status);
+                    const filteredStages = stages.filter(stage => 
+                      availableStatuses.includes(stage.key) || stage.key === lead.status
+                    );
+                    
+                    return filteredStages.map((stage) => (
+                      <SelectItem key={stage.key} value={stage.key}>
+                        <div className="flex items-center gap-2">
+                          <div className={`w-2 h-2 rounded-full ${stage.color}`} />
+                          {stage.name}
+                        </div>
+                      </SelectItem>
+                    ));
+                  })()}
+                </SelectContent>
+              </Select>
               {lead.status === 'project' && productionStage && (
                 <Badge variant="outline" className="border-primary text-primary">
                   Production: {productionStage.replace('_', ' ')}
