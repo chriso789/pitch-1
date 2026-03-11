@@ -64,7 +64,9 @@ export function NotificationToast({
   };
 
   const handleClick = () => {
-    if (notification.data?.link) {
+    if (notification.data?.pipeline_entry_id) {
+      navigate(`/lead/${notification.data.pipeline_entry_id}`);
+    } else if (notification.data?.link) {
       navigate(notification.data.link);
     } else if (notification.data?.contactId) {
       navigate(`/contacts/${notification.data.contactId}`);

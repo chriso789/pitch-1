@@ -172,6 +172,15 @@ export function RealTimeNotificationProvider({ children }: RealTimeNotificationP
         ), { duration: 10000 });
         break;
 
+      case 'mention':
+        toast.custom(() => (
+          <NotificationToast
+            notification={notification}
+            variant="default"
+          />
+        ), { duration: 6000 });
+        break;
+
       default:
         toast.custom(() => (
           <NotificationToast notification={notification} />

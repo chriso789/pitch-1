@@ -43,7 +43,10 @@ export function NotificationBell() {
     markAsRead(notification.id);
     
     // Navigate based on notification data
-    if (notification.data?.contact_id) {
+    if (notification.data?.pipeline_entry_id) {
+      navigate(`/lead/${notification.data.pipeline_entry_id}`);
+      setOpen(false);
+    } else if (notification.data?.contact_id) {
       navigate(`/contact/${notification.data.contact_id}`);
       setOpen(false);
     } else if (notification.data?.job_id) {
