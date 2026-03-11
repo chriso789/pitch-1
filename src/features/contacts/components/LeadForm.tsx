@@ -198,6 +198,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         .from('contacts')
         .insert({
           tenant_id: profile.tenant_id,
+          location_id: currentLocationId || null,
           first_name: formData.firstName,
           last_name: formData.lastName,
           email: formData.email || null,
