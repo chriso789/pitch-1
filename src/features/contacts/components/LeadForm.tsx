@@ -77,6 +77,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [leadSources, setLeadSources] = useState(fallbackLeadSources);
   const [isLoadingSources, setIsLoadingSources] = useState(false);
+  const { currentLocationId } = useLocation();
   const { toast } = useToast();
 
   // Fetch lead sources from database
