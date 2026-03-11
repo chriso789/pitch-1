@@ -741,9 +741,14 @@ export function EstimatePreviewPanel({
                       </div>
                     )}
                     <ToggleRow
-                      label="Warranty Info"
-                      checked={options.showWarrantyInfo}
-                      onChange={(v) => updateOption('showWarrantyInfo', v)}
+                      label="Manufacturer Warranty"
+                      checked={options.showManufacturerWarranty}
+                      onChange={(v) => updateOption('showManufacturerWarranty', v)}
+                    />
+                    <ToggleRow
+                      label="Workmanship Warranty"
+                      checked={options.showWorkmanshipWarranty}
+                      onChange={(v) => updateOption('showWorkmanshipWarranty', v)}
                     />
                   </div>
                 </div>

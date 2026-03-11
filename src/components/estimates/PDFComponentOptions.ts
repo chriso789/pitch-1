@@ -41,7 +41,8 @@ export interface PDFComponentOptions {
   showMeasurementDetails: boolean; // Full measurement breakdown page
   showJobPhotos: boolean; // Job photos grid
   showRoofDiagram: boolean; // Schematic roof diagram (future)
-  showWarrantyInfo: boolean; // Warranty details page
+  showManufacturerWarranty: boolean; // Manufacturer warranty page
+  showWorkmanshipWarranty: boolean; // Workmanship warranty page
   
   // Photo Layout
   photoLayout: 'auto' | '1col' | '2col' | '3col' | '4col';
@@ -98,7 +99,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showMeasurementDetails: false,
     showJobPhotos: false,
     showRoofDiagram: false,
-    showWarrantyInfo: true,
+    showManufacturerWarranty: true,
+    showWorkmanshipWarranty: true,
     // Photo Layout
     photoLayout: 'auto',
     // Header/Footer
@@ -141,7 +143,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showMeasurementDetails: true,
     showJobPhotos: false,
     showRoofDiagram: false,
-    showWarrantyInfo: false,
+    showManufacturerWarranty: false,
+    showWorkmanshipWarranty: false,
     // Photo Layout
     photoLayout: 'auto',
     // Header/Footer
