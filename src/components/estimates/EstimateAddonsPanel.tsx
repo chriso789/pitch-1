@@ -262,12 +262,29 @@ export const EstimateAddonsPanel: React.FC<EstimateAddonsPanelProps> = ({
                 onCheckedChange={(checked) => onOptionsChange({ showManufacturerWarranty: !!checked })}
               />
               <div className="flex-1">
-                <Label htmlFor="warranty-info" className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                <Label htmlFor="manufacturer-warranty" className="text-sm font-medium cursor-pointer flex items-center gap-2">
                   <Shield className="h-4 w-4" />
-                  Warranty Information
+                  Manufacturer Warranty
                 </Label>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  Include warranty terms and coverage details
+                  Include manufacturer warranty terms
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
+              <Checkbox
+                id="workmanship-warranty"
+                checked={pdfOptions.showWorkmanshipWarranty}
+                onCheckedChange={(checked) => onOptionsChange({ showWorkmanshipWarranty: !!checked })}
+              />
+              <div className="flex-1">
+                <Label htmlFor="workmanship-warranty" className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                  <Shield className="h-4 w-4" />
+                  Workmanship Warranty
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Include workmanship coverage details
                 </p>
               </div>
             </div>
