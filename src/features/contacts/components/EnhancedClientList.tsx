@@ -911,6 +911,9 @@ export const EnhancedClientList = () => {
     setTaskDialogState({ open: false });
   };
 
+  const { user } = useCurrentUser();
+  const canDeleteContacts = user?.role === 'master' || user?.role === 'owner';
+
   const ActionsDropdown = ({ item, type }: { item: any, type: 'contact' | 'job' }) => {
     const actions = [
       {
