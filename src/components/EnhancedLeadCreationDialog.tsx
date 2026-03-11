@@ -104,6 +104,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [selectedContact, setSelectedContact] = useState<SelectedContact | null>(contact || null);
   const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddressData | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [duplicateWarning, setDuplicateWarning] = useState<{ message: string; existingContact: any } | null>(null);
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
 
