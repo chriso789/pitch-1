@@ -1,54 +1,61 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Plan: Fix Warranty Page Overflow — Allow Multi-Page Warranty Content
 
-Three issues to address:
+## Problem
 
-## 1. Contact Profile Pipeline Area Overflowing
+The `PageShell` component enforces `maxHeight: 1056px` and `overflow: hidden` on every page. When the workmanship warranty text is long (as shown in the screenshot), it gets clipped at the bottom of the single warranty page. There is no mechanism to continue warranty content onto a second page.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+## Root Cause
 
-**File: `src/pages/ContactProfile.tsx`**
+The `WarrantyPage` component is always rendered as a single page. The content area available per page is approximately `CONTENT_HEIGHT = 1056 - 140 - 160 - 48 = 708px`. Long warranty text (like the detailed workmanship warranty in the screenshot) exceeds this.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+## Fix
 
-## 2. Show Who Saved Each Estimate (Under Title)
+### 1. `src/components/estimates/EstimatePDFDocument.tsx` — Split warranty into multiple pages
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+**Replace the single `WarrantyPage` component** with a `WarrantyPages` function that:
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+1. Renders manufacturer warranty as the first section
+2. Renders workmanship warranty below it
+3. Uses a ref-based measurement approach (or a content-splitting strategy) to detect overflow
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+Since we're in a static PDF render context (html2canvas), the simplest reliable approach is to **split the two warranty sections into separate pages when content is long**:
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+- **Page 1**: "Warranty Information" heading + Manufacturer Warranty section + beginning of Workmanship Warranty (if it fits)
+- **Page 2+**: Continuation of Workmanship Warranty if it overflows
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+**Implementation approach**: Rather than complex DOM measurement, split the warranty content by rendering manufacturer and workmanship as **separate page entries** when the combined text length exceeds a threshold (~800 characters total, which roughly corresponds to the available content height at `text-xs leading-tight`).
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+```typescript
+// In the page list builder (around line 517-521):
+if (opts.showWarrantyInfo) {
+  const warrantyPages = buildWarrantyPages(warrantyTerms);
+  warrantyPages.forEach((page, i) => {
+    currentPage++;
+    pageList.push(page);
+  });
+  // Update totalPageCount accordingly
+}
+```
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+**New `buildWarrantyPages` function**:
+- Parse warranty terms JSON
+- If both manufacturer + workmanship text combined length > ~800 chars, split into two pages:
+  - Page 1: Heading + Manufacturer Warranty
+  - Page 2: Workmanship Warranty (with a small "Warranty Information (continued)" header)
+- If short enough, keep as single page (current behavior)
+- Update `totalPageCount` to account for extra warranty pages
+
+### 2. Update page count calculation
+
+The current code at line 445 adds exactly 1 for warranty. Change to add the actual number of warranty pages returned by the builder function.
+
+### 3. No changes needed to PageShell
+
+The `maxHeight` and `overflow: hidden` constraints are correct for PDF rendering — we just need to split content across pages properly.
+
+---
+
+**Summary**: Replace the single `WarrantyPage` with a builder that splits long warranty content across multiple pages. Manufacturer warranty on page 1, workmanship warranty on page 2 when content is too long. Two touches in `EstimatePDFDocument.tsx` — the warranty page builder function and the page count calculation.
 
