@@ -491,7 +491,7 @@ const LeadDetails = () => {
         description: error.message || "Please try again",
         variant: "destructive" 
       });
-      setIsEditingStatus(true);
+      // error handled by toast
     }
   };
 
