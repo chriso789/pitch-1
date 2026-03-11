@@ -234,6 +234,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         .from('pipeline_entries')
         .insert({
           tenant_id: profile.tenant_id,
+          location_id: currentLocationId || null,
           contact_id: contact.id,
           status: 'lead',
           priority: formData.urgency === 'immediate' ? 'urgent' : 'medium',
