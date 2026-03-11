@@ -54,7 +54,8 @@ const Pipeline = () => {
   const [filters, setFilters] = useState({
     salesRep: 'all',
     dateFrom: '',
-    dateTo: ''
+    dateTo: '',
+    sortOrder: 'desc' as 'asc' | 'desc'
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
