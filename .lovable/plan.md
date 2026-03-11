@@ -1,54 +1,34 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: "Create Lead" from Contact Profile Not Working
 
-Three issues to address:
+## Problem
+When clicking "Create Lead" from a contact profile page, the `LeadCreationDialog` pre-fills name, phone, and address from the contact — but the submit button stays disabled because **roof age** and **roof type** are required fields that aren't available on the contact record. The button shows "Complete Required Fields" and the user can't submit without filling those in first.
 
-## 1. Contact Profile Pipeline Area Overflowing
+This is a UX friction issue: when you already have a contact and just want to create a lead for them, you shouldn't be blocked by roof details that can be added later on the lead details page.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+## Solution
+Make `roofAge` and `roofType` **optional** when creating a lead from an existing contact (i.e., when the `contact` prop is provided). These fields can be filled in later on the lead details page.
 
-**File: `src/pages/ContactProfile.tsx`**
+### Changes — `src/components/LeadCreationDialog.tsx`
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+1. **Update `isFormValid` memo** (~line 348): When `contact` is provided, skip the `roofAge` and `roofType` checks
+2. **Update `validateForm` function** (~line 380): Same conditional — skip roof validation when `contact` exists
+3. **Update form UI**: When `contact` is provided, remove the "required" indicator from roof age/type fields and show them as "optional"
 
-## 2. Show Who Saved Each Estimate (Under Title)
+```tsx
+// In isFormValid and validateForm:
+const roofRequired = !contact; // Only required for new contacts
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+// Validation checks become:
+roofAge: roofRequired ? (!!formData.roofAge && ...) : true,
+roofType: roofRequired ? !!formData.roofType : true,
+```
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+This way:
+- Creating a lead from scratch (no contact) still requires roof details
+- Creating a lead from an existing contact profile lets you skip them
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
-
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
-
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### Files Changed
+- `src/components/LeadCreationDialog.tsx` — make roof fields optional when contact is provided
 
