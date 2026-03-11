@@ -41,7 +41,8 @@ export interface PDFComponentOptions {
   showMeasurementDetails: boolean; // Full measurement breakdown page
   showJobPhotos: boolean; // Job photos grid
   showRoofDiagram: boolean; // Schematic roof diagram (future)
-  showWarrantyInfo: boolean; // Warranty details page
+  showManufacturerWarranty: boolean; // Manufacturer warranty page
+  showWorkmanshipWarranty: boolean; // Workmanship warranty page
   
   // Photo Layout
   photoLayout: 'auto' | '1col' | '2col' | '3col' | '4col';
