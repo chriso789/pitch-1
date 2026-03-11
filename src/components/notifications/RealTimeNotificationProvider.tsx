@@ -96,12 +96,12 @@ export function RealTimeNotificationProvider({ children }: RealTimeNotificationP
         setNotifications(
           data.map((n: any) => ({
             id: n.id,
-            type: n.notification_type,
+            type: n.type,
             title: n.title,
             message: n.message,
             data: n.metadata,
             createdAt: new Date(n.created_at),
-            read: n.read,
+            read: n.is_read,
           }))
         );
       }
