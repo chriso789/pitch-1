@@ -469,7 +469,7 @@ const LeadDetails = () => {
   };
 
   const handleStatusUpdate = async (newStatus: string, reason: string | null) => {
-    setIsEditingStatus(false);
+    // status select handles its own state
     setShowTransitionDialog(false);
     try {
       const { error } = await supabase.functions.invoke('pipeline-status', {
