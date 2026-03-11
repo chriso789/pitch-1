@@ -323,7 +323,7 @@ const LeadDetails = () => {
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
   const [isEditingSalesRep, setIsEditingSalesRep] = useState(false);
   const [isEditingSecondaryRep, setIsEditingSecondaryRep] = useState(false);
-  const [isEditingStatus, setIsEditingStatus] = useState(false);
+  
   
   // Transition dialog states for manager override
   const [showTransitionDialog, setShowTransitionDialog] = useState(false);
