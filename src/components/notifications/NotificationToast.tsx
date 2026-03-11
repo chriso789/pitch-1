@@ -6,6 +6,7 @@ import {
   Calendar, 
   Trophy, 
   Shield,
+  MessageCircle,
   X,
   ExternalLink
 } from 'lucide-react';
@@ -48,6 +49,8 @@ export function NotificationToast({
         return <Trophy className="h-5 w-5 text-yellow-500" />;
       case 'security_alert':
         return <Shield className="h-5 w-5 text-red-500" />;
+      case 'mention':
+        return <MessageCircle className="h-5 w-5 text-blue-500" />;
       default:
         return <Bell className="h-5 w-5" />;
     }
@@ -61,7 +64,9 @@ export function NotificationToast({
   };
 
   const handleClick = () => {
-    if (notification.data?.link) {
+    if (notification.data?.pipeline_entry_id) {
+      navigate(`/lead/${notification.data.pipeline_entry_id}`);
+    } else if (notification.data?.link) {
       navigate(notification.data.link);
     } else if (notification.data?.contactId) {
       navigate(`/contacts/${notification.data.contactId}`);

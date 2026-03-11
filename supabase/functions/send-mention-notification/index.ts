@@ -85,14 +85,15 @@ serve(async (req: Request) => {
 
     for (const user of mentionedUsers) {
       // Create in-app notification
+      const userTenant = (await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()).data?.tenant_id;
       notificationPromises.push(
         supabase.from('user_notifications').insert({
-          tenant_id: (await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()).data?.tenant_id,
+          tenant_id: userTenant,
           user_id: user.id,
           type: 'mention',
           title: `${authorName} mentioned you`,
           message: `On lead ${leadName}${leadAddress ? ` at ${leadAddress}` : ''}: "${truncatedNote}"`,
-          action_url: `/lead/${pipeline_entry_id}`,
+          icon: '💬',
           metadata: {
             author_id,
             pipeline_entry_id,
