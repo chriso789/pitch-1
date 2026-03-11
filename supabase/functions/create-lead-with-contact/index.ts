@@ -402,6 +402,7 @@ serve(async (req: Request) => {
       tenant_id: tenantId,
       contact_id: contactId,
       location_id: locationId,
+      lead_name: body.name || null,
       status: body.status || "lead",
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
