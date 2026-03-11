@@ -49,6 +49,8 @@ export function NotificationToast({
         return <Trophy className="h-5 w-5 text-yellow-500" />;
       case 'security_alert':
         return <Shield className="h-5 w-5 text-red-500" />;
+      case 'mention':
+        return <MessageCircle className="h-5 w-5 text-blue-500" />;
       default:
         return <Bell className="h-5 w-5" />;
     }
