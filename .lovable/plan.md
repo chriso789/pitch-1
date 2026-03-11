@@ -1,54 +1,47 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Plan: Fix Line Item Cost Not Saving + Remove Duplicate Materials
 
-Three issues to address:
+## Issue 1: Cost Not Saving When Selecting From Autocomplete
 
-## 1. Contact Profile Pipeline Area Overflowing
+**Root Cause**: In `MaterialAutocomplete.tsx`, the `handleSelect` function calls both `onSelectMaterial(material)` and then `onChange(material.name)`. In the parent (`SectionedLineItemsTable.tsx`), both callbacks call `onNewItemChange(setNewItem)` — but the `onChange` callback uses a **stale closure** over `newItem`, so it overwrites the `unit_cost` that was just set by `onSelectMaterial`.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+```
+handleSelect → onSelectMaterial({...newItem, unit_cost: 65}) → state queued
+            → onChange(name) → ({...newItem, item_name: name}) → overwrites with stale newItem (unit_cost: 0)
+```
 
-**File: `src/pages/ContactProfile.tsx`**
+**Fix in `MaterialAutocomplete.tsx`**: Remove the `onChange(material.name)` call from `handleSelect`. The `onSelectMaterial` callback already sets `item_name` to `material.name` in all three call sites in `SectionedLineItemsTable.tsx`, so the separate `onChange` call is redundant and harmful.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+```typescript
+// MaterialAutocomplete.tsx line 125-128
+const handleSelect = (material: Material) => {
+  onSelectMaterial(material);
+  // Remove: onChange(material.name);  ← this overwrites with stale state
+  setShowDropdown(false);
+};
+```
 
-## 2. Show Who Saved Each Estimate (Under Title)
+## Issue 2: Duplicate Material in Catalog
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+**Root Cause**: Two identical "2 3/8\" Decking Nails" entries exist in the `materials` table for the same tenant:
+- `3618bd41` — code `CUSTOM-1769130791231`
+- `35aede07` — code `CUSTOM-1769570979591`
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+**Fix**: SQL migration to delete the newer duplicate and add a unique constraint to prevent future duplicates.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+```sql
+-- Delete the duplicate (keep the older one by code timestamp)
+DELETE FROM materials WHERE id = '35aede07-30f6-4a28-91b7-51ae590eb8ae';
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+-- Add unique constraint: same tenant cannot have two materials with the same name
+CREATE UNIQUE INDEX IF NOT EXISTS materials_tenant_name_unique 
+ON materials (COALESCE(tenant_id, '00000000-0000-0000-0000-000000000000'), LOWER(name));
+```
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+The unique index uses `COALESCE` on `tenant_id` (matching the existing pattern in this project) and `LOWER(name)` to prevent case-insensitive duplicates.
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+## Summary
+1. **`MaterialAutocomplete.tsx`**: Remove `onChange(material.name)` from `handleSelect` — fixes cost not persisting
+2. **SQL migration**: Delete duplicate material + add unique constraint on `(tenant_id, name)`
 
