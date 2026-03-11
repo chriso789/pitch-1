@@ -769,6 +769,33 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         </div>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={!!duplicateWarning} onOpenChange={(open) => { if (!open) setDuplicateWarning(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-yellow-500" />
+            Possible Duplicate Contact
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {duplicateWarning?.message}
+            {duplicateWarning?.existingContact && (
+              <span className="block mt-2 text-sm">
+                Existing contact: <strong>{duplicateWarning.existingContact.first_name} {duplicateWarning.existingContact.last_name}</strong>
+                {duplicateWarning.existingContact.address_street && ` at ${duplicateWarning.existingContact.address_street}`}
+              </span>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleForceDuplicate}>
+            Create Anyway
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
 
