@@ -272,73 +272,41 @@ serve(async (req: Request) => {
     if (!contactId) {
       console.log("[create-lead-with-contact] Checking for existing contact...");
       
-      // --- DEDUP: Check by phone number first (primary identifier) ---
-      if (body.phone) {
-        const normalizedPhone = body.phone.replace(/\D/g, '').slice(-10);
-        if (normalizedPhone.length === 10) {
-          // Fetch candidate contacts and match on exact last-10-digit normalized phone
-          const { data: phoneCandidates } = await supabase
+      // --- DEDUP: Check by name + address (warn, don't auto-merge) ---
+      if (body.name) {
+        const nameParts = body.name.split(" ");
+        const firstName = nameParts[0] || "";
+        const lastName = nameParts.slice(1).join(" ") || "";
+
+        if (firstName && addressComponents.street) {
+          const { data: nameAddrMatch } = await supabase
             .from("contacts")
-            .select("id, first_name, last_name, assigned_to, phone")
+            .select("id, first_name, last_name, address_street, location_id")
             .eq("tenant_id", tenantId)
             .eq("is_deleted", false)
-            .limit(100);
+            .ilike("first_name", firstName)
+            .ilike("last_name", lastName)
+            .limit(5);
 
-          const phoneMatch = phoneCandidates?.find(c =>
-            c.phone?.replace(/\D/g, '').slice(-10) === normalizedPhone
-          ) || null;
+          const normalizedStreet = addressComponents.street.toLowerCase().trim();
+          const duplicate = nameAddrMatch?.find(c =>
+            c.address_street?.toLowerCase().trim() === normalizedStreet
+          );
 
-          if (phoneMatch) {
-            console.log("[create-lead-with-contact] Found existing contact by phone:", phoneMatch.id);
-            contactId = phoneMatch.id;
-          }
-        }
-      }
-
-      // --- DEDUP: Fallback to email match ---
-      if (!contactId && body.email) {
-        const { data: emailMatch } = await supabase
-          .from("contacts")
-          .select("id, first_name, last_name, assigned_to")
-          .eq("tenant_id", tenantId)
-          .eq("is_deleted", false)
-          .ilike("email", body.email)
-          .limit(1)
-          .maybeSingle();
-
-        if (emailMatch) {
-          console.log("[create-lead-with-contact] Found existing contact by email:", emailMatch.id);
-          contactId = emailMatch.id;
-        }
-      }
-
-      // --- DEDUP: Fallback to address match ---
-      if (!contactId && addressComponents.street) {
-        const { data: addressMatch } = await supabase
-          .from("contacts")
-          .select("id, first_name, last_name, assigned_to")
-          .eq("tenant_id", tenantId)
-          .eq("is_deleted", false)
-          .eq("address_street", addressComponents.street)
-          .limit(1)
-          .maybeSingle();
-
-        if (addressMatch) {
-          console.log("[create-lead-with-contact] Found existing contact by address:", addressMatch.id);
-          contactId = addressMatch.id;
-        }
-      }
-
-      // If we matched an existing contact, sync assigned_to
-      if (contactId) {
-        const selectedRep = body.salesReps?.[0];
-        if (selectedRep) {
-          const { error: updateError } = await supabase
-            .from("contacts")
-            .update({ assigned_to: selectedRep })
-            .eq("id", contactId);
-          if (updateError) {
-            console.error("[create-lead-with-contact] Failed to update contact assigned_to:", updateError);
+          if (duplicate && !body.forceDuplicate) {
+            console.log("[create-lead-with-contact] Duplicate detected:", duplicate.id);
+            return new Response(
+              JSON.stringify({
+                success: false,
+                duplicate: true,
+                existingContact: duplicate,
+                message: `A contact named "${firstName} ${lastName}" already exists at this address.`,
+              }),
+              {
+                headers: { ...corsHeaders, "Content-Type": "application/json" },
+                status: 200,
+              }
+            );
           }
         }
       }
