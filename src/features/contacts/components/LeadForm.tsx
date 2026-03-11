@@ -288,7 +288,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
       console.error('Error creating lead:', error);
       toast({
         title: "Error creating lead",
-        description: "Please try again or contact support.",
+        description: error instanceof Error ? error.message : (error as any)?.message || "Please try again or contact support.",
         variant: "destructive",
       });
     } finally {
