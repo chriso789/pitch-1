@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
@@ -431,8 +432,14 @@ export const EnhancedClientList = () => {
         if (currentLocationId && locations.length > 0) {
           console.log("Applying location filter:", currentLocationId);
           batchQuery = batchQuery.eq('location_id', currentLocationId);
+        } else if (locations.length > 0) {
+          // Locations exist but none selected yet — don't show unfiltered cross-location data
+          console.log("Waiting for location selection - locations exist but none selected");
+          setContacts([]);
+          setLoading(false);
+          return;
         } else {
-          console.log("No location filter applied - currentLocationId:", currentLocationId, "locations.length:", locations.length);
+          console.log("No locations configured - showing all contacts (backward compat)");
         }
         
         const { data: batchData, error: batchError } = await batchQuery;
@@ -904,6 +911,9 @@ export const EnhancedClientList = () => {
     setTaskDialogState({ open: false });
   };
 
+  const { user } = useCurrentUser();
+  const canDeleteContacts = user?.role === 'master' || user?.role === 'owner';
+
   const ActionsDropdown = ({ item, type }: { item: any, type: 'contact' | 'job' }) => {
     const actions = [
       {
@@ -983,7 +993,8 @@ export const EnhancedClientList = () => {
             : `${item.contact?.address_street}, ${item.contact?.address_city}, ${item.contact?.address_state}`
         })
       },
-      {
+      // Only master and owner roles can delete contacts
+      ...(canDeleteContacts ? [{
         label: "Delete",
         icon: Trash2,
         onClick: () => type === 'contact' 
@@ -991,7 +1002,7 @@ export const EnhancedClientList = () => {
           : handleDeleteJob(item.id, item.name),
         variant: 'destructive' as const,
         separator: true
-      }
+      }] : [])
     ];
 
     return <ActionsSelector actions={actions} />;
