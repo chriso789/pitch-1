@@ -54,7 +54,8 @@ const Pipeline = () => {
   const [filters, setFilters] = useState({
     salesRep: 'all',
     dateFrom: '',
-    dateTo: ''
+    dateTo: '',
+    sortOrder: 'desc' as 'asc' | 'desc'
   });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
@@ -267,7 +268,7 @@ const Pipeline = () => {
           query = query.lte('created_at', filters.dateTo + 'T23:59:59');
         }
 
-        return query.order('created_at', { ascending: false });
+        return query.order('created_at', { ascending: filters.sortOrder === 'asc' });
       };
       
       // Fetch locations query
@@ -1086,14 +1087,27 @@ const Pipeline = () => {
                 onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
               />
             </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Sort Order</label>
+              <Select value={filters.sortOrder} onValueChange={(value: 'asc' | 'desc') => setFilters(prev => ({ ...prev, sortOrder: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Sort order" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="desc">Newest First</SelectItem>
+                  <SelectItem value="asc">Oldest First</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           
-          {(filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo) && (
+          {(filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc') && (
             <div className="mt-4">
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '' })}
+                onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc' })}
               >
                 <Filter className="h-4 w-4 mr-2" />
                 Clear Filters

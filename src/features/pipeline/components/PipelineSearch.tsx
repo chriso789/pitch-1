@@ -65,7 +65,28 @@ export const PipelineSearch = ({
       try {
         const q = `%${debouncedQuery}%`;
         
+        // Search with left join (no !inner) so entries without contacts still appear
         const { data, error } = await supabase
+          .from('pipeline_entries')
+          .select(`
+            id,
+            clj_formatted_number,
+            status,
+            lead_name,
+            contacts (
+              first_name,
+              last_name,
+              address_city,
+              address_state
+            )
+          `)
+          .eq('is_deleted', false)
+          .or(`lead_name.ilike.${q},clj_formatted_number.ilike.${q}`)
+          .order('updated_at', { ascending: false })
+          .limit(20);
+
+        // Also search by contact fields separately
+        const { data: contactData } = await supabase
           .from('pipeline_entries')
           .select(`
             id,
@@ -80,13 +101,22 @@ export const PipelineSearch = ({
             )
           `)
           .eq('is_deleted', false)
-          .or(`lead_name.ilike.${q},clj_formatted_number.ilike.${q},contacts.first_name.ilike.${q},contacts.last_name.ilike.${q},contacts.address_city.ilike.${q}`)
+          .or(`contacts.first_name.ilike.${q},contacts.last_name.ilike.${q},contacts.address_city.ilike.${q}`)
           .order('updated_at', { ascending: false })
-          .limit(10);
+          .limit(20);
 
         if (error) throw error;
 
-        const results: SearchResult[] = (data || []).map(entry => ({
+        // Merge and deduplicate results
+        const allData = [...(data || []), ...(contactData || [])];
+        const seen = new Set<string>();
+        const deduped = allData.filter(entry => {
+          if (seen.has(entry.id)) return false;
+          seen.add(entry.id);
+          return true;
+        }).slice(0, 10);
+
+        const results: SearchResult[] = deduped.map(entry => ({
           id: entry.id,
           clj_formatted_number: entry.clj_formatted_number,
           status: entry.status,
