@@ -32,6 +32,8 @@ export function NotificationBell() {
         return '🎉';
       case 'security_alert':
         return '🚨';
+      case 'mention':
+        return '💬';
       default:
         return '📬';
     }
