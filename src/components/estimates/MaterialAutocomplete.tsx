@@ -124,7 +124,6 @@ export function MaterialAutocomplete({
 
   const handleSelect = (material: Material) => {
     onSelectMaterial(material);
-    onChange(material.name);
     setShowDropdown(false);
   };
 
