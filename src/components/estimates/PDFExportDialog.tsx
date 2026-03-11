@@ -295,11 +295,19 @@ export function PDFExportDialog({
                 />
               </div>
               <div className="flex items-center justify-between">
-                <Label htmlFor="showWarrantyInfo" className="text-sm">Warranty Info</Label>
+                <Label htmlFor="showManufacturerWarranty" className="text-sm">Manufacturer Warranty</Label>
                 <Switch
-                  id="showWarrantyInfo"
-                  checked={options.showWarrantyInfo}
-                  onCheckedChange={(v) => updateOption('showWarrantyInfo', v)}
+                  id="showManufacturerWarranty"
+                  checked={options.showManufacturerWarranty}
+                  onCheckedChange={(v) => updateOption('showManufacturerWarranty', v)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="showWorkmanshipWarranty" className="text-sm">Workmanship Warranty</Label>
+                <Switch
+                  id="showWorkmanshipWarranty"
+                  checked={options.showWorkmanshipWarranty}
+                  onCheckedChange={(v) => updateOption('showWorkmanshipWarranty', v)}
                 />
               </div>
               <div className="flex items-center justify-between">

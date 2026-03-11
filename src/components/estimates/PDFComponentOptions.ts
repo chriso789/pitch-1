@@ -143,7 +143,8 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showMeasurementDetails: true,
     showJobPhotos: false,
     showRoofDiagram: false,
-    showWarrantyInfo: false,
+    showManufacturerWarranty: false,
+    showWorkmanshipWarranty: false,
     // Photo Layout
     photoLayout: 'auto',
     // Header/Footer

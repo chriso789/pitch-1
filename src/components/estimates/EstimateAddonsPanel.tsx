@@ -257,9 +257,9 @@ export const EstimateAddonsPanel: React.FC<EstimateAddonsPanelProps> = ({
             {/* Warranty Info Toggle */}
             <div className="flex items-start gap-3 p-3 rounded-lg border bg-muted/30">
               <Checkbox
-                id="warranty-info"
-                checked={pdfOptions.showWarrantyInfo}
-                onCheckedChange={(checked) => onOptionsChange({ showWarrantyInfo: !!checked })}
+                id="manufacturer-warranty"
+                checked={pdfOptions.showManufacturerWarranty}
+                onCheckedChange={(checked) => onOptionsChange({ showManufacturerWarranty: !!checked })}
               />
               <div className="flex-1">
                 <Label htmlFor="warranty-info" className="text-sm font-medium cursor-pointer flex items-center gap-2">

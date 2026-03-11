@@ -630,21 +630,25 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
       })()}
 
       {/* Warranty Info Page */}
-      {opts.showWarrantyInfo && (
+      {(opts.showManufacturerWarranty || opts.showWorkmanshipWarranty) && (
         <div className="avoid-break mt-8 pt-6 border-t">
           <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
             <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
             Warranty Information
           </h3>
           <div className="text-sm text-gray-600 space-y-3">
-            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
-              <h4 className="font-medium text-amber-900 mb-2">Manufacturer Warranty</h4>
-              <p className="text-amber-800">All roofing materials include the full manufacturer's warranty as specified by the selected product line.</p>
-            </div>
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-medium text-blue-900 mb-2">Workmanship Warranty</h4>
-              <p className="text-blue-800">Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality.</p>
-            </div>
+            {opts.showManufacturerWarranty && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <h4 className="font-medium text-amber-900 mb-2">Manufacturer Warranty</h4>
+                <p className="text-amber-800">All roofing materials include the full manufacturer's warranty as specified by the selected product line.</p>
+              </div>
+            )}
+            {opts.showWorkmanshipWarranty && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="font-medium text-blue-900 mb-2">Workmanship Warranty</h4>
+                <p className="text-blue-800">Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality.</p>
+              </div>
+            )}
           </div>
         </div>
       )}

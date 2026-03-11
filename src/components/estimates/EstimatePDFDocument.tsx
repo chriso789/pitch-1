@@ -902,7 +902,11 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
 };
 
 // Warranty Page(s) - splits into multiple pages when content is long
-function buildWarrantyPages(warrantyTerms?: string): React.ReactNode[] {
+function buildWarrantyPages(
+  warrantyTerms?: string,
+  showManufacturer: boolean = true,
+  showWorkmanship: boolean = true
+): React.ReactNode[] {
   let manufacturer = "All roofing materials include the full manufacturer's warranty as specified by the selected product line.";
   let workmanship = "Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality.";
 
@@ -914,8 +918,45 @@ function buildWarrantyPages(warrantyTerms?: string): React.ReactNode[] {
     } catch { /* not JSON */ }
   }
 
+  if (!showManufacturer && !showWorkmanship) return [];
+
+  // Only one section enabled — always fits in one page
+  if (!showManufacturer) {
+    return [
+      <div key="warranty-page" className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+          Warranty Information
+        </h3>
+        <div className="text-xs text-gray-600 space-y-2">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+            <h4 className="font-medium text-blue-900 mb-1">Workmanship Warranty</h4>
+            <p className="text-blue-800 whitespace-pre-line leading-tight">{workmanship}</p>
+          </div>
+        </div>
+      </div>
+    ];
+  }
+
+  if (!showWorkmanship) {
+    return [
+      <div key="warranty-page" className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+          Warranty Information
+        </h3>
+        <div className="text-xs text-gray-600 space-y-2">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
+            <h4 className="font-medium text-amber-900 mb-1">Manufacturer Warranty</h4>
+            <p className="text-amber-800 whitespace-pre-line leading-tight">{manufacturer}</p>
+          </div>
+        </div>
+      </div>
+    ];
+  }
+
+  // Both enabled — check if they need splitting
   const combinedLength = manufacturer.length + workmanship.length;
-  // ~800 chars is roughly the limit for a single page at text-xs leading-tight
   const needsSplit = combinedLength > 800;
 
   if (!needsSplit) {
