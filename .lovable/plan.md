@@ -1,26 +1,54 @@
 
 
-# Plan: Fix David Ramage — Create Proper Contact and Unlink from Punit Shah
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
+Three issues to address:
 
-Pipeline entry `e9a27514` has:
-- `lead_name = 'David Ramage'` (correct — from our previous fix)
-- `contact_id = 782ae5c6` → **Punit Shah** (wrong — false phone dedup linked them)
-- No "David Ramage" contact record exists in the database
+## 1. Contact Profile Pipeline Area Overflowing
 
-The Kanban card shows "Punit Shah" because it falls back to the contact name. The lead detail page shows "David Ramage" because it reads `lead_name`.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Fix
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. SQL Migration — Create David Ramage contact + repoint pipeline entry
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-A single migration that:
-1. Creates a new contact record for "David Ramage" with the address from the lead detail page (`4171 101st Ave E, Parrish, FL 34219`) and phone `111111111`, using the same `tenant_id` (`14de934e-7964-4afd-940a-620d2ace125d`) and `location_id` (`c490231c-2a0e-4afc-8412-672e1c890c16` — West Coast)
-2. Updates pipeline entry `e9a27514` to point `contact_id` to the new David Ramage contact
-3. The `contact_number` will be auto-assigned by the existing `assign_contact_number` trigger
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### 2. No code changes needed
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-The Kanban card already prioritizes `lead_name` over contact name (line 159 in `KanbanCard.tsx`), but it also displays the contact name in a secondary position. Once the contact is correctly "David Ramage", everything will align.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
+
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
