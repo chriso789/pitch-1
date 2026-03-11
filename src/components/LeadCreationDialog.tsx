@@ -347,6 +347,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
+    const roofRequired = !contact; // Roof fields optional when creating from existing contact
     
     // Debug each validation condition individually
     const checks = {
@@ -354,9 +355,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       phone: formData.phone.trim() !== "",
       selectedAddress: selectedAddress !== null,
       status: formData.status !== "",
-      roofAge: formData.roofAge !== "",
-      roofType: formData.roofType !== "",
-      roofAgeValid: !isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100
+      roofAge: roofRequired ? formData.roofAge !== "" : true,
+      roofType: roofRequired ? formData.roofType !== "" : true,
+      roofAgeValid: roofRequired ? (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100) : (formData.roofAge === "" || (!isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100))
     };
     
     console.log('🔍 Form Validation Debug:', {
@@ -396,7 +397,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    if (!formData.roofAge) {
+    const roofRequired = !contact;
+
+    if (roofRequired && !formData.roofAge) {
       toast({
         title: "Validation Error",
         description: "Roof age is required",
@@ -405,7 +408,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    if (!formData.roofType) {
+    if (roofRequired && !formData.roofType) {
       toast({
         title: "Validation Error",
         description: "Roof type is required",
@@ -415,7 +418,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     }
 
     const roofAgeNum = parseInt(formData.roofAge);
-    if (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100) {
+    if (formData.roofAge && (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100)) {
       toast({
         title: "Validation Error",
         description: "Roof age must be between 0 and 100 years",
