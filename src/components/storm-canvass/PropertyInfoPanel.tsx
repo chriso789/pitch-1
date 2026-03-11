@@ -404,7 +404,7 @@ export default function PropertyInfoPanel({
   const mapDispositionToStatus = (disposition: string): string => {
     const statusMap: Record<string, string> = {
       'interested': 'qualified',
-      'new_roof': 'qualified',
+      'new_roof': 'new_roof',
       'follow_up': 'follow_up',
       'callback': 'follow_up',
       'not_home': 'new_lead',

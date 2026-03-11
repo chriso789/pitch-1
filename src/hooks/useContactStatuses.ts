@@ -21,6 +21,7 @@ export const DEFAULT_CONTACT_STATUSES: ContactStatus[] = [
   { id: 'default-5', name: 'Follow Up', key: 'follow_up', color: '#f59e0b', description: null, status_order: 5, is_active: true },
   { id: 'default-6', name: 'Do Not Contact', key: 'do_not_contact', color: '#ef4444', description: null, status_order: 6, is_active: true },
   { id: 'default-7', name: 'Past Customer', key: 'past_customer', color: '#10b981', description: null, status_order: 7, is_active: true },
+  { id: 'default-8', name: 'New Roof', key: 'new_roof', color: '#06b6d4', description: null, status_order: 8, is_active: true },
 ];
 
 export function useContactStatuses() {

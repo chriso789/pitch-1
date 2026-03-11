@@ -84,6 +84,8 @@ export default function NearbyPropertiesLayer({ map, userLocation, onContactSele
             ? '#ef4444' // red
             : disposition === 'follow_up'
             ? '#eab308' // yellow
+            : disposition === 'new_roof'
+            ? '#06b6d4' // cyan
             : '#9ca3af'; // gray
 
         const el = document.createElement('div');
