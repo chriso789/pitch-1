@@ -389,21 +389,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
 
-  const handleSubmit = async () => {
-    const errors = validateForm();
-    
-    if (Object.keys(errors).length > 0) {
-      toast({
-        title: "Please fix the errors below",
-        description: "Some required fields are missing or invalid",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const submitLead = async (forceDuplicate = false) => {
     setLoading(true);
     try {
-      // Call edge function to handle contact + lead creation
       const { data, error } = await supabase.functions.invoke('create-lead-with-contact', {
         body: {
           name: formData.name,
@@ -417,15 +405,23 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           priority: formData.priority,
           estimatedValue: formData.estimatedValue,
           salesReps: formData.salesReps,
+          forceDuplicate,
           selectedAddress: verifiedAddress ? { place_id: verifiedAddress.place_id, formatted_address: verifiedAddress.formatted_address, geometry: { location: { lat: verifiedAddress.lat || 0, lng: verifiedAddress.lng || 0 } }, address_components: [] } : null,
           existingContactId: selectedContact?.id || contact?.id,
-          locationId: currentLocationId, // Pass current location from location switcher
+          locationId: currentLocationId,
         }
       });
 
       if (error) {
         console.error('Edge function error:', error);
         throw new Error(error.message || 'Failed to create lead');
+      }
+
+      // Handle duplicate warning
+      if (data?.duplicate === true) {
+        setDuplicateWarning({ message: data.message, existingContact: data.existingContact });
+        setLoading(false);
+        return;
       }
 
       if (!data?.success) {
@@ -439,17 +435,14 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
       onLeadCreated?.(data.lead);
       
-      // Invalidate all pipeline/dashboard queries to force immediate refresh
       queryClient.invalidateQueries({ queryKey: ['pipeline_entries'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-pipeline-counts'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-leads-count'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-unassigned-leads'] });
       queryClient.invalidateQueries({ queryKey: ['pipelineEntries'] });
       
-      // Navigate to the pipeline page
       navigate(`/pipeline`);
       
-      // Reset form
       setOpen(false);
       setFormData({
         name: "",
@@ -478,6 +471,26 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    const errors = validateForm();
+    
+    if (Object.keys(errors).length > 0) {
+      toast({
+        title: "Please fix the errors below",
+        description: "Some required fields are missing or invalid",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await submitLead(false);
+  };
+
+  const handleForceDuplicate = async () => {
+    setDuplicateWarning(null);
+    await submitLead(true);
   };
 
   const defaultTrigger = (
