@@ -268,7 +268,7 @@ const Pipeline = () => {
           query = query.lte('created_at', filters.dateTo + 'T23:59:59');
         }
 
-        return query.order('created_at', { ascending: false });
+        return query.order('created_at', { ascending: filters.sortOrder === 'asc' });
       };
       
       // Fetch locations query
