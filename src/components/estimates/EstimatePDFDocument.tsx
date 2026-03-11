@@ -896,20 +896,47 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
   );
 };
 
-// Warranty Page
-const WarrantyPage: React.FC<{ warrantyTerms?: string }> = ({ warrantyTerms }) => {
-  // Try to parse structured warranty from tenant settings
-  const parsed = useMemo(() => {
-    if (!warrantyTerms) return null;
+// Warranty Page(s) - splits into multiple pages when content is long
+function buildWarrantyPages(warrantyTerms?: string): React.ReactNode[] {
+  let manufacturer = "All roofing materials include the full manufacturer's warranty as specified by the selected product line.";
+  let workmanship = "Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality.";
+
+  if (warrantyTerms) {
     try {
       const obj = JSON.parse(warrantyTerms);
-      if (obj && (obj.manufacturer || obj.workmanship)) return obj as { manufacturer?: string; workmanship?: string };
-    } catch { /* not JSON, ignore */ }
-    return null;
-  }, [warrantyTerms]);
+      if (obj?.manufacturer) manufacturer = obj.manufacturer;
+      if (obj?.workmanship) workmanship = obj.workmanship;
+    } catch { /* not JSON */ }
+  }
 
-  return (
-    <div className="space-y-2">
+  const combinedLength = manufacturer.length + workmanship.length;
+  // ~800 chars is roughly the limit for a single page at text-xs leading-tight
+  const needsSplit = combinedLength > 800;
+
+  if (!needsSplit) {
+    return [
+      <div key="warranty-page" className="space-y-2">
+        <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+          <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+          Warranty Information
+        </h3>
+        <div className="text-xs text-gray-600 space-y-2">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
+            <h4 className="font-medium text-amber-900 mb-1">Manufacturer Warranty</h4>
+            <p className="text-amber-800 whitespace-pre-line leading-tight">{manufacturer}</p>
+          </div>
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+            <h4 className="font-medium text-blue-900 mb-1">Workmanship Warranty</h4>
+            <p className="text-blue-800 whitespace-pre-line leading-tight">{workmanship}</p>
+          </div>
+        </div>
+      </div>
+    ];
+  }
+
+  // Split: Page 1 = Manufacturer, Page 2 = Workmanship
+  return [
+    <div key="warranty-page-1" className="space-y-2">
       <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
         <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
         Warranty Information
@@ -917,20 +944,24 @@ const WarrantyPage: React.FC<{ warrantyTerms?: string }> = ({ warrantyTerms }) =
       <div className="text-xs text-gray-600 space-y-2">
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-2">
           <h4 className="font-medium text-amber-900 mb-1">Manufacturer Warranty</h4>
-          <p className="text-amber-800 whitespace-pre-line leading-tight">
-            {parsed?.manufacturer || "All roofing materials include the full manufacturer's warranty as specified by the selected product line."}
-          </p>
+          <p className="text-amber-800 whitespace-pre-line leading-tight">{manufacturer}</p>
         </div>
+      </div>
+    </div>,
+    <div key="warranty-page-2" className="space-y-2">
+      <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+        <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+        Warranty Information <span className="text-xs font-normal text-gray-500">(continued)</span>
+      </h3>
+      <div className="text-xs text-gray-600 space-y-2">
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
           <h4 className="font-medium text-blue-900 mb-1">Workmanship Warranty</h4>
-          <p className="text-blue-800 whitespace-pre-line leading-tight">
-            {parsed?.workmanship || "Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality."}
-          </p>
+          <p className="text-blue-800 whitespace-pre-line leading-tight">{workmanship}</p>
         </div>
       </div>
     </div>
-  );
-};
+  ];
+}
 
 // Measurement Page
 const MeasurementPage: React.FC<{ measurementSummary: MeasurementSummary }> = ({ measurementSummary }) => {
