@@ -654,10 +654,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       setConfig({
         overheadPercent: estimate.overhead_percent || 15,
         profitMarginPercent: targetMargin,
-        repCommissionPercent: estimate.rep_commission_percent || 5,
         salesTaxEnabled: (estimate.sales_tax_rate || 0) > 0,
         salesTaxRate: estimate.sales_tax_rate || 0,
-        ...(calcMetadata?.pricing_config?.commissionStructure ? { commissionStructure: calcMetadata.pricing_config.commissionStructure } : {}),
       });
 
       // Handle fixed price - explicitly clear if not fixed price
