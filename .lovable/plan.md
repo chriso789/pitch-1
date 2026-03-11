@@ -1,74 +1,54 @@
 
 
-# Plan: Replace Phone-Based Dedup with Name+Address Duplicate Warning
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## What Changes
+Three issues to address:
 
-The current edge function (`create-lead-with-contact/index.ts`) silently merges new leads into existing contacts based on phone number matching. This caused David Ramage's lead to be linked to Punit Shah. The user wants:
+## 1. Contact Profile Pipeline Area Overflowing
 
-1. **Remove phone and email dedup entirely** -- never auto-link based on phone/email
-2. **Add name + address duplicate detection** -- if a contact with the same first name, last name, and street address already exists in the tenant, return a warning flag instead of silently merging
-3. **Client-side confirmation** -- show the user a warning dialog when a duplicate is detected, letting them choose to proceed (create anyway) or cancel
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## File Changes
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. `supabase/functions/create-lead-with-contact/index.ts`
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-**Remove lines 275-313** (phone dedup and email dedup blocks entirely).
+## 2. Show Who Saved Each Estimate (Under Title)
 
-**Replace with name + address duplicate check:**
-```typescript
-// Check for duplicate by name + address (warn, don't auto-merge)
-if (!contactId && body.name) {
-  const nameParts = body.name.split(" ");
-  const firstName = nameParts[0] || "";
-  const lastName = nameParts.slice(1).join(" ") || "";
-  
-  if (firstName && addressComponents.street) {
-    const { data: nameAddrMatch } = await supabase
-      .from("contacts")
-      .select("id, first_name, last_name, address_street, location_id")
-      .eq("tenant_id", tenantId)
-      .eq("is_deleted", false)
-      .ilike("first_name", firstName)
-      .ilike("last_name", lastName)
-      .limit(5);
-    
-    // Check for street match among results
-    const duplicate = nameAddrMatch?.find(c => 
-      c.address_street?.toLowerCase().trim() === addressComponents.street.toLowerCase().trim()
-    );
-    
-    if (duplicate && !body.forceDuplicate) {
-      return new Response(JSON.stringify({
-        success: false,
-        duplicate: true,
-        existingContact: duplicate,
-        message: `A contact named "${firstName} ${lastName}" already exists at this address.`
-      }), { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 });
-    }
-  }
-}
-```
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-**Also remove lines 315-330** (address-only dedup fallback) and **lines 332-344** (assigned_to sync on matched contact).
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-**Add `forceDuplicate` to the body destructuring** at the top of the function.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-### 2. `src/components/EnhancedLeadCreationDialog.tsx`
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-**Update `handleSubmit`** (~line 396-418): After calling the edge function, check for a `duplicate` flag in the response. If found, show a confirmation dialog asking the user whether to proceed.
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-- Add state: `const [duplicateWarning, setDuplicateWarning] = useState<{message: string, existingContact: any} | null>(null)`
-- In handleSubmit, when `data?.duplicate === true`, set the warning state and return early
-- Add a confirmation handler that re-calls the edge function with `forceDuplicate: true`
-- Add an AlertDialog that displays the duplicate warning with "Create Anyway" and "Cancel" buttons
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-### 3. Data Fix (David Ramage)
-
-Run a SQL update via the insert tool to ensure the existing David Ramage pipeline entry stays in West Coast (it already has the West Coast `location_id`, so this just needs verification -- no change needed if it's already correct).
-
----
-
-**Summary**: Remove all phone/email auto-merge logic from the edge function. Replace with name+address duplicate detection that returns a warning to the UI. The client shows a confirmation dialog, and only creates the duplicate if the user explicitly confirms. Three touches: edge function, dialog component, and function redeploy.
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

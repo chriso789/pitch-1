@@ -8,6 +8,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -94,6 +104,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [selectedContact, setSelectedContact] = useState<SelectedContact | null>(contact || null);
   const [verifiedAddress, setVerifiedAddress] = useState<VerifiedAddressData | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [duplicateWarning, setDuplicateWarning] = useState<{ message: string; existingContact: any } | null>(null);
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
 
@@ -378,21 +389,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
 
-  const handleSubmit = async () => {
-    const errors = validateForm();
-    
-    if (Object.keys(errors).length > 0) {
-      toast({
-        title: "Please fix the errors below",
-        description: "Some required fields are missing or invalid",
-        variant: "destructive",
-      });
-      return;
-    }
-
+  const submitLead = async (forceDuplicate = false) => {
     setLoading(true);
     try {
-      // Call edge function to handle contact + lead creation
       const { data, error } = await supabase.functions.invoke('create-lead-with-contact', {
         body: {
           name: formData.name,
@@ -406,15 +405,23 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           priority: formData.priority,
           estimatedValue: formData.estimatedValue,
           salesReps: formData.salesReps,
+          forceDuplicate,
           selectedAddress: verifiedAddress ? { place_id: verifiedAddress.place_id, formatted_address: verifiedAddress.formatted_address, geometry: { location: { lat: verifiedAddress.lat || 0, lng: verifiedAddress.lng || 0 } }, address_components: [] } : null,
           existingContactId: selectedContact?.id || contact?.id,
-          locationId: currentLocationId, // Pass current location from location switcher
+          locationId: currentLocationId,
         }
       });
 
       if (error) {
         console.error('Edge function error:', error);
         throw new Error(error.message || 'Failed to create lead');
+      }
+
+      // Handle duplicate warning
+      if (data?.duplicate === true) {
+        setDuplicateWarning({ message: data.message, existingContact: data.existingContact });
+        setLoading(false);
+        return;
       }
 
       if (!data?.success) {
@@ -428,17 +435,14 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
       onLeadCreated?.(data.lead);
       
-      // Invalidate all pipeline/dashboard queries to force immediate refresh
       queryClient.invalidateQueries({ queryKey: ['pipeline_entries'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-pipeline-counts'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-leads-count'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard-unassigned-leads'] });
       queryClient.invalidateQueries({ queryKey: ['pipelineEntries'] });
       
-      // Navigate to the pipeline page
       navigate(`/pipeline`);
       
-      // Reset form
       setOpen(false);
       setFormData({
         name: "",
@@ -469,6 +473,26 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
   };
 
+  const handleSubmit = async () => {
+    const errors = validateForm();
+    
+    if (Object.keys(errors).length > 0) {
+      toast({
+        title: "Please fix the errors below",
+        description: "Some required fields are missing or invalid",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    await submitLead(false);
+  };
+
+  const handleForceDuplicate = async () => {
+    setDuplicateWarning(null);
+    await submitLead(true);
+  };
+
   const defaultTrigger = (
     <Button className="shadow-soft transition-smooth bg-primary hover:bg-primary/90">
       <Plus className="h-4 w-4 mr-2" />
@@ -477,6 +501,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   );
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {trigger || defaultTrigger}
@@ -745,6 +770,33 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         </div>
       </DialogContent>
     </Dialog>
+
+    <AlertDialog open={!!duplicateWarning} onOpenChange={(open) => { if (!open) setDuplicateWarning(null); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-center gap-2">
+            <AlertCircle className="h-5 w-5 text-warning" />
+            Possible Duplicate Contact
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {duplicateWarning?.message}
+            {duplicateWarning?.existingContact && (
+              <span className="block mt-2 text-sm">
+                Existing contact: <strong>{duplicateWarning.existingContact.first_name} {duplicateWarning.existingContact.last_name}</strong>
+                {duplicateWarning.existingContact.address_street && ` at ${duplicateWarning.existingContact.address_street}`}
+              </span>
+            )}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={handleForceDuplicate}>
+            Create Anyway
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };
 
