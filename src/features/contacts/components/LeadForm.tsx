@@ -250,6 +250,14 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
 
       if (pipelineError) {
         console.error('Pipeline entry creation error:', pipelineError);
+        if (pipelineError.code === '23505' && pipelineError.message?.includes('idx_one_active_lead_per_contact')) {
+          toast({
+            title: "Duplicate Lead",
+            description: "This contact already has an active lead. Please update the existing lead instead.",
+            variant: "destructive"
+          });
+          return;
+        }
         throw pipelineError;
       }
 

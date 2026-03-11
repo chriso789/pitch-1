@@ -1,33 +1,54 @@
 
 
-# Prevent Duplicate Active Leads per Contact
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-Multiple active (non-deleted) pipeline entries can be created for the same contact, as happened with Punit Shah. The only valid reason for multiple leads is different addresses, which means different contacts.
+Three issues to address:
 
-## Analysis
-Since addresses live on the **contacts** table (not pipeline_entries), and each contact has one address, two active leads for the same `contact_id` always means same address — a duplicate. If a lead is needed at a different address, it should be a different contact record.
+## 1. Contact Profile Pipeline Area Overflowing
 
-There are 3 lead creation paths:
-1. **LeadForm.tsx** — creates new contact + pipeline entry (always new contact, low risk)
-2. **ContactBulkImport.tsx** — creates contacts + pipeline entries in batches
-3. **canvass-dispositions edge function** — already checks for existing pipeline entry before inserting
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Solution: Database Partial Unique Index
+**File: `src/pages/ContactProfile.tsx`**
 
-Add a partial unique index on `pipeline_entries(contact_id)` where `is_deleted = false`. This prevents duplicates at the database level across all creation paths with zero UI changes needed.
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-```sql
-CREATE UNIQUE INDEX idx_one_active_lead_per_contact
-ON public.pipeline_entries (contact_id)
-WHERE is_deleted = false;
-```
+## 2. Show Who Saved Each Estimate (Under Title)
 
-Then update the **LeadForm** and **ContactBulkImport** to catch this constraint violation gracefully and show a clear error message like: *"This contact already has an active lead. Please update the existing lead instead."*
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-## Changes
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-1. **SQL Migration** — Create the partial unique index
-2. **LeadForm.tsx** (~line 251) — Catch unique violation error (`23505`) on pipeline insert and show a user-friendly toast
-3. **ContactBulkImport.tsx** (~line 1620) — Handle constraint violation in batch pipeline creation, log skipped duplicates without failing the batch
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

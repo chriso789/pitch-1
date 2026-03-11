@@ -1618,7 +1618,21 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                   .select('id');
                   
                 if (pipelineError) {
-                  console.error(`Pipeline entries batch ${batchNumber} failed:`, pipelineError);
+                  if (pipelineError.code === '23505' && pipelineError.message?.includes('idx_one_active_lead_per_contact')) {
+                    console.warn(`Pipeline entries batch ${batchNumber}: some contacts already have active leads, skipping duplicates`);
+                    // Insert one-by-one to skip only the duplicates
+                    for (const entry of pipelineEntries) {
+                      const { data: single, error: singleErr } = await supabase
+                        .from('pipeline_entries')
+                        .insert(entry)
+                        .select('id');
+                      if (!singleErr && single) {
+                        pipelineEntriesCreated += single.length;
+                      }
+                    }
+                  } else {
+                    console.error(`Pipeline entries batch ${batchNumber} failed:`, pipelineError);
+                  }
                 } else {
                   pipelineEntriesCreated += createdPipelines?.length || 0;
                 }
