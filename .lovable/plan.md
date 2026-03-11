@@ -1,54 +1,57 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix @Mention Notifications in Bell + Email
 
-Three issues to address:
+## Problems Found
 
-## 1. Contact Profile Pipeline Area Overflowing
+1. **Edge function inserts `action_url`** — but that column doesn't exist on `user_notifications`, causing the insert to silently fail. No in-app notifications are actually created.
+2. **RealTimeNotificationProvider maps wrong column names** — reads `n.notification_type` but column is `type`; reads `n.read` but column is `is_read`. Mention notifications would never render correctly even if they were inserted.
+3. **NotificationBell doesn't handle `mention` type** — no icon, no click-to-navigate for mention notifications.
+4. **NotificationToast doesn't handle `mention` type** — no icon or styling for mention toast popups.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+## Fix Plan
 
-**File: `src/pages/ContactProfile.tsx`**
+### 1. Fix edge function (`supabase/functions/send-mention-notification/index.ts`)
+- Remove `action_url` from the insert (column doesn't exist)
+- Move the `pipeline_entry_id` into `metadata` so the UI can navigate to the lead
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+```ts
+// Line 89-97: Remove action_url, add pipeline_entry_id to metadata
+supabase.from('user_notifications').insert({
+  tenant_id: ...,
+  user_id: user.id,
+  type: 'mention',
+  title: `${authorName} mentioned you`,
+  message: `On lead ${leadName}...`,
+  icon: '💬',
+  metadata: {
+    author_id,
+    pipeline_entry_id,
+    note_preview: truncatedNote,
+  },
+})
+```
 
-## 2. Show Who Saved Each Estimate (Under Title)
+Then redeploy the edge function.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+### 2. Fix RealTimeNotificationProvider column mapping
+- `n.notification_type` → `n.type`
+- `n.read` → `n.is_read`
+- Add `mention` case to `handleNewNotification` for toast display
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 3. Add `mention` type to NotificationBell
+- Add `'mention': '💬'` to icon map
+- Handle click navigation: if `data.pipeline_entry_id`, navigate to `/lead/{id}`
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### 4. Add `mention` type to NotificationToast
+- Add `mention` case with a message icon and `'info'` variant styling
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+### Files Changed
+- `supabase/functions/send-mention-notification/index.ts` — remove `action_url`, fix insert
+- `src/components/notifications/RealTimeNotificationProvider.tsx` — fix column mapping, add mention toast
+- `src/components/notifications/NotificationBell.tsx` — add mention icon + navigation
+- `src/components/notifications/NotificationToast.tsx` — add mention icon
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### Deployment
+- Redeploy `send-mention-notification` edge function after code changes
 
