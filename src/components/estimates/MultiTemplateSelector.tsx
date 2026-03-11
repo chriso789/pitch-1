@@ -472,7 +472,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     };
     
     fetchAssignedRepRates();
-  }, [pipelineEntryId, setConfig]);
+  }, [pipelineEntryId, setConfig, existingEstimateId]);
 
   useEffect(() => {
     fetchTemplates();
