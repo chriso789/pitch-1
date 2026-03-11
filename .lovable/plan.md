@@ -1,39 +1,54 @@
 
 
-# Fix Status Badge Double-Click on Lead Details
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-The status badge (e.g., "Ready for Approval") requires two clicks: first click switches from badge to a `<Select>` component, second click opens the dropdown. This feels like a double-click.
+Three issues to address:
 
-## Fix
+## 1. Contact Profile Pipeline Area Overflowing
 
-**File: `src/pages/LeadDetails.tsx` (lines 739-776)**
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-Replace the two-mode pattern (badge → Select) with a single `Select` that is always rendered but styled to look like the current badge. This way one click opens the dropdown directly.
+**File: `src/pages/ContactProfile.tsx`**
 
-- Remove the `isEditingStatus` state toggle pattern
-- Replace the conditional render with a single `Select` component styled as a pill/badge
-- Use `onOpenChange` to detect when the dropdown closes (no need for separate edit mode)
-- Style the `SelectTrigger` to match the current badge appearance (rounded-full, colored dot, etc.)
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-```tsx
-// Replace lines 739-776 with:
-<Select 
-  value={lead.status} 
-  onValueChange={handleStatusUpdateWithCheck}
->
-  <SelectTrigger className="h-auto w-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors [&>svg:last-child]:hidden">
-    <div className={`w-2 h-2 rounded-full ${stages.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
-    <span className="text-sm font-medium capitalize">
-      {stages.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
+## 2. Show Who Saved Each Estimate (Under Title)
+
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
+
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
     </span>
-    <ChevronDown className="h-4 w-4 text-muted-foreground" />
-  </SelectTrigger>
-  <SelectContent>
-    {/* same filtered stages content */}
-  </SelectContent>
-</Select>
-```
+  )}
+  ```
 
-This also lets us remove the `isEditingStatus` state variable (line 326) since it's no longer needed. The same approach should be checked for the sales rep and secondary rep selects if they have the same pattern (they do -- lines 873-913 and 918-986), but those are less frequently used so can be addressed separately if desired.
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
