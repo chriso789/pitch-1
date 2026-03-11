@@ -990,7 +990,8 @@ export const EnhancedClientList = () => {
             : `${item.contact?.address_street}, ${item.contact?.address_city}, ${item.contact?.address_state}`
         })
       },
-      {
+      // Only master and owner roles can delete contacts
+      ...(canDeleteContacts ? [{
         label: "Delete",
         icon: Trash2,
         onClick: () => type === 'contact' 
@@ -998,7 +999,7 @@ export const EnhancedClientList = () => {
           : handleDeleteJob(item.id, item.name),
         variant: 'destructive' as const,
         separator: true
-      }
+      }] : [])
     ];
 
     return <ActionsSelector actions={actions} />;
