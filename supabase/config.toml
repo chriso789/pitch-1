@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.reconcile-contacts]
+verify_jwt = false
+
 [functions.upload-company-logo]
 verify_jwt = false
 
