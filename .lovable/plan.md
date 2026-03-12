@@ -1,46 +1,54 @@
 
 
-# Import and Reconcile Grosso/Uri Contacts to East Coast
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Summary
-The uploaded spreadsheet contains approximately 200+ unique contacts (with many duplicate rows) assigned to either **Michael Grosso** or **Uri Kaweblum**. All need to be in the **East Coast** location for O'Brien Contracting. The database already shows 223 Grosso contacts and 25 Uri contacts in East Coast, so many likely exist already.
+Three issues to address:
 
-## Data Extracted
-- **Rep assignments**: ~335 lines for Michael Grosso, ~155 lines for Uri Kaweblum (with heavy duplication)
-- **Cities covered**: Delray Beach, Boynton Beach, Boca Raton, West Palm Beach, Royal Palm Beach, Riviera Beach, Sunrise, Parkland, Coconut Creek, Coral Springs, Lighthouse Point, Pompano Beach, Tampa, Lake Worth, Greenacres, Loxahatchee
-- **Key fields per row**: Name, Address, City, State, Zip, Rep, Notes, Phone numbers
+## 1. Contact Profile Pipeline Area Overflowing
 
-## Key IDs
-- **Tenant**: `14de934e-7964-4afd-940a-620d2ace125d` (O'Brien Contracting)
-- **East Coast location**: `acb2ee85-d4f7-4a4e-9b97-cd421554b8af`
-- **Michael Grosso**: `f828ec8a-07e9-4d20-a642-a60cb320fede`
-- **Uri Kaweblum**: `9affa87c-4f01-45b8-a494-0a294beb1383`
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Plan
+**File: `src/pages/ContactProfile.tsx`**
 
-### Step 1: Create an Edge Function for Bulk Contact Reconciliation
-Build a `reconcile-contacts` edge function that:
-1. Accepts the deduplicated contact list (parsed from the spreadsheet)
-2. For each contact, checks if they already exist in the database by matching on normalized `first_name` + `last_name` + `address_street` within the O'Brien tenant
-3. **If the contact exists**: Updates `assigned_to` to the correct rep and ensures `location_id` is East Coast
-4. **If the contact does not exist**: Inserts a new record with:
-   - Correct `tenant_id`, `location_id` (East Coast), `assigned_to` (Grosso or Uri)
-   - `first_name`, `last_name`, `address_street`, `address_city`, `address_state`, `address_zip`
-   - `phone` (primary phone from the spreadsheet)
-   - `notes` (from column 8 of the spreadsheet)
-   - `lead_source` = `'csv_import'`
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-### Step 2: Build the Deduplicated Contact Payload
-Parse the spreadsheet into unique contacts (by name + address), keeping only the most recent entry per contact. Map the rep name to the correct profile ID.
+## 2. Show Who Saved Each Estimate (Under Title)
 
-### Step 3: Call the Edge Function
-Invoke the function with the full payload to reconcile all contacts in one batch operation.
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-## Deduplication Strategy
-- Within the spreadsheet: deduplicate by `UPPER(name) + UPPER(address)`
-- Against the database: match on `LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?) AND LOWER(address_street) LIKE LOWER(?%)` within the tenant
-- Also check by phone number as a secondary match to catch name variations
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-## Result
-All contacts from the spreadsheet will be present in the database, assigned to the correct rep (Grosso or Uri), in the East Coast location, with no duplicates created.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
