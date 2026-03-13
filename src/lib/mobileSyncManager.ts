@@ -12,13 +12,12 @@ type SyncHandler = (item: PendingSyncItem) => Promise<void>;
 
 const syncHandlers: Record<string, SyncHandler> = {
   create_note: async (item) => {
-    const { error } = await supabase.from('activities').insert({
+    const { error } = await supabase.from('user_activity_log').insert({
       tenant_id: item.payload.tenant_id,
-      contact_id: item.payload.contact_id,
-      job_id: item.payload.job_id,
       user_id: item.payload.user_id,
-      type: item.payload.note_type || 'note',
-      notes: item.payload.body,
+      action_type: 'note_created',
+      action_category: item.payload.note_type || 'note',
+      description: item.payload.body,
       created_at: item.payload.created_at,
     });
     if (error) throw new Error(error.message);
