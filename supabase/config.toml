@@ -1161,3 +1161,12 @@ verify_jwt = false
 
 [functions.telnyx-call-control]
 verify_jwt = true
+
+[functions.mobile-session]
+verify_jwt = false
+
+[functions.register-mobile-device]
+verify_jwt = false
+
+[functions.mobile-upload]
+verify_jwt = false

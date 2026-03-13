@@ -249,6 +249,8 @@ const AppContent = () => {
         <Route path="/proposal/:token" element={<PublicProposalView />} />
         <Route path="/portal/:shareToken" element={<PublicPortalView />} />
         <Route path="/v/:token" element={<PublicDocumentView />} />
+        <Route path="/app/mobile" element={<MobileEntry />} />
+        <Route path="/deeplink" element={<DeepLinkResolver />} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
