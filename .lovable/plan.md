@@ -1,54 +1,96 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Mobile WebView Compatibility Upgrade -- Architecture Reality Check and Plan
 
-Three issues to address:
+## Important Context
 
-## 1. Contact Profile Pipeline Area Overflowing
+This project is **React + Vite + Supabase** (client-side SPA), **not Next.js**. There is no server-side middleware, no API routes, and no ability to set HTTP cookies from the frontend. The prompt assumes Next.js patterns that don't apply here.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+Here's what we **can** and **cannot** do, and the adapted plan for the actual stack.
 
-**File: `src/pages/ContactProfile.tsx`**
+---
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+## What Cannot Be Done (and Why)
 
-## 2. Show Who Saved Each Estimate (Under Title)
+| Requested Feature | Why Not Possible |
+|---|---|
+| `Set-Cookie: pitchcrm_session` with httpOnly | No server-side rendering -- Vite serves static files. Supabase auth uses localStorage JWTs, not cookies. |
+| `middleware/auth.ts` intercepting requests | No server middleware in Vite/SPA architecture. |
+| `X-Frame-Options` / CSP headers from code | These are set at the hosting/CDN level, not in React code. |
+| `/api/*` routes | No API layer -- all backend logic goes through Supabase Edge Functions. |
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+## Adapted Plan for Vite + Supabase + Capacitor
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### Step 1: Mobile App Detection Utility
+Extend `src/utils/mobileDetection.ts` to detect the native WebView via user-agent string `PitchCRM-iOS`. Add `isMobileApp()` and `isNativeWebView()` functions.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+### Step 2: Mobile Entry Route `/app/mobile`
+Add a new route in `App.tsx` that:
+- If authenticated, redirects to `/dashboard`
+- If not, redirects to `/login`
+- Skips marketing/landing content
+- Sets a sessionStorage flag so the app knows it launched from native
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+### Step 3: Session Validation Edge Function
+Create `supabase/functions/mobile-session/index.ts`:
+- `GET` with Bearer token returns `{ authenticated, userId, companyId, expiresAt }`
+- The iOS app calls this after FaceID unlock to verify the Supabase JWT is still valid
+- Uses `verify_jwt = false` with manual `getClaims()` validation
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+### Step 4: Deep Link Resolver Route
+Add a `/deeplink` route in the React app that parses `pitchcrm://` scheme URLs passed as query params and redirects to the correct internal route (`/jobs/:id`, `/contacts/:id`, etc.).
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+### Step 5: Mobile Device Registration (Push Prep)
+Create `mobile_devices` table via migration:
+- `id`, `user_id`, `device_id`, `push_token`, `platform`, `created_at`, `updated_at`
+- RLS: users can only read/write their own devices
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+Create `supabase/functions/register-mobile-device/index.ts` to upsert device records.
+
+### Step 6: Camera Upload Endpoint (Prep)
+Create `supabase/functions/mobile-upload/index.ts`:
+- Accepts multipart file upload with `jobId`
+- Stores in existing `documents` storage bucket under `{tenant_id}/jobs/{jobId}/`
+- Returns the public URL
+
+### Step 7: Mobile UX Adaptations
+Update `ProtectedRoute` and layout components to check `isMobileApp()`:
+- Collapse sidebar by default
+- Hide marketing banners
+- Show mobile-specific upload buttons (placeholder)
+
+### Step 8: Session Persistence for WebView
+The existing Supabase client already uses `localStorage` with `persistSession: true` and `autoRefreshToken: true`. WKWebView preserves localStorage between launches by default. The existing `sessionPersistence.ts` refresh logic and 30-day "Remember Me" duration already cover this use case. No cookie system needed -- the JWT in localStorage **is** the persistent session.
+
+### Step 9: Security Hardening
+- Add JWT expiry check to the mobile-session endpoint
+- Add device session logging (tie login events to device fingerprint, already partially implemented)
+- Ensure logout clears all localStorage (already implemented in `clearAllSessionData`)
+
+---
+
+## Files to Create/Modify
+
+| File | Action |
+|---|---|
+| `src/utils/mobileDetection.ts` | Add `isMobileApp()`, `isNativeWebView()` |
+| `src/pages/MobileEntry.tsx` | New -- `/app/mobile` route |
+| `src/App.tsx` | Add `/app/mobile` and `/deeplink` routes |
+| `src/pages/DeepLinkResolver.tsx` | New -- parse deep link params, redirect |
+| `supabase/functions/mobile-session/index.ts` | New -- session validation endpoint |
+| `supabase/functions/register-mobile-device/index.ts` | New -- push token registration |
+| `supabase/functions/mobile-upload/index.ts` | New -- camera file upload |
+| `supabase/config.toml` | Register 3 new edge functions |
+| Migration SQL | Create `mobile_devices` table with RLS |
+| Layout components | Conditional mobile UX tweaks |
+
+## What the iOS App Should Do
+
+1. Store the Supabase JWT (from login response) in the iOS Keychain
+2. On launch, inject the JWT into WKWebView's localStorage before loading the URL
+3. Load `https://pitch-1.lovable.app/app/mobile`
+4. Call the `mobile-session` edge function after FaceID to verify token validity
+5. If expired, redirect to `/login`
+
+This approach works with the existing Supabase auth system without requiring cookies or server middleware.
 
