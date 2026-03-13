@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import Sidebar from "./Sidebar";
 import { CLJSearchBar } from "@/components/CLJSearchBar";
@@ -8,6 +8,8 @@ import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { isMobileApp } from "@/utils/mobileDetection";
+import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface GlobalLayoutProps {
   children: React.ReactNode;
@@ -15,24 +17,30 @@ interface GlobalLayoutProps {
 
 export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
   const isMobile = useIsMobile();
-  const isNative = isMobileApp();
-  const isNativeLaunch = typeof window !== 'undefined' && sessionStorage.getItem('pitch_native_launch') === 'true';
+  const [mobileOpen, setMobileOpen] = useState(false);
   return (
     <div className="flex min-h-screen w-full">
-      <CollapsibleSidebar>
+      <CollapsibleSidebar mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
         <Sidebar />
       </CollapsibleSidebar>
-      <main className={cn(
-        "flex-1 overflow-auto",
-        isMobile && "pt-14" // Add padding for mobile menu button
-      )}>
+      <main className="flex-1 overflow-auto">
         <div className="border-b glass-heavy sticky top-0 z-40 shadow-[0_1px_3px_hsl(214_100%_25%/0.06),0_4px_12px_hsl(214_100%_25%/0.04)]">
           {isMobile ? (
             /* Mobile: Two-row header */
             <div className="flex flex-col">
-              {/* Row 1: Location switcher, notifications, company */}
-              <div className="flex h-12 items-center gap-1 justify-between pl-14 pr-2">
-                <QuickLocationSwitcher isCollapsed={false} />
+              {/* Row 1: Menu button, location switcher, notifications, company */}
+              <div className="flex h-12 items-center gap-1 justify-between px-2">
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9 flex-shrink-0"
+                    onClick={() => setMobileOpen(true)}
+                  >
+                    <Menu className="h-5 w-5" />
+                  </Button>
+                  <QuickLocationSwitcher isCollapsed={false} />
+                </div>
                 <div className="flex items-center gap-1">
                   <NotificationCenter />
                   <CompanySwitcher />
