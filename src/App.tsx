@@ -88,6 +88,8 @@ import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
 import ImportContacts from "./pages/storm-canvass/ImportContacts";
 import PublicReportViewer from "./pages/PublicReportViewer";
+import MobileEntry from "./pages/MobileEntry";
+import DeepLinkResolver from "./pages/DeepLinkResolver";
 import ViewQuote from "./pages/ViewQuote";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
@@ -247,6 +249,8 @@ const AppContent = () => {
         <Route path="/proposal/:token" element={<PublicProposalView />} />
         <Route path="/portal/:shareToken" element={<PublicPortalView />} />
         <Route path="/v/:token" element={<PublicDocumentView />} />
+        <Route path="/app/mobile" element={<MobileEntry />} />
+        <Route path="/deeplink" element={<DeepLinkResolver />} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

@@ -7,6 +7,7 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { isMobileApp } from "@/utils/mobileDetection";
 
 interface GlobalLayoutProps {
   children: React.ReactNode;
@@ -14,7 +15,8 @@ interface GlobalLayoutProps {
 
 export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
   const isMobile = useIsMobile();
-
+  const isNative = isMobileApp();
+  const isNativeLaunch = typeof window !== 'undefined' && sessionStorage.getItem('pitch_native_launch') === 'true';
   return (
     <div className="flex min-h-screen w-full">
       <CollapsibleSidebar>

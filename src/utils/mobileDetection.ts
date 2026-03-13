@@ -92,3 +92,20 @@ export const hasNotch = (): boolean => {
 export const hasHomeIndicator = (): boolean => {
   return hasNotch() || (isIPad() && navigator.maxTouchPoints > 1);
 };
+
+// Native app detection (WKWebView with PitchCRM-iOS user agent)
+export const isMobileApp = (): boolean => {
+  return /PitchCRM-iOS/i.test(navigator.userAgent);
+};
+
+export const isNativeWebView = (): boolean => {
+  // Detect WKWebView: no Safari in UA but has AppleWebKit, or PitchCRM-iOS flag
+  if (isMobileApp()) return true;
+  const ua = navigator.userAgent;
+  return /AppleWebKit/.test(ua) && !/Safari/.test(ua) && isIOS();
+};
+
+// Check if running inside native wrapper (Capacitor or custom WebView)
+export const isNativeWrapper = (): boolean => {
+  return isMobileApp() || isNativeWebView() || !!(window as any).Capacitor;
+};

@@ -20300,6 +20300,36 @@ export type Database = {
           },
         ]
       }
+      mobile_devices: {
+        Row: {
+          created_at: string
+          device_id: string
+          id: string
+          platform: string
+          push_token: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          device_id: string
+          id?: string
+          platform: string
+          push_token?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          device_id?: string
+          id?: string
+          platform?: string
+          push_token?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       neighborhood_patterns: {
         Row: {
           average_area_sqft: number | null
