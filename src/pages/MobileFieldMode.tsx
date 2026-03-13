@@ -92,7 +92,7 @@ const MobileFieldMode = () => {
           <h1 className="text-lg font-bold text-foreground">Field Mode</h1>
           <div className="flex items-center gap-2">
             {isOffline && (
-              <span className="flex items-center gap-1 text-xs text-amber-500">
+              <span className="flex items-center gap-1 text-xs text-destructive">
                 <WifiOff className="h-3 w-3" /> Offline
               </span>
             )}
