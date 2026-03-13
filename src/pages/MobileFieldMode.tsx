@@ -40,7 +40,7 @@ const MobileFieldMode = () => {
         .eq('user_id', user!.id)
         .gte('start_time', `${today}T00:00:00`)
         .lte('start_time', `${today}T23:59:59`)
-        .order('start_time', { ascending: true });
+        .order('start_time', { ascending: true }) as { data: any[] | null };
       return data || [];
     },
     enabled: !!user?.id,
