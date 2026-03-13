@@ -31,17 +31,17 @@ const MobileFieldMode = () => {
   const today = format(new Date(), 'yyyy-MM-dd');
 
   // Today's appointments
-  const { data: appointments = [] } = useQuery({
+  const { data: appointments = [] } = useQuery<any[]>({
     queryKey: ['field-appointments', user?.id, today],
     queryFn: async () => {
-      const { data } = await supabase
-        .from('appointments')
+      const result = await (supabase
+        .from('appointments') as any)
         .select('*')
         .eq('user_id', user!.id)
         .gte('start_time', `${today}T00:00:00`)
         .lte('start_time', `${today}T23:59:59`)
-        .order('start_time', { ascending: true }) as { data: any[] | null };
-      return data || [];
+        .order('start_time', { ascending: true });
+      return result.data || [];
     },
     enabled: !!user?.id,
   });
