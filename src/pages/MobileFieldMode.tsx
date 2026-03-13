@@ -148,7 +148,7 @@ const MobileFieldMode = () => {
                 >
                   <div>
                     <p className="text-sm font-medium text-foreground">
-                      {apt.contacts?.first_name} {apt.contacts?.last_name}
+                      {apt.title || 'Appointment'}
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {format(new Date(apt.start_time), 'h:mm a')}
