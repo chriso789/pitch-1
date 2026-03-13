@@ -90,6 +90,10 @@ import ImportContacts from "./pages/storm-canvass/ImportContacts";
 import PublicReportViewer from "./pages/PublicReportViewer";
 import MobileEntry from "./pages/MobileEntry";
 import DeepLinkResolver from "./pages/DeepLinkResolver";
+import MobileFieldMode from "./pages/MobileFieldMode";
+import MobileAlerts from "./pages/MobileAlerts";
+import MobileJobPhotos from "./pages/MobileJobPhotos";
+import MobileSettings from "./pages/MobileSettings";
 import ViewQuote from "./pages/ViewQuote";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
@@ -251,6 +255,10 @@ const AppContent = () => {
         <Route path="/v/:token" element={<PublicDocumentView />} />
         <Route path="/app/mobile" element={<MobileEntry />} />
         <Route path="/deeplink" element={<DeepLinkResolver />} />
+        <Route path="/app/mobile/field" element={<ProtectedRoute><MobileFieldMode /></ProtectedRoute>} />
+        <Route path="/app/mobile/alerts" element={<ProtectedRoute><MobileAlerts /></ProtectedRoute>} />
+        <Route path="/app/mobile/jobs/:id/photos" element={<ProtectedRoute><MobileJobPhotos /></ProtectedRoute>} />
+        <Route path="/app/mobile/settings" element={<ProtectedRoute><MobileSettings /></ProtectedRoute>} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

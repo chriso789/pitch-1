@@ -1170,3 +1170,6 @@ verify_jwt = false
 
 [functions.mobile-upload]
 verify_jwt = false
+
+[functions.send-job-alert]
+verify_jwt = false

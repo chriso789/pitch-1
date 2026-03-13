@@ -36,7 +36,20 @@ const DeepLinkResolver = () => {
 function resolveDeepLink(url: string): string {
   // Strip the scheme: pitchcrm://job/123 → job/123
   const path = url.replace(/^pitchcrm:\/\//, "").replace(/^\/+/, "");
+  const segments = path.split("/").filter(Boolean);
+  if (segments.length === 0) return "/dashboard";
 
+  const [first, second, third, fourth] = segments;
+
+  // Compound routes
+  if (first === 'job' && second && third === 'photos') return `/app/mobile/jobs/${second}/photos`;
+  if (first === 'job' && second && third === 'note' && fourth === 'new') return `/job/${second}?action=new-note`;
+  if (first === 'alerts') return '/app/mobile/alerts';
+  if (first === 'tasks') return '/tasks';
+  if (first === 'appointments' && second === 'today') return '/calendar?view=today';
+  if (first === 'field') return '/app/mobile/field';
+
+  // Simple entity routes
   const routes: Record<string, (id: string) => string> = {
     job: (id) => `/job/${id}`,
     contact: (id) => `/contact/${id}`,
@@ -44,13 +57,8 @@ function resolveDeepLink(url: string): string {
     lead: (id) => `/lead/${id}`,
   };
 
-  const segments = path.split("/").filter(Boolean);
-  if (segments.length === 0) return "/dashboard";
-
-  const [resource, id] = segments;
-
-  if (routes[resource] && id) {
-    return routes[resource](id);
+  if (routes[first] && second) {
+    return routes[first](second);
   }
 
   // Direct route match (e.g., pitchcrm://dashboard)

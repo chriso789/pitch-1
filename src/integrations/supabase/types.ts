@@ -16711,6 +16711,53 @@ export type Database = {
           },
         ]
       }
+      job_alerts: {
+        Row: {
+          alert_type: string
+          body: string
+          company_id: string
+          created_at: string
+          data_json: Json | null
+          id: string
+          job_id: string | null
+          read_at: string | null
+          title: string
+          user_id: string
+        }
+        Insert: {
+          alert_type: string
+          body: string
+          company_id: string
+          created_at?: string
+          data_json?: Json | null
+          id?: string
+          job_id?: string | null
+          read_at?: string | null
+          title: string
+          user_id: string
+        }
+        Update: {
+          alert_type?: string
+          body?: string
+          company_id?: string
+          created_at?: string
+          data_json?: Json | null
+          id?: string
+          job_id?: string | null
+          read_at?: string | null
+          title?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_alerts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       job_budget_versions: {
         Row: {
           created_at: string
@@ -16791,6 +16838,53 @@ export type Database = {
           vendor_name?: string | null
         }
         Relationships: []
+      }
+      job_media: {
+        Row: {
+          category: string
+          company_id: string
+          created_at: string
+          file_url: string
+          id: string
+          job_id: string
+          label: string
+          metadata_json: Json | null
+          thumbnail_url: string | null
+          uploaded_by: string
+        }
+        Insert: {
+          category?: string
+          company_id: string
+          created_at?: string
+          file_url: string
+          id?: string
+          job_id: string
+          label?: string
+          metadata_json?: Json | null
+          thumbnail_url?: string | null
+          uploaded_by: string
+        }
+        Update: {
+          category?: string
+          company_id?: string
+          created_at?: string
+          file_url?: string
+          id?: string
+          job_id?: string
+          label?: string
+          metadata_json?: Json | null
+          thumbnail_url?: string | null
+          uploaded_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "job_media_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       job_type_item_map: {
         Row: {
@@ -20294,6 +20388,47 @@ export type Database = {
           {
             foreignKeyName: "messaging_providers_tenant_id_fkey"
             columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mobile_activity_logs: {
+        Row: {
+          activity_type: string
+          company_id: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          id: string
+          metadata_json: Json | null
+          user_id: string
+        }
+        Insert: {
+          activity_type: string
+          company_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata_json?: Json | null
+          user_id: string
+        }
+        Update: {
+          activity_type?: string
+          company_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          id?: string
+          metadata_json?: Json | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mobile_activity_logs_company_id_fkey"
+            columns: ["company_id"]
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
