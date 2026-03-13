@@ -7,6 +7,7 @@ import { NotificationCenter } from "@/components/notifications/NotificationCente
 import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { isMobileApp } from "@/utils/mobileDetection";
 
 interface GlobalLayoutProps {
   children: React.ReactNode;
