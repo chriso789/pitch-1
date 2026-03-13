@@ -36,7 +36,7 @@ const MobileFieldMode = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from('appointments')
-        .select('*, contacts(first_name, last_name, phone, address)')
+        .select('*')
         .eq('user_id', user!.id)
         .gte('start_time', `${today}T00:00:00`)
         .lte('start_time', `${today}T23:59:59`)
