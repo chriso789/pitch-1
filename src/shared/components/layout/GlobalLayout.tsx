@@ -15,7 +15,8 @@ interface GlobalLayoutProps {
 
 export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
   const isMobile = useIsMobile();
-
+  const isNative = isMobileApp();
+  const isNativeLaunch = typeof window !== 'undefined' && sessionStorage.getItem('pitch_native_launch') === 'true';
   return (
     <div className="flex min-h-screen w-full">
       <CollapsibleSidebar>
