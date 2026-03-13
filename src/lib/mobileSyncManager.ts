@@ -53,7 +53,7 @@ const syncHandlers: Record<string, SyncHandler> = {
   },
 
   add_contact_log: async (item) => {
-    const { error } = await supabase.from('activities').insert(item.payload);
+    const { error } = await supabase.from('user_activity_log').insert(item.payload);
     if (error) throw new Error(error.message);
   },
 
