@@ -38,21 +38,28 @@ const LandingPage = () => {
 
   // Auto-redirect authenticated users to dashboard
   useEffect(() => {
+    let mounted = true;
     const checkAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.user) {
           console.log('[LandingPage] User authenticated, redirecting to dashboard');
           navigate('/dashboard', { replace: true });
-          return;
+          return; // Don't set checkingAuth false - let unmount handle it
         }
       } catch (error) {
         console.error('[LandingPage] Auth check error:', error);
       }
-      setCheckingAuth(false);
+      if (mounted) setCheckingAuth(false);
     };
-    
+
+    // Safety timeout: if auth check hangs, show landing page
+    const timeout = setTimeout(() => {
+      if (mounted) setCheckingAuth(false);
+    }, 3000);
+
     checkAuth();
+    return () => { mounted = false; clearTimeout(timeout); };
   }, [navigate]);
 
   // Show loading while checking auth
