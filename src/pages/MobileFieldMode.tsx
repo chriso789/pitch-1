@@ -52,9 +52,9 @@ const MobileFieldMode = () => {
     queryFn: async () => {
       const { data } = await supabase
         .from('jobs')
-        .select('id, job_number, status, contact_id, contacts(first_name, last_name, address)')
+        .select('id, job_number, status, contact_id')
         .eq('assigned_to', user!.id)
-        .in('status', ['lead', 'inspection_scheduled', 'inspection_complete', 'estimate_sent'])
+        .in('status', ['lead', 'contingency', 'ready_for_approval', 'production'])
         .order('updated_at', { ascending: false })
         .limit(10);
       return data || [];
