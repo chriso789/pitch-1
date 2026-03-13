@@ -9,11 +9,12 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 interface CollapsibleSidebarProps {
   children: React.ReactNode;
   defaultCollapsed?: boolean;
+  mobileOpen?: boolean;
+  onMobileOpenChange?: (open: boolean) => void;
 }
 
-export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: CollapsibleSidebarProps) => {
+export const CollapsibleSidebar = ({ children, defaultCollapsed = false, mobileOpen, onMobileOpenChange }: CollapsibleSidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(defaultCollapsed);
-  const [isMobileOpen, setIsMobileOpen] = useState(false);
   const isMobile = useIsMobile();
   const location = useLocation();
   
@@ -30,39 +31,19 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
     }
   }, [location.pathname, shouldAutoCollapse]);
 
-  // Close mobile menu when navigating
-  useEffect(() => {
-    const handleRouteChange = () => setIsMobileOpen(false);
-    window.addEventListener('popstate', handleRouteChange);
-    return () => window.removeEventListener('popstate', handleRouteChange);
-  }, []);
-
-  // Mobile: Use Sheet drawer
+  // Mobile: Use Sheet drawer (trigger is in GlobalLayout header)
   if (isMobile) {
     return (
-      <>
-        {/* Mobile Menu Button - Fixed position */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="fixed top-[4.05rem] left-3 z-50 h-10 w-10 bg-background/80 backdrop-blur-sm border shadow-md md:hidden"
-          onClick={() => setIsMobileOpen(true)}
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-
-        {/* Mobile Sheet Drawer */}
-        <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
-          <SheetContent side="left" className="p-0 w-72 bg-card overflow-hidden">
-            <div className="flex flex-col h-full overflow-y-auto overscroll-contain">
-              {React.cloneElement(children as React.ReactElement, { 
-                isCollapsed: false,
-                onNavigate: () => setIsMobileOpen(false)
-              })}
-            </div>
-          </SheetContent>
-        </Sheet>
-      </>
+      <Sheet open={mobileOpen} onOpenChange={onMobileOpenChange}>
+        <SheetContent side="left" className="p-0 w-72 bg-card overflow-hidden">
+          <div className="flex flex-col h-full overflow-y-auto overscroll-contain">
+            {React.cloneElement(children as React.ReactElement, { 
+              isCollapsed: false,
+              onNavigate: () => onMobileOpenChange?.(false)
+            })}
+          </div>
+        </SheetContent>
+      </Sheet>
     );
   }
 
