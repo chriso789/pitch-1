@@ -58,9 +58,9 @@ const syncHandlers: Record<string, SyncHandler> = {
   },
 
   save_measurement_note: async (item) => {
-    const { error } = await supabase.from('activities').insert({
+    const { error } = await supabase.from('user_activity_log').insert({
       ...item.payload,
-      type: 'measurement_note',
+      action_type: 'measurement_note',
     });
     if (error) throw new Error(error.message);
   },

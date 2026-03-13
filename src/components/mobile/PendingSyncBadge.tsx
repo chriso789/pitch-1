@@ -12,8 +12,8 @@ const PendingSyncBadge = ({ synced, className }: PendingSyncBadgeProps) => {
       className={cn(
         'inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full transition-colors duration-300',
         synced
-          ? 'bg-green-500/10 text-green-600 dark:text-green-400'
-          : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 animate-pulse',
+          ? 'bg-primary/10 text-primary'
+          : 'bg-destructive/10 text-destructive animate-pulse',
         className
       )}
     >

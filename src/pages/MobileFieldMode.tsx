@@ -181,10 +181,10 @@ const MobileFieldMode = () => {
                 >
                   <div>
                     <p className="text-sm font-medium text-foreground">
-                      {job.contacts?.first_name} {job.contacts?.last_name}
+                      #{job.job_number}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      #{job.job_number} · {job.status?.replace(/_/g, ' ')}
+                      {job.status?.replace(/_/g, ' ')}
                     </p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground" />
