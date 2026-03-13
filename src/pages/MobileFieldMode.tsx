@@ -97,7 +97,7 @@ const MobileFieldMode = () => {
               </span>
             )}
             {pendingCount > 0 && (
-              <span className="flex items-center gap-1 text-xs text-amber-500">
+              <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <CloudOff className="h-3 w-3" /> {pendingCount}
               </span>
             )}

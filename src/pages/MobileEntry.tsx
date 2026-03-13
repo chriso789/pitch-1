@@ -1,25 +1,36 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
+import { bootstrapMobileSession, setupVisibilityListener } from "@/lib/mobileBootstrap";
+import { startActivityLogger } from "@/lib/mobileActivityLogger";
 import { Loader2 } from "lucide-react";
 
-/**
- * /app/mobile — Entry point for native iOS WKWebView.
- * Sets a sessionStorage flag and redirects to /dashboard or /login.
- */
 const MobileEntry = () => {
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
-    // Mark that we launched from the native app
     sessionStorage.setItem("pitch_native_launch", "true");
+    const cleanupLogger = startActivityLogger();
+    const cleanupVisibility = setupVisibilityListener(() => {
+      bootstrapMobileSession();
+    });
+    return () => {
+      cleanupLogger();
+      cleanupVisibility();
+    };
   }, []);
 
   useEffect(() => {
     if (loading) return;
     if (user) {
-      navigate("/dashboard", { replace: true });
+      bootstrapMobileSession().then(({ valid }) => {
+        if (valid) {
+          navigate("/app/mobile/field", { replace: true });
+        } else {
+          navigate("/login", { replace: true });
+        }
+      });
     } else {
       navigate("/login", { replace: true });
     }
