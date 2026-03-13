@@ -88,6 +88,8 @@ import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
 import ImportContacts from "./pages/storm-canvass/ImportContacts";
 import PublicReportViewer from "./pages/PublicReportViewer";
+import MobileEntry from "./pages/MobileEntry";
+import DeepLinkResolver from "./pages/DeepLinkResolver";
 import ViewQuote from "./pages/ViewQuote";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
