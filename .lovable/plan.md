@@ -1,32 +1,54 @@
 
 
-# Add Acquisition Type / Lead Source Dropdown to Enhanced Lead Creation Dialog
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## What exists already
-- **`lead_sources` table** — tenant-scoped, with `name`, `category`, `is_active`, managed per company
-- **Settings UI** — `LeadSources` component at Settings > Lead Sources tab, where users can add/edit/delete sources
-- **`LeadForm.tsx`** — already fetches from `lead_sources` table and shows a "Lead Source" dropdown (with fallback)
-- **`EnhancedLeadCreationDialog.tsx`** — the form shown in the screenshot (used from Pipeline page). Currently has NO lead source/acquisition type field
+Three issues to address:
 
-## Changes
+## 1. Contact Profile Pipeline Area Overflowing
 
-### 1. `src/components/EnhancedLeadCreationDialog.tsx`
-- Add `leadSource` to `formData` state (default `""`)
-- Add state for `leadSources` array and `isLoadingSources` boolean
-- On dialog open, fetch active `lead_sources` for the tenant (same pattern as `LeadForm.tsx` lines 84-129)
-- Add a "Lead Source / Acquisition Type" `<Select>` dropdown in the left column, between "Estimated Value" and "Roof Type" (or after Estimated Value)
-- Include the same fallback sources as `LeadForm.tsx` (Google Ads, Facebook Ads, Referral, Door to Door, etc.)
-- Reset `leadSource` on form clear
-- Pass `leadSource` in the `submitLead` body as `leadSource`
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-### 2. `supabase/functions/create-lead-with-contact/index.ts`
-- Add `leadSource?: string` to the `LeadRequest` interface
-- When creating a new contact, set `lead_source: body.leadSource || null` on the contact insert
-- When creating the pipeline entry, add `lead_source_id: body.leadSource || null` to the pipeline metadata (or directly if the column exists)
+**File: `src/pages/ContactProfile.tsx`**
 
-### 3. Check `pipeline_entries` for `lead_source_id` column
-- The types show `pipeline_entries` has a `lead_source_id` foreign key to `lead_sources`. So set `lead_source_id: body.leadSource || null` directly on the pipeline insert.
-- Also set `lead_source` on the contact record.
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-This requires no new tables or migrations — the `lead_sources` table and settings management already exist and work across all company profiles.
+## 2. Show Who Saved Each Estimate (Under Title)
+
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
+
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
+
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

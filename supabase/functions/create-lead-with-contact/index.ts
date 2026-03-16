@@ -17,6 +17,7 @@ interface LeadRequest {
   status: string;
   priority: string;
   estimatedValue?: string;
+  leadSource?: string;
   salesReps: string[];
   forceDuplicate?: boolean;
   selectedAddress?: {
@@ -331,6 +332,7 @@ serve(async (req: Request) => {
           latitude: latitude,
           longitude: longitude,
           type: "homeowner",
+          lead_source: body.leadSource || null,
           created_by: user.id,
           assigned_to: body.salesReps?.[0] || null,
           location_id: locationId,
@@ -376,6 +378,7 @@ serve(async (req: Request) => {
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
       roof_type: body.roofType || null,
+      lead_source_id: body.leadSource || null,
       assigned_to: body.salesReps?.[0] || user.id,
       notes: body.description || null,
       created_by: user.id,
