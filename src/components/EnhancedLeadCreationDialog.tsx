@@ -508,6 +508,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         priority: "medium",
         estimatedValue: "",
         roofType: "",
+        leadSource: "",
         salesReps: [],
         useSameInfo: false,
       });
