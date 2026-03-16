@@ -182,10 +182,58 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     { value: "other", label: "Other" },
   ];
 
+  const fallbackLeadSources = [
+    { value: 'google_ads', label: 'Google Ads' },
+    { value: 'facebook_ads', label: 'Facebook Ads' },
+    { value: 'referral', label: 'Customer Referral' },
+    { value: 'door_to_door', label: 'Door to Door' },
+    { value: 'website', label: 'Website Contact' },
+    { value: 'phone_call', label: 'Incoming Phone Call' },
+    { value: 'other', label: 'Other' },
+  ];
+
+  const loadLeadSources = async () => {
+    setIsLoadingSources(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      const effectiveTenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!effectiveTenantId) {
+        setLeadSources(fallbackLeadSources);
+        return;
+      }
+
+      const { data: sources, error } = await supabase
+        .from('lead_sources')
+        .select('id, name')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('is_active', true)
+        .order('name');
+
+      if (error || !sources || sources.length === 0) {
+        setLeadSources(fallbackLeadSources);
+      } else {
+        setLeadSources(sources.map(s => ({ value: s.id, label: s.name })));
+      }
+    } catch {
+      setLeadSources(fallbackLeadSources);
+    } finally {
+      setIsLoadingSources(false);
+    }
+  };
+
   useEffect(() => {
     if (open) {
       loadSalesReps();
       loadUserProfile();
+      loadLeadSources();
     }
   }, [open]);
 
