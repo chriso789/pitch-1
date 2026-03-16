@@ -332,6 +332,7 @@ serve(async (req: Request) => {
           latitude: latitude,
           longitude: longitude,
           type: "homeowner",
+          lead_source: body.leadSource || null,
           created_by: user.id,
           assigned_to: body.salesReps?.[0] || null,
           location_id: locationId,
