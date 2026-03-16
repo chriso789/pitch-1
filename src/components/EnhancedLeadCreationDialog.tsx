@@ -456,6 +456,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           status: formData.status || 'lead',
           priority: formData.priority,
           estimatedValue: formData.estimatedValue,
+          leadSource: formData.leadSource || null,
           salesReps: formData.salesReps,
           forceDuplicate,
           selectedAddress: verifiedAddress ? { place_id: verifiedAddress.place_id, formatted_address: verifiedAddress.formatted_address, geometry: { location: { lat: verifiedAddress.lat || 0, lng: verifiedAddress.lng || 0 } }, address_components: [] } : null,
