@@ -108,6 +108,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
 
+  const [leadSources, setLeadSources] = useState<{ value: string; label: string }[]>([]);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
+
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -119,6 +122,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     priority: "medium" as const,
     estimatedValue: "",
     roofType: "",
+    leadSource: "",
     salesReps: [] as string[],
     useSameInfo: false,
   });
