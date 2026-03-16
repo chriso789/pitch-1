@@ -378,6 +378,7 @@ serve(async (req: Request) => {
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
       roof_type: body.roofType || null,
+      lead_source_id: body.leadSource || null,
       assigned_to: body.salesReps?.[0] || user.id,
       notes: body.description || null,
       created_by: user.id,

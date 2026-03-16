@@ -745,6 +745,25 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                   placeholder="25000"
                 />
               </div>
+
+              <div>
+                <Label htmlFor="leadSource">Acquisition Type / Lead Source</Label>
+                <Select
+                  value={formData.leadSource}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, leadSource: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={isLoadingSources ? "Loading..." : "Select lead source"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {leadSources.map((source) => (
+                      <SelectItem key={source.value} value={source.value}>
+                        {source.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
             {/* Right Column */}
