@@ -71,6 +71,7 @@ Deno.serve(async (req: Request) => {
               .update({
                 assigned_to: c.assigned_to,
                 location_id: location_id,
+                ...(c.qualification_status ? { qualification_status: c.qualification_status } : {}),
               })
               .eq('id', record.id);
             if (updateErr) {
