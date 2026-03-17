@@ -1,5 +1,5 @@
-// SRS Pricelist Data - Parsed from PDF (Effective 07-24-2025)
-// Representative: Hunter Prussel (321-624-4885, hunter.prussel@suncoastrooferssupply.com)
+// SRS Pricelist Data - Parsed from PDF (Effective 01-09-2026)
+// Representative: Hunter Prussel (321-624-4885, hunter.prussel@srsbuildingproducts.com)
 
 export interface SRSPricelistItem {
   category: string;
