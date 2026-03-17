@@ -167,6 +167,23 @@ export function ContactNotesSection({ contactId, tenantId }: ContactNotesSection
         mentioned_user_ids: mentionedUserIds,
       });
       if (error) throw error;
+
+      // Send notifications to mentioned users
+      if (mentionedUserIds.length > 0) {
+        try {
+          await supabase.functions.invoke('send-mention-notification', {
+            body: {
+              contact_id: contactId,
+              mentioned_user_ids: mentionedUserIds,
+              author_id: user.id,
+              note_content: newNote.trim(),
+            }
+          });
+        } catch (notifyError) {
+          console.error('Failed to send mention notifications:', notifyError);
+        }
+      }
+
       setNewNote('');
       setIsAddingNote(false);
       queryClient.invalidateQueries({ queryKey: ['contact-notes', contactId] });
