@@ -1,54 +1,52 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix: Contact Notes @Mentions Not Sending Notifications
 
-Three issues to address:
+## Root Cause
 
-## 1. Contact Profile Pipeline Area Overflowing
+The **Contact Notes** section (`ContactNotesSection.tsx`) correctly extracts mentioned user IDs and saves them to the database, but **never invokes the `send-mention-notification` edge function**. This means no in-app notification, email, or SMS is sent when someone is @mentioned in a contact note.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+The **Lead Details** internal notes (`InternalNotesSection.tsx`) does call the edge function — so mentions work there but not on the Contact Profile page.
 
-**File: `src/pages/ContactProfile.tsx`**
+## Fix
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+### `src/components/contact-profile/ContactNotesSection.tsx` (~lines 157-173)
 
-## 2. Show Who Saved Each Estimate (Under Title)
+After the successful `internal_notes` insert (line 169), add the same notification trigger that exists in `InternalNotesSection.tsx`:
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+```typescript
+if (error) throw error;
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+// Send notifications to mentioned users
+if (mentionedUserIds.length > 0) {
+  try {
+    await supabase.functions.invoke('send-mention-notification', {
+      body: {
+        contact_id: contactId,
+        mentioned_user_ids: mentionedUserIds,
+        author_id: user.id,
+        note_content: newNote.trim(),
+      }
+    });
+  } catch (notifyError) {
+    console.error('Failed to send mention notifications:', notifyError);
+  }
+}
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+setNewNote('');
+```
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+### `supabase/functions/send-mention-notification/index.ts`
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+The edge function currently expects `pipeline_entry_id` and uses it to look up the lead/contact for context. It needs a small update to also accept `contact_id` directly (for contact-level notes that aren't tied to a pipeline entry):
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+- Accept optional `contact_id` in the request body
+- If `contact_id` is provided (and no `pipeline_entry_id`), fetch the contact directly from the `contacts` table for name/address context
+- Keep existing `pipeline_entry_id` flow working as-is for lead notes
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### Summary of changes
+1. **`ContactNotesSection.tsx`** — Add the `send-mention-notification` invocation after note insert (same pattern as `InternalNotesSection.tsx`)
+2. **`send-mention-notification/index.ts`** — Accept `contact_id` as an alternative to `pipeline_entry_id` for looking up lead context; fall back gracefully when neither provides a match
+
+This is a two-file fix. No database changes needed.
 
