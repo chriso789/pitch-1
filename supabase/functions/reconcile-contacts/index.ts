@@ -135,6 +135,7 @@ Deno.serve(async (req: Request) => {
                 notes: c.notes || null,
                 assigned_to: c.assigned_to,
                 lead_source: 'csv_import',
+                qualification_status: c.qualification_status || null,
               });
             if (insertErr) {
               // If unique constraint violation, skip
