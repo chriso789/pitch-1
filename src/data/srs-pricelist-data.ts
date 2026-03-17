@@ -36,7 +36,7 @@ export const SRS_PRICELIST: SRSPricelistItem[] = [
   { category: 'Hip & Ridge', brand: 'Atlas', product: 'Atlas Pro-Cut Hip and Ridge', item_code: 'ATLAS-PROCUT-HR', unit_of_measure: 'BD', unit_cost: 67.50, metadata: { length_per_unit: '31LF/BD' } },
   { category: 'Hip & Ridge', brand: 'TAMKO', product: 'TAMKO Hip and Ridge', item_code: 'TAMKO-HR', unit_of_measure: 'BD', unit_cost: 67.00, metadata: { length_per_unit: '33.3LF/BD' } },
   { category: 'Starter', brand: 'GAF', product: 'GAF Pro-Start Starter', item_code: 'GAF-PROSTART', unit_of_measure: 'BD', unit_cost: 54.50, metadata: { length_per_unit: '120LF/BD' } },
-  { category: 'Starter', brand: 'Owens Corning', product: 'Owens Corning Starter Strip Plus', item_code: 'OC-STARTER-PLUS', unit_of_measure: 'BD', unit_cost: 60.00, metadata: { length_per_unit: '105LF/BD' } },
+  { category: 'Starter', brand: 'Owens Corning', product: 'Owens Corning Starter Strip Plus', item_code: 'OC-STARTER-PLUS', unit_of_measure: 'BD', unit_cost: 54.00, metadata: { length_per_unit: '105LF/BD' } },
   { category: 'Starter', brand: 'CertainTeed', product: 'CertainTeed SwiftStart Starter', item_code: 'CT-SWIFTSTART', unit_of_measure: 'BD', unit_cost: 55.00, metadata: { length_per_unit: '116LF/BD' } },
   { category: 'Starter', brand: 'IKO', product: 'IKO Starter', item_code: 'IKO-STARTER', unit_of_measure: 'BD', unit_cost: 55.00, metadata: { length_per_unit: '123LF/BD' } },
   { category: 'Starter', brand: 'Atlas', product: 'Atlas Pro-Starter', item_code: 'ATLAS-PROSTARTER', unit_of_measure: 'BD', unit_cost: 68.25, metadata: { length_per_unit: '140LF/BD' } },
