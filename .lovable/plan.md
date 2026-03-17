@@ -1,71 +1,54 @@
 
 
-# Batch Update Contact Statuses from Uploaded CSV Data
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## What we know
+Three issues to address:
 
-The uploaded `.numbers` file contains ~490 rows of contact data for both **Michael Grosso** and **Uri Kaweblum** pins. Column 9 (0-indexed: col 8) contains the status. Many contacts appear multiple times with different statuses as they progressed — we need the **latest entry per contact** (by date in column 1).
+## 1. Contact Profile Pipeline Area Overflowing
 
-### Unique statuses in the file and their mappings
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-| CSV Status | DB Status Key | Exists in Tenant? |
-|---|---|---|
-| Not Home | `not_home` | Yes |
-| Interested | `interested` | Yes |
-| Not Interested | `not_interested` | Yes |
-| Old Roof Marketing | `old_roof_marketing` | Yes |
-| Storm Damage Marketing | `storm_damage` | Yes |
-| New Roof | `new_roof` | Yes |
-| Contract Signed | `qualified` | Yes |
-| Contingency signed | `qualified` | Yes |
-| Go Back | `follow_up` | **No — needs to be created** |
-| Not Contacted | `not_home` | Yes (fallback) |
+**File: `src/pages/ContactProfile.tsx`**
 
-### Missing status: "Go Back" → need a new `follow_up` status
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-The tenant doesn't have a "Follow Up" or "Go Back" status. We need to create one via migration.
+## 2. Show Who Saved Each Estimate (Under Title)
 
-## Plan
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### 1. Create "Go Back" contact status for this tenant
-- Add a new row to `contact_statuses` for tenant `14de934e-...` with `key: 'go_back'`, `name: 'Go Back'`, `color: '#f59e0b'` (amber), `status_order: 9`
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-### 2. Create a new edge function `batch-update-contact-statuses`
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-A lightweight one-off function that:
-- Accepts `{ updates: [{first_name, last_name, address_street, qualification_status}], tenant_id }`
-- For each entry, finds the contact by name + address (ilike match, same as reconcile-contacts)
-- Updates `qualification_status` on the matched contact
-- Returns counts of updated/skipped/errors
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-### 3. Write a Python script to parse the file and call the edge function
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-- Parse the `.numbers` file (already parsed — extract from the document parse output)
-- Deduplicate by name+address, keeping the **latest date** entry
-- Map CSV statuses to DB status keys
-- Call the edge function in batches of 25
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-### Status mapping in the script
-```text
-"Old Roof Marketing"     → "old_roof_marketing"
-"Storm Damage Marketing" → "storm_damage"
-"Contract Signed"        → "qualified"
-"Contingency signed"     → "qualified"
-"Not Interested"         → "not_interested"
-"Not Home"               → "not_home"
-"Interested"             → "interested"
-"New Roof"               → "new_roof"
-"Go Back"                → "go_back"
-"Not Contacted"          → "not_home"
-```
-
-### 4. Also fix `reconcile-contacts` for future imports
-
-Add `qualification_status` to the `ContactPayload` interface and include it in both the insert and update paths, so future CSV imports carry status through automatically.
-
-## Files changed
-1. **Migration**: Insert `go_back` status into `contact_statuses`
-2. **New**: `supabase/functions/batch-update-contact-statuses/index.ts`
-3. **Script**: Python script to parse data and call the function
-4. **Edit**: `supabase/functions/reconcile-contacts/index.ts` — add `qualification_status` support
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

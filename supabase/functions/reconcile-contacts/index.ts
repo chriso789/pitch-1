@@ -15,6 +15,7 @@ interface ContactPayload {
   phone?: string;
   notes?: string;
   assigned_to: string; // profile UUID
+  qualification_status?: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -70,6 +71,7 @@ Deno.serve(async (req: Request) => {
               .update({
                 assigned_to: c.assigned_to,
                 location_id: location_id,
+                ...(c.qualification_status ? { qualification_status: c.qualification_status } : {}),
               })
               .eq('id', record.id);
             if (updateErr) {
@@ -101,6 +103,7 @@ Deno.serve(async (req: Request) => {
                   .update({
                     assigned_to: c.assigned_to,
                     location_id: location_id,
+                    ...(c.qualification_status ? { qualification_status: c.qualification_status } : {}),
                   })
                   .eq('id', record.id);
                 if (updateErr) {
@@ -132,6 +135,7 @@ Deno.serve(async (req: Request) => {
                 notes: c.notes || null,
                 assigned_to: c.assigned_to,
                 lead_source: 'csv_import',
+                qualification_status: c.qualification_status || null,
               });
             if (insertErr) {
               // If unique constraint violation, skip
