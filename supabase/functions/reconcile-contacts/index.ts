@@ -15,6 +15,7 @@ interface ContactPayload {
   phone?: string;
   notes?: string;
   assigned_to: string; // profile UUID
+  qualification_status?: string;
 }
 
 Deno.serve(async (req: Request) => {
