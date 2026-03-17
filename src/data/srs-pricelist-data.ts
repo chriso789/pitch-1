@@ -17,16 +17,16 @@ export interface SRSPricelistItem {
 
 export const SRS_PRICELIST: SRSPricelistItem[] = [
   // Shingles
-  { category: 'Shingles', brand: 'GAF', product: 'GAF Timberline HDZ', item_code: 'GAF-HDZ', unit_of_measure: 'SQ', unit_cost: 121.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Oakridge', item_code: 'OC-OAKRIDGE', unit_of_measure: 'SQ', unit_cost: 116.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Duration', item_code: 'OC-DURATION', unit_of_measure: 'SQ', unit_cost: 118.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'CertainTeed', product: 'CertainTeed Landmark', item_code: 'CT-LANDMARK', unit_of_measure: 'SQ', unit_cost: 117.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'GAF', product: 'GAF Timberline HDZ', item_code: 'GAF-HDZ', unit_of_measure: 'SQ', unit_cost: 115.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Oakridge', item_code: 'OC-OAKRIDGE', unit_of_measure: 'SQ', unit_cost: 105.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Duration', item_code: 'OC-DURATION', unit_of_measure: 'SQ', unit_cost: 114.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'CertainTeed', product: 'CertainTeed Landmark', item_code: 'CT-LANDMARK', unit_of_measure: 'SQ', unit_cost: 113.00, metadata: { bundles_per_square: '3BD/SQ' } },
   { category: 'Shingles', brand: 'CertainTeed', product: 'CertainTeed Landmark Pro', item_code: 'CT-LANDMARK-PRO', unit_of_measure: 'SQ', unit_cost: 129.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'IKO', product: 'IKO Cambridge', item_code: 'IKO-CAMBRIDGE', unit_of_measure: 'SQ', unit_cost: 110.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'IKO', product: 'IKO Dynasty', item_code: 'IKO-DYNASTY', unit_of_measure: 'SQ', unit_cost: 115.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'Atlas', product: 'Atlas Pinnacle', item_code: 'ATLAS-PINNACLE', unit_of_measure: 'SQ', unit_cost: 120.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO Heritage', item_code: 'TAMKO-HERITAGE', unit_of_measure: 'SQ', unit_cost: 113.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO TITAN XT', item_code: 'TAMKO-TITAN-XT', unit_of_measure: 'SQ', unit_cost: 116.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'IKO', product: 'IKO Cambridge', item_code: 'IKO-CAMBRIDGE', unit_of_measure: 'SQ', unit_cost: 105.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'IKO', product: 'IKO Dynasty', item_code: 'IKO-DYNASTY', unit_of_measure: 'SQ', unit_cost: 109.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'Atlas', product: 'Atlas Pinnacle', item_code: 'ATLAS-PINNACLE', unit_of_measure: 'SQ', unit_cost: 115.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO Heritage', item_code: 'TAMKO-HERITAGE', unit_of_measure: 'SQ', unit_cost: 106.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO TITAN XT', item_code: 'TAMKO-TITAN-XT', unit_of_measure: 'SQ', unit_cost: 112.00, metadata: { bundles_per_square: '3BD/SQ' } },
 
   // Hip & Ridge / Starter
   { category: 'Hip & Ridge', brand: 'GAF', product: 'GAF S-A-R Hip and Ridge', item_code: 'GAF-SAR-HR', unit_of_measure: 'BD', unit_cost: 59.00, metadata: { length_per_unit: '25LF/BD' } },
