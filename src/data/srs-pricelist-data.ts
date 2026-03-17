@@ -156,9 +156,9 @@ export const SRS_PRICELIST: SRSPricelistItem[] = [
 ];
 
 export const SRS_VENDOR_INFO = {
-  name: 'SRS Distribution / Suncoast Roofers Supply',
+  name: 'SRS Distribution',
   rep_name: 'Hunter Prussel',
   phone: '321-624-4885',
-  email: 'hunter.prussel@suncoastrooferssupply.com',
-  effective_date: '2025-07-24'
+  email: 'hunter.prussel@srsbuildingproducts.com',
+  effective_date: '2026-01-09'
 };
