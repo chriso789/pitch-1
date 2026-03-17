@@ -7,7 +7,8 @@ const corsHeaders = {
 };
 
 interface MentionNotificationRequest {
-  pipeline_entry_id: string;
+  pipeline_entry_id?: string;
+  contact_id?: string;
   mentioned_user_ids: string[];
   author_id: string;
   note_content: string;
@@ -25,9 +26,9 @@ serve(async (req: Request) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const body: MentionNotificationRequest = await req.json();
-    const { pipeline_entry_id, mentioned_user_ids, author_id, note_content } = body;
+    const { pipeline_entry_id, contact_id, mentioned_user_ids, author_id, note_content } = body;
 
-    if (!pipeline_entry_id || !mentioned_user_ids?.length || !author_id) {
+    if ((!pipeline_entry_id && !contact_id) || !mentioned_user_ids?.length || !author_id) {
       return new Response(
         JSON.stringify({ error: 'Missing required fields' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -45,23 +46,46 @@ serve(async (req: Request) => {
       ? [author.first_name, author.last_name].filter(Boolean).join(' ') || author.email 
       : 'A team member';
 
-    // Get lead info for context
-    const { data: lead } = await supabase
-      .from('pipeline_entries')
-      .select(`
-        id,
-        contact:contacts(first_name, last_name, address_street, address_city)
-      `)
-      .eq('id', pipeline_entry_id)
-      .single();
+    let leadName = 'Lead';
+    let leadAddress = '';
+    let contextId = pipeline_entry_id || contact_id;
+    let linkPath = '';
 
-    const contact = lead?.contact as any;
-    const leadName = contact 
-      ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Lead'
-      : 'Lead';
-    const leadAddress = contact?.address_street 
-      ? `${contact.address_street}, ${contact.address_city || ''}`
-      : '';
+    if (pipeline_entry_id) {
+      // Get lead info via pipeline entry
+      const { data: lead } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id,
+          contact:contacts(first_name, last_name, address_street, address_city)
+        `)
+        .eq('id', pipeline_entry_id)
+        .single();
+
+      const contact = lead?.contact as any;
+      leadName = contact 
+        ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Lead'
+        : 'Lead';
+      leadAddress = contact?.address_street 
+        ? `${contact.address_street}, ${contact.address_city || ''}`
+        : '';
+      linkPath = `/lead/${pipeline_entry_id}`;
+    } else if (contact_id) {
+      // Get contact info directly
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('first_name, last_name, address_street, address_city')
+        .eq('id', contact_id)
+        .single();
+
+      leadName = contact 
+        ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Contact'
+        : 'Contact';
+      leadAddress = contact?.address_street 
+        ? `${contact.address_street}, ${contact.address_city || ''}`
+        : '';
+      linkPath = `/contacts/${contact_id}`;
+    }
 
     // Get mentioned users
     const { data: mentionedUsers } = await supabase
@@ -92,11 +116,12 @@ serve(async (req: Request) => {
           user_id: user.id,
           type: 'mention',
           title: `${authorName} mentioned you`,
-          message: `On lead ${leadName}${leadAddress ? ` at ${leadAddress}` : ''}: "${truncatedNote}"`,
+          message: `On ${leadName}${leadAddress ? ` at ${leadAddress}` : ''}: "${truncatedNote}"`,
           icon: '💬',
           metadata: {
             author_id,
-            pipeline_entry_id,
+            pipeline_entry_id: pipeline_entry_id || null,
+            contact_id: contact_id || null,
             note_preview: truncatedNote,
           },
         })
@@ -123,17 +148,17 @@ serve(async (req: Request) => {
           supabase.functions.invoke('email-send', {
             body: {
               to: [user.email],
-              subject: `${authorName} mentioned you in a lead note`,
+              subject: `${authorName} mentioned you in a note`,
               html: `
                 <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
                   <h2 style="color: #2563eb;">You were mentioned in a team note</h2>
-                  <p><strong>${authorName}</strong> mentioned you on lead <strong>${leadName}</strong>${leadAddress ? ` at ${leadAddress}` : ''}:</p>
+                  <p><strong>${authorName}</strong> mentioned you on <strong>${leadName}</strong>${leadAddress ? ` at ${leadAddress}` : ''}:</p>
                   <blockquote style="border-left: 3px solid #2563eb; padding-left: 12px; margin: 16px 0; color: #374151;">
                     ${note_content}
                   </blockquote>
-                  <a href="${Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-1.lovable.app'}/lead/${pipeline_entry_id}" 
+                  <a href="${Deno.env.get('PUBLIC_APP_URL') || 'https://pitch-1.lovable.app'}${linkPath}" 
                      style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin-top: 16px;">
-                    View Lead
+                    View ${pipeline_entry_id ? 'Lead' : 'Contact'}
                   </a>
                 </div>
               `,
