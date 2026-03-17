@@ -1058,24 +1058,26 @@ const LeadDetails = () => {
         />
       )}
 
-      {/* Approval Requirements Progress */}
-      <Card className="border-primary/20">
-        <CardHeader className="p-4">
-          <CardTitle className="flex items-center space-x-2 text-base">
-            <CheckCircle className="h-4 w-4 text-primary" />
-            <span>Approval Requirements</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <ApprovalRequirementsBubbles 
-            requirements={requirements}
-            dynamicRequirements={dynamicRequirements}
-            onApprove={handleApproveToProject}
-            pipelineEntryId={id}
-            onUploadComplete={refetchRequirements}
-          />
-        </CardContent>
-      </Card>
+      {/* Approval Requirements Progress - hidden once lead reaches project/terminal status */}
+      {lead && !['project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'].includes(lead.status) && (
+        <Card className="border-primary/20">
+          <CardHeader className="p-4">
+            <CardTitle className="flex items-center space-x-2 text-base">
+              <CheckCircle className="h-4 w-4 text-primary" />
+              <span>Approval Requirements</span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <ApprovalRequirementsBubbles 
+              requirements={requirements}
+              dynamicRequirements={dynamicRequirements}
+              onApprove={handleApproveToProject}
+              pipelineEntryId={id}
+              onUploadComplete={refetchRequirements}
+            />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Communication, Photos & Activity - Compact Tabs */}
       <Card className="border-muted">
