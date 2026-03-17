@@ -1,5 +1,5 @@
-// SRS Pricelist Data - Parsed from PDF (Effective 07-24-2025)
-// Representative: Hunter Prussel (321-624-4885, hunter.prussel@suncoastrooferssupply.com)
+// SRS Pricelist Data - Parsed from PDF (Effective 01-09-2026)
+// Representative: Hunter Prussel (321-624-4885, hunter.prussel@srsbuildingproducts.com)
 
 export interface SRSPricelistItem {
   category: string;
@@ -17,16 +17,16 @@ export interface SRSPricelistItem {
 
 export const SRS_PRICELIST: SRSPricelistItem[] = [
   // Shingles
-  { category: 'Shingles', brand: 'GAF', product: 'GAF Timberline HDZ', item_code: 'GAF-HDZ', unit_of_measure: 'SQ', unit_cost: 121.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Oakridge', item_code: 'OC-OAKRIDGE', unit_of_measure: 'SQ', unit_cost: 116.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Duration', item_code: 'OC-DURATION', unit_of_measure: 'SQ', unit_cost: 118.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'CertainTeed', product: 'CertainTeed Landmark', item_code: 'CT-LANDMARK', unit_of_measure: 'SQ', unit_cost: 117.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'GAF', product: 'GAF Timberline HDZ', item_code: 'GAF-HDZ', unit_of_measure: 'SQ', unit_cost: 115.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Oakridge', item_code: 'OC-OAKRIDGE', unit_of_measure: 'SQ', unit_cost: 105.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'Owens Corning', product: 'Owens Corning Duration', item_code: 'OC-DURATION', unit_of_measure: 'SQ', unit_cost: 114.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'CertainTeed', product: 'CertainTeed Landmark', item_code: 'CT-LANDMARK', unit_of_measure: 'SQ', unit_cost: 113.00, metadata: { bundles_per_square: '3BD/SQ' } },
   { category: 'Shingles', brand: 'CertainTeed', product: 'CertainTeed Landmark Pro', item_code: 'CT-LANDMARK-PRO', unit_of_measure: 'SQ', unit_cost: 129.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'IKO', product: 'IKO Cambridge', item_code: 'IKO-CAMBRIDGE', unit_of_measure: 'SQ', unit_cost: 110.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'IKO', product: 'IKO Dynasty', item_code: 'IKO-DYNASTY', unit_of_measure: 'SQ', unit_cost: 115.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'Atlas', product: 'Atlas Pinnacle', item_code: 'ATLAS-PINNACLE', unit_of_measure: 'SQ', unit_cost: 120.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO Heritage', item_code: 'TAMKO-HERITAGE', unit_of_measure: 'SQ', unit_cost: 113.00, metadata: { bundles_per_square: '3BD/SQ' } },
-  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO TITAN XT', item_code: 'TAMKO-TITAN-XT', unit_of_measure: 'SQ', unit_cost: 116.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'IKO', product: 'IKO Cambridge', item_code: 'IKO-CAMBRIDGE', unit_of_measure: 'SQ', unit_cost: 105.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'IKO', product: 'IKO Dynasty', item_code: 'IKO-DYNASTY', unit_of_measure: 'SQ', unit_cost: 109.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'Atlas', product: 'Atlas Pinnacle', item_code: 'ATLAS-PINNACLE', unit_of_measure: 'SQ', unit_cost: 115.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO Heritage', item_code: 'TAMKO-HERITAGE', unit_of_measure: 'SQ', unit_cost: 106.00, metadata: { bundles_per_square: '3BD/SQ' } },
+  { category: 'Shingles', brand: 'TAMKO', product: 'TAMKO TITAN XT', item_code: 'TAMKO-TITAN-XT', unit_of_measure: 'SQ', unit_cost: 112.00, metadata: { bundles_per_square: '3BD/SQ' } },
 
   // Hip & Ridge / Starter
   { category: 'Hip & Ridge', brand: 'GAF', product: 'GAF S-A-R Hip and Ridge', item_code: 'GAF-SAR-HR', unit_of_measure: 'BD', unit_cost: 59.00, metadata: { length_per_unit: '25LF/BD' } },
@@ -36,7 +36,7 @@ export const SRS_PRICELIST: SRSPricelistItem[] = [
   { category: 'Hip & Ridge', brand: 'Atlas', product: 'Atlas Pro-Cut Hip and Ridge', item_code: 'ATLAS-PROCUT-HR', unit_of_measure: 'BD', unit_cost: 67.50, metadata: { length_per_unit: '31LF/BD' } },
   { category: 'Hip & Ridge', brand: 'TAMKO', product: 'TAMKO Hip and Ridge', item_code: 'TAMKO-HR', unit_of_measure: 'BD', unit_cost: 67.00, metadata: { length_per_unit: '33.3LF/BD' } },
   { category: 'Starter', brand: 'GAF', product: 'GAF Pro-Start Starter', item_code: 'GAF-PROSTART', unit_of_measure: 'BD', unit_cost: 54.50, metadata: { length_per_unit: '120LF/BD' } },
-  { category: 'Starter', brand: 'Owens Corning', product: 'Owens Corning Starter Strip Plus', item_code: 'OC-STARTER-PLUS', unit_of_measure: 'BD', unit_cost: 60.00, metadata: { length_per_unit: '105LF/BD' } },
+  { category: 'Starter', brand: 'Owens Corning', product: 'Owens Corning Starter Strip Plus', item_code: 'OC-STARTER-PLUS', unit_of_measure: 'BD', unit_cost: 54.00, metadata: { length_per_unit: '105LF/BD' } },
   { category: 'Starter', brand: 'CertainTeed', product: 'CertainTeed SwiftStart Starter', item_code: 'CT-SWIFTSTART', unit_of_measure: 'BD', unit_cost: 55.00, metadata: { length_per_unit: '116LF/BD' } },
   { category: 'Starter', brand: 'IKO', product: 'IKO Starter', item_code: 'IKO-STARTER', unit_of_measure: 'BD', unit_cost: 55.00, metadata: { length_per_unit: '123LF/BD' } },
   { category: 'Starter', brand: 'Atlas', product: 'Atlas Pro-Starter', item_code: 'ATLAS-PROSTARTER', unit_of_measure: 'BD', unit_cost: 68.25, metadata: { length_per_unit: '140LF/BD' } },
@@ -156,9 +156,9 @@ export const SRS_PRICELIST: SRSPricelistItem[] = [
 ];
 
 export const SRS_VENDOR_INFO = {
-  name: 'SRS Distribution / Suncoast Roofers Supply',
+  name: 'SRS Distribution',
   rep_name: 'Hunter Prussel',
   phone: '321-624-4885',
-  email: 'hunter.prussel@suncoastrooferssupply.com',
-  effective_date: '2025-07-24'
+  email: 'hunter.prussel@srsbuildingproducts.com',
+  effective_date: '2026-01-09'
 };
