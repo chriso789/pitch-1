@@ -411,10 +411,8 @@ export const Settings = () => {
         return <CompanyManagement />;
       case "company-activity":
         return <CompanyActivityLog />;
-      case "pricing":
-        return <PriceManagementDashboard />;
-      case "measurements":
-        return <BatchRegenerationPanel />;
+      case "commissions":
+        return <CommissionManagement />;
       case "quality-monitoring":
         return <MeasurementQualityDashboard />;
       case "platform-admin":
