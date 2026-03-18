@@ -388,13 +388,32 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                       Overhead ({formatPercent(overheadRate)})
                     </span>
                     <span className="text-right text-muted-foreground">{formatCurrency(overheadAmount)}</span>
-                    <span className={cn("text-right font-medium", hasActualOverhead ? "text-foreground" : "text-muted-foreground")}>
-                      {hasActualOverhead ? formatCurrency(actualOverheadCost) : '-'}
-                    </span>
-                    <span className="text-right">
-                      <VarianceIndicator variance={overheadVariance} />
-                    </span>
+                    <span className="text-right text-muted-foreground">-</span>
+                    <span className="text-right"><span className="text-muted-foreground">-</span></span>
                   </div>
+
+                  {/* Other Charges Row */}
+                  <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
+                    <span className="flex items-center gap-1">
+                      <Receipt className="h-3 w-3 text-amber-500" />
+                      Other Charges
+                    </span>
+                    <span className="text-right text-muted-foreground">-</span>
+                    <span className={cn("text-right font-medium", hasOtherCharges ? "text-foreground" : "text-muted-foreground")}>
+                      {hasOtherCharges ? formatCurrency(otherChargesTotal) : '-'}
+                    </span>
+                    <span className="text-right"><span className="text-muted-foreground">-</span></span>
+                  </div>
+
+                  {/* Other charges breakdown */}
+                  {hasOtherCharges && otherChargesInvoices.map((inv) => (
+                    <div key={inv.id} className="grid grid-cols-4 gap-2 text-xs py-1 pl-5 text-muted-foreground">
+                      <span className="truncate">{inv.overhead_category || inv.vendor_name || 'Charge'}</span>
+                      <span className="text-right">-</span>
+                      <span className="text-right">{formatCurrency(inv.invoice_amount)}</span>
+                      <span className="text-right">-</span>
+                    </div>
+                  ))}
                 </div>
 
                 <Separator />
