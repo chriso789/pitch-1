@@ -297,16 +297,57 @@ export const Settings = () => {
             </TabsContent>
           </Tabs>
         );
+      case "products-pricing":
       case "materials":
-        return <MaterialCatalogManager />;
       case "estimates":
-        return <EstimateTemplateList />;
-      case "commissions":
-        return <CommissionManagement />;
       case "suppliers":
-        return <SupplierManagement />;
       case "products":
-        return <ProductCatalogManager />;
+      case "pricing":
+      case "measurements":
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">Products & Pricing</h2>
+              <p className="text-muted-foreground">
+                Manage materials, estimates, suppliers, products, pricing & measurements
+              </p>
+            </div>
+            <Tabs value={productSubTab} onValueChange={setProductSubTab} className="w-full">
+              <TabsList className="flex flex-nowrap overflow-x-auto h-auto">
+                <TabsTrigger value="materials" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Layers className="h-4 w-4" />
+                  Materials
+                </TabsTrigger>
+                <TabsTrigger value="estimates" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.FileText className="h-4 w-4" />
+                  Estimate Templates
+                </TabsTrigger>
+                <TabsTrigger value="suppliers" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Truck className="h-4 w-4" />
+                  Suppliers
+                </TabsTrigger>
+                <TabsTrigger value="products" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Package className="h-4 w-4" />
+                  Products
+                </TabsTrigger>
+                <TabsTrigger value="pricing" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.DollarSign className="h-4 w-4" />
+                  Pricing
+                </TabsTrigger>
+                <TabsTrigger value="measurements" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Ruler className="h-4 w-4" />
+                  Measurements
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="materials"><MaterialCatalogManager /></TabsContent>
+              <TabsContent value="estimates"><EstimateTemplateList /></TabsContent>
+              <TabsContent value="suppliers"><SupplierManagement /></TabsContent>
+              <TabsContent value="products"><ProductCatalogManager /></TabsContent>
+              <TabsContent value="pricing"><PriceManagementDashboard /></TabsContent>
+              <TabsContent value="measurements"><BatchRegenerationPanel /></TabsContent>
+            </Tabs>
+          </div>
+        );
       case "company":
         return (
           <div className="space-y-6">
