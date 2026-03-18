@@ -10,6 +10,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { toast } from 'sonner';
+import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 
 interface OverheadTabProps {
   pipelineEntryId: string;
