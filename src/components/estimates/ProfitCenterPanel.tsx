@@ -529,9 +529,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   <span className="font-medium">Gross Profit</span>
                   <span className={cn(
                     "font-semibold text-lg",
-                    netProfit >= 0 ? "text-green-600" : "text-red-600"
+                    grossProfit >= 0 ? "text-green-600" : "text-red-600"
                   )}>
-                    {formatCurrency(netProfit)}
+                    {formatCurrency(grossProfit)}
                   </span>
                 </div>
 
