@@ -1154,7 +1154,7 @@ const LeadDetails = () => {
 
       {/* Project Photo Documentation - shown when lead is a project */}
       {lead && ['project', 'completed'].includes(lead.status) && id && (
-        <ProjectPhotoSteps leadId={id} contactId={lead.contact_id || undefined} />
+        <ProjectPhotoSteps leadId={id} contactId={lead.contact?.id} />
       )}
 
       {/* Communication, Photos & Activity - Compact Tabs */}
