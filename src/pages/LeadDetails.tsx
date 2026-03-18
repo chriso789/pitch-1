@@ -708,18 +708,7 @@ const LeadDetails = () => {
         );
       case 'overhead':
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Overhead & Administrative</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <p className="text-muted-foreground mb-4">Overhead calculated as percentage of selling price</p>
-                <p className="text-sm text-muted-foreground">Includes: Insurance, Office, Admin, Equipment</p>
-              </div>
-            </CardContent>
-          </Card>
+          <OverheadTab pipelineEntryId={id!} />
         );
       case 'profit':
         return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} />;
