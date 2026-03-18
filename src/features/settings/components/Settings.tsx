@@ -209,13 +209,37 @@ export const Settings = () => {
   const groupedTabs = React.useMemo(() => {
     const groups: Record<string, SettingsTab[]> = {};
     
+    // Track if any product tab exists so we can add a single synthetic entry
+    let hasProductTab = false;
+    
     tabConfig.forEach(tab => {
+      if (PRODUCT_TAB_KEYS.includes(tab.tab_key)) {
+        hasProductTab = true;
+        return; // skip individual product tabs
+      }
       const category = TAB_TO_CATEGORY[tab.tab_key] || "general";
       if (!groups[category]) {
         groups[category] = [];
       }
       groups[category].push(tab);
     });
+
+    // Add single "Products & Pricing" entry
+    if (hasProductTab) {
+      if (!groups["products"]) {
+        groups["products"] = [];
+      }
+      groups["products"].unshift({
+        id: "products-pricing-synthetic",
+        tab_key: "products-pricing",
+        label: "Products & Pricing",
+        description: "Materials, estimates, suppliers, products, pricing & measurements",
+        icon_name: "Package",
+        order_index: 0,
+        is_active: true,
+        required_role: null,
+      });
+    }
 
     return Object.entries(TAB_CATEGORIES)
       .filter(([key]) => groups[key]?.length > 0)
