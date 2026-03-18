@@ -60,6 +60,7 @@ import { InternalNotesSection } from '@/components/lead-details/InternalNotesSec
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { EditProjectDetailsDialog } from '@/components/lead-details/EditProjectDetailsDialog';
 import { InspectionWalkthrough } from '@/components/inspection/InspectionWalkthrough';
+import { ProjectPhotoSteps } from '@/components/lead-details/ProjectPhotoSteps';
 import { InspectionHistory } from '@/components/inspection/InspectionHistory';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -555,9 +556,81 @@ const LeadDetails = () => {
 
       if (error) throw error;
 
+      // Auto-populate budget from selected estimate
+      try {
+        const { data: entry } = await supabase
+          .from('pipeline_entries')
+          .select('metadata, tenant_id')
+          .eq('id', id)
+          .single();
+
+        const selectedEstimateId = (entry?.metadata as any)?.selected_estimate_id;
+        if (selectedEstimateId && entry?.tenant_id) {
+          const { data: estimate } = await supabase
+            .from('enhanced_estimates')
+            .select('line_items, material_cost, labor_cost, overhead_amount')
+            .eq('id', selectedEstimateId)
+            .single();
+
+          if (estimate) {
+            const lineItems = Array.isArray(estimate.line_items) ? estimate.line_items as any[] : [];
+
+            if (lineItems.length > 0) {
+              const budgetItems = lineItems.map((li: any) => ({
+                project_id: id!,
+                tenant_id: entry.tenant_id,
+                item_name: li.description || li.name || 'Line Item',
+                category: (li.type === 'Labor' || li.category === 'Labor') ? 'Labor' : 'Material',
+                budgeted_quantity: li.quantity || 1,
+                budgeted_unit_cost: li.unit_price || li.unitPrice || 0,
+                budgeted_total_cost: (li.quantity || 1) * (li.unit_price || li.unitPrice || 0),
+              }));
+
+              await supabase.from('project_budget_items').insert(budgetItems);
+            } else {
+              // Fallback: create summary-level items
+              const summaryItems = [];
+              if (estimate.material_cost) {
+                summaryItems.push({
+                  project_id: id!,
+                  tenant_id: entry.tenant_id,
+                  item_name: 'Materials (from estimate)',
+                  category: 'Material',
+                  budgeted_total_cost: Number(estimate.material_cost),
+                });
+              }
+              if (estimate.labor_cost) {
+                summaryItems.push({
+                  project_id: id!,
+                  tenant_id: entry.tenant_id,
+                  item_name: 'Labor (from estimate)',
+                  category: 'Labor',
+                  budgeted_total_cost: Number(estimate.labor_cost),
+                });
+              }
+              if (estimate.overhead_amount) {
+                summaryItems.push({
+                  project_id: id!,
+                  tenant_id: entry.tenant_id,
+                  item_name: 'Overhead (from estimate)',
+                  category: 'Overhead',
+                  budgeted_total_cost: Number(estimate.overhead_amount),
+                });
+              }
+              if (summaryItems.length > 0) {
+                await supabase.from('project_budget_items').insert(summaryItems);
+              }
+            }
+          }
+        }
+      } catch (budgetError) {
+        console.error('Error seeding budget from estimate:', budgetError);
+        // Non-blocking — project was still approved
+      }
+
       toast({
         title: 'Lead Approved!',
-        description: 'This lead has been approved and converted to a project.',
+        description: 'This lead has been approved and converted to a project. Budget seeded from estimate.',
       });
 
       // Navigate to the new project details
@@ -1077,6 +1150,11 @@ const LeadDetails = () => {
             />
           </CardContent>
         </Card>
+      )}
+
+      {/* Project Photo Documentation - shown when lead is a project */}
+      {lead && ['project', 'completed'].includes(lead.status) && id && (
+        <ProjectPhotoSteps leadId={id} contactId={lead.contact?.id} />
       )}
 
       {/* Communication, Photos & Activity - Compact Tabs */}
