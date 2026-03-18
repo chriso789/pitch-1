@@ -291,9 +291,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'overhead',
       label: 'Overhead',
       icon: Settings,
-      value: formatCurrency(calculateRepOverhead()),
-      hint: `${salesRepOverheadRate}%`,
-      description: 'Overhead and administrative costs'
+      value: formatCurrency(calculateRepOverhead() + otherChargesTotal),
+      hint: otherChargesTotal > 0 ? `${salesRepOverheadRate}% + charges` : `${salesRepOverheadRate}%`,
+      description: 'Overhead and other charges'
     },
     {
       id: 'profit',
