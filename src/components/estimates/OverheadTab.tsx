@@ -84,15 +84,17 @@ export const OverheadTab: React.FC<OverheadTabProps> = ({ pipelineEntryId }) => 
   // Add dump fee as overhead invoice
   const addDumpFeeMutation = useMutation({
     mutationFn: async () => {
+      if (!activeTenantId) throw new Error('No tenant');
       const { error } = await supabase
         .from('project_cost_invoices')
         .insert({
           pipeline_entry_id: pipelineEntryId,
           invoice_type: 'overhead',
-          overhead_category: 'Dump Fee',
           vendor_name: 'Dump Fee',
+          notes: `Dump Fee - ${dumpCount} dump(s) @ ${formatCurrency(dumpPrice)} each`,
           invoice_amount: dumpTotal,
           status: 'approved',
+          tenant_id: activeTenantId,
         });
       if (error) throw error;
     },
