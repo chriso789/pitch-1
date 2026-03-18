@@ -548,13 +548,13 @@ const Dashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="pt-0">
-          <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2 md:gap-4">
+          <div className="flex flex-wrap gap-2 md:gap-3">
             {dashboardPipelineData.map((stage, index) => (
-              <div key={index} className="text-center">
-                <div className={`${stage.color} rounded-lg p-2 md:p-4 mb-1 md:mb-2`}>
-                  <div className="text-xl md:text-3xl font-bold text-white">{stage.count}</div>
+              <div key={index} className="text-center min-w-[80px] flex-1">
+                <div className={`${stage.color} rounded-lg p-2 md:p-3 mb-1`}>
+                  <div className="text-lg md:text-2xl font-bold text-white">{stage.count}</div>
                 </div>
-                <div className="text-xs md:text-sm font-medium text-foreground truncate">{stage.status}</div>
+                <div className="text-xs font-medium text-foreground truncate">{stage.status}</div>
               </div>
             ))}
           </div>

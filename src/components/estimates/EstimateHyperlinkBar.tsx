@@ -103,6 +103,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const actualLaborCost = actualInvoices
     ?.filter(inv => inv.invoice_type === 'labor')
     .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
+  const otherChargesTotal = actualInvoices
+    ?.filter(inv => inv.invoice_type === 'overhead')
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
   const hasActualMaterials = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
 
@@ -288,9 +291,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'overhead',
       label: 'Overhead',
       icon: Settings,
-      value: formatCurrency(calculateRepOverhead()),
-      hint: `${salesRepOverheadRate}%`,
-      description: 'Overhead and administrative costs'
+      value: formatCurrency(calculateRepOverhead() + otherChargesTotal),
+      hint: otherChargesTotal > 0 ? `${salesRepOverheadRate}% + charges` : `${salesRepOverheadRate}%`,
+      description: 'Overhead and other charges'
     },
     {
       id: 'profit',
@@ -302,7 +305,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
           const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
           const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
           const salePrice = hyperlinkData.sale_price;
-          const overhead = calculateRepOverhead();
+          const overhead = calculateRepOverhead() + otherChargesTotal;
           const actualProfit = salePrice - effectiveMaterial - effectiveLabor - overhead;
           const actualMargin = salePrice > 0 ? (actualProfit / salePrice) * 100 : 0;
           return `${Math.round(actualMargin)}%`;

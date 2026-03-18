@@ -35,7 +35,7 @@ interface InvoiceData {
   invoice_type: 'material' | 'labor' | 'overhead';
   vendor_name: string | null;
   crew_name: string | null;
-  overhead_category?: string | null;
+  notes?: string | null;
   invoice_number: string | null;
   invoice_amount: number;
   invoice_date: string | null;
@@ -166,13 +166,16 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     .filter(inv => inv.invoice_type === 'labor')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
   
-  const actualOverheadCost = (invoices || [])
+  // Other charges = overhead invoices (permits, dumps, etc.) — additive on top of percentage overhead
+  const otherChargesTotal = (invoices || [])
     .filter(inv => inv.invoice_type === 'overhead')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
 
+  const otherChargesInvoices = (invoices || []).filter(inv => inv.invoice_type === 'overhead');
+  const hasOtherCharges = otherChargesTotal > 0;
+
   const hasActualMaterial = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
-  const hasActualOverhead = actualOverheadCost > 0;
   
   const effectiveMaterialCost = hasActualMaterial ? actualMaterialCost : originalMaterialCost;
   const effectiveLaborCost = hasActualLabor ? actualLaborCost : originalLaborCost;
@@ -183,9 +186,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const salesTaxAmount = (estimateData as any)?.sales_tax_amount || 0;
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
-  const effectiveOverheadCost = hasActualOverhead ? actualOverheadCost : overheadAmount;
-  const overheadVariance = hasActualOverhead ? actualOverheadCost - overheadAmount : 0;
-  const totalCost = effectiveMaterialCost + effectiveLaborCost + effectiveOverheadCost;
+  // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
+  const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + otherChargesTotal;
   const grossProfit = sellingPrice - totalCost;
   const repCommission = grossProfit * (commissionRate / 100);
   const companyNet = grossProfit - repCommission;
@@ -193,7 +195,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
-  const overheadInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'overhead').length;
+  const overheadInvoiceCount = otherChargesInvoices.length;
 
   const hasValidData = sellingPrice > 0 && (originalMaterialCost > 0 || originalLaborCost > 0);
 
@@ -235,7 +237,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   // Determine tab count based on whether projectId is present
   const isProject = !!projectId;
-  const tabCount = isProject ? 5 : 3;
+  const tabCount = isProject ? 4 : 3;
 
   return (
     <Card className={cn("border-primary/20", className)}>
@@ -313,10 +315,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <BarChart3 className="h-3 w-3 mr-1" />
                     Budget
                   </TabsTrigger>
-                  <TabsTrigger value="cost-verification" className="text-xs flex-shrink-0">
-                    <ClipboardCheck className="h-3 w-3 mr-1" />
-                    Cost Verification
-                  </TabsTrigger>
                 </>
               )}
             </TabsList>
@@ -386,13 +384,32 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                       Overhead ({formatPercent(overheadRate)})
                     </span>
                     <span className="text-right text-muted-foreground">{formatCurrency(overheadAmount)}</span>
-                    <span className={cn("text-right font-medium", hasActualOverhead ? "text-foreground" : "text-muted-foreground")}>
-                      {hasActualOverhead ? formatCurrency(actualOverheadCost) : '-'}
-                    </span>
-                    <span className="text-right">
-                      <VarianceIndicator variance={overheadVariance} />
-                    </span>
+                    <span className="text-right text-muted-foreground">-</span>
+                    <span className="text-right"><span className="text-muted-foreground">-</span></span>
                   </div>
+
+                  {/* Other Charges Row */}
+                  <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
+                    <span className="flex items-center gap-1">
+                      <Receipt className="h-3 w-3 text-amber-500" />
+                      Other Charges
+                    </span>
+                    <span className="text-right text-muted-foreground">-</span>
+                    <span className={cn("text-right font-medium", hasOtherCharges ? "text-foreground" : "text-muted-foreground")}>
+                      {hasOtherCharges ? formatCurrency(otherChargesTotal) : '-'}
+                    </span>
+                    <span className="text-right"><span className="text-muted-foreground">-</span></span>
+                  </div>
+
+                  {/* Other charges breakdown */}
+                  {hasOtherCharges && otherChargesInvoices.map((inv) => (
+                    <div key={inv.id} className="grid grid-cols-4 gap-2 text-xs py-1 pl-5 text-muted-foreground">
+                      <span className="truncate">{inv.vendor_name || inv.notes || 'Charge'}</span>
+                      <span className="text-right">-</span>
+                      <span className="text-right">{formatCurrency(inv.invoice_amount)}</span>
+                      <span className="text-right">-</span>
+                    </div>
+                  ))}
                 </div>
 
                 <Separator />
@@ -468,7 +485,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                         ) : (
                           <Receipt className="h-3 w-3 text-purple-500" />
                         )}
-                        <span>{invoice.vendor_name || invoice.crew_name || invoice.overhead_category || 'Unknown'}</span>
+                        <span>{invoice.vendor_name || invoice.crew_name || invoice.notes || 'Unknown'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
@@ -520,6 +537,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <span>Company Overhead ({overheadRate}%)</span>
                     <span className="text-red-600">-{formatCurrency(overheadAmount)}</span>
                   </div>
+                  {hasOtherCharges && (
+                    <div className="flex justify-between items-center py-1 text-muted-foreground">
+                      <span>Other Charges</span>
+                      <span className="text-red-600">-{formatCurrency(otherChargesTotal)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
@@ -572,13 +595,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             </TabsContent>
           )}
 
-          {/* Cost Verification Tab - Project only */}
-          {isProject && (
-            <TabsContent value="cost-verification" className="space-y-4 mt-0">
-              <CostReconciliationPanel projectId={projectId!} />
-              <InvoiceUploadCard projectId={projectId!} invoiceType="material" />
-            </TabsContent>
-          )}
         </Tabs>
       </CardContent>
     </Card>
