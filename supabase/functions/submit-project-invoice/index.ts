@@ -112,7 +112,9 @@ Deno.serve(async (req) => {
 
     // Create document record if a file was attached (so it shows in Documents tab)
     if (document_url) {
-      const docType = invoice_type === 'material' ? 'invoice_material' : 'invoice_labor';
+      const docType = invoice_type === 'material' ? 'invoice_material' 
+        : invoice_type === 'labor' ? 'invoice_labor' 
+        : 'invoice_overhead';
       
       const { data: docRecord, error: docError } = await supabase
         .from('documents')
