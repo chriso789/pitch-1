@@ -244,7 +244,7 @@ serve(async (req: Request) => {
 
     const viewCount = (trackingLink.view_count || 0) + 1;
 
-    await supabase
+    const { error: notifError } = await supabase
       .from("user_notifications")
       .insert({
         tenant_id: trackingLink.tenant_id,
@@ -261,6 +261,10 @@ serve(async (req: Request) => {
           viewer_device: device
         }
       });
+
+    if (notifError) {
+      console.error("Failed to insert quote_viewed notification:", notifError);
+    }
 
     // Send SMS notification to rep on EVERY view
     try {

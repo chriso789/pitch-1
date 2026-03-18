@@ -39,6 +39,7 @@ export default function NotificationsPage() {
     switch (type) {
       case 'lead_hot': return 'Hot Lead';
       case 'estimate_viewed': return 'Estimate Viewed';
+      case 'quote_viewed': return 'Quote Viewed';
       case 'proposal_signed': return 'Proposal Signed';
       case 'appointment_scheduled': return 'Appointment';
       case 'deal_closed': return 'Deal Closed';

@@ -149,6 +149,16 @@ export function RealTimeNotificationProvider({ children }: RealTimeNotificationP
         ), { duration: 6000 });
         break;
 
+      case 'quote_viewed':
+      case 'estimate_viewed':
+        toast.custom(() => (
+          <NotificationToast
+            notification={notification}
+            variant="default"
+          />
+        ), { duration: 6000 });
+        break;
+
       case 'proposal_signed':
         confetti({
           particleCount: 50,

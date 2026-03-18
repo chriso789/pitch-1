@@ -23,6 +23,7 @@ export function NotificationBell() {
       case 'lead_hot':
         return '🔥';
       case 'estimate_viewed':
+      case 'quote_viewed':
         return '👁️';
       case 'proposal_signed':
         return '✍️';

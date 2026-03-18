@@ -40,6 +40,7 @@ export function NotificationToast({
       case 'lead_hot':
         return <TrendingUp className="h-5 w-5 text-orange-500" />;
       case 'estimate_viewed':
+      case 'quote_viewed':
         return <FileText className="h-5 w-5 text-blue-500" />;
       case 'proposal_signed':
         return <FileText className="h-5 w-5 text-green-500" />;
