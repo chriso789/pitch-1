@@ -537,6 +537,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <span>Company Overhead ({overheadRate}%)</span>
                     <span className="text-red-600">-{formatCurrency(overheadAmount)}</span>
                   </div>
+                  {hasOtherCharges && (
+                    <div className="flex justify-between items-center py-1 text-muted-foreground">
+                      <span>Other Charges</span>
+                      <span className="text-red-600">-{formatCurrency(otherChargesTotal)}</span>
+                    </div>
+                  )}
                 </div>
 
                 <Separator />
