@@ -206,7 +206,10 @@ export const Settings = () => {
       }
 
       setTabConfig(filteredTabs);
-      if (filteredTabs.length > 0 && !filteredTabs.find(t => t.tab_key === activeTab)) {
+      const hasProductTabs = filteredTabs.some(t => PRODUCT_TAB_KEYS.includes(t.tab_key));
+      const tabExists = filteredTabs.find(t => t.tab_key === activeTab) || 
+        (activeTab === "products-pricing" && hasProductTabs);
+      if (filteredTabs.length > 0 && !tabExists) {
         setActiveTab(filteredTabs[0].tab_key);
       }
     } catch (error) {
