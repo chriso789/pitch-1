@@ -195,7 +195,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
-  const overheadInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'overhead').length;
+  const overheadInvoiceCount = otherChargesInvoices.length;
 
   const hasValidData = sellingPrice > 0 && (originalMaterialCost > 0 || originalLaborCost > 0);
 
