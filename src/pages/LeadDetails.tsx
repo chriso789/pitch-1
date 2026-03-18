@@ -1152,6 +1152,11 @@ const LeadDetails = () => {
         </Card>
       )}
 
+      {/* Project Photo Documentation - shown when lead is a project */}
+      {lead && ['project', 'completed'].includes(lead.status) && id && (
+        <ProjectPhotoSteps leadId={id} contactId={lead.contact_id || undefined} />
+      )}
+
       {/* Communication, Photos & Activity - Compact Tabs */}
       <Card className="border-muted">
         <Tabs defaultValue="comms" className="w-full">
