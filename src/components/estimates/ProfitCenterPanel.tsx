@@ -379,6 +379,20 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                       <VarianceIndicator variance={hasActualLabor ? laborVariance : 0} />
                     </span>
                   </div>
+
+                  <div className="grid grid-cols-4 gap-2 text-sm py-1.5">
+                    <span className="flex items-center gap-1">
+                      <Calculator className="h-3 w-3 text-purple-500" />
+                      Overhead ({formatPercent(overheadRate)})
+                    </span>
+                    <span className="text-right text-muted-foreground">{formatCurrency(overheadAmount)}</span>
+                    <span className={cn("text-right font-medium", hasActualOverhead ? "text-foreground" : "text-muted-foreground")}>
+                      {hasActualOverhead ? formatCurrency(actualOverheadCost) : '-'}
+                    </span>
+                    <span className="text-right">
+                      <VarianceIndicator variance={overheadVariance} />
+                    </span>
+                  </div>
                 </div>
 
                 <Separator />
