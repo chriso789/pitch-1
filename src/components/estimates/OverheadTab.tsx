@@ -18,6 +18,7 @@ interface OverheadTabProps {
 
 export const OverheadTab: React.FC<OverheadTabProps> = ({ pipelineEntryId }) => {
   const queryClient = useQueryClient();
+  const { activeTenantId } = useActiveTenantId();
   const [dumpPrice, setDumpPrice] = useState(350);
   const [dumpCount, setDumpCount] = useState(1);
 
