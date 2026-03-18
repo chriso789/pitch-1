@@ -127,6 +127,7 @@ export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>("general");
+  const [productSubTab, setProductSubTab] = useState<string>("materials");
   const [activeSubTab, setActiveSubTab] = useState<string>("settings");
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
