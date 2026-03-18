@@ -315,10 +315,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <BarChart3 className="h-3 w-3 mr-1" />
                     Budget
                   </TabsTrigger>
-                  <TabsTrigger value="cost-verification" className="text-xs flex-shrink-0">
-                    <ClipboardCheck className="h-3 w-3 mr-1" />
-                    Cost Verification
-                  </TabsTrigger>
                 </>
               )}
             </TabsList>
