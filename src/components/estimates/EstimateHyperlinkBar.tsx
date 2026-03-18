@@ -80,6 +80,32 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     enabled: !!pipelineEntryId,
   });
 
+  // Fetch actual invoices to overlay on estimated costs
+  const { data: actualInvoices } = useQuery({
+    queryKey: ['pipeline-invoices', pipelineEntryId],
+    queryFn: async () => {
+      // Try by pipeline_entry_id first
+      const { data, error } = await supabase
+        .from('project_cost_invoices')
+        .select('invoice_type, invoice_amount, status')
+        .eq('pipeline_entry_id', pipelineEntryId!)
+        .in('status', ['pending', 'approved', 'verified']);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // Calculate actual costs from invoices
+  const actualMaterialCost = actualInvoices
+    ?.filter(inv => inv.invoice_type === 'material')
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
+  const actualLaborCost = actualInvoices
+    ?.filter(inv => inv.invoice_type === 'labor')
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
+  const hasActualMaterials = actualMaterialCost > 0;
+  const hasActualLabor = actualLaborCost > 0;
+
   // Fetch cost lock status
   const { data: lockStatus } = useQuery({
     queryKey: ['cost-lock-status', pipelineEntryId],
