@@ -237,7 +237,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   // Determine tab count based on whether projectId is present
   const isProject = !!projectId;
-  const tabCount = isProject ? 5 : 3;
+  const tabCount = isProject ? 4 : 3;
 
   return (
     <Card className={cn("border-primary/20", className)}>
