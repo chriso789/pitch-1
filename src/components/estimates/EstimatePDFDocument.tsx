@@ -1084,11 +1084,14 @@ const PhotosPage: React.FC<{ jobPhotos: JobPhoto[]; cols: number; pageIndex: num
   // Adjust image height based on grid density
   const imgHeight = cols === 1 ? 'h-72' : cols === 2 ? 'h-48' : cols === 3 ? 'h-36' : 'h-28';
   
+  const isAerialOnly = jobPhotos.length === 1 && jobPhotos[0].category === 'aerial';
+  const title = isAerialOnly ? 'Aerial View' : 'Project Photos';
+  
   return (
     <div className="space-y-3">
       <h3 className="text-base font-semibold text-gray-900 flex items-center gap-2">
         <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
-        Project Photos{totalPhotoPages > 1 ? ` (${pageIndex + 1}/${totalPhotoPages})` : ''}
+        {title}{totalPhotoPages > 1 ? ` (${pageIndex + 1}/${totalPhotoPages})` : ''}
       </h3>
       <div className={`grid ${gridClass} gap-3`}>
         {jobPhotos.map((photo, index) => (
