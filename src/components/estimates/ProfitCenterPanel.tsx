@@ -166,13 +166,16 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     .filter(inv => inv.invoice_type === 'labor')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
   
-  const actualOverheadCost = (invoices || [])
+  // Other charges = overhead invoices (permits, dumps, etc.) — additive on top of percentage overhead
+  const otherChargesTotal = (invoices || [])
     .filter(inv => inv.invoice_type === 'overhead')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
 
+  const otherChargesInvoices = (invoices || []).filter(inv => inv.invoice_type === 'overhead');
+  const hasOtherCharges = otherChargesTotal > 0;
+
   const hasActualMaterial = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
-  const hasActualOverhead = actualOverheadCost > 0;
   
   const effectiveMaterialCost = hasActualMaterial ? actualMaterialCost : originalMaterialCost;
   const effectiveLaborCost = hasActualLabor ? actualLaborCost : originalLaborCost;
@@ -183,9 +186,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const salesTaxAmount = (estimateData as any)?.sales_tax_amount || 0;
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
-  const effectiveOverheadCost = hasActualOverhead ? actualOverheadCost : overheadAmount;
-  const overheadVariance = hasActualOverhead ? actualOverheadCost - overheadAmount : 0;
-  const totalCost = effectiveMaterialCost + effectiveLaborCost + effectiveOverheadCost;
+  // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
+  const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + otherChargesTotal;
   const grossProfit = sellingPrice - totalCost;
   const repCommission = grossProfit * (commissionRate / 100);
   const companyNet = grossProfit - repCommission;
