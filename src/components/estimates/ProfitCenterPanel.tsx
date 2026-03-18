@@ -404,7 +404,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   {/* Other charges breakdown */}
                   {hasOtherCharges && otherChargesInvoices.map((inv) => (
                     <div key={inv.id} className="grid grid-cols-4 gap-2 text-xs py-1 pl-5 text-muted-foreground">
-                      <span className="truncate">{inv.overhead_category || inv.vendor_name || 'Charge'}</span>
+                      <span className="truncate">{inv.vendor_name || inv.notes || 'Charge'}</span>
                       <span className="text-right">-</span>
                       <span className="text-right">{formatCurrency(inv.invoice_amount)}</span>
                       <span className="text-right">-</span>
