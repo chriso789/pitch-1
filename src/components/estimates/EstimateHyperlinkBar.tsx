@@ -258,22 +258,30 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'materials',
-      label: `Materials: ${formatCurrency(hyperlinkData.materials)}`,
+      label: hasActualMaterials 
+        ? `Materials: ${formatCurrency(actualMaterialCost)} (actual)`
+        : `Materials: ${formatCurrency(hyperlinkData.materials)}`,
       icon: Package,
-      value: formatCurrency(hyperlinkData.materials),
-      hint: lockStatus?.material_cost_locked_at 
-        ? 'Locked ✓' 
-        : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
+      value: formatCurrency(hasActualMaterials ? actualMaterialCost : hyperlinkData.materials),
+      hint: hasActualMaterials 
+        ? `Est: ${formatCurrency(hyperlinkData.materials)}`
+        : lockStatus?.material_cost_locked_at 
+          ? 'Locked ✓' 
+          : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
       description: 'Material costs and specifications'
     },
     {
       id: 'labor',
-      label: `Labor: ${formatCurrency(hyperlinkData.labor)}`,
+      label: hasActualLabor 
+        ? `Labor: ${formatCurrency(actualLaborCost)} (actual)`
+        : `Labor: ${formatCurrency(hyperlinkData.labor)}`,
       icon: Hammer,
-      value: formatCurrency(hyperlinkData.labor),
-      hint: lockStatus?.labor_cost_locked_at 
-        ? 'Locked ✓' 
-        : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
+      value: formatCurrency(hasActualLabor ? actualLaborCost : hyperlinkData.labor),
+      hint: hasActualLabor 
+        ? `Est: ${formatCurrency(hyperlinkData.labor)}`
+        : lockStatus?.labor_cost_locked_at 
+          ? 'Locked ✓' 
+          : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
       description: 'Labor costs per square'
     },
     {
@@ -288,8 +296,20 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'profit',
       label: 'Profit',
       icon: TrendingUp,
-      value: `${Math.round(hyperlinkData.margin_pct || 30)}%`,
-      hint: null,
+      value: (() => {
+        // If we have actual costs, recalculate profit margin
+        if (hasActualMaterials || hasActualLabor) {
+          const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
+          const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
+          const salePrice = hyperlinkData.sale_price;
+          const overhead = calculateRepOverhead();
+          const actualProfit = salePrice - effectiveMaterial - effectiveLabor - overhead;
+          const actualMargin = salePrice > 0 ? (actualProfit / salePrice) * 100 : 0;
+          return `${Math.round(actualMargin)}%`;
+        }
+        return `${Math.round(hyperlinkData.margin_pct || 30)}%`;
+      })(),
+      hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : null,
       description: 'Target gross margin percentage'
     },
     {
