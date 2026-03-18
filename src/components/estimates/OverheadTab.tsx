@@ -226,7 +226,7 @@ export const OverheadTab: React.FC<OverheadTabProps> = ({ pipelineEntryId }) => 
                 <div key={inv.id} className="flex items-center justify-between p-2 bg-muted/50 rounded-md text-sm">
                   <div className="flex items-center gap-2 flex-1 min-w-0">
                     <Receipt className="h-3 w-3 text-muted-foreground shrink-0" />
-                    <span className="truncate">{inv.overhead_category || inv.vendor_name || 'Charge'}</span>
+                    <span className="truncate">{inv.vendor_name || inv.notes || 'Charge'}</span>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-medium">{formatCurrency(inv.invoice_amount)}</span>
