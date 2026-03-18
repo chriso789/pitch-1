@@ -1,54 +1,48 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Fix Mention Notification Links + Backfill Michael Grosso's Notifications
 
-Three issues to address:
+## Problems Found
 
-## 1. Contact Profile Pipeline Area Overflowing
+1. **Email link 404**: The edge function `send-mention-notification` generates `linkPath = /contacts/${contact_id}` (line 87), but the actual route is `/contact/:id` (no "s"). This causes every contact mention email link to 404.
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+2. **Bell is empty**: The `user_notifications` table has zero mention records for Michael Grosso. The edge function has zero logs — it was likely never deployed, so the `supabase.functions.invoke('send-mention-notification')` calls from the frontend silently failed. The notes were saved (9 mentions from Chris O'Brien on March 17) but no notification records were created.
 
-**File: `src/pages/ContactProfile.tsx`**
+## Changes
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+### 1. Fix the link path in the edge function (`supabase/functions/send-mention-notification/index.ts`, line 87)
 
-## 2. Show Who Saved Each Estimate (Under Title)
+Change `/contacts/${contact_id}` → `/contact/${contact_id}` to match the actual route.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+Also fix the `NotificationBell.tsx` click handler (line 50) which already uses `/contact/` — this is correct, no change needed there. But also check `NotificationToast.tsx` line 72 which uses `/contacts/` — fix that too.
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+### 2. Deploy the edge function
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+Redeploy `send-mention-notification` so future mentions actually trigger notifications.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+### 3. Backfill Michael Grosso's notifications via migration
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+Insert 9 `user_notifications` records for each mention from March 17, using the actual note content and contact data already retrieved:
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+- tenant_id: `14de934e-7964-4afd-940a-620d2ace125d`
+- user_id: `f828ec8a-07e9-4d20-a642-a60cb320fede` (Michael Grosso)
+- type: `mention`
+- title: `Chris O'Brien mentioned you`
+- message: `On {ContactName} at {Address}: "{note_content}"`
+- metadata: `{ author_id, contact_id, note_preview }`
+- icon: `💬`
+- is_read: false
+- created_at: original note timestamp
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### 4. Fix NotificationToast.tsx link
+
+Change line 72 from `/contacts/` to `/contact/` to match the route.
+
+## Files Changed
+
+| File | Change |
+|------|--------|
+| `supabase/functions/send-mention-notification/index.ts` | Fix linkPath from `/contacts/` to `/contact/` |
+| `src/components/notifications/NotificationToast.tsx` | Fix navigation path from `/contacts/` to `/contact/` |
+| New migration | Insert 9 backfill notification records for Michael Grosso |
 
