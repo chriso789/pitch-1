@@ -35,7 +35,7 @@ interface InvoiceData {
   invoice_type: 'material' | 'labor' | 'overhead';
   vendor_name: string | null;
   crew_name: string | null;
-  overhead_category?: string | null;
+  notes?: string | null;
   invoice_number: string | null;
   invoice_amount: number;
   invoice_date: string | null;
