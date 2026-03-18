@@ -69,7 +69,7 @@ export function NotificationToast({
     } else if (notification.data?.link) {
       navigate(notification.data.link);
     } else if (notification.data?.contactId) {
-      navigate(`/contacts/${notification.data.contactId}`);
+      navigate(`/contact/${notification.data.contactId}`);
     } else if (notification.data?.projectId) {
       navigate(`/projects/${notification.data.projectId}`);
     }
