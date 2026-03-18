@@ -1,38 +1,54 @@
 
 
-# Enable Job Photos Toggle with Aerial Fallback
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-The "Job Photos" toggle is greyed out when there are no customer photos uploaded. The user wants it to automatically pull an aerial/satellite image of the property when no job photos exist.
+Three issues to address:
 
-## Solution
+## 1. Contact Profile Pipeline Area Overflowing
 
-When `jobPhotos.length === 0`, fetch the aerial image from `roof_measurements` (which stores `google_maps_image_url` and `mapbox_image_url` from the measurement pipeline) using the `contactId` or `pipelineEntryId`. If an aerial exists, enable the toggle and render the aerial as a single "photo" on the Job Photos page.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Changes
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. Fetch aerial image as fallback (`src/components/estimates/EstimatePreviewPanel.tsx`)
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-After the existing `fetchPhotos` effect (lines 178-190), add a second effect:
-- If `jobPhotos.length === 0` and we have a `contactId` or `pipelineEntryId`, query `roof_measurements` for the latest record matching the contact
-- Look up `customer_id` via `pipeline_entries → contacts` to get the contact UUID, then query `roof_measurements` where `customer_id = contactId`
-- Pull `google_maps_image_url` or `mapbox_image_url` (prefer google, fallback to mapbox)
-- If found, set `jobPhotos` to a single synthetic entry: `[{ id: 'aerial', file_url: aerialUrl, description: 'Aerial View', category: 'aerial' }]`
+## 2. Show Who Saved Each Estimate (Under Title)
 
-This automatically enables the toggle since `jobPhotos.length > 0`.
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-### 2. Remove disabled state when aerial is available (same file, line 721)
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-No code change needed — the existing `disabled={jobPhotos.length === 0}` will naturally become false once the aerial fallback populates the array.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-### 3. Update PDF template label (`src/components/estimates/EstimatePDFDocument.tsx`)
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-In the `PhotosPage` component, if the only photo has `category === 'aerial'`, label the page as "Aerial View" instead of "Job Photos" for clarity.
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-## Files Changed
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-| File | Change |
-|------|--------|
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Add aerial image fallback fetch when no job photos exist |
-| `src/components/estimates/EstimatePDFDocument.tsx` | Label aerial photos appropriately on the photos page |
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 

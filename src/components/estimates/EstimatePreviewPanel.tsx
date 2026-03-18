@@ -189,6 +189,32 @@ export function EstimatePreviewPanel({
     fetchPhotos();
   }, [pipelineEntryId, open]);
 
+  // Aerial image fallback: if no job photos, pull from roof_measurements
+  useEffect(() => {
+    if (!open || jobPhotos.length > 0 || !contactId) return;
+
+    const fetchAerial = async () => {
+      const { data } = await supabase
+        .from('roof_measurements')
+        .select('google_maps_image_url, mapbox_image_url')
+        .eq('customer_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      const aerialUrl = data?.google_maps_image_url || data?.mapbox_image_url;
+      if (aerialUrl) {
+        setJobPhotos([{
+          id: 'aerial',
+          file_url: aerialUrl,
+          description: 'Aerial View',
+          category: 'aerial',
+        }]);
+      }
+    };
+    fetchAerial();
+  }, [open, jobPhotos.length, contactId]);
+
   // Filter template attachments to exclude removed ones
   const activeTemplateAttachments = useMemo(() => 
     templateAttachments.filter(a => !removedTemplateIds.has(a.document_id)),
