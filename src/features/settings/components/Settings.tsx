@@ -96,11 +96,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   users: "business",
   commissions: "business",
   quickbooks: "business",
-  materials: "products",
-  products: "products",
-  suppliers: "products",
-  estimates: "products",
-  pricing: "products",
+  "products-pricing": "products",
   "voice-assistant": "communications",
   "ai-agent": "communications",
   "ai-admin": "system",
@@ -119,16 +115,19 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "roof-training": "platform",
   portals: "general",
   reports: "system",
-  measurements: "products",
   companies: "business",
   inspections: "business",
   dialer: "communications",
 };
 
+// Product-related tab keys that get merged into one sidebar entry
+const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements"];
+
 export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>("general");
+  const [productSubTab, setProductSubTab] = useState<string>("materials");
   const [activeSubTab, setActiveSubTab] = useState<string>("settings");
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -145,11 +144,20 @@ export const Settings = () => {
   // Set active tab from URL param or navigation state on mount
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
-    if (tabFromUrl) {
-      setActiveTab(tabFromUrl);
-    } else if (locationState?.activeTab) {
-      setActiveTab(locationState.activeTab);
-      // Clear the state so it doesn't persist on refresh
+    const subFromUrl = searchParams.get('sub');
+    let resolvedTab = tabFromUrl || locationState?.activeTab || null;
+    
+    if (resolvedTab) {
+      // If user navigated to an old product tab key, redirect to consolidated view
+      if (PRODUCT_TAB_KEYS.includes(resolvedTab)) {
+        setProductSubTab(resolvedTab);
+        resolvedTab = "products-pricing";
+      }
+      setActiveTab(resolvedTab);
+      if (subFromUrl) setProductSubTab(subFromUrl);
+    }
+    
+    if (locationState?.activeTab) {
       window.history.replaceState({}, document.title);
     }
   }, [searchParams, locationState?.activeTab]);
@@ -198,7 +206,10 @@ export const Settings = () => {
       }
 
       setTabConfig(filteredTabs);
-      if (filteredTabs.length > 0 && !filteredTabs.find(t => t.tab_key === activeTab)) {
+      const hasProductTabs = filteredTabs.some(t => PRODUCT_TAB_KEYS.includes(t.tab_key));
+      const tabExists = filteredTabs.find(t => t.tab_key === activeTab) || 
+        (activeTab === "products-pricing" && hasProductTabs);
+      if (filteredTabs.length > 0 && !tabExists) {
         setActiveTab(filteredTabs[0].tab_key);
       }
     } catch (error) {
@@ -210,13 +221,37 @@ export const Settings = () => {
   const groupedTabs = React.useMemo(() => {
     const groups: Record<string, SettingsTab[]> = {};
     
+    // Track if any product tab exists so we can add a single synthetic entry
+    let hasProductTab = false;
+    
     tabConfig.forEach(tab => {
+      if (PRODUCT_TAB_KEYS.includes(tab.tab_key)) {
+        hasProductTab = true;
+        return; // skip individual product tabs
+      }
       const category = TAB_TO_CATEGORY[tab.tab_key] || "general";
       if (!groups[category]) {
         groups[category] = [];
       }
       groups[category].push(tab);
     });
+
+    // Add single "Products & Pricing" entry
+    if (hasProductTab) {
+      if (!groups["products"]) {
+        groups["products"] = [];
+      }
+      groups["products"].unshift({
+        id: "products-pricing-synthetic",
+        tab_key: "products-pricing",
+        label: "Products & Pricing",
+        description: "Materials, estimates, suppliers, products, pricing & measurements",
+        icon_name: "Package",
+        order_index: 0,
+        is_active: true,
+        required_role: null,
+      });
+    }
 
     return Object.entries(TAB_CATEGORIES)
       .filter(([key]) => groups[key]?.length > 0)
@@ -274,16 +309,57 @@ export const Settings = () => {
             </TabsContent>
           </Tabs>
         );
+      case "products-pricing":
       case "materials":
-        return <MaterialCatalogManager />;
       case "estimates":
-        return <EstimateTemplateList />;
-      case "commissions":
-        return <CommissionManagement />;
       case "suppliers":
-        return <SupplierManagement />;
       case "products":
-        return <ProductCatalogManager />;
+      case "pricing":
+      case "measurements":
+        return (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">Products & Pricing</h2>
+              <p className="text-muted-foreground">
+                Manage materials, estimates, suppliers, products, pricing & measurements
+              </p>
+            </div>
+            <Tabs value={productSubTab} onValueChange={setProductSubTab} className="w-full">
+              <TabsList className="flex flex-nowrap overflow-x-auto h-auto">
+                <TabsTrigger value="materials" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Layers className="h-4 w-4" />
+                  Materials
+                </TabsTrigger>
+                <TabsTrigger value="estimates" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.FileText className="h-4 w-4" />
+                  Estimate Templates
+                </TabsTrigger>
+                <TabsTrigger value="suppliers" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Truck className="h-4 w-4" />
+                  Suppliers
+                </TabsTrigger>
+                <TabsTrigger value="products" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Package className="h-4 w-4" />
+                  Products
+                </TabsTrigger>
+                <TabsTrigger value="pricing" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.DollarSign className="h-4 w-4" />
+                  Pricing
+                </TabsTrigger>
+                <TabsTrigger value="measurements" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Ruler className="h-4 w-4" />
+                  Measurements
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="materials"><MaterialCatalogManager /></TabsContent>
+              <TabsContent value="estimates"><EstimateTemplateList /></TabsContent>
+              <TabsContent value="suppliers"><SupplierManagement /></TabsContent>
+              <TabsContent value="products"><ProductCatalogManager /></TabsContent>
+              <TabsContent value="pricing"><PriceManagementDashboard /></TabsContent>
+              <TabsContent value="measurements"><BatchRegenerationPanel /></TabsContent>
+            </Tabs>
+          </div>
+        );
       case "company":
         return (
           <div className="space-y-6">
@@ -347,10 +423,8 @@ export const Settings = () => {
         return <CompanyManagement />;
       case "company-activity":
         return <CompanyActivityLog />;
-      case "pricing":
-        return <PriceManagementDashboard />;
-      case "measurements":
-        return <BatchRegenerationPanel />;
+      case "commissions":
+        return <CommissionManagement />;
       case "quality-monitoring":
         return <MeasurementQualityDashboard />;
       case "platform-admin":

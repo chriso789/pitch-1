@@ -1,44 +1,54 @@
 
 
-# Merge "Products & Pricing" into a Single Tab with Sub-Tabs
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Problem
-The Settings sidebar has 5+ separate entries under "Products & Pricing" (Materials, Estimate Templates, Suppliers, Products, Pricing, and Measurements). This creates too many sidebar items.
+Three issues to address:
 
-## Solution
-Consolidate all "Products & Pricing" items into a single sidebar entry that renders sub-tabs internally — the same pattern already used by the "General" tab (which has sub-tabs for General Settings, Pipeline Stages, Contact Statuses, etc.).
+## 1. Contact Profile Pipeline Area Overflowing
 
-## Changes
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-### `src/features/settings/components/Settings.tsx`
+**File: `src/pages/ContactProfile.tsx`**
 
-1. **Remove individual product tab mappings** from `TAB_TO_CATEGORY` — delete entries for `materials`, `products`, `suppliers`, `estimates`, `pricing`, `measurements`. Replace with a single `products-pricing` entry mapped to the `products` category.
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-2. **Add a new case in `renderTabContent()`** for `"products-pricing"` that renders a `<Tabs>` component with sub-tabs:
-   - Materials → `<MaterialCatalogManager />`
-   - Estimate Templates → `<EstimateTemplateList />`
-   - Suppliers → `<SupplierManagement />`
-   - Products → `<ProductCatalogManager />`
-   - Pricing → `<PriceManagementDashboard />`
-   - Measurements → `<BatchRegenerationPanel />` (if role allows)
+## 2. Show Who Saved Each Estimate (Under Title)
 
-3. **Remove the old individual cases** (`case "materials"`, `case "estimates"`, `case "suppliers"`, `case "products"`, `case "pricing"`, `case "measurements"`) since they'll be handled as sub-tabs.
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-4. **Database consideration**: The `settings_tabs` table drives which tabs appear. We need to either:
-   - Add a migration to insert a single `products-pricing` tab and deactivate the individual ones, OR
-   - Handle it in the UI by checking if the active tab is any of those keys and rendering the combined view.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-   The safest approach is to handle it in the UI: map all existing product-related `tab_key` values to the combined component, so no database migration is needed and existing configurations keep working.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-### Implementation detail
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-In `renderTabContent()`, the existing individual cases will all fall through to the same combined sub-tab component. A `productSubTab` state variable will track which sub-tab is active, defaulting to whichever product tab the user clicked in the sidebar. This way, clicking "Materials" in the sidebar still works but shows it as a sub-tab within the unified view.
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-Alternatively (cleaner): collapse all product sidebar entries into one entry by filtering them out in the sidebar rendering and replacing with a single "Products & Pricing" entry. The sub-tab default can be driven by URL params (`?tab=products-pricing&sub=materials`).
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-### Files changed
-
-| File | Change |
-|------|--------|
-| `src/features/settings/components/Settings.tsx` | Merge 6 product cases into one tabbed component; update sidebar grouping to show single entry |
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
