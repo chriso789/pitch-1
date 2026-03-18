@@ -485,7 +485,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                         ) : (
                           <Receipt className="h-3 w-3 text-purple-500" />
                         )}
-                        <span>{invoice.vendor_name || invoice.crew_name || invoice.overhead_category || 'Unknown'}</span>
+                        <span>{invoice.vendor_name || invoice.crew_name || invoice.notes || 'Unknown'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
