@@ -1,54 +1,33 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# Project Photo Stages + Auto-Populate Budget from Estimate
 
-Three issues to address:
+## Two Changes
 
-## 1. Contact Profile Pipeline Area Overflowing
+### 1. Replace Approval Card with Project Photo Upload Steps
+When `lead.status` is `project` or `completed`, show a new **"Project Photo Documentation"** card in the same location where the Approval Requirements card was. It displays three step-like upload buttons:
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+- **Before Photos** (blue) — pre-work documentation
+- **In Progress Photos** (orange) — during construction
+- **Final Photos** (green) — completed work
 
-**File: `src/pages/ContactProfile.tsx`**
+Each button opens the existing photo upload flow (using `usePhotos` hook) with the category pre-set (`before`, `during`, `after`). Show a count badge of photos already uploaded per category. Uses a stepper-like visual with circles/connectors showing progress through the build process.
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+**File**: New component `src/components/lead-details/ProjectPhotoSteps.tsx`
+**File**: `src/pages/LeadDetails.tsx` — add the new card in an `else` branch where the approval card is hidden (lines 1061-1080), rendering `ProjectPhotoSteps` when status is `project` or `completed`.
 
-## 2. Show Who Saved Each Estimate (Under Title)
+### 2. Auto-Populate Budget from Selected Estimate on Project Approval
+When `handleApproveToProject` runs successfully (line 540-573), after updating the status to `project`, seed the `project_budget_items` table with line items from the selected estimate.
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+**Logic in `handleApproveToProject`**:
+1. Read `selected_estimate_id` from `pipeline_entries.metadata`
+2. Fetch the `enhanced_estimates` record (material_cost, labor_cost, overhead_amount, line_items JSONB)
+3. Parse `line_items` array and insert each as a `project_budget_items` row with `category` mapped from the line item type (Material/Labor), `item_name`, `budgeted_quantity`, `budgeted_unit_cost`, and computed `budgeted_total_cost`
+4. If no line_items exist, create summary-level budget items for Materials and Labor totals
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+**File**: `src/pages/LeadDetails.tsx` — extend `handleApproveToProject` function.
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
-
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
-
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
-
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
-
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+### Summary of Changes
+1. **`src/components/lead-details/ProjectPhotoSteps.tsx`** — New component with 3-step photo upload buttons (Before / In Progress / Final) using existing `usePhotos` hook
+2. **`src/pages/LeadDetails.tsx`** — Show `ProjectPhotoSteps` when status is `project`/`completed`; seed budget items from estimate on approval
 
