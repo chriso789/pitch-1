@@ -84,7 +84,7 @@ serve(async (req: Request) => {
       leadAddress = contact?.address_street 
         ? `${contact.address_street}, ${contact.address_city || ''}`
         : '';
-      linkPath = `/contacts/${contact_id}`;
+      linkPath = `/contact/${contact_id}`;
     }
 
     // Get mentioned users
