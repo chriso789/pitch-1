@@ -268,7 +268,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
       {/* Compact Financial Stats Row - Only for projects */}
       {isProject && hasValidData && (
         <div className="px-6 pb-2">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div className="bg-muted/50 rounded-lg p-2.5">
               <p className="text-xs text-muted-foreground">Contract Value</p>
               <p className="text-sm font-bold">{formatCurrency(sellingPrice)}</p>
@@ -279,12 +279,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             </div>
             <div className="bg-muted/50 rounded-lg p-2.5">
               <p className="text-xs text-muted-foreground">Gross Profit</p>
-              <p className={cn("text-sm font-bold", grossProfit >= 0 ? "text-green-600" : "text-red-600")}>
-                {formatCurrency(grossProfit)}
-              </p>
-            </div>
-            <div className="bg-muted/50 rounded-lg p-2.5">
-              <p className="text-xs text-muted-foreground">Net Profit</p>
               <p className={cn("text-sm font-bold", netProfit >= 0 ? "text-green-600" : "text-red-600")}>
                 {formatCurrency(netProfit)}
               </p>
@@ -516,14 +510,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <Separator />
 
                 {/* Gross Profit */}
-                <div className="flex justify-between items-center py-1">
-                  <span>Gross Profit</span>
-                  <span className="font-medium">{formatCurrency(grossProfit)}</span>
-                </div>
-
-                {/* Net Profit */}
                 <div className="flex justify-between items-center py-2 bg-accent/30 rounded-md px-3 -mx-3">
-                  <span className="font-medium">Net Profit</span>
+                  <span className="font-medium">Gross Profit</span>
                   <span className={cn(
                     "font-semibold text-lg",
                     netProfit >= 0 ? "text-green-600" : "text-red-600"
@@ -544,10 +532,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                     <span className="font-bold text-xl text-primary">
                       {formatCurrency(repCommission)}
                     </span>
-                  </div>
-                  <div className="flex justify-between items-center py-1 text-muted-foreground">
-                    <span>Company Net</span>
-                    <span className="font-medium">{formatCurrency(companyNet)}</span>
                   </div>
                 </div>
 

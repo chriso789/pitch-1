@@ -258,9 +258,9 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
 
             <Separator />
 
-            {/* Net Profit */}
+            {/* Gross Profit */}
             <div className="flex justify-between items-center py-2 bg-accent/30 rounded-md px-3 -mx-3">
-              <span className="font-medium">Net Profit</span>
+              <span className="font-medium">Gross Profit</span>
               <span className={cn(
                 "font-semibold text-lg",
                 netProfit >= 0 ? "text-green-600" : "text-red-600"
@@ -315,10 +315,6 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
                 </div>
               )}
 
-              <div className="flex justify-between items-center py-1 text-muted-foreground">
-                <span>Company Net</span>
-                <span className="font-medium">{formatCurrency(companyNet)}</span>
-              </div>
             </div>
 
             {/* Info Note */}
