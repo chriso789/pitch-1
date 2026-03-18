@@ -144,11 +144,20 @@ export const Settings = () => {
   // Set active tab from URL param or navigation state on mount
   useEffect(() => {
     const tabFromUrl = searchParams.get('tab');
-    if (tabFromUrl) {
-      setActiveTab(tabFromUrl);
-    } else if (locationState?.activeTab) {
-      setActiveTab(locationState.activeTab);
-      // Clear the state so it doesn't persist on refresh
+    const subFromUrl = searchParams.get('sub');
+    let resolvedTab = tabFromUrl || locationState?.activeTab || null;
+    
+    if (resolvedTab) {
+      // If user navigated to an old product tab key, redirect to consolidated view
+      if (PRODUCT_TAB_KEYS.includes(resolvedTab)) {
+        setProductSubTab(resolvedTab);
+        resolvedTab = "products-pricing";
+      }
+      setActiveTab(resolvedTab);
+      if (subFromUrl) setProductSubTab(subFromUrl);
+    }
+    
+    if (locationState?.activeTab) {
       window.history.replaceState({}, document.title);
     }
   }, [searchParams, locationState?.activeTab]);
