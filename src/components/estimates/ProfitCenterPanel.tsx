@@ -595,13 +595,6 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             </TabsContent>
           )}
 
-          {/* Cost Verification Tab - Project only */}
-          {isProject && (
-            <TabsContent value="cost-verification" className="space-y-4 mt-0">
-              <CostReconciliationPanel projectId={projectId!} />
-              <InvoiceUploadCard projectId={projectId!} invoiceType="material" />
-            </TabsContent>
-          )}
         </Tabs>
       </CardContent>
     </Card>
