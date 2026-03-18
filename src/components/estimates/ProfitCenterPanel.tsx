@@ -182,13 +182,14 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const salesTaxAmount = (estimateData as any)?.sales_tax_amount || 0;
   const preTaxSellingPrice = sellingPrice - salesTaxAmount;
-  const totalCost = effectiveMaterialCost + effectiveLaborCost + actualOverheadCost;
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
+  const effectiveOverheadCost = hasActualOverhead ? actualOverheadCost : overheadAmount;
+  const overheadVariance = hasActualOverhead ? actualOverheadCost - overheadAmount : 0;
+  const totalCost = effectiveMaterialCost + effectiveLaborCost + effectiveOverheadCost;
   const grossProfit = sellingPrice - totalCost;
-  const netProfit = grossProfit - overheadAmount;
-  const repCommission = netProfit * (commissionRate / 100);
-  const companyNet = netProfit - repCommission;
-  const profitMargin = sellingPrice > 0 ? (netProfit / sellingPrice) * 100 : 0;
+  const repCommission = grossProfit * (commissionRate / 100);
+  const companyNet = grossProfit - repCommission;
+  const profitMargin = sellingPrice > 0 ? (grossProfit / sellingPrice) * 100 : 0;
 
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
