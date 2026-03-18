@@ -1,50 +1,54 @@
 
 
-# Fix: Projects Should Appear in Search Results
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Investigation Findings
+Three issues to address:
 
-1. **Murphy's pipeline entry is soft-deleted** (`is_deleted = true`) with status `'lead'` — there is no active project for Murphy. The entry was deleted at some point, which is why it doesn't appear in search.
+## 1. Contact Profile Pipeline Area Overflowing
 
-2. **Separate bug**: The `search_contacts_and_jobs` RPC function never returns `entity_type = 'job'`. All pipeline entries are returned as `'lead'` regardless of their status. The CLJSearchBar UI has a "Jobs" group that will never populate.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-## Changes
+**File: `src/pages/ContactProfile.tsx`**
 
-### 1. Update `search_contacts_and_jobs` RPC to categorize jobs separately
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-Split the LEADS union into two: one for actual leads (non-project statuses) and one for jobs (status = 'project'). The job entries will return `entity_type = 'job'` so they appear in the Jobs group in the search dropdown.
+## 2. Show Who Saved Each Estimate (Under Title)
 
-```sql
--- Replace the single LEADS block with two blocks:
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
--- LEADS (non-project pipeline entries)
-SELECT 'lead'::text AS entity_type, ...
-FROM pipeline_entries pe
-WHERE ... AND pe.status != 'project'
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-UNION ALL
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
--- JOBS (pipeline entries with status = 'project')
-SELECT 'job'::text AS entity_type, ...
-FROM pipeline_entries pe
-WHERE ... AND pe.status = 'project'
-```
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-### 2. Also search `lead_name` field
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-The RPC doesn't currently search the `lead_name` column on `pipeline_entries`. Add it to the search conditions so entries with a custom lead name are findable.
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-### 3. Regarding Murphy specifically
-
-Murphy's pipeline entry is **soft-deleted**. Options:
-- Restore it (set `is_deleted = false`) if the deletion was unintentional
-- Create a new lead for Murphy
-
-This is a data issue, not a code bug. I'll note this for you but the code fix above ensures future projects appear correctly in search.
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| New migration SQL | Update `search_contacts_and_jobs` RPC to split leads vs jobs and search `lead_name` |
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
