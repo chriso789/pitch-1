@@ -96,11 +96,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   users: "business",
   commissions: "business",
   quickbooks: "business",
-  materials: "products",
-  products: "products",
-  suppliers: "products",
-  estimates: "products",
-  pricing: "products",
+  "products-pricing": "products",
   "voice-assistant": "communications",
   "ai-agent": "communications",
   "ai-admin": "system",
@@ -119,11 +115,13 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "roof-training": "platform",
   portals: "general",
   reports: "system",
-  measurements: "products",
   companies: "business",
   inspections: "business",
   dialer: "communications",
 };
+
+// Product-related tab keys that get merged into one sidebar entry
+const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements"];
 
 export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
