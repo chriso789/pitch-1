@@ -1,54 +1,58 @@
 
 
-# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
+# AI Invoice Scraping + Live Profit Margin Updates
 
-Three issues to address:
+## Overview
+Two changes: (1) Auto-extract invoice data (number, date, total) from uploaded PDFs/images using AI vision, and (2) ensure the Profit Center and hyperlink bar update in real-time as invoices are uploaded.
 
-## 1. Contact Profile Pipeline Area Overflowing
+## 1. New Edge Function: `parse-invoice-document`
 
-The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
+**File**: `supabase/functions/parse-invoice-document/index.ts`
 
-**File: `src/pages/ContactProfile.tsx`**
+Uses LOVABLE_API_KEY + Gemini vision to extract structured data from an uploaded invoice image/PDF:
+- Invoice number
+- Invoice date
+- Total amount
+- Vendor name (bonus)
 
-- **Line 252**: Add `overflow-hidden` to the container div
-- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
-- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
-- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
+The function accepts a `document_url` (public URL of the uploaded file), sends it to the AI gateway with a structured extraction prompt, and returns the parsed fields. Uses tool-calling for structured output (invoice_number, invoice_date, invoice_amount, vendor_name).
 
-## 2. Show Who Saved Each Estimate (Under Title)
+## 2. Update `InvoiceUploadCard` Component
 
-The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
+**File**: `src/components/production/InvoiceUploadCard.tsx`
 
-**File: `src/components/estimates/SavedEstimatesList.tsx`**
+After a file is uploaded to storage (line 82-90), call the new `parse-invoice-document` edge function with the public URL. On success, auto-fill the form fields:
+- `invoice_number` → parsed invoice number
+- `invoice_date` → parsed date (formatted to YYYY-MM-DD)
+- `invoice_amount` → parsed total
+- `vendor_name` → parsed vendor name
 
-- **Query (~line 107-124)**: Add a join to fetch the creator's name:
-  ```
-  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
-  ```
-- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
-- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
-  ```ts
-  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
-  ```
-- **Display (~line 416, after the status badge row)**: Add a subtle line:
-  ```tsx
-  {estimate.created_by_name && (
-    <span className="text-xs text-muted-foreground">
-      Created by {estimate.created_by_name}
-    </span>
-  )}
-  ```
+Show a loading state ("Scanning invoice...") while AI processes. User can still manually override any field before submitting.
 
-## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
+## 3. Live Profit Margin Updates (Already Working)
 
-The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
+Looking at the existing code, the `ProfitCenterPanel` already:
+- Fetches invoices via `useQuery(['pipeline-invoices', pipelineEntryId])`
+- Calculates `effectiveMaterialCost` and `effectiveLaborCost` from actual invoices
+- Computes `profitMargin` using effective costs
+- Shows variance indicators
 
-**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
+The `handleInvoiceSuccess` callback already calls `queryClient.invalidateQueries` which triggers re-fetch. The hyperlink bar uses a separate query key (`hyperlink-data`) but the profit center already recalculates on invoice changes.
 
-**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
-- Change the error message at line 61 from a generic throw to a 400 response with:
-  ```
-  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
-  ```
-  This prevents the 500 error and "app encountered an error" crash overlay.
+To ensure the **hyperlink bar** also reflects actual costs, I'll update the `EstimateHyperlinkBar` to also listen for invoice data and overlay actual costs on the Materials/Labor sections when invoices exist.
+
+## 4. Update EstimateHyperlinkBar with Actuals
+
+**File**: `src/components/estimates/EstimateHyperlinkBar.tsx`
+
+Add a query for `pipeline-invoices` (same as ProfitCenterPanel). When actual invoices exist for materials or labor, show the actual cost in the bar instead of just the estimate, and adjust the profit % to reflect real margins.
+
+## Changes Summary
+
+| File | Change |
+|------|--------|
+| `supabase/functions/parse-invoice-document/index.ts` | New — AI vision extraction of invoice data |
+| `supabase/config.toml` | Add `parse-invoice-document` function entry |
+| `src/components/production/InvoiceUploadCard.tsx` | Call AI parser after upload, auto-fill fields |
+| `src/components/estimates/EstimateHyperlinkBar.tsx` | Fetch invoices, overlay actuals on bar sections |
 
