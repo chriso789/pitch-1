@@ -315,10 +315,6 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
                 </div>
               )}
 
-              <div className="flex justify-between items-center py-1 text-muted-foreground">
-                <span>Company Net</span>
-                <span className="font-medium">{formatCurrency(companyNet)}</span>
-              </div>
             </div>
 
             {/* Info Note */}
