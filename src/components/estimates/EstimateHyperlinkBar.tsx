@@ -305,7 +305,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
           const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
           const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
           const salePrice = hyperlinkData.sale_price;
-          const overhead = calculateRepOverhead();
+          const overhead = calculateRepOverhead() + otherChargesTotal;
           const actualProfit = salePrice - effectiveMaterial - effectiveLabor - overhead;
           const actualMargin = salePrice > 0 ? (actualProfit / salePrice) * 100 : 0;
           return `${Math.round(actualMargin)}%`;
