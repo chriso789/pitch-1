@@ -8,7 +8,7 @@ import confetti from 'canvas-confetti';
 
 interface Notification {
   id: string;
-  type: 'lead_hot' | 'estimate_viewed' | 'proposal_signed' | 'appointment_scheduled' | 'deal_closed' | 'security_alert' | 'mention';
+  type: 'lead_hot' | 'estimate_viewed' | 'quote_viewed' | 'proposal_signed' | 'appointment_scheduled' | 'deal_closed' | 'security_alert' | 'mention';
   title: string;
   message: string;
   data?: Record<string, any>;
@@ -145,6 +145,16 @@ export function RealTimeNotificationProvider({ children }: RealTimeNotificationP
           <NotificationToast
             notification={notification}
             variant="warning"
+          />
+        ), { duration: 6000 });
+        break;
+
+      case 'quote_viewed':
+      case 'estimate_viewed':
+        toast.custom(() => (
+          <NotificationToast
+            notification={notification}
+            variant="default"
           />
         ), { duration: 6000 });
         break;

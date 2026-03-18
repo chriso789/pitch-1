@@ -26,6 +26,7 @@ export default function NotificationsPage() {
     switch (type) {
       case 'lead_hot': return '🔥';
       case 'estimate_viewed': return '👁️';
+      case 'quote_viewed': return '👁️';
       case 'proposal_signed': return '✍️';
       case 'appointment_scheduled': return '📅';
       case 'deal_closed': return '🎉';
@@ -38,6 +39,7 @@ export default function NotificationsPage() {
     switch (type) {
       case 'lead_hot': return 'Hot Lead';
       case 'estimate_viewed': return 'Estimate Viewed';
+      case 'quote_viewed': return 'Quote Viewed';
       case 'proposal_signed': return 'Proposal Signed';
       case 'appointment_scheduled': return 'Appointment';
       case 'deal_closed': return 'Deal Closed';
