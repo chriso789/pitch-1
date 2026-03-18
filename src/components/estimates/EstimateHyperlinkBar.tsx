@@ -103,6 +103,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const actualLaborCost = actualInvoices
     ?.filter(inv => inv.invoice_type === 'labor')
     .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
+  const otherChargesTotal = actualInvoices
+    ?.filter(inv => inv.invoice_type === 'overhead')
+    .reduce((sum, inv) => sum + (inv.invoice_amount || 0), 0) ?? 0;
   const hasActualMaterials = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
 
