@@ -13,7 +13,8 @@ import {
   CheckCircle,
   Package,
   Wrench,
-  Receipt
+  Receipt,
+  ScanLine
 } from 'lucide-react';
 import {
   Select,
@@ -51,6 +52,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const [formData, setFormData] = useState({
     vendor_name: '',
     crew_name: '',
@@ -62,6 +64,40 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     document_name: '',
     notes: ''
   });
+
+  const parseInvoiceWithAI = async (documentUrl: string) => {
+    setScanning(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('parse-invoice-document', {
+        body: { document_url: documentUrl }
+      });
+
+      if (error) {
+        console.error('AI parse error:', error);
+        return;
+      }
+
+      if (data?.parsed) {
+        const parsed = data.parsed;
+        setFormData(prev => ({
+          ...prev,
+          invoice_number: parsed.invoice_number || prev.invoice_number,
+          invoice_date: parsed.invoice_date || prev.invoice_date,
+          invoice_amount: parsed.invoice_amount ? String(parsed.invoice_amount) : prev.invoice_amount,
+          vendor_name: parsed.vendor_name || prev.vendor_name,
+        }));
+
+        toast({
+          title: 'Invoice Scanned',
+          description: 'Fields auto-filled from invoice. Please verify before submitting.',
+        });
+      }
+    } catch (err) {
+      console.error('Invoice scan failed:', err);
+    } finally {
+      setScanning(false);
+    }
+  };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,8 +127,11 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       toast({
         title: 'File Uploaded',
-        description: 'Invoice document uploaded successfully'
+        description: 'Scanning invoice with AI...'
       });
+
+      // Trigger AI parsing after upload
+      parseInvoiceWithAI(urlData.publicUrl);
     } catch (error: any) {
       toast({
         title: 'Upload Failed',
@@ -186,9 +225,54 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         <CardTitle className="flex items-center gap-2 text-base">
           <Icon className={`h-4 w-4 ${iconColor}`} />
           {title}
+          {scanning && (
+            <Badge variant="secondary" className="ml-auto flex items-center gap-1 text-xs">
+              <ScanLine className="h-3 w-3 animate-pulse" />
+              Scanning invoice...
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* File Upload - Moved to top so AI can auto-fill fields below */}
+        <div>
+          <Label>Invoice Document</Label>
+          {formData.document_url ? (
+            <div className="flex items-center gap-2 p-2 bg-muted rounded-md mt-1">
+              <FileText className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm flex-1 truncate">{formData.document_name}</span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+                onClick={() => setFormData(prev => ({ ...prev, document_url: '', document_name: '' }))}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-1">
+              <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
+                {uploading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span className="text-sm text-muted-foreground">
+                  {uploading ? 'Uploading...' : 'Upload PDF or Image — fields will auto-fill'}
+                </span>
+                <input
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.png,.jpg,.jpeg"
+                  onChange={handleFileUpload}
+                  disabled={uploading || scanning}
+                />
+              </label>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           {isMaterial && (
             <div className="col-span-2">
@@ -203,15 +287,26 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           )}
           
           {isLabor && (
-            <div className="col-span-2">
-              <Label htmlFor="crew_name">Crew Name</Label>
-              <Input
-                id="crew_name"
-                placeholder="Martinez Roofing Crew"
-                value={formData.crew_name}
-                onChange={(e) => setFormData(prev => ({ ...prev, crew_name: e.target.value }))}
-              />
-            </div>
+            <>
+              <div className="col-span-2">
+                <Label htmlFor="crew_name">Crew Name</Label>
+                <Input
+                  id="crew_name"
+                  placeholder="Martinez Roofing Crew"
+                  value={formData.crew_name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, crew_name: e.target.value }))}
+                />
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="vendor_name">Vendor / Company</Label>
+                <Input
+                  id="vendor_name"
+                  placeholder="Vendor on invoice"
+                  value={formData.vendor_name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, vendor_name: e.target.value }))}
+                />
+              </div>
+            </>
           )}
           
           {isOverhead && (
@@ -250,9 +345,10 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             <Label htmlFor="invoice_number">Invoice #</Label>
             <Input
               id="invoice_number"
-              placeholder="INV-2025-001"
+              placeholder={scanning ? 'Scanning...' : 'INV-2025-001'}
               value={formData.invoice_number}
               onChange={(e) => setFormData(prev => ({ ...prev, invoice_number: e.target.value }))}
+              disabled={scanning}
             />
           </div>
 
@@ -263,6 +359,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
               type="date"
               value={formData.invoice_date}
               onChange={(e) => setFormData(prev => ({ ...prev, invoice_date: e.target.value }))}
+              disabled={scanning}
             />
           </div>
 
@@ -274,52 +371,14 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 id="invoice_amount"
                 type="number"
                 step="0.01"
-                placeholder="0.00"
+                placeholder={scanning ? 'Scanning...' : '0.00'}
                 className="pl-7"
                 value={formData.invoice_amount}
                 onChange={(e) => setFormData(prev => ({ ...prev, invoice_amount: e.target.value }))}
+                disabled={scanning}
               />
             </div>
           </div>
-        </div>
-
-        {/* File Upload */}
-        <div>
-          <Label>Invoice Document</Label>
-          {formData.document_url ? (
-            <div className="flex items-center gap-2 p-2 bg-muted rounded-md mt-1">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm flex-1 truncate">{formData.document_name}</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-                onClick={() => setFormData(prev => ({ ...prev, document_url: '', document_name: '' }))}
-              >
-                <X className="h-3 w-3" />
-              </Button>
-            </div>
-          ) : (
-            <div className="mt-1">
-              <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-border rounded-md cursor-pointer hover:border-primary/50 transition-colors">
-                {uploading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Upload className="h-4 w-4 text-muted-foreground" />
-                )}
-                <span className="text-sm text-muted-foreground">
-                  {uploading ? 'Uploading...' : 'Upload PDF or Image'}
-                </span>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  onChange={handleFileUpload}
-                  disabled={uploading}
-                />
-              </label>
-            </div>
-          )}
         </div>
 
         <div>
@@ -335,7 +394,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
         <Button
           onClick={handleSubmit}
-          disabled={loading || !formData.invoice_amount}
+          disabled={loading || scanning || !formData.invoice_amount}
           className="w-full"
         >
           {loading ? (
