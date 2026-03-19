@@ -60,6 +60,7 @@ interface PageOrderManagerProps {
   hasAttachments?: boolean;
   hasMeasurements?: boolean;
   hasPhotos?: boolean;
+  onUploadPhotos?: () => void;
 }
 
 // Sortable page item component
