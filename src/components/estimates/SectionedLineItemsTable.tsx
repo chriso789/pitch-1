@@ -122,6 +122,38 @@ export function SectionedLineItemsTable({
   const [editingCell, setEditingCell] = useState<EditableCell | null>(null);
   const [editValue, setEditValue] = useState('');
 
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (items: LineItem[]) => (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !onReorderItems) return;
+    const oldIndex = items.findIndex(i => i.id === active.id);
+    const newIndex = items.findIndex(i => i.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(items, oldIndex, newIndex);
+    // Build full reordered ID list: keep other items in place, splice this section
+    const allItems = [...materialItems, ...laborItems];
+    // Replace old section items with reordered ones
+    const sectionIds = new Set(items.map(i => i.id));
+    const result: string[] = [];
+    let sectionInserted = false;
+    for (const item of allItems) {
+      if (sectionIds.has(item.id)) {
+        if (!sectionInserted) {
+          result.push(...reordered.map(i => i.id));
+          sectionInserted = true;
+        }
+      } else {
+        result.push(item.id);
+      }
+    }
+    if (!sectionInserted) result.push(...reordered.map(i => i.id));
+    onReorderItems(result);
+  };
+
   const startEdit = (itemId: string, field: 'qty' | 'unit_cost', currentValue: number) => {
     setEditingCell({ itemId, field });
     setEditValue(currentValue.toString());
