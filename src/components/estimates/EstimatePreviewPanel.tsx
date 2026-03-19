@@ -231,7 +231,7 @@ export function EstimatePreviewPanel({
               return {
                 id: d.id,
                 file_url: urlData.publicUrl,
-                description: d.description || d.file_name,
+                description: d.description || d.filename,
                 category: d.document_type,
               };
             });
