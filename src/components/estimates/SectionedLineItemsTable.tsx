@@ -233,14 +233,17 @@ export function SectionedLineItemsTable({
 
     if (editing) {
       return (
-        <div className="flex items-center gap-1 mt-0.5">
-          <Input
+        <div className="flex flex-col gap-1 mt-0.5">
+          <Textarea
             value={descValue}
             onChange={(e) => setDescValue(e.target.value)}
-            className="h-6 text-xs py-0"
+            className="text-xs min-h-[60px] py-1 px-2"
+            rows={3}
             autoFocus
+            onFocus={(e) => e.target.select()}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
                 onUpdateItem(item.id, { description: descValue });
                 setEditing(false);
               } else if (e.key === 'Escape') {
@@ -248,12 +251,14 @@ export function SectionedLineItemsTable({
               }
             }}
           />
-          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { onUpdateItem(item.id, { description: descValue }); setEditing(false); }}>
-            <Check className="h-3 w-3 text-green-600" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setEditing(false)}>
-            <X className="h-3 w-3 text-red-600" />
-          </Button>
+          <div className="flex justify-end gap-1">
+            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => { onUpdateItem(item.id, { description: descValue }); setEditing(false); }}>
+              <Check className="h-3 w-3 text-green-600" />
+            </Button>
+            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => setEditing(false)}>
+              <X className="h-3 w-3 text-red-600" />
+            </Button>
+          </div>
         </div>
       );
     }
