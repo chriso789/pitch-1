@@ -162,10 +162,11 @@ export function EstimatePreviewPanel({
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
+   const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
+  const photoUploadRef = useRef<HTMLInputElement>(null);
 
   // Fetch job photos for estimate preview
   const [jobPhotos, setJobPhotos] = useState<Array<{
