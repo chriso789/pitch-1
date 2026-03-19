@@ -1,33 +1,36 @@
 
 
-# Fix: Job Photos Greyed Out — Wrong Storage Bucket Resolution
+# Add Drag-to-Reorder for Estimate Line Items
 
 ## Problem
-Photos uploaded through the Documents tab are stored in the **`documents`** storage bucket (see `DocumentsTab.tsx` line 321: `.from('documents').upload(...)`). However, `resolveStorageBucket()` maps `document_type='photo'` to the `customer-photos` bucket. When the estimate preview tries to generate signed URLs, they fail silently because the files don't exist in `customer-photos`, resulting in all mapped photos being `null` and `jobPhotos` remaining empty — greying out the toggle.
+Line items in the estimate editor have no way to be rearranged. Users need to drag items up/down to control the order they appear in the estimate and PDF.
 
-## Fix
+## Approach
+Add a drag handle (grip icon) to the left side of each line item row using `@dnd-kit` (already installed in the project). When items are dropped in a new position, update `sort_order` on all affected items.
 
-### `src/lib/documents/resolveStorageBucket.ts`
+## Changes
 
-The function needs to be smarter about photos uploaded via the Documents tab vs the photo uploader. The key differentiator is the **file path pattern**:
+### 1. `src/components/estimates/SectionedLineItemsTable.tsx`
 
-- Documents tab uploads use paths like `{pipeline_entry_id}/filename.jpeg` (no `/leads/` segment)
-- Photo uploader uploads use paths like `{tenant_id}/leads/{lead_id}/photos/filename.jpeg`
+- Add new prop `onReorderItems: (reorderedIds: string[]) => void` to receive reorder events
+- Import `@dnd-kit/core` and `@dnd-kit/sortable` (already used elsewhere in the project)
+- Convert `renderItemRow` from a render function to a `SortableItemRow` component that uses `useSortable` hook
+- Add a `GripVertical` drag handle as the first element in each table row (only when `editable` is true)
+- Wrap each section's item rows in `DndContext` + `SortableContext` so items can be reordered within their section (materials reorder among materials, labor among labor)
+- On drag end, compute the new order and call `onReorderItems` with updated sort orders
 
-Update the photo branch to only route to `customer-photos` when the path contains `/leads/` (indicating it came from the photo uploader). Otherwise, default to `documents` bucket.
+### 2. `src/components/estimates/MultiTemplateSelector.tsx`
 
-```
-Current logic (lines 21-24):
-  if (documentType === 'photo' || ...) return 'customer-photos';
+- Add a `handleReorderItems` function that takes the new ordered IDs and updates `sort_order` on each line item via `setLineItems`
+- Pass `onReorderItems={handleReorderItems}` to `SectionedLineItemsTable`
 
-Fixed logic:
-  if (documentType === 'photo' || ...) {
-    if (filePath?.includes('/leads/')) return 'customer-photos';
-    return 'documents';
-  }
-```
+### 3. `src/hooks/useEstimatePricing.ts`
 
-| File | Change |
-|------|--------|
-| `src/lib/documents/resolveStorageBucket.ts` | Fix photo bucket resolution to check file path before assuming `customer-photos` |
+No changes needed — items already sort by `sort_order`, so updating that field will automatically reflect the new order.
+
+## UI Details
+- Drag handle appears on hover (left side of the item name column) — same pattern as `PageOrderManager` and template editors
+- Table column layout: add a narrow first column for the grip handle when editable
+- Items reorder within their section (materials stay with materials, labor with labor)
+- Within multi-trade layout, items reorder within their trade+type group
 
