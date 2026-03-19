@@ -355,7 +355,7 @@ export function SectionedLineItemsTable({
       opacity: isDragging ? 0.5 : 1,
     };
 
-    const colSpan = editable ? 6 : 4;
+    
 
     return (
       <TableRow ref={setNodeRef} style={style} className={`group ${isDragging ? 'bg-muted' : ''}`}>
