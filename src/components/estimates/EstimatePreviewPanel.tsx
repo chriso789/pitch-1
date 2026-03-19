@@ -216,7 +216,7 @@ export function EstimatePreviewPanel({
       if (photos.length === 0 && pipelineEntryId) {
         const { data: docPhotos } = await supabase
           .from('documents')
-          .select('id, file_path, file_name, document_type, mime_type, description')
+          .select('id, file_path, filename, document_type, mime_type, description')
           .eq('pipeline_entry_id', pipelineEntryId)
           .or('mime_type.ilike.image/%,document_type.in.(photo,inspection_photo,job_photo,progress_photo,completion_photo,required_photos)')
           .order('created_at', { ascending: false });
