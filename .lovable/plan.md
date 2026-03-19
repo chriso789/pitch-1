@@ -1,39 +1,27 @@
 
 
-# Fix: Photos Not Displaying in Estimate Preview
+# Expand Description Editor to Full Textarea
 
 ## Problem
-The photos from the `documents` table are found but render as broken images. The code uses `getPublicUrl()` to generate URLs, but the `documents` storage bucket is **not public** — it requires signed URLs. Every other place in the codebase that accesses files from this bucket uses `createSignedUrl()`.
+The inline description editor uses a single-line `Input` field, making it hard to see and edit long descriptions. Users need a multi-line textarea that shows the full description at once.
 
-## Fix
+## Changes
 
-### `src/components/estimates/EstimatePreviewPanel.tsx`
+### `src/components/estimates/SectionedLineItemsTable.tsx`
 
-Replace the synchronous `getPublicUrl` call with an async `createSignedUrl` call when mapping document photos:
+Replace the single-line `Input` in the `DescriptionEditor` component (lines 233-257) with a `Textarea`:
 
-1. Make the document photo mapping async — use `Promise.all` to generate signed URLs for each photo
-2. Use `createSignedUrl(file_path, 3600)` (1-hour expiry) instead of `getPublicUrl`
-3. Filter out any photos where signed URL generation failed
+1. Swap `<Input>` for `<Textarea>` from `@/components/ui/textarea`
+2. Set `rows={3}` with `min-h-[60px]` so the full description is visible
+3. Keep the same confirm/cancel buttons (check/X) but position them below or to the right
+4. Keep Enter behavior as Shift+Enter for newlines, plain Enter to save (or just rely on the check button)
+5. Auto-focus and select all text on open
 
-### Technical Detail
-
-Current (broken):
-```typescript
-const bucket = resolveStorageBucket(d.document_type, d.file_path);
-const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(d.file_path!);
-return { id: d.id, file_url: urlData.publicUrl, ... };
-```
-
-Fixed:
-```typescript
-const bucket = resolveStorageBucket(d.document_type, d.file_path);
-const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(d.file_path!, 3600);
-return { id: d.id, file_url: urlData?.signedUrl || '', ... };
-```
-
-The mapping needs to become async (`Promise.all`) since `createSignedUrl` is asynchronous, unlike `getPublicUrl`.
+Layout change:
+- Current: single-line input + icons inline → `flex items-center`
+- New: textarea on its own row, confirm/cancel icons below-right → `flex flex-col`
 
 | File | Change |
 |------|--------|
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Switch from `getPublicUrl` to `createSignedUrl` for document-table photos |
+| `src/components/estimates/SectionedLineItemsTable.tsx` | Replace `Input` with `Textarea` in `DescriptionEditor`, adjust layout to stack vertically |
 
