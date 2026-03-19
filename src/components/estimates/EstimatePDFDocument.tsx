@@ -127,41 +127,100 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-// Chunk items into pages — trade-aware to avoid orphaning a trade header at page bottom
-function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number): LineItem[][] {
+// ---- Group-aware pagination types ----
+interface RenderBlock {
+  type: 'trade-header' | 'sub-header' | 'item';
+  label?: string;
+  item?: LineItem;
+  tradeType?: string;
+}
+
+/**
+ * Build render blocks from items: Trade Header → Materials sub-header → items → Labor sub-header → items
+ * Then paginate blocks as units to preserve visual hierarchy across page breaks.
+ */
+function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
   if (items.length === 0) return [];
-  
-  const chunks: LineItem[][] = [];
-  let remaining = [...items];
-  
-  // Helper: check if index is the first item of a new trade group
-  const isNewTradeStart = (idx: number, arr: LineItem[]) => {
-    if (idx === 0) return true;
-    const prev = arr[idx - 1]?.trade_type || 'roofing';
-    const cur = arr[idx]?.trade_type || 'roofing';
-    return prev !== cur;
-  };
-  
-  // First chunk
-  let size = Math.min(firstPageMax, remaining.length);
-  // If the last item starts a new trade, pull it to next chunk so header isn't orphaned
-  while (size > 1 && size < remaining.length && isNewTradeStart(size - 1, remaining)) {
-    size--;
-  }
-  chunks.push(remaining.slice(0, size));
-  remaining = remaining.slice(size);
-  
-  // Continuation chunks
-  while (remaining.length > 0) {
-    let cSize = Math.min(continuationMax, remaining.length);
-    while (cSize > 1 && cSize < remaining.length && isNewTradeStart(cSize - 1, remaining)) {
-      cSize--;
+
+  // Group by trade
+  const tradeOrder: string[] = [];
+  const tradeMap = new Map<string, { label: string; items: LineItem[] }>();
+  items.forEach(item => {
+    const tradeType = (item as any).trade_type || 'roofing';
+    const tradeLabel = (item as any).trade_label || tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
+    if (!tradeMap.has(tradeType)) {
+      tradeOrder.push(tradeType);
+      tradeMap.set(tradeType, { label: tradeLabel, items: [] });
     }
-    chunks.push(remaining.slice(0, cSize));
-    remaining = remaining.slice(cSize);
+    tradeMap.get(tradeType)!.items.push(item);
+  });
+
+  const hasMultipleTrades = tradeOrder.length > 1;
+  const blocks: RenderBlock[] = [];
+
+  tradeOrder.forEach(tradeType => {
+    const group = tradeMap.get(tradeType)!;
+    const materialItems = group.items.filter(i => (i as any).item_type === 'material').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const laborItems = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
+    const hasBothTypes = materialItems.length > 0 && laborItems.length > 0;
+
+    if (hasMultipleTrades) {
+      blocks.push({ type: 'trade-header', label: group.label, tradeType });
+    }
+
+    if (hasBothTypes) {
+      if (materialItems.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Materials' });
+        materialItems.forEach(item => blocks.push({ type: 'item', item }));
+      }
+      if (laborItems.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Labor' });
+        laborItems.forEach(item => blocks.push({ type: 'item', item }));
+      }
+    } else {
+      materialItems.forEach(item => blocks.push({ type: 'item', item }));
+      laborItems.forEach(item => blocks.push({ type: 'item', item }));
+    }
+    otherItems.forEach(item => blocks.push({ type: 'item', item }));
+  });
+
+  return blocks;
+}
+
+function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continuationMax: number): RenderBlock[][] {
+  if (blocks.length === 0) return [];
+
+  const chunks: RenderBlock[][] = [];
+  let remaining = [...blocks];
+
+  const chunkOnce = (maxRows: number) => {
+    if (remaining.length === 0) return;
+    let size = Math.min(maxRows, remaining.length);
+    // Don't end a page on a header (trade-header or sub-header) — pull it to next page
+    while (size > 1 && size < remaining.length && remaining[size - 1].type !== 'item') {
+      size--;
+    }
+    chunks.push(remaining.slice(0, size));
+    remaining = remaining.slice(size);
+  };
+
+  chunkOnce(firstPageMax);
+  while (remaining.length > 0) {
+    chunkOnce(continuationMax);
   }
-  
+
   return chunks;
+}
+
+// Legacy wrapper — converts render block chunks back to LineItem[][] for existing page components
+function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number): { itemChunks: LineItem[][]; blockChunks: RenderBlock[][] } {
+  const blocks = buildRenderBlocks(items);
+  const blockChunks = chunkRenderBlocks(blocks, firstPageMax, continuationMax);
+  const itemChunks = blockChunks.map(chunk => 
+    chunk.filter(b => b.type === 'item').map(b => b.item!)
+  );
+  return { itemChunks, blockChunks };
 }
 
 // Page Header Component
@@ -436,8 +495,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         })()
       : materialItems;
     
-    // Chunk scope items for pagination
-    const itemChunks = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
+    // Chunk scope items for pagination (group-aware)
+    const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
     
     // Count total pages for page numbering
     // Pre-build warranty pages to know their count
@@ -488,6 +547,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         customerPhone={customerPhone}
         customerEmail={customerEmail}
         items={itemChunks[0] || []}
+        blocks={blockChunks[0] || []}
         isOnlyChunk={itemChunks.length <= 1}
         breakdown={breakdown}
         config={config}
@@ -509,6 +569,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         <ItemsContinuationPage
           key={`items-page-${i + 1}`}
           items={itemChunks[i]}
+          blocks={blockChunks[i]}
           isLastPage={isLastItemPage}
           breakdown={isLastItemPage ? breakdown : undefined}
           config={isLastItemPage ? config : undefined}
@@ -604,6 +665,7 @@ const FirstPage: React.FC<{
   customerPhone?: string | null;
   customerEmail?: string | null;
   items: LineItem[];
+  blocks: RenderBlock[];
   isOnlyChunk: boolean;
   breakdown: EstimatePDFDocumentProps['breakdown'];
   config: EstimatePDFDocumentProps['config'];
@@ -616,6 +678,7 @@ const FirstPage: React.FC<{
   customerPhone,
   customerEmail,
   items,
+  blocks,
   isOnlyChunk,
   breakdown,
   config,
@@ -658,7 +721,7 @@ const FirstPage: React.FC<{
 
       {/* Project Scope Table */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && (
-        <ItemsTable items={items} opts={opts} />
+        <ItemsTable blocks={blocks} opts={opts} />
       )}
 
       {/* Continuation hint when items overflow to next page */}
@@ -682,16 +745,17 @@ const FirstPage: React.FC<{
 // Items Continuation Page
 const ItemsContinuationPage: React.FC<{
   items: LineItem[];
+  blocks: RenderBlock[];
   isLastPage: boolean;
   breakdown?: EstimatePDFDocumentProps['breakdown'];
   config?: EstimatePDFDocumentProps['config'];
   opts: PDFComponentOptions;
   showTerms: boolean;
   finePrintContent?: string;
-}> = ({ items, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
+}> = ({ items, blocks, isLastPage, breakdown, config, opts, showTerms, finePrintContent }) => {
   return (
     <div className="space-y-3">
-      <ItemsTable items={items} opts={opts} continued />
+      <ItemsTable blocks={blocks} opts={opts} continued />
 
       {isLastPage && breakdown && config && (
         <PricingSummary breakdown={breakdown} config={config} opts={opts} />
@@ -702,36 +766,31 @@ const ItemsContinuationPage: React.FC<{
   );
 };
 
-// Items Table Component - with trade grouping support
-const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions; continued?: boolean }> = ({ items, opts, continued = false }) => {
-  // Group items by trade for section headers
-  const groupedByTrade = useMemo(() => {
-    const groups: { tradeLabel: string; tradeType: string; items: LineItem[] }[] = [];
-    const tradeMap = new Map<string, LineItem[]>();
-    const tradeLabelMap = new Map<string, string>();
-    
-    items.forEach(item => {
-      const tradeType = (item as any).trade_type || 'roofing';
-      const tradeLabel = (item as any).trade_label || tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
-      if (!tradeMap.has(tradeType)) {
-        tradeMap.set(tradeType, []);
-        tradeLabelMap.set(tradeType, tradeLabel);
-      }
-      tradeMap.get(tradeType)!.push(item);
-    });
-    
-    tradeMap.forEach((tradeItems, tradeType) => {
-      groups.push({
-        tradeType,
-        tradeLabel: tradeLabelMap.get(tradeType) || tradeType,
-        items: tradeItems.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
-      });
-    });
-    
-    return groups;
-  }, [items]);
-
-  const hasMultipleTrades = groupedByTrade.length > 1;
+// Items Table Component - renders pre-built render blocks
+const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean }> = ({ blocks, opts, continued = false }) => {
+  const renderItem = (item: LineItem, idx: number) => (
+    <tr key={item.id || `item-${idx}`} className="border-b border-gray-100">
+      <td className="py-1.5">
+        <div className="font-medium text-gray-900">{item.item_name}</div>
+        {opts.showItemDescriptions && item.description && (
+          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+            {item.description}
+          </div>
+        )}
+        {item.notes && (
+          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+            {item.notes}
+          </div>
+        )}
+      </td>
+      {opts.showLineItemQuantities && (
+        <>
+          <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+          <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
+        </>
+      )}
+    </tr>
+  );
 
   return (
     <div>
@@ -752,84 +811,36 @@ const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions; conti
           </tr>
         </thead>
         <tbody>
-          {groupedByTrade.map((group) => {
-            const materialItems = group.items.filter(i => (i as any).item_type === 'material');
-            const laborItems = group.items.filter(i => (i as any).item_type === 'labor');
-            const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
-            const hasBothTypes = materialItems.length > 0 && laborItems.length > 0;
-
-            const renderItem = (item: LineItem, idx: number) => (
-              <tr key={item.id || idx} className="border-b border-gray-100">
-                <td className="py-1.5">
-                  <div className="font-medium text-gray-900">{item.item_name}</div>
-                  {opts.showItemDescriptions && item.description && (
-                    <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
-                      {item.description}
+          {blocks.map((block, idx) => {
+            if (block.type === 'trade-header') {
+              return (
+                <tr key={`trade-${block.tradeType}-${idx}`}>
+                  <td 
+                    colSpan={opts.showLineItemQuantities ? 3 : 1} 
+                    className="pt-3 pb-1"
+                  >
+                    <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
+                      {block.label}
                     </div>
-                  )}
-                  {item.notes && (
-                    <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
-                      {item.notes}
+                  </td>
+                </tr>
+              );
+            }
+            if (block.type === 'sub-header') {
+              return (
+                <tr key={`sub-${block.label}-${idx}`}>
+                  <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-2 pb-0.5">
+                    <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
+                      {block.label}
                     </div>
-                  )}
-                </td>
-                {opts.showLineItemQuantities && (
-                  <>
-                    <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-                    <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
-                  </>
-                )}
-              </tr>
-            );
-
-            const renderSubHeader = (label: string) => (
-              <tr>
-                <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-2 pb-0.5">
-                  <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
-                    {label}
-                  </div>
-                </td>
-              </tr>
-            );
-
-            return (
-              <React.Fragment key={group.tradeType}>
-                {hasMultipleTrades && (
-                  <tr>
-                    <td 
-                      colSpan={opts.showLineItemQuantities ? 3 : 1} 
-                      className="pt-3 pb-1"
-                    >
-                      <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
-                        {group.tradeLabel}
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {hasBothTypes ? (
-                  <>
-                    {materialItems.length > 0 && (
-                      <>
-                        {renderSubHeader('Materials')}
-                        {materialItems.map(renderItem)}
-                      </>
-                    )}
-                    {laborItems.length > 0 && (
-                      <>
-                        {renderSubHeader('Labor')}
-                        {laborItems.map(renderItem)}
-                      </>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    {materialItems.length > 0 && materialItems.map(renderItem)}
-                    {laborItems.length > 0 && laborItems.map(renderItem)}
-                  </>
-                )}
-                {otherItems.map(renderItem)}
-              </React.Fragment>
-            );
+                  </td>
+                </tr>
+              );
+            }
+            if (block.type === 'item' && block.item) {
+              return renderItem(block.item, idx);
+            }
+            return null;
           })}
         </tbody>
       </table>

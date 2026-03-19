@@ -1,43 +1,54 @@
 
 
-# Two Issues: Duplicate Contacts in Search & PDF Item Organization
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Issue 1: Two "Mike Stipp" Contact Records
+Three issues to address:
 
-**Root cause**: This is a **data issue**, not a code bug. The database contains two separate contact records for "Mike Stipp":
-- One with address "1931 Beach Road"
-- One with address "1931 Beach Rd., Englewood, FL 34223 US"
+## 1. Contact Profile Pipeline Area Overflowing
 
-The unique index (`idx_contacts_unique_name_address`) normalizes street suffixes (e.g., "Road" → "rd"), but these records likely have different `address_street` values that still pass the normalization check (e.g., one stores just the street, the other stores the full address line). The search function correctly returns both because they are genuinely two records.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-**Fix**: Merge the duplicate contact records in the database. The `reconcile-contacts` edge function can handle this. Additionally, tighten the deduplication logic to normalize "Road" and "Rd." to the same value and strip city/state/zip from the street field if present.
+**File: `src/pages/ContactProfile.tsx`**
 
-### Changes
-- Create a migration to merge the duplicate Mike Stipp records (move pipeline entries, tasks, documents to the older record, then soft-delete the newer one)
-- Update the `normalize_street` SQL function to also handle cases where city/state/zip are appended to the street field (strip everything after a comma pattern like ", City, ST ZIP")
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
----
+## 2. Show Who Saved Each Estimate (Under Title)
 
-## Issue 2: PDF Line Items Not Matching Edit View Layout
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-**Root cause**: The PDF's `chunkItems` function (line 131) splits the flat combined item list across pages, then each page's `ItemsTable` re-groups by trade and item_type. This works, but when items get split across page boundaries, the material/labor grouping breaks — you get some materials on page 1 and remaining materials on page 2, each with their own sub-header. The edit estimate view (`SectionedLineItemsTable`) shows everything on one scrollable page with clean trade → materials/labor hierarchy.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-**Fix**: Instead of chunking the flat item list and re-grouping per page, pre-group items by trade → material/labor FIRST, then paginate the grouped structure. This ensures materials and labor sections stay intact and page breaks happen between logical groups rather than mid-group.
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
-### Changes
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-| File | Change |
-|------|--------|
-| `src/components/estimates/EstimatePDFDocument.tsx` | Refactor `chunkItems` to be group-aware: pre-build the trade→material/labor hierarchy, then paginate groups as units. Only split a group across pages when it exceeds a full page. |
-| New migration | Merge duplicate "Mike Stipp" contact records; update `normalize_street` to strip trailing city/state/zip from street fields |
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-### Technical Detail
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-The new chunking approach:
-1. Pre-sort items into groups: `[{ trade, materials: [...], labor: [...] }]`
-2. Calculate row count per group (including sub-headers)
-3. Fill pages group-by-group; only split a group when it alone exceeds page capacity
-4. Each page chunk becomes a list of "render blocks" (trade header, sub-header, items) rather than flat items
-
-This matches the edit view's visual hierarchy: Trade Header → Materials sub-header → material items → Labor sub-header → labor items.
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
