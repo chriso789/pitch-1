@@ -682,7 +682,7 @@ export function SectionedLineItemsTable({
                 <Package className="h-4 w-4" />,
                 materialItems.length
               )}
-              {materialItems.map(renderItemRow)}
+              {renderSortableItems(materialItems)}
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
                   <TableCell colSpan={editable ? 5 : 4} className="py-2">
