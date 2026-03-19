@@ -359,12 +359,13 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
     try {
       setSendingReset(true);
       
-      // Send password reset email using Supabase auth
-      const { error } = await supabase.auth.resetPasswordForEmail(user.email, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      // Use custom edge function (Resend) instead of broken Supabase SMTP
+      const { data, error } = await supabase.functions.invoke('send-password-reset', {
+        body: { email: user.email },
       });
 
       if (error) throw error;
+      if (data?.error) throw new Error(data.error);
 
       toast({
         title: "Password Reset Email Sent",
