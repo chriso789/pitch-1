@@ -1,27 +1,33 @@
 
 
-# Expand Description Editor to Full Textarea
+# Fix: Job Photos Greyed Out — Wrong Storage Bucket Resolution
 
 ## Problem
-The inline description editor uses a single-line `Input` field, making it hard to see and edit long descriptions. Users need a multi-line textarea that shows the full description at once.
+Photos uploaded through the Documents tab are stored in the **`documents`** storage bucket (see `DocumentsTab.tsx` line 321: `.from('documents').upload(...)`). However, `resolveStorageBucket()` maps `document_type='photo'` to the `customer-photos` bucket. When the estimate preview tries to generate signed URLs, they fail silently because the files don't exist in `customer-photos`, resulting in all mapped photos being `null` and `jobPhotos` remaining empty — greying out the toggle.
 
-## Changes
+## Fix
 
-### `src/components/estimates/SectionedLineItemsTable.tsx`
+### `src/lib/documents/resolveStorageBucket.ts`
 
-Replace the single-line `Input` in the `DescriptionEditor` component (lines 233-257) with a `Textarea`:
+The function needs to be smarter about photos uploaded via the Documents tab vs the photo uploader. The key differentiator is the **file path pattern**:
 
-1. Swap `<Input>` for `<Textarea>` from `@/components/ui/textarea`
-2. Set `rows={3}` with `min-h-[60px]` so the full description is visible
-3. Keep the same confirm/cancel buttons (check/X) but position them below or to the right
-4. Keep Enter behavior as Shift+Enter for newlines, plain Enter to save (or just rely on the check button)
-5. Auto-focus and select all text on open
+- Documents tab uploads use paths like `{pipeline_entry_id}/filename.jpeg` (no `/leads/` segment)
+- Photo uploader uploads use paths like `{tenant_id}/leads/{lead_id}/photos/filename.jpeg`
 
-Layout change:
-- Current: single-line input + icons inline → `flex items-center`
-- New: textarea on its own row, confirm/cancel icons below-right → `flex flex-col`
+Update the photo branch to only route to `customer-photos` when the path contains `/leads/` (indicating it came from the photo uploader). Otherwise, default to `documents` bucket.
+
+```
+Current logic (lines 21-24):
+  if (documentType === 'photo' || ...) return 'customer-photos';
+
+Fixed logic:
+  if (documentType === 'photo' || ...) {
+    if (filePath?.includes('/leads/')) return 'customer-photos';
+    return 'documents';
+  }
+```
 
 | File | Change |
 |------|--------|
-| `src/components/estimates/SectionedLineItemsTable.tsx` | Replace `Input` with `Textarea` in `DescriptionEditor`, adjust layout to stack vertically |
+| `src/lib/documents/resolveStorageBucket.ts` | Fix photo bucket resolution to check file path before assuming `customer-photos` |
 
