@@ -195,12 +195,12 @@ export function EstimatePreviewPanel({
 
       const { data } = await query.order('display_order');
 
+      let photos: typeof jobPhotos = [];
+
       if (data && data.length > 0) {
-        // If any photos are explicitly marked for estimate, use only those
         const estimateMarked = data.filter(p => p.include_in_estimate === true);
-        setJobPhotos(estimateMarked.length > 0 ? estimateMarked : data);
+        photos = estimateMarked.length > 0 ? estimateMarked : data;
       } else if (contactId && pipelineEntryId) {
-        // Fallback: try by contact_id if lead_id returned nothing
         const { data: contactPhotos } = await supabase
           .from('customer_photos')
           .select('id, file_url, description, category, include_in_estimate')
@@ -208,13 +208,38 @@ export function EstimatePreviewPanel({
           .order('display_order');
         if (contactPhotos && contactPhotos.length > 0) {
           const estimateMarked = contactPhotos.filter(p => p.include_in_estimate === true);
-          setJobPhotos(estimateMarked.length > 0 ? estimateMarked : contactPhotos);
-        } else {
-          setJobPhotos([]);
+          photos = estimateMarked.length > 0 ? estimateMarked : contactPhotos;
         }
-      } else {
-        setJobPhotos([]);
       }
+
+      // Fallback: query documents table for image files linked to this lead
+      if (photos.length === 0 && pipelineEntryId) {
+        const { data: docPhotos } = await supabase
+          .from('documents')
+          .select('id, file_path, file_name, document_type, mime_type, description')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .or('mime_type.ilike.image/%,document_type.in.(photo,inspection_photo,job_photo,progress_photo,completion_photo,required_photos)')
+          .order('created_at', { ascending: false });
+
+        if (docPhotos && docPhotos.length > 0) {
+          const existingIds = new Set(photos.map(p => p.id));
+          const mapped = docPhotos
+            .filter(d => !existingIds.has(d.id) && d.file_path)
+            .map(d => {
+              const bucket = resolveStorageBucket(d.document_type, d.file_path);
+              const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(d.file_path!);
+              return {
+                id: d.id,
+                file_url: urlData.publicUrl,
+                description: d.description || d.file_name,
+                category: d.document_type,
+              };
+            });
+          photos = [...photos, ...mapped];
+        }
+      }
+
+      setJobPhotos(photos);
     };
     fetchPhotos();
   }, [pipelineEntryId, contactId, open]);
