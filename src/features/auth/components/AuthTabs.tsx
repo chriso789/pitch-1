@@ -356,11 +356,13 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
                 
                 setLoading(true);
                 try {
-                  const { error } = await supabase.auth.resetPasswordForEmail(loginForm.email, {
-                    redirectTo: `${window.location.origin}/reset-password`,
+                  // Use custom edge function (Resend) instead of broken Supabase SMTP
+                  const { data, error } = await supabase.functions.invoke('send-password-reset', {
+                    body: { email: loginForm.email },
                   });
                   
                   if (error) throw error;
+                  if (data?.error) throw new Error(data.error);
                   
                   toast({
                     title: "Password reset email sent",

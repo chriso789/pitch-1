@@ -28,9 +28,11 @@ const ResetPassword: React.FC = () => {
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
   // Get access token and onboarding flag from URL parameters
-  const accessToken = searchParams.get('access_token');
-  const refreshToken = searchParams.get('refresh_token');
-  const tokenType = searchParams.get('type');
+  // Supabase recovery links put tokens in hash fragments, so check both
+  const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+  const accessToken = searchParams.get('access_token') || hashParams.get('access_token');
+  const refreshToken = searchParams.get('refresh_token') || hashParams.get('refresh_token');
+  const tokenType = searchParams.get('type') || hashParams.get('type');
   const isOnboarding = searchParams.get('onboarding') === 'true';
 
   useEffect(() => {
