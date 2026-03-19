@@ -551,7 +551,7 @@ export function SectionedLineItemsTable({
                         <Package className="h-4 w-4" />,
                         group.materials.length
                       )}
-                      {group.materials.map(renderItemRow)}
+                      {renderSortableItems(group.materials)}
                       {renderSectionSubtotal(
                         'Materials Subtotal',
                         group.materials.reduce((sum, i) => sum + i.line_total, 0)
