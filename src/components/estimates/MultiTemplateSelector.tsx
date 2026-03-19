@@ -1908,7 +1908,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const handleResetItem = (id: string) => {
     const item = lineItems.find(i => i.id === id);
     if (item) {
-      updateLineItem(id, {
+      handleUpdateLineItem(id, {
         qty: item.qty_original,
         unit_cost: item.unit_cost_original,
         is_override: false,
