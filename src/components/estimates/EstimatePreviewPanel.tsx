@@ -176,18 +176,46 @@ export function EstimatePreviewPanel({
   }>>([]);
 
   useEffect(() => {
-    if (!pipelineEntryId || !open) return;
+    if (!open || (!pipelineEntryId && !contactId)) return;
 
     const fetchPhotos = async () => {
-      const { data } = await supabase
+      // First try: photos explicitly marked for estimate inclusion
+      let query = supabase
         .from('customer_photos')
-        .select('id, file_url, description, category')
-        .eq('lead_id', pipelineEntryId)
-        .order('display_order');
-      if (data) setJobPhotos(data);
+        .select('id, file_url, description, category, include_in_estimate');
+
+      // Query by lead_id first, fall back to contact_id
+      if (pipelineEntryId) {
+        query = query.eq('lead_id', pipelineEntryId);
+      } else if (contactId) {
+        query = query.eq('contact_id', contactId);
+      }
+
+      const { data } = await query.order('display_order');
+
+      if (data && data.length > 0) {
+        // If any photos are explicitly marked for estimate, use only those
+        const estimateMarked = data.filter(p => p.include_in_estimate === true);
+        setJobPhotos(estimateMarked.length > 0 ? estimateMarked : data);
+      } else if (contactId && pipelineEntryId) {
+        // Fallback: try by contact_id if lead_id returned nothing
+        const { data: contactPhotos } = await supabase
+          .from('customer_photos')
+          .select('id, file_url, description, category, include_in_estimate')
+          .eq('contact_id', contactId)
+          .order('display_order');
+        if (contactPhotos && contactPhotos.length > 0) {
+          const estimateMarked = contactPhotos.filter(p => p.include_in_estimate === true);
+          setJobPhotos(estimateMarked.length > 0 ? estimateMarked : contactPhotos);
+        } else {
+          setJobPhotos([]);
+        }
+      } else {
+        setJobPhotos([]);
+      }
     };
     fetchPhotos();
-  }, [pipelineEntryId, open]);
+  }, [pipelineEntryId, contactId, open]);
 
   // Aerial image fallback: if no job photos, pull from roof_measurements
   useEffect(() => {
