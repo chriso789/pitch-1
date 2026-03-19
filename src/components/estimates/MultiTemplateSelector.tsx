@@ -1890,6 +1890,21 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
+  // Wrap updateLineItem to also sync changes into tradeLineItems
+  const handleUpdateLineItem = (id: string, updates: Partial<LineItem>) => {
+    updateLineItem(id, updates);
+    // Also update tradeLineItems so merge effect doesn't overwrite edits
+    setTradeLineItems(prev => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        next[key] = next[key].map(item =>
+          item.id === id ? { ...item, ...updates } : item
+        );
+      }
+      return next;
+    });
+  };
+
   const handleResetItem = (id: string) => {
     const item = lineItems.find(i => i.id === id);
     if (item) {
