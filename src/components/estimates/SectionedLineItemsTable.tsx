@@ -102,6 +102,7 @@ export function SectionedLineItemsTable({
   onResetItem,
   onAddItem,
   onAddTradeItem,
+  onReorderItems,
   activeTrades,
   editable = true,
   salesTaxEnabled = false,
