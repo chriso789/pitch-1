@@ -12,6 +12,7 @@ import { Search, Users, Loader2, ListPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useContactStatuses } from '@/hooks/useContactStatuses';
 import { StagnantLeadFilter } from './StagnantLeadFilter';
 import { toast } from '@/hooks/use-toast';
 import { subDays } from 'date-fns';
