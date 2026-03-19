@@ -1,36 +1,33 @@
 
 
-# Add Drag-to-Reorder for Estimate Line Items
+# Fix: Descriptions Reverting to Originals on Save
 
-## Problem
-Line items in the estimate editor have no way to be rearranged. Users need to drag items up/down to control the order they appear in the estimate and PDF.
+## Root Cause
 
-## Approach
-Add a drag handle (grip icon) to the left side of each line item row using `@dnd-kit` (already installed in the project). When items are dropped in a new position, update `sort_order` on all affected items.
+Two issues cause description edits to be lost:
+
+**1. No blur commit on the description editor.** The `DescriptionEditor` only commits changes when the user explicitly presses Enter or clicks the Check button. If a user edits a description and then directly clicks "Save Estimate" without confirming first, the pending text in the textarea is never committed to `lineItems` state. The save captures the old description value.
+
+**2. `sort_order` not included in save payloads.** All three save functions (create, update, and ref-save) omit `sort_order` from the line items JSON. This causes items to lose their ordering on reload — a separate but related data integrity bug.
+
+**3. Multi-trade stale state.** For multi-trade estimates, `updateLineItem` updates `lineItems` but not `tradeLineItems`. If the merge effect re-runs (e.g., after adding/deleting an item), stale `tradeLineItems` overwrites the edited descriptions in `lineItems`.
 
 ## Changes
 
-### 1. `src/components/estimates/SectionedLineItemsTable.tsx`
+### 1. `src/components/estimates/SectionedLineItemsTable.tsx` — Add blur commit
 
-- Add new prop `onReorderItems: (reorderedIds: string[]) => void` to receive reorder events
-- Import `@dnd-kit/core` and `@dnd-kit/sortable` (already used elsewhere in the project)
-- Convert `renderItemRow` from a render function to a `SortableItemRow` component that uses `useSortable` hook
-- Add a `GripVertical` drag handle as the first element in each table row (only when `editable` is true)
-- Wrap each section's item rows in `DndContext` + `SortableContext` so items can be reordered within their section (materials reorder among materials, labor among labor)
-- On drag end, compute the new order and call `onReorderItems` with updated sort orders
+Add an `onBlur` handler to the `Textarea` in `DescriptionEditor` that auto-commits the description when focus leaves (e.g., when clicking Save). This ensures pending edits are written to `lineItems` before the save runs.
 
-### 2. `src/components/estimates/MultiTemplateSelector.tsx`
+### 2. `src/components/estimates/MultiTemplateSelector.tsx` — Include `sort_order` in save + sync `tradeLineItems`
 
-- Add a `handleReorderItems` function that takes the new ordered IDs and updates `sort_order` on each line item via `setLineItems`
-- Pass `onReorderItems={handleReorderItems}` to `SectionedLineItemsTable`
+- Add `sort_order: item.sort_order` to all three save payload mappings (lines ~340, ~1410, ~1690)
+- Wrap `updateLineItem` in a `handleUpdateLineItem` function that ALSO syncs the change into `tradeLineItems`, preventing the merge effect from overwriting edits
+- Pass `handleUpdateLineItem` instead of `updateLineItem` to `SectionedLineItemsTable`
 
-### 3. `src/hooks/useEstimatePricing.ts`
+## Summary
 
-No changes needed — items already sort by `sort_order`, so updating that field will automatically reflect the new order.
-
-## UI Details
-- Drag handle appears on hover (left side of the item name column) — same pattern as `PageOrderManager` and template editors
-- Table column layout: add a narrow first column for the grip handle when editable
-- Items reorder within their section (materials stay with materials, labor with labor)
-- Within multi-trade layout, items reorder within their trade+type group
+| File | Change |
+|------|--------|
+| `SectionedLineItemsTable.tsx` | Add `onBlur` to auto-commit description edits |
+| `MultiTemplateSelector.tsx` | Add `sort_order` to save payloads; sync updates to `tradeLineItems` |
 
