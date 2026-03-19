@@ -922,6 +922,7 @@ export function EstimatePreviewPanel({
                       hasAttachments={allAttachments.length > 0}
                       hasMeasurements={!!measurementSummary}
                       hasPhotos={jobPhotos.length > 0}
+                      onUploadPhotos={handleUploadPhotos}
                     />
                   </CollapsibleContent>
                 </Collapsible>
