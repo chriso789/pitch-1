@@ -12,6 +12,7 @@ import { Search, Users, Loader2, ListPlus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useContactStatuses } from '@/hooks/useContactStatuses';
 import { StagnantLeadFilter } from './StagnantLeadFilter';
 import { toast } from '@/hooks/use-toast';
 import { subDays } from 'date-fns';
@@ -32,6 +33,7 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
 }) => {
   const tenantId = useEffectiveTenantId();
   const { activeCompany } = useCompanySwitcher();
+  const { statuses: contactStatuses } = useContactStatuses();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sourceFilter, setSourceFilter] = useState<string>('all');
@@ -213,12 +215,9 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="unqualified">Unqualified</SelectItem>
-                <SelectItem value="qualified">Qualified</SelectItem>
-                <SelectItem value="not_home">Not Home</SelectItem>
-                <SelectItem value="interested">Interested</SelectItem>
-                <SelectItem value="not_interested">Not Interested</SelectItem>
-                <SelectItem value="follow_up">Follow Up</SelectItem>
+                {contactStatuses.map(status => (
+                  <SelectItem key={status.key} value={status.key}>{status.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>

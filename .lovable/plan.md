@@ -1,50 +1,54 @@
 
 
-# Three Fixes: Dialer Statuses, Estimate Price, and PDF Item Grouping
+# Fix Contact Profile Overflow, Show Estimate Saver Name, Fix Skip Trace Error
 
-## Issue 1: Dialer List Builder — Missing Contact Statuses
+Three issues to address:
 
-**Problem**: The status dropdown in `CallCenterListBuilder.tsx` (lines 214-222) is hardcoded to only 6 statuses (Unqualified, Qualified, Not Home, Interested, Not Interested, Follow Up). It's missing statuses like "Past Customer", "New Roof", "Go Back", "Do Not Contact", and any custom tenant statuses.
+## 1. Contact Profile Pipeline Area Overflowing
 
-**Fix**: Import and use `useContactStatuses()` hook (already exists at `src/hooks/useContactStatuses.ts`) to dynamically populate the status dropdown with all active tenant contact statuses instead of the hardcoded list.
+The header section in `ContactProfile.tsx` has flex items (buttons, selects, contact info) that don't wrap properly on narrow viewports, causing horizontal overflow.
 
-**File**: `src/components/call-center/CallCenterListBuilder.tsx`
-- Import `useContactStatuses`
-- Call the hook to get `statuses`
-- Replace the hardcoded `<SelectItem>` entries (lines 215-222) with a `.map()` over the dynamic statuses array
+**File: `src/pages/ContactProfile.tsx`**
 
----
+- **Line 252**: Add `overflow-hidden` to the container div
+- **Lines 299-320**: The contact info bar already uses `flex-wrap` -- add `overflow-hidden` and `max-w-full` to the parent
+- **Lines 322-376**: The action buttons row needs `flex-wrap` added so Skip Trace, Assign Rep, Edit, and Create Lead wrap on narrow screens instead of overflowing
+- **Lines 382-450**: The pipeline cards grid needs `overflow-hidden` on each card to prevent long status text or job numbers from pushing content outside
 
-## Issue 2: Estimate Preview Shows Wrong Price ($23,407.72 vs $23,600)
+## 2. Show Who Saved Each Estimate (Under Title)
 
-**Problem**: When the estimate was saved at $23,600, the rep likely manually adjusted the selling price. But the system only preserves this via `is_fixed_price` + `fixed_selling_price`. If the rep adjusted the price without explicitly toggling "fixed price mode", the estimate saves `selling_price: 23600` but `is_fixed_price: false`, so on reload the pricing engine recomputes from line items → $23,407.72.
+The `SavedEstimatesList` component fetches from `enhanced_estimates` but doesn't include the `created_by` profile name. The `enhanced_estimates` table has a `created_by` column (UUID referencing profiles).
 
-**Fix**: In the estimate loading logic (`MultiTemplateSelector.tsx`, lines 661-666), also check if the saved `selling_price` differs from the computed price. If the estimate has a `selling_price` that doesn't match the computed value, treat it as a fixed price to preserve the rep's intent.
+**File: `src/components/estimates/SavedEstimatesList.tsx`**
 
-**File**: `src/components/estimates/MultiTemplateSelector.tsx`
-- After loading items and config, compare saved `selling_price` with computed breakdown
-- If they differ significantly (>$1), auto-set `fixedPrice` to the saved `selling_price`
-- This ensures the preview always shows the price the rep agreed to
+- **Query (~line 107-124)**: Add a join to fetch the creator's name:
+  ```
+  profiles!enhanced_estimates_created_by_fkey(first_name, last_name)
+  ```
+- **Interface (~line 31-43)**: Add `created_by_name?: string` to the `SavedEstimate` interface
+- **Data mapping (~line 128-131)**: Map the joined profile to `created_by_name`:
+  ```ts
+  created_by_name: est.profiles ? `${est.profiles.first_name} ${est.profiles.last_name}` : undefined
+  ```
+- **Display (~line 416, after the status badge row)**: Add a subtle line:
+  ```tsx
+  {estimate.created_by_name && (
+    <span className="text-xs text-muted-foreground">
+      Created by {estimate.created_by_name}
+    </span>
+  )}
+  ```
 
----
+## 3. Skip Trace Error -- Missing `SEARCHBUG_CO_CODE` Secret
 
-## Issue 3: PDF Scope Table — Add Material/Labor Type Sections
+The edge function `skip-trace-lookup/index.ts` requires two secrets: `SEARCHBUG_API_KEY` (present) and `SEARCHBUG_CO_CODE` (missing). Without the CO_CODE, the function throws immediately with "SearchBug API credentials not configured".
 
-**Problem**: The `ItemsTable` component in `EstimatePDFDocument.tsx` groups items by `trade_type` (e.g., "Roofing", "Gutters") but doesn't separate materials from labor within each trade. The user wants "Materials" and "Labor" sub-section headers to match the estimate builder layout.
+**Action**: You need to provide your SearchBug account number (CO_CODE) so it can be added as a secret. The function code itself is correct -- it just needs the credential.
 
-**Fix**: Within each trade group in the `ItemsTable`, further group items by `item_type` ("material" vs "labor") and render sub-headers for each.
-
-**File**: `src/components/estimates/EstimatePDFDocument.tsx` (ItemsTable component, lines 705-797)
-- Within each trade group, split items into materials and labor sub-groups
-- Render a "Materials" sub-header before material items and a "Labor" sub-header before labor items
-- Only show sub-headers when both types exist in a trade group (skip if all items are one type)
-- Style sub-headers slightly smaller/lighter than trade headers to create visual hierarchy
-
-## Files Changed
-
-| File | Change |
-|------|--------|
-| `src/components/call-center/CallCenterListBuilder.tsx` | Use `useContactStatuses()` for dynamic status dropdown |
-| `src/components/estimates/MultiTemplateSelector.tsx` | Auto-detect saved fixed price on estimate load |
-| `src/components/estimates/EstimatePDFDocument.tsx` | Add material/labor sub-sections within trade groups in ItemsTable |
+**Fallback improvement in `supabase/functions/skip-trace-lookup/index.ts`**: Instead of throwing a hard error when CO_CODE is missing, return a clearer user-facing message:
+- Change the error message at line 61 from a generic throw to a 400 response with:
+  ```
+  "Skip trace is not configured. Please add your SearchBug CO_CODE in Settings > Integrations."
+  ```
+  This prevents the 500 error and "app encountered an error" crash overlay.
 
