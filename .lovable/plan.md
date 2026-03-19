@@ -1,28 +1,24 @@
 
 
-# Why "Job Photos" is Greyed Out — and How to Fix
+# Fix: Include Documents-Table Photos in Estimate Job Photos
 
-## What's Happening
+## Problem
+Photos uploaded to this lead are stored in the `documents` table (with `document_type = 'photo'` and `mime_type LIKE 'image/%'`), but the estimate preview only queries the `customer_photos` table. The 4 photos for Angela Rollins exist in `documents` but are invisible to the estimate.
 
-The "Job Photos" toggle is **disabled because no photos exist** for this lead. The system checks the `customer_photos` table and aerial imagery fallback — both return empty. This is technically correct behavior, but the UX gives no guidance on how to fix it.
+## Fix
 
-## Plan
+### `src/components/estimates/EstimatePreviewPanel.tsx`
+Expand the photo-fetching `useEffect` to also query the `documents` table as a secondary source:
 
-### 1. Add upload capability directly from the Extra Pages panel
-When no photos exist, show a small "Upload Photos" link/button next to the disabled Job Photos toggle. Clicking it opens the existing photo upload flow (same one used in Photo Documentation).
+1. After querying `customer_photos` (existing logic), if no photos found, query `documents` table filtered by:
+   - `pipeline_entry_id = pipelineEntryId` 
+   - `mime_type LIKE 'image/%'` OR `document_type` in `('photo', 'inspection_photo', 'job_photo', 'progress_photo', 'completion_photo')`
+2. Map document records to the same shape (`id`, `file_url`, `description`, `category`) — resolve `file_url` from storage using `resolveStorageBucket` + `getPublicUrl` on `file_path`
+3. Merge both sources: `customer_photos` results first, then `documents` table photos (deduplicated)
 
-### 2. Enable the toggle after upload
-After photos are uploaded, re-fetch and enable the toggle automatically.
-
-### Changes
+This ensures photos uploaded via SmartDocs or the Documents tab are available for the estimate without requiring users to re-upload to `customer_photos`.
 
 | File | Change |
 |------|--------|
-| `src/components/estimates/PageOrderManager.tsx` | Add an `onUploadPhotos` callback prop. When `job_photos` is disabled due to no photos, render a small "Add Photos" button next to the toggle |
-| `src/components/estimates/EstimatePreviewPanel.tsx` | Wire `onUploadPhotos` to open a photo upload dialog. After upload completes, re-fetch photos so `hasPhotos` becomes true and the toggle activates |
-
-### UX Detail
-- The disabled toggle row for "Job Photos" will show helper text: *"No photos — "* with a clickable **"Add"** link
-- Clicking "Add" opens a file picker (multi-select) that uploads to `customer_photos` for the current lead
-- After successful upload, photos are re-fetched and the toggle auto-enables
+| `src/components/estimates/EstimatePreviewPanel.tsx` | Add `documents` table query as fallback/supplement for job photos |
 
