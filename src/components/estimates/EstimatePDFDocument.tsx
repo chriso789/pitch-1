@@ -547,6 +547,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         customerPhone={customerPhone}
         customerEmail={customerEmail}
         items={itemChunks[0] || []}
+        blocks={blockChunks[0] || []}
         isOnlyChunk={itemChunks.length <= 1}
         breakdown={breakdown}
         config={config}
