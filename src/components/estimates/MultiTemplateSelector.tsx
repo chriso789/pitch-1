@@ -2426,7 +2426,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                     if (!item) return null;
                     return { ...item, sort_order: index, is_override: true };
                   })
-                  .filter((item): item is LineItem => item !== null);
+                  .filter((item): item is NonNullable<typeof item> => item !== null);
                 setLineItems(reordered);
               }}
               activeTrades={tradeSections.length > 1 ? tradeSections.map(t => ({ type: t.tradeType, label: t.label })) : undefined}
