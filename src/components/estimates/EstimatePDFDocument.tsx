@@ -569,6 +569,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         <ItemsContinuationPage
           key={`items-page-${i + 1}`}
           items={itemChunks[i]}
+          blocks={blockChunks[i]}
           isLastPage={isLastItemPage}
           breakdown={isLastItemPage ? breakdown : undefined}
           config={isLastItemPage ? config : undefined}
