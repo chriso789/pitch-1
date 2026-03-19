@@ -127,41 +127,100 @@ const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
-// Chunk items into pages — trade-aware to avoid orphaning a trade header at page bottom
-function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number): LineItem[][] {
+// ---- Group-aware pagination types ----
+interface RenderBlock {
+  type: 'trade-header' | 'sub-header' | 'item';
+  label?: string;
+  item?: LineItem;
+  tradeType?: string;
+}
+
+/**
+ * Build render blocks from items: Trade Header → Materials sub-header → items → Labor sub-header → items
+ * Then paginate blocks as units to preserve visual hierarchy across page breaks.
+ */
+function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
   if (items.length === 0) return [];
-  
-  const chunks: LineItem[][] = [];
-  let remaining = [...items];
-  
-  // Helper: check if index is the first item of a new trade group
-  const isNewTradeStart = (idx: number, arr: LineItem[]) => {
-    if (idx === 0) return true;
-    const prev = arr[idx - 1]?.trade_type || 'roofing';
-    const cur = arr[idx]?.trade_type || 'roofing';
-    return prev !== cur;
-  };
-  
-  // First chunk
-  let size = Math.min(firstPageMax, remaining.length);
-  // If the last item starts a new trade, pull it to next chunk so header isn't orphaned
-  while (size > 1 && size < remaining.length && isNewTradeStart(size - 1, remaining)) {
-    size--;
-  }
-  chunks.push(remaining.slice(0, size));
-  remaining = remaining.slice(size);
-  
-  // Continuation chunks
-  while (remaining.length > 0) {
-    let cSize = Math.min(continuationMax, remaining.length);
-    while (cSize > 1 && cSize < remaining.length && isNewTradeStart(cSize - 1, remaining)) {
-      cSize--;
+
+  // Group by trade
+  const tradeOrder: string[] = [];
+  const tradeMap = new Map<string, { label: string; items: LineItem[] }>();
+  items.forEach(item => {
+    const tradeType = (item as any).trade_type || 'roofing';
+    const tradeLabel = (item as any).trade_label || tradeType.charAt(0).toUpperCase() + tradeType.slice(1);
+    if (!tradeMap.has(tradeType)) {
+      tradeOrder.push(tradeType);
+      tradeMap.set(tradeType, { label: tradeLabel, items: [] });
     }
-    chunks.push(remaining.slice(0, cSize));
-    remaining = remaining.slice(cSize);
+    tradeMap.get(tradeType)!.items.push(item);
+  });
+
+  const hasMultipleTrades = tradeOrder.length > 1;
+  const blocks: RenderBlock[] = [];
+
+  tradeOrder.forEach(tradeType => {
+    const group = tradeMap.get(tradeType)!;
+    const materialItems = group.items.filter(i => (i as any).item_type === 'material').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const laborItems = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
+    const hasBothTypes = materialItems.length > 0 && laborItems.length > 0;
+
+    if (hasMultipleTrades) {
+      blocks.push({ type: 'trade-header', label: group.label, tradeType });
+    }
+
+    if (hasBothTypes) {
+      if (materialItems.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Materials' });
+        materialItems.forEach(item => blocks.push({ type: 'item', item }));
+      }
+      if (laborItems.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Labor' });
+        laborItems.forEach(item => blocks.push({ type: 'item', item }));
+      }
+    } else {
+      materialItems.forEach(item => blocks.push({ type: 'item', item }));
+      laborItems.forEach(item => blocks.push({ type: 'item', item }));
+    }
+    otherItems.forEach(item => blocks.push({ type: 'item', item }));
+  });
+
+  return blocks;
+}
+
+function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continuationMax: number): RenderBlock[][] {
+  if (blocks.length === 0) return [];
+
+  const chunks: RenderBlock[][] = [];
+  let remaining = [...blocks];
+
+  const chunkOnce = (maxRows: number) => {
+    if (remaining.length === 0) return;
+    let size = Math.min(maxRows, remaining.length);
+    // Don't end a page on a header (trade-header or sub-header) — pull it to next page
+    while (size > 1 && size < remaining.length && remaining[size - 1].type !== 'item') {
+      size--;
+    }
+    chunks.push(remaining.slice(0, size));
+    remaining = remaining.slice(size);
+  };
+
+  chunkOnce(firstPageMax);
+  while (remaining.length > 0) {
+    chunkOnce(continuationMax);
   }
-  
+
   return chunks;
+}
+
+// Legacy wrapper — converts render block chunks back to LineItem[][] for existing page components
+function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number): { itemChunks: LineItem[][]; blockChunks: RenderBlock[][] } {
+  const blocks = buildRenderBlocks(items);
+  const blockChunks = chunkRenderBlocks(blocks, firstPageMax, continuationMax);
+  const itemChunks = blockChunks.map(chunk => 
+    chunk.filter(b => b.type === 'item').map(b => b.item!)
+  );
+  return { itemChunks, blockChunks };
 }
 
 // Page Header Component
