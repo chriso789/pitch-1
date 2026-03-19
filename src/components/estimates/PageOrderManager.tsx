@@ -204,6 +204,7 @@ export function PageOrderManager({
                 page={page}
                 onToggle={() => handleToggle(page.id)}
                 isDisabled={getIsDisabled(page.id)}
+                onAction={page.id === 'job_photos' && !hasPhotos ? onUploadPhotos : undefined}
               />
             ))}
           </SortableContext>
