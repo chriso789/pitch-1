@@ -24,8 +24,26 @@ import {
   Trash2,
   Receipt,
   Plus,
-  StickyNote
+  StickyNote,
+  GripVertical
 } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { LineItem } from '@/hooks/useEstimatePricing';
 import { MaterialAutocomplete } from './MaterialAutocomplete';
 
@@ -39,6 +57,7 @@ interface SectionedLineItemsTableProps {
   onResetItem?: (id: string) => void;
   onAddItem?: (type: 'material' | 'labor') => void;
   onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void;
+  onReorderItems?: (reorderedIds: string[]) => void;
   /** Active trade types declared by the parent — ensures multi-trade layout even for trades with zero items */
   activeTrades?: Array<{ type: string; label: string }>;
   editable?: boolean;
@@ -83,6 +102,7 @@ export function SectionedLineItemsTable({
   onResetItem,
   onAddItem,
   onAddTradeItem,
+  onReorderItems,
   activeTrades,
   editable = true,
   salesTaxEnabled = false,
@@ -101,6 +121,38 @@ export function SectionedLineItemsTable({
 }: SectionedLineItemsTableProps) {
   const [editingCell, setEditingCell] = useState<EditableCell | null>(null);
   const [editValue, setEditValue] = useState('');
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (items: LineItem[]) => (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !onReorderItems) return;
+    const oldIndex = items.findIndex(i => i.id === active.id);
+    const newIndex = items.findIndex(i => i.id === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(items, oldIndex, newIndex);
+    // Build full reordered ID list: keep other items in place, splice this section
+    const allItems = [...materialItems, ...laborItems];
+    // Replace old section items with reordered ones
+    const sectionIds = new Set(items.map(i => i.id));
+    const result: string[] = [];
+    let sectionInserted = false;
+    for (const item of allItems) {
+      if (sectionIds.has(item.id)) {
+        if (!sectionInserted) {
+          result.push(...reordered.map(i => i.id));
+          sectionInserted = true;
+        }
+      } else {
+        result.push(item.id);
+      }
+    }
+    if (!sectionInserted) result.push(...reordered.map(i => i.id));
+    onReorderItems(result);
+  };
 
   const startEdit = (itemId: string, field: 'qty' | 'unit_cost', currentValue: number) => {
     setEditingCell({ itemId, field });
@@ -287,66 +339,115 @@ export function SectionedLineItemsTable({
     return null;
   };
 
-  const renderItemRow = (item: LineItem) => (
-    <TableRow key={item.id} className="group">
-      <TableCell className="font-medium">
-        <div className="flex items-start gap-1">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <span className="truncate">{item.item_name}</span>
-              {item.is_override && (
-                <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
+  const SortableItemRow = ({ item }: { item: LineItem }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: item.id, disabled: !editable || !onReorderItems });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    
+
+    return (
+      <TableRow ref={setNodeRef} style={style} className={`group ${isDragging ? 'bg-muted' : ''}`}>
+        {editable && onReorderItems && (
+          <TableCell className="w-8 px-1">
+            <button
+              type="button"
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          </TableCell>
+        )}
+        <TableCell className="font-medium">
+          <div className="flex items-start gap-1">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="truncate">{item.item_name}</span>
+                {item.is_override && (
+                  <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
+                )}
+                {editable && <NoteEditor item={item} />}
+              </div>
+              <DescriptionEditor item={item} />
+              {item.notes && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
+                </p>
               )}
-              {editable && <NoteEditor item={item} />}
             </div>
-            <DescriptionEditor item={item} />
-            {item.notes && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
-              </p>
-            )}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="text-right">
-        {renderEditableCell(item, 'qty', item.qty, `${Number(item.qty.toFixed(2))} ${item.unit}`)}
-      </TableCell>
-      <TableCell className="text-right">
-        {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
-      </TableCell>
-      <TableCell className="text-right font-mono font-medium">
-        {formatCurrency(item.line_total)}
-      </TableCell>
-      {editable && (
-        <TableCell className="w-10">
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {item.is_override && onResetItem && (
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-6 w-6"
-                onClick={() => onResetItem(item.id)}
-                title="Reset to original"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </Button>
-            )}
-            {onDeleteItem && (
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-6 w-6 text-destructive"
-                onClick={() => onDeleteItem(item.id)}
-                title="Remove item"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            )}
           </div>
         </TableCell>
-      )}
-    </TableRow>
-  );
+        <TableCell className="text-right">
+          {renderEditableCell(item, 'qty', item.qty, `${Number(item.qty.toFixed(2))} ${item.unit}`)}
+        </TableCell>
+        <TableCell className="text-right">
+          {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
+        </TableCell>
+        <TableCell className="text-right font-mono font-medium">
+          {formatCurrency(item.line_total)}
+        </TableCell>
+        {editable && (
+          <TableCell className="w-10">
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {item.is_override && onResetItem && (
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-6 w-6"
+                  onClick={() => onResetItem(item.id)}
+                  title="Reset to original"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </Button>
+              )}
+              {onDeleteItem && (
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-6 w-6 text-destructive"
+                  onClick={() => onDeleteItem(item.id)}
+                  title="Remove item"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </TableCell>
+        )}
+      </TableRow>
+    );
+  };
+
+  const renderSortableItems = (items: LineItem[]) => {
+    if (!editable || !onReorderItems || items.length === 0) {
+      return items.map(item => <SortableItemRow key={item.id} item={item} />);
+    }
+    return (
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(items)}>
+        <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          {items.map(item => <SortableItemRow key={item.id} item={item} />)}
+        </SortableContext>
+      </DndContext>
+    );
+  };
+
+  // Calculate total columns for colSpan: base 4 + editable actions + drag handle
+  const hasDragHandle = editable && !!onReorderItems;
+  const totalCols = 4 + (editable ? 1 : 0) + (hasDragHandle ? 1 : 0);
+  const subtotalLabelCols = 3 + (hasDragHandle ? 1 : 0);
 
   const renderSectionHeader = (
     title: string, 
@@ -354,7 +455,7 @@ export function SectionedLineItemsTable({
     itemCount: number
   ) => (
     <TableRow className="bg-muted/50 hover:bg-muted/50">
-      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+      <TableCell colSpan={totalCols} className="py-2">
         <div className="flex items-center gap-2 font-semibold">
           {icon}
           {title}
@@ -366,7 +467,7 @@ export function SectionedLineItemsTable({
 
   const renderSectionSubtotal = (label: string, total: number) => (
     <TableRow className="bg-muted/30 hover:bg-muted/30 border-t">
-      <TableCell colSpan={editable ? 3 : 3} className="text-right font-medium">
+      <TableCell colSpan={subtotalLabelCols} className="text-right font-medium">
         {label}
       </TableCell>
       <TableCell className="text-right font-mono font-bold">
@@ -417,7 +518,7 @@ export function SectionedLineItemsTable({
 
   const renderTradeHeader = (tradeType: string, tradeLabel: string) => (
     <TableRow className="bg-accent/30 hover:bg-accent/30 border-t-2 border-accent">
-      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+      <TableCell colSpan={totalCols} className="py-2">
         <div className="flex items-center gap-2 font-bold text-sm">
           <span>{TRADE_ICONS[tradeType] || '📋'}</span>
           <span className="uppercase tracking-wide">{tradeLabel}</span>
@@ -431,6 +532,7 @@ export function SectionedLineItemsTable({
       <Table>
         <TableHeader>
           <TableRow>
+            {editable && onReorderItems && <TableHead className="w-8" />}
             <TableHead className="w-[40%]">Item</TableHead>
             <TableHead className="text-right w-[20%]">Qty</TableHead>
             <TableHead className="text-right w-[15%]">Unit Cost</TableHead>
@@ -454,7 +556,7 @@ export function SectionedLineItemsTable({
                         <Package className="h-4 w-4" />,
                         group.materials.length
                       )}
-                      {group.materials.map(renderItemRow)}
+                      {renderSortableItems(group.materials)}
                       {renderSectionSubtotal(
                         'Materials Subtotal',
                         group.materials.reduce((sum, i) => sum + i.line_total, 0)
@@ -470,7 +572,7 @@ export function SectionedLineItemsTable({
                         <Hammer className="h-4 w-4" />,
                         group.labor.length
                       )}
-                      {group.labor.map(renderItemRow)}
+                      {renderSortableItems(group.labor)}
                       {renderSectionSubtotal(
                         'Labor Subtotal',
                         group.labor.reduce((sum, i) => sum + i.line_total, 0)
@@ -481,7 +583,7 @@ export function SectionedLineItemsTable({
                   {/* Per-trade Add Item buttons */}
                   {editable && onAddTradeItem && (
                     <TableRow className="hover:bg-muted/30">
-                      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                      <TableCell colSpan={totalCols} className="py-2">
                         <div className="flex gap-2">
                           <Button 
                             variant="ghost" 
@@ -509,7 +611,7 @@ export function SectionedLineItemsTable({
                   {/* Inline Add Form for this trade */}
                   {isAddingItem && addingTradeType === group.type && newItem && onNewItemChange && (
                     <TableRow className="bg-primary/5 border-2 border-primary/30">
-                      <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                      <TableCell colSpan={totalCols} className="py-3">
                         <div className="flex items-end gap-2 flex-wrap">
                           <div className="flex-1 min-w-[200px]">
                             <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : 'Labor'})</Label>
@@ -585,10 +687,10 @@ export function SectionedLineItemsTable({
                 <Package className="h-4 w-4" />,
                 materialItems.length
               )}
-              {materialItems.map(renderItemRow)}
+              {renderSortableItems(materialItems)}
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                  <TableCell colSpan={totalCols} className="py-2">
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -604,7 +706,7 @@ export function SectionedLineItemsTable({
               {/* Inline Add Material Form */}
               {isAddingItem && addingItemType === 'material' && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                  <TableCell colSpan={totalCols} className="py-3">
                     <div className="flex items-end gap-2 flex-wrap">
                       <div className="flex-1 min-w-[200px]">
                         <Label className="text-xs">Item Name</Label>
@@ -676,10 +778,10 @@ export function SectionedLineItemsTable({
                 <Hammer className="h-4 w-4" />,
                 laborItems.length
               )}
-              {laborItems.map(renderItemRow)}
+              {renderSortableItems(laborItems)}
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                  <TableCell colSpan={totalCols} className="py-2">
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -695,7 +797,7 @@ export function SectionedLineItemsTable({
               {/* Inline Add Labor Form */}
               {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                  <TableCell colSpan={totalCols} className="py-3">
                     <div className="flex items-end gap-2 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
                         <Label className="text-xs">Item Name</Label>
@@ -766,7 +868,7 @@ export function SectionedLineItemsTable({
           {/* Empty State */}
           {materialItems.length === 0 && laborItems.length === 0 && !onAddItem && (
             <TableRow>
-              <TableCell colSpan={editable ? 5 : 4} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={totalCols} className="text-center py-8 text-muted-foreground">
                 No line items. Select a template to populate items.
               </TableCell>
             </TableRow>
@@ -776,7 +878,7 @@ export function SectionedLineItemsTable({
           {(materialItems.length > 0 || laborItems.length > 0) && (
             <>
               <TableRow className="bg-primary/5 hover:bg-primary/5 border-t-2">
-                <TableCell colSpan={editable ? 3 : 3} className="text-right font-semibold text-lg">
+                <TableCell colSpan={subtotalLabelCols} className="text-right font-semibold text-lg">
                   Direct Cost Total
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold text-lg">

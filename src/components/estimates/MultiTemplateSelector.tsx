@@ -2418,6 +2418,17 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               onResetItem={handleResetItem}
               onAddItem={handleAddLineItem}
               onAddTradeItem={handleAddTradeLineItem}
+              onReorderItems={(reorderedIds) => {
+                const itemMap = new Map(lineItems.map(item => [item.id, item]));
+                const reordered = reorderedIds
+                  .map((id, index) => {
+                    const item = itemMap.get(id);
+                    if (!item) return null;
+                    return { ...item, sort_order: index, is_override: true };
+                  })
+                  .filter((item): item is NonNullable<typeof item> => item !== null);
+                setLineItems(reordered);
+              }}
               activeTrades={tradeSections.length > 1 ? tradeSections.map(t => ({ type: t.tradeType, label: t.label })) : undefined}
               editable={true}
               salesTaxEnabled={config.salesTaxEnabled}
