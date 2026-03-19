@@ -527,6 +527,7 @@ export function SectionedLineItemsTable({
       <Table>
         <TableHeader>
           <TableRow>
+            {editable && onReorderItems && <TableHead className="w-8" />}
             <TableHead className="w-[40%]">Item</TableHead>
             <TableHead className="text-right w-[20%]">Qty</TableHead>
             <TableHead className="text-right w-[15%]">Unit Cost</TableHead>
