@@ -339,66 +339,110 @@ export function SectionedLineItemsTable({
     return null;
   };
 
-  const renderItemRow = (item: LineItem) => (
-    <TableRow key={item.id} className="group">
-      <TableCell className="font-medium">
-        <div className="flex items-start gap-1">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1">
-              <span className="truncate">{item.item_name}</span>
-              {item.is_override && (
-                <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
+  const SortableItemRow = ({ item }: { item: LineItem }) => {
+    const {
+      attributes,
+      listeners,
+      setNodeRef,
+      transform,
+      transition,
+      isDragging,
+    } = useSortable({ id: item.id, disabled: !editable || !onReorderItems });
+
+    const style = {
+      transform: CSS.Transform.toString(transform),
+      transition,
+      opacity: isDragging ? 0.5 : 1,
+    };
+
+    const colSpan = editable ? 6 : 4;
+
+    return (
+      <TableRow ref={setNodeRef} style={style} className={`group ${isDragging ? 'bg-muted' : ''}`}>
+        {editable && onReorderItems && (
+          <TableCell className="w-8 px-1">
+            <button
+              type="button"
+              className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          </TableCell>
+        )}
+        <TableCell className="font-medium">
+          <div className="flex items-start gap-1">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-1">
+                <span className="truncate">{item.item_name}</span>
+                {item.is_override && (
+                  <Badge variant="outline" className="text-xs shrink-0">Modified</Badge>
+                )}
+                {editable && <NoteEditor item={item} />}
+              </div>
+              <DescriptionEditor item={item} />
+              {item.notes && (
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
+                </p>
               )}
-              {editable && <NoteEditor item={item} />}
             </div>
-            <DescriptionEditor item={item} />
-            {item.notes && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                <span className="text-amber-600 font-medium">Color/Specs:</span> {item.notes}
-              </p>
-            )}
-          </div>
-        </div>
-      </TableCell>
-      <TableCell className="text-right">
-        {renderEditableCell(item, 'qty', item.qty, `${Number(item.qty.toFixed(2))} ${item.unit}`)}
-      </TableCell>
-      <TableCell className="text-right">
-        {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
-      </TableCell>
-      <TableCell className="text-right font-mono font-medium">
-        {formatCurrency(item.line_total)}
-      </TableCell>
-      {editable && (
-        <TableCell className="w-10">
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {item.is_override && onResetItem && (
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-6 w-6"
-                onClick={() => onResetItem(item.id)}
-                title="Reset to original"
-              >
-                <RotateCcw className="h-3 w-3" />
-              </Button>
-            )}
-            {onDeleteItem && (
-              <Button 
-                size="icon" 
-                variant="ghost" 
-                className="h-6 w-6 text-destructive"
-                onClick={() => onDeleteItem(item.id)}
-                title="Remove item"
-              >
-                <Trash2 className="h-3 w-3" />
-              </Button>
-            )}
           </div>
         </TableCell>
-      )}
-    </TableRow>
-  );
+        <TableCell className="text-right">
+          {renderEditableCell(item, 'qty', item.qty, `${Number(item.qty.toFixed(2))} ${item.unit}`)}
+        </TableCell>
+        <TableCell className="text-right">
+          {renderEditableCell(item, 'unit_cost', item.unit_cost, formatCurrency(item.unit_cost))}
+        </TableCell>
+        <TableCell className="text-right font-mono font-medium">
+          {formatCurrency(item.line_total)}
+        </TableCell>
+        {editable && (
+          <TableCell className="w-10">
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              {item.is_override && onResetItem && (
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-6 w-6"
+                  onClick={() => onResetItem(item.id)}
+                  title="Reset to original"
+                >
+                  <RotateCcw className="h-3 w-3" />
+                </Button>
+              )}
+              {onDeleteItem && (
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-6 w-6 text-destructive"
+                  onClick={() => onDeleteItem(item.id)}
+                  title="Remove item"
+                >
+                  <Trash2 className="h-3 w-3" />
+                </Button>
+              )}
+            </div>
+          </TableCell>
+        )}
+      </TableRow>
+    );
+  };
+
+  const renderSortableItems = (items: LineItem[]) => {
+    if (!editable || !onReorderItems || items.length === 0) {
+      return items.map(item => <SortableItemRow key={item.id} item={item} />);
+    }
+    return (
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd(items)}>
+        <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
+          {items.map(item => <SortableItemRow key={item.id} item={item} />)}
+        </SortableContext>
+      </DndContext>
+    );
+  };
 
   const renderSectionHeader = (
     title: string, 
