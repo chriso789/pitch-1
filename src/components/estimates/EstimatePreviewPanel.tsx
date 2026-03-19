@@ -223,19 +223,22 @@ export function EstimatePreviewPanel({
 
         if (docPhotos && docPhotos.length > 0) {
           const existingIds = new Set(photos.map(p => p.id));
-          const mapped = docPhotos
-            .filter(d => !existingIds.has(d.id) && d.file_path)
-            .map(d => {
-              const bucket = resolveStorageBucket(d.document_type, d.file_path);
-              const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(d.file_path!);
-              return {
-                id: d.id,
-                file_url: urlData.publicUrl,
-                description: d.description || d.filename,
-                category: d.document_type,
-              };
-            });
-          photos = [...photos, ...mapped];
+          const mapped = await Promise.all(
+            docPhotos
+              .filter(d => !existingIds.has(d.id) && d.file_path)
+              .map(async (d) => {
+                const bucket = resolveStorageBucket(d.document_type, d.file_path);
+                const { data: urlData } = await supabase.storage.from(bucket).createSignedUrl(d.file_path!, 3600);
+                if (!urlData?.signedUrl) return null;
+                return {
+                  id: d.id,
+                  file_url: urlData.signedUrl,
+                  description: d.description || d.filename,
+                  category: d.document_type,
+                };
+              })
+          );
+          photos = [...photos, ...mapped.filter(Boolean)];
         }
       }
 
