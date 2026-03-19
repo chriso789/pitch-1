@@ -467,7 +467,7 @@ export function SectionedLineItemsTable({
 
   const renderSectionSubtotal = (label: string, total: number) => (
     <TableRow className="bg-muted/30 hover:bg-muted/30 border-t">
-      <TableCell colSpan={editable ? 3 : 3} className="text-right font-medium">
+      <TableCell colSpan={subtotalLabelCols} className="text-right font-medium">
         {label}
       </TableCell>
       <TableCell className="text-right font-mono font-bold">
@@ -518,7 +518,7 @@ export function SectionedLineItemsTable({
 
   const renderTradeHeader = (tradeType: string, tradeLabel: string) => (
     <TableRow className="bg-accent/30 hover:bg-accent/30 border-t-2 border-accent">
-      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+      <TableCell colSpan={totalCols} className="py-2">
         <div className="flex items-center gap-2 font-bold text-sm">
           <span>{TRADE_ICONS[tradeType] || '📋'}</span>
           <span className="uppercase tracking-wide">{tradeLabel}</span>
@@ -583,7 +583,7 @@ export function SectionedLineItemsTable({
                   {/* Per-trade Add Item buttons */}
                   {editable && onAddTradeItem && (
                     <TableRow className="hover:bg-muted/30">
-                      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                      <TableCell colSpan={totalCols} className="py-2">
                         <div className="flex gap-2">
                           <Button 
                             variant="ghost" 
@@ -611,7 +611,7 @@ export function SectionedLineItemsTable({
                   {/* Inline Add Form for this trade */}
                   {isAddingItem && addingTradeType === group.type && newItem && onNewItemChange && (
                     <TableRow className="bg-primary/5 border-2 border-primary/30">
-                      <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                      <TableCell colSpan={totalCols} className="py-3">
                         <div className="flex items-end gap-2 flex-wrap">
                           <div className="flex-1 min-w-[200px]">
                             <Label className="text-xs">Item Name ({addingItemType === 'material' ? 'Material' : 'Labor'})</Label>
@@ -690,7 +690,7 @@ export function SectionedLineItemsTable({
               {renderSortableItems(materialItems)}
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                  <TableCell colSpan={totalCols} className="py-2">
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -706,7 +706,7 @@ export function SectionedLineItemsTable({
               {/* Inline Add Material Form */}
               {isAddingItem && addingItemType === 'material' && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                  <TableCell colSpan={totalCols} className="py-3">
                     <div className="flex items-end gap-2 flex-wrap">
                       <div className="flex-1 min-w-[200px]">
                         <Label className="text-xs">Item Name</Label>
@@ -781,7 +781,7 @@ export function SectionedLineItemsTable({
               {renderSortableItems(laborItems)}
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-2">
+                  <TableCell colSpan={totalCols} className="py-2">
                     <Button 
                       variant="ghost" 
                       size="sm" 
@@ -797,7 +797,7 @@ export function SectionedLineItemsTable({
               {/* Inline Add Labor Form */}
               {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
-                  <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                  <TableCell colSpan={totalCols} className="py-3">
                     <div className="flex items-end gap-2 flex-wrap">
                       <div className="flex-1 min-w-[180px]">
                         <Label className="text-xs">Item Name</Label>
@@ -868,7 +868,7 @@ export function SectionedLineItemsTable({
           {/* Empty State */}
           {materialItems.length === 0 && laborItems.length === 0 && !onAddItem && (
             <TableRow>
-              <TableCell colSpan={editable ? 5 : 4} className="text-center py-8 text-muted-foreground">
+              <TableCell colSpan={totalCols} className="text-center py-8 text-muted-foreground">
                 No line items. Select a template to populate items.
               </TableCell>
             </TableRow>
@@ -878,7 +878,7 @@ export function SectionedLineItemsTable({
           {(materialItems.length > 0 || laborItems.length > 0) && (
             <>
               <TableRow className="bg-primary/5 hover:bg-primary/5 border-t-2">
-                <TableCell colSpan={editable ? 3 : 3} className="text-right font-semibold text-lg">
+                <TableCell colSpan={subtotalLabelCols} className="text-right font-semibold text-lg">
                   Direct Cost Total
                 </TableCell>
                 <TableCell className="text-right font-mono font-bold text-lg">
