@@ -142,6 +142,7 @@ export function PageOrderManager({
   hasAttachments = true,
   hasMeasurements = false,
   hasPhotos = false,
+  onUploadPhotos,
 }: PageOrderManagerProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
