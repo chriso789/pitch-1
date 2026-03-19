@@ -68,10 +68,12 @@ function SortablePageItem({
   page,
   onToggle,
   isDisabled,
+  onAction,
 }: {
   page: PageOrderItem;
   onToggle: () => void;
   isDisabled?: boolean;
+  onAction?: () => void;
 }) {
   const {
     attributes,
