@@ -634,6 +634,14 @@ export function EstimatePreviewPanel({
 
   return (
     <>
+    <input
+      ref={photoUploadRef}
+      type="file"
+      accept="image/*"
+      multiple
+      className="hidden"
+      onChange={handlePhotoFilesSelected}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:hidden">
         <DialogHeader className="px-6 py-4 border-b relative z-10">
