@@ -449,12 +449,13 @@ export function SectionedLineItemsTable({
   const totalCols = 4 + (editable ? 1 : 0) + (hasDragHandle ? 1 : 0);
   const subtotalLabelCols = 3 + (hasDragHandle ? 1 : 0);
 
+  const renderSectionHeader = (
     title: string, 
     icon: React.ReactNode, 
     itemCount: number
   ) => (
     <TableRow className="bg-muted/50 hover:bg-muted/50">
-      <TableCell colSpan={editable ? 5 : 4} className="py-2">
+      <TableCell colSpan={totalCols} className="py-2">
         <div className="flex items-center gap-2 font-semibold">
           {icon}
           {title}
