@@ -115,13 +115,23 @@ function SortablePageItem({
         {page.label}
       </Label>
       
-      <Switch
-        id={`page-toggle-${page.id}`}
-        checked={page.enabled && !isDisabled}
-        onCheckedChange={onToggle}
-        disabled={page.locked || isDisabled}
-        className="scale-75"
-      />
+      {isDisabled && onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          className="text-[10px] text-primary hover:underline shrink-0 font-medium"
+        >
+          + Add
+        </button>
+      ) : (
+        <Switch
+          id={`page-toggle-${page.id}`}
+          checked={page.enabled && !isDisabled}
+          onCheckedChange={onToggle}
+          disabled={page.locked || isDisabled}
+          className="scale-75"
+        />
+      )}
     </div>
   );
 }
