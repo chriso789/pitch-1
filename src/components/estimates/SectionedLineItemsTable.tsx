@@ -567,7 +567,7 @@ export function SectionedLineItemsTable({
                         <Hammer className="h-4 w-4" />,
                         group.labor.length
                       )}
-                      {group.labor.map(renderItemRow)}
+                      {renderSortableItems(group.labor)}
                       {renderSectionSubtotal(
                         'Labor Subtotal',
                         group.labor.reduce((sum, i) => sum + i.line_total, 0)
