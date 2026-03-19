@@ -214,12 +214,9 @@ export const CallCenterListBuilder: React.FC<CallCenterListBuilderProps> = ({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="unqualified">Unqualified</SelectItem>
-                <SelectItem value="qualified">Qualified</SelectItem>
-                <SelectItem value="not_home">Not Home</SelectItem>
-                <SelectItem value="interested">Interested</SelectItem>
-                <SelectItem value="not_interested">Not Interested</SelectItem>
-                <SelectItem value="follow_up">Follow Up</SelectItem>
+                {contactStatuses.map(status => (
+                  <SelectItem key={status.key} value={status.key}>{status.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>

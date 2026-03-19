@@ -752,45 +752,85 @@ const ItemsTable: React.FC<{ items: LineItem[]; opts: PDFComponentOptions; conti
           </tr>
         </thead>
         <tbody>
-          {groupedByTrade.map((group) => (
-            <React.Fragment key={group.tradeType}>
-              {hasMultipleTrades && (
-                <tr>
-                  <td 
-                    colSpan={opts.showLineItemQuantities ? 3 : 1} 
-                    className="pt-3 pb-1"
-                  >
-                    <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
-                      {group.tradeLabel}
+          {groupedByTrade.map((group) => {
+            const materialItems = group.items.filter(i => (i as any).item_type === 'material');
+            const laborItems = group.items.filter(i => (i as any).item_type === 'labor');
+            const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
+            const hasBothTypes = materialItems.length > 0 && laborItems.length > 0;
+
+            const renderItem = (item: LineItem, idx: number) => (
+              <tr key={item.id || idx} className="border-b border-gray-100">
+                <td className="py-1.5">
+                  <div className="font-medium text-gray-900">{item.item_name}</div>
+                  {opts.showItemDescriptions && item.description && (
+                    <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+                      {item.description}
                     </div>
-                  </td>
-                </tr>
-              )}
-              {group.items.map((item, idx) => (
-                <tr key={item.id || idx} className="border-b border-gray-100">
-                  <td className="py-1.5">
-                    <div className="font-medium text-gray-900">{item.item_name}</div>
-                    {opts.showItemDescriptions && item.description && (
-                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
-                        {item.description}
-                      </div>
-                    )}
-                    {item.notes && (
-                      <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
-                        {item.notes}
-                      </div>
-                    )}
-                  </td>
-                  {opts.showLineItemQuantities && (
-                    <>
-                      <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-                      <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
-                    </>
                   )}
-                </tr>
-              ))}
-            </React.Fragment>
-          ))}
+                  {item.notes && (
+                    <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+                      {item.notes}
+                    </div>
+                  )}
+                </td>
+                {opts.showLineItemQuantities && (
+                  <>
+                    <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+                    <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
+                  </>
+                )}
+              </tr>
+            );
+
+            const renderSubHeader = (label: string) => (
+              <tr>
+                <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-2 pb-0.5">
+                  <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
+                    {label}
+                  </div>
+                </td>
+              </tr>
+            );
+
+            return (
+              <React.Fragment key={group.tradeType}>
+                {hasMultipleTrades && (
+                  <tr>
+                    <td 
+                      colSpan={opts.showLineItemQuantities ? 3 : 1} 
+                      className="pt-3 pb-1"
+                    >
+                      <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
+                        {group.tradeLabel}
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {hasBothTypes ? (
+                  <>
+                    {materialItems.length > 0 && (
+                      <>
+                        {renderSubHeader('Materials')}
+                        {materialItems.map(renderItem)}
+                      </>
+                    )}
+                    {laborItems.length > 0 && (
+                      <>
+                        {renderSubHeader('Labor')}
+                        {laborItems.map(renderItem)}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    {materialItems.length > 0 && materialItems.map(renderItem)}
+                    {laborItems.length > 0 && laborItems.map(renderItem)}
+                  </>
+                )}
+                {otherItems.map(renderItem)}
+              </React.Fragment>
+            );
+          })}
         </tbody>
       </table>
     </div>

@@ -659,8 +659,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       });
 
       // Handle fixed price - explicitly clear if not fixed price
+      // Also auto-detect when rep manually adjusted selling_price without toggling fixed price mode
       if (estimate.is_fixed_price && estimate.fixed_selling_price) {
         setFixedPrice(estimate.fixed_selling_price);
+      } else if (estimate.selling_price && estimate.selling_price > 0) {
+        // If a selling_price was saved, preserve it as fixed to prevent recomputation drift
+        setFixedPrice(estimate.selling_price);
       } else {
         setFixedPrice(null);
       }
