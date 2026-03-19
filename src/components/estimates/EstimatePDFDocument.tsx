@@ -665,6 +665,7 @@ const FirstPage: React.FC<{
   customerPhone?: string | null;
   customerEmail?: string | null;
   items: LineItem[];
+  blocks: RenderBlock[];
   isOnlyChunk: boolean;
   breakdown: EstimatePDFDocumentProps['breakdown'];
   config: EstimatePDFDocumentProps['config'];
@@ -677,6 +678,7 @@ const FirstPage: React.FC<{
   customerPhone,
   customerEmail,
   items,
+  blocks,
   isOnlyChunk,
   breakdown,
   config,
@@ -719,7 +721,7 @@ const FirstPage: React.FC<{
 
       {/* Project Scope Table */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && (
-        <ItemsTable items={items} opts={opts} />
+        <ItemsTable blocks={blocks} opts={opts} />
       )}
 
       {/* Continuation hint when items overflow to next page */}
