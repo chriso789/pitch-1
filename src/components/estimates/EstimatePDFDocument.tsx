@@ -495,8 +495,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         })()
       : materialItems;
     
-    // Chunk scope items for pagination
-    const itemChunks = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
+    // Chunk scope items for pagination (group-aware)
+    const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION);
     
     // Count total pages for page numbering
     // Pre-build warranty pages to know their count
