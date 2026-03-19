@@ -444,7 +444,11 @@ export function SectionedLineItemsTable({
     );
   };
 
-  const renderSectionHeader = (
+  // Calculate total columns for colSpan: base 4 + editable actions + drag handle
+  const hasDragHandle = editable && !!onReorderItems;
+  const totalCols = 4 + (editable ? 1 : 0) + (hasDragHandle ? 1 : 0);
+  const subtotalLabelCols = 3 + (hasDragHandle ? 1 : 0);
+
     title: string, 
     icon: React.ReactNode, 
     itemCount: number
