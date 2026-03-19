@@ -20,7 +20,10 @@ export function resolveStorageBucket(
 
   // Photo documents use customer-photos bucket
   if (documentType === 'photo' || documentType === 'inspection_photo' || documentType === 'required_photos') {
-    return 'customer-photos';
+    if (filePath?.includes('/leads/')) {
+      return 'customer-photos';
+    }
+    return 'documents';
   }
 
   // Files in leads folder (photos) are in customer-photos
