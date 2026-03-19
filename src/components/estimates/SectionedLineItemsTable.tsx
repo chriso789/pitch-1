@@ -292,6 +292,10 @@ export function SectionedLineItemsTable({
             rows={3}
             autoFocus
             onFocus={(e) => e.target.select()}
+            onBlur={() => {
+              onUpdateItem(item.id, { description: descValue });
+              setEditing(false);
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();

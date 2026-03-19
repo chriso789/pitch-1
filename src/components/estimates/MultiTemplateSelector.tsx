@@ -348,6 +348,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          sort_order: item.sort_order,
           trade_type: item.trade_type,
           trade_label: item.trade_label,
         })),
@@ -363,6 +364,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          sort_order: item.sort_order,
           trade_type: item.trade_type,
           trade_label: item.trade_label,
         })),
@@ -1418,6 +1420,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          sort_order: item.sort_order,
           trade_type: item.trade_type,
           trade_label: item.trade_label,
         })),
@@ -1433,6 +1436,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          sort_order: item.sort_order,
           trade_type: item.trade_type,
           trade_label: item.trade_label,
         })),
@@ -1695,6 +1699,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          sort_order: item.sort_order,
           trade_type: item.trade_type,
           trade_label: item.trade_label,
         })),
@@ -1710,6 +1715,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           unit_cost_original: item.unit_cost_original,
           line_total: item.line_total,
           is_override: item.is_override,
+          sort_order: item.sort_order,
           trade_type: item.trade_type,
           trade_label: item.trade_label,
         })),
@@ -1884,10 +1890,25 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
+  // Wrap updateLineItem to also sync changes into tradeLineItems
+  const handleUpdateLineItem = (id: string, updates: Partial<LineItem>) => {
+    updateLineItem(id, updates);
+    // Also update tradeLineItems so merge effect doesn't overwrite edits
+    setTradeLineItems(prev => {
+      const next = { ...prev };
+      for (const key of Object.keys(next)) {
+        next[key] = next[key].map(item =>
+          item.id === id ? { ...item, ...updates } : item
+        );
+      }
+      return next;
+    });
+  };
+
   const handleResetItem = (id: string) => {
     const item = lineItems.find(i => i.id === id);
     if (item) {
-      updateLineItem(id, {
+      handleUpdateLineItem(id, {
         qty: item.qty_original,
         unit_cost: item.unit_cost_original,
         is_override: false,
@@ -2413,7 +2434,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               laborItems={laborItems}
               materialsTotal={breakdown.materialsTotal}
               laborTotal={breakdown.laborTotal}
-              onUpdateItem={updateLineItem}
+              onUpdateItem={handleUpdateLineItem}
               onDeleteItem={handleDeleteLineItem}
               onResetItem={handleResetItem}
               onAddItem={handleAddLineItem}
