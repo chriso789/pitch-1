@@ -60,6 +60,7 @@ interface PageOrderManagerProps {
   hasAttachments?: boolean;
   hasMeasurements?: boolean;
   hasPhotos?: boolean;
+  onUploadPhotos?: () => void;
 }
 
 // Sortable page item component
@@ -67,10 +68,12 @@ function SortablePageItem({
   page,
   onToggle,
   isDisabled,
+  onAction,
 }: {
   page: PageOrderItem;
   onToggle: () => void;
   isDisabled?: boolean;
+  onAction?: () => void;
 }) {
   const {
     attributes,
@@ -112,13 +115,23 @@ function SortablePageItem({
         {page.label}
       </Label>
       
-      <Switch
-        id={`page-toggle-${page.id}`}
-        checked={page.enabled && !isDisabled}
-        onCheckedChange={onToggle}
-        disabled={page.locked || isDisabled}
-        className="scale-75"
-      />
+      {isDisabled && onAction ? (
+        <button
+          type="button"
+          onClick={onAction}
+          className="text-[10px] text-primary hover:underline shrink-0 font-medium"
+        >
+          + Add
+        </button>
+      ) : (
+        <Switch
+          id={`page-toggle-${page.id}`}
+          checked={page.enabled && !isDisabled}
+          onCheckedChange={onToggle}
+          disabled={page.locked || isDisabled}
+          className="scale-75"
+        />
+      )}
     </div>
   );
 }
@@ -129,6 +142,7 @@ export function PageOrderManager({
   hasAttachments = true,
   hasMeasurements = false,
   hasPhotos = false,
+  onUploadPhotos,
 }: PageOrderManagerProps) {
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -190,6 +204,7 @@ export function PageOrderManager({
                 page={page}
                 onToggle={() => handleToggle(page.id)}
                 isDisabled={getIsDisabled(page.id)}
+                onAction={page.id === 'job_photos' && !hasPhotos ? onUploadPhotos : undefined}
               />
             ))}
           </SortableContext>

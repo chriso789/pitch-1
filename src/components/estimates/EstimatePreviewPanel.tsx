@@ -162,10 +162,11 @@ export function EstimatePreviewPanel({
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
-  const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
+   const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
+  const photoUploadRef = useRef<HTMLInputElement>(null);
 
   // Fetch job photos for estimate preview
   const [jobPhotos, setJobPhotos] = useState<Array<{
@@ -242,6 +243,82 @@ export function EstimatePreviewPanel({
     };
     fetchAerial();
   }, [open, jobPhotos.length, contactId]);
+
+  // Handle photo upload from PageOrderManager "Add" button
+  const handleUploadPhotos = useCallback(() => {
+    photoUploadRef.current?.click();
+  }, []);
+
+  const handlePhotoFilesSelected = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files?.length) return;
+
+    const leadId = pipelineEntryId;
+    if (!leadId && !contactId) {
+      toast({ title: 'Cannot upload', description: 'No lead or contact linked', variant: 'destructive' });
+      return;
+    }
+
+    let uploaded = 0;
+    for (const file of Array.from(files)) {
+      if (!file.type.startsWith('image/')) continue;
+      if (file.size > 10 * 1024 * 1024) {
+        toast({ title: 'File too large', description: `${file.name} exceeds 10MB`, variant: 'destructive' });
+        continue;
+      }
+
+      const tid = tenantId || '';
+      const timestamp = Date.now();
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${tid}/leads/${leadId || contactId}/photos/${timestamp}_${safeName}`;
+
+      const { error: uploadErr } = await supabase.storage
+        .from('customer-photos')
+        .upload(storagePath, file, { contentType: file.type, upsert: false });
+
+      if (uploadErr) {
+        console.error('Photo upload error:', uploadErr);
+        continue;
+      }
+
+      const { data: urlData } = supabase.storage.from('customer-photos').getPublicUrl(storagePath);
+
+      await supabase.from('customer_photos').insert({
+        lead_id: leadId || null,
+        contact_id: contactId || null,
+        tenant_id: tid,
+        file_url: urlData.publicUrl,
+        file_path: storagePath,
+        category: 'before',
+        uploaded_by: userId || null,
+        include_in_estimate: true,
+      });
+      uploaded++;
+    }
+
+    if (uploaded > 0) {
+      toast({ title: 'Photos uploaded', description: `${uploaded} photo(s) added to estimate` });
+      // Re-fetch photos
+      const query = supabase
+        .from('customer_photos')
+        .select('id, file_url, description, category, include_in_estimate')
+        .order('display_order');
+
+      const { data } = leadId
+        ? await query.eq('lead_id', leadId)
+        : await query.eq('contact_id', contactId!);
+
+      if (data && data.length > 0) {
+        const estimateMarked = data.filter(p => p.include_in_estimate === true);
+        setJobPhotos(estimateMarked.length > 0 ? estimateMarked : data);
+      }
+
+      // Auto-enable job_photos in page order
+      setPageOrder(prev => prev.map(p => p.id === 'job_photos' ? { ...p, enabled: true } : p));
+    }
+
+    if (photoUploadRef.current) photoUploadRef.current.value = '';
+  }, [pipelineEntryId, contactId, tenantId, userId, toast]);
 
   // Filter template attachments to exclude removed ones
   const activeTemplateAttachments = useMemo(() => 
@@ -557,6 +634,14 @@ export function EstimatePreviewPanel({
 
   return (
     <>
+    <input
+      ref={photoUploadRef}
+      type="file"
+      accept="image/*"
+      multiple
+      className="hidden"
+      onChange={handlePhotoFilesSelected}
+    />
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:hidden">
         <DialogHeader className="px-6 py-4 border-b relative z-10">
@@ -845,6 +930,7 @@ export function EstimatePreviewPanel({
                       hasAttachments={allAttachments.length > 0}
                       hasMeasurements={!!measurementSummary}
                       hasPhotos={jobPhotos.length > 0}
+                      onUploadPhotos={handleUploadPhotos}
                     />
                   </CollapsibleContent>
                 </Collapsible>
