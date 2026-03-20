@@ -1,53 +1,51 @@
 
 
-# Multi-Estimate Preview + Cover Page & Layout Updates
+# Update Material Descriptions from PDF Estimates
 
-## Summary
-Four changes: (1) add multi-estimate selector inside the preview panel, (2) make cover page logo 100% larger, (3) add estimate name in bold at top of estimate content pages, (4) change cover page title to "O'Brien Contracting Estimate".
+## What
+Extract line item descriptions from the 3 uploaded PDF estimates (5V Mill Finish, GAF HDZ, Standing Seam Painted) and apply them to the `materials` table in the database. The `estimate_line_items` table is currently empty (0 rows), so only materials need updating.
 
-## Changes
+## Extracted Descriptions (28 items matched to DB)
 
-### 1. Cover Page — Logo 100% Larger
-**`src/components/estimates/EstimateCoverPage.tsx`**
-- Change logo `className` from `h-20` to `h-40` (line 95)
+From all 3 PDFs, I extracted descriptions for these materials that exist in the database:
 
-### 2. Cover Page — Title Change
-**`src/components/estimates/EstimateCoverPage.tsx`**
-- Change line 112 from `{estimateName || 'ROOFING ESTIMATE'}` to `"O'Brien Contracting Estimate"` (hardcoded per user preference)
+| Material Name | New Description |
+|---|---|
+| 1" SnapLok Panels 24ga | Remove old roof and install new metal roofing panels for superior durability and weather resistance. 1" SnapLok panels are 24-gauge standing seam metal roofing featuring a concealed fastener, snap-together design for easy installation... |
+| Butyl Tape 1" | Adhesive sealing tape applied at panel overlaps for a weathertight bond between metal panels... |
+| Eave Closure Strip | Foam or rubber sealing strips installed at panel edges to block wind-driven rain, insects, and debris... |
+| Metal Hip Cap | 10ft metal hip cap. Specialized flashing installed over the diagonal ridge where two roof slopes meet... |
+| Metal Pipe Boot | Rubber-sealed flashing fitted around plumbing vent pipes to prevent leaks at roof penetrations... |
+| Metal Ridge Cap | Specially shaped shingles installed along the peak and hip lines of your roof for a finished, watertight seal... |
+| Pancake Screws #10 x 1" | Specialized fasteners used to secure metal panels to the roof deck for a watertight seal. |
+| Pancake Screws #12 x 1.5" | Specialized fasteners used to secure metal panels to the roof deck for a watertight seal... (extended) |
+| Polyglass XFR | High Temp - Fire Rated Peel N Stick. Polystick® XFR by Polyglass is a premium, self-adhered waterproofing underlayment... |
+| Polyglass XFR Underlayment | Waterproof barrier installed over the roof deck beneath the shingles as a secondary layer of leak protection... |
+| Ridge Closure Strip | (same pattern as eave closure) |
+| Panel Install | Professionally install new roofing materials per manufacturer specifications... |
+| Tear Off | Remove and dispose of all existing roofing materials down to the bare deck... |
+| Coil Nails 1-1/4" | Galvanized roofing nails used to secure roofing materials to the deck per manufacturer specifications |
+| Drip Edge | Metal edge flashing installed along the roof perimeter to direct water away from the fascia and into gutters |
+| GAF Cobra Ridge Vent | Specially shaped shingles installed along the peak and hip lines of your roof for a finished, watertight seal |
+| GAF Pro-Start Starter Strip | Adhesive starter row installed along eaves and rakes to seal the first course of shingles against wind uplift |
+| GAF Seal-A-Ridge Ridge Cap | Specially shaped shingles installed along the peak and hip lines of your roof for a finished, watertight seal |
+| GAF StormGuard Ice & Water | Self-adhering waterproof membrane applied to vulnerable areas like eaves and valleys to prevent ice dam and wind-driven rain leaks |
+| GAF Timberline HDZ Shingles | Remove old roof and install new architectural shingles for lasting weather protection and curb appeal |
+| Pipe Boot 1-3" | Rubber-sealed flashing fitted around plumbing vent pipes to prevent leaks at roof penetrations |
+| Roofing Cement | Sealant applied to flashings, edges, and penetrations for additional waterproofing |
+| Cleanup/Haul | Complete job-site cleanup, magnetic nail sweep, and haul all debris to the dump |
+| Shingle Install | Professionally install new roofing materials per manufacturer specifications to maintain full warranty coverage |
+| Dump Fees | Dump fees, or "tipping fees," are charges imposed by landfills, transfer stations, or waste facilities... |
+| SnapLok Eave Trim | 10.5ft eave trim. SnapLok eave trim is a specialized, factory-formed metal flashing designed for standing seam roof systems... |
+| SnapLok Hip Cap | 10 ft hip cap. A SnapLok hip cap is a specialized, fastener-free roofing component designed for standing seam metal roofs... |
+| SnapLok Rake Trim | 10.5ft rake trim. SnapLok rake trim (or gable trim) is a specialized, often fastener-free flashing used in standing seam metal roofing... |
+| SS Pipe Boot | Rubber-sealed flashing fitted around plumbing vent pipes to prevent leaks at roof penetrations... |
 
-### 3. Estimate Name at Top of Content Pages
-**`src/components/estimates/EstimatePDFDocument.tsx`**
-- In `FirstPage` component (~line 690), add a bold estimate name banner before the "Prepared For" section:
-  ```
-  {estimateName && (
-    <div className="text-center mb-2">
-      <h2 className="text-xl font-bold text-gray-900">{estimateName}</h2>
-    </div>
-  )}
-  ```
-- Thread `estimateName` prop through `FirstPage` component (add to interface and usage at line 542-557)
+## Approach
+Run `UPDATE materials SET description = '...' WHERE name = '...'` statements via psql for each of the 28+ matched items. This updates ALL duplicate rows for a given material name (since there are multiple tenant copies).
 
-### 4. Multi-Estimate Selector Inside Preview Panel
-**`src/components/estimates/EstimatePreviewPanel.tsx`**
-- Add new props: `pipelineEntryId` (already exists), plus a new `allEstimates` array prop with `{id, display_name, estimate_number}[]`
-- Add state for `selectedEstimateIds: string[]` (defaults to current estimate)
-- In the left sidebar, add a collapsible "Estimates to Include" section with checkboxes for each saved estimate
-- When multiple estimates are selected, fetch their data from `enhanced_estimates` + `estimate_line_items` and render multiple `EstimatePDFDocument` components sequentially in the preview area (each with its own cover page)
+**Note**: "5V Metal Panels 24ga - Mill Finish" from the PDF has no exact match in the DB (only "5V Metal Panels 24ga Painted" exists). The Mill Finish description will be skipped unless you want it applied to the Painted variant too.
 
-**`src/components/estimates/MultiTemplateSelector.tsx`**
-- Fetch the saved estimates list and pass it to `EstimatePreviewPanel` as `allEstimates`
-
-**New: Data fetching for additional estimates**
-- When a user checks an additional estimate, query `enhanced_estimates` by ID to get pricing breakdown, then query `estimate_line_items` to get materials/labor
-- Render each selected estimate as a separate `EstimatePDFDocument` block in the preview scroll area
-
-### Technical Details
-
-**Multi-estimate preview architecture:**
-- The preview panel already receives all data for the "current" estimate via props
-- For additional selected estimates, fetch their data on-demand from Supabase (`enhanced_estimates` + `estimate_line_items`)
-- Store fetched estimate data in a `Map<string, EstimateData>` state
-- Render: iterate over `selectedEstimateIds`, for the current estimate use props, for others use fetched data
-- Each estimate renders its own full `EstimatePDFDocument` (cover page + scope pages + terms)
-- PDF export: the existing `data-report-page` selector captures all pages across all estimates
+## No code changes needed
+This is purely a database data update.
 
