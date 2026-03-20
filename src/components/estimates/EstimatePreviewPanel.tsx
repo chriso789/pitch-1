@@ -297,7 +297,74 @@ export function EstimatePreviewPanel({
     fetchAerial();
   }, [open, jobPhotos.length, contactId]);
 
-  // Handle photo upload from PageOrderManager "Add" button
+  // Fetch additional estimate data when selected
+  const handleToggleEstimate = useCallback(async (estId: string) => {
+    setSelectedAdditionalIds(prev => {
+      const next = new Set(prev);
+      if (next.has(estId)) {
+        next.delete(estId);
+      } else {
+        next.add(estId);
+      }
+      return next;
+    });
+
+    // If not already fetched, fetch it
+    if (!fetchedEstimates.has(estId)) {
+      try {
+        const { data: est } = await supabase
+          .from('enhanced_estimates')
+          .select('estimate_number, display_name, line_items, selling_price, material_total, labor_total, overhead_amount, overhead_percent, actual_profit_amount, actual_profit_percent, rep_commission_amount, rep_commission_percent, sales_tax_amount, sales_tax_rate, total_with_tax')
+          .eq('id', estId)
+          .single();
+
+        if (est) {
+          const lineItemsData = est.line_items as any;
+          const materials: LineItem[] = (lineItemsData?.materials || []).map((item: any) => ({ ...item, item_type: 'material' as const }));
+          const labor: LineItem[] = (lineItemsData?.labor || []).map((item: any) => ({ ...item, item_type: 'labor' as const }));
+
+          const matTotal = est.material_total || 0;
+          const labTotal = est.labor_total || 0;
+          const directCost = matTotal + labTotal;
+          const overheadAmt = est.overhead_amount || 0;
+          const profitAmt = est.actual_profit_amount || 0;
+          const repComm = (est.rep_commission_amount as number) || 0;
+
+          const fetched: FetchedEstimateData = {
+            estimateNumber: est.estimate_number,
+            estimateName: est.display_name || undefined,
+            materialItems: materials,
+            laborItems: labor,
+            breakdown: {
+              materialsTotal: matTotal,
+              laborTotal: labTotal,
+              directCost,
+              overheadAmount: overheadAmt,
+              totalCost: directCost + overheadAmt,
+              profitAmount: profitAmt,
+              repCommissionAmount: repComm,
+              sellingPrice: est.selling_price || 0,
+              actualProfitMargin: est.actual_profit_percent || 0,
+              salesTaxAmount: (est.sales_tax_amount as number) || 0,
+              totalWithTax: (est.total_with_tax as number) || undefined,
+            },
+            config: {
+              overheadPercent: est.overhead_percent || 0,
+              profitMarginPercent: est.actual_profit_percent || 0,
+              repCommissionPercent: (est.rep_commission_percent as number) || 0,
+              salesTaxEnabled: !!(est.sales_tax_rate && est.sales_tax_rate > 0),
+              salesTaxRate: (est.sales_tax_rate as number) || 0,
+            },
+          };
+
+          setFetchedEstimates(prev => new Map(prev).set(estId, fetched));
+        }
+      } catch (err) {
+        console.error('Failed to fetch estimate:', estId, err);
+      }
+    }
+  }, [fetchedEstimates]);
+
   const handleUploadPhotos = useCallback(() => {
     photoUploadRef.current?.click();
   }, []);
