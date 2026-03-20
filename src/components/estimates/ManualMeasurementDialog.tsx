@@ -98,6 +98,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
     areaType: 'pitch_adjusted',
     area: 0,
     pitch: '6/12',
+    flatSectionArea: 0,
     ridges: 0,
     hips: 0,
     valleys: 0,
