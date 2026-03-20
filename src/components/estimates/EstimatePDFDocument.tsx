@@ -554,6 +554,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         opts={opts}
         showTerms={firstPageHasTerms}
         finePrintContent={opts.showCustomFinePrint ? finePrintContent : undefined}
+        estimateName={estimateName}
       />
     );
 
