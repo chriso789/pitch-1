@@ -1,34 +1,52 @@
 
+Fix the remaining added-estimate formatting bug by correcting the page-wrapping logic in `EstimatePDFDocument.tsx`.
 
-# Fix First Page Formatting for Added Estimates
+Problem found:
+- The remaining issue is not the global font CSS anymore.
+- In `EstimatePDFDocument.tsx`, the render loop does this:
+  - `const isCoverPage = opts.showCoverPage && idx === 0`
+- For added estimates, `skipCoverPage={true}` is passed from `EstimatePreviewPanel.tsx`.
+- That means the first real content page of every added estimate is still being treated like a cover page whenever the cover-page option is enabled globally.
+- Result: that first added-estimate page bypasses `PageShell`, so it loses the normal page width, margins, header/footer wrapper, font enforcement, and `data-report-page` marker.
 
-## Problem Analysis
+Why previous fixes didn’t solve it:
+- They targeted inherited font styles and table padding.
+- But this remaining mismatch is caused by the first added-estimate page not being wrapped at all.
 
-After investigating the code, both the primary and added estimates render through the identical `PageShell` component with the same `px-6` padding, `816px` width, and `pdf-render-container` font styles. However, there are two issues that can cause visual inconsistency:
+Implementation plan:
+1. Update `src/components/estimates/EstimatePDFDocument.tsx`
+   - Change cover-page detection so only an actually-rendered cover page is skipped from `PageShell`.
+   - Use logic like:
+     - `const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage`
+     - `const isCoverPage = hasRenderedCoverPage && idx === 0`
+2. Keep all non-cover pages wrapped in `PageShell`
+   - This ensures the first page of each added estimate gets the same:
+     - 816px page width
+     - `px-6` margins
+     - `pdf-render-container` font styling
+     - header/footer layout
+     - `data-report-page` marker
+3. Verify page indexing behavior
+   - Confirm added estimates now render their first page as a normal page, not raw `FirstPage` content.
+   - Confirm page-count/export logic works correctly since `[data-report-page]` will now exist on that page too.
+4. Regression check
+   - Make sure the true cover page of the main estimate still renders without a duplicate wrapper.
+   - Make sure continuation pages and attachments are unaffected.
 
-1. **CSS forced padding on table cells**: In `src/index.css` (line 607-610), the rule `.pdf-render-container table td, .pdf-render-container table th { padding: 8px 12px !important; }` applies `!important` padding to ALL table cells. This can interact differently with Tailwind's `py-1.5` classes used in the `ItemsTable` component, potentially causing layout shifts depending on CSS specificity and load order.
+Technical details:
+- Root cause location: `src/components/estimates/EstimatePDFDocument.tsx`, inside the final `pages.pages.map(...)` render block.
+- Current bug:
+```text
+opts.showCoverPage && idx === 0
+```
+- Correct behavior:
+```text
+only treat idx 0 as a cover page when this document actually rendered a cover page
+```
 
-2. **Duplicate element IDs**: Each `EstimatePDFDocument` instance creates a `<div id="estimate-pdf-pages">`, resulting in duplicate IDs in the DOM. While not directly a visual issue, it can cause unexpected behavior with CSS or JS targeting.
+Files to update:
+- `src/components/estimates/EstimatePDFDocument.tsx`
 
-3. **Font inheritance scope**: The `pdf-render-container` class and inline `fontFamily` style are set per `PageShell`. When two `EstimatePDFDocument` instances are siblings inside `#estimate-preview-template`, the outer `div` wrapper doesn't enforce the font, so any inherited styles from parent containers (the dialog, the preview panel) could leak into gaps between page shells.
-
-## Changes
-
-### File: `src/components/estimates/EstimatePDFDocument.tsx`
-
-- Change the wrapper from `id="estimate-pdf-pages"` to `className`-based identification. Use a `data-estimate-pages` attribute instead of a duplicate ID. Accept an optional `instanceId` prop so each instance is uniquely identifiable.
-- Apply `pdf-render-container` class and the inline font styles to the **outer wrapper** div (`estimate-pdf-pages`), not just to individual `PageShell` elements. This ensures consistent font rendering across all pages including gaps.
-
-### File: `src/index.css`
-
-- Scope the forced table cell padding rule more narrowly. Change `.pdf-render-container table td, .pdf-render-container table th` to only apply to the items table context, not ALL tables (which could affect the customer info section or pricing summary differently). Remove the `!important` or reduce the padding to match Tailwind's `py-1.5` (6px vertical) while keeping the horizontal padding.
-
-### File: `src/components/estimates/EstimatePreviewPanel.tsx`
-
-- Add `pdf-render-container` class and the font family inline style to the `#estimate-preview-template` wrapper div so ALL child content inherits consistent font rendering regardless of which `EstimatePDFDocument` instance renders it.
-- Pass unique instance identifiers to each `EstimatePDFDocument` to avoid duplicate IDs.
-
-### File: `src/components/estimates/MultiTemplateSelector.tsx`
-
-- Update references from `getElementById('estimate-pdf-pages')` to use `querySelector('[data-estimate-pages]')` to match the new attribute-based identification.
-
+Expected outcome:
+- The first page of each added estimate will use the same font, margins, and page shell as the estimate shown in the main Preview Estimate window.
+- Exported PDFs should also become more reliable because that page will regain its proper page marker and shell.
