@@ -356,10 +356,25 @@ export function EstimatePreviewPanel({
       const gps = rm?.gps_coordinates as any;
       if (gps?.lat && gps?.lng) {
         setPropertyCoords({ lat: gps.lat, lng: gps.lng });
+        return;
+      }
+      // Fallback: Geocode from customer address string
+      if (googleMapsApiKey && customerAddress) {
+        try {
+          const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(customerAddress)}&key=${googleMapsApiKey}`;
+          const resp = await fetch(geocodeUrl);
+          const geo = await resp.json();
+          if (geo.results?.[0]?.geometry?.location) {
+            const { lat, lng } = geo.results[0].geometry.location;
+            setPropertyCoords({ lat, lng });
+          }
+        } catch (err) {
+          console.warn('Geocoding fallback failed:', err);
+        }
       }
     };
     fetchCoords();
-  }, [open, contactId]);
+  }, [open, contactId, googleMapsApiKey, customerAddress]);
 
   // Generate Street View URL when coords + API key available
   useEffect(() => {
@@ -370,7 +385,7 @@ export function EstimatePreviewPanel({
     }
   }, [propertyCoords, googleMapsApiKey]);
 
-  // Fetch aerial URL from roof_measurements
+  // Fetch aerial URL from roof_measurements, fallback to Google Static Maps
   useEffect(() => {
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
@@ -382,10 +397,19 @@ export function EstimatePreviewPanel({
         .limit(1)
         .maybeSingle();
       const url = data?.google_maps_image_url || data?.mapbox_image_url;
-      if (url) setAerialUrl(url);
+      if (url) {
+        setAerialUrl(url);
+        return;
+      }
+      // Fallback: generate aerial from coords via Google Static Maps
+      if (propertyCoords && googleMapsApiKey) {
+        setAerialUrl(
+          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=19&size=800x400&maptype=satellite&key=${googleMapsApiKey}`
+        );
+      }
     };
     fetchAerialUrl();
-  }, [open, contactId]);
+  }, [open, contactId, propertyCoords, googleMapsApiKey]);
 
   // Auto-default cover photo source
   useEffect(() => {
@@ -1153,12 +1177,12 @@ export function EstimatePreviewPanel({
                             {jobPhotos.some(p => p.id !== 'aerial') && (
                               <SelectItem value="uploaded">Uploaded Photo</SelectItem>
                             )}
-                            {streetViewUrl && (
-                              <SelectItem value="streetview">Street View</SelectItem>
-                            )}
-                            {aerialUrl && (
-                              <SelectItem value="aerial">Aerial View</SelectItem>
-                            )}
+                            <SelectItem value="streetview">
+                              {streetViewUrl ? 'Street View' : 'Street View (loading…)'}
+                            </SelectItem>
+                            <SelectItem value="aerial">
+                              {aerialUrl ? 'Aerial View' : 'Aerial View (loading…)'}
+                            </SelectItem>
                           </SelectContent>
                         </Select>
 

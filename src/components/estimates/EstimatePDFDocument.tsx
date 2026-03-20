@@ -324,7 +324,7 @@ const PageFooter: React.FC<{
       }];
 
   return (
-    <div className="border-t border-gray-200 bg-gray-50 px-3 py-2">
+    <div className="border-t border-gray-200 bg-gray-50 px-6 py-2">
       <div className="flex items-center gap-3">
         {/* Logo + Company */}
         <div className="flex items-center gap-2 flex-shrink-0">
