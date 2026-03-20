@@ -121,21 +121,23 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
     }
   }, [open]);
 
-  // Calculate adjusted area based on type
+  // Calculate adjusted area based on type (pitched area + flat sections)
   const getAdjustedArea = () => {
+    const flatExtra = formData.flatSectionArea || 0;
     if (formData.areaType === 'pitch_adjusted') {
-      return formData.area;
+      return formData.area + flatExtra;
     }
     const multiplier = getPitchMultiplier(formData.pitch);
-    return formData.area * multiplier;
+    return (formData.area * multiplier) + flatExtra;
   };
 
   const getFlatArea = () => {
+    const flatExtra = formData.flatSectionArea || 0;
     if (formData.areaType === 'flat') {
-      return formData.area;
+      return formData.area + flatExtra;
     }
     const multiplier = getPitchMultiplier(formData.pitch);
-    return formData.area / multiplier;
+    return (formData.area / multiplier) + flatExtra;
   };
 
   // Calculate perimeter (eaves + rakes)
