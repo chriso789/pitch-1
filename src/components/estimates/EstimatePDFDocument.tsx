@@ -191,15 +191,31 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
   return blocks;
 }
 
-function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continuationMax: number): RenderBlock[][] {
+function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continuationMax: number, opts?: PDFComponentOptions): RenderBlock[][] {
   if (blocks.length === 0) return [];
+
+  const blockWeight = (b: RenderBlock): number => {
+    if (b.type === 'item' && b.item?.description && opts?.showItemDescriptions) {
+      const descLen = b.item.description.length;
+      return descLen > 120 ? 3 : 2;
+    }
+    return 1;
+  };
 
   const chunks: RenderBlock[][] = [];
   let remaining = [...blocks];
 
   const chunkOnce = (maxRows: number) => {
     if (remaining.length === 0) return;
-    let size = Math.min(maxRows, remaining.length);
+    // Use weighted counting to respect description heights
+    let weightUsed = 0;
+    let size = 0;
+    while (size < remaining.length && weightUsed + blockWeight(remaining[size]) <= maxRows) {
+      weightUsed += blockWeight(remaining[size]);
+      size++;
+    }
+    // Ensure at least 1 block per page to avoid infinite loops
+    if (size === 0) size = 1;
     // Don't end a page on a header (trade-header or sub-header) — pull it to next page
     while (size > 1 && size < remaining.length && remaining[size - 1].type !== 'item') {
       size--;
