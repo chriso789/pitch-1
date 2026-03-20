@@ -2,7 +2,7 @@
 export { UnifiedMeasurementPanel } from './UnifiedMeasurementPanel';
 export { PullMeasurementsButton } from './PullMeasurementsButton';
 export { ImportReportButton } from './ImportReportButton';
-export { QuickEstimateButton } from './QuickEstimateButton';
+
 export { MeasurementAnalyticsDashboard } from './MeasurementAnalyticsDashboard';
 export { SchematicRoofDiagram } from './SchematicRoofDiagram';
 export { RoofrStyleReportPreview } from './RoofrStyleReportPreview';

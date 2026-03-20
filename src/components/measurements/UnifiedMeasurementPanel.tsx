@@ -23,7 +23,7 @@ import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
-import { QuickEstimateButton } from './QuickEstimateButton';
+
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
   AlertDialog,
@@ -480,10 +480,6 @@ export function UnifiedMeasurementPanel({
                   {approvals!.length} saved
                 </Badge>
               )}
-              <QuickEstimateButton
-                pipelineEntryId={pipelineEntryId}
-                hasMeasurement={!!activeMeasurement}
-              />
             </div>
           </div>
         </CardHeader>
