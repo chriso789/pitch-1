@@ -193,7 +193,30 @@ export function EstimatePreviewPanel({
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
 
-  // Fetch job photos for estimate preview
+  // Fetch saved estimates for this pipeline entry (for multi-estimate selection)
+  const [siblingEstimates, setSiblingEstimates] = useState<Array<{
+    id: string;
+    display_name: string | null;
+    estimate_number: string;
+    selling_price: number;
+  }>>([]);
+
+  useEffect(() => {
+    if (!open || !pipelineEntryId) return;
+    const fetchSiblings = async () => {
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select('id, display_name, estimate_number, selling_price')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+      setSiblingEstimates(data || []);
+    };
+    fetchSiblings();
+  }, [open, pipelineEntryId]);
+
+  // Combine explicit prop with fetched data
+  const estimatesList = allEstimates.length > 0 ? allEstimates : siblingEstimates;
+
   const [jobPhotos, setJobPhotos] = useState<Array<{
     id: string;
     file_url: string;
