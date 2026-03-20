@@ -1133,6 +1133,67 @@ export function EstimatePreviewPanel({
                       checked={options.showCoverPage}
                       onChange={(v) => updateOption('showCoverPage', v)}
                     />
+                    {options.showCoverPage && (
+                      <div className="pl-4 pt-1 space-y-2">
+                        <Label className="text-xs text-muted-foreground mb-1 block">Cover Photo</Label>
+                        <Select
+                          value={coverPhotoSource}
+                          onValueChange={(v) => {
+                            setCoverPhotoSource(v as CoverPhotoSource);
+                            if (v === 'uploaded' && jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
+                              setSelectedUploadedPhotoId(jobPhotos[0].id);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {jobPhotos.some(p => p.id !== 'aerial') && (
+                              <SelectItem value="uploaded">Uploaded Photo</SelectItem>
+                            )}
+                            {streetViewUrl && (
+                              <SelectItem value="streetview">Street View</SelectItem>
+                            )}
+                            {aerialUrl && (
+                              <SelectItem value="aerial">Aerial View</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+
+                        {/* Thumbnail picker for uploaded photos */}
+                        {coverPhotoSource === 'uploaded' && jobPhotos.filter(p => p.id !== 'aerial').length > 0 && (
+                          <div className="flex gap-1.5 overflow-x-auto pb-1">
+                            {jobPhotos.filter(p => p.id !== 'aerial').map(photo => (
+                              <button
+                                key={photo.id}
+                                type="button"
+                                onClick={() => setSelectedUploadedPhotoId(photo.id)}
+                                className={`shrink-0 w-12 h-12 rounded overflow-hidden border-2 transition-colors ${
+                                  selectedUploadedPhotoId === photo.id
+                                    ? 'border-primary'
+                                    : 'border-transparent hover:border-muted-foreground/30'
+                                }`}
+                              >
+                                <img src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Preview thumbnail */}
+                        {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
+                          <div className="rounded overflow-hidden border border-border">
+                            <img
+                              src={options.coverPagePropertyPhoto}
+                              alt="Cover photo preview"
+                              className="w-full h-20 object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <ToggleRow
                       label="Measurement Details"
                       checked={options.showMeasurementDetails}
