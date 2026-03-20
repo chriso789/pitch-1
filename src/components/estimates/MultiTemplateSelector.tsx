@@ -2625,6 +2625,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             measurementSummary={pdfData.measurementSummary}
             templateAttachments={pdfData.templateAttachments}
           />
+          </div>
         </div>
       )}
 

@@ -834,7 +834,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
         {continued ? 'Project Scope (continued)' : 'Project Scope'}
       </h3>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm items-table">
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-1.5 text-gray-700 font-semibold">Description</th>
