@@ -320,7 +320,7 @@ const PageFooter: React.FC<{
             />
           )}
           <div>
-            <p className="font-semibold text-gray-800 text-[10px]">
+            <p className="font-semibold text-gray-800 text-xs">
               {companyInfo?.name || companyName}
             </p>
             {companyInfo?.license_number && (
