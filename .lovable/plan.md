@@ -1,49 +1,25 @@
 
 
-# Fix Document Placement + Increase Font Sizes
+# Backfill Line Item Descriptions from Materials Table
 
-## Problem 1: Documents Appear Mid-Report
-When multiple estimates are selected, attachments (added documents) render at the end of the **primary** estimate's `EstimatePDFDocument`, but additional estimate pages follow after — so documents end up in the middle of the combined PDF instead of at the very end.
+## Problem
+The `enhanced_estimates.line_items` JSONB stores materials and labor arrays. Many line items are missing the `description` field, even though the `materials` table was recently updated with descriptions from the uploaded PDFs.
 
-## Problem 2: Font Sizes Too Small
-Customer info section and content text across the PDF pages use small font classes (`text-xs`, `text-sm`, `text-[10px]`). Need ~15% increase across the board.
-
----
+## Approach
+Run a SQL migration that updates the JSONB `line_items` in `enhanced_estimates` by matching each item's `item_name` to `materials.name` and injecting the `description` from the materials table.
 
 ## Changes
 
-### File: `src/components/estimates/EstimatePreviewPanel.tsx`
+### File: New SQL migration
 
-**Move attachments to render after ALL estimates:**
-- Remove `templateAttachments={allAttachments}` from the primary `EstimatePDFDocument` (line 1264) — pass nothing or empty array
-- After the additional estimates loop (after line 1307), render `AttachmentPagesRenderer` directly:
-  ```tsx
-  {allAttachments.length > 0 && (
-    <AttachmentPagesRenderer attachments={allAttachments} />
-  )}
-  ```
-- Import `AttachmentPagesRenderer` at the top of the file
+A single SQL statement that:
+1. For each `enhanced_estimates` row with `line_items`
+2. Iterates through both `materials` and `labor` arrays in the JSONB
+3. For items missing a description, looks up `materials.name` matching `item_name`
+4. Injects the `description` from the materials table into the JSONB element
+5. Updates the row
 
-This ensures documents always appear at the very end of the combined output, regardless of how many estimates are selected.
+This uses a PL/pgSQL block to iterate estimates, rebuild the arrays with descriptions filled in, and update in place. Both `materials` and `labor` arrays are processed since labor items (like "Tear Off", "Cleanup/Haul", "Panel Install") also exist in the materials table with descriptions.
 
-### File: `src/components/estimates/EstimatePDFDocument.tsx`
-
-**Font size increases (~15% bump) in FirstPage and related components:**
-
-| Element | Current | New |
-|---|---|---|
-| "Prepared For" label | `text-[10px]` | `text-xs` (12px) |
-| Customer name | `text-sm` (14px) | `text-base` (16px) |
-| Customer address | `text-xs` (12px) | `text-sm` (14px) |
-| Customer phone/email | `text-xs` (12px) | `text-sm` (14px) |
-| Estimate name banner | `text-xl` | `text-2xl` |
-| Item descriptions | `text-[10px]` | `text-xs` |
-| Item notes | `text-[10px]` | `text-xs` |
-| Item name in table | (no class → inherits ~14px) | `text-sm` explicitly |
-| "Project Investment" label | `text-sm` | `text-base` |
-| "Scope continues" hint | `text-[10px]` | `text-xs` |
-| Table header cells | `text-xs` | `text-sm` |
-| Table body row text | inherits small | `text-sm` |
-
-These changes apply to: `FirstPage`, `ItemsTable`, `ItemsContinuationPage`, `PricingSummary`, and `TermsSection` components within the file.
+No application code changes needed — this is a data-only migration.
 
