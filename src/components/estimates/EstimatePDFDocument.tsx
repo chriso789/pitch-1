@@ -808,11 +808,11 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+      <h3 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
         {continued ? 'Project Scope (continued)' : 'Project Scope'}
       </h3>
-      <table className="w-full text-xs">
+      <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-1.5 text-gray-700 font-semibold">Description</th>
@@ -833,7 +833,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
                     colSpan={opts.showLineItemQuantities ? 3 : 1} 
                     className="pt-3 pb-1"
                   >
-                    <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
+                    <div className="text-sm font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
                       {block.label}
                     </div>
                   </td>
@@ -844,7 +844,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
               return (
                 <tr key={`sub-${block.label}-${idx}`}>
                   <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-2 pb-0.5">
-                    <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider pl-1">
                       {block.label}
                     </div>
                   </td>
