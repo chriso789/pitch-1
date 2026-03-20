@@ -565,6 +565,27 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
               </div>
             </div>
 
+            {/* Flat Sections */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Flat Sections (0/12)
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={formData.flatSectionArea || ''}
+                  onChange={(e) => handleInputChange('flatSectionArea', parseFloat(e.target.value) || 0)}
+                  placeholder="0"
+                  className="flex-1"
+                />
+                <span className="flex items-center text-sm text-muted-foreground">sq ft</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Area of any flat/low-slope sections — no pitch multiplier applied
+              </p>
+            </div>
+
             <Separator />
 
             {/* Linear Measurements */}
