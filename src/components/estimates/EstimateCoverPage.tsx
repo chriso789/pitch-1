@@ -92,7 +92,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
              <img 
                src={logoUrl} 
                alt={companyInfo?.name || companyName}
-               className="h-20 object-contain mx-auto"
+               className="h-40 object-contain mx-auto"
              />
            )}
            {!logoUrl && (
