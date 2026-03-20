@@ -952,6 +952,54 @@ export function EstimatePreviewPanel({
                   </div>
                 </div>
 
+                {/* Multi-Estimate Selector */}
+                {allEstimates.length > 1 && (
+                  <>
+                    <Separator />
+                    <Collapsible open={isEstimatesOpen} onOpenChange={setIsEstimatesOpen}>
+                      <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:bg-muted/50 rounded -mx-1 px-1">
+                        <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                          <Files className="h-3 w-3" />
+                          Estimates to Include ({1 + selectedAdditionalIds.size})
+                        </h4>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isEstimatesOpen ? '' : '-rotate-90'}`} />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-2 space-y-1.5">
+                        {allEstimates.map(est => {
+                          const isCurrent = est.id === estimateId;
+                          const isSelected = isCurrent || selectedAdditionalIds.has(est.id);
+                          return (
+                            <label
+                              key={est.id}
+                              className={`flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors text-sm ${isSelected ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted/50 border border-transparent'}`}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={isCurrent}
+                                onCheckedChange={() => {
+                                  if (!isCurrent) handleToggleEstimate(est.id);
+                                }}
+                                className="mt-0.5"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium truncate">
+                                  {est.display_name || est.estimate_number}
+                                  {isCurrent && (
+                                    <Badge variant="outline" className="ml-1 text-[9px] py-0 px-1">Current</Badge>
+                                  )}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {est.estimate_number} • ${est.selling_price?.toLocaleString() || '0'}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </>
+                )}
+
                 <Separator />
 
                 {/* Extra Pages Section */}
