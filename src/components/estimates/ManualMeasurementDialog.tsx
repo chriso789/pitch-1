@@ -212,6 +212,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
           'lf.rake': formData.rakes,
           'lf.perimeter': perimeter,
           'lf.step': formData.stepFlashing,
+          'flat_section_sqft': formData.flatSectionArea || 0,
           'source': 'manual_entry',
         };
 
