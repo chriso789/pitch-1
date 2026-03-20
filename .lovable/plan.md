@@ -1,43 +1,34 @@
 
 
-# Fix Estimate Page Margins & Add Street View/Aerial Cover Photo Options
+# Fix First Page Formatting for Added Estimates
 
-## Issues Found
+## Problem Analysis
 
-**1. Margin inconsistency across pages**
-The `PageFooter` component uses `px-3` (12px padding) while the `PageHeader` uses `px-6` (24px) and content area uses `px-6` (24px). This makes the footer appear to extend wider than the rest of the page content, creating inconsistent margins visually.
+After investigating the code, both the primary and added estimates render through the identical `PageShell` component with the same `px-6` padding, `816px` width, and `pdf-render-container` font styles. However, there are two issues that can cause visual inconsistency:
 
-**2. Street View & Aerial options missing from dropdown**
-The dropdown only shows these options when `streetViewUrl` and `aerialUrl` are populated. Both require coordinates (`latitude`/`longitude`). This contact has an address ("6126 Nw 77Th Terrace, Parkland, FL 33067 US") but no geocoded coordinates, and no `roof_measurements` record. Without coordinates, the Street View URL cannot be generated and the aerial image cannot be fetched.
+1. **CSS forced padding on table cells**: In `src/index.css` (line 607-610), the rule `.pdf-render-container table td, .pdf-render-container table th { padding: 8px 12px !important; }` applies `!important` padding to ALL table cells. This can interact differently with Tailwind's `py-1.5` classes used in the `ItemsTable` component, potentially causing layout shifts depending on CSS specificity and load order.
 
----
+2. **Duplicate element IDs**: Each `EstimatePDFDocument` instance creates a `<div id="estimate-pdf-pages">`, resulting in duplicate IDs in the DOM. While not directly a visual issue, it can cause unexpected behavior with CSS or JS targeting.
+
+3. **Font inheritance scope**: The `pdf-render-container` class and inline `fontFamily` style are set per `PageShell`. When two `EstimatePDFDocument` instances are siblings inside `#estimate-preview-template`, the outer `div` wrapper doesn't enforce the font, so any inherited styles from parent containers (the dialog, the preview panel) could leak into gaps between page shells.
 
 ## Changes
 
 ### File: `src/components/estimates/EstimatePDFDocument.tsx`
 
-**Fix footer padding**: Change `PageFooter` from `px-3` to `px-6` to match the header and content areas, ensuring consistent margins across all page elements.
+- Change the wrapper from `id="estimate-pdf-pages"` to `className`-based identification. Use a `data-estimate-pages` attribute instead of a duplicate ID. Accept an optional `instanceId` prop so each instance is uniquely identifiable.
+- Apply `pdf-render-container` class and the inline font styles to the **outer wrapper** div (`estimate-pdf-pages`), not just to individual `PageShell` elements. This ensures consistent font rendering across all pages including gaps.
+
+### File: `src/index.css`
+
+- Scope the forced table cell padding rule more narrowly. Change `.pdf-render-container table td, .pdf-render-container table th` to only apply to the items table context, not ALL tables (which could affect the customer info section or pricing summary differently). Remove the `!important` or reduce the padding to match Tailwind's `py-1.5` (6px vertical) while keeping the horizontal padding.
 
 ### File: `src/components/estimates/EstimatePreviewPanel.tsx`
 
-**Geocode from address when coordinates are missing**: In the coordinate-fetching `useEffect`, add a fallback step. When neither `contacts.latitude/longitude` nor `roof_measurements.gps_coordinates` yield results, use the Google Geocoding API to convert the customer's address string into coordinates.
+- Add `pdf-render-container` class and the font family inline style to the `#estimate-preview-template` wrapper div so ALL child content inherits consistent font rendering regardless of which `EstimatePDFDocument` instance renders it.
+- Pass unique instance identifiers to each `EstimatePDFDocument` to avoid duplicate IDs.
 
-```typescript
-// After existing coord checks fail, geocode the address
-if (googleMapsApiKey && customerAddress) {
-  const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(customerAddress)}&key=${googleMapsApiKey}`;
-  const resp = await fetch(geocodeUrl);
-  const geo = await resp.json();
-  if (geo.results?.[0]?.geometry?.location) {
-    const { lat, lng } = geo.results[0].geometry.location;
-    setPropertyCoords({ lat, lng });
-  }
-}
-```
+### File: `src/components/estimates/MultiTemplateSelector.tsx`
 
-**Always show Street View and Aerial as options**: Instead of conditionally rendering the `SelectItem` entries only when URLs are already loaded, always show them (they'll be populated once coords are fetched). Add a loading state or small spinner if coordinates are still being resolved.
-
-### Files Modified
-- `src/components/estimates/EstimatePDFDocument.tsx` — footer padding fix (one class change)
-- `src/components/estimates/EstimatePreviewPanel.tsx` — geocoding fallback + always-visible dropdown options
+- Update references from `getElementById('estimate-pdf-pages')` to use `querySelector('[data-estimate-pages]')` to match the new attribute-based identification.
 
