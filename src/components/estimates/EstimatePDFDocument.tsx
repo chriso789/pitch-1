@@ -116,6 +116,9 @@ interface EstimatePDFDocumentProps {
   measurementSummary?: MeasurementSummary;
   jobPhotos?: JobPhoto[];
   templateAttachments?: TemplateAttachment[];
+  // Multi-estimate deduplication flags
+  skipCoverPage?: boolean;
+  skipWarrantyAndTerms?: boolean;
 }
 
 const formatCurrency = (amount: number) => {
@@ -454,6 +457,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   measurementSummary,
   jobPhotos,
   templateAttachments,
+  skipCoverPage = false,
+  skipWarrantyAndTerms = false,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
 
@@ -500,12 +505,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     
     // Count total pages for page numbering
     // Pre-build warranty pages to know their count
-    const warrantyPages = (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty)
+    const warrantyPages = (!skipWarrantyAndTerms && (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty))
       ? buildWarrantyPages(warrantyTerms, opts.showManufacturerWarranty, opts.showWorkmanshipWarranty)
       : [];
 
     let totalPageCount = itemChunks.length || 1; // At least 1 for main content
-    if (opts.showCoverPage) totalPageCount++;
+    if (opts.showCoverPage && !skipCoverPage) totalPageCount++;
     totalPageCount += warrantyPages.length;
     if (opts.showMeasurementDetails && measurementSummary) totalPageCount++;
     // Photos page count calculated below
@@ -514,8 +519,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Track which page index (in pageList) contains the signature block
     let signaturePageIdx: number | null = null;
 
-    // Cover page (if enabled) - prepended before other content
-    if (opts.showCoverPage) {
+    // Cover page (if enabled and not skipped for multi-estimate dedup)
+    if (opts.showCoverPage && !skipCoverPage) {
       currentPage++;
       pageList.push(
         <EstimateCoverPage
@@ -535,7 +540,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
 
     // Page 1: Customer info + first chunk of items + summary
     currentPage++;
-    const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions;
+    const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
       signaturePageIdx = pageList.length; // index of this page in the list
     }
@@ -553,7 +558,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         config={config}
         opts={opts}
         showTerms={firstPageHasTerms}
-        finePrintContent={opts.showCustomFinePrint ? finePrintContent : undefined}
+        finePrintContent={firstPageHasTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
         estimateName={estimateName}
       />
     );
@@ -562,7 +567,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     for (let i = 1; i < itemChunks.length; i++) {
       currentPage++;
       const isLastItemPage = i === itemChunks.length - 1;
-      const showTerms = isLastItemPage && opts.showTermsAndConditions;
+      const showTerms = isLastItemPage && opts.showTermsAndConditions && !skipWarrantyAndTerms;
       if (showTerms && opts.showSignatureBlock) {
         signaturePageIdx = pageList.length;
       }
@@ -576,7 +581,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           config={isLastItemPage ? config : undefined}
           opts={opts}
           showTerms={showTerms}
-          finePrintContent={isLastItemPage && opts.showCustomFinePrint ? finePrintContent : undefined}
+          finePrintContent={isLastItemPage && showTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
         />
       );
     }
@@ -614,7 +619,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     }
 
     return { pages: pageList, totalPages: totalPageCount, signaturePageIdx };
-  }, [materialItems, laborItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent]);
+  }, [materialItems, laborItems, opts, measurementSummary, jobPhotos, breakdown, config, customerName, customerAddress, customerPhone, customerEmail, finePrintContent, skipCoverPage, skipWarrantyAndTerms]);
 
   const commonProps = {
     companyLogo,
