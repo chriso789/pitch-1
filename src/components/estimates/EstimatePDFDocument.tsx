@@ -233,9 +233,9 @@ function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continua
 }
 
 // Legacy wrapper — converts render block chunks back to LineItem[][] for existing page components
-function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number): { itemChunks: LineItem[][]; blockChunks: RenderBlock[][] } {
+function chunkItems(items: LineItem[], firstPageMax: number, continuationMax: number, opts?: PDFComponentOptions): { itemChunks: LineItem[][]; blockChunks: RenderBlock[][] } {
   const blocks = buildRenderBlocks(items);
-  const blockChunks = chunkRenderBlocks(blocks, firstPageMax, continuationMax);
+  const blockChunks = chunkRenderBlocks(blocks, firstPageMax, continuationMax, opts);
   const itemChunks = blockChunks.map(chunk => 
     chunk.filter(b => b.type === 'item').map(b => b.item!)
   );
