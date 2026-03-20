@@ -385,7 +385,7 @@ export function EstimatePreviewPanel({
     }
   }, [propertyCoords, googleMapsApiKey]);
 
-  // Fetch aerial URL from roof_measurements
+  // Fetch aerial URL from roof_measurements, fallback to Google Static Maps
   useEffect(() => {
     if (!open || !contactId) return;
     const fetchAerialUrl = async () => {
@@ -397,10 +397,19 @@ export function EstimatePreviewPanel({
         .limit(1)
         .maybeSingle();
       const url = data?.google_maps_image_url || data?.mapbox_image_url;
-      if (url) setAerialUrl(url);
+      if (url) {
+        setAerialUrl(url);
+        return;
+      }
+      // Fallback: generate aerial from coords via Google Static Maps
+      if (propertyCoords && googleMapsApiKey) {
+        setAerialUrl(
+          `https://maps.googleapis.com/maps/api/staticmap?center=${propertyCoords.lat},${propertyCoords.lng}&zoom=19&size=800x400&maptype=satellite&key=${googleMapsApiKey}`
+        );
+      }
     };
     fetchAerialUrl();
-  }, [open, contactId]);
+  }, [open, contactId, propertyCoords, googleMapsApiKey]);
 
   // Auto-default cover photo source
   useEffect(() => {
