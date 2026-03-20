@@ -1305,6 +1305,11 @@ export function EstimatePreviewPanel({
                       );
                     });
                   })()}
+                  
+                  {/* Render attachments at the very end, after all estimates */}
+                  {allAttachments.length > 0 && (
+                    <AttachmentPagesRenderer attachments={allAttachments} />
+                  )}
                 </div>
               </div>
             </div>

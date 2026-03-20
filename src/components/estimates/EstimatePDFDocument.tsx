@@ -951,14 +951,14 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
       {opts.showSignatureBlock && (
         <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t border-gray-200">
           <div>
-            <p className="text-[10px] text-gray-500 mb-6">Customer Signature</p>
+            <p className="text-xs text-gray-500 mb-6">Customer Signature</p>
             <div className="border-b border-gray-400"></div>
-            <p className="text-[10px] text-gray-500 mt-1">Date: _______________</p>
+            <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 mb-6">Company Representative</p>
+            <p className="text-xs text-gray-500 mb-6">Company Representative</p>
             <div className="border-b border-gray-400"></div>
-            <p className="text-[10px] text-gray-500 mt-1">Date: _______________</p>
+            <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
           </div>
         </div>
       )}
