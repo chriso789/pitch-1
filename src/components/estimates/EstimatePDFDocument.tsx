@@ -785,22 +785,22 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
   const renderItem = (item: LineItem, idx: number) => (
     <tr key={item.id || `item-${idx}`} className="border-b border-gray-100">
       <td className="py-1.5">
-        <div className="font-medium text-gray-900">{item.item_name}</div>
+        <div className="font-medium text-sm text-gray-900">{item.item_name}</div>
         {opts.showItemDescriptions && item.description && (
-          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+          <div className="text-xs text-gray-500 mt-0.5 leading-snug">
             {item.description}
           </div>
         )}
         {item.notes && (
-          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+          <div className="text-xs text-gray-500 mt-0.5 leading-snug italic">
             {item.notes}
           </div>
         )}
       </td>
       {opts.showLineItemQuantities && (
         <>
-          <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-          <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
+          <td className="py-1.5 text-right text-sm text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+          <td className="py-1.5 text-right text-sm text-gray-500 align-top">{item.unit}</td>
         </>
       )}
     </tr>
