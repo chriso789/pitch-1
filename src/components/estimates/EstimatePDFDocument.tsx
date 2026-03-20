@@ -457,6 +457,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   measurementSummary,
   jobPhotos,
   templateAttachments,
+  skipCoverPage = false,
+  skipWarrantyAndTerms = false,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
 
