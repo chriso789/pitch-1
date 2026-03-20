@@ -368,6 +368,22 @@ serve(async (req: Request) => {
       }
     }
 
+    // Map leadSource to the source enum
+    function mapLeadSource(value: string | null | undefined): string | null {
+      if (!value) return null;
+      const enumValues = ['referral', 'canvassing', 'online', 'advertisement', 'social_media', 'other'];
+      if (enumValues.includes(value)) return value;
+      const mapping: Record<string, string> = {
+        'google_ads': 'online',
+        'facebook_ads': 'social_media',
+        'instagram': 'social_media',
+        'door_knocking': 'canvassing',
+        'yard_sign': 'advertisement',
+        'direct_mail': 'advertisement',
+      };
+      return mapping[value] || 'other';
+    }
+
     // Create pipeline entry (lead)
     const pipelineData: any = {
       tenant_id: tenantId,
@@ -378,7 +394,7 @@ serve(async (req: Request) => {
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
       roof_type: body.roofType || null,
-      lead_source_id: body.leadSource || null,
+      source: mapLeadSource(body.leadSource),
       assigned_to: body.salesReps?.[0] || user.id,
       notes: body.description || null,
       created_by: user.id,
@@ -387,6 +403,7 @@ serve(async (req: Request) => {
         secondary_reps: body.salesReps?.slice(1) || [],
         roof_age_years: parseInt(body.roofAge) || null,
         roof_type: body.roofType,
+        lead_source_id: body.leadSource || null,
         created_via: "create-lead-with-contact",
       },
     };
