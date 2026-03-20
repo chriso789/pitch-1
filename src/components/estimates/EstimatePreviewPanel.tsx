@@ -171,6 +171,7 @@ export function EstimatePreviewPanel({
   contactId,
   tenantId,
   userId,
+  allEstimates = [],
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -182,7 +183,11 @@ export function EstimatePreviewPanel({
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
-   const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
+  const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
+  // Multi-estimate selection state
+  const [selectedAdditionalIds, setSelectedAdditionalIds] = useState<Set<string>>(new Set());
+  const [fetchedEstimates, setFetchedEstimates] = useState<Map<string, FetchedEstimateData>>(new Map());
+  const [isEstimatesOpen, setIsEstimatesOpen] = useState(true);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
