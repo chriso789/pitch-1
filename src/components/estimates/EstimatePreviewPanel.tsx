@@ -1,6 +1,7 @@
 // Estimate Preview Panel with live toggle controls
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useGoogleMapsToken } from '@/hooks/useGoogleMapsToken';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';

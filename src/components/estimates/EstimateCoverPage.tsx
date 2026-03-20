@@ -127,7 +127,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
              <img 
                src={propertyPhoto} 
                alt="Property" 
-               className="w-full h-48 object-cover"
+               className="w-full h-56 object-cover"
              />
            </div>
          )}
