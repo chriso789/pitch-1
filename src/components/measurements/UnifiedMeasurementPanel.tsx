@@ -144,6 +144,7 @@ export function UnifiedMeasurementPanel({
       areaType: 'pitch_adjusted',
       area: tags['roof.total_sqft'] || tags['roof.plan_area'] || 0,
       pitch: tags['roof.predominant_pitch'] || '6/12',
+      flatSectionArea: tags['flat_section_sqft'] || 0,
       ridges: tags['lf.ridge'] || 0,
       hips: tags['lf.hip'] || 0,
       valleys: tags['lf.valley'] || 0,

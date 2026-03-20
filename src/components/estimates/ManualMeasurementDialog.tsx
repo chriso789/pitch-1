@@ -52,6 +52,7 @@ export interface MeasurementFormData {
   areaType: 'flat' | 'pitch_adjusted';
   area: number;
   pitch: string;
+  flatSectionArea: number;
   ridges: number;
   hips: number;
   valleys: number;
@@ -97,6 +98,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
     areaType: 'pitch_adjusted',
     area: 0,
     pitch: '6/12',
+    flatSectionArea: 0,
     ridges: 0,
     hips: 0,
     valleys: 0,
@@ -119,21 +121,23 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
     }
   }, [open]);
 
-  // Calculate adjusted area based on type
+  // Calculate adjusted area based on type (pitched area + flat sections)
   const getAdjustedArea = () => {
+    const flatExtra = formData.flatSectionArea || 0;
     if (formData.areaType === 'pitch_adjusted') {
-      return formData.area;
+      return formData.area + flatExtra;
     }
     const multiplier = getPitchMultiplier(formData.pitch);
-    return formData.area * multiplier;
+    return (formData.area * multiplier) + flatExtra;
   };
 
   const getFlatArea = () => {
+    const flatExtra = formData.flatSectionArea || 0;
     if (formData.areaType === 'flat') {
-      return formData.area;
+      return formData.area + flatExtra;
     }
     const multiplier = getPitchMultiplier(formData.pitch);
-    return formData.area / multiplier;
+    return (formData.area / multiplier) + flatExtra;
   };
 
   // Calculate perimeter (eaves + rakes)
@@ -208,6 +212,7 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
           'lf.rake': formData.rakes,
           'lf.perimeter': perimeter,
           'lf.step': formData.stepFlashing,
+          'flat_section_sqft': formData.flatSectionArea || 0,
           'source': 'manual_entry',
         };
 
@@ -235,7 +240,8 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
           comprehensive_measurements: {
             total_area_sqft: adjustedArea,
             flat_area_sqft: flatArea,
-            pitched_area_sqft: adjustedArea,
+            pitched_area_sqft: adjustedArea - (formData.flatSectionArea || 0),
+            flat_section_sqft: formData.flatSectionArea || 0,
             pitch: formData.pitch,
             ridges_lf: formData.ridges,
             hips_lf: formData.hips,
@@ -298,7 +304,8 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         comprehensive_measurements: {
           total_area_sqft: adjustedArea,
           flat_area_sqft: flatArea,
-          pitched_area_sqft: adjustedArea,
+          pitched_area_sqft: adjustedArea - (formData.flatSectionArea || 0),
+          flat_section_sqft: formData.flatSectionArea || 0,
           pitch: formData.pitch,
           ridges_lf: formData.ridges,
           hips_lf: formData.hips,
@@ -409,8 +416,9 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
           'lf.eave': formData.eaves,
           'lf.rake': formData.rakes,
           'lf.perimeter': perimeter,
-          'lf.step': formData.stepFlashing,
-          'source': 'manual_entry',
+           'lf.step': formData.stepFlashing,
+            'flat_section_sqft': formData.flatSectionArea || 0,
+            'source': 'manual_entry',
         };
 
         const { error: approvalError } = await supabase.from('measurement_approvals').insert({
@@ -561,6 +569,27 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
               </div>
             </div>
 
+            {/* Flat Sections */}
+            <div className="space-y-2">
+              <Label className="flex items-center gap-2">
+                <Layers className="h-4 w-4" />
+                Flat Sections (0/12)
+              </Label>
+              <div className="flex gap-2">
+                <Input
+                  type="number"
+                  value={formData.flatSectionArea || ''}
+                  onChange={(e) => handleInputChange('flatSectionArea', parseFloat(e.target.value) || 0)}
+                  placeholder="0"
+                  className="flex-1"
+                />
+                <span className="flex items-center text-sm text-muted-foreground">sq ft</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Area of any flat/low-slope sections — no pitch multiplier applied
+              </p>
+            </div>
+
             <Separator />
 
             {/* Linear Measurements */}
@@ -675,8 +704,18 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
               
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Pitch-Adjusted Area:</span>
-                  <span className="font-medium">{getAdjustedArea().toLocaleString()} sq ft</span>
+                  <span>Pitched Area:</span>
+                  <span className="font-medium">{(getAdjustedArea() - (formData.flatSectionArea || 0)).toLocaleString()} sq ft</span>
+                </div>
+                {(formData.flatSectionArea || 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span>Flat Section (0/12):</span>
+                    <span className="font-medium">{(formData.flatSectionArea || 0).toLocaleString()} sq ft</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-medium">
+                  <span>Total Adjusted Area:</span>
+                  <span>{getAdjustedArea().toLocaleString()} sq ft</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Squares:</span>
