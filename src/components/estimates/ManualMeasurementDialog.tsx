@@ -52,6 +52,7 @@ export interface MeasurementFormData {
   areaType: 'flat' | 'pitch_adjusted';
   area: number;
   pitch: string;
+  flatSectionArea: number;
   ridges: number;
   hips: number;
   valleys: number;
