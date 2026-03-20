@@ -345,16 +345,17 @@ export function EstimatePreviewPanel({
         setPropertyCoords({ lat: contact.latitude, lng: contact.longitude });
         return;
       }
-      // Fallback: roof_measurements
+      // Fallback: roof_measurements gps_coordinates JSON
       const { data: rm } = await supabase
         .from('roof_measurements')
-        .select('latitude, longitude')
+        .select('gps_coordinates')
         .eq('customer_id', contactId)
         .order('created_at', { ascending: false })
         .limit(1)
         .maybeSingle();
-      if (rm?.latitude && rm?.longitude) {
-        setPropertyCoords({ lat: rm.latitude, lng: rm.longitude });
+      const gps = rm?.gps_coordinates as any;
+      if (gps?.lat && gps?.lng) {
+        setPropertyCoords({ lat: gps.lat, lng: gps.lng });
       }
     };
     fetchCoords();
