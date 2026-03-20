@@ -255,13 +255,13 @@ const PageHeader: React.FC<{
         )}
         {opts.showCompanyInfo && (
           <div>
-            <h1 className="text-lg font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-gray-900">
               {companyInfo?.name || companyName}
             </h1>
             {companyAddressStr && (
-              <p className="text-xs text-gray-600">{companyAddressStr}</p>
+              <p className="text-sm text-gray-600">{companyAddressStr}</p>
             )}
-            <div className="text-xs text-gray-600">
+            <div className="text-sm text-gray-600">
               {companyInfo?.phone && <span>{companyInfo.phone}</span>}
               {companyInfo?.phone && companyInfo?.email && <span> • </span>}
               {companyInfo?.email && <span>{companyInfo.email}</span>}
@@ -271,12 +271,12 @@ const PageHeader: React.FC<{
       </div>
       
       <div className="text-right">
-        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimate</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wide">Estimate</p>
         {opts.showEstimateNumber && (
-          <h2 className="text-base font-bold text-gray-900">{estimateNumber}</h2>
+          <h2 className="text-lg font-bold text-gray-900">{estimateNumber}</h2>
         )}
         {opts.showDate && (
-          <p className="text-xs text-gray-500">{dateStr}</p>
+          <p className="text-sm text-gray-500">{dateStr}</p>
         )}
       </div>
     </div>
