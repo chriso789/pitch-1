@@ -116,6 +116,9 @@ interface EstimatePDFDocumentProps {
   measurementSummary?: MeasurementSummary;
   jobPhotos?: JobPhoto[];
   templateAttachments?: TemplateAttachment[];
+  // Multi-estimate deduplication flags
+  skipCoverPage?: boolean;
+  skipWarrantyAndTerms?: boolean;
 }
 
 const formatCurrency = (amount: number) => {
