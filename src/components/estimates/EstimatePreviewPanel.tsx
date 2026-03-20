@@ -976,7 +976,7 @@ export function EstimatePreviewPanel({
                 </div>
 
                 {/* Multi-Estimate Selector */}
-                {allEstimates.length > 1 && (
+                {estimatesList.length > 1 && (
                   <>
                     <Separator />
                     <Collapsible open={isEstimatesOpen} onOpenChange={setIsEstimatesOpen}>
@@ -988,7 +988,7 @@ export function EstimatePreviewPanel({
                         <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isEstimatesOpen ? '' : '-rotate-90'}`} />
                       </CollapsibleTrigger>
                       <CollapsibleContent className="pt-2 space-y-1.5">
-                        {allEstimates.map(est => {
+                        {estimatesList.map(est => {
                           const isCurrent = est.id === estimateId;
                           const isSelected = isCurrent || selectedAdditionalIds.has(est.id);
                           return (
