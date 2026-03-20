@@ -1,33 +1,33 @@
 
 
-# Fix: Descriptions Reverting to Originals on Save
+# Add Flat Section to Manual Measurement Entry
 
-## Root Cause
+## What
 
-Two issues cause description edits to be lost:
-
-**1. No blur commit on the description editor.** The `DescriptionEditor` only commits changes when the user explicitly presses Enter or clicks the Check button. If a user edits a description and then directly clicks "Save Estimate" without confirming first, the pending text in the textarea is never committed to `lineItems` state. The save captures the old description value.
-
-**2. `sort_order` not included in save payloads.** All three save functions (create, update, and ref-save) omit `sort_order` from the line items JSON. This causes items to lose their ordering on reload — a separate but related data integrity bug.
-
-**3. Multi-trade stale state.** For multi-trade estimates, `updateLineItem` updates `lineItems` but not `tradeLineItems`. If the merge effect re-runs (e.g., after adding/deleting an item), stale `tradeLineItems` overwrites the edited descriptions in `lineItems`.
+Add a "Flat Sections" area input to the manual measurement dialog, allowing users to enter separate flat (0/12 pitch) square footage alongside the pitched area. The flat area will be tracked independently and included in the saved measurement data and material calculations.
 
 ## Changes
 
-### 1. `src/components/estimates/SectionedLineItemsTable.tsx` — Add blur commit
+### `src/components/estimates/ManualMeasurementDialog.tsx`
 
-Add an `onBlur` handler to the `Textarea` in `DescriptionEditor` that auto-commits the description when focus leaves (e.g., when clicking Save). This ensures pending edits are written to `lineItems` before the save runs.
+1. **Extend `MeasurementFormData` interface** — Add `flatSectionArea: number` field (default `0`)
 
-### 2. `src/components/estimates/MultiTemplateSelector.tsx` — Include `sort_order` in save + sync `tradeLineItems`
+2. **Update `defaultFormData`** — Include `flatSectionArea: 0`
 
-- Add `sort_order: item.sort_order` to all three save payload mappings (lines ~340, ~1410, ~1690)
-- Wrap `updateLineItem` in a `handleUpdateLineItem` function that ALSO syncs the change into `tradeLineItems`, preventing the merge effect from overwriting edits
-- Pass `handleUpdateLineItem` instead of `updateLineItem` to `SectionedLineItemsTable`
+3. **Add "Flat Sections" input group** — Insert a new section after the Pitch selector (before the Linear Measurements separator) with:
+   - A label "Flat Sections (0/12)" with an icon
+   - A numeric input for flat section square footage
+   - Helper text: "Enter area of any flat/low-slope sections (no pitch multiplier applied)"
 
-## Summary
+4. **Update `getAdjustedArea()`** — Add `flatSectionArea` to the total adjusted area (flat sections use 1.0x multiplier, so added as-is)
 
-| File | Change |
-|------|--------|
-| `SectionedLineItemsTable.tsx` | Add `onBlur` to auto-commit description edits |
-| `MultiTemplateSelector.tsx` | Add `sort_order` to save payloads; sync updates to `tradeLineItems` |
+5. **Update `getFlatArea()`** — Include flat section area in the flat total
+
+6. **Update save payloads** (both create and edit modes):
+   - Add `flat_section_sqft` to `comprehensive_measurements` and `saved_tags`
+   - Ensure total area includes the flat section contribution
+
+7. **Update Calculated Summary** — Show a "Flat Section" line if `flatSectionArea > 0`
+
+8. **Update Material Preview calculation** — Include flat section area in the total passed to `calculateMaterialQuantities`
 
