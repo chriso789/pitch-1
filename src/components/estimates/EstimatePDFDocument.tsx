@@ -699,21 +699,21 @@ const FirstPage: React.FC<{
       {/* Estimate Name Banner */}
       {estimateName && (
         <div className="text-center py-2 mb-1">
-          <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
         </div>
       )}
       {/* Customer Info */}
       {(opts.showCustomerName || opts.showCustomerAddress) && (
         <div className="p-3 bg-gray-50 rounded-lg">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
+          <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
           {opts.showCustomerName && (
-            <p className="font-semibold text-sm text-gray-900">{customerName || 'Customer'}</p>
+            <p className="font-semibold text-base text-gray-900">{customerName || 'Customer'}</p>
           )}
           {opts.showCustomerAddress && (
-            <p className="text-gray-600 text-xs">{customerAddress || 'Address not specified'}</p>
+            <p className="text-gray-600 text-sm">{customerAddress || 'Address not specified'}</p>
           )}
           {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="mt-1 text-xs text-gray-500">
+            <div className="mt-1 text-sm text-gray-500">
               {customerPhone && <span>{customerPhone}</span>}
               {customerPhone && customerEmail && <span> • </span>}
               {customerEmail && <span>{customerEmail}</span>}
@@ -725,11 +725,11 @@ const FirstPage: React.FC<{
       {/* Show Only Total Mode */}
       {opts.showOnlyTotal && (
         <div className="bg-gray-50 rounded-lg p-4 text-center">
-          <h3 className="text-sm font-semibold text-gray-700 mb-1">Project Investment</h3>
+          <h3 className="text-base font-semibold text-gray-700 mb-1">Project Investment</h3>
           <div className="text-2xl font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
-          <p className="text-xs text-gray-500 mt-1">Complete roofing installation</p>
+          <p className="text-sm text-gray-500 mt-1">Complete roofing installation</p>
         </div>
       )}
 
@@ -740,7 +740,7 @@ const FirstPage: React.FC<{
 
       {/* Continuation hint when items overflow to next page */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && !isOnlyChunk && (
-        <p className="text-[10px] text-gray-400 italic text-right mt-2">
+        <p className="text-xs text-gray-400 italic text-right mt-2">
           Scope continues on next page…
         </p>
       )}
