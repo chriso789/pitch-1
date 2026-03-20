@@ -331,6 +331,90 @@ export function EstimatePreviewPanel({
     fetchAerial();
   }, [open, jobPhotos.length, contactId]);
 
+  // Fetch property coordinates for Street View / Aerial
+  useEffect(() => {
+    if (!open || !contactId) return;
+    const fetchCoords = async () => {
+      // Try contacts table first
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('latitude, longitude')
+        .eq('id', contactId)
+        .maybeSingle();
+      if (contact?.latitude && contact?.longitude) {
+        setPropertyCoords({ lat: contact.latitude, lng: contact.longitude });
+        return;
+      }
+      // Fallback: roof_measurements
+      const { data: rm } = await supabase
+        .from('roof_measurements')
+        .select('latitude, longitude')
+        .eq('customer_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (rm?.latitude && rm?.longitude) {
+        setPropertyCoords({ lat: rm.latitude, lng: rm.longitude });
+      }
+    };
+    fetchCoords();
+  }, [open, contactId]);
+
+  // Generate Street View URL when coords + API key available
+  useEffect(() => {
+    if (propertyCoords && googleMapsApiKey) {
+      setStreetViewUrl(
+        `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`
+      );
+    }
+  }, [propertyCoords, googleMapsApiKey]);
+
+  // Fetch aerial URL from roof_measurements
+  useEffect(() => {
+    if (!open || !contactId) return;
+    const fetchAerialUrl = async () => {
+      const { data } = await supabase
+        .from('roof_measurements')
+        .select('google_maps_image_url, mapbox_image_url')
+        .eq('customer_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const url = data?.google_maps_image_url || data?.mapbox_image_url;
+      if (url) setAerialUrl(url);
+    };
+    fetchAerialUrl();
+  }, [open, contactId]);
+
+  // Auto-default cover photo source
+  useEffect(() => {
+    if (!open) return;
+    if (jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
+      setCoverPhotoSource('uploaded');
+      setSelectedUploadedPhotoId(jobPhotos[0].id);
+    } else if (streetViewUrl) {
+      setCoverPhotoSource('streetview');
+    } else if (aerialUrl) {
+      setCoverPhotoSource('aerial');
+    } else {
+      setCoverPhotoSource('none');
+    }
+  }, [open, jobPhotos, streetViewUrl, aerialUrl]);
+
+  // Wire coverPagePropertyPhoto based on source selection
+  useEffect(() => {
+    let photoUrl: string | undefined;
+    if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
+      const photo = jobPhotos.find(p => p.id === selectedUploadedPhotoId);
+      photoUrl = photo?.file_url;
+    } else if (coverPhotoSource === 'streetview') {
+      photoUrl = streetViewUrl || undefined;
+    } else if (coverPhotoSource === 'aerial') {
+      photoUrl = aerialUrl || undefined;
+    }
+    setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
+  }, [coverPhotoSource, selectedUploadedPhotoId, jobPhotos, streetViewUrl, aerialUrl]);
+
   // Fetch additional estimate data when selected
   const handleToggleEstimate = useCallback(async (estId: string) => {
     setSelectedAdditionalIds(prev => {
