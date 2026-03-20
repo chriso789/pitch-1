@@ -195,6 +195,15 @@ export function EstimatePreviewPanel({
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
 
+  // Cover photo source state
+  type CoverPhotoSource = 'none' | 'uploaded' | 'streetview' | 'aerial';
+  const [coverPhotoSource, setCoverPhotoSource] = useState<CoverPhotoSource>('none');
+  const [selectedUploadedPhotoId, setSelectedUploadedPhotoId] = useState<string | null>(null);
+  const [streetViewUrl, setStreetViewUrl] = useState<string | null>(null);
+  const [aerialUrl, setAerialUrl] = useState<string | null>(null);
+  const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
+
   // Fetch saved estimates for this pipeline entry (for multi-estimate selection)
   const [siblingEstimates, setSiblingEstimates] = useState<Array<{
     id: string;
