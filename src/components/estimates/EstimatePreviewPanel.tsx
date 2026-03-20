@@ -1,6 +1,7 @@
 // Estimate Preview Panel with live toggle controls
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useGoogleMapsToken } from '@/hooks/useGoogleMapsToken';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -194,6 +195,15 @@ export function EstimatePreviewPanel({
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
 
+  // Cover photo source state
+  type CoverPhotoSource = 'none' | 'uploaded' | 'streetview' | 'aerial';
+  const [coverPhotoSource, setCoverPhotoSource] = useState<CoverPhotoSource>('none');
+  const [selectedUploadedPhotoId, setSelectedUploadedPhotoId] = useState<string | null>(null);
+  const [streetViewUrl, setStreetViewUrl] = useState<string | null>(null);
+  const [aerialUrl, setAerialUrl] = useState<string | null>(null);
+  const [propertyCoords, setPropertyCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const { apiKey: googleMapsApiKey } = useGoogleMapsToken();
+
   // Fetch saved estimates for this pipeline entry (for multi-estimate selection)
   const [siblingEstimates, setSiblingEstimates] = useState<Array<{
     id: string;
@@ -320,6 +330,91 @@ export function EstimatePreviewPanel({
     };
     fetchAerial();
   }, [open, jobPhotos.length, contactId]);
+
+  // Fetch property coordinates for Street View / Aerial
+  useEffect(() => {
+    if (!open || !contactId) return;
+    const fetchCoords = async () => {
+      // Try contacts table first
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('latitude, longitude')
+        .eq('id', contactId)
+        .maybeSingle();
+      if (contact?.latitude && contact?.longitude) {
+        setPropertyCoords({ lat: contact.latitude, lng: contact.longitude });
+        return;
+      }
+      // Fallback: roof_measurements gps_coordinates JSON
+      const { data: rm } = await supabase
+        .from('roof_measurements')
+        .select('gps_coordinates')
+        .eq('customer_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const gps = rm?.gps_coordinates as any;
+      if (gps?.lat && gps?.lng) {
+        setPropertyCoords({ lat: gps.lat, lng: gps.lng });
+      }
+    };
+    fetchCoords();
+  }, [open, contactId]);
+
+  // Generate Street View URL when coords + API key available
+  useEffect(() => {
+    if (propertyCoords && googleMapsApiKey) {
+      setStreetViewUrl(
+        `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`
+      );
+    }
+  }, [propertyCoords, googleMapsApiKey]);
+
+  // Fetch aerial URL from roof_measurements
+  useEffect(() => {
+    if (!open || !contactId) return;
+    const fetchAerialUrl = async () => {
+      const { data } = await supabase
+        .from('roof_measurements')
+        .select('google_maps_image_url, mapbox_image_url')
+        .eq('customer_id', contactId)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      const url = data?.google_maps_image_url || data?.mapbox_image_url;
+      if (url) setAerialUrl(url);
+    };
+    fetchAerialUrl();
+  }, [open, contactId]);
+
+  // Auto-default cover photo source
+  useEffect(() => {
+    if (!open) return;
+    if (jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
+      setCoverPhotoSource('uploaded');
+      setSelectedUploadedPhotoId(jobPhotos[0].id);
+    } else if (streetViewUrl) {
+      setCoverPhotoSource('streetview');
+    } else if (aerialUrl) {
+      setCoverPhotoSource('aerial');
+    } else {
+      setCoverPhotoSource('none');
+    }
+  }, [open, jobPhotos, streetViewUrl, aerialUrl]);
+
+  // Wire coverPagePropertyPhoto based on source selection
+  useEffect(() => {
+    let photoUrl: string | undefined;
+    if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
+      const photo = jobPhotos.find(p => p.id === selectedUploadedPhotoId);
+      photoUrl = photo?.file_url;
+    } else if (coverPhotoSource === 'streetview') {
+      photoUrl = streetViewUrl || undefined;
+    } else if (coverPhotoSource === 'aerial') {
+      photoUrl = aerialUrl || undefined;
+    }
+    setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
+  }, [coverPhotoSource, selectedUploadedPhotoId, jobPhotos, streetViewUrl, aerialUrl]);
 
   // Fetch additional estimate data when selected
   const handleToggleEstimate = useCallback(async (estId: string) => {
@@ -1038,6 +1133,67 @@ export function EstimatePreviewPanel({
                       checked={options.showCoverPage}
                       onChange={(v) => updateOption('showCoverPage', v)}
                     />
+                    {options.showCoverPage && (
+                      <div className="pl-4 pt-1 space-y-2">
+                        <Label className="text-xs text-muted-foreground mb-1 block">Cover Photo</Label>
+                        <Select
+                          value={coverPhotoSource}
+                          onValueChange={(v) => {
+                            setCoverPhotoSource(v as CoverPhotoSource);
+                            if (v === 'uploaded' && jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
+                              setSelectedUploadedPhotoId(jobPhotos[0].id);
+                            }
+                          }}
+                        >
+                          <SelectTrigger className="h-8 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">None</SelectItem>
+                            {jobPhotos.some(p => p.id !== 'aerial') && (
+                              <SelectItem value="uploaded">Uploaded Photo</SelectItem>
+                            )}
+                            {streetViewUrl && (
+                              <SelectItem value="streetview">Street View</SelectItem>
+                            )}
+                            {aerialUrl && (
+                              <SelectItem value="aerial">Aerial View</SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+
+                        {/* Thumbnail picker for uploaded photos */}
+                        {coverPhotoSource === 'uploaded' && jobPhotos.filter(p => p.id !== 'aerial').length > 0 && (
+                          <div className="flex gap-1.5 overflow-x-auto pb-1">
+                            {jobPhotos.filter(p => p.id !== 'aerial').map(photo => (
+                              <button
+                                key={photo.id}
+                                type="button"
+                                onClick={() => setSelectedUploadedPhotoId(photo.id)}
+                                className={`shrink-0 w-12 h-12 rounded overflow-hidden border-2 transition-colors ${
+                                  selectedUploadedPhotoId === photo.id
+                                    ? 'border-primary'
+                                    : 'border-transparent hover:border-muted-foreground/30'
+                                }`}
+                              >
+                                <img src={photo.file_url} alt={photo.description || ''} className="w-full h-full object-cover" />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Preview thumbnail */}
+                        {coverPhotoSource !== 'none' && options.coverPagePropertyPhoto && (
+                          <div className="rounded overflow-hidden border border-border">
+                            <img
+                              src={options.coverPagePropertyPhoto}
+                              alt="Cover photo preview"
+                              className="w-full h-20 object-cover"
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <ToggleRow
                       label="Measurement Details"
                       checked={options.showMeasurementDetails}
