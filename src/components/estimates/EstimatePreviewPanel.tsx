@@ -1168,12 +1168,12 @@ export function EstimatePreviewPanel({
                             {jobPhotos.some(p => p.id !== 'aerial') && (
                               <SelectItem value="uploaded">Uploaded Photo</SelectItem>
                             )}
-                            {streetViewUrl && (
-                              <SelectItem value="streetview">Street View</SelectItem>
-                            )}
-                            {aerialUrl && (
-                              <SelectItem value="aerial">Aerial View</SelectItem>
-                            )}
+                            <SelectItem value="streetview">
+                              {streetViewUrl ? 'Street View' : 'Street View (loading…)'}
+                            </SelectItem>
+                            <SelectItem value="aerial">
+                              {aerialUrl ? 'Aerial View' : 'Aerial View (loading…)'}
+                            </SelectItem>
                           </SelectContent>
                         </Select>
 
