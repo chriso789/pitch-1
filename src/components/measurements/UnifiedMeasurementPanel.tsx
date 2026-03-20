@@ -480,10 +480,6 @@ export function UnifiedMeasurementPanel({
                   {approvals!.length} saved
                 </Badge>
               )}
-              <QuickEstimateButton
-                pipelineEntryId={pipelineEntryId}
-                hasMeasurement={!!activeMeasurement}
-              />
             </div>
           </div>
         </CardHeader>
