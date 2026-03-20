@@ -2605,6 +2605,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           style={{ visibility: 'visible' }}
           aria-hidden="true"
         >
+          <div id="estimate-pdf-pages">
           <EstimatePDFDocument
             estimateNumber={pdfData.estimateNumber}
             estimateName={pdfData.estimateName}
