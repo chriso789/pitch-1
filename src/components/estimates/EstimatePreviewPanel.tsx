@@ -50,6 +50,7 @@ import {
   getDefaultOptions,
 } from './PDFComponentOptions';
 import { EstimatePDFDocument } from './EstimatePDFDocument';
+import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 import { EstimateAttachmentsManager, type TemplateAttachment } from './EstimateAttachmentsManager';
 import { PageOrderManager, DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
 import { type LineItem } from '@/hooks/useEstimatePricing';
