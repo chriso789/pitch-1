@@ -1,52 +1,49 @@
 
 
-# Deduplicate Cover Page & Warranties for Multi-Estimate Preview
+# Fix Document Placement + Increase Font Sizes
 
-## Problem
-When multiple estimates are selected, each `EstimatePDFDocument` renders its own cover page, warranty pages, and terms — creating redundant content. The user wants: **one cover page → all estimate content pages → one set of warranty/terms at the end**.
+## Problem 1: Documents Appear Mid-Report
+When multiple estimates are selected, attachments (added documents) render at the end of the **primary** estimate's `EstimatePDFDocument`, but additional estimate pages follow after — so documents end up in the middle of the combined PDF instead of at the very end.
 
-## Approach
+## Problem 2: Font Sizes Too Small
+Customer info section and content text across the PDF pages use small font classes (`text-xs`, `text-sm`, `text-[10px]`). Need ~15% increase across the board.
 
-### `EstimatePDFDocument.tsx` — Add a `renderMode` prop
-
-Add an optional prop to control which sections render:
-- `'full'` (default) — renders everything (cover + content + warranties + terms)
-- `'content-only'` — renders only the estimate content pages (scope table with estimate name banner, pricing summary). Skips cover page, warranty pages, terms, and signature block.
-
-Implementation: In the `useMemo` page-building logic (~line 473), when `renderMode === 'content-only'`:
-- Skip the cover page block (line 517-534)
-- Skip warranty pages (line 503-505 → empty array)
-- Skip terms/signature on content pages (`showTerms = false`, hide signature)
-- Still render the estimate name banner and all scope/pricing content
-
-### `EstimatePreviewPanel.tsx` — Orchestrate rendering (~line 1244-1300)
-
-Change the multi-estimate rendering:
-1. **Primary estimate** renders with `renderMode="full"` (as today) — gets cover page, content, warranties, terms
-2. **Additional estimates** render with `renderMode="content-only"` — only their scope pages with the bold estimate name banner inserted between the primary content and the trailing warranty/terms
-
-But this creates an ordering issue: the primary estimate's warranties render at the end of its own `EstimatePDFDocument`, then additional estimate content comes after. To fix this:
-
-- The **primary estimate** also uses a new mode: `'primary-multi'` which renders cover + content but **defers** warranty/terms
-- Additional estimates use `'content-only'`
-- After all estimate content, render a **single** warranty/terms section
-
-Simplified approach: Add two props instead of modes:
-- `skipCoverPage?: boolean` — additional estimates set this to `true`
-- `skipWarrantyAndTerms?: boolean` — all estimates except the last set this to `true`
-
-Then in the preview panel:
-- Primary estimate: `skipWarrantyAndTerms={hasAdditionalEstimates}`
-- Additional estimates: `skipCoverPage={true}`, `skipWarrantyAndTerms={isNotLast}`
-- Last estimate (or primary if solo): renders warranty + terms normally
+---
 
 ## Changes
 
-### File: `src/components/estimates/EstimatePDFDocument.tsx`
-- Add `skipCoverPage?: boolean` and `skipWarrantyAndTerms?: boolean` to props interface
-- In page-building `useMemo`: when `skipCoverPage`, skip cover page block; when `skipWarrantyAndTerms`, skip warranty pages and terms/signature rendering
-
 ### File: `src/components/estimates/EstimatePreviewPanel.tsx`
-- Primary estimate (~line 1245): pass `skipWarrantyAndTerms={selectedAdditionalIds.size > 0}`
-- Additional estimates (~line 1278): pass `skipCoverPage={true}` and `skipWarrantyAndTerms={idx < lastIdx}` (last additional estimate renders warranties/terms)
+
+**Move attachments to render after ALL estimates:**
+- Remove `templateAttachments={allAttachments}` from the primary `EstimatePDFDocument` (line 1264) — pass nothing or empty array
+- After the additional estimates loop (after line 1307), render `AttachmentPagesRenderer` directly:
+  ```tsx
+  {allAttachments.length > 0 && (
+    <AttachmentPagesRenderer attachments={allAttachments} />
+  )}
+  ```
+- Import `AttachmentPagesRenderer` at the top of the file
+
+This ensures documents always appear at the very end of the combined output, regardless of how many estimates are selected.
+
+### File: `src/components/estimates/EstimatePDFDocument.tsx`
+
+**Font size increases (~15% bump) in FirstPage and related components:**
+
+| Element | Current | New |
+|---|---|---|
+| "Prepared For" label | `text-[10px]` | `text-xs` (12px) |
+| Customer name | `text-sm` (14px) | `text-base` (16px) |
+| Customer address | `text-xs` (12px) | `text-sm` (14px) |
+| Customer phone/email | `text-xs` (12px) | `text-sm` (14px) |
+| Estimate name banner | `text-xl` | `text-2xl` |
+| Item descriptions | `text-[10px]` | `text-xs` |
+| Item notes | `text-[10px]` | `text-xs` |
+| Item name in table | (no class → inherits ~14px) | `text-sm` explicitly |
+| "Project Investment" label | `text-sm` | `text-base` |
+| "Scope continues" hint | `text-[10px]` | `text-xs` |
+| Table header cells | `text-xs` | `text-sm` |
+| Table body row text | inherits small | `text-sm` |
+
+These changes apply to: `FirstPage`, `ItemsTable`, `ItemsContinuationPage`, `PricingSummary`, and `TermsSection` components within the file.
 
