@@ -50,6 +50,7 @@ import {
   getDefaultOptions,
 } from './PDFComponentOptions';
 import { EstimatePDFDocument } from './EstimatePDFDocument';
+import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 import { EstimateAttachmentsManager, type TemplateAttachment } from './EstimateAttachmentsManager';
 import { PageOrderManager, DEFAULT_PAGE_ORDER, type PageOrderItem } from './PageOrderManager';
 import { type LineItem } from '@/hooks/useEstimatePricing';
@@ -1261,7 +1262,7 @@ export function EstimatePreviewPanel({
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
-                    templateAttachments={allAttachments}
+                    templateAttachments={[]}
                     jobPhotos={jobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                   />
@@ -1305,6 +1306,11 @@ export function EstimatePreviewPanel({
                       );
                     });
                   })()}
+                  
+                  {/* Render attachments at the very end, after all estimates */}
+                  {allAttachments.length > 0 && (
+                    <AttachmentPagesRenderer attachments={allAttachments} />
+                  )}
                 </div>
               </div>
             </div>

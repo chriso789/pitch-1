@@ -255,13 +255,13 @@ const PageHeader: React.FC<{
         )}
         {opts.showCompanyInfo && (
           <div>
-            <h1 className="text-lg font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-gray-900">
               {companyInfo?.name || companyName}
             </h1>
             {companyAddressStr && (
-              <p className="text-xs text-gray-600">{companyAddressStr}</p>
+              <p className="text-sm text-gray-600">{companyAddressStr}</p>
             )}
-            <div className="text-xs text-gray-600">
+            <div className="text-sm text-gray-600">
               {companyInfo?.phone && <span>{companyInfo.phone}</span>}
               {companyInfo?.phone && companyInfo?.email && <span> • </span>}
               {companyInfo?.email && <span>{companyInfo.email}</span>}
@@ -271,12 +271,12 @@ const PageHeader: React.FC<{
       </div>
       
       <div className="text-right">
-        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimate</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wide">Estimate</p>
         {opts.showEstimateNumber && (
-          <h2 className="text-base font-bold text-gray-900">{estimateNumber}</h2>
+          <h2 className="text-lg font-bold text-gray-900">{estimateNumber}</h2>
         )}
         {opts.showDate && (
-          <p className="text-xs text-gray-500">{dateStr}</p>
+          <p className="text-sm text-gray-500">{dateStr}</p>
         )}
       </div>
     </div>
@@ -320,7 +320,7 @@ const PageFooter: React.FC<{
             />
           )}
           <div>
-            <p className="font-semibold text-gray-800 text-[10px]">
+            <p className="font-semibold text-gray-800 text-xs">
               {companyInfo?.name || companyName}
             </p>
             {companyInfo?.license_number && (
@@ -699,21 +699,21 @@ const FirstPage: React.FC<{
       {/* Estimate Name Banner */}
       {estimateName && (
         <div className="text-center py-2 mb-1">
-          <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
+          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
         </div>
       )}
       {/* Customer Info */}
       {(opts.showCustomerName || opts.showCustomerAddress) && (
         <div className="p-3 bg-gray-50 rounded-lg">
-          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
+          <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
           {opts.showCustomerName && (
-            <p className="font-semibold text-sm text-gray-900">{customerName || 'Customer'}</p>
+            <p className="font-semibold text-base text-gray-900">{customerName || 'Customer'}</p>
           )}
           {opts.showCustomerAddress && (
-            <p className="text-gray-600 text-xs">{customerAddress || 'Address not specified'}</p>
+            <p className="text-gray-600 text-sm">{customerAddress || 'Address not specified'}</p>
           )}
           {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="mt-1 text-xs text-gray-500">
+            <div className="mt-1 text-sm text-gray-500">
               {customerPhone && <span>{customerPhone}</span>}
               {customerPhone && customerEmail && <span> • </span>}
               {customerEmail && <span>{customerEmail}</span>}
@@ -725,11 +725,11 @@ const FirstPage: React.FC<{
       {/* Show Only Total Mode */}
       {opts.showOnlyTotal && (
         <div className="bg-gray-50 rounded-lg p-4 text-center">
-          <h3 className="text-sm font-semibold text-gray-700 mb-1">Project Investment</h3>
+          <h3 className="text-base font-semibold text-gray-700 mb-1">Project Investment</h3>
           <div className="text-2xl font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
-          <p className="text-xs text-gray-500 mt-1">Complete roofing installation</p>
+          <p className="text-sm text-gray-500 mt-1">Complete roofing installation</p>
         </div>
       )}
 
@@ -740,7 +740,7 @@ const FirstPage: React.FC<{
 
       {/* Continuation hint when items overflow to next page */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && items.length > 0 && !isOnlyChunk && (
-        <p className="text-[10px] text-gray-400 italic text-right mt-2">
+        <p className="text-xs text-gray-400 italic text-right mt-2">
           Scope continues on next page…
         </p>
       )}
@@ -785,22 +785,22 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
   const renderItem = (item: LineItem, idx: number) => (
     <tr key={item.id || `item-${idx}`} className="border-b border-gray-100">
       <td className="py-1.5">
-        <div className="font-medium text-gray-900">{item.item_name}</div>
+        <div className="font-medium text-sm text-gray-900">{item.item_name}</div>
         {opts.showItemDescriptions && item.description && (
-          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug">
+          <div className="text-xs text-gray-500 mt-0.5 leading-snug">
             {item.description}
           </div>
         )}
         {item.notes && (
-          <div className="text-[10px] text-gray-500 mt-0.5 leading-snug italic">
+          <div className="text-xs text-gray-500 mt-0.5 leading-snug italic">
             {item.notes}
           </div>
         )}
       </td>
       {opts.showLineItemQuantities && (
         <>
-          <td className="py-1.5 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-          <td className="py-1.5 text-right text-gray-500 align-top">{item.unit}</td>
+          <td className="py-1.5 text-right text-sm text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+          <td className="py-1.5 text-right text-sm text-gray-500 align-top">{item.unit}</td>
         </>
       )}
     </tr>
@@ -808,11 +808,11 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
 
   return (
     <div>
-      <h3 className="text-sm font-semibold text-gray-900 mb-2 flex items-center gap-2">
+      <h3 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
         {continued ? 'Project Scope (continued)' : 'Project Scope'}
       </h3>
-      <table className="w-full text-xs">
+      <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-1.5 text-gray-700 font-semibold">Description</th>
@@ -833,7 +833,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
                     colSpan={opts.showLineItemQuantities ? 3 : 1} 
                     className="pt-3 pb-1"
                   >
-                    <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
+                    <div className="text-sm font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
                       {block.label}
                     </div>
                   </td>
@@ -844,7 +844,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
               return (
                 <tr key={`sub-${block.label}-${idx}`}>
                   <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-2 pb-0.5">
-                    <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
+                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider pl-1">
                       {block.label}
                     </div>
                   </td>
@@ -871,10 +871,10 @@ const PricingSummary: React.FC<{
   return (
     <div className="bg-gray-50 rounded-lg p-3">
       {(opts.showCostBreakdown || opts.showProfitInfo) && (
-        <h3 className="text-sm font-semibold text-gray-900 mb-2">Estimate Summary</h3>
+        <h3 className="text-base font-semibold text-gray-900 mb-2">Estimate Summary</h3>
       )}
       
-      <div className="space-y-1.5 text-xs">
+      <div className="space-y-1.5 text-sm">
         {opts.showCostBreakdown && (
           <>
             <div className="flex justify-between">
@@ -902,7 +902,7 @@ const PricingSummary: React.FC<{
       
       {/* Sales Tax - ONLY show for internal view (showCostBreakdown = internal) */}
       {opts.showCostBreakdown && config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
-        <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 mt-1.5">
+        <div className="flex justify-between text-sm border-t border-gray-200 pt-1.5 mt-1.5">
           <span className="text-gray-600">Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
           <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount || 0)}</span>
         </div>
@@ -911,7 +911,7 @@ const PricingSummary: React.FC<{
       {/* Consumer-Friendly Total - Tax is now INCLUDED in sellingPrice */}
       {!opts.showCostBreakdown && !opts.showProfitInfo ? (
         <div className="text-center py-2">
-          <p className="text-xs text-gray-500 mb-1">Your Investment</p>
+          <p className="text-sm text-gray-500 mb-1">Your Investment</p>
           <div className="text-xl font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
@@ -936,14 +936,14 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
   return (
     <div className="space-y-3 mt-3">
       {opts.showTermsAndConditions && (
-        <div className="text-[10px] text-gray-600 p-2 bg-gray-50 rounded">
+        <div className="text-xs text-gray-600 p-2 bg-gray-50 rounded">
           <h4 className="font-semibold mb-1">Terms & Conditions</h4>
           <p>This estimate is valid for 30 days. Work will be scheduled upon signed acceptance and deposit. Final pricing may vary based on site conditions discovered during work.</p>
         </div>
       )}
 
       {opts.showCustomFinePrint && finePrintContent && (
-        <div className="text-[10px] text-gray-500 p-2 border-t border-gray-100">
+        <div className="text-xs text-gray-500 p-2 border-t border-gray-100">
           {finePrintContent}
         </div>
       )}
@@ -951,14 +951,14 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
       {opts.showSignatureBlock && (
         <div className="grid grid-cols-2 gap-4 mt-4 pt-3 border-t border-gray-200">
           <div>
-            <p className="text-[10px] text-gray-500 mb-6">Customer Signature</p>
+            <p className="text-xs text-gray-500 mb-6">Customer Signature</p>
             <div className="border-b border-gray-400"></div>
-            <p className="text-[10px] text-gray-500 mt-1">Date: _______________</p>
+            <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
           </div>
           <div>
-            <p className="text-[10px] text-gray-500 mb-6">Company Representative</p>
+            <p className="text-xs text-gray-500 mb-6">Company Representative</p>
             <div className="border-b border-gray-400"></div>
-            <p className="text-[10px] text-gray-500 mt-1">Date: _______________</p>
+            <p className="text-xs text-gray-500 mt-1">Date: _______________</p>
           </div>
         </div>
       )}
