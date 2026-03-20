@@ -1422,7 +1422,13 @@ export function EstimatePreviewPanel({
                 className=""
                 style={{ transform: 'scale(0.75)', transformOrigin: 'top center' }}
               >
-                <div id="estimate-preview-template">
+                <div id="estimate-preview-template" className="pdf-render-container" style={{
+                  fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+                  WebkitFontSmoothing: 'antialiased',
+                  MozOsxFontSmoothing: 'grayscale',
+                  textRendering: 'optimizeLegibility',
+                  letterSpacing: '0.01em',
+                }}>
                   <EstimatePDFDocument
                     estimateNumber={estimateNumber}
                     estimateName={estimateDisplayName}
