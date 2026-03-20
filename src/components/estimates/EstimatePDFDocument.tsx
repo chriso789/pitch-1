@@ -658,7 +658,9 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     }}>
       {pages.pages.map((pageContent, idx) => {
         // Cover page already has its own data-report-page attribute, don't wrap in PageShell
-        const isCoverPage = opts.showCoverPage && idx === 0;
+        // Only treat idx 0 as cover page when this instance actually rendered one (not skipped for added estimates)
+        const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage;
+        const isCoverPage = hasRenderedCoverPage && idx === 0;
         
         if (isCoverPage) {
           // Render cover page directly without PageShell wrapper to avoid duplicate data-report-page
