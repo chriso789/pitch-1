@@ -1,26 +1,43 @@
 
 
-# Fix Margin Consistency Across Estimate Pages
+# Fix Estimate Page Margins & Add Street View/Aerial Cover Photo Options
 
-## Problem
-When the estimate overflows to additional pages, those continuation pages appear to have wider margins compared to the first page. This is because all pages are wrapped in a single outer container (`bg-white shadow-lg rounded-lg overflow-hidden`) which applies its own visual chrome (rounded corners, shadow) on top of the individual page shells.
+## Issues Found
 
-## Root Cause
-The preview wrapper at line 1398 of `EstimatePreviewPanel.tsx` applies `bg-white shadow-lg rounded-lg overflow-hidden` around ALL pages. Since each `PageShell` already has its own `bg-white` background and fixed 816px width, this outer wrapper adds redundant styling. The `overflow-hidden` combined with `rounded-lg` clips the corners of subsequent pages, and the wrapping creates a visual effect where continuation pages look more padded.
+**1. Margin inconsistency across pages**
+The `PageFooter` component uses `px-3` (12px padding) while the `PageHeader` uses `px-6` (24px) and content area uses `px-6` (24px). This makes the footer appear to extend wider than the rest of the page content, creating inconsistent margins visually.
 
-Additionally, the `EstimatePDFDocument` uses `gap-4` (16px) between pages in the flex container, creating visible separation that makes each page look like a card with extra spacing.
+**2. Street View & Aerial options missing from dropdown**
+The dropdown only shows these options when `streetViewUrl` and `aerialUrl` are populated. Both require coordinates (`latitude`/`longitude`). This contact has an address ("6126 Nw 77Th Terrace, Parkland, FL 33067 US") but no geocoded coordinates, and no `roof_measurements` record. Without coordinates, the Street View URL cannot be generated and the aerial image cannot be fetched.
+
+---
 
 ## Changes
 
-### `src/components/estimates/EstimatePreviewPanel.tsx`
-Remove the visual chrome from the outer wrapper so each page renders independently:
-- Change line 1398 from `className="bg-white shadow-lg rounded-lg overflow-hidden"` to just `className=""` (no extra styling — let individual `PageShell` pages handle their own appearance)
-- Each `PageShell` already has `bg-white` and the fixed 816px width
+### File: `src/components/estimates/EstimatePDFDocument.tsx`
 
-### `src/components/estimates/EstimatePDFDocument.tsx`  
-Ensure consistent spacing and appearance:
-- The `flex flex-col gap-4` on the pages container (line 652) is fine for preview separation between pages
-- No content-level changes needed — both `FirstPage` and `ItemsContinuationPage` use the same `PageShell` with `px-6` padding
+**Fix footer padding**: Change `PageFooter` from `px-3` to `px-6` to match the header and content areas, ensuring consistent margins across all page elements.
 
-This is a one-line CSS class change that removes the extra outer container styling, letting each page stand on its own with consistent margins.
+### File: `src/components/estimates/EstimatePreviewPanel.tsx`
+
+**Geocode from address when coordinates are missing**: In the coordinate-fetching `useEffect`, add a fallback step. When neither `contacts.latitude/longitude` nor `roof_measurements.gps_coordinates` yield results, use the Google Geocoding API to convert the customer's address string into coordinates.
+
+```typescript
+// After existing coord checks fail, geocode the address
+if (googleMapsApiKey && customerAddress) {
+  const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(customerAddress)}&key=${googleMapsApiKey}`;
+  const resp = await fetch(geocodeUrl);
+  const geo = await resp.json();
+  if (geo.results?.[0]?.geometry?.location) {
+    const { lat, lng } = geo.results[0].geometry.location;
+    setPropertyCoords({ lat, lng });
+  }
+}
+```
+
+**Always show Street View and Aerial as options**: Instead of conditionally rendering the `SelectItem` entries only when URLs are already loaded, always show them (they'll be populated once coords are fetched). Add a loading state or small spinner if coordinates are still being resolved.
+
+### Files Modified
+- `src/components/estimates/EstimatePDFDocument.tsx` — footer padding fix (one class change)
+- `src/components/estimates/EstimatePreviewPanel.tsx` — geocoding fallback + always-visible dropdown options
 
