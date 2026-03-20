@@ -1241,6 +1241,40 @@ export function EstimatePreviewPanel({
                     templateAttachments={allAttachments}
                     jobPhotos={jobPhotos}
                   />
+                  
+                  {/* Additional selected estimates */}
+                  {Array.from(selectedAdditionalIds).map(estId => {
+                    const data = fetchedEstimates.get(estId);
+                    if (!data) return (
+                      <div key={estId} className="flex items-center justify-center py-8">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-sm text-muted-foreground">Loading estimate...</span>
+                      </div>
+                    );
+                    return (
+                      <EstimatePDFDocument
+                        key={estId}
+                        estimateNumber={data.estimateNumber}
+                        estimateName={data.estimateName}
+                        customerName={customerName}
+                        customerAddress={customerAddress}
+                        customerPhone={customerPhone}
+                        customerEmail={customerEmail}
+                        companyInfo={companyInfo || undefined}
+                        companyName={companyInfo?.name || 'Company'}
+                        companyLogo={companyInfo?.logo_url || undefined}
+                        materialItems={data.materialItems}
+                        laborItems={data.laborItems}
+                        breakdown={data.breakdown}
+                        config={data.config}
+                        warrantyTerms={warrantyTerms}
+                        options={options}
+                        measurementSummary={measurementSummary || undefined}
+                        createdAt={new Date().toISOString()}
+                        jobPhotos={jobPhotos}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>
