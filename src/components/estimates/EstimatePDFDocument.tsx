@@ -540,7 +540,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
 
     // Page 1: Customer info + first chunk of items + summary
     currentPage++;
-    const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions;
+    const firstPageHasTerms = itemChunks.length <= 1 && opts.showTermsAndConditions && !skipWarrantyAndTerms;
     if (firstPageHasTerms && opts.showSignatureBlock) {
       signaturePageIdx = pageList.length; // index of this page in the list
     }
@@ -558,7 +558,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         config={config}
         opts={opts}
         showTerms={firstPageHasTerms}
-        finePrintContent={opts.showCustomFinePrint ? finePrintContent : undefined}
+        finePrintContent={firstPageHasTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
         estimateName={estimateName}
       />
     );
@@ -567,7 +567,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     for (let i = 1; i < itemChunks.length; i++) {
       currentPage++;
       const isLastItemPage = i === itemChunks.length - 1;
-      const showTerms = isLastItemPage && opts.showTermsAndConditions;
+      const showTerms = isLastItemPage && opts.showTermsAndConditions && !skipWarrantyAndTerms;
       if (showTerms && opts.showSignatureBlock) {
         signaturePageIdx = pageList.length;
       }
@@ -581,7 +581,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           config={isLastItemPage ? config : undefined}
           opts={opts}
           showTerms={showTerms}
-          finePrintContent={isLastItemPage && opts.showCustomFinePrint ? finePrintContent : undefined}
+          finePrintContent={isLastItemPage && showTerms && opts.showCustomFinePrint ? finePrintContent : undefined}
         />
       );
     }
