@@ -936,14 +936,14 @@ const TermsSection: React.FC<{ finePrintContent?: string; opts: PDFComponentOpti
   return (
     <div className="space-y-3 mt-3">
       {opts.showTermsAndConditions && (
-        <div className="text-[10px] text-gray-600 p-2 bg-gray-50 rounded">
+        <div className="text-xs text-gray-600 p-2 bg-gray-50 rounded">
           <h4 className="font-semibold mb-1">Terms & Conditions</h4>
           <p>This estimate is valid for 30 days. Work will be scheduled upon signed acceptance and deposit. Final pricing may vary based on site conditions discovered during work.</p>
         </div>
       )}
 
       {opts.showCustomFinePrint && finePrintContent && (
-        <div className="text-[10px] text-gray-500 p-2 border-t border-gray-100">
+        <div className="text-xs text-gray-500 p-2 border-t border-gray-100">
           {finePrintContent}
         </div>
       )}
