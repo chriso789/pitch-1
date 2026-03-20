@@ -304,7 +304,8 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
         comprehensive_measurements: {
           total_area_sqft: adjustedArea,
           flat_area_sqft: flatArea,
-          pitched_area_sqft: adjustedArea,
+          pitched_area_sqft: adjustedArea - (formData.flatSectionArea || 0),
+          flat_section_sqft: formData.flatSectionArea || 0,
           pitch: formData.pitch,
           ridges_lf: formData.ridges,
           hips_lf: formData.hips,
