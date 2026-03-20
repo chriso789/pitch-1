@@ -554,6 +554,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
         opts={opts}
         showTerms={firstPageHasTerms}
         finePrintContent={opts.showCustomFinePrint ? finePrintContent : undefined}
+        estimateName={estimateName}
       />
     );
 
@@ -672,6 +673,7 @@ const FirstPage: React.FC<{
   opts: PDFComponentOptions;
   showTerms: boolean;
   finePrintContent?: string;
+  estimateName?: string;
 }> = ({
   customerName,
   customerAddress,
@@ -685,9 +687,16 @@ const FirstPage: React.FC<{
   opts,
   showTerms,
   finePrintContent,
+  estimateName,
 }) => {
   return (
     <div className="space-y-3">
+      {/* Estimate Name Banner */}
+      {estimateName && (
+        <div className="text-center py-2 mb-1">
+          <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
+        </div>
+      )}
       {/* Customer Info */}
       {(opts.showCustomerName || opts.showCustomerAddress) && (
         <div className="p-3 bg-gray-50 rounded-lg">

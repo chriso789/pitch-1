@@ -6,6 +6,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -40,6 +41,7 @@ import {
   Save,
   X,
   ArrowLeft,
+  Files,
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import {
@@ -125,6 +127,23 @@ interface EstimatePreviewPanelProps {
   // For PDF regeneration before sharing
   tenantId?: string;
   userId?: string;
+  // Multi-estimate selection
+  allEstimates?: Array<{
+    id: string;
+    display_name: string | null;
+    estimate_number: string;
+    selling_price: number;
+  }>;
+}
+
+// Fetched estimate data for additional estimates
+interface FetchedEstimateData {
+  estimateNumber: string;
+  estimateName?: string;
+  materialItems: LineItem[];
+  laborItems: LineItem[];
+  breakdown: EstimatePreviewPanelProps['breakdown'];
+  config: EstimatePreviewPanelProps['config'];
 }
 
 export function EstimatePreviewPanel({
@@ -152,6 +171,7 @@ export function EstimatePreviewPanel({
   contactId,
   tenantId,
   userId,
+  allEstimates = [],
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
   const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -163,13 +183,40 @@ export function EstimatePreviewPanel({
   const [isPageOrderOpen, setIsPageOrderOpen] = useState(false);
   const [isAttachmentsOpen, setIsAttachmentsOpen] = useState(true);
   const [showShareDialog, setShowShareDialog] = useState(false);
-   const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
+  const [signaturePageIndex, setSignaturePageIndex] = useState<number | null>(null);
+  // Multi-estimate selection state
+  const [selectedAdditionalIds, setSelectedAdditionalIds] = useState<Set<string>>(new Set());
+  const [fetchedEstimates, setFetchedEstimates] = useState<Map<string, FetchedEstimateData>>(new Map());
+  const [isEstimatesOpen, setIsEstimatesOpen] = useState(true);
   const { generateMultiPagePDF, isGenerating: isGeneratingPDF } = useMultiPagePDFGeneration();
   const { toast } = useToast();
   const previewRef = useRef<HTMLDivElement>(null);
   const photoUploadRef = useRef<HTMLInputElement>(null);
 
-  // Fetch job photos for estimate preview
+  // Fetch saved estimates for this pipeline entry (for multi-estimate selection)
+  const [siblingEstimates, setSiblingEstimates] = useState<Array<{
+    id: string;
+    display_name: string | null;
+    estimate_number: string;
+    selling_price: number;
+  }>>([]);
+
+  useEffect(() => {
+    if (!open || !pipelineEntryId) return;
+    const fetchSiblings = async () => {
+      const { data } = await supabase
+        .from('enhanced_estimates')
+        .select('id, display_name, estimate_number, selling_price')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+      setSiblingEstimates(data || []);
+    };
+    fetchSiblings();
+  }, [open, pipelineEntryId]);
+
+  // Combine explicit prop with fetched data
+  const estimatesList = allEstimates.length > 0 ? allEstimates : siblingEstimates;
+
   const [jobPhotos, setJobPhotos] = useState<Array<{
     id: string;
     file_url: string;
@@ -273,7 +320,74 @@ export function EstimatePreviewPanel({
     fetchAerial();
   }, [open, jobPhotos.length, contactId]);
 
-  // Handle photo upload from PageOrderManager "Add" button
+  // Fetch additional estimate data when selected
+  const handleToggleEstimate = useCallback(async (estId: string) => {
+    setSelectedAdditionalIds(prev => {
+      const next = new Set(prev);
+      if (next.has(estId)) {
+        next.delete(estId);
+      } else {
+        next.add(estId);
+      }
+      return next;
+    });
+
+    // If not already fetched, fetch it
+    if (!fetchedEstimates.has(estId)) {
+      try {
+        const { data: est } = await supabase
+          .from('enhanced_estimates')
+          .select('estimate_number, display_name, line_items, selling_price, material_total, labor_total, overhead_amount, overhead_percent, actual_profit_amount, actual_profit_percent, rep_commission_amount, rep_commission_percent, sales_tax_amount, sales_tax_rate, total_with_tax')
+          .eq('id', estId)
+          .single();
+
+        if (est) {
+          const lineItemsData = est.line_items as any;
+          const materials: LineItem[] = (lineItemsData?.materials || []).map((item: any) => ({ ...item, item_type: 'material' as const }));
+          const labor: LineItem[] = (lineItemsData?.labor || []).map((item: any) => ({ ...item, item_type: 'labor' as const }));
+
+          const matTotal = est.material_total || 0;
+          const labTotal = est.labor_total || 0;
+          const directCost = matTotal + labTotal;
+          const overheadAmt = est.overhead_amount || 0;
+          const profitAmt = est.actual_profit_amount || 0;
+          const repComm = (est.rep_commission_amount as number) || 0;
+
+          const fetched: FetchedEstimateData = {
+            estimateNumber: est.estimate_number,
+            estimateName: est.display_name || undefined,
+            materialItems: materials,
+            laborItems: labor,
+            breakdown: {
+              materialsTotal: matTotal,
+              laborTotal: labTotal,
+              directCost,
+              overheadAmount: overheadAmt,
+              totalCost: directCost + overheadAmt,
+              profitAmount: profitAmt,
+              repCommissionAmount: repComm,
+              sellingPrice: est.selling_price || 0,
+              actualProfitMargin: est.actual_profit_percent || 0,
+              salesTaxAmount: (est.sales_tax_amount as number) || 0,
+              totalWithTax: (est.total_with_tax as number) || undefined,
+            },
+            config: {
+              overheadPercent: est.overhead_percent || 0,
+              profitMarginPercent: est.actual_profit_percent || 0,
+              repCommissionPercent: (est.rep_commission_percent as number) || 0,
+              salesTaxEnabled: !!(est.sales_tax_rate && est.sales_tax_rate > 0),
+              salesTaxRate: (est.sales_tax_rate as number) || 0,
+            },
+          };
+
+          setFetchedEstimates(prev => new Map(prev).set(estId, fetched));
+        }
+      } catch (err) {
+        console.error('Failed to fetch estimate:', estId, err);
+      }
+    }
+  }, [fetchedEstimates]);
+
   const handleUploadPhotos = useCallback(() => {
     photoUploadRef.current?.click();
   }, []);
@@ -861,6 +975,54 @@ export function EstimatePreviewPanel({
                   </div>
                 </div>
 
+                {/* Multi-Estimate Selector */}
+                {estimatesList.length > 1 && (
+                  <>
+                    <Separator />
+                    <Collapsible open={isEstimatesOpen} onOpenChange={setIsEstimatesOpen}>
+                      <CollapsibleTrigger className="flex items-center justify-between w-full py-1 hover:bg-muted/50 rounded -mx-1 px-1">
+                        <h4 className="font-medium flex items-center gap-2 text-xs text-muted-foreground uppercase tracking-wide">
+                          <Files className="h-3 w-3" />
+                          Estimates to Include ({1 + selectedAdditionalIds.size})
+                        </h4>
+                        <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isEstimatesOpen ? '' : '-rotate-90'}`} />
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-2 space-y-1.5">
+                        {estimatesList.map(est => {
+                          const isCurrent = est.id === estimateId;
+                          const isSelected = isCurrent || selectedAdditionalIds.has(est.id);
+                          return (
+                            <label
+                              key={est.id}
+                              className={`flex items-start gap-2 p-2 rounded-md cursor-pointer transition-colors text-sm ${isSelected ? 'bg-primary/10 border border-primary/20' : 'hover:bg-muted/50 border border-transparent'}`}
+                            >
+                              <Checkbox
+                                checked={isSelected}
+                                disabled={isCurrent}
+                                onCheckedChange={() => {
+                                  if (!isCurrent) handleToggleEstimate(est.id);
+                                }}
+                                className="mt-0.5"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <p className="font-medium truncate">
+                                  {est.display_name || est.estimate_number}
+                                  {isCurrent && (
+                                    <Badge variant="outline" className="ml-1 text-[9px] py-0 px-1">Current</Badge>
+                                  )}
+                                </p>
+                                <p className="text-xs text-muted-foreground">
+                                  {est.estimate_number} • ${est.selling_price?.toLocaleString() || '0'}
+                                </p>
+                              </div>
+                            </label>
+                          );
+                        })}
+                      </CollapsibleContent>
+                    </Collapsible>
+                  </>
+                )}
+
                 <Separator />
 
                 {/* Extra Pages Section */}
@@ -1102,6 +1264,40 @@ export function EstimatePreviewPanel({
                     templateAttachments={allAttachments}
                     jobPhotos={jobPhotos}
                   />
+                  
+                  {/* Additional selected estimates */}
+                  {Array.from(selectedAdditionalIds).map(estId => {
+                    const data = fetchedEstimates.get(estId);
+                    if (!data) return (
+                      <div key={estId} className="flex items-center justify-center py-8">
+                        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-sm text-muted-foreground">Loading estimate...</span>
+                      </div>
+                    );
+                    return (
+                      <EstimatePDFDocument
+                        key={estId}
+                        estimateNumber={data.estimateNumber}
+                        estimateName={data.estimateName}
+                        customerName={customerName}
+                        customerAddress={customerAddress}
+                        customerPhone={customerPhone}
+                        customerEmail={customerEmail}
+                        companyInfo={companyInfo || undefined}
+                        companyName={companyInfo?.name || 'Company'}
+                        companyLogo={companyInfo?.logo_url || undefined}
+                        materialItems={data.materialItems}
+                        laborItems={data.laborItems}
+                        breakdown={data.breakdown}
+                        config={data.config}
+                        warrantyTerms={warrantyTerms}
+                        options={options}
+                        measurementSummary={measurementSummary || undefined}
+                        createdAt={new Date().toISOString()}
+                        jobPhotos={jobPhotos}
+                      />
+                    );
+                  })}
                 </div>
               </div>
             </div>
