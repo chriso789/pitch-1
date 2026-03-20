@@ -700,8 +700,18 @@ export const ManualMeasurementDialog: React.FC<ManualMeasurementDialogProps> = (
               
               <div className="space-y-2">
                 <div className="flex justify-between text-sm">
-                  <span>Pitch-Adjusted Area:</span>
-                  <span className="font-medium">{getAdjustedArea().toLocaleString()} sq ft</span>
+                  <span>Pitched Area:</span>
+                  <span className="font-medium">{(getAdjustedArea() - (formData.flatSectionArea || 0)).toLocaleString()} sq ft</span>
+                </div>
+                {(formData.flatSectionArea || 0) > 0 && (
+                  <div className="flex justify-between text-sm">
+                    <span>Flat Section (0/12):</span>
+                    <span className="font-medium">{(formData.flatSectionArea || 0).toLocaleString()} sq ft</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-medium">
+                  <span>Total Adjusted Area:</span>
+                  <span>{getAdjustedArea().toLocaleString()} sq ft</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span>Squares:</span>
