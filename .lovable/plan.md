@@ -1,25 +1,49 @@
 
 
-# Backfill Line Item Descriptions from Materials Table
+# Fix Page Overflow for Items with Descriptions
 
 ## Problem
-The `enhanced_estimates.line_items` JSONB stores materials and labor arrays. Many line items are missing the `description` field, even though the `materials` table was recently updated with descriptions from the uploaded PDFs.
+The pagination logic uses fixed row counts (`MAX_ROWS_FIRST_PAGE = 12`, `MAX_ROWS_CONTINUATION = 16`) treating every item as 1 row. But items with descriptions take 2-3x the vertical space, causing the "5V Metal Mill Finish" estimate to overflow its fixed-height page container (`maxHeight: 1056px`).
 
-## Approach
-Run a SQL migration that updates the JSONB `line_items` in `enhanced_estimates` by matching each item's `item_name` to `materials.name` and injecting the `description` from the materials table.
+## Solution
+Make the chunking logic description-aware by counting items with descriptions as more than 1 row.
 
 ## Changes
 
-### File: New SQL migration
+### File: `src/components/estimates/EstimatePDFDocument.tsx`
 
-A single SQL statement that:
-1. For each `enhanced_estimates` row with `line_items`
-2. Iterates through both `materials` and `labor` arrays in the JSONB
-3. For items missing a description, looks up `materials.name` matching `item_name`
-4. Injects the `description` from the materials table into the JSONB element
-5. Updates the row
+**1. Update `chunkRenderBlocks` to be description-aware:**
 
-This uses a PL/pgSQL block to iterate estimates, rebuild the arrays with descriptions filled in, and update in place. Both `materials` and `labor` arrays are processed since labor items (like "Tear Off", "Cleanup/Haul", "Panel Install") also exist in the materials table with descriptions.
+Modify the function signature to accept `opts: PDFComponentOptions`. When counting toward the page limit, an item block with a non-empty `description` (and `opts.showItemDescriptions` is true) counts as 2.5 rows instead of 1. Headers/sub-headers still count as 1.
 
-No application code changes needed — this is a data-only migration.
+```typescript
+function chunkRenderBlocks(blocks: RenderBlock[], firstPageMax: number, continuationMax: number, opts?: PDFComponentOptions): RenderBlock[][] {
+  // ...
+  const blockWeight = (b: RenderBlock) => {
+    if (b.type === 'item' && b.item?.description && opts?.showItemDescriptions) {
+      // Long descriptions get extra weight
+      const descLen = b.item.description.length;
+      return descLen > 120 ? 3 : 2;
+    }
+    return 1;
+  };
+  // Use weighted sum instead of count for page-fit check
+}
+```
+
+**2. Update `chunkItems` to pass `opts` through:**
+```typescript
+function chunkItems(items, firstPageMax, continuationMax, opts?) {
+  const blocks = buildRenderBlocks(items);
+  const blockChunks = chunkRenderBlocks(blocks, firstPageMax, continuationMax, opts);
+  // ...
+}
+```
+
+**3. Update call site (~line 504):**
+```typescript
+const { itemChunks, blockChunks } = chunkItems(scopeItems, MAX_ROWS_FIRST_PAGE, MAX_ROWS_CONTINUATION, opts);
+```
+
+This ensures pages with description-heavy items split earlier, preventing overflow.
 
