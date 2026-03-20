@@ -356,10 +356,25 @@ export function EstimatePreviewPanel({
       const gps = rm?.gps_coordinates as any;
       if (gps?.lat && gps?.lng) {
         setPropertyCoords({ lat: gps.lat, lng: gps.lng });
+        return;
+      }
+      // Fallback: Geocode from customer address string
+      if (googleMapsApiKey && customerAddress) {
+        try {
+          const geocodeUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(customerAddress)}&key=${googleMapsApiKey}`;
+          const resp = await fetch(geocodeUrl);
+          const geo = await resp.json();
+          if (geo.results?.[0]?.geometry?.location) {
+            const { lat, lng } = geo.results[0].geometry.location;
+            setPropertyCoords({ lat, lng });
+          }
+        } catch (err) {
+          console.warn('Geocoding fallback failed:', err);
+        }
       }
     };
     fetchCoords();
-  }, [open, contactId]);
+  }, [open, contactId, googleMapsApiKey, customerAddress]);
 
   // Generate Street View URL when coords + API key available
   useEffect(() => {
