@@ -127,6 +127,23 @@ interface EstimatePreviewPanelProps {
   // For PDF regeneration before sharing
   tenantId?: string;
   userId?: string;
+  // Multi-estimate selection
+  allEstimates?: Array<{
+    id: string;
+    display_name: string | null;
+    estimate_number: string;
+    selling_price: number;
+  }>;
+}
+
+// Fetched estimate data for additional estimates
+interface FetchedEstimateData {
+  estimateNumber: string;
+  estimateName?: string;
+  materialItems: LineItem[];
+  laborItems: LineItem[];
+  breakdown: EstimatePreviewPanelProps['breakdown'];
+  config: EstimatePreviewPanelProps['config'];
 }
 
 export function EstimatePreviewPanel({
