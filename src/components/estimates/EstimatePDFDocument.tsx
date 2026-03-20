@@ -911,7 +911,7 @@ const PricingSummary: React.FC<{
       {/* Consumer-Friendly Total - Tax is now INCLUDED in sellingPrice */}
       {!opts.showCostBreakdown && !opts.showProfitInfo ? (
         <div className="text-center py-2">
-          <p className="text-xs text-gray-500 mb-1">Your Investment</p>
+          <p className="text-sm text-gray-500 mb-1">Your Investment</p>
           <div className="text-xl font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
