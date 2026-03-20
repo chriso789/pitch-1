@@ -902,7 +902,7 @@ const PricingSummary: React.FC<{
       
       {/* Sales Tax - ONLY show for internal view (showCostBreakdown = internal) */}
       {opts.showCostBreakdown && config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
-        <div className="flex justify-between text-xs border-t border-gray-200 pt-1.5 mt-1.5">
+        <div className="flex justify-between text-sm border-t border-gray-200 pt-1.5 mt-1.5">
           <span className="text-gray-600">Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
           <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount || 0)}</span>
         </div>
