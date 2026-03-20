@@ -1261,7 +1261,7 @@ export function EstimatePreviewPanel({
                     options={options}
                     measurementSummary={measurementSummary || undefined}
                     createdAt={new Date().toISOString()}
-                    templateAttachments={allAttachments}
+                    templateAttachments={[]}
                     jobPhotos={jobPhotos}
                     skipWarrantyAndTerms={selectedAdditionalIds.size > 0}
                   />
