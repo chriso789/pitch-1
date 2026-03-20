@@ -1,52 +1,65 @@
 
-Fix the remaining added-estimate formatting bug by correcting the page-wrapping logic in `EstimatePDFDocument.tsx`.
 
-Problem found:
-- The remaining issue is not the global font CSS anymore.
-- In `EstimatePDFDocument.tsx`, the render loop does this:
-  - `const isCoverPage = opts.showCoverPage && idx === 0`
-- For added estimates, `skipCoverPage={true}` is passed from `EstimatePreviewPanel.tsx`.
-- That means the first real content page of every added estimate is still being treated like a cover page whenever the cover-page option is enabled globally.
-- Result: that first added-estimate page bypasses `PageShell`, so it loses the normal page width, margins, header/footer wrapper, font enforcement, and `data-report-page` marker.
+# Fix Lead Creation Edge Function Error
 
-Why previous fixes didn’t solve it:
-- They targeted inherited font styles and table padding.
-- But this remaining mismatch is caused by the first added-estimate page not being wrapped at all.
+## Root Cause
 
-Implementation plan:
-1. Update `src/components/estimates/EstimatePDFDocument.tsx`
-   - Change cover-page detection so only an actually-rendered cover page is skipped from `PageShell`.
-   - Use logic like:
-     - `const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage`
-     - `const isCoverPage = hasRenderedCoverPage && idx === 0`
-2. Keep all non-cover pages wrapped in `PageShell`
-   - This ensures the first page of each added estimate gets the same:
-     - 816px page width
-     - `px-6` margins
-     - `pdf-render-container` font styling
-     - header/footer layout
-     - `data-report-page` marker
-3. Verify page indexing behavior
-   - Confirm added estimates now render their first page as a normal page, not raw `FirstPage` content.
-   - Confirm page-count/export logic works correctly since `[data-report-page]` will now exist on that page too.
-4. Regression check
-   - Make sure the true cover page of the main estimate still renders without a duplicate wrapper.
-   - Make sure continuation pages and attachments are unaffected.
+The `create-lead-with-contact` edge function fails when inserting into `pipeline_entries` because it sets a column that doesn't exist on the table:
 
-Technical details:
-- Root cause location: `src/components/estimates/EstimatePDFDocument.tsx`, inside the final `pages.pages.map(...)` render block.
-- Current bug:
-```text
-opts.showCoverPage && idx === 0
 ```
-- Correct behavior:
-```text
-only treat idx 0 as a cover page when this document actually rendered a cover page
+lead_source_id: body.leadSource || null    // ← THIS COLUMN DOESN'T EXIST
 ```
 
-Files to update:
-- `src/components/estimates/EstimatePDFDocument.tsx`
+The `pipeline_entries` table has a `source` column typed as a `lead_source` enum (`referral`, `canvassing`, `online`, `advertisement`, `social_media`, `other`). The function is trying to write to a non-existent `lead_source_id` column, which causes the insert to fail.
 
-Expected outcome:
-- The first page of each added estimate will use the same font, margins, and page shell as the estimate shown in the main Preview Estimate window.
-- Exported PDFs should also become more reliable because that page will regain its proper page marker and shell.
+Additionally, the fallback lead sources in the UI use string values like `'google_ads'` and `'facebook_ads'` which don't match the enum values, so even if the column name were corrected, the value would be rejected.
+
+## Fix
+
+### File: `supabase/functions/create-lead-with-contact/index.ts`
+
+1. **Remove `lead_source_id`** from the `pipelineData` object (line 381)
+2. **Map `leadSource` to the `source` enum** where possible, otherwise store it in metadata:
+   - If `leadSource` matches an enum value (referral, canvassing, online, advertisement, social_media, other), use it as `source`
+   - If it's a UUID (from the `lead_sources` table), store it in `metadata.lead_source_id` for reference and set `source` to `'other'`
+   - If it's a fallback string like `google_ads`, map to closest enum (`online` / `advertisement` / `social_media`) or default to `'other'`
+
+### Technical Detail
+
+Current broken code (line 372-392):
+```typescript
+const pipelineData: any = {
+  ...
+  lead_source_id: body.leadSource || null,  // REMOVE THIS
+  ...
+};
+```
+
+Replace with mapping logic:
+```typescript
+// Map leadSource to the source enum
+function mapLeadSource(value: string | null): string | null {
+  if (!value) return null;
+  const enumValues = ['referral','canvassing','online','advertisement','social_media','other'];
+  if (enumValues.includes(value)) return value;
+  // Map common fallback strings
+  const mapping: Record<string, string> = {
+    'google_ads': 'online',
+    'facebook_ads': 'social_media',
+    'instagram': 'social_media',
+    'door_knocking': 'canvassing',
+    'yard_sign': 'advertisement',
+    'direct_mail': 'advertisement',
+  };
+  return mapping[value] || 'other';
+}
+
+const pipelineData = {
+  ...
+  source: mapLeadSource(body.leadSource),  // Correct column + enum value
+  ...
+};
+```
+
+The original `leadSource` value (whether UUID or string) is preserved in `metadata.lead_source_id` for detailed tracking.
+
