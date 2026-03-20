@@ -649,7 +649,13 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   };
 
   return (
-    <div id="estimate-pdf-pages" className="flex flex-col gap-4">
+    <div data-estimate-pages className="flex flex-col gap-4 pdf-render-container" style={{
+      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+      WebkitFontSmoothing: 'antialiased',
+      MozOsxFontSmoothing: 'grayscale',
+      textRendering: 'optimizeLegibility',
+      letterSpacing: '0.01em',
+    }}>
       {pages.pages.map((pageContent, idx) => {
         // Cover page already has its own data-report-page attribute, don't wrap in PageShell
         const isCoverPage = opts.showCoverPage && idx === 0;
@@ -828,7 +834,7 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
         {continued ? 'Project Scope (continued)' : 'Project Scope'}
       </h3>
-      <table className="w-full text-sm">
+      <table className="w-full text-sm items-table">
         <thead>
           <tr className="border-b border-gray-200">
             <th className="text-left py-1.5 text-gray-700 font-semibold">Description</th>
