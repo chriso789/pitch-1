@@ -505,12 +505,12 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     
     // Count total pages for page numbering
     // Pre-build warranty pages to know their count
-    const warrantyPages = (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty)
+    const warrantyPages = (!skipWarrantyAndTerms && (opts.showManufacturerWarranty || opts.showWorkmanshipWarranty))
       ? buildWarrantyPages(warrantyTerms, opts.showManufacturerWarranty, opts.showWorkmanshipWarranty)
       : [];
 
     let totalPageCount = itemChunks.length || 1; // At least 1 for main content
-    if (opts.showCoverPage) totalPageCount++;
+    if (opts.showCoverPage && !skipCoverPage) totalPageCount++;
     totalPageCount += warrantyPages.length;
     if (opts.showMeasurementDetails && measurementSummary) totalPageCount++;
     // Photos page count calculated below
@@ -519,8 +519,8 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
     // Track which page index (in pageList) contains the signature block
     let signaturePageIdx: number | null = null;
 
-    // Cover page (if enabled) - prepended before other content
-    if (opts.showCoverPage) {
+    // Cover page (if enabled and not skipped for multi-estimate dedup)
+    if (opts.showCoverPage && !skipCoverPage) {
       currentPage++;
       pageList.push(
         <EstimateCoverPage
