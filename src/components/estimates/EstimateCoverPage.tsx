@@ -109,7 +109,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
               className="text-5xl font-bold text-gray-900 tracking-tight leading-tight pb-3 border-b-4 border-primary"
               style={{ borderColor: 'hsl(var(--primary))' }}
             >
-              {estimateName || 'ROOFING ESTIMATE'}
+              O'Brien Contracting Estimate
             </h2>
           </div>
         </div>

@@ -672,6 +672,7 @@ const FirstPage: React.FC<{
   opts: PDFComponentOptions;
   showTerms: boolean;
   finePrintContent?: string;
+  estimateName?: string;
 }> = ({
   customerName,
   customerAddress,
@@ -685,6 +686,7 @@ const FirstPage: React.FC<{
   opts,
   showTerms,
   finePrintContent,
+  estimateName,
 }) => {
   return (
     <div className="space-y-3">
