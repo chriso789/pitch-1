@@ -1395,7 +1395,7 @@ export function EstimatePreviewPanel({
             <div className="flex justify-center">
               <div
                 ref={previewRef}
-                className="bg-white shadow-lg rounded-lg overflow-hidden"
+                className=""
                 style={{ transform: 'scale(0.75)', transformOrigin: 'top center' }}
               >
                 <div id="estimate-preview-template">
