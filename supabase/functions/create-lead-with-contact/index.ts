@@ -309,6 +309,10 @@ serve(async (req: Request) => {
                 status: 200,
               }
             );
+          } else if (duplicate && body.forceDuplicate) {
+            // Reuse existing contact — create a new lead/pipeline entry linked to it
+            contactId = duplicate.id;
+            console.log("[create-lead-with-contact] Force duplicate: reusing existing contact", contactId);
           }
         }
       }

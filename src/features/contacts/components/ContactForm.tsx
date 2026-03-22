@@ -376,6 +376,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         errorMessage = "Your account is not properly configured. Please contact support.";
       } else if (error.message?.includes("RLS")) {
         errorMessage = "Permission denied. Please contact your administrator.";
+      } else if (error.message?.includes("already exists") || error.message?.includes("duplicate")) {
+        errorMessage = "A contact with this name and address already exists. Please search for the existing contact instead of creating a new one.";
       } else if (error.message) {
         errorMessage = error.message;
       }
