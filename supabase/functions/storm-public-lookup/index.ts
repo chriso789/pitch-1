@@ -224,45 +224,65 @@ Deno.serve(async (req) => {
       console.log(`[storm-public-lookup] skipping cache for low-confidence result (${result.confidence_score})`);
     }
 
-    // 6) Update canvassiq_properties if property_id provided (no owner_name gate)
+    // 6) Update canvassiq_properties if property_id provided — WITH ADDRESS GUARD
 
     if (property_id) {
-      const contactPhones = result.contact_phones || [];
-      const contactEmails = result.contact_emails || [];
+      // Address guard: verify the lookup result matches the stored property address
+      let addressMatch = true;
+      if (propertyRow) {
+        const storedAddr = typeof propertyRow.address === "string"
+          ? JSON.parse(propertyRow.address)
+          : (propertyRow.address || {});
+        const storedStreet = storedAddr?.street || storedAddr?.formatted || "";
+        const storedHouseNum = extractHouseNum(storedStreet);
+        const resultHouseNum = extractHouseNum(result.property_address || "");
+        
+        if (storedHouseNum && resultHouseNum && storedHouseNum !== resultHouseNum) {
+          console.warn(`[storm-public-lookup] ADDRESS MISMATCH: stored="${storedStreet}" (house ${storedHouseNum}) vs result="${result.property_address}" (house ${resultHouseNum}). Blocking writeback.`);
+          addressMatch = false;
+        }
+      }
 
-      const updatePayload: Record<string, any> = {
-        enrichment_last_at: new Date().toISOString(),
-        enrichment_source: ["public_data", "firecrawl_people_search"],
-        updated_at: new Date().toISOString(),
-        searchbug_data: {
-          owners: result.owner_name
-            ? [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }]
-            : [],
-          phones: contactPhones,
-          emails: contactEmails,
-          relatives: result.contact_relatives || [],
-          source: "firecrawl_people_search",
-          enriched_at: new Date().toISOString(),
-        },
-        property_data: {
-          source: "public_data_engine",
-          confidence_score: result.confidence_score,
-          parcel_id: result.parcel_id,
-          year_built: result.year_built,
-          living_sqft: result.living_sqft,
-          homestead: result.homestead,
-          county: county.county_name,
-          sources: Object.keys(result.sources).filter(k => result.sources[k]),
-          enriched_at: new Date().toISOString(),
-        },
-      };
+      if (addressMatch) {
+        const contactPhones = result.contact_phones || [];
+        const contactEmails = result.contact_emails || [];
 
-      // Only write non-null/non-junk values to avoid clobbering existing data
-      if (cleanOwner(result.owner_name)) updatePayload.owner_name = cleanOwner(result.owner_name);
-      if (contactPhones.length > 0) updatePayload.phone_numbers = contactPhones.map((p: any) => p.number);
-      if (contactEmails.length > 0) updatePayload.emails = contactEmails.map((e: any) => e.address);
+        const updatePayload: Record<string, any> = {
+          enrichment_last_at: new Date().toISOString(),
+          enrichment_source: ["public_data", "firecrawl_people_search"],
+          updated_at: new Date().toISOString(),
+          searchbug_data: {
+            owners: result.owner_name
+              ? [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }]
+              : [],
+            phones: contactPhones,
+            emails: contactEmails,
+            relatives: result.contact_relatives || [],
+            source: "firecrawl_people_search",
+            enriched_at: new Date().toISOString(),
+          },
+          property_data: {
+            source: "public_data_engine",
+            confidence_score: result.confidence_score,
+            parcel_id: result.parcel_id,
+            year_built: result.year_built,
+            living_sqft: result.living_sqft,
+            homestead: result.homestead,
+            county: county.county_name,
+            sources: Object.keys(result.sources).filter(k => result.sources[k]),
+            enriched_at: new Date().toISOString(),
+          },
+        };
 
-      await supabase.from("canvassiq_properties").update(updatePayload).eq("id", property_id);
+        // Only write non-null/non-junk values to avoid clobbering existing data
+        if (cleanOwner(result.owner_name)) updatePayload.owner_name = cleanOwner(result.owner_name);
+        if (contactPhones.length > 0) updatePayload.phone_numbers = contactPhones.map((p: any) => p.number);
+        if (contactEmails.length > 0) updatePayload.emails = contactEmails.map((e: any) => e.address);
+
+        await supabase.from("canvassiq_properties").update(updatePayload).eq("id", property_id);
+      } else {
+        console.log(`[storm-public-lookup] Skipped canvassiq_properties update due to address mismatch`);
+      }
     }
 
     return new Response(

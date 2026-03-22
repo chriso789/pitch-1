@@ -94,11 +94,40 @@ function getStreetNumber(address: any): string {
   return match ? match[1] : '';
 }
 
+// Unified address key normalizer — matches the server-side normalizeAddressKey exactly
+function normalizeAddressKeyClient(streetOrFormatted: string): string {
+  return streetOrFormatted
+    .toLowerCase()
+    .replace(/\b(street)\b/g, "st")
+    .replace(/\b(avenue)\b/g, "ave")
+    .replace(/\b(road)\b/g, "rd")
+    .replace(/\b(drive)\b/g, "dr")
+    .replace(/\b(court)\b/g, "ct")
+    .replace(/\b(lane)\b/g, "ln")
+    .replace(/\b(circle)\b/g, "cir")
+    .replace(/\b(parkway)\b/g, "pkwy")
+    .replace(/\b(boulevard)\b/g, "blvd")
+    .replace(/\b(place)\b/g, "pl")
+    .replace(/\b(terrace)\b/g, "ter")
+    .replace(/\b(highway)\b/g, "hwy")
+    .replace(/\b(north)\b/g, "n")
+    .replace(/\b(south)\b/g, "s")
+    .replace(/\b(east)\b/g, "e")
+    .replace(/\b(west)\b/g, "w")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/ /g, "_");
+}
+
 // Get normalized address key for deduplication
 function getNormalizedAddressKey(property: CanvassiqProperty): string {
-  // Use pre-computed key if available
+  // Use pre-computed key if available — re-normalize it through the canonical function
+  // to fix any legacy keys with inconsistent formats
   if (property.normalized_address_key) {
-    return property.normalized_address_key;
+    // Re-normalize: replace underscores with spaces, run through canonical normalizer
+    const reNormalized = normalizeAddressKeyClient(property.normalized_address_key.replace(/_/g, " "));
+    return reNormalized;
   }
   
   // Fallback: compute from address
@@ -113,16 +142,9 @@ function getNormalizedAddressKey(property: CanvassiqProperty): string {
   
   const streetNumber = parsed?.street_number || '';
   const streetName = parsed?.street_name || parsed?.street || '';
+  const combined = `${streetNumber} ${streetName}`.trim();
   
-  return `${streetNumber}_${streetName}`.toLowerCase()
-    .replace(/\s+street\b/gi, ' st')
-    .replace(/\s+avenue\b/gi, ' ave')
-    .replace(/\s+boulevard\b/gi, ' blvd')
-    .replace(/\s+drive\b/gi, ' dr')
-    .replace(/\s+road\b/gi, ' rd')
-    .replace(/\s+lane\b/gi, ' ln')
-    .replace(/[^a-z0-9_]/g, '')
-    .replace(/_+/g, '_');
+  return combined ? normalizeAddressKeyClient(combined) : '';
 }
 
 // Deduplicate properties by normalized address key

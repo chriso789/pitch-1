@@ -1,5 +1,9 @@
 // supabase/functions/_shared/public_data/normalize.ts
 
+/**
+ * Unified address key normalizer.
+ * Produces keys like "4063_fonsica_ave" — all flows MUST use this.
+ */
 export function normalizeAddressKey(streetOrFormatted: string): string {
   return streetOrFormatted
     .toLowerCase()
@@ -23,4 +27,12 @@ export function normalizeAddressKey(streetOrFormatted: string): string {
     .replace(/\s+/g, " ")
     .trim()
     .replace(/ /g, "_");
+}
+
+/**
+ * Normalize from separate street_number + street_name (used by canvassiq-load-parcels).
+ * Delegates to the canonical normalizeAddressKey.
+ */
+export function normalizeAddressKeyFromParts(streetNumber: string, streetName: string): string {
+  return normalizeAddressKey(`${streetNumber} ${streetName}`);
 }
