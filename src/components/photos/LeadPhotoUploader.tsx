@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { compressImage } from '@/lib/imageCompression';
 
 interface LeadPhotoUploaderProps {
   pipelineEntryId: string;
@@ -79,9 +80,9 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
     return 'general';
   };
 
-  const handleFiles = useCallback((files: FileList | File[]) => {
+    const handleFiles = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const imageFiles = fileArray.filter(file => file.type.startsWith('image/'));
+    const imageFiles = fileArray.filter(file => file.type.startsWith('image/') || file.name.toLowerCase().match(/\.(heic|heif)$/));
     
     if (imageFiles.length === 0) {
       toast({
@@ -181,17 +182,21 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
 
       for (const upload of pendingUploads) {
         try {
-          const fileExt = upload.file.name.split('.').pop();
+          // Compress image client-side before upload
+          const compressedFile = await compressImage(upload.file);
+          console.log(`[LeadPhotoUploader] Compressed: ${upload.file.name} ${(upload.file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
+
+          const fileExt = compressedFile.name.split('.').pop() || 'jpg';
           const timestamp = Date.now();
           const randomId = Math.random().toString(36).substring(7);
           const fileName = `${tenantId}/leads/${pipelineEntryId}/${timestamp}_${randomId}.${fileExt}`;
           
-          console.log('[LeadPhotoUploader] Uploading file:', fileName, 'Size:', upload.file.size);
+          console.log('[LeadPhotoUploader] Uploading file:', fileName, 'Size:', compressedFile.size);
           
           // Upload to customer-photos storage bucket
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('customer-photos')
-            .upload(fileName, upload.file, {
+            .upload(fileName, compressedFile, {
               cacheControl: '3600',
               upsert: false
             });
@@ -223,8 +228,8 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
             original_filename: upload.file.name,
             description: upload.file.name,
             category: upload.category,
-            mime_type: upload.file.type,
-            file_size: upload.file.size,
+            mime_type: compressedFile.type,
+            file_size: compressedFile.size,
             uploaded_by: user.id,
             include_in_estimate: false,
             display_order: successCount
@@ -312,7 +317,7 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
         <input
           ref={cameraInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           capture="environment"
           className="hidden"
           onChange={handleFileInput}
@@ -334,7 +339,7 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
           <input
             id="photo-input"
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             multiple
             className="hidden"
             onChange={handleFileInput}
