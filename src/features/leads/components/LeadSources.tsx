@@ -101,21 +101,19 @@ export const LeadSources = () => {
     e.preventDefault();
     
     try {
-      const payload = {
-        ...formData,
-        tenant_id: (await supabase.auth.getUser()).data.user?.user_metadata?.tenant_id
-      };
-
       let result;
       if (editingSource) {
         result = await supabase
           .from('lead_sources')
-          .update(payload)
+          .update(formData)
           .eq('id', editingSource.id);
       } else {
         result = await supabase
           .from('lead_sources')
-          .insert(payload);
+          .insert({
+            ...formData,
+            tenant_id: effectiveTenantId
+          });
       }
 
       if (result.error) throw result.error;
