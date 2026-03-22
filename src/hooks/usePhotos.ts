@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { compressImage } from '@/lib/imageCompression';
 
 export type PhotoCategory = 
   | 'before' | 'during' | 'after' | 'damage' | 'materials' 
