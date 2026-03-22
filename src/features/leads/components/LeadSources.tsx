@@ -40,6 +40,7 @@ export const LeadSources = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<LeadSource | null>(null);
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
 
   const [formData, setFormData] = useState({
     name: '',
