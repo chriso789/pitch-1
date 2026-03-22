@@ -14,6 +14,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/components/ui/use-toast';
+import { compressImage } from '@/lib/imageCompression';
 
 interface LeadPhotoUploaderProps {
   pipelineEntryId: string;
