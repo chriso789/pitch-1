@@ -116,37 +116,64 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
 
       setUploadProgress(20);
 
-      // Convert file to base64
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const fileData = await base64Promise;
+      // Compress image client-side (converts HEIC, resizes large photos)
+      const compressedFile = await compressImage(file);
+      console.log(`[usePhotos] Compressed: ${file.name} ${(file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
 
       setUploadProgress(40);
 
-      // Call edge function
-      const { data, error } = await supabase.functions.invoke('photo-upload', {
-        body: {
-          action: 'upload',
+      // Build storage path
+      const timestamp = Date.now();
+      const randomId = Math.random().toString(36).substring(7);
+      const fileExt = compressedFile.name.split('.').pop() || 'jpg';
+      const entityFolder = entityLeadId ? `leads/${entityLeadId}` : 
+                           entityContactId ? `contacts/${entityContactId}` :
+                           `projects/${entityProjectId}`;
+      const storagePath = `${tenantId}/${entityFolder}/${timestamp}_${randomId}.${fileExt}`;
+
+      // Upload directly to storage bucket (bypasses edge function memory limits)
+      const { error: uploadError } = await supabase.storage
+        .from('customer-photos')
+        .upload(storagePath, compressedFile, {
+          cacheControl: '3600',
+          upsert: false,
+        });
+
+      if (uploadError) throw new Error(`Storage upload failed: ${uploadError.message}`);
+
+      setUploadProgress(70);
+
+      // Get public URL
+      const { data: { publicUrl } } = supabase.storage
+        .from('customer-photos')
+        .getPublicUrl(storagePath);
+
+      // Insert record directly into customer_photos table
+      const { data: photoRecord, error: dbError } = await supabase
+        .from('customer_photos')
+        .insert({
           tenant_id: tenantId,
-          contact_id: entityContactId,
-          lead_id: entityLeadId,
-          project_id: entityProjectId,
-          file_data: fileData,
-          file_name: file.name,
-          mime_type: file.type,
+          contact_id: entityContactId || null,
+          lead_id: entityLeadId || null,
+          project_id: entityProjectId || null,
+          file_url: publicUrl,
+          file_name: storagePath,
+          original_filename: file.name,
+          description: description || file.name,
           category,
-          description,
-        },
-      });
+          mime_type: compressedFile.type,
+          file_size: compressedFile.size,
+          uploaded_by: user.id,
+          include_in_estimate: false,
+        })
+        .select()
+        .single();
 
-      setUploadProgress(90);
-
-      if (error) throw error;
-      if (!data?.success) throw new Error(data?.error || 'Upload failed');
+      if (dbError) {
+        // Clean up orphaned storage file
+        await supabase.storage.from('customer-photos').remove([storagePath]);
+        throw new Error(`Database insert failed: ${dbError.message}`);
+      }
 
       setUploadProgress(100);
 
@@ -158,7 +185,7 @@ export function usePhotos({ contactId, leadId, projectId, enabled = true }: UseP
         description: 'Photo has been uploaded successfully',
       });
 
-      return data.data as CustomerPhoto;
+      return photoRecord as unknown as CustomerPhoto;
     } finally {
       setIsUploading(false);
       setUploadProgress(0);

@@ -270,7 +270,7 @@ export const PhotoControlCenter: React.FC<PhotoControlCenterProps> = ({
           <input
             ref={cameraInputRef}
             type="file"
-            accept="image/*"
+            accept="image/*,.heic,.heif"
             capture="environment"
             className="hidden"
             onChange={(e) => handleFileUpload(e.target.files)}
