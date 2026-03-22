@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { resolveLocation } from "../_shared/public_data/locationResolver.ts";
 
 const corsHeaders = {
@@ -59,8 +59,8 @@ Deno.serve(async (req) => {
     // Optional enrichment (fire-and-forget)
     if (run_enrichment) {
       supabase.functions.invoke("storm-public-lookup", {
-        body: { tenant_id, lat: loc.lat, lng: loc.lng, address: loc.normalized_address, timeout_ms },
-      }).catch(() => {});
+        body: { tenant_id, property_id: saved.id, lat: loc.lat, lng: loc.lng, address: loc.normalized_address, timeout_ms },
+      }).catch((e) => console.error("[canvass-drop-pin] enrichment error:", e));
     }
 
     return new Response(JSON.stringify({ success: true, property: saved, location: loc }), {

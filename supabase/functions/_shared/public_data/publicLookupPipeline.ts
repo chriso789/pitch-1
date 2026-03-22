@@ -6,7 +6,7 @@ import { scoreConfidence } from "./score.ts";
 import { mergeResults } from "./merge.ts";
 import { batchLeadsFallback } from "./sources/batchleads/fallback.ts";
 import { lookupFlCountyProperty } from "./sources/fl/registry.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 function normalize(s: string) {
   return (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();

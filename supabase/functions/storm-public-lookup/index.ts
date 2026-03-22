@@ -1,7 +1,7 @@
 // supabase/functions/storm-public-lookup/index.ts
 // Slim orchestrator — delegates to shared modular pipeline
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { resolveLocation } from "../_shared/public_data/locationResolver.ts";
 import { getCountyContext } from "../_shared/public_data/countyResolver.ts";
 import { lookupPropertyPublic } from "../_shared/public_data/publicLookupPipeline.ts";
