@@ -228,8 +228,8 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
             original_filename: upload.file.name,
             description: upload.file.name,
             category: upload.category,
-            mime_type: upload.file.type,
-            file_size: upload.file.size,
+            mime_type: compressedFile.type,
+            file_size: compressedFile.size,
             uploaded_by: user.id,
             include_in_estimate: false,
             display_order: successCount
