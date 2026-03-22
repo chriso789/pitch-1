@@ -182,17 +182,21 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
 
       for (const upload of pendingUploads) {
         try {
-          const fileExt = upload.file.name.split('.').pop();
+          // Compress image client-side before upload
+          const compressedFile = await compressImage(upload.file);
+          console.log(`[LeadPhotoUploader] Compressed: ${upload.file.name} ${(upload.file.size/1024).toFixed(0)}KB → ${(compressedFile.size/1024).toFixed(0)}KB`);
+
+          const fileExt = compressedFile.name.split('.').pop() || 'jpg';
           const timestamp = Date.now();
           const randomId = Math.random().toString(36).substring(7);
           const fileName = `${tenantId}/leads/${pipelineEntryId}/${timestamp}_${randomId}.${fileExt}`;
           
-          console.log('[LeadPhotoUploader] Uploading file:', fileName, 'Size:', upload.file.size);
+          console.log('[LeadPhotoUploader] Uploading file:', fileName, 'Size:', compressedFile.size);
           
           // Upload to customer-photos storage bucket
           const { data: uploadData, error: uploadError } = await supabase.storage
             .from('customer-photos')
-            .upload(fileName, upload.file, {
+            .upload(fileName, compressedFile, {
               cacheControl: '3600',
               upsert: false
             });
