@@ -107,7 +107,7 @@ function extractAddressComponents(components: any[]): {
   };
 }
 
-serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   console.log("[create-lead-with-contact] Request received");
   
   if (req.method === "OPTIONS") {
