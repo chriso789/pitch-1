@@ -1,76 +1,61 @@
 
 
-# Fix Photo Upload Failures (No Limit on Photos Per Client)
+# Fix "Contact Already Exists" Error for Roof Kings
 
 ## Root Cause
 
-There is **no intentional 3-photo limit** in the code. The real problem is the `usePhotos` hook sends entire photos as **base64-encoded strings** inside the JSON body to the `photo-upload` edge function. iPhone gallery photos (5-10MB each) become ~13MB of base64 text, which crashes the Deno edge function with memory limit exceeded errors. After ~3 photos, the function's memory is exhausted and all subsequent uploads fail silently.
+There are **two problems** working together:
 
-Edge function logs confirm: only "shutdown" entries — the function is killed before it can even log an error.
+1. **Edge function bug (lead creation)**: When Jared clicks "Create Anyway" after seeing the duplicate warning, the `forceDuplicate` flag bypasses the soft warning but the code **fails to reuse the existing contact**. It falls through and tries to insert a brand new contact with the same name and address, which hits the `check_contact_duplicate` database trigger and crashes.
 
-A secondary issue: the `customer_photos` RLS policy only checks `profiles.tenant_id`, not `active_tenant_id`. Master users operating as Tristate through context switching would also fail on direct DB inserts.
+2. **ContactForm (standalone contact creation)**: When creating a contact directly (not through the lead form), the insert goes straight to the database. If a contact with the same name and normalized address already exists in Roof Kings' tenant, the trigger blocks it with no override option.
 
-## Plan
+## Fix
 
-### 1. Create client-side image compression utility
-**New file**: `src/lib/imageCompression.ts`
+### 1. Edge function: Reuse existing contact on `forceDuplicate`
 
-- Canvas-based resize to max 2000px on longest side
-- Output as JPEG at 0.85 quality (converts HEIC and all other formats)
-- Reduces typical iPhone photos from 5-10MB to ~200-500KB
-- Graceful fallback to original file if canvas fails
+**File**: `supabase/functions/create-lead-with-contact/index.ts` (~line 298-313)
 
-### 2. Rewrite `usePhotos.uploadPhoto` to use direct storage upload
-**File**: `src/hooks/usePhotos.ts`
+When `forceDuplicate=true` and a duplicate is found, **use the existing contact's ID** instead of trying to create a new one:
 
-Instead of base64-encoding and calling the edge function:
-1. Compress the image client-side
-2. Upload directly to `customer-photos` storage bucket via `supabase.storage.upload()`
-3. Insert record directly to `customer_photos` table via `supabase.from().insert()`
-
-This matches the already-working pattern in `LeadPhotoUploader` and completely avoids the edge function memory issue. Keep the edge function for non-file actions (update, delete, reorder, set_primary, toggle_estimate).
-
-### 3. Add compression to `LeadPhotoUploader`
-**File**: `src/components/photos/LeadPhotoUploader.tsx`
-
-- Add compression step before `supabase.storage.upload()` to benefit from smaller files
-- Update `accept` attributes to include `.heic,.heif`
-
-### 4. Fix `customer_photos` RLS policy
-**Migration SQL**:
-
-```sql
-DROP POLICY "Tenant isolation for customer_photos" ON customer_photos;
-CREATE POLICY "Tenant isolation for customer_photos" ON customer_photos
-  FOR ALL TO authenticated
-  USING (
-    tenant_id IN (
-      SELECT profiles.tenant_id FROM profiles WHERE profiles.id = auth.uid()
-      UNION
-      SELECT profiles.active_tenant_id FROM profiles WHERE profiles.id = auth.uid() AND profiles.active_tenant_id IS NOT NULL
-    )
-  )
-  WITH CHECK (
-    tenant_id IN (
-      SELECT profiles.tenant_id FROM profiles WHERE profiles.id = auth.uid()
-      UNION
-      SELECT profiles.active_tenant_id FROM profiles WHERE profiles.id = auth.uid() AND profiles.active_tenant_id IS NOT NULL
-    )
-  );
+```typescript
+if (duplicate && !body.forceDuplicate) {
+  // return warning response (existing code)
+} else if (duplicate && body.forceDuplicate) {
+  // REUSE the existing contact — don't try to insert a new one
+  contactId = duplicate.id;
+  console.log("[create-lead-with-contact] Force duplicate: reusing existing contact", contactId);
+}
 ```
 
-### Files Changed
+This way "Create Anyway" creates a new **lead/pipeline entry** linked to the existing contact, which is the correct behavior (a contact can have a new project at the same address).
 
-| File | Change |
-|------|--------|
-| `src/lib/imageCompression.ts` | New — canvas resize + JPEG conversion |
-| `src/hooks/usePhotos.ts` | `uploadPhoto` → direct storage + DB insert (no edge function) |
-| `src/components/photos/LeadPhotoUploader.tsx` | Add compression + HEIC accept |
-| Migration SQL | Fix `customer_photos` RLS for `active_tenant_id` |
+### 2. ContactForm: Show a clear error with guidance
 
-### Expected Outcome
-- Unlimited photos per client (no artificial or memory-based cap)
-- iPhone gallery photos (including HEIC/Live) compressed and converted client-side
-- No more edge function memory crashes
-- Master users can upload photos when operating as any company
+**File**: `src/features/contacts/components/ContactForm.tsx` (~line 365-381)
+
+Add a specific check for the duplicate trigger error message to show a helpful message instead of the raw database error:
+
+```typescript
+} else if (error.message?.includes('already exists')) {
+  errorMessage = "A contact with this name and address already exists. Please search for the existing contact instead.";
+}
+```
+
+### 3. Redeploy the edge function
+
+Deploy the updated `create-lead-with-contact` function so the fix takes effect immediately.
+
+## Summary
+
+| Change | File | What |
+|--------|------|------|
+| Reuse existing contact on force-duplicate | `supabase/functions/create-lead-with-contact/index.ts` | Set `contactId = duplicate.id` instead of inserting |
+| Better error message | `src/features/contacts/components/ContactForm.tsx` | User-friendly duplicate guidance |
+| Deploy | Edge function | Push updated function |
+
+## Expected Outcome
+- Jared can create leads for contacts that already exist in Roof Kings (reuses the contact record, creates a new pipeline entry)
+- Standalone contact creation shows a clear message explaining the contact already exists
+- No cross-company data leakage — the duplicate check is always scoped to `tenant_id`
 
