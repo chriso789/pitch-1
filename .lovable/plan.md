@@ -1,61 +1,52 @@
 
 
-# Fix "Contact Already Exists" Error for Roof Kings
+# Fix Lead Source Settings for Roof Kings
 
 ## Root Cause
 
-There are **two problems** working together:
+Two issues blocking Jared from adding lead sources:
 
-1. **Edge function bug (lead creation)**: When Jared clicks "Create Anyway" after seeing the duplicate warning, the `forceDuplicate` flag bypasses the soft warning but the code **fails to reuse the existing contact**. It falls through and tries to insert a brand new contact with the same name and address, which hits the `check_contact_duplicate` database trigger and crashes.
+1. **RLS policy too restrictive**: The `lead_sources` table write policy only allows `admin`, `manager`, or `master` roles. Jared's role at Roof Kings is `owner`, which was added to the `app_role` enum later but never included in this policy. The policy silently rejects his inserts.
 
-2. **ContactForm (standalone contact creation)**: When creating a contact directly (not through the lead form), the insert goes straight to the database. If a contact with the same name and normalized address already exists in Roof Kings' tenant, the trigger blocks it with no override option.
+2. **Wrong tenant_id in client code**: `LeadSources.tsx` pulls `tenant_id` from `user_metadata.tenant_id`, which may be undefined or stale. Should use the profile's tenant_id via `useEffectiveTenantId` hook instead.
 
-## Fix
+## Plan
 
-### 1. Edge function: Reuse existing contact on `forceDuplicate`
+### 1. Fix RLS policy to include `owner` role
+**Migration SQL**:
 
-**File**: `supabase/functions/create-lead-with-contact/index.ts` (~line 298-313)
-
-When `forceDuplicate=true` and a duplicate is found, **use the existing contact's ID** instead of trying to create a new one:
-
-```typescript
-if (duplicate && !body.forceDuplicate) {
-  // return warning response (existing code)
-} else if (duplicate && body.forceDuplicate) {
-  // REUSE the existing contact — don't try to insert a new one
-  contactId = duplicate.id;
-  console.log("[create-lead-with-contact] Force duplicate: reusing existing contact", contactId);
-}
+```sql
+DROP POLICY "Admins can manage lead sources in their tenant" ON public.lead_sources;
+CREATE POLICY "Admins can manage lead sources in their tenant" 
+ON public.lead_sources 
+FOR ALL
+USING (
+  (tenant_id = get_user_tenant_id()) 
+  AND (
+    has_role('admin'::app_role) 
+    OR has_role('manager'::app_role) 
+    OR has_role('master'::app_role) 
+    OR has_role('owner'::app_role)
+  )
+)
+WITH CHECK (
+  (tenant_id = get_user_tenant_id()) 
+  AND (
+    has_role('admin'::app_role) 
+    OR has_role('manager'::app_role) 
+    OR has_role('master'::app_role) 
+    OR has_role('owner'::app_role)
+  )
+);
 ```
 
-This way "Create Anyway" creates a new **lead/pipeline entry** linked to the existing contact, which is the correct behavior (a contact can have a new project at the same address).
+### 2. Fix tenant_id resolution in LeadSources component
+**File**: `src/features/leads/components/LeadSources.tsx`
 
-### 2. ContactForm: Show a clear error with guidance
+Replace the unreliable `user_metadata.tenant_id` lookup (line 104) with the `useEffectiveTenantId` hook, and pass it in the payload for inserts. Remove it from update payloads (tenant_id shouldn't change on update).
 
-**File**: `src/features/contacts/components/ContactForm.tsx` (~line 365-381)
-
-Add a specific check for the duplicate trigger error message to show a helpful message instead of the raw database error:
-
-```typescript
-} else if (error.message?.includes('already exists')) {
-  errorMessage = "A contact with this name and address already exists. Please search for the existing contact instead.";
-}
-```
-
-### 3. Redeploy the edge function
-
-Deploy the updated `create-lead-with-contact` function so the fix takes effect immediately.
-
-## Summary
-
-| Change | File | What |
-|--------|------|------|
-| Reuse existing contact on force-duplicate | `supabase/functions/create-lead-with-contact/index.ts` | Set `contactId = duplicate.id` instead of inserting |
-| Better error message | `src/features/contacts/components/ContactForm.tsx` | User-friendly duplicate guidance |
-| Deploy | Edge function | Push updated function |
-
-## Expected Outcome
-- Jared can create leads for contacts that already exist in Roof Kings (reuses the contact record, creates a new pipeline entry)
-- Standalone contact creation shows a clear message explaining the contact already exists
-- No cross-company data leakage — the duplicate check is always scoped to `tenant_id`
+| File | Change |
+|------|--------|
+| Migration SQL | Add `owner` role to `lead_sources` write policy |
+| `src/features/leads/components/LeadSources.tsx` | Use `useEffectiveTenantId()` for tenant_id |
 
