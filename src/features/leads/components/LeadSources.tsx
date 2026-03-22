@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Edit, Trash2, BarChart3, DollarSign, Users, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 type LeadSourceCategory = 'online' | 'referral' | 'direct' | 'advertising' | 'social';
 
@@ -39,6 +40,7 @@ export const LeadSources = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<LeadSource | null>(null);
   const { toast } = useToast();
+  const effectiveTenantId = useEffectiveTenantId();
 
   const [formData, setFormData] = useState({
     name: '',
@@ -99,21 +101,19 @@ export const LeadSources = () => {
     e.preventDefault();
     
     try {
-      const payload = {
-        ...formData,
-        tenant_id: (await supabase.auth.getUser()).data.user?.user_metadata?.tenant_id
-      };
-
       let result;
       if (editingSource) {
         result = await supabase
           .from('lead_sources')
-          .update(payload)
+          .update(formData)
           .eq('id', editingSource.id);
       } else {
         result = await supabase
           .from('lead_sources')
-          .insert(payload);
+          .insert({
+            ...formData,
+            tenant_id: effectiveTenantId
+          });
       }
 
       if (result.error) throw result.error;
