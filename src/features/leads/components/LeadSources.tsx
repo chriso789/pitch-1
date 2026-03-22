@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Edit, Trash2, BarChart3, DollarSign, Users, TrendingUp } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 type LeadSourceCategory = 'online' | 'referral' | 'direct' | 'advertising' | 'social';
 
