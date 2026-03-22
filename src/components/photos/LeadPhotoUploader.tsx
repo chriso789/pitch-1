@@ -317,7 +317,7 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
         <input
           ref={cameraInputRef}
           type="file"
-          accept="image/*"
+          accept="image/*,.heic,.heif"
           capture="environment"
           className="hidden"
           onChange={handleFileInput}
