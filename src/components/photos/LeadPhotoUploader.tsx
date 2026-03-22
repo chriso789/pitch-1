@@ -80,9 +80,9 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
     return 'general';
   };
 
-  const handleFiles = useCallback((files: FileList | File[]) => {
+    const handleFiles = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files);
-    const imageFiles = fileArray.filter(file => file.type.startsWith('image/'));
+    const imageFiles = fileArray.filter(file => file.type.startsWith('image/') || file.name.toLowerCase().match(/\.(heic|heif)$/));
     
     if (imageFiles.length === 0) {
       toast({
