@@ -1,0 +1,1 @@
+UPDATE canvassiq_properties SET owner_name = NULL, property_data = jsonb_build_object('repair_note', 'Cleared poisoned neighbor data', 'repaired_at', now()::text), searchbug_data = NULL, phone_numbers = NULL, emails = NULL, enrichment_last_at = NULL, updated_at = now() WHERE id = '30541bbe-c8f2-44d8-8c71-2fccf8b44542';
