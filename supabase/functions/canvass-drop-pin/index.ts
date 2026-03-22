@@ -1,4 +1,4 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { resolveLocation } from "../_shared/public_data/locationResolver.ts";
 
 const corsHeaders = {
