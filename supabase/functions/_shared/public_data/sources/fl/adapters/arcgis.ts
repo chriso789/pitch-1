@@ -62,16 +62,42 @@ export async function arcgisLookup(
       return emptyResult(id, { query: where, message: "no features" });
     }
 
-    // Pick best match (first result from ArcGIS)
-    const attrs = features[0].attributes;
-    const result = mapFields(attrs, fieldMap, transforms);
+    // Extract house number from input address for matching
+    const inputHouseNum = addr.match(/^\d+/)?.[0] ?? "";
 
-    console.log(`[${id}] found owner: ${result.owner_name ?? "unknown"}`);
+    // Score each feature to pick the best match instead of blindly using [0]
+    const scored = features.map((f: any) => {
+      const fAddr = String(f.attributes[searchField] ?? "").toUpperCase().trim();
+      const fHouseNum = fAddr.match(/^\d+/)?.[0] ?? "";
+      let score = 0;
+
+      // Exact house number match is highest priority
+      if (inputHouseNum && fHouseNum === inputHouseNum) score += 100;
+      // Partial street name overlap
+      if (fAddr.includes(addr.replace(/^\d+\s*/, ""))) score += 50;
+      // Penalize if house number exists but doesn't match
+      if (inputHouseNum && fHouseNum && fHouseNum !== inputHouseNum) score -= 80;
+
+      return { feature: f, score, fAddr };
+    });
+
+    scored.sort((a: any, b: any) => b.score - a.score);
+    const best = scored[0];
+
+    if (best.score <= 0 && inputHouseNum) {
+      console.warn(`[${id}] no feature matched house number "${inputHouseNum}". Best: "${best.fAddr}"`);
+    }
+
+    const attrs = best.feature.attributes;
+    const result = mapFields(attrs, fieldMap, transforms);
+    const exactMatch = best.score >= 100;
+
+    console.log(`[${id}] found owner: ${result.owner_name ?? "unknown"} (score: ${best.score}, exact: ${exactMatch})`);
 
     return {
       ...result,
       source: id,
-      confidence_score: result.owner_name ? 75 : 40,
+      confidence_score: exactMatch ? 85 : result.owner_name ? 55 : 30,
       raw: attrs,
     };
   } catch (e) {

@@ -886,7 +886,30 @@ export default function PropertyInfoPanel({
             Add Customer
           </Button>
 
-          {/* Contact Info - Enhanced display for enriched data */}
+          {/* Contact Info Section - Always visible */}
+          {phoneNumbers?.length === 0 && emails?.length === 0 && !publicLookupLoading && publicLookupDoneRef.current === property.id && (
+            <div className="mb-4 p-3 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 text-center">
+              <Phone className="h-5 w-5 mx-auto text-primary/60 mb-1.5" />
+              <p className="text-xs text-muted-foreground mb-2">Phone & email require a skip-trace lookup</p>
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => handleSkipTrace()}
+                disabled={enriching}
+              >
+                {enriching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {enriching ? 'Looking up contacts…' : 'Get Contact Info'}
+              </Button>
+              {skipTraceError && (
+                <p className="text-[10px] text-destructive mt-1.5">{skipTraceError}</p>
+              )}
+            </div>
+          )}
           {(phoneNumbers?.length > 0 || emails?.length > 0) && (
             <div className="space-y-2 mb-4">
               {phoneNumbers && phoneNumbers.length > 0 && (
