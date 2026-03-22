@@ -53,8 +53,46 @@ Deno.serve(async (req) => {
 
     const timeoutMs = body.timeout_ms ?? 15000;
 
-    // 1) Resolve location
-    const loc = await resolveLocation({ lat, lng, address, timeoutMs });
+    // 0) If property_id provided, load the stored property and prefer its address
+    let propertyRow: Record<string, any> | null = null;
+    let effectiveAddress = address;
+    let effectiveLat = lat;
+    let effectiveLng = lng;
+
+    if (property_id) {
+      const { data: propData } = await supabase
+        .from("canvassiq_properties")
+        .select("id, address, normalized_address_key, lat, lng")
+        .eq("id", property_id)
+        .maybeSingle();
+      
+      if (propData) {
+        propertyRow = propData;
+        // Parse stored address
+        const storedAddr = typeof propData.address === "string"
+          ? JSON.parse(propData.address)
+          : (propData.address || {});
+        
+        // Prefer the property's stored street address for owner lookups
+        const storedStreet = storedAddr?.street || storedAddr?.formatted || "";
+        if (storedStreet) {
+          effectiveAddress = storedStreet;
+          console.log(`[storm-public-lookup] Using stored address "${storedStreet}" instead of lat/lng for owner lookup`);
+        }
+        // Use stored lat/lng as context but address as authority
+        if (!effectiveLat && propData.lat) effectiveLat = propData.lat;
+        if (!effectiveLng && propData.lng) effectiveLng = propData.lng;
+      }
+    }
+
+    // Helper: extract house number from an address string
+    const extractHouseNum = (s: string): string => {
+      const m = String(s || "").match(/^\d+/);
+      return m ? m[0] : "";
+    };
+
+    // 1) Resolve location — prefer stored address over raw coordinates
+    const loc = await resolveLocation({ lat: effectiveLat, lng: effectiveLng, address: effectiveAddress, timeoutMs });
 
     // 2) Check cache (skip if force=true)
     if (!force) {
