@@ -110,19 +110,31 @@ Deno.serve(async (req) => {
         ? 7 * 24 * 60 * 60 * 1000
         : 30 * 24 * 60 * 60 * 1000;
       if (age < maxAgeMs) {
-        // Sync cached data to canvassiq_properties before returning
+        // Sync cached data to canvassiq_properties before returning — with address guard
         if (property_id && cleanOwner(cached.owner_name)) {
-          const cachedRaw = cached.raw_data || {};
-          const cachedPhones = cachedRaw.contact_phones || [];
-          const cachedEmails = cachedRaw.contact_emails || [];
-          const syncPayload: Record<string, any> = {
-            enrichment_last_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          if (cleanOwner(cached.owner_name)) syncPayload.owner_name = cleanOwner(cached.owner_name);
-          if (cachedPhones.length > 0) syncPayload.phone_numbers = cachedPhones.map((p: any) => p.number || p);
-          if (cachedEmails.length > 0) syncPayload.emails = cachedEmails.map((e: any) => e.address || e);
-          await supabase.from("canvassiq_properties").update(syncPayload).eq("id", property_id);
+          // Address guard: check house number matches
+          const cachedHouseNum = extractHouseNum(cached.property_address || "");
+          const storedAddr = propertyRow?.address
+            ? (typeof propertyRow.address === "string" ? JSON.parse(propertyRow.address) : propertyRow.address)
+            : {};
+          const storedHouseNum = extractHouseNum(storedAddr?.street || storedAddr?.formatted || "");
+          const cacheMatchesProperty = !storedHouseNum || !cachedHouseNum || storedHouseNum === cachedHouseNum;
+
+          if (cacheMatchesProperty) {
+            const cachedRaw = cached.raw_data || {};
+            const cachedPhones = cachedRaw.contact_phones || [];
+            const cachedEmails = cachedRaw.contact_emails || [];
+            const syncPayload: Record<string, any> = {
+              enrichment_last_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            if (cleanOwner(cached.owner_name)) syncPayload.owner_name = cleanOwner(cached.owner_name);
+            if (cachedPhones.length > 0) syncPayload.phone_numbers = cachedPhones.map((p: any) => p.number || p);
+            if (cachedEmails.length > 0) syncPayload.emails = cachedEmails.map((e: any) => e.address || e);
+            await supabase.from("canvassiq_properties").update(syncPayload).eq("id", property_id);
+          } else {
+            console.warn(`[storm-public-lookup] Cache sync blocked: stored house "${storedHouseNum}" vs cached "${cachedHouseNum}"`);
+          }
         }
         return new Response(JSON.stringify({ success: true, result: cached, cached: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
