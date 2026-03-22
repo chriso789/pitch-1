@@ -1,43 +1,48 @@
 
+Fix both issues at the source: bad writeback for 4063 Fonsica Ave, and client-side multi-pin rendering.
 
-# Fix: Wrong Owner Data + Missing Contact Info on Pin Drops
+1. Repair the wrong 4063 record
+- Add a safe refresh path that re-enriches the selected property using its stored address as the source of truth, not just the pin lat/lng.
+- When the selected property is 4063, overwrite the poisoned owner/parcel/home details with the corrected lookup result.
+- Also clear stale enrichment fields if the incoming lookup does not match the property address.
 
-## Problem 1: Wrong Owner (Neighbor's Data)
+2. Stop neighbor data from being written again
+- Update `storm-public-lookup` to load the target `canvassiq_properties` row when `property_id` is provided.
+- Compare the property’s stored address + normalized key against the resolved lookup address before updating `canvassiq_properties`.
+- If the house number/address does not match closely enough, return a mismatch warning and do not persist owner/property details.
 
-**Root cause**: The ArcGIS adapter in `arcgis.ts` (line 33) uses a fuzzy LIKE query:
-```
-FULLADDRESS LIKE '%4063 FONSICA AVE%'
-```
+3. Make lookup prefer the property address over reverse geocoding
+- In `storm-public-lookup`, when `property_id` exists, use the property row’s stored `address.street` / `address.formatted` first.
+- Use lat/lng only as a fallback for county/location context, not as the owner-resolution authority.
+- This prevents slightly off-center pins from drifting to 4083 and writing that owner onto 4063.
 
-This returns up to 3 results and **blindly picks `features[0]`** (line 66) without verifying it matches the actual address. If the ArcGIS index returns "4061 FONSICA AVE" first, you get the neighbor's owner name.
+4. Unify address normalization everywhere
+- Replace the multiple address-key formats with one shared normalizer across:
+  - `storm-public-lookup`
+  - `locationResolver`
+  - `canvassiq-load-parcels`
+  - `GooglePropertyMarkersLayer`
+- Standardize keys like `4063_fonsica_ave` vs `4063_fonsicaave` so cache lookup, dedupe, and writeback all agree.
 
-Additionally, the address fed into ArcGIS comes from **Nominatim reverse geocoding** of the pin's lat/lng coordinates. If the pin is placed slightly off-center (closer to a property boundary), Nominatim may resolve to the wrong house number entirely.
+5. Fix the multiple pins
+- I checked the DB rows for these Fonsica addresses and did not find duplicate stored rows for 4063/4083/4123, so this appears to be a rendering/deduping issue, not duplicate property records.
+- Update the marker layer to dedupe by the shared normalized address key consistently and keep only one marker per address in memory.
+- Prefer the best row per address deterministically so the UI cannot show two pins for the same house.
 
-**Fix**: Add best-match scoring in the ArcGIS adapter to compare each returned feature's address against the input address and pick the closest match instead of blindly using `features[0]`.
+Technical details
+- Wrong owner persists because `canvassiq_properties` for `4063 Fonsica Ave` already contains `KONEWECKI PIOTR` and parcel `0966052005`, which belongs to `4083 Fonsica Ave`.
+- `storm_properties_public` currently has a cache row for `4083`, not `4063`, so the UI is showing polluted data already saved onto the 4063 property row.
+- The current server flow still trusts `resolveLocation({ lat, lng, address })` and then updates `canvassiq_properties` by `property_id` without a strict address-match guard.
 
-### Changes to `supabase/functions/_shared/public_data/sources/fl/adapters/arcgis.ts`:
-- After receiving features, score each one by comparing the house number and street from the returned `FULLADDRESS` against the input address
-- Pick the feature with the highest match score (exact house number match preferred)
-- If no feature matches the house number, log a warning and return the closest match with a lower confidence score
+Files to update
+- `supabase/functions/storm-public-lookup/index.ts`
+- `supabase/functions/_shared/public_data/locationResolver.ts`
+- `supabase/functions/_shared/public_data/normalize.ts`
+- `supabase/functions/canvassiq-load-parcels/index.ts`
+- `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`
+- `src/components/storm-canvass/PropertyInfoPanel.tsx`
 
-## Problem 2: No Contact Information (Phones/Emails)
-
-**Root cause**: The public lookup pipeline (`storm-public-lookup`) only returns public record data (owner name, parcel, year built). **Contact info (phones, emails) requires the paid skip-trace step** (`canvassiq-skip-trace` via BatchData), which is a separate manual button press.
-
-Currently the panel shows owner name and property details, but phones/emails only appear after the user clicks the "Skip Trace" button. The UI doesn't make this obvious enough.
-
-**Fix**: Make the contact section more visible with a clear CTA to run skip-trace, and auto-display any cached contact data from previous skip-traces.
-
-### Changes to `src/components/storm-canvass/PropertyInfoPanel.tsx`:
-- Add a prominent "Get Contact Info" button in the main property view (not buried in tabs) when no phone/email data exists
-- Show a brief explanation: "Phone & email require skip-trace lookup"
-- If contact data was previously cached (in `searchbug_data`), display it immediately without requiring another skip-trace
-
-## Summary
-
-| File | Change |
-|------|--------|
-| `sources/fl/adapters/arcgis.ts` | Add house-number matching to pick correct parcel from ArcGIS results |
-| `PropertyInfoPanel.tsx` | Surface contact info section + skip-trace CTA more prominently |
-| Redeploy `storm-public-lookup` | So the ArcGIS fix takes effect |
-
+Expected result
+- 4063 Fonsica Ave shows the correct owner and house details after refresh.
+- Neighbor data can no longer be written onto the wrong pin.
+- Only one pin appears per address on the map.
