@@ -53,8 +53,46 @@ Deno.serve(async (req) => {
 
     const timeoutMs = body.timeout_ms ?? 15000;
 
-    // 1) Resolve location
-    const loc = await resolveLocation({ lat, lng, address, timeoutMs });
+    // 0) If property_id provided, load the stored property and prefer its address
+    let propertyRow: Record<string, any> | null = null;
+    let effectiveAddress = address;
+    let effectiveLat = lat;
+    let effectiveLng = lng;
+
+    if (property_id) {
+      const { data: propData } = await supabase
+        .from("canvassiq_properties")
+        .select("id, address, normalized_address_key, lat, lng")
+        .eq("id", property_id)
+        .maybeSingle();
+      
+      if (propData) {
+        propertyRow = propData;
+        // Parse stored address
+        const storedAddr = typeof propData.address === "string"
+          ? JSON.parse(propData.address)
+          : (propData.address || {});
+        
+        // Prefer the property's stored street address for owner lookups
+        const storedStreet = storedAddr?.street || storedAddr?.formatted || "";
+        if (storedStreet) {
+          effectiveAddress = storedStreet;
+          console.log(`[storm-public-lookup] Using stored address "${storedStreet}" instead of lat/lng for owner lookup`);
+        }
+        // Use stored lat/lng as context but address as authority
+        if (!effectiveLat && propData.lat) effectiveLat = propData.lat;
+        if (!effectiveLng && propData.lng) effectiveLng = propData.lng;
+      }
+    }
+
+    // Helper: extract house number from an address string
+    const extractHouseNum = (s: string): string => {
+      const m = String(s || "").match(/^\d+/);
+      return m ? m[0] : "";
+    };
+
+    // 1) Resolve location — prefer stored address over raw coordinates
+    const loc = await resolveLocation({ lat: effectiveLat, lng: effectiveLng, address: effectiveAddress, timeoutMs });
 
     // 2) Check cache (skip if force=true)
     if (!force) {
@@ -72,19 +110,31 @@ Deno.serve(async (req) => {
         ? 7 * 24 * 60 * 60 * 1000
         : 30 * 24 * 60 * 60 * 1000;
       if (age < maxAgeMs) {
-        // Sync cached data to canvassiq_properties before returning
+        // Sync cached data to canvassiq_properties before returning — with address guard
         if (property_id && cleanOwner(cached.owner_name)) {
-          const cachedRaw = cached.raw_data || {};
-          const cachedPhones = cachedRaw.contact_phones || [];
-          const cachedEmails = cachedRaw.contact_emails || [];
-          const syncPayload: Record<string, any> = {
-            enrichment_last_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          };
-          if (cleanOwner(cached.owner_name)) syncPayload.owner_name = cleanOwner(cached.owner_name);
-          if (cachedPhones.length > 0) syncPayload.phone_numbers = cachedPhones.map((p: any) => p.number || p);
-          if (cachedEmails.length > 0) syncPayload.emails = cachedEmails.map((e: any) => e.address || e);
-          await supabase.from("canvassiq_properties").update(syncPayload).eq("id", property_id);
+          // Address guard: check house number matches
+          const cachedHouseNum = extractHouseNum(cached.property_address || "");
+          const storedAddr = propertyRow?.address
+            ? (typeof propertyRow.address === "string" ? JSON.parse(propertyRow.address) : propertyRow.address)
+            : {};
+          const storedHouseNum = extractHouseNum(storedAddr?.street || storedAddr?.formatted || "");
+          const cacheMatchesProperty = !storedHouseNum || !cachedHouseNum || storedHouseNum === cachedHouseNum;
+
+          if (cacheMatchesProperty) {
+            const cachedRaw = cached.raw_data || {};
+            const cachedPhones = cachedRaw.contact_phones || [];
+            const cachedEmails = cachedRaw.contact_emails || [];
+            const syncPayload: Record<string, any> = {
+              enrichment_last_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            };
+            if (cleanOwner(cached.owner_name)) syncPayload.owner_name = cleanOwner(cached.owner_name);
+            if (cachedPhones.length > 0) syncPayload.phone_numbers = cachedPhones.map((p: any) => p.number || p);
+            if (cachedEmails.length > 0) syncPayload.emails = cachedEmails.map((e: any) => e.address || e);
+            await supabase.from("canvassiq_properties").update(syncPayload).eq("id", property_id);
+          } else {
+            console.warn(`[storm-public-lookup] Cache sync blocked: stored house "${storedHouseNum}" vs cached "${cachedHouseNum}"`);
+          }
         }
         return new Response(JSON.stringify({ success: true, result: cached, cached: true }), {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -186,45 +236,65 @@ Deno.serve(async (req) => {
       console.log(`[storm-public-lookup] skipping cache for low-confidence result (${result.confidence_score})`);
     }
 
-    // 6) Update canvassiq_properties if property_id provided (no owner_name gate)
+    // 6) Update canvassiq_properties if property_id provided — WITH ADDRESS GUARD
 
     if (property_id) {
-      const contactPhones = result.contact_phones || [];
-      const contactEmails = result.contact_emails || [];
+      // Address guard: verify the lookup result matches the stored property address
+      let addressMatch = true;
+      if (propertyRow) {
+        const storedAddr = typeof propertyRow.address === "string"
+          ? JSON.parse(propertyRow.address)
+          : (propertyRow.address || {});
+        const storedStreet = storedAddr?.street || storedAddr?.formatted || "";
+        const storedHouseNum = extractHouseNum(storedStreet);
+        const resultHouseNum = extractHouseNum(result.property_address || "");
+        
+        if (storedHouseNum && resultHouseNum && storedHouseNum !== resultHouseNum) {
+          console.warn(`[storm-public-lookup] ADDRESS MISMATCH: stored="${storedStreet}" (house ${storedHouseNum}) vs result="${result.property_address}" (house ${resultHouseNum}). Blocking writeback.`);
+          addressMatch = false;
+        }
+      }
 
-      const updatePayload: Record<string, any> = {
-        enrichment_last_at: new Date().toISOString(),
-        enrichment_source: ["public_data", "firecrawl_people_search"],
-        updated_at: new Date().toISOString(),
-        searchbug_data: {
-          owners: result.owner_name
-            ? [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }]
-            : [],
-          phones: contactPhones,
-          emails: contactEmails,
-          relatives: result.contact_relatives || [],
-          source: "firecrawl_people_search",
-          enriched_at: new Date().toISOString(),
-        },
-        property_data: {
-          source: "public_data_engine",
-          confidence_score: result.confidence_score,
-          parcel_id: result.parcel_id,
-          year_built: result.year_built,
-          living_sqft: result.living_sqft,
-          homestead: result.homestead,
-          county: county.county_name,
-          sources: Object.keys(result.sources).filter(k => result.sources[k]),
-          enriched_at: new Date().toISOString(),
-        },
-      };
+      if (addressMatch) {
+        const contactPhones = result.contact_phones || [];
+        const contactEmails = result.contact_emails || [];
 
-      // Only write non-null/non-junk values to avoid clobbering existing data
-      if (cleanOwner(result.owner_name)) updatePayload.owner_name = cleanOwner(result.owner_name);
-      if (contactPhones.length > 0) updatePayload.phone_numbers = contactPhones.map((p: any) => p.number);
-      if (contactEmails.length > 0) updatePayload.emails = contactEmails.map((e: any) => e.address);
+        const updatePayload: Record<string, any> = {
+          enrichment_last_at: new Date().toISOString(),
+          enrichment_source: ["public_data", "firecrawl_people_search"],
+          updated_at: new Date().toISOString(),
+          searchbug_data: {
+            owners: result.owner_name
+              ? [{ id: "1", name: result.owner_name, age: result.contact_age, is_primary: true }]
+              : [],
+            phones: contactPhones,
+            emails: contactEmails,
+            relatives: result.contact_relatives || [],
+            source: "firecrawl_people_search",
+            enriched_at: new Date().toISOString(),
+          },
+          property_data: {
+            source: "public_data_engine",
+            confidence_score: result.confidence_score,
+            parcel_id: result.parcel_id,
+            year_built: result.year_built,
+            living_sqft: result.living_sqft,
+            homestead: result.homestead,
+            county: county.county_name,
+            sources: Object.keys(result.sources).filter(k => result.sources[k]),
+            enriched_at: new Date().toISOString(),
+          },
+        };
 
-      await supabase.from("canvassiq_properties").update(updatePayload).eq("id", property_id);
+        // Only write non-null/non-junk values to avoid clobbering existing data
+        if (cleanOwner(result.owner_name)) updatePayload.owner_name = cleanOwner(result.owner_name);
+        if (contactPhones.length > 0) updatePayload.phone_numbers = contactPhones.map((p: any) => p.number);
+        if (contactEmails.length > 0) updatePayload.emails = contactEmails.map((e: any) => e.address);
+
+        await supabase.from("canvassiq_properties").update(updatePayload).eq("id", property_id);
+      } else {
+        console.log(`[storm-public-lookup] Skipped canvassiq_properties update due to address mismatch`);
+      }
     }
 
     return new Response(

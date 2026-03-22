@@ -373,21 +373,32 @@ async function loadRealParcelsFromGeocoding(
   return properties;
 }
 
+// Use the shared normalizer for consistency across all flows
 function normalizeAddressKey(streetNumber: string, streetName: string): string {
-  let normalized = `${streetNumber}_${streetName}`.toLowerCase();
-  
-  const suffixMap: Record<string, string> = {
-    'street': 'st', 'avenue': 'ave', 'boulevard': 'blvd', 'drive': 'dr',
-    'road': 'rd', 'lane': 'ln', 'court': 'ct', 'place': 'pl',
-    'circle': 'cir', 'way': 'way', 'terrace': 'ter', 'highway': 'hwy', 'parkway': 'pkwy',
-  };
-  
-  for (const [full, short] of Object.entries(suffixMap)) {
-    normalized = normalized.replace(new RegExp(`\\b${full}\\b`, 'g'), short);
-  }
-  
-  normalized = normalized.replace(/[^a-z0-9_]/g, '').replace(/_+/g, '_');
-  return normalized;
+  // Delegate to the canonical shared normalizer
+  const combined = `${streetNumber} ${streetName}`;
+  return combined
+    .toLowerCase()
+    .replace(/\b(street)\b/g, "st")
+    .replace(/\b(avenue)\b/g, "ave")
+    .replace(/\b(road)\b/g, "rd")
+    .replace(/\b(drive)\b/g, "dr")
+    .replace(/\b(court)\b/g, "ct")
+    .replace(/\b(lane)\b/g, "ln")
+    .replace(/\b(circle)\b/g, "cir")
+    .replace(/\b(parkway)\b/g, "pkwy")
+    .replace(/\b(boulevard)\b/g, "blvd")
+    .replace(/\b(place)\b/g, "pl")
+    .replace(/\b(terrace)\b/g, "ter")
+    .replace(/\b(highway)\b/g, "hwy")
+    .replace(/\b(north)\b/g, "n")
+    .replace(/\b(south)\b/g, "s")
+    .replace(/\b(east)\b/g, "e")
+    .replace(/\b(west)\b/g, "w")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/ /g, "_");
 }
 
 async function reverseGeocode(lat: number, lng: number, apiKey: string): Promise<GeocodingResult | null> {
