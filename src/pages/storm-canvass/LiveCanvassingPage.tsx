@@ -211,6 +211,8 @@ export default function LiveCanvassingPage() {
           permissionDeniedToastShown = true;
         }
         // Non-permission errors: silently use default location — map already loaded
+        }
+      }
       }
     };
 
