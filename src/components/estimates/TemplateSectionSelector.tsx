@@ -32,6 +32,7 @@ interface LineItem {
   unit: string;
   unit_cost: number;
   line_total: number;
+  notes?: string;
 }
 
 interface TemplateSectionSelectorProps {
