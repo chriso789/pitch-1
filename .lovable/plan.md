@@ -1,55 +1,50 @@
 
-Fix the “multiple pins per address” confusion by separating real duplicate markers from Google’s built-in street-number labels and tightening marker identity.
+Fix this as a frontend marker-state bug, not a database bug.
 
-1. Confirm and preserve the actual data model
-- Keep the current DB dedupe path for `canvassiq_properties` by canonical address key.
-- Do not treat the screenshot as proof of duplicate rows: the queried Fonsica addresses each currently have one property row.
+What I verified
+- The database currently has one `canvassiq_properties` row for each of the addresses visible in your screenshot (`4052, 4063, 4083, 4102, 4103, 4122, 4123` on Fonsica).
+- So the repeated numbered circles are being rendered by the map layer itself.
+- The current marker code still has two likely causes:
+  1. overlapping async loads can apply stale marker snapshots out of order
+  2. existing markers are not repositioned when the same address gets improved coordinates later
 
-2. Remove the visual double-number effect in Google map view
-- The screenshot pattern matches two overlapping systems:
-  - our custom circular markers that render street numbers
-  - Google hybrid-map address labels rendered by the base map
-- Update `GoogleLiveLocationMap.tsx` map styling for the active canvass view to hide Google road/address labels in this mode, especially on satellite/hybrid.
-- Keep parcel/house markers as the single visible numbering system.
+Implementation plan
 
-3. Tighten marker identity in the Google markers layer
-- Update `GooglePropertyMarkersLayer.tsx` so marker keys are based on canonical property identity instead of raw row id alone:
-  - prefer `normalized_address_key`
-  - fallback to `address_hash` / place id
-  - fallback to row id only if needed
-- Use that same canonical key for both `markersRef` and `propertiesCacheRef`.
-- This prevents multiple markers from surviving when two rows represent the same home or when reloaded data swaps between equivalent records.
+1. Make markers number-only again
+- Update `GooglePropertyMarkersLayer.tsx` so pins always display just the house number.
+- Remove the high-zoom street hint logic entirely.
 
-4. Make dedupe resilient to legacy address payloads
-- Improve `getNormalizedAddressKey()` in `GooglePropertyMarkersLayer.tsx` so it derives the same canonical key from:
-  - `normalized_address_key`
-  - `address.street`
-  - `address.formatted`
-  - parsed street number + short street name
-- Normalize suffixes consistently (`street` → `st`, `avenue` → `ave`) before marker rendering.
+2. Lock marker identity to one canonical address key
+- Keep one marker per canonical address key only.
+- Prefer `normalized_address_key`; if missing, derive it from `address.street` / `address.formatted`.
+- Avoid falling back to raw row id when an address-derived key can be built, because id-based fallback can let the same home render twice.
 
-5. Prevent same-number / nearby-address confusion
-- Right now nearby homes on different streets can legitimately share the same house number in the same viewport.
-- Adjust marker labeling rules so the Google marker only shows:
-  - number-only at lower zoom
-  - number + short street hint at very high zoom or selected state
-- This avoids “4063 twice” appearing ambiguous when one is a Google basemap label or a nearby cross-street property.
+3. Prevent stale async loads from creating duplicate pins
+- Add a request/version guard inside `GooglePropertyMarkersLayer.tsx`.
+- Each `loadProperties()` run gets a monotonically increasing load id.
+- Ignore any older query/requery result if a newer load started after it.
+- Keep `loadingRef` locked for the full lifecycle of a load, including the cluster-load + requery path.
 
-6. Keep parcel loads from reintroducing apparent duplicates
-- Review `canvassiq-load-parcels` insertion identity and ensure canonical normalized keys are used consistently before insert/upsert.
-- If needed, expand the existing cleanup migration strategy to merge any remaining legacy rows keyed by underscore/non-underscore variants.
+4. Reconcile markers by key and always update position
+- When a marker for the same address key already exists, update:
+  - marker position
+  - icon
+  - cached property payload
+- Do not only update on disposition change.
+- This ensures a house that first appears near the curb and later gets a better rooftop/snapped coordinate still remains a single marker that moves, instead of leaving an old visual behind.
 
-Technical details
-- Current evidence suggests the screenshot is not primarily caused by duplicate database rows for 4052, 4063, 4083, 4122, or 4123.
-- The stronger root cause is visual duplication in Google hybrid mode: Google renders house-number/address labels on the basemap while the app also renders number badges.
-- A second, smaller risk remains in `GooglePropertyMarkersLayer.tsx`: markers are deduped by address during query processing, but rendered/tracked by raw `property.id`, so equivalent rows can still become separate on incremental reloads.
+5. Make refreshes fully deterministic
+- On `refreshKey` changes and post-cluster requeries, reconcile against the latest visible property set only.
+- Remove markers not present in the newest accepted key set.
+- This prevents old in-flight loads from reintroducing already-replaced markers.
 
 Files to update
-- `src/components/storm-canvass/GoogleLiveLocationMap.tsx`
 - `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`
-- optionally `supabase/functions/canvassiq-load-parcels/index.ts` if any remaining canonicalization gap is found during implementation review
 
 Expected result
-- Only one app-controlled marker appears per property.
-- Google’s built-in street-number labels no longer visually “duplicate” the app pins in canvass mode.
-- Same-number homes in nearby streets are less confusing because marker labeling becomes context-aware.
+- One pin per address only.
+- Pins show house number only.
+- No duplicate curb/roof markers for the same house after panning, zooming, refreshing, or parcel reloading.
+
+Technical note
+- The screenshot pattern strongly matches a race/reconciliation bug: one marker is left at an older coordinate while a newer marker for the same address is added later. The fix is to serialize/ignore stale loads and update marker positions for existing canonical keys.
