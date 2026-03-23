@@ -32,6 +32,7 @@ interface LineItem {
   unit: string;
   unit_cost: number;
   line_total: number;
+  notes?: string;
 }
 
 interface TemplateSectionSelectorProps {
@@ -174,7 +175,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             qty: qty,
             unit: item.unit || 'ea',
             unit_cost: unitCost,
-            line_total: lineTotal
+            line_total: lineTotal,
+            notes: item.notes || ''
           };
         });
         
@@ -215,19 +217,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         [sectionKey]: items
       } as unknown as Record<string, unknown>;
 
-      // Calculate new selling price
-      const materialCost = sectionType === 'material' ? total : (existing?.material_cost || 0);
-      const laborCost = sectionType === 'labor' ? total : (existing?.labor_cost || 0);
-      const costPreProfit = materialCost + laborCost;
-      const sellingPrice = costPreProfit / 0.7; // 30% margin
-
-      // Always update the selected estimate by ID
+      // Only update cost columns and line_items — do NOT touch selling_price
+      // The selling_price is set by the estimate builder and must not be overwritten
       const { error } = await supabase
         .from('enhanced_estimates')
         .update({
           line_items: updatedLineItems as any,
           [costKey]: total,
-          selling_price: sellingPrice,
           template_id: selectedTemplateId || null
         })
         .eq('id', effectiveEstimateId);
@@ -448,8 +444,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[40%]">Item Name</TableHead>
-                <TableHead className="w-[15%] text-right">Qty</TableHead>
+                <TableHead className="w-[30%]">Item Name</TableHead>
+                <TableHead className="w-[15%]">Color / Notes</TableHead>
+                <TableHead className="w-[10%] text-right">Qty</TableHead>
                 <TableHead className="w-[10%]">Unit</TableHead>
                 <TableHead className="w-[15%] text-right">Unit Cost</TableHead>
                 <TableHead className="w-[15%] text-right">Line Total</TableHead>
@@ -460,6 +457,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
               {lineItems.map((item) => (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.item_name}</TableCell>
+                  <TableCell>
+                    {isLocked ? (
+                      <span className="text-sm text-muted-foreground">{item.notes || '—'}</span>
+                    ) : (
+                      <Input
+                        value={item.notes || ''}
+                        onChange={(e) => handleUpdateItem(item.id, 'notes', e.target.value)}
+                        onBlur={handleSave}
+                        placeholder="e.g. Weathered Wood"
+                        className="h-8 text-sm"
+                      />
+                    )}
+                  </TableCell>
                   <TableCell>
                     {isLocked ? (
                       <span className="text-right block">{item.qty}</span>
