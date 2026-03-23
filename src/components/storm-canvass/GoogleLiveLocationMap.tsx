@@ -185,17 +185,7 @@ export default function GoogleLiveLocationMap({
     if (!map.current || !mapReady) return;
     
     map.current.setMapTypeId(MAP_TYPE_IDS[mapStyle]);
-    
-    if (mapStyle === 'lot-lines') {
-      map.current.setOptions({
-        styles: [
-          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-        ],
-      });
-    } else {
-      map.current.setOptions({ styles: [] });
-    }
+    map.current.setOptions({ styles: getMapStyles(mapStyle) });
   }, [mapStyle, mapReady]);
 
   // Update user location marker
