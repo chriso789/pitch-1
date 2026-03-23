@@ -60,9 +60,10 @@ export default function LiveCanvassingPage() {
   const { profile } = useUserProfile();
   const layout = useDeviceLayout();
   const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
-  // Start with default location for instant map load
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(DEFAULT_LOCATION);
+  // Start with null — map won't render until we have a real GPS fix or fallback
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [hasGPS, setHasGPS] = useState(false);
+  const [gpsAttempted, setGpsAttempted] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
   const [isTracking, setIsTracking] = useState(false);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
