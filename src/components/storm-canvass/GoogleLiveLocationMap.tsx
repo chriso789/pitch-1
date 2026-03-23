@@ -79,10 +79,7 @@ export default function GoogleLiveLocationMap({
           clickableIcons: false,
           gestureHandling: 'greedy',
           keyboardShortcuts: false,
-          styles: mapStyle === 'lot-lines' ? [
-            { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-            { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-          ] : [],
+          styles: getMapStyles(mapStyle),
         });
 
         // User location marker (pulsing blue dot)
