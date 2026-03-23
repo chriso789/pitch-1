@@ -1,45 +1,62 @@
 
-Goal: stop the live canvassing map from opening in Tampa after Chris has already allowed location, and only center the map when we have a trustworthy position.
 
-Plan
+## Plan: Fix Map Centering on Tampa — Use Assigned Area as Smart Fallback
 
-1. Harden the initial location flow in `src/pages/storm-canvass/LiveCanvassingPage.tsx`
-- Stop treating the hardcoded Tampa coordinates as a real starting location.
-- Keep the map usable, but avoid locking the first visible center to Tampa when GPS is still unresolved.
-- Add a “waiting for reliable fix” state so the first accepted location comes from an actual geolocation result, not the fallback.
+### Root Cause
 
-2. Add location quality rules in `src/services/locationService.ts`
-- Preserve the original geolocation error codes on `getCurrentLocation`, just like `watchLocation` already does.
-- Reject obviously poor fixes for initial centering (for example, very low-confidence / very high-accuracy-radius results).
-- Prefer a fresh GPS result over coarse network/IP fallback, even when permission is granted.
-- Continue using the location watch to refine the position after load, but only promote a reading to the map when it passes the confidence threshold.
+The accuracy threshold approach (reject fixes > 500m) doesn't solve the real problem: Chris's browser is returning cached Tampa coordinates, possibly with acceptable accuracy values. The browser's geolocation cache can persist across sessions regardless of `maximumAge: 0` on some mobile browsers. When the accuracy filter does reject, the 10-second timeout falls back to US center — neither outcome shows Pennsylvania.
 
-3. Improve live recovery when the browser first returns a bad fix
-- If the first result is still coarse or wrong, keep retrying in the background instead of accepting it as the map center.
-- Once a better fix arrives, immediately recenter the map and update the address.
-- Do not let a single bad first reading “win” for the whole session.
+### Solution
 
-4. Remove the misleading Tampa fallback behavior
-- Replace the current hardcoded Tampa startup experience with a safer fallback:
-  - either a neutral/non-user-specific map state, or
-  - the assigned area view when available.
-- This prevents the app from implying Chris is in Tampa before real GPS is confirmed.
+Use Chris's **assigned canvass area** as the intelligent fallback. He has an assigned area in Pennsylvania with a polygon — we should center the map there when GPS is unavailable or suspect, instead of Tampa or the US center.
 
-5. Add a manual recovery control in the canvassing UI
-- Add a “Center on My Location” / “Retry GPS” action so Chris can force another recenter attempt if mobile Safari/Chrome gives a bad first fix.
-- This gives field reps a fast way to recover without reloading the whole page.
+### Changes
 
-Likely root cause
-- The app still boots from a hardcoded Tampa default.
-- The first geolocation result can still be a coarse or wrong browser/network-based position.
-- The current code accepts that first result too easily and doesn’t distinguish “permission granted” from “location accurate enough to trust.”
+#### 1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Assigned area as primary fallback
 
-Files to update
-- `src/pages/storm-canvass/LiveCanvassingPage.tsx`
-- `src/services/locationService.ts`
-- likely `src/components/storm-canvass/GoogleLiveLocationMap.tsx` if we add a recenter control or improve first-center behavior
+- When `useAssignedArea` returns an `areaPolygon`, compute its centroid and use that as the fallback location instead of `NEUTRAL_FALLBACK`.
+- If GPS fails or times out, center the map on the assigned area centroid at zoom ~16 (neighborhood level) so pins load immediately.
+- If GPS succeeds but the fix is > 200 miles from the assigned area center, treat it as suspect and prefer the area center (with a toast: "GPS location appears incorrect — showing your assigned area").
+- Keep the recenter button for manual override.
 
-Expected result
-- Chris no longer sees Tampa as his apparent live location after granting location access.
-- The map waits for a trustworthy fix before treating it as “his location.”
-- If the browser gives a bad first fix, the app self-corrects and also provides a manual retry/recenter option.
+#### 2. `src/components/storm-canvass/GoogleLiveLocationMap.tsx` — Accept initial zoom override
+
+- Accept an optional `initialZoom` prop so when we center on the assigned area (not GPS), we can use zoom 16 instead of 18.
+
+#### 3. `src/services/locationService.ts` — Relax accuracy threshold
+
+- Lower `ACCURACY_THRESHOLD` from 500 to 5000m. The real protection is now the distance-from-area check, not the accuracy filter. This prevents legitimate (but slightly imprecise) GPS fixes from being rejected.
+
+### Key Logic
+
+```typescript
+// Compute assigned area centroid as fallback
+const areaCentroid = useMemo(() => {
+  if (!areaPolygon) return null;
+  const coords = areaPolygon?.coordinates?.[0] || areaPolygon?.geometry?.coordinates?.[0];
+  if (!coords?.length) return null;
+  let sumLat = 0, sumLng = 0;
+  for (const c of coords) { sumLng += c[0]; sumLat += c[1]; }
+  return { lat: sumLat / coords.length, lng: sumLng / coords.length };
+}, [areaPolygon]);
+
+// After GPS attempt, if location is far from assigned area, use area center
+if (userLocation && areaCentroid) {
+  const dist = locationService.calculateDistance(
+    userLocation.lat, userLocation.lng, areaCentroid.lat, areaCentroid.lng
+  );
+  if (dist.distance > 200) {
+    setUserLocation(areaCentroid); // GPS is clearly wrong
+  }
+}
+
+// Timeout fallback: use area centroid instead of NEUTRAL_FALLBACK
+setUserLocation(prev => prev || areaCentroid || NEUTRAL_FALLBACK);
+```
+
+### Files to Change
+
+1. **`src/pages/storm-canvass/LiveCanvassingPage.tsx`** — Add area centroid computation, distance sanity check, and use as fallback
+2. **`src/components/storm-canvass/GoogleLiveLocationMap.tsx`** — Add optional `initialZoom` prop
+3. **`src/services/locationService.ts`** — Relax `ACCURACY_THRESHOLD` to 5000m
+
