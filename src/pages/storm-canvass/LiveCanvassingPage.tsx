@@ -72,6 +72,9 @@ export default function LiveCanvassingPage() {
   const [showPropertyPanel, setShowPropertyPanel] = useState(false);
   const [canvassMode, setCanvassMode] = useState<'knock' | 'canvas'>('knock');
   const [dropPinCoords, setDropPinCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [symbolSettings, setSymbolSettings] = useState<SymbolSettings>(() => 
+    loadSymbolSettings(profile?.tenant_id || '')
+  );
   const [destination, setDestination] = useState<{
     lat: number;
     lng: number;
