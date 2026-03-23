@@ -282,6 +282,7 @@ export default function GoogleLiveLocationMap({
             onPropertiesLoaded={onPropertiesLoaded}
             areaPropertyIds={areaPropertyIds}
             refreshKey={refreshKey}
+            symbolSettings={symbolSettings}
           />
           {routeData?.polyline && destination && (
             <GoogleRouteVisualization
