@@ -86,6 +86,9 @@ interface AIConfig {
     days: string[];
   };
   qualification_questions: QualificationQuestion[];
+  auto_create_leads: boolean;
+  auto_schedule_appointments: boolean;
+  sms_notify_rep: boolean;
 }
 
 const VOICE_OPTIONS = [
