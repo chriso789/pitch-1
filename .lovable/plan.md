@@ -1,62 +1,66 @@
 
 
-## Plan: Fix Map Centering on Tampa — Use Assigned Area as Smart Fallback
+## Plan: Fix Search, Add Color Field, Stop Price Drift
 
-### Root Cause
+### Issue 1: Search Can't Find "Mariotti"
 
-The accuracy threshold approach (reject fixes > 500m) doesn't solve the real problem: Chris's browser is returning cached Tampa coordinates, possibly with acceptable accuracy values. The browser's geolocation cache can persist across sessions regardless of `maximumAge: 0` on some mobile browsers. When the accuracy filter does reject, the 10-second timeout falls back to US center — neither outcome shows Pennsylvania.
+**Root Cause**: The `search_contacts_and_jobs` RPC filters leads/jobs by `p_location_id`. The user's current location is "West Coast" but the Mariotti lead is assigned to "Main Office". The contact row IS returned (contacts are tenant-wide), but the lead/job row is filtered out — so the job result disappears.
 
-### Solution
+**Fix**: Update the RPC to remove the location filter on leads/jobs. Since the user wants company-wide search, the `p_location_id` filter should be removed from the leads query. Contacts are already tenant-wide.
 
-Use Chris's **assigned canvass area** as the intelligent fallback. He has an assigned area in Pennsylvania with a polygon — we should center the map there when GPS is unavailable or suspect, instead of Tampa or the US center.
+**File**: New migration to update `search_contacts_and_jobs` — remove the location filter clause (`p_location_id IS NULL OR pe.location_id = p_location_id ...`) from the leads union.
 
-### Changes
+---
 
-#### 1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Assigned area as primary fallback
+### Issue 2: Add Product Color Field to Materials Tab
 
-- When `useAssignedArea` returns an `areaPolygon`, compute its centroid and use that as the fallback location instead of `NEUTRAL_FALLBACK`.
-- If GPS fails or times out, center the map on the assigned area centroid at zoom ~16 (neighborhood level) so pins load immediately.
-- If GPS succeeds but the fix is > 200 miles from the assigned area center, treat it as suspect and prefer the area center (with a toast: "GPS location appears incorrect — showing your assigned area").
-- Keep the recenter button for manual override.
+**Root Cause**: The `TemplateSectionSelector` (Materials tab on projects) has no `notes`/color column. Its `LineItem` interface only has `id, item_name, qty, unit, unit_cost, line_total`.
 
-#### 2. `src/components/storm-canvass/GoogleLiveLocationMap.tsx` — Accept initial zoom override
+**Fix**: 
+- Add a `notes` field to the `LineItem` interface in `TemplateSectionSelector`
+- Add a "Color / Notes" column to the table
+- Make it editable (inline input) and save it with the line items
+- Preserve existing `notes` data when loading from `line_items` JSON
 
-- Accept an optional `initialZoom` prop so when we center on the assigned area (not GPS), we can use zoom 16 instead of 18.
+**File**: `src/components/estimates/TemplateSectionSelector.tsx`
 
-#### 3. `src/services/locationService.ts` — Relax accuracy threshold
+---
 
-- Lower `ACCURACY_THRESHOLD` from 500 to 5000m. The real protection is now the distance-from-area check, not the accuracy filter. This prevents legitimate (but slightly imprecise) GPS fixes from being rejected.
+### Issue 3: System Randomly Changing Estimate Prices
 
-### Key Logic
+**Root Cause**: `TemplateSectionSelector.saveLineItemsMutation` (line 222) hardcodes `const sellingPrice = costPreProfit / 0.7` every time a material or labor line item is edited from the Materials/Labor tabs. This overwrites the actual saved selling price with a naive 30% margin calculation, ignoring:
+- The estimate's actual saved `selling_price`
+- Fixed price mode
+- The rep's configured overhead/profit rates
+- Any manual price adjustments made via EstimateHyperlinkBar
+
+Every time a user edits a qty or cost in the Materials/Labor tab and it auto-saves, the selling price gets recalculated to `(materials + labor) / 0.7`, destroying the real price.
+
+**Fix**: Change `TemplateSectionSelector.saveLineItemsMutation` to preserve the existing `selling_price` from the estimate record. Only update the `material_cost` or `labor_cost` column and the `line_items` JSON — do NOT touch `selling_price`.
 
 ```typescript
-// Compute assigned area centroid as fallback
-const areaCentroid = useMemo(() => {
-  if (!areaPolygon) return null;
-  const coords = areaPolygon?.coordinates?.[0] || areaPolygon?.geometry?.coordinates?.[0];
-  if (!coords?.length) return null;
-  let sumLat = 0, sumLng = 0;
-  for (const c of coords) { sumLng += c[0]; sumLat += c[1]; }
-  return { lat: sumLat / coords.length, lng: sumLng / coords.length };
-}, [areaPolygon]);
+// BEFORE (broken):
+const sellingPrice = costPreProfit / 0.7; // 30% margin
+.update({
+  line_items: updatedLineItems,
+  [costKey]: total,
+  selling_price: sellingPrice,  // <-- THIS DESTROYS THE REAL PRICE
+})
 
-// After GPS attempt, if location is far from assigned area, use area center
-if (userLocation && areaCentroid) {
-  const dist = locationService.calculateDistance(
-    userLocation.lat, userLocation.lng, areaCentroid.lat, areaCentroid.lng
-  );
-  if (dist.distance > 200) {
-    setUserLocation(areaCentroid); // GPS is clearly wrong
-  }
-}
-
-// Timeout fallback: use area centroid instead of NEUTRAL_FALLBACK
-setUserLocation(prev => prev || areaCentroid || NEUTRAL_FALLBACK);
+// AFTER (fixed):
+.update({
+  line_items: updatedLineItems,
+  [costKey]: total,
+  // DO NOT update selling_price - preserve the value set by the estimate builder
+})
 ```
+
+**File**: `src/components/estimates/TemplateSectionSelector.tsx`
+
+---
 
 ### Files to Change
 
-1. **`src/pages/storm-canvass/LiveCanvassingPage.tsx`** — Add area centroid computation, distance sanity check, and use as fallback
-2. **`src/components/storm-canvass/GoogleLiveLocationMap.tsx`** — Add optional `initialZoom` prop
-3. **`src/services/locationService.ts`** — Relax `ACCURACY_THRESHOLD` to 5000m
+1. **New migration** — Update `search_contacts_and_jobs` RPC to remove location filter on leads/jobs
+2. **`src/components/estimates/TemplateSectionSelector.tsx`** — Add notes/color column + stop overwriting selling_price
 
