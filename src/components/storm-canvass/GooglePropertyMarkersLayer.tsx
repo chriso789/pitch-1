@@ -330,7 +330,8 @@ export default function GooglePropertyMarkersLayer({
 
   // Fully deterministic marker reconciliation — keyed by canonical address
   const reconcileMarkers = useCallback((properties: CanvassiqProperty[], zoom: number, loadVersion: number) => {
-    // Discard stale loads
+    // Discard if unmounted or stale
+    if (!mountedRef.current) return;
     if (loadVersion < loadVersionRef.current) {
       console.log('[GooglePropertyMarkersLayer] Discarding stale load v', loadVersion, '< current v', loadVersionRef.current);
       return;
