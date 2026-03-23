@@ -1,126 +1,82 @@
 
 
-## Plan: AI Answering Service for Unanswered Main Line Calls
+## Plan: Contact Info in Panel + Disposition Symbol Pins + Duplicate Pin Fix
 
-### What We're Building
+### Problem Summary
 
-A production-ready AI answering service that intercepts unanswered inbound calls to any company's main line number. When enabled, the AI agent will:
-- Greet callers with a company-branded message
-- Qualify leads conversationally (name, address, service needed, roof age, insurance, timeline)
-- Create contacts and pipeline entries (leads) directly in the CRM
-- Schedule appointments by inserting into the appointments table
-- Score leads and notify reps of hot leads via SMS
-- Support human escalation at any time
+1. **Contact info missing**: Phones, emails, and age are already fetched and rendered in `PropertyInfoPanel`, but only appear after skip-trace. The user wants them visible immediately when data exists (from prior enrichment or the property record itself).
+2. **Disposition pins need symbols**: Currently pins are colored circles with house numbers. User wants house number + a small disposition symbol badge (e.g., checkmark for Interested, X for Not Interested, house for Not Home).
+3. **Symbol settings without leaving live canvass**: Need an in-map settings drawer to customize which symbol maps to which disposition.
+4. **Double pins persist**: The deduplication logic uses `normalizeAddressKeyClient` but the issue is that `reconcileMarkers` only removes keys NOT in the current load — it never clears old markers from a *previous* load version that had overlapping keys computed slightly differently. Two loads can produce the same address with different normalized keys (e.g., one from `normalized_address_key` column, another from address JSON parsing), leaving both markers alive.
 
-### What Already Exists
+---
 
-The codebase has significant infrastructure already built:
-- `telnyx-ai-answering` — basic gather-only agent (collects info, creates contact + task, hangs up)
-- `telnyx-ai-agent-enhanced` — richer qualification with lead scoring, but still only creates contacts and tasks (no pipeline entry / lead creation, no appointment booking)
-- `call-forwarding` — routes calls and falls back to answering service when no one picks up
-- `ai_answering_config` table — per-tenant config (greeting, voice, model, business hours, qualification questions)
-- `AIAgentSettingsPage` — full settings UI for enabling/configuring the AI agent
-- `create-lead-with-contact` — the canonical lead creation function
+### Fix 1: Eliminate Remaining Duplicate Pins
 
-### The Gap
+**File: `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`**
 
-The current `telnyx-ai-agent-enhanced` function does NOT:
-1. Create pipeline entries (leads) — it only creates contacts and tasks
-2. Book appointments — no appointment creation logic
-3. Use the Lovable AI Gateway — it calls OpenAI directly (hardcoded)
-4. Integrate with the `create-lead-with-contact` pattern for proper lead source tracking and dedup
-5. Send SMS notifications to reps about new AI-qualified leads
-6. Handle multi-turn conversation for appointment scheduling (date/time selection)
+Root cause: `getNormalizedAddressKey` re-normalizes the `normalized_address_key` column through `normalizeAddressKeyClient`, but when parsing from JSON it can produce a slightly different key (different field used, extra whitespace). Two DB rows for the same address produce different canonical keys.
 
-### Implementation
+Changes:
+- In `getNormalizedAddressKey`: when `property.normalized_address_key` exists, use it **directly** (lowercase + underscore-replace only) without re-running it through `normalizeAddressKeyClient`. The server already normalized it.
+- Add a secondary dedup pass in `deduplicateProperties`: extract just the house number + street name core from each key, and if two keys share the same house-number prefix, keep only the one with `building_snapped=true` or newest.
+- In `reconcileMarkers`: before adding new markers, clear ALL existing markers (full `clearAllMarkers()`) then re-add from the deduplicated set. This is a small perf cost but eliminates any possibility of orphaned keys from key-mismatch across loads.
 
-#### 1. Rewrite `telnyx-ai-agent-enhanced` Edge Function
+### Fix 2: Show Contact Info Immediately in Bottom Sheet
 
-Replace the current implementation with a complete answering service agent:
+**File: `src/components/storm-canvass/PropertyInfoPanel.tsx`**
 
-**Call flow:**
-1. `call.initiated` (incoming) → Answer the call with `client_state` containing tenant info
-2. `call.answered` → Load tenant's `ai_answering_config`, start `gather_using_ai` with an enhanced system prompt that instructs the AI to qualify AND offer to schedule an appointment
-3. `gather_using_ai.ended` → Process results:
-   - Find or create contact (dedup by phone number, then by name+address)
-   - Create pipeline entry with `status: 'lead'`, proper `source` mapping, and `metadata.created_via: 'ai-answering-service'`
-   - If caller wants an appointment, create an `appointments` record with the gathered date/time
-   - Calculate lead score based on responses (timeline urgency, insurance, storm damage, roof age)
-   - Log to `communication_history` and `ai_call_transcripts`
-   - Send SMS notification to assigned rep or location manager via `messaging-send-sms`
-   - If lead score >= 80, also invoke `trigger-sales-notification`
-4. `transfer` tool used → Transfer to on-call number from tenant settings
-5. `call.hangup` → Log completion
+The panel already has full phone/email/age rendering (lines 919-980). The issue is the conditional at line 896 that hides the "Get Contact Info" CTA only when `publicLookupDoneRef.current === property.id`. When property data already has `phone_numbers` or `emails` from the DB (prior enrichment), these should render immediately.
 
-**Key changes from current version:**
-- Use Lovable AI Gateway instead of direct OpenAI calls (for the system prompt / gather config only — Telnyx `gather_using_ai` handles the actual voice AI)
-- Add pipeline entry creation using service role client (mirrors `create-lead-with-contact` logic)
-- Add appointment insertion into the `appointments` table
-- Add SMS notification to rep via `messaging-send-sms` edge function invocation
-- Enhanced `system_prompt` for the Telnyx gather that instructs the AI to offer appointment scheduling and collect preferred date/time
+Changes:
+- Move the phone/email display section (lines 919-980) ABOVE the "Select Home Owner" section so contact info is visible first
+- Show phone_numbers and emails from the raw `property` prop immediately on open (before `localProperty` enrichment completes), falling back to `localProperty` data when available
+- Display owner age from `displayOwners[0]?.age` prominently next to owner name in the header area
+- Always show the contact info section; show "Get Contact Info" button only when no phones AND no emails exist
 
-**Gather parameters addition:**
-```
-preferred_appointment_date: { description: 'Preferred date for inspection/estimate', type: 'string' }
-preferred_appointment_time: { description: 'Preferred time of day (morning, afternoon, evening)', type: 'string' }
-wants_appointment: { description: 'Whether the caller wants to schedule an appointment', type: 'boolean' }
-```
+### Fix 3: Disposition Symbol Badges on Map Pins
 
-#### 2. Add Appointment Creation Logic
+**File: `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`**
 
-After gathering results, if `wants_appointment` is true and date/time are provided:
-- Insert into `appointments` table with `type: 'inspection'`, the contact_id, and tenant_id
-- Set status to `'scheduled'` 
-- Assign to the location manager or round-robin rep
+Update `createMarkerIcon` to render a small symbol badge in the bottom-right corner of each pin when a disposition is set:
 
-#### 3. Add Pipeline Entry (Lead) Creation
+- Define a `DISPOSITION_SYMBOLS` map: `{ interested: '$', not_interested: '✕', not_home: '⌂', follow_up: '↻', new_roof: '✓', unqualified: '✕', not_contacted: '', old_roof_marker: '△', past_customer: '★' }`
+- In the SVG, after the house number text, add a small colored circle (8px) at bottom-right with the symbol character inside (6px font)
+- The circle background uses the disposition color; the symbol is white
+- At zoom < 17 (when house number is hidden), make the symbol the primary content of the pin instead
 
-After contact creation/lookup, create a proper lead:
-- Insert into `pipeline_entries` with `status: 'lead'`, `source: 'other'` (mapped from 'Call In'), `lead_name`, `assigned_to`
-- Include metadata: `{ created_via: 'ai-answering-service', ai_lead_score, gathered_data }`
-- Set `location_id` from the resolved location
+### Fix 4: In-Map Symbol Settings Drawer
 
-#### 4. Add Rep SMS Notification
+**New file: `src/components/storm-canvass/MapSymbolSettings.tsx`**
 
-After lead creation, send SMS to the assigned rep or location manager:
-- Invoke `messaging-send-sms` with a formatted message containing caller name, service needed, lead score, and appointment time if scheduled
-- For hot leads (score >= 80), also fire real-time notification
+A small drawer/popover accessible from the existing map controls area (next to MapStyleToggle):
+- Settings gear icon button in the floating controls bar
+- Opens a Sheet from the right side
+- Lists each disposition with its current color swatch + symbol
+- Each row has a dropdown to pick from ~10 symbol options (✓, ✕, $, ⌂, ↻, △, ★, ●, ♦, !)
+- Settings stored in localStorage per tenant (key: `canvass_symbol_settings_{tenant_id}`)
+- Default symbols used when no custom settings exist
+- No need to leave the live canvass window
 
-#### 5. Update Settings UI — Minor Enhancement
+**File: `src/pages/storm-canvass/LiveCanvassingPage.tsx`**
+- Add the settings button to the floating controls area
+- Pass symbol settings down to `GoogleLiveLocationMap` → `GooglePropertyMarkersLayer`
 
-Add a toggle in `AIAgentSettingsPage` for:
-- "Auto-create leads from AI calls" (default: on)
-- "Auto-schedule appointments" (default: on)
-- "SMS notify rep on new AI lead" (default: on)
-
-These will be stored as new fields in `ai_answering_config`.
-
-### Database Changes
-
-**Migration: Add columns to `ai_answering_config`**
-```sql
-ALTER TABLE ai_answering_config
-ADD COLUMN IF NOT EXISTS auto_create_leads boolean DEFAULT true,
-ADD COLUMN IF NOT EXISTS auto_schedule_appointments boolean DEFAULT true,
-ADD COLUMN IF NOT EXISTS sms_notify_rep boolean DEFAULT true;
-```
+---
 
 ### Files to Change
 
-1. `supabase/functions/telnyx-ai-agent-enhanced/index.ts` — Full rewrite with lead creation, appointment booking, SMS notification
-2. `supabase/migrations/[new].sql` — Add config columns
-3. `src/pages/settings/AIAgentSettingsPage.tsx` — Add toggles for new features
-4. `src/integrations/supabase/types.ts` — Auto-updated after migration
+1. `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` — fix dedup, add symbol badges to SVG markers, accept symbol settings prop
+2. `src/components/storm-canvass/GoogleLiveLocationMap.tsx` — pass symbol settings prop through
+3. `src/components/storm-canvass/PropertyInfoPanel.tsx` — reorder contact info above owner selection, show immediately
+4. `src/components/storm-canvass/MapSymbolSettings.tsx` — new component for in-map symbol configuration
+5. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — add settings button + state, pass symbol config down
 
-### Expected Result for O'Brien Contracting
+### Expected Result
 
-When a potential client calls O'Brien's main number and nobody answers:
-1. AI picks up with O'Brien's custom greeting
-2. Conversationally collects: name, phone, address, service needed, roof age, insurance status, timeline
-3. Offers to schedule an inspection appointment
-4. Creates a contact in the CRM (or finds existing)
-5. Creates a lead in the pipeline with proper scoring
-6. Books the appointment if requested
-7. Sends SMS to the assigned rep: "New AI Lead: John Smith - Storm damage repair. Score: 85. Appointment: Tomorrow 2pm. Call back: (555) 123-4567"
-8. Rep sees the lead on their pipeline board immediately
+- One pin per address (no duplicates)
+- Each pin shows house number + small disposition symbol badge
+- Contact info (phones, emails, age) visible immediately in bottom sheet
+- In-map settings drawer for customizing disposition symbols
+- No need to leave the live canvass window for any of this
 
