@@ -41,7 +41,8 @@ import {
   Home,
   Activity,
   Building2,
-  MapPin
+  MapPin,
+  Wallet
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { subDays, format } from "date-fns";
@@ -499,7 +500,7 @@ const Dashboard = () => {
       <DashboardAIAssistant />
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
         <ContactFormDialog
           trigger={
             <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary touch-manipulation active:scale-[0.98]">
@@ -527,13 +528,24 @@ const Dashboard = () => {
         </Card>
         
         <Card
-          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success touch-manipulation active:scale-[0.98] sm:col-span-2 md:col-span-1"
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success touch-manipulation active:scale-[0.98]"
           onClick={() => navigate('/production')}
         >
           <CardContent className="p-4 md:p-6 text-center text-white">
             <Wrench className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2" />
             <h3 className="font-semibold text-sm md:text-base mb-1">Schedule Work</h3>
             <p className="text-xs md:text-sm opacity-90">Manage project schedules</p>
+          </CardContent>
+        </Card>
+
+        <Card
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer bg-gradient-to-br from-amber-500 to-yellow-600 touch-manipulation active:scale-[0.98] sm:col-span-2 md:col-span-1"
+          onClick={() => navigate('/commission-report')}
+        >
+          <CardContent className="p-4 md:p-6 text-center text-white">
+            <Wallet className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2" />
+            <h3 className="font-semibold text-sm md:text-base mb-1">My Commissions</h3>
+            <p className="text-xs md:text-sm opacity-90">View earnings by project</p>
           </CardContent>
         </Card>
       </div>
