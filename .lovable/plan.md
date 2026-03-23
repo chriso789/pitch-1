@@ -1,66 +1,55 @@
 
 
-## Plan: Fix Search, Add Color Field, Stop Price Drift
+## Plan: Fix 3 Issues — Estimate Bar Sync, Material Color Export, Map Still Showing Tampa
 
-### Issue 1: Search Can't Find "Mariotti"
+### Issue 1: Saved Estimate Not Reflecting in Top Bar
 
-**Root Cause**: The `search_contacts_and_jobs` RPC filters leads/jobs by `p_location_id`. The user's current location is "West Coast" but the Mariotti lead is assigned to "Main Office". The contact row IS returned (contacts are tenant-wide), but the lead/job row is filtered out — so the job result disappears.
+**Root Cause**: The hyperlink bar at the top pulls data from the `api_estimate_hyperlink_bar` RPC, which reads from `pipeline_entries.metadata.selected_estimate_id`. When an estimate is selected in the SavedEstimatesList, it correctly invalidates the `hyperlink-data` query. However, the screenshot shows the top bar displaying $7,518 while the saved estimate shows $10,898 — indicating the RPC is reading from a different or stale estimate, or the `selected_estimate_id` metadata was not properly updated.
 
-**Fix**: Update the RPC to remove the location filter on leads/jobs. Since the user wants company-wide search, the `p_location_id` filter should be removed from the leads query. Contacts are already tenant-wide.
+**Fix**: The `SavedEstimatesList.handleSelectEstimate` already invalidates `hyperlink-data`. The issue is likely that the `calculations` fallback data in `EstimateHyperlinkBar` is being shown instead of the RPC data. When `hyperlinkData` is null or loading, it falls back to the `calculations` prop which comes from a different source.
 
-**File**: New migration to update `search_contacts_and_jobs` — remove the location filter clause (`p_location_id IS NULL OR pe.location_id = p_location_id ...`) from the leads union.
-
----
-
-### Issue 2: Add Product Color Field to Materials Tab
-
-**Root Cause**: The `TemplateSectionSelector` (Materials tab on projects) has no `notes`/color column. Its `LineItem` interface only has `id, item_name, qty, unit, unit_cost, line_total`.
-
-**Fix**: 
-- Add a `notes` field to the `LineItem` interface in `TemplateSectionSelector`
-- Add a "Color / Notes" column to the table
-- Make it editable (inline input) and save it with the line items
-- Preserve existing `notes` data when loading from `line_items` JSON
-
-**File**: `src/components/estimates/TemplateSectionSelector.tsx`
+**Changes**:
+- In `EstimateHyperlinkBar.tsx`: When an estimate is selected (`hyperlinkData?.selected_estimate_id` exists), always use `hyperlinkData` values and never fall back to the `calculations` prop. The fallback path should only be used when no estimate is selected.
+- Ensure `SavedEstimatesList` also invalidates the `estimate-costs` query key that `TemplateSectionSelector` uses, so the Materials/Labor tabs update too.
 
 ---
 
-### Issue 3: System Randomly Changing Estimate Prices
+### Issue 2: Colors Not Exporting in Material Order PDF
 
-**Root Cause**: `TemplateSectionSelector.saveLineItemsMutation` (line 222) hardcodes `const sellingPrice = costPreProfit / 0.7` every time a material or labor line item is edited from the Materials/Labor tabs. This overwrites the actual saved selling price with a naive 30% margin calculation, ignoring:
-- The estimate's actual saved `selling_price`
-- Fixed price mode
-- The rep's configured overhead/profit rates
-- Any manual price adjustments made via EstimateHyperlinkBar
+**Root Cause**: The `MaterialLineItemsExport` component already supports `notes` and `color_specs` fields and renders them in the PDF. But in `TemplateSectionSelector.tsx` (line 611-618), when it passes `lineItems` to `MaterialLineItemsExport`, the `lineItems` array contains `notes` fields — however the export PDF logic looks correct. The issue is likely that the `notes` field we just added is not being populated/saved yet, or the existing material order export (which may go through a different path like `material_orders` table) doesn't include the notes.
 
-Every time a user edits a qty or cost in the Materials/Labor tab and it auto-saves, the selling price gets recalculated to `(materials + labor) / 0.7`, destroying the real price.
+**Fix**: Verify the `lineItems` passed to `MaterialLineItemsExport` actually contain the `notes` data. The PDF rendering code in `MaterialLineItemsExport.tsx` already handles `item.notes || item.color_specs` — so if the data is there, it will render. The gap is likely in how line items are loaded from the database — the `notes` field needs to be preserved during load/save.
 
-**Fix**: Change `TemplateSectionSelector.saveLineItemsMutation` to preserve the existing `selling_price` from the estimate record. Only update the `material_cost` or `labor_cost` column and the `line_items` JSON — do NOT touch `selling_price`.
+**Changes**:
+- In `TemplateSectionSelector.tsx`: Ensure when loading line items from `enhanced_estimates.line_items` JSON, the `notes` field is mapped into each `LineItem` object.
+- Confirm the save mutation includes `notes` in the serialized JSON (this was added in the previous change but needs verification).
 
-```typescript
-// BEFORE (broken):
-const sellingPrice = costPreProfit / 0.7; // 30% margin
-.update({
-  line_items: updatedLineItems,
-  [costKey]: total,
-  selling_price: sellingPrice,  // <-- THIS DESTROYS THE REAL PRICE
-})
+---
 
-// AFTER (fixed):
-.update({
-  line_items: updatedLineItems,
-  [costKey]: total,
-  // DO NOT update selling_price - preserve the value set by the estimate builder
-})
-```
+### Issue 3: Storm Canvass Map Still Showing Tampa
 
-**File**: `src/components/estimates/TemplateSectionSelector.tsx`
+**Root Cause**: The area-based fallback we implemented is completely inert. Database query confirms: `canvass_areas` has 0 rows and `canvass_area_assignments` has 0 active assignments. So `areaCentroid` is always `null`, and the distance sanity check never fires. Chris's browser returns a cached Tampa GPS fix, and since `areaCentroid` is null, the sanity check is skipped entirely — the Tampa coordinates are accepted as valid.
+
+Chris's actual contacts are all in Pennsylvania (lat ~39.9, lng ~-75.3).
+
+**Fix**: Since the area assignment system isn't populated, we need a different fallback strategy. Use the tenant's contact/property data centroid as the fallback when no assigned area exists.
+
+**Changes in `LiveCanvassingPage.tsx`**:
+- When `areaCentroid` is null (no assigned area), query the tenant's contacts table to compute a contact centroid from the average lat/lng of all geocoded contacts.
+- Use this contact centroid for the same distance sanity check (> 200 miles = reject GPS fix).
+- This gives Chris a Pennsylvania-based fallback derived from his actual data.
+- Keep the existing area-based logic so it works when areas are eventually set up.
+
+**Changes in `locationService.ts`**:
+- Reduce `maximumAge` to 0 (already done) but also add a secondary check: if the GPS timestamp is older than 60 seconds, treat it as stale and reject it. Mobile Safari can return "fresh" positions from its internal cache even with `maximumAge: 0`.
 
 ---
 
 ### Files to Change
 
-1. **New migration** — Update `search_contacts_and_jobs` RPC to remove location filter on leads/jobs
-2. **`src/components/estimates/TemplateSectionSelector.tsx`** — Add notes/color column + stop overwriting selling_price
+1. **`src/components/estimates/EstimateHyperlinkBar.tsx`** — Ensure selected estimate data from RPC always overrides the calculations prop fallback
+2. **`src/components/estimates/TemplateSectionSelector.tsx`** — Verify notes field is preserved during load from JSON
+3. **`src/components/orders/MaterialLineItemsExport.tsx`** — No changes needed (already handles notes)
+4. **`src/pages/storm-canvass/LiveCanvassingPage.tsx`** — Add tenant contact centroid fallback when no assigned area exists
+5. **`src/services/locationService.ts`** — Add GPS timestamp staleness check
 
