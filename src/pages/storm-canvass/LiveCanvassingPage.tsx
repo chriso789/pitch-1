@@ -200,26 +200,30 @@ export default function LiveCanvassingPage() {
           .then(address => setCurrentAddress(address))
           .catch(() => setCurrentAddress('Address unavailable'));
       } catch (error: any) {
-        console.error('Location error:', error);
+        console.warn('[Canvassing] Initial location failed, using default:', error?.message);
         if (error?.code === 1) {
-          // Permission denied during the prompt
           toast({
             title: 'Location Access Required',
             description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
             variant: 'destructive',
           });
           permissionDeniedToastShown = true;
-        } else {
-          toast({
-            title: 'Location Error',
-            description: 'Unable to access your location. Using default location.',
-            variant: 'destructive',
-          });
         }
+        // Non-permission errors: silently use default location — map already loaded
       }
     };
 
     initLocation();
+
+    // Auto-dismiss GPS overlay after 10 seconds even without a lock
+    const gpsTimeout = setTimeout(() => {
+      setHasGPS((current) => {
+        if (!current) {
+          console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
+        }
+        return true;
+      });
+    }, 10000);
 
     // Start watching location
     const stopWatching = locationService.watchLocation(
@@ -265,19 +269,15 @@ export default function LiveCanvassingPage() {
           return;
         }
 
-        // Position unavailable (code 2) or other: show once
+        // Position unavailable (code 2) or other: silently log, watchPosition keeps retrying
         if (error.code !== 1) {
-          console.error('Location watch error:', error);
-          toast({
-            title: 'GPS Tracking Error',
-            description: error.message,
-            variant: 'destructive',
-          });
+          console.warn('[Canvassing] GPS watch error (retrying):', error.code, error.message);
         }
       }
     );
 
     return () => {
+      clearTimeout(gpsTimeout);
       stopWatching();
       locationService.stopWatching();
     };
