@@ -217,19 +217,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         [sectionKey]: items
       } as unknown as Record<string, unknown>;
 
-      // Calculate new selling price
-      const materialCost = sectionType === 'material' ? total : (existing?.material_cost || 0);
-      const laborCost = sectionType === 'labor' ? total : (existing?.labor_cost || 0);
-      const costPreProfit = materialCost + laborCost;
-      const sellingPrice = costPreProfit / 0.7; // 30% margin
-
-      // Always update the selected estimate by ID
+      // Only update cost columns and line_items — do NOT touch selling_price
+      // The selling_price is set by the estimate builder and must not be overwritten
       const { error } = await supabase
         .from('enhanced_estimates')
         .update({
           line_items: updatedLineItems as any,
           [costKey]: total,
-          selling_price: sellingPrice,
           template_id: selectedTemplateId || null
         })
         .eq('id', effectiveEstimateId);
