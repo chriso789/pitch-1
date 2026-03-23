@@ -143,11 +143,24 @@ Deno.serve(async (req) => {
     }
     } // end if (!force)
 
-    // 3) Resolve county
+    // 3) Resolve county — validate against location state
     const county = await getCountyContext({
       lat: loc.lat, lng: loc.lng, state: loc.state,
       county_hint: loc.county_hint, timeoutMs,
     });
+
+    // Sanity check: if county state doesn't match location state, retry without county_hint
+    if (county.state && loc.state && county.state.toUpperCase() !== loc.state.toUpperCase()) {
+      console.warn(`[storm-public-lookup] County state mismatch: county=${county.state}, loc=${loc.state} — retrying without hint`);
+      const retryCounty = await getCountyContext({
+        lat: loc.lat, lng: loc.lng, state: loc.state,
+        county_hint: undefined, timeoutMs,
+      });
+      if (retryCounty.state && retryCounty.state.toUpperCase() === loc.state.toUpperCase()) {
+        Object.assign(county, retryCounty);
+        console.log(`[storm-public-lookup] County retry resolved: ${county.county_name}`);
+      }
+    }
 
     // 4) Run pipeline (appraiser + tax + clerk + batchleads fallback)
     const result = await lookupPropertyPublic({

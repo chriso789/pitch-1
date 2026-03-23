@@ -18,16 +18,23 @@ export async function getCountyContext(input: {
 }): Promise<CountyContext> {
   const { lat, lng, state, county_hint, timeoutMs } = input;
 
-  // --- Try FCC first (faster) ---
+  // --- Try FCC first (faster, more reliable) ---
   try {
-    const fcc = await fccArea(lat, lng, Math.min(timeoutMs, 6000));
+    const fcc = await fccArea(lat, lng, Math.min(timeoutMs, 10000));
     if (fcc.countyName) {
-      console.log(`[countyResolver] FCC resolved: ${fcc.countyName} (${fcc.stateCode})`);
-      return {
-        state: fcc.stateCode || state,
-        county_name: normalizeCountyName(fcc.countyName),
-        county_fips: fcc.countyFips,
-      };
+      // Validate state matches — FCC can return wrong results for edge cases
+      const fccState = (fcc.stateCode || "").toUpperCase();
+      const expectedState = (state || "").toUpperCase();
+      if (fccState && expectedState && fccState !== expectedState) {
+        console.warn(`[countyResolver] FCC state mismatch: got ${fccState}, expected ${expectedState} — falling back`);
+      } else {
+        console.log(`[countyResolver] FCC resolved: ${fcc.countyName} (${fcc.stateCode})`);
+        return {
+          state: fcc.stateCode || state,
+          county_name: normalizeCountyName(fcc.countyName),
+          county_fips: fcc.countyFips,
+        };
+      }
     }
   } catch (e) {
     console.warn("[countyResolver] FCC error, falling back to TIGER:", e);

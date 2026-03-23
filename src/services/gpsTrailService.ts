@@ -51,17 +51,33 @@ class GPSTrailService {
       positionBuffer: [],
     };
 
-    // Start watching position
+    // Only start watching if geolocation permission is already granted
+    // (avoids triggering a browser permission prompt — the main page handles that)
     if ('geolocation' in navigator) {
-      this.session.watchId = navigator.geolocation.watchPosition(
-        (position) => this.onPositionUpdate(position),
-        (error) => console.error('[GPSTrailService] Watch error:', error),
-        {
-          enableHighAccuracy: true,
-          maximumAge: 300000,
-          timeout: 30000,
+      let canWatch = true;
+      try {
+        if (navigator.permissions) {
+          const perm = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+          if (perm.state !== 'granted') {
+            console.log('[GPSTrailService] Skipping watchPosition — permission not yet granted:', perm.state);
+            canWatch = false;
+          }
         }
-      );
+      } catch {
+        // permissions API not supported — proceed cautiously
+      }
+
+      if (canWatch) {
+        this.session.watchId = navigator.geolocation.watchPosition(
+          (position) => this.onPositionUpdate(position),
+          (error) => console.error('[GPSTrailService] Watch error:', error),
+          {
+            enableHighAccuracy: true,
+            maximumAge: 0,
+            timeout: 30000,
+          }
+        );
+      }
     }
 
     // Set up interval to flush buffer to database
