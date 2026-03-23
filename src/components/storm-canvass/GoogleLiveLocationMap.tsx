@@ -22,7 +22,7 @@ interface GoogleLiveLocationMapProps {
   refreshKey?: number;
   areaPropertyIds?: string[];
   areaPolygon?: any;
-  onMapClick?: (lat: number; lng: number) => void;
+  onMapClick?: (lat: number, lng: number) => void;
   followUser?: boolean;
   symbolSettings?: SymbolSettings;
 }
