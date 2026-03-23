@@ -72,6 +72,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   const [isActive, setIsActive] = useState(stage?.is_active ?? true);
   const { toast } = useToast();
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
 
   useEffect(() => {
     if (open && stage) {
