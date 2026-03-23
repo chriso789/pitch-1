@@ -206,6 +206,9 @@ export default function AIAgentSettingsPage() {
         location_id: (data as any).location_id || null,
         business_hours: (data.business_hours as any) || config.business_hours,
         qualification_questions: questions,
+        auto_create_leads: (data as any).auto_create_leads ?? true,
+        auto_schedule_appointments: (data as any).auto_schedule_appointments ?? true,
+        sms_notify_rep: (data as any).sms_notify_rep ?? true,
       });
     }
   };
