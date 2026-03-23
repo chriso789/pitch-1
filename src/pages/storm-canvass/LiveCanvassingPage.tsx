@@ -536,7 +536,7 @@ export default function LiveCanvassingPage() {
 
 
       {/* Territory Boundary Alert */}
-      {assignedArea && areaPolygon && (
+      {assignedArea && areaPolygon && userLocation && (
         <TerritoryBoundaryAlert userLocation={userLocation} areaPolygon={areaPolygon} />
       )}
 
