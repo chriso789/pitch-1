@@ -47,9 +47,8 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
             endpoint: 'autocomplete',
             params: {
               input: searchQuery,
-              location: `${userLocation.lat},${userLocation.lng}`,
-              radius: '8000', // 5 miles in meters
               types: 'address',
+              components: 'country:us',
             },
           },
         });
