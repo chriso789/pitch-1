@@ -384,16 +384,15 @@ export default function GooglePropertyMarkersLayer({
     };
   }, [symbolSettings]);
 
-  // Fully deterministic marker reconciliation — keyed by canonical address
+  // Fully deterministic marker reconciliation — clear all then re-add to prevent orphaned keys
   const reconcileMarkers = useCallback((properties: CanvassiqProperty[], zoom: number, loadVersion: number) => {
-    // Discard if unmounted or stale
     if (!mountedRef.current) return;
     if (loadVersion < loadVersionRef.current) {
       console.log('[GooglePropertyMarkersLayer] Discarding stale load v', loadVersion, '< current v', loadVersionRef.current);
       return;
     }
 
-    // Build canonical key → property map (dedup already ran, but guard here too)
+    // Build canonical key → property map
     const currentKeys = new Map<string, CanvassiqProperty>();
     for (const p of properties) {
       const key = getNormalizedAddressKey(p) || p.id;
@@ -402,14 +401,10 @@ export default function GooglePropertyMarkersLayer({
       }
     }
     
-    // Remove markers whose key is no longer in this load's set
-    markersRef.current.forEach((marker, key) => {
-      if (!currentKeys.has(key)) {
-        marker.setMap(null);
-        markersRef.current.delete(key);
-        propertiesCacheRef.current.delete(key);
-      }
-    });
+    // Clear ALL existing markers to prevent orphaned keys from key-mismatch across loads
+    markersRef.current.forEach((marker) => marker.setMap(null));
+    markersRef.current.clear();
+    propertiesCacheRef.current.clear();
     
     // Add new markers or update existing ones (position + icon always)
     currentKeys.forEach((property, key) => {

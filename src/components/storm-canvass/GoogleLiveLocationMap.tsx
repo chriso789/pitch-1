@@ -7,6 +7,8 @@ import GooglePropertyMarkersLayer from './GooglePropertyMarkersLayer';
 import GoogleRouteVisualization from './GoogleRouteVisualization';
 import { MapStyle } from './MapStyleToggle';
 
+import { type SymbolSettings } from './MapSymbolSettings';
+
 interface GoogleLiveLocationMapProps {
   userLocation: { lat: number; lng: number };
   currentAddress: string;
@@ -20,8 +22,9 @@ interface GoogleLiveLocationMapProps {
   refreshKey?: number;
   areaPropertyIds?: string[];
   areaPolygon?: any;
-  onMapClick?: (lat: number, lng: number) => void;
+  onMapClick?: (lat: number; lng: number) => void;
   followUser?: boolean;
+  symbolSettings?: SymbolSettings;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
