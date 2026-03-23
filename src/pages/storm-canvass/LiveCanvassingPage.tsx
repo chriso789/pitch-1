@@ -163,6 +163,22 @@ export default function LiveCanvassingPage() {
     };
   }, [profile?.id, profile?.tenant_id]);
 
+  // Manual recenter handler
+  const handleRecenterGPS = useCallback(async () => {
+    try {
+      const location = await locationService.getCurrentLocation({ skipGeocoding: true, accuracyThreshold: 1000 });
+      setUserLocation({ lat: location.lat, lng: location.lng });
+      setHasGPS(true);
+      previousLocation.current = { lat: location.lat, lng: location.lng };
+      locationService['reverseGeocode'](location.lat, location.lng)
+        .then(address => setCurrentAddress(address))
+        .catch(() => {});
+      toast({ title: 'Location Updated', description: `Accuracy: ${Math.round(location.accuracy || 0)}m` });
+    } catch {
+      toast({ title: 'GPS Unavailable', description: 'Could not get a precise location fix.', variant: 'destructive' });
+    }
+  }, [toast]);
+
   useEffect(() => {
     let permissionDeniedToastShown = false;
 
@@ -179,42 +195,51 @@ export default function LiveCanvassingPage() {
       }
 
       if (permissionState === 'denied') {
-        // Permission was previously denied — show helpful message
         toast({
           title: 'Location Access Required',
           description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
           variant: 'destructive',
         });
-        // Still load the page — don't block, but don't return early
-        // so watchPosition is still started (user may enable permission mid-session)
       }
 
       // Only attempt getCurrentPosition if permission isn't already denied
       if (permissionState !== 'denied') {
-        try {
-          const location = await locationService.getCurrentLocation({ skipGeocoding: true });
-          setUserLocation({ lat: location.lat, lng: location.lng });
-          setHasGPS(true);
-          setIsTracking(true);
-          previousLocation.current = { lat: location.lat, lng: location.lng };
+        // Try up to 3 times to get a precise fix
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const location = await locationService.getCurrentLocation({ skipGeocoding: true });
+            setUserLocation({ lat: location.lat, lng: location.lng });
+            setHasGPS(true);
+            setIsTracking(true);
+            previousLocation.current = { lat: location.lat, lng: location.lng };
 
-          // Fetch address in background (non-blocking)
-          locationService['reverseGeocode'](location.lat, location.lng)
-            .then(address => setCurrentAddress(address))
-            .catch(() => setCurrentAddress('Address unavailable'));
-        } catch (error: any) {
-          console.warn('[Canvassing] Initial location failed, using default:', error?.message);
-          if (error?.code === 1) {
-            toast({
-              title: 'Location Access Required',
-              description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
-              variant: 'destructive',
-            });
-            permissionDeniedToastShown = true;
+            // Fetch address in background (non-blocking)
+            locationService['reverseGeocode'](location.lat, location.lng)
+              .then(address => setCurrentAddress(address))
+              .catch(() => setCurrentAddress('Address unavailable'));
+            break; // success — stop retrying
+          } catch (error: any) {
+            console.warn(`[Canvassing] Location attempt ${attempt + 1} failed:`, error?.message, 'code:', error?.code);
+            if (error?.code === 1) {
+              toast({
+                title: 'Location Access Required',
+                description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
+                variant: 'destructive',
+              });
+              permissionDeniedToastShown = true;
+              break; // don't retry permission denied
+            }
+            // code 99 = too imprecise — retry after a brief delay
+            if (error?.code === 99 && attempt < 2) {
+              await new Promise(r => setTimeout(r, 2000));
+              continue;
+            }
+            // Other errors on final attempt: don't set location (map stays in loading/fallback)
           }
-          // Non-permission errors: silently use default location — map already loaded
         }
       }
+
+      setGpsAttempted(true);
     };
 
     initLocation();
@@ -224,6 +249,9 @@ export default function LiveCanvassingPage() {
       setHasGPS((current) => {
         if (!current) {
           console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
+          // If we still don't have a location, use neutral fallback so map renders
+          setUserLocation(prev => prev || NEUTRAL_FALLBACK);
+          setCurrentAddress('Location unavailable — use search or tap recenter');
         }
         return true;
       });
@@ -232,6 +260,15 @@ export default function LiveCanvassingPage() {
     // Start watching location
     const stopWatching = locationService.watchLocation(
       (location) => {
+        const accuracy = location.accuracy ?? Infinity;
+
+        // Reject coarse watch fixes if we don't yet have GPS
+        // (once we have a fix, accept all updates to keep the dot moving)
+        if (!previousLocation.current && accuracy > 500) {
+          console.warn(`[Canvassing] Watch: ignoring coarse fix (${Math.round(accuracy)}m)`);
+          return;
+        }
+
         const newLat = location.lat;
         const newLng = location.lng;
 
