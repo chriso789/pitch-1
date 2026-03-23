@@ -327,31 +327,39 @@ export default function GooglePropertyMarkersLayer({
     };
   }, [getStreetHint]);
 
-  // Incremental marker update - only add/remove/update what changed
+  // Incremental marker update - keyed by canonical address to prevent duplicate pins
   const updateMarkersIncrementally = useCallback((properties: CanvassiqProperty[], zoom: number) => {
-    const currentPropertyIds = new Set(properties.map(p => p.id));
+    // Build a map of canonical key → property for current viewport
+    const currentKeys = new Map<string, CanvassiqProperty>();
+    for (const p of properties) {
+      const key = getNormalizedAddressKey(p) || p.id; // fallback to id
+      // If same key appears twice in viewport, prefer the canonical winner (dedup already ran)
+      if (!currentKeys.has(key)) {
+        currentKeys.set(key, p);
+      }
+    }
     
-    // Remove markers that are no longer in view
-    markersRef.current.forEach((marker, id) => {
-      if (!currentPropertyIds.has(id)) {
+    // Remove markers whose key is no longer in view
+    markersRef.current.forEach((marker, key) => {
+      if (!currentKeys.has(key)) {
         marker.setMap(null);
-        markersRef.current.delete(id);
-        propertiesCacheRef.current.delete(id);
+        markersRef.current.delete(key);
+        propertiesCacheRef.current.delete(key);
       }
     });
     
     // Add new markers or update existing ones
-    properties.forEach((property) => {
+    currentKeys.forEach((property, key) => {
       if (!property.lat || !property.lng) return;
       
-      const existingMarker = markersRef.current.get(property.id);
-      const cachedProperty = propertiesCacheRef.current.get(property.id);
+      const existingMarker = markersRef.current.get(key);
+      const cachedProperty = propertiesCacheRef.current.get(key);
       
       if (existingMarker) {
         // Check if disposition changed - update icon only
         if (cachedProperty?.disposition !== property.disposition) {
           existingMarker.setIcon(createMarkerIcon(property, zoom));
-          propertiesCacheRef.current.set(property.id, property);
+          propertiesCacheRef.current.set(key, property);
         }
       } else {
         // Create new marker
@@ -366,8 +374,8 @@ export default function GooglePropertyMarkersLayer({
           onPropertyClickRef.current(property);
         });
         
-        markersRef.current.set(property.id, marker);
-        propertiesCacheRef.current.set(property.id, property);
+        markersRef.current.set(key, marker);
+        propertiesCacheRef.current.set(key, property);
       }
     });
   }, [map, createMarkerIcon]);
