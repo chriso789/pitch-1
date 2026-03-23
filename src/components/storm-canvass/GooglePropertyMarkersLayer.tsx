@@ -513,8 +513,8 @@ export default function GooglePropertyMarkersLayer({
           
           const results = await Promise.allSettled(loadPromises);
 
-          // Bail if stale
-          if (thisLoadVersion < loadVersionRef.current) {
+          // Bail if stale or unmounted
+          if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
             setIsLoading(false);
             onLoadingChange?.(false);
             loadingRef.current = false;
