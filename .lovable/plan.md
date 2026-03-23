@@ -1,43 +1,27 @@
 
 
-## Plan: Eliminate GPS Blocking on Start Canvassing
+## Plan: Fix Map Showing Stale Tampa Location Instead of Actual Position
 
 ### Problem
 
-When Chris clicks "Start Canvassing," the page can get stuck showing a "GPS Tracking Error" toast and a persistent "Acquiring precise location..." overlay. Three issues cause this:
+The `getCurrentLocation` call uses `maximumAge: 300000` (5 minutes), which tells the browser it's OK to return a cached GPS position up to 5 minutes old. If Chris's browser cached a Tampa position (from a previous session, VPN, or IP-based fallback), it returns that stale coordinate immediately instead of acquiring a fresh fix. The `watchPosition` also uses `maximumAge: 300000`, so it can return the same stale cache before eventually getting a real lock.
 
-1. **`watchLocation` still shows "GPS Tracking Error" toast** for position-unavailable errors (code 2) — these should be silently suppressed like timeouts
-2. **GPS acquiring overlay never dismisses** if `getCurrentLocation` fails — `hasGPS` stays `false` forever, blocking the UI
-3. **`gpsTrailService` uses strict 10-second timeout** with only 1-second cache — triggers its own errors on slow GPS devices
-4. **`canvassiq_properties` RLS doesn't support company switching** — uses `profiles.tenant_id` instead of `COALESCE(active_tenant_id, tenant_id)`, so switched users can't see their company's pins
+The initial `getCurrentLocation` is the one that sets the map center and the "Your Location" marker. Once set to Tampa, the map stays there until `watchPosition` eventually delivers a fresh position — which can take a while or never happen if the cached value keeps satisfying the `maximumAge` window.
 
 ### Changes
 
-#### 1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Never block on GPS
+#### 1. `src/services/locationService.ts` — Fresh position for initial lock, lenient for watch
 
-- **Watch error handler (lines 268-276)**: Remove the "GPS Tracking Error" toast entirely. Only show a toast for permission denied (code 1). All other errors (code 2, code 3, unknown) are silently logged — `watchPosition` keeps retrying automatically.
-- **GPS overlay auto-dismiss**: Add a 10-second timeout that sets `hasGPS = true` even without a GPS lock, so the overlay dismisses and the user can use the map at the default location. The GPS will update the position when it eventually locks.
-- **Initial location catch (lines 202-218)**: Remove the destructive "Location Error" toast for non-permission errors. Just log a warning — the map already loads at default location.
+- **`getCurrentLocation` (line 34)**: Change `maximumAge` from `300000` to `0`. The initial position request should always get a fresh GPS fix — no stale cache. This is the call that determines where the map centers.
+- **`watchLocation` (line 94)**: Change `maximumAge` from `300000` to `10000` (10 seconds). The watch can accept slightly recent positions for smooth updates, but 5 minutes is too long — it keeps returning the same stale coordinate.
 
-#### 2. `src/services/gpsTrailService.ts` — Lenient GPS options
+#### 2. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Update location from watch even if initial failed
 
-- Change `maximumAge` from `1000` to `300000` (5 minutes) to match `locationService`
-- Change `timeout` from `10000` to `30000` (30 seconds) to match `locationService`
-
-#### 3. Database migration — Fix `canvassiq_properties` RLS for company switching
-
-Update all four RLS policies on `canvassiq_properties` to use `COALESCE(profiles.active_tenant_id, profiles.tenant_id)` instead of just `profiles.tenant_id`. This matches the pattern already used on `canvass_areas`, `canvass_area_assignments`, and `canvass_area_properties`.
-
-### Result
-
-- GPS errors never block the canvassing page — users always get a working map
-- The "GPS Tracking Error" toast is eliminated entirely
-- GPS overlay auto-dismisses after 10 seconds worst case
-- Company-switched users see the correct canvass pins for their active company
+- **Lines 246-248** (watch success handler): Currently this always updates `userLocation`. This is correct. No change needed here.
+- **Line 187** (`permissionState === 'denied'` early return): Currently this returns before starting `watchPosition`. The watch should still be started even if permission was previously denied — the user may have just enabled it. Move the early return to after the watch setup, or better: don't return early, just skip the `getCurrentPosition` call.
 
 ### Files to Change
 
-1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — suppress error toasts, add overlay auto-dismiss
-2. `src/services/gpsTrailService.ts` — increase `maximumAge` and `timeout`
-3. Database migration — update `canvassiq_properties` RLS policies
+1. `src/services/locationService.ts` — set `maximumAge: 0` for `getCurrentLocation`, `maximumAge: 10000` for `watchLocation`
+2. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — don't skip `watchPosition` when permission was previously denied
 
