@@ -247,6 +247,9 @@ export default function AIAgentSettingsPage() {
           location_id: config.location_id,
           business_hours: config.business_hours,
           qualification_questions: config.qualification_questions as any,
+          auto_create_leads: config.auto_create_leads,
+          auto_schedule_appointments: config.auto_schedule_appointments,
+          sms_notify_rep: config.sms_notify_rep,
         } as any, {
           onConflict: 'tenant_id',
         });
