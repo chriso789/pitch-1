@@ -118,7 +118,7 @@ export const CLJSearchBar = () => {
 
     const timeoutId = setTimeout(searchAll, 300);
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, currentLocationId, toast]);
+  }, [searchTerm, currentLocationId, activeTenantId, toast]);
 
   const handleSelect = (result: SearchResult) => {
     const routes: Record<string, string> = {
