@@ -112,7 +112,12 @@ class LocationService {
 
         onLocationUpdate(locationData);
       },
-      (error) => onError(new Error(`Geolocation error: ${error.message}`)),
+      (error) => {
+        // Pass a custom error that preserves the GeolocationPositionError code
+        const geoError = new Error(error.message) as Error & { code?: number };
+        geoError.code = error.code;
+        onError(geoError);
+      },
       options
     );
 
