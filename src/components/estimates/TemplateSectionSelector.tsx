@@ -444,8 +444,9 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[40%]">Item Name</TableHead>
-                <TableHead className="w-[15%] text-right">Qty</TableHead>
+                <TableHead className="w-[30%]">Item Name</TableHead>
+                <TableHead className="w-[15%]">Color / Notes</TableHead>
+                <TableHead className="w-[10%] text-right">Qty</TableHead>
                 <TableHead className="w-[10%]">Unit</TableHead>
                 <TableHead className="w-[15%] text-right">Unit Cost</TableHead>
                 <TableHead className="w-[15%] text-right">Line Total</TableHead>
