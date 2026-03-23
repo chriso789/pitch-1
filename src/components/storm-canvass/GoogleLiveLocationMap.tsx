@@ -29,6 +29,40 @@ const MAP_TYPE_IDS: Record<MapStyle, string> = {
   'lot-lines': 'roadmap',
 };
 
+// Suppress Google's native address/house-number labels so only our custom
+// markers show street numbers — prevents the "double pin" visual effect.
+function getMapStyles(style: MapStyle): google.maps.MapTypeStyle[] {
+  const hideLabels: google.maps.MapTypeStyle[] = [
+    // Hide road number labels (the small house-number text Google renders)
+    { featureType: 'road', elementType: 'labels.text', stylers: [{ visibility: 'off' }] },
+    // Hide POI labels entirely
+    { featureType: 'poi', stylers: [{ visibility: 'off' }] },
+    // Hide transit labels
+    { featureType: 'transit', stylers: [{ visibility: 'off' }] },
+  ];
+
+  if (style === 'lot-lines') {
+    return [
+      ...hideLabels,
+      // Keep road geometry visible on roadmap
+      { featureType: 'road', elementType: 'geometry', stylers: [{ visibility: 'on' }] },
+      // Keep road name labels for navigation context
+      { featureType: 'road', elementType: 'labels.text', stylers: [{ visibility: 'on' }] },
+      // But hide the small address/number labels that Google adds on buildings
+      { featureType: 'road.local', elementType: 'labels.text.fill', stylers: [{ visibility: 'simplified' }] },
+    ];
+  }
+
+  // Satellite/hybrid: hide ALL text labels — our markers are the only numbering system
+  return [
+    ...hideLabels,
+    { featureType: 'all', elementType: 'labels.text', stylers: [{ visibility: 'off' }] },
+    // Keep major road labels so users can navigate
+    { featureType: 'road.arterial', elementType: 'labels.text', stylers: [{ visibility: 'on' }] },
+    { featureType: 'road.highway', elementType: 'labels.text', stylers: [{ visibility: 'on' }] },
+  ];
+}
+
 export default function GoogleLiveLocationMap({
   userLocation,
   currentAddress,
@@ -79,10 +113,7 @@ export default function GoogleLiveLocationMap({
           clickableIcons: false,
           gestureHandling: 'greedy',
           keyboardShortcuts: false,
-          styles: mapStyle === 'lot-lines' ? [
-            { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-            { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-          ] : [],
+          styles: getMapStyles(mapStyle),
         });
 
         // User location marker (pulsing blue dot)
@@ -154,17 +185,7 @@ export default function GoogleLiveLocationMap({
     if (!map.current || !mapReady) return;
     
     map.current.setMapTypeId(MAP_TYPE_IDS[mapStyle]);
-    
-    if (mapStyle === 'lot-lines') {
-      map.current.setOptions({
-        styles: [
-          { featureType: 'poi', stylers: [{ visibility: 'off' }] },
-          { featureType: 'transit', stylers: [{ visibility: 'off' }] },
-        ],
-      });
-    } else {
-      map.current.setOptions({ styles: [] });
-    }
+    map.current.setOptions({ styles: getMapStyles(mapStyle) });
   }, [mapStyle, mapReady]);
 
   // Update user location marker
