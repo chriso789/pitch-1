@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { canViewAllRecords } from "@/lib/roleUtils";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -266,6 +267,11 @@ const Pipeline = () => {
         }
         if (filters.dateTo) {
           query = query.lte('created_at', filters.dateTo + 'T23:59:59');
+        }
+
+        // Sales reps only see pipeline entries assigned to them or created by them
+        if (currentProfile?.role && !canViewAllRecords(currentProfile.role)) {
+          query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
         }
 
         return query.order('created_at', { ascending: filters.sortOrder === 'asc' });

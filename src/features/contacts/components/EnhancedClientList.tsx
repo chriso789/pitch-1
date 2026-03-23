@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
+import { canViewAllRecords } from "@/lib/roleUtils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatCard } from "@/components/dashboard/StatCard";
 import { Button } from "@/components/ui/button";
@@ -428,6 +429,11 @@ export const EnhancedClientList = () => {
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
         
+        // Sales reps only see contacts assigned to them or created by them
+        if (profile && !canViewAllRecords(profile.role)) {
+          batchQuery = batchQuery.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+        }
+
         // Apply location filter - only show contacts explicitly assigned to this location
         if (currentLocationId && locations.length > 0) {
           console.log("Applying location filter:", currentLocationId);
@@ -503,7 +509,7 @@ export const EnhancedClientList = () => {
 
       // Fetch pipeline entries with contact and communication data
       console.log("Fetching pipeline entries...");
-      const { data: pipelineData, error: pipelineError } = await supabase
+      let pipelineQuery = supabase
         .from("pipeline_entries")
         .select(`
           *,
@@ -522,7 +528,14 @@ export const EnhancedClientList = () => {
             last_name
           )
         `)
-        .eq('tenant_id', effectiveTenantId)
+        .eq('tenant_id', effectiveTenantId);
+
+      // Sales reps only see pipeline entries assigned to them or created by them
+      if (profile && !canViewAllRecords(profile.role)) {
+        pipelineQuery = pipelineQuery.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+      }
+
+      const { data: pipelineData, error: pipelineError } = await pipelineQuery
         .order("created_at", { ascending: false });
 
       if (pipelineError) {
