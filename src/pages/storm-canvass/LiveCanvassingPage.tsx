@@ -183,8 +183,8 @@ export default function LiveCanvassingPage() {
           description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
           variant: 'destructive',
         });
-        // Still load the page — don't block
-        return;
+        // Still load the page — don't block, but don't return early
+        // so watchPosition is still started (user may enable permission mid-session)
       }
 
       // Request initial location
