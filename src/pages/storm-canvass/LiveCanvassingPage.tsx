@@ -183,33 +183,35 @@ export default function LiveCanvassingPage() {
           description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
           variant: 'destructive',
         });
-        // Still load the page — don't block
-        return;
+        // Still load the page — don't block, but don't return early
+        // so watchPosition is still started (user may enable permission mid-session)
       }
 
-      // Request initial location
-      try {
-        const location = await locationService.getCurrentLocation({ skipGeocoding: true });
-        setUserLocation({ lat: location.lat, lng: location.lng });
-        setHasGPS(true);
-        setIsTracking(true);
-        previousLocation.current = { lat: location.lat, lng: location.lng };
+      // Only attempt getCurrentPosition if permission isn't already denied
+      if (permissionState !== 'denied') {
+        try {
+          const location = await locationService.getCurrentLocation({ skipGeocoding: true });
+          setUserLocation({ lat: location.lat, lng: location.lng });
+          setHasGPS(true);
+          setIsTracking(true);
+          previousLocation.current = { lat: location.lat, lng: location.lng };
 
-        // Fetch address in background (non-blocking)
-        locationService['reverseGeocode'](location.lat, location.lng)
-          .then(address => setCurrentAddress(address))
-          .catch(() => setCurrentAddress('Address unavailable'));
-      } catch (error: any) {
-        console.warn('[Canvassing] Initial location failed, using default:', error?.message);
-        if (error?.code === 1) {
-          toast({
-            title: 'Location Access Required',
-            description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
-            variant: 'destructive',
-          });
-          permissionDeniedToastShown = true;
+          // Fetch address in background (non-blocking)
+          locationService['reverseGeocode'](location.lat, location.lng)
+            .then(address => setCurrentAddress(address))
+            .catch(() => setCurrentAddress('Address unavailable'));
+        } catch (error: any) {
+          console.warn('[Canvassing] Initial location failed, using default:', error?.message);
+          if (error?.code === 1) {
+            toast({
+              title: 'Location Access Required',
+              description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
+              variant: 'destructive',
+            });
+            permissionDeniedToastShown = true;
+          }
+          // Non-permission errors: silently use default location — map already loaded
         }
-        // Non-permission errors: silently use default location — map already loaded
       }
     };
 

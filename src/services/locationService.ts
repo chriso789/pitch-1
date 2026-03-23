@@ -31,7 +31,7 @@ class LocationService {
       const geoOptions = {
         enableHighAccuracy: true,
         timeout: 20000,
-        maximumAge: 300000, // 5 minutes
+        maximumAge: 0, // Always get fresh position for initial lock
       };
 
       navigator.geolocation.getCurrentPosition(
@@ -91,7 +91,7 @@ class LocationService {
     const options = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 300000, // 5 minutes - accept cached positions
+      maximumAge: 10000, // 10 seconds - accept recent positions but not stale ones
     };
 
     this.watchId = navigator.geolocation.watchPosition(
