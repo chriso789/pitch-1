@@ -238,6 +238,7 @@ export default function GooglePropertyMarkersLayer({
   onPropertiesLoaded,
   refreshKey,
   areaPropertyIds,
+  symbolSettings,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
   // Ref for onPropertyClick so marker listeners never go stale
