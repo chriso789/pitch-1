@@ -145,7 +145,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
         const { error } = await supabase
           .from('pipeline_stages')
           .insert({
-            tenant_id: profile?.tenant_id,
+            tenant_id: effectiveTenantId,
             name: name.trim(),
             key: finalKey,
             description: description.trim() || null,
