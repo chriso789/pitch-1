@@ -21,7 +21,15 @@ class LocationService {
    * Get current user location
    * @param options.skipGeocoding - If true, resolves immediately without waiting for address
    */
-  async getCurrentLocation(options?: { skipGeocoding?: boolean }): Promise<LocationData> {
+  /** Maximum accuracy radius (meters) to accept for initial map centering */
+  static readonly ACCURACY_THRESHOLD = 500; // reject coarse IP-based fixes (often 2000m+)
+
+  /**
+   * Get current user location
+   * @param options.skipGeocoding - If true, resolves immediately without waiting for address
+   * @param options.accuracyThreshold - Max accuracy radius in meters to accept (default 500m)
+   */
+  async getCurrentLocation(options?: { skipGeocoding?: boolean; accuracyThreshold?: number }): Promise<LocationData> {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error("Geolocation is not supported by this browser"));
@@ -36,6 +44,19 @@ class LocationService {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          const threshold = options?.accuracyThreshold ?? LocationService.ACCURACY_THRESHOLD;
+
+          // Reject coarse fixes (e.g. IP-based geolocation returning ~2000m accuracy)
+          if (position.coords.accuracy > threshold) {
+            console.warn(
+              `[LocationService] Rejecting coarse fix: accuracy=${position.coords.accuracy}m > threshold=${threshold}m`
+            );
+            const coarseError = new Error(`Location too imprecise (${Math.round(position.coords.accuracy)}m)`) as Error & { code?: number };
+            coarseError.code = 99; // custom code for "too imprecise"
+            reject(coarseError);
+            return;
+          }
+
           const locationData: LocationData = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
@@ -69,7 +90,9 @@ class LocationService {
             });
         },
         (error) => {
-          reject(new Error(`Geolocation error: ${error.message}`));
+          const geoError = new Error(`Geolocation error: ${error.message}`) as Error & { code?: number };
+          geoError.code = error.code;
+          reject(geoError);
         },
         geoOptions
       );

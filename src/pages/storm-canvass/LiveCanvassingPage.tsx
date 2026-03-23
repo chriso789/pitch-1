@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Crosshair } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import GoogleLiveLocationMap from '@/components/storm-canvass/GoogleLiveLocationMap';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
@@ -25,8 +25,9 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 
-// Default location (Tampa, FL) for instant map load before GPS acquires
-const DEFAULT_LOCATION = { lat: 27.9506, lng: -82.4572 };
+// Neutral US center (geographic center of contiguous US) — only used if GPS never resolves
+const NEUTRAL_FALLBACK = { lat: 39.8283, lng: -98.5795 };
+const NEUTRAL_FALLBACK_ZOOM = 4; // zoomed out so it's obviously not "your location"
 
 interface Contact {
   id: string;
@@ -59,9 +60,10 @@ export default function LiveCanvassingPage() {
   const { profile } = useUserProfile();
   const layout = useDeviceLayout();
   const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
-  // Start with default location for instant map load
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(DEFAULT_LOCATION);
+  // Start with null — map won't render until we have a real GPS fix or fallback
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [hasGPS, setHasGPS] = useState(false);
+  const [gpsAttempted, setGpsAttempted] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
   const [isTracking, setIsTracking] = useState(false);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
@@ -161,6 +163,22 @@ export default function LiveCanvassingPage() {
     };
   }, [profile?.id, profile?.tenant_id]);
 
+  // Manual recenter handler
+  const handleRecenterGPS = useCallback(async () => {
+    try {
+      const location = await locationService.getCurrentLocation({ skipGeocoding: true, accuracyThreshold: 1000 });
+      setUserLocation({ lat: location.lat, lng: location.lng });
+      setHasGPS(true);
+      previousLocation.current = { lat: location.lat, lng: location.lng };
+      locationService['reverseGeocode'](location.lat, location.lng)
+        .then(address => setCurrentAddress(address))
+        .catch(() => {});
+      toast({ title: 'Location Updated', description: `Accuracy: ${Math.round(location.accuracy || 0)}m` });
+    } catch {
+      toast({ title: 'GPS Unavailable', description: 'Could not get a precise location fix.', variant: 'destructive' });
+    }
+  }, [toast]);
+
   useEffect(() => {
     let permissionDeniedToastShown = false;
 
@@ -177,42 +195,51 @@ export default function LiveCanvassingPage() {
       }
 
       if (permissionState === 'denied') {
-        // Permission was previously denied — show helpful message
         toast({
           title: 'Location Access Required',
           description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
           variant: 'destructive',
         });
-        // Still load the page — don't block, but don't return early
-        // so watchPosition is still started (user may enable permission mid-session)
       }
 
       // Only attempt getCurrentPosition if permission isn't already denied
       if (permissionState !== 'denied') {
-        try {
-          const location = await locationService.getCurrentLocation({ skipGeocoding: true });
-          setUserLocation({ lat: location.lat, lng: location.lng });
-          setHasGPS(true);
-          setIsTracking(true);
-          previousLocation.current = { lat: location.lat, lng: location.lng };
+        // Try up to 3 times to get a precise fix
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            const location = await locationService.getCurrentLocation({ skipGeocoding: true });
+            setUserLocation({ lat: location.lat, lng: location.lng });
+            setHasGPS(true);
+            setIsTracking(true);
+            previousLocation.current = { lat: location.lat, lng: location.lng };
 
-          // Fetch address in background (non-blocking)
-          locationService['reverseGeocode'](location.lat, location.lng)
-            .then(address => setCurrentAddress(address))
-            .catch(() => setCurrentAddress('Address unavailable'));
-        } catch (error: any) {
-          console.warn('[Canvassing] Initial location failed, using default:', error?.message);
-          if (error?.code === 1) {
-            toast({
-              title: 'Location Access Required',
-              description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
-              variant: 'destructive',
-            });
-            permissionDeniedToastShown = true;
+            // Fetch address in background (non-blocking)
+            locationService['reverseGeocode'](location.lat, location.lng)
+              .then(address => setCurrentAddress(address))
+              .catch(() => setCurrentAddress('Address unavailable'));
+            break; // success — stop retrying
+          } catch (error: any) {
+            console.warn(`[Canvassing] Location attempt ${attempt + 1} failed:`, error?.message, 'code:', error?.code);
+            if (error?.code === 1) {
+              toast({
+                title: 'Location Access Required',
+                description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
+                variant: 'destructive',
+              });
+              permissionDeniedToastShown = true;
+              break; // don't retry permission denied
+            }
+            // code 99 = too imprecise — retry after a brief delay
+            if (error?.code === 99 && attempt < 2) {
+              await new Promise(r => setTimeout(r, 2000));
+              continue;
+            }
+            // Other errors on final attempt: don't set location (map stays in loading/fallback)
           }
-          // Non-permission errors: silently use default location — map already loaded
         }
       }
+
+      setGpsAttempted(true);
     };
 
     initLocation();
@@ -222,6 +249,9 @@ export default function LiveCanvassingPage() {
       setHasGPS((current) => {
         if (!current) {
           console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
+          // If we still don't have a location, use neutral fallback so map renders
+          setUserLocation(prev => prev || NEUTRAL_FALLBACK);
+          setCurrentAddress('Location unavailable — use search or tap recenter');
         }
         return true;
       });
@@ -230,6 +260,15 @@ export default function LiveCanvassingPage() {
     // Start watching location
     const stopWatching = locationService.watchLocation(
       (location) => {
+        const accuracy = location.accuracy ?? Infinity;
+
+        // Reject coarse watch fixes if we don't yet have GPS
+        // (once we have a fix, accept all updates to keep the dot moving)
+        if (!previousLocation.current && accuracy > 500) {
+          console.warn(`[Canvassing] Watch: ignoring coarse fix (${Math.round(accuracy)}m)`);
+          return;
+        }
+
         const newLat = location.lat;
         const newLng = location.lng;
 
@@ -408,25 +447,34 @@ export default function LiveCanvassingPage() {
 
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden bg-background" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-      {/* Full-screen map */}
+      {/* Full-screen map — only render once we have a location */}
       <div className="absolute inset-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-        <GoogleLiveLocationMap
-          userLocation={userLocation}
-          currentAddress={currentAddress}
-          onContactSelect={setSelectedContact}
-          onParcelSelect={handleParcelSelect}
-          routeData={routeData}
-          destination={destination}
-          mapStyle={mapStyle}
-          onLoadingChange={setRawIsLoading}
-          onPropertiesLoaded={setRawLoadedCount}
-          refreshKey={markersRefreshKey}
-          areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
-          areaPolygon={areaPolygon}
-          onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
-          followUser={canvassMode === 'knock'}
-          symbolSettings={symbolSettings}
-        />
+        {userLocation ? (
+          <GoogleLiveLocationMap
+            userLocation={userLocation}
+            currentAddress={currentAddress}
+            onContactSelect={setSelectedContact}
+            onParcelSelect={handleParcelSelect}
+            routeData={routeData}
+            destination={destination}
+            mapStyle={mapStyle}
+            onLoadingChange={setRawIsLoading}
+            onPropertiesLoaded={setRawLoadedCount}
+            refreshKey={markersRefreshKey}
+            areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
+            areaPolygon={areaPolygon}
+            onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
+            followUser={canvassMode === 'knock'}
+            symbolSettings={symbolSettings}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <div className="text-center">
+              <Crosshair className="h-8 w-8 animate-pulse text-primary mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Waiting for GPS signal...</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Overlaid Header Controls */}
@@ -454,7 +502,7 @@ export default function LiveCanvassingPage() {
         {/* Search bar */}
         <div className="px-2 pt-2 pointer-events-auto">
           <AddressSearchBar
-            userLocation={userLocation}
+            userLocation={userLocation || NEUTRAL_FALLBACK}
             onAddressSelect={handleAddressSelect}
           />
         </div>
@@ -488,7 +536,7 @@ export default function LiveCanvassingPage() {
 
 
       {/* Territory Boundary Alert */}
-      {assignedArea && areaPolygon && (
+      {assignedArea && areaPolygon && userLocation && (
         <TerritoryBoundaryAlert userLocation={userLocation} areaPolygon={areaPolygon} />
       )}
 
@@ -498,8 +546,17 @@ export default function LiveCanvassingPage() {
         loadedCount={stableCount}
       />
 
-      {/* Floating Knock/Canvas Toggle */}
-      <div className="fixed z-40 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', right: '12px' }}>
+      {/* Floating Recenter + Knock/Canvas Toggle */}
+      <div className="fixed z-40 pointer-events-auto flex items-center gap-2" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', right: '12px' }}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 bg-background/90 backdrop-blur-sm shadow-md border border-border/50 rounded-full"
+          onClick={handleRecenterGPS}
+          title="Center on my location"
+        >
+          <Crosshair className="h-5 w-5" />
+        </Button>
         <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
       </div>
 
@@ -526,11 +583,10 @@ export default function LiveCanvassingPage() {
       {/* Mobile Disposition Panel (for contacts) */}
       <MobileDispositionPanel
         contact={selectedContact}
-        userLocation={userLocation}
+        userLocation={userLocation || NEUTRAL_FALLBACK}
         dispositions={dispositions}
         onClose={() => setSelectedContact(null)}
         onUpdate={() => {
-          // Refresh map/markers after disposition update
           setSelectedContact(null);
         }}
         onNavigate={handleNavigateToContact}
@@ -545,7 +601,7 @@ export default function LiveCanvassingPage() {
           if (!open) setSelectedProperty(null);
         }}
         property={selectedProperty}
-        userLocation={userLocation}
+        userLocation={userLocation || NEUTRAL_FALLBACK}
         onDispositionUpdate={() => {
           // Force refresh markers by incrementing the key
           setMarkersRefreshKey(prev => prev + 1);
