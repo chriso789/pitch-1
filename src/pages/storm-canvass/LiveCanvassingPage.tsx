@@ -60,8 +60,20 @@ export default function LiveCanvassingPage() {
   const { profile } = useUserProfile();
   const layout = useDeviceLayout();
   const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
+
+  // Compute assigned area centroid as intelligent fallback
+  const areaCentroid = useMemo(() => {
+    if (!areaPolygon) return null;
+    const coords = areaPolygon?.coordinates?.[0] || areaPolygon?.geometry?.coordinates?.[0];
+    if (!coords || coords.length < 3) return null;
+    let sumLat = 0, sumLng = 0;
+    for (const c of coords) { sumLng += c[0]; sumLat += c[1]; }
+    return { lat: sumLat / coords.length, lng: sumLng / coords.length };
+  }, [areaPolygon]);
+
   // Start with null — map won't render until we have a real GPS fix or fallback
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [initialZoom, setInitialZoom] = useState<number | undefined>(undefined);
   const [hasGPS, setHasGPS] = useState(false);
   const [gpsAttempted, setGpsAttempted] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
