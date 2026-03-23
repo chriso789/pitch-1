@@ -41,7 +41,8 @@ import {
   Home,
   Activity,
   Building2,
-  MapPin
+  MapPin,
+  Wallet
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { subDays, format } from "date-fns";
