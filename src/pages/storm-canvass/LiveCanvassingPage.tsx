@@ -457,6 +457,15 @@ export default function LiveCanvassingPage() {
 
   // Handle address selection from search
   const handleAddressSelect = async (place: any) => {
+    const panAndRefresh = (lat: number, lng: number, address: string) => {
+      // Pan map to the searched location
+      setUserLocation({ lat, lng });
+      // Force marker refresh so pins load for the new viewport
+      setMarkersRefreshKey(prev => prev + 1);
+      // Also calculate route
+      calculateRoute({ lat, lng, address });
+    };
+
     if (!place.geometry?.location) {
       // Fetch place details if geometry not provided
       try {
@@ -474,21 +483,17 @@ export default function LiveCanvassingPage() {
 
         const location = data?.result?.geometry?.location;
         if (location) {
-          await calculateRoute({
-            lat: location.lat,
-            lng: location.lng,
-            address: data.result.formatted_address || place.description,
-          });
+          panAndRefresh(location.lat, location.lng, data.result.formatted_address || place.description);
         }
       } catch (error) {
         console.error('Failed to get place details:', error);
       }
     } else {
-      await calculateRoute({
-        lat: place.geometry.location.lat,
-        lng: place.geometry.location.lng,
-        address: place.description,
-      });
+      panAndRefresh(
+        place.geometry.location.lat,
+        place.geometry.location.lng,
+        place.description,
+      );
     }
   };
 

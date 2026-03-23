@@ -163,7 +163,7 @@ export const CLJSearchBar = () => {
           ref={dropdownRef}
           className="fixed left-3 right-3 top-[7.5rem] md:absolute md:top-full md:left-0 md:right-0 mt-1 bg-popover border border-border rounded-md shadow-lg z-[60] max-h-[60vh] md:max-h-[400px] overflow-y-auto"
         >
-          <Command>
+          <Command shouldFilter={false}>
             <CommandList>
               {loading && (
                 <CommandEmpty>Searching...</CommandEmpty>
