@@ -1,57 +1,38 @@
 
+What I recognize from the image:
 
-## Fix: AI Invoice Parsing Not Populating Form Fields
+- This is not just a label/readability issue; there are true duplicate app pins for the same homes.
+- The duplicates are visible for several house numbers, including:
+  - 4182
+  - 4183
+  - 4102
+  - 4103
+  - 4123
+  - 4063
+- The duplicate pins are slightly offset from each other, which strongly suggests two separate marker instances are being rendered for one canonical address.
+- Some homes nearby appear only once (for example 4083 and 4143), so the bug is selective/intermittent rather than every address duplicating.
+- The pattern matches a frontend marker lifecycle problem more than a data problem:
+  - old markers are not being removed
+  - or an older async load is drawing after a newer load
+  - or the marker layer is being remounted and both old/new instances briefly coexist
 
-### Problem
-When a Beacon Roofing Supply invoice PDF is uploaded, the AI scan runs but fails to populate the form fields (amount shows $0.00, vendor/invoice# are empty). The edge function extracts only 4 basic fields and doesn't capture line items. The user wants the form to be ready to save after upload.
+What the codebase confirms:
+- `GoogleLiveLocationMap.tsx` is still forcing a remount with:
+  - `key={\`markers-\${refreshKey || 0}\`}`
+- In that same file, `refreshKey` is not passed into `GooglePropertyMarkersLayer` as a normal prop.
+- That means an old marker-layer instance can still finish async work after unmount and place markers onto the shared map, creating exactly the kind of doubled pins shown in your screenshot.
 
-### Root Causes
-1. The `parse-invoice-document` edge function prompt is too minimal — it asks for only invoice_number, date, amount, vendor_name but doesn't extract line items
-2. The tool schema doesn't include a `line_items` array for itemized costs
-3. The `InvoiceUploadCard` component doesn't display extracted line items or give a clear confirmation that fields were populated
+Most likely root cause:
+- orphaned markers from stale/unmounted `GooglePropertyMarkersLayer` instances, not duplicate rows in the property data
 
-### Plan
+Recommended implementation focus:
+1. Remove the `key`-based remount in `GoogleLiveLocationMap.tsx`
+2. Pass `refreshKey` as a normal prop instead
+3. Add an explicit mounted/cancel guard in `GooglePropertyMarkersLayer.tsx`
+4. Reject any async reconciliation from an unmounted or stale instance
+5. Keep marker identity tied only to the canonical normalized address key
 
-**1. Enhance the edge function extraction schema**
-- File: `supabase/functions/parse-invoice-document/index.ts`
-- Expand the AI prompt to explicitly ask for line items (description, quantity, unit price, line total)
-- Add `line_items` array to the tool function schema
-- Improve the system prompt to handle roofing supply invoices specifically (PO numbers, branch codes, account numbers)
-- Add a `subtotal`, `tax`, and `total` breakdown so the amount is more reliably captured
-
-**2. Update the UI to show extracted line items and auto-fill reliably**
-- File: `src/components/production/InvoiceUploadCard.tsx`
-- After AI parse, display a collapsible summary of extracted line items below the form so the user can verify
-- Auto-populate `notes` field with a formatted line item summary (item descriptions + amounts)
-- Ensure the amount field shows the parsed total immediately
-- Add a visual "fields populated" indicator when AI scan succeeds
-
-**3. Deploy the updated edge function**
-- Redeploy `parse-invoice-document` so the enhanced extraction takes effect
-
-### Technical Details
-
-**Enhanced tool schema** will include:
-```typescript
-line_items: [{
-  description: string,
-  quantity: number,
-  unit_price: number,
-  line_total: number
-}],
-subtotal: number,
-tax_amount: number,
-total_amount: number  // replaces invoice_amount for clarity
-```
-
-**Line items display** — a small table/list rendered below the form fields showing each extracted item, with the total auto-summed into the Amount field.
-
-### Files to Update
-- `supabase/functions/parse-invoice-document/index.ts` — enhanced extraction
-- `src/components/production/InvoiceUploadCard.tsx` — line items display + better auto-fill
-
-### Expected Result
-- Upload a Beacon invoice PDF → all fields auto-populate (vendor: "Beacon Roofing Supply", invoice #, date, total amount)
-- Line items are shown as a summary the user can review
-- Form is ready to submit immediately after scan completes
-
+Expected result after that fix:
+- one pin per address
+- number-only pins
+- no duplicate markers after refreshes, pans, zooms, or parcel reloads
