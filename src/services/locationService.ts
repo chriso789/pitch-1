@@ -57,6 +57,16 @@ class LocationService {
             return;
           }
 
+          // Reject stale GPS fixes — Mobile Safari can return cached positions even with maximumAge: 0
+          const fixAge = Date.now() - position.timestamp;
+          if (fixAge > 60000) {
+            console.warn(`[LocationService] Rejecting stale GPS fix: age=${Math.round(fixAge / 1000)}s`);
+            const staleError = new Error(`GPS fix is stale (${Math.round(fixAge / 1000)}s old)`) as Error & { code?: number };
+            staleError.code = 99;
+            reject(staleError);
+            return;
+          }
+
           const locationData: LocationData = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,

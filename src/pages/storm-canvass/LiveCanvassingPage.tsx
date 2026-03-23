@@ -62,7 +62,7 @@ export default function LiveCanvassingPage() {
   const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
 
   // Compute assigned area centroid as intelligent fallback
-  const areaCentroid = useMemo(() => {
+  const areaGeoCentroid = useMemo(() => {
     if (!areaPolygon) return null;
     const coords = areaPolygon?.coordinates?.[0] || areaPolygon?.geometry?.coordinates?.[0];
     if (!coords || coords.length < 3) return null;
@@ -70,6 +70,44 @@ export default function LiveCanvassingPage() {
     for (const c of coords) { sumLng += c[0]; sumLat += c[1]; }
     return { lat: sumLat / coords.length, lng: sumLng / coords.length };
   }, [areaPolygon]);
+
+  // Fallback: compute centroid from tenant's geocoded contacts when no assigned area
+  const [contactCentroid, setContactCentroid] = useState<{ lat: number; lng: number } | null>(null);
+  useEffect(() => {
+    if (areaGeoCentroid || !profile?.tenant_id) return; // area centroid exists, no need
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data } = await supabase
+          .from('contacts')
+          .select('latitude, longitude')
+          .eq('tenant_id', profile.tenant_id)
+          .not('latitude', 'is', null)
+          .not('longitude', 'is', null)
+          .limit(500);
+        if (cancelled || !data?.length) return;
+        let sumLat = 0, sumLng = 0, count = 0;
+        for (const c of data) {
+          if (c.latitude && c.longitude) {
+            sumLat += Number(c.latitude);
+            sumLng += Number(c.longitude);
+            count++;
+          }
+        }
+        if (count > 0) {
+          const centroid = { lat: sumLat / count, lng: sumLng / count };
+          console.log(`[Canvassing] Contact centroid computed from ${count} contacts:`, centroid);
+          setContactCentroid(centroid);
+        }
+      } catch (err) {
+        console.warn('[Canvassing] Failed to compute contact centroid:', err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [areaGeoCentroid, profile?.tenant_id]);
+
+  // Use area centroid if available, otherwise contact centroid
+  const areaCentroid = areaGeoCentroid || contactCentroid;
 
   // Start with null — map won't render until we have a real GPS fix or fallback
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);

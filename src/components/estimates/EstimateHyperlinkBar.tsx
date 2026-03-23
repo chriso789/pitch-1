@@ -69,7 +69,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const [isAdjusting, setIsAdjusting] = useState(false);
   
   // Fetch hyperlink bar data using useQuery for automatic refetch
-  const { data: hyperlinkData } = useQuery({
+  const { data: hyperlinkData, isFetching: hyperlinkFetching } = useQuery({
     queryKey: ['hyperlink-data', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -78,6 +78,8 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       return data as unknown as HyperlinkBarData;
     },
     enabled: !!pipelineEntryId,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   // Fetch actual invoices to overlay on estimated costs
