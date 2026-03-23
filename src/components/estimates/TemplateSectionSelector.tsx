@@ -175,7 +175,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             qty: qty,
             unit: item.unit || 'ea',
             unit_cost: unitCost,
-            line_total: lineTotal
+            line_total: lineTotal,
+            notes: item.notes || ''
           };
         });
         
