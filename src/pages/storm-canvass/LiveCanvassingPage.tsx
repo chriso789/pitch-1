@@ -200,22 +200,16 @@ export default function LiveCanvassingPage() {
           .then(address => setCurrentAddress(address))
           .catch(() => setCurrentAddress('Address unavailable'));
       } catch (error: any) {
-        console.error('Location error:', error);
+        console.warn('[Canvassing] Initial location failed, using default:', error?.message);
         if (error?.code === 1) {
-          // Permission denied during the prompt
           toast({
             title: 'Location Access Required',
             description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
             variant: 'destructive',
           });
           permissionDeniedToastShown = true;
-        } else {
-          toast({
-            title: 'Location Error',
-            description: 'Unable to access your location. Using default location.',
-            variant: 'destructive',
-          });
         }
+        // Non-permission errors: silently use default location — map already loaded
       }
     };
 
