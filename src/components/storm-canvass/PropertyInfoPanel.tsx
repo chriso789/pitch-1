@@ -126,6 +126,7 @@ export default function PropertyInfoPanel({
       }
 
       const pipelineResult = data?.pipeline || data?.result || data;
+      const isAddressMismatch = data?.address_mismatch === true;
 
       if (data?.scores) {
         setPipelineScores(data.scores);
@@ -133,51 +134,56 @@ export default function PropertyInfoPanel({
         setPipelineScores(data.result.scores);
       }
 
-      // Merge ALL public pipeline fields into localProperty
-      setLocalProperty((prev: any) => {
-        const enrichedFields: Record<string, any> = {};
-        if (validOwner(pipelineResult?.owner_name)) {
-          enrichedFields.owner_name = validOwner(pipelineResult.owner_name);
-        }
-        if (pipelineResult?.owner_mailing_address) {
-          enrichedFields.owner_mailing_address = pipelineResult.owner_mailing_address;
-        }
-        // Build property_data from pipeline results
-        enrichedFields.property_data = {
-          ...(prev.property_data || {}),
-          parcel_id: pipelineResult?.parcel_id || prev.property_data?.parcel_id,
-          assessed_value: pipelineResult?.assessed_value || prev.property_data?.assessed_value,
-          year_built: pipelineResult?.year_built || prev.property_data?.year_built,
-          living_sqft: pipelineResult?.living_sqft || prev.property_data?.living_sqft,
-          homestead: pipelineResult?.homestead ?? prev.property_data?.homestead,
-          lot_size: pipelineResult?.lot_size || prev.property_data?.lot_size,
-          land_use: pipelineResult?.land_use || prev.property_data?.land_use,
-          confidence_score: pipelineResult?.confidence_score || prev.property_data?.confidence_score,
-          sources: pipelineResult?.sources
-            ? Object.keys(pipelineResult.sources).filter((k: string) => {
-                const v = pipelineResult.sources[k];
-                // Only show sources that actually contributed data
-                if (!v || v === false || v === null) return false;
-                if (typeof v === 'string' && (v.startsWith('skipped') || v === 'null' || v === 'false')) return false;
-                if (k === 'used_batchleads' && v !== true) return false;
-                return true;
-              })
-            : prev.property_data?.sources,
-        };
-        return { ...prev, ...enrichedFields };
-      });
+      if (isAddressMismatch) {
+        // ADDRESS MISMATCH — do NOT merge owner/parcel/sqft from a neighbor
+        console.warn('[handlePublicLookup] Address mismatch detected — blocking owner/parcel merge. Stored:', data?.stored_address, 'Resolved:', data?.resolved_address);
+        toast.warning('Lookup returned a different address — owner data blocked to prevent mix-up');
+      } else {
+        // Only merge enrichment data when addresses match
+        setLocalProperty((prev: any) => {
+          const enrichedFields: Record<string, any> = {};
+          if (validOwner(pipelineResult?.owner_name)) {
+            enrichedFields.owner_name = validOwner(pipelineResult.owner_name);
+          }
+          if (pipelineResult?.owner_mailing_address) {
+            enrichedFields.owner_mailing_address = pipelineResult.owner_mailing_address;
+          }
+          // Build property_data from pipeline results
+          enrichedFields.property_data = {
+            ...(prev.property_data || {}),
+            parcel_id: pipelineResult?.parcel_id || prev.property_data?.parcel_id,
+            assessed_value: pipelineResult?.assessed_value || prev.property_data?.assessed_value,
+            year_built: pipelineResult?.year_built || prev.property_data?.year_built,
+            living_sqft: pipelineResult?.living_sqft || prev.property_data?.living_sqft,
+            homestead: pipelineResult?.homestead ?? prev.property_data?.homestead,
+            lot_size: pipelineResult?.lot_size || prev.property_data?.lot_size,
+            land_use: pipelineResult?.land_use || prev.property_data?.land_use,
+            confidence_score: pipelineResult?.confidence_score || prev.property_data?.confidence_score,
+            sources: pipelineResult?.sources
+              ? Object.keys(pipelineResult.sources).filter((k: string) => {
+                  const v = pipelineResult.sources[k];
+                  if (!v || v === false || v === null) return false;
+                  if (typeof v === 'string' && (v.startsWith('skipped') || v === 'null' || v === 'false')) return false;
+                  if (k === 'used_batchleads' && v !== true) return false;
+                  return true;
+                })
+              : prev.property_data?.sources,
+          };
+          return { ...prev, ...enrichedFields };
+        });
 
-      // Set enriched owner from public data if available
-      if (validOwner(pipelineResult?.owner_name)) {
-        setEnrichedOwners((prev) => prev.length > 0 ? prev : [{
-          id: '1',
-          name: validOwner(pipelineResult.owner_name)!,
-          age: pipelineResult.contact_age || null,
-          is_primary: true,
-        }]);
+        // Set enriched owner from public data if available
+        if (validOwner(pipelineResult?.owner_name)) {
+          setEnrichedOwners((prev) => prev.length > 0 ? prev : [{
+            id: '1',
+            name: validOwner(pipelineResult.owner_name)!,
+            age: pipelineResult.contact_age || null,
+            is_primary: true,
+          }]);
+        }
       }
 
-      console.log('[handlePublicLookup] Done. Owner:', pipelineResult?.owner_name);
+      console.log('[handlePublicLookup] Done. Owner:', pipelineResult?.owner_name, 'Mismatch:', isAddressMismatch);
     } catch (err: any) {
       console.error('[handlePublicLookup] Error:', err?.message || err);
     } finally {

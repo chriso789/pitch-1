@@ -297,8 +297,28 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Build response with address_mismatch flag
+    const addressMismatch = property_id && propertyRow ? (() => {
+      const storedAddr = typeof propertyRow.address === "string"
+        ? JSON.parse(propertyRow.address)
+        : (propertyRow.address || {});
+      const storedStreet = storedAddr?.street || storedAddr?.formatted || "";
+      const storedHouseNum = extractHouseNum(storedStreet);
+      const resultHouseNum = extractHouseNum(result.property_address || "");
+      return storedHouseNum && resultHouseNum && storedHouseNum !== resultHouseNum;
+    })() : false;
+
     return new Response(
-      JSON.stringify({ success: true, result: saved ?? row, cached: false, pipeline: result, scores }),
+      JSON.stringify({ 
+        success: true, 
+        result: saved ?? row, 
+        cached: false, 
+        pipeline: result, 
+        scores,
+        address_mismatch: addressMismatch,
+        stored_address: propertyRow ? (typeof propertyRow.address === "string" ? JSON.parse(propertyRow.address) : propertyRow.address)?.street : undefined,
+        resolved_address: result.property_address,
+      }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   } catch (e) {

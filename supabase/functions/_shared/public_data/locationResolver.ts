@@ -11,6 +11,37 @@ export async function resolveLocation(input: {
 }): Promise<NormalizedLocation> {
   const { lat, lng, address, timeoutMs } = input;
 
+  // PRIORITY: When an explicit address is provided, use it as the primary source
+  // for parcel identity. lat/lng is only used as context fallback.
+  // This prevents coordinate drift (e.g. pin at 4063 resolving to neighbor 4083).
+  if (address) {
+    try {
+      const geo = await nominatimSearch(address, timeoutMs);
+      const state = (geo.address?.state_code || geo.address?.state || "").toUpperCase().slice(0, 2) || "";
+      const normalized = geo.display_name || address;
+      const street = [geo.address?.house_number, geo.address?.road].filter(Boolean).join(" ");
+      const city = geo.address?.city || geo.address?.town || geo.address?.village || "";
+      const zip = geo.address?.postcode || "";
+      const county_hint = geo.address?.county?.replace(/ County$/i, "") || undefined;
+      const key = normalizeAddressKey(street || normalized);
+
+      return {
+        lat: parseFloat(geo.lat) || lat || 0,
+        lng: parseFloat(geo.lon) || lng || 0,
+        state,
+        normalized_address: normalized,
+        street,
+        city,
+        zip,
+        county_hint,
+        normalized_address_key: key,
+      };
+    } catch (e) {
+      console.warn(`[resolveLocation] Address search failed for "${address}", falling back to lat/lng:`, e);
+      // Fall through to lat/lng if address search fails
+    }
+  }
+
   if (lat && lng) {
     const rev = await nominatimReverse(lat, lng, timeoutMs);
     const state = (rev.address?.state_code || rev.address?.state || "").toUpperCase().slice(0, 2) || "";
@@ -22,19 +53,6 @@ export async function resolveLocation(input: {
     const key = normalizeAddressKey(street || normalized);
 
     return { lat, lng, state, normalized_address: normalized, street, city, zip, county_hint, normalized_address_key: key };
-  }
-
-  if (address) {
-    const geo = await nominatimSearch(address, timeoutMs);
-    const state = (geo.address?.state_code || geo.address?.state || "").toUpperCase().slice(0, 2) || "";
-    const normalized = geo.display_name || address;
-    const street = [geo.address?.house_number, geo.address?.road].filter(Boolean).join(" ");
-    const city = geo.address?.city || geo.address?.town || geo.address?.village || "";
-    const zip = geo.address?.postcode || "";
-    const county_hint = geo.address?.county?.replace(/ County$/i, "") || undefined;
-    const key = normalizeAddressKey(street || normalized);
-
-    return { lat: parseFloat(geo.lat), lng: parseFloat(geo.lon), state, normalized_address: normalized, street, city, zip, county_hint, normalized_address_key: key };
   }
 
   throw new Error("resolveLocation: provide lat/lng or address");
