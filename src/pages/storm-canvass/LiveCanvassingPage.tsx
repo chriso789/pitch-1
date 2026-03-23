@@ -220,10 +220,30 @@ export default function LiveCanvassingPage() {
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const location = await locationService.getCurrentLocation({ skipGeocoding: true });
-            setUserLocation({ lat: location.lat, lng: location.lng });
+            const gpsLoc = { lat: location.lat, lng: location.lng };
+
+            // Sanity check: if assigned area exists and GPS is > 200 miles away, prefer area center
+            if (areaCentroid) {
+              const dist = locationService.calculateDistance(gpsLoc.lat, gpsLoc.lng, areaCentroid.lat, areaCentroid.lng, 'miles');
+              if (dist.distance > 200) {
+                console.warn(`[Canvassing] GPS fix ${dist.distance}mi from assigned area — using area center`);
+                setUserLocation(areaCentroid);
+                setInitialZoom(16);
+                setHasGPS(true);
+                setIsTracking(true);
+                previousLocation.current = areaCentroid;
+                toast({ title: 'GPS location appears incorrect', description: 'Showing your assigned area instead.' });
+                locationService['reverseGeocode'](areaCentroid.lat, areaCentroid.lng)
+                  .then(address => setCurrentAddress(address))
+                  .catch(() => setCurrentAddress('Assigned area'));
+                break;
+              }
+            }
+
+            setUserLocation(gpsLoc);
             setHasGPS(true);
             setIsTracking(true);
-            previousLocation.current = { lat: location.lat, lng: location.lng };
+            previousLocation.current = gpsLoc;
 
             // Fetch address in background (non-blocking)
             locationService['reverseGeocode'](location.lat, location.lng)
