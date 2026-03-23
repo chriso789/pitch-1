@@ -366,6 +366,7 @@ export default function LiveCanvassingPage() {
           areaPolygon={areaPolygon}
           onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
           followUser={canvassMode === 'knock'}
+          symbolSettings={symbolSettings}
         />
       </div>
 
