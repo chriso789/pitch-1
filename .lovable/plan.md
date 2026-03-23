@@ -1,29 +1,26 @@
 
 
-## Plan: Add "My Commissions" Quick Action Button on Dashboard
+## Plan: Fix Pipeline Stages Settings to Use Active Tenant ID
 
-### What Exists
+### Problem
 
-A full `CommissionReport` page already exists at `/commission-report` with summary cards, filters (date range, rep, status), and a detailed table pulling from `commission_earnings`. It already auto-filters for non-managers (only shows their own data). No changes needed to that page.
+The `PipelineStageManager` settings component uses `profile.tenant_id` (the user's home tenant) for all queries and inserts. When a user switches to another company (e.g., Tristate), the settings page still queries the home tenant's stages — showing "No pipeline stages configured" even though Tristate has stages in the database.
 
-The dashboard has a "Quick Actions" grid with 3 cards (New Contact, Create Estimate, Schedule Work). This is where the button goes.
+The same bug exists in the insert path (line 147), so creating a stage while viewing Tristate would incorrectly create it under the home tenant.
 
-### Change
+### Fix
 
-**File: `src/features/dashboard/components/Dashboard.tsx`**
+**File: `src/components/settings/PipelineStageManager.tsx`**
 
-Add a 4th quick action card in the grid (lines 501-538) that navigates to `/commission-report`:
+1. Import `useEffectiveTenantId` hook
+2. Replace all `profile.tenant_id` references with the effective tenant ID:
+   - **Line 301/307**: `fetchStages` query filter — use effective tenant ID
+   - **Line 147**: Insert new stage — use effective tenant ID
+3. Update the `useEffect` dependency to re-fetch when effective tenant changes
 
-- Icon: `DollarSign` or a wallet/receipt icon
-- Title: "My Commissions"
-- Subtitle: "View earnings by project"
-- Styling: Use a gold/amber gradient to distinguish from existing cards
-- Update grid to `md:grid-cols-4` to accommodate the 4th card
-- For reps, this is the primary way to see their per-job commission breakdown
-
-That's it -- one card added, one grid class changed. The existing CommissionReport page already handles role-based filtering (reps see only their own, managers can filter by rep).
+This is a 3-line change pattern — swap the tenant source. No schema or structural changes needed.
 
 ### Files to Change
 
-1. `src/features/dashboard/components/Dashboard.tsx` — add commission quick action card + update grid cols
+1. `src/components/settings/PipelineStageManager.tsx` — use `useEffectiveTenantId()` instead of `profile.tenant_id`
 
