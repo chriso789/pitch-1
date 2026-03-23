@@ -25,6 +25,7 @@ interface GoogleLiveLocationMapProps {
   onMapClick?: (lat: number, lng: number) => void;
   followUser?: boolean;
   symbolSettings?: SymbolSettings;
+  initialZoom?: number;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
