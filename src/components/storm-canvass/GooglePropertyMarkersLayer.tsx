@@ -265,6 +265,18 @@ export default function GooglePropertyMarkersLayer({
     return DISPOSITION_COLORS[disposition] || DEFAULT_COLOR;
   };
 
+  // Get street name hint for high-zoom labels
+  const getStreetHint = useCallback((address: any): string => {
+    let parsed = address;
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { return ''; }
+    }
+    const street = parsed?.street_name || parsed?.street || '';
+    // Extract first word of street name (e.g. "Fonsica" from "Fonsica Avenue")
+    const match = street.match(/^\d*\s*(.+?)(?:\s+(?:st|ave|rd|dr|ct|ln|cir|pkwy|blvd|pl|ter|hwy|street|avenue|road|drive|court|lane|circle|parkway|boulevard|place|terrace|highway))?$/i);
+    return match ? match[1].substring(0, 6) : street.substring(0, 6);
+  }, []);
+
   const createMarkerIcon = useCallback((property: CanvassiqProperty, zoom: number): google.maps.Icon => {
     const disposition = property.disposition || 'not_contacted';
     const color = getDispositionColor(disposition);
@@ -274,11 +286,13 @@ export default function GooglePropertyMarkersLayer({
     let size = 16;
     let showNumber = false;
     let fontSize = 8;
+    let showStreetHint = false;
     
     if (zoom >= 19) {
       size = 32;
       showNumber = true;
       fontSize = 11;
+      showStreetHint = true; // Show street hint at very high zoom
     } else if (zoom >= 17) {
       size = 26;
       showNumber = true;
@@ -289,23 +303,29 @@ export default function GooglePropertyMarkersLayer({
     }
     
     const streetNumber = showNumber ? getStreetNumber(property.address) : '';
+    const streetHint = showStreetHint && streetNumber ? getStreetHint(property.address) : '';
     const fillColor = isNotContacted ? '#FFFFFF' : color;
     const strokeColor = isNotContacted ? color : '#FFFFFF';
     const textColor = isNotContacted ? '#1F2937' : '#FFFFFF';
     
+    // Widen marker if showing street hint
+    const width = streetHint ? size + 20 : size;
+    const label = streetHint ? `${streetNumber} ${streetHint}` : streetNumber;
+    const labelFontSize = streetHint ? Math.max(fontSize - 1, 7) : fontSize;
+    
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
-        ${streetNumber ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>` : ''}
+      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${size}" viewBox="0 0 ${width} ${size}">
+        <rect x="1" y="1" width="${width - 2}" height="${size - 2}" rx="${size / 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
+        ${label ? `<text x="${width/2}" y="${size/2 + labelFontSize/3}" text-anchor="middle" font-size="${labelFontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${label}</text>` : ''}
       </svg>
     `;
     
     return {
       url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
-      scaledSize: new google.maps.Size(size, size),
-      anchor: new google.maps.Point(size / 2, size / 2),
+      scaledSize: new google.maps.Size(width, size),
+      anchor: new google.maps.Point(width / 2, size / 2),
     };
-  }, []);
+  }, [getStreetHint]);
 
   // Incremental marker update - only add/remove/update what changed
   const updateMarkersIncrementally = useCallback((properties: CanvassiqProperty[], zoom: number) => {
