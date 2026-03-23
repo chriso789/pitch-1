@@ -1,26 +1,31 @@
 
 
-## Plan: Fix Pipeline Stages Settings to Use Active Tenant ID
+## Plan: Resilient GPS Handling for Start Canvassing
 
 ### Problem
 
-The `PipelineStageManager` settings component uses `profile.tenant_id` (the user's home tenant) for all queries and inserts. When a user switches to another company (e.g., Tristate), the settings page still queries the home tenant's stages — showing "No pipeline stages configured" even though Tristate has stages in the database.
+When a user has previously denied location permission, clicking "Start Canvassing" immediately fails with a "GPS Tracking Error" toast. The browser won't re-prompt automatically once denied — the user gets stuck. Additionally, timeout errors (slow GPS lock) also show scary error toasts even though `watchPosition` keeps retrying.
 
-The same bug exists in the insert path (line 147), so creating a stage while viewing Tristate would incorrectly create it under the home tenant.
+### Changes
 
-### Fix
+#### 1. `src/services/locationService.ts` — More resilient watch options
 
-**File: `src/components/settings/PipelineStageManager.tsx`**
+- **Line 94**: Change `maximumAge` from `60000` to `300000` (5 min) to accept cached positions
+- **Line 115**: Pass the raw `GeolocationPositionError` object (with `.code`) instead of wrapping in a generic `Error`, so callers can distinguish timeout vs denied vs unavailable
 
-1. Import `useEffectiveTenantId` hook
-2. Replace all `profile.tenant_id` references with the effective tenant ID:
-   - **Line 301/307**: `fetchStages` query filter — use effective tenant ID
-   - **Line 147**: Insert new stage — use effective tenant ID
-3. Update the `useEffect` dependency to re-fetch when effective tenant changes
+#### 2. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Smart error handling + re-prompt
 
-This is a 3-line change pattern — swap the tenant source. No schema or structural changes needed.
+- **Lines 178-185** (initial location catch): Instead of just showing a toast, check if the error is a permission denial. If so, show a helpful toast explaining how to enable location in browser settings, but still load the map at the default location so the page isn't blocked.
+
+- **Lines 213-220** (watch error handler): 
+  - **Timeout errors (code 3)**: Silently log — `watchPosition` will keep retrying on its own. No toast.
+  - **Permission denied (code 1)**: Show a one-time toast with instructions to enable location in browser settings. Don't spam repeated toasts.
+  - **Position unavailable (code 2)**: Show toast once.
+
+- **Before starting the watch** (~line 164): Add a permission check using `navigator.permissions.query({ name: 'geolocation' })`. If status is `'denied'`, show a clear message explaining they need to allow location in their browser settings (with a "Try Again" button that calls `getCurrentPosition` to trigger the browser prompt). If `'prompt'`, proceed normally — the browser will ask. If `'granted'`, proceed normally.
 
 ### Files to Change
 
-1. `src/components/settings/PipelineStageManager.tsx` — use `useEffectiveTenantId()` instead of `profile.tenant_id`
+1. `src/services/locationService.ts` — increase `maximumAge`, expose error codes
+2. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — add permission check on mount, handle errors by type, suppress timeout toasts
 
