@@ -81,6 +81,7 @@ export default function GoogleLiveLocationMap({
   areaPolygon,
   onMapClick,
   followUser = true,
+  symbolSettings,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
