@@ -447,25 +447,34 @@ export default function LiveCanvassingPage() {
 
   return (
     <div className="h-[100dvh] w-full relative overflow-hidden bg-background" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-      {/* Full-screen map */}
+      {/* Full-screen map — only render once we have a location */}
       <div className="absolute inset-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>
-        <GoogleLiveLocationMap
-          userLocation={userLocation}
-          currentAddress={currentAddress}
-          onContactSelect={setSelectedContact}
-          onParcelSelect={handleParcelSelect}
-          routeData={routeData}
-          destination={destination}
-          mapStyle={mapStyle}
-          onLoadingChange={setRawIsLoading}
-          onPropertiesLoaded={setRawLoadedCount}
-          refreshKey={markersRefreshKey}
-          areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
-          areaPolygon={areaPolygon}
-          onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
-          followUser={canvassMode === 'knock'}
-          symbolSettings={symbolSettings}
-        />
+        {userLocation ? (
+          <GoogleLiveLocationMap
+            userLocation={userLocation}
+            currentAddress={currentAddress}
+            onContactSelect={setSelectedContact}
+            onParcelSelect={handleParcelSelect}
+            routeData={routeData}
+            destination={destination}
+            mapStyle={mapStyle}
+            onLoadingChange={setRawIsLoading}
+            onPropertiesLoaded={setRawLoadedCount}
+            refreshKey={markersRefreshKey}
+            areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
+            areaPolygon={areaPolygon}
+            onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
+            followUser={canvassMode === 'knock'}
+            symbolSettings={symbolSettings}
+          />
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center bg-background">
+            <div className="text-center">
+              <Crosshair className="h-8 w-8 animate-pulse text-primary mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">Waiting for GPS signal...</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Overlaid Header Controls */}
