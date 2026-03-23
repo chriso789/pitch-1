@@ -1,50 +1,57 @@
 
-Fix this as a frontend marker-state bug, not a database bug.
 
-What I verified
-- The database currently has one `canvassiq_properties` row for each of the addresses visible in your screenshot (`4052, 4063, 4083, 4102, 4103, 4122, 4123` on Fonsica).
-- So the repeated numbered circles are being rendered by the map layer itself.
-- The current marker code still has two likely causes:
-  1. overlapping async loads can apply stale marker snapshots out of order
-  2. existing markers are not repositioned when the same address gets improved coordinates later
+## Fix: AI Invoice Parsing Not Populating Form Fields
 
-Implementation plan
+### Problem
+When a Beacon Roofing Supply invoice PDF is uploaded, the AI scan runs but fails to populate the form fields (amount shows $0.00, vendor/invoice# are empty). The edge function extracts only 4 basic fields and doesn't capture line items. The user wants the form to be ready to save after upload.
 
-1. Make markers number-only again
-- Update `GooglePropertyMarkersLayer.tsx` so pins always display just the house number.
-- Remove the high-zoom street hint logic entirely.
+### Root Causes
+1. The `parse-invoice-document` edge function prompt is too minimal — it asks for only invoice_number, date, amount, vendor_name but doesn't extract line items
+2. The tool schema doesn't include a `line_items` array for itemized costs
+3. The `InvoiceUploadCard` component doesn't display extracted line items or give a clear confirmation that fields were populated
 
-2. Lock marker identity to one canonical address key
-- Keep one marker per canonical address key only.
-- Prefer `normalized_address_key`; if missing, derive it from `address.street` / `address.formatted`.
-- Avoid falling back to raw row id when an address-derived key can be built, because id-based fallback can let the same home render twice.
+### Plan
 
-3. Prevent stale async loads from creating duplicate pins
-- Add a request/version guard inside `GooglePropertyMarkersLayer.tsx`.
-- Each `loadProperties()` run gets a monotonically increasing load id.
-- Ignore any older query/requery result if a newer load started after it.
-- Keep `loadingRef` locked for the full lifecycle of a load, including the cluster-load + requery path.
+**1. Enhance the edge function extraction schema**
+- File: `supabase/functions/parse-invoice-document/index.ts`
+- Expand the AI prompt to explicitly ask for line items (description, quantity, unit price, line total)
+- Add `line_items` array to the tool function schema
+- Improve the system prompt to handle roofing supply invoices specifically (PO numbers, branch codes, account numbers)
+- Add a `subtotal`, `tax`, and `total` breakdown so the amount is more reliably captured
 
-4. Reconcile markers by key and always update position
-- When a marker for the same address key already exists, update:
-  - marker position
-  - icon
-  - cached property payload
-- Do not only update on disposition change.
-- This ensures a house that first appears near the curb and later gets a better rooftop/snapped coordinate still remains a single marker that moves, instead of leaving an old visual behind.
+**2. Update the UI to show extracted line items and auto-fill reliably**
+- File: `src/components/production/InvoiceUploadCard.tsx`
+- After AI parse, display a collapsible summary of extracted line items below the form so the user can verify
+- Auto-populate `notes` field with a formatted line item summary (item descriptions + amounts)
+- Ensure the amount field shows the parsed total immediately
+- Add a visual "fields populated" indicator when AI scan succeeds
 
-5. Make refreshes fully deterministic
-- On `refreshKey` changes and post-cluster requeries, reconcile against the latest visible property set only.
-- Remove markers not present in the newest accepted key set.
-- This prevents old in-flight loads from reintroducing already-replaced markers.
+**3. Deploy the updated edge function**
+- Redeploy `parse-invoice-document` so the enhanced extraction takes effect
 
-Files to update
-- `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`
+### Technical Details
 
-Expected result
-- One pin per address only.
-- Pins show house number only.
-- No duplicate curb/roof markers for the same house after panning, zooming, refreshing, or parcel reloading.
+**Enhanced tool schema** will include:
+```typescript
+line_items: [{
+  description: string,
+  quantity: number,
+  unit_price: number,
+  line_total: number
+}],
+subtotal: number,
+tax_amount: number,
+total_amount: number  // replaces invoice_amount for clarity
+```
 
-Technical note
-- The screenshot pattern strongly matches a race/reconciliation bug: one marker is left at an older coordinate while a newer marker for the same address is added later. The fix is to serialize/ignore stale loads and update marker positions for existing canonical keys.
+**Line items display** — a small table/list rendered below the form fields showing each extracted item, with the total auto-summed into the Amount field.
+
+### Files to Update
+- `supabase/functions/parse-invoice-document/index.ts` — enhanced extraction
+- `src/components/production/InvoiceUploadCard.tsx` — line items display + better auto-fill
+
+### Expected Result
+- Upload a Beacon invoice PDF → all fields auto-populate (vendor: "Beacon Roofing Supply", invoice #, date, total amount)
+- Line items are shown as a summary the user can review
+- Form is ready to submit immediately after scan completes
+
