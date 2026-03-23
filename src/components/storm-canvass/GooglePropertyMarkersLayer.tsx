@@ -595,9 +595,13 @@ export default function GooglePropertyMarkersLayer({
     }
   }, [refreshKey, loadProperties]);
 
-  // Clean up all markers only on unmount
+  // Mark mounted on mount, clean up all markers + invalidate loads on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      // Invalidate any in-flight loads
+      loadVersionRef.current++;
       clearAllMarkers();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
