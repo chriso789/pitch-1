@@ -734,6 +734,11 @@ export default function PropertyInfoPanel({
                 <SheetTitle className="flex items-center gap-2 text-lg">
                   <User className="h-5 w-5 text-primary" />
                   {ownerName}
+                  {primaryOwner?.age && (
+                    <Badge variant="outline" className="text-[10px] font-normal ml-1">
+                      Age {primaryOwner.age}
+                    </Badge>
+                  )}
                   {/* Confidence badge from public data */}
                   {localProperty.property_data?.confidence_score != null && (
                     <Badge 
