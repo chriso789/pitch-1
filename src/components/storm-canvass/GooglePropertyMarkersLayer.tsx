@@ -120,31 +120,36 @@ function normalizeAddressKeyClient(streetOrFormatted: string): string {
     .replace(/ /g, "_");
 }
 
-// Get normalized address key for deduplication
+// Get normalized address key for deduplication — ALWAYS returns address-based key, never falls back to id
 function getNormalizedAddressKey(property: CanvassiqProperty): string {
-  // Use pre-computed key if available — re-normalize it through the canonical function
-  // to fix any legacy keys with inconsistent formats
+  // Use pre-computed key if available — re-normalize through canonical function
   if (property.normalized_address_key) {
-    // Re-normalize: replace underscores with spaces, run through canonical normalizer
-    const reNormalized = normalizeAddressKeyClient(property.normalized_address_key.replace(/_/g, " "));
-    return reNormalized;
+    return normalizeAddressKeyClient(property.normalized_address_key.replace(/_/g, " "));
   }
   
-  // Fallback: compute from address
+  // Fallback: compute from address fields
   let parsed = property.address;
   if (typeof parsed === 'string') {
     try {
       parsed = JSON.parse(parsed);
     } catch {
-      return '';
+      // Try to normalize the raw string itself
+      const raw = property.address?.trim();
+      return raw ? normalizeAddressKeyClient(raw) : '';
     }
   }
   
+  // Try street_number + street_name first
   const streetNumber = parsed?.street_number || '';
   const streetName = parsed?.street_name || parsed?.street || '';
   const combined = `${streetNumber} ${streetName}`.trim();
-  
-  return combined ? normalizeAddressKeyClient(combined) : '';
+  if (combined && combined.length > 1) return normalizeAddressKeyClient(combined);
+
+  // Try formatted address
+  const formatted = parsed?.formatted || parsed?.address_line1 || '';
+  if (formatted) return normalizeAddressKeyClient(formatted);
+
+  return '';
 }
 
 // Deduplicate properties by normalized address key
@@ -177,6 +182,16 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     }
   }
   
+  // Also include properties with no derivable key (keyed by id as last resort)
+  for (const property of properties) {
+    const key = getNormalizedAddressKey(property);
+    if (!key || key === '_') {
+      if (!addressMap.has(property.id)) {
+        addressMap.set(property.id, property);
+      }
+    }
+  }
+  
   return Array.from(addressMap.values());
 }
 
@@ -200,6 +215,9 @@ export default function GooglePropertyMarkersLayer({
   const loadingRef = useRef(false);
   const loadedGridCellsRef = useRef<Set<string>>(new Set());
   const propertiesCacheRef = useRef<Map<string, CanvassiqProperty>>(new Map());
+
+  // Monotonically increasing load version — stale loads are discarded
+  const loadVersionRef = useRef(0);
 
   // Calculate load radius based on zoom level
   const getLoadRadius = useCallback((zoom: number): number => {
@@ -265,34 +283,20 @@ export default function GooglePropertyMarkersLayer({
     return DISPOSITION_COLORS[disposition] || DEFAULT_COLOR;
   };
 
-  // Get street name hint for high-zoom labels
-  const getStreetHint = useCallback((address: any): string => {
-    let parsed = address;
-    if (typeof parsed === 'string') {
-      try { parsed = JSON.parse(parsed); } catch { return ''; }
-    }
-    const street = parsed?.street_name || parsed?.street || '';
-    // Extract first word of street name (e.g. "Fonsica" from "Fonsica Avenue")
-    const match = street.match(/^\d*\s*(.+?)(?:\s+(?:st|ave|rd|dr|ct|ln|cir|pkwy|blvd|pl|ter|hwy|street|avenue|road|drive|court|lane|circle|parkway|boulevard|place|terrace|highway))?$/i);
-    return match ? match[1].substring(0, 6) : street.substring(0, 6);
-  }, []);
-
   const createMarkerIcon = useCallback((property: CanvassiqProperty, zoom: number): google.maps.Icon => {
     const disposition = property.disposition || 'not_contacted';
     const color = getDispositionColor(disposition);
     const isNotContacted = disposition === 'not_contacted' || !property.disposition;
     
-    // Size based on zoom level
+    // Size based on zoom level — number-only labels
     let size = 16;
     let showNumber = false;
     let fontSize = 8;
-    let showStreetHint = false;
     
     if (zoom >= 19) {
       size = 32;
       showNumber = true;
       fontSize = 11;
-      showStreetHint = true; // Show street hint at very high zoom
     } else if (zoom >= 17) {
       size = 26;
       showNumber = true;
@@ -303,43 +307,42 @@ export default function GooglePropertyMarkersLayer({
     }
     
     const streetNumber = showNumber ? getStreetNumber(property.address) : '';
-    const streetHint = showStreetHint && streetNumber ? getStreetHint(property.address) : '';
     const fillColor = isNotContacted ? '#FFFFFF' : color;
     const strokeColor = isNotContacted ? color : '#FFFFFF';
     const textColor = isNotContacted ? '#1F2937' : '#FFFFFF';
     
-    // Widen marker if showing street hint
-    const width = streetHint ? size + 20 : size;
-    const label = streetHint ? `${streetNumber} ${streetHint}` : streetNumber;
-    const labelFontSize = streetHint ? Math.max(fontSize - 1, 7) : fontSize;
-    
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${size}" viewBox="0 0 ${width} ${size}">
-        <rect x="1" y="1" width="${width - 2}" height="${size - 2}" rx="${size / 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
-        ${label ? `<text x="${width/2}" y="${size/2 + labelFontSize/3}" text-anchor="middle" font-size="${labelFontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${label}</text>` : ''}
+      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+        <rect x="1" y="1" width="${size - 2}" height="${size - 2}" rx="${size / 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
+        ${streetNumber ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>` : ''}
       </svg>
     `;
     
     return {
       url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
-      scaledSize: new google.maps.Size(width, size),
-      anchor: new google.maps.Point(width / 2, size / 2),
+      scaledSize: new google.maps.Size(size, size),
+      anchor: new google.maps.Point(size / 2, size / 2),
     };
-  }, [getStreetHint]);
+  }, []);
 
-  // Incremental marker update - keyed by canonical address to prevent duplicate pins
-  const updateMarkersIncrementally = useCallback((properties: CanvassiqProperty[], zoom: number) => {
-    // Build a map of canonical key → property for current viewport
+  // Fully deterministic marker reconciliation — keyed by canonical address
+  const reconcileMarkers = useCallback((properties: CanvassiqProperty[], zoom: number, loadVersion: number) => {
+    // Discard stale loads
+    if (loadVersion < loadVersionRef.current) {
+      console.log('[GooglePropertyMarkersLayer] Discarding stale load v', loadVersion, '< current v', loadVersionRef.current);
+      return;
+    }
+
+    // Build canonical key → property map (dedup already ran, but guard here too)
     const currentKeys = new Map<string, CanvassiqProperty>();
     for (const p of properties) {
-      const key = getNormalizedAddressKey(p) || p.id; // fallback to id
-      // If same key appears twice in viewport, prefer the canonical winner (dedup already ran)
+      const key = getNormalizedAddressKey(p) || p.id;
       if (!currentKeys.has(key)) {
         currentKeys.set(key, p);
       }
     }
     
-    // Remove markers whose key is no longer in view
+    // Remove markers whose key is no longer in this load's set
     markersRef.current.forEach((marker, key) => {
       if (!currentKeys.has(key)) {
         marker.setMap(null);
@@ -348,19 +351,18 @@ export default function GooglePropertyMarkersLayer({
       }
     });
     
-    // Add new markers or update existing ones
+    // Add new markers or update existing ones (position + icon always)
     currentKeys.forEach((property, key) => {
       if (!property.lat || !property.lng) return;
       
       const existingMarker = markersRef.current.get(key);
-      const cachedProperty = propertiesCacheRef.current.get(key);
       
       if (existingMarker) {
-        // Check if disposition changed - update icon only
-        if (cachedProperty?.disposition !== property.disposition) {
-          existingMarker.setIcon(createMarkerIcon(property, zoom));
-          propertiesCacheRef.current.set(key, property);
-        }
+        // Always update position (handles coordinate drift / snapping)
+        existingMarker.setPosition({ lat: property.lat, lng: property.lng });
+        // Always update icon (handles disposition + zoom changes)
+        existingMarker.setIcon(createMarkerIcon(property, zoom));
+        propertiesCacheRef.current.set(key, property);
       } else {
         // Create new marker
         const marker = new google.maps.Marker({
@@ -388,8 +390,13 @@ export default function GooglePropertyMarkersLayer({
   }, []);
 
   const loadProperties = useCallback(async () => {
-    if (!profile?.tenant_id || !map || loadingRef.current) return;
+    if (!profile?.tenant_id || !map) return;
     
+    // Acquire a new load version; any in-flight load with a lower version is now stale
+    const thisLoadVersion = ++loadVersionRef.current;
+
+    // If another load is still running, don't block — the version guard handles staleness
+    if (loadingRef.current) return;
     loadingRef.current = true;
     
     try {
@@ -410,8 +417,6 @@ export default function GooglePropertyMarkersLayer({
       let error: any = null;
 
       if (areaPropertyIds && areaPropertyIds.length > 0) {
-        // Area-filtered mode: only load properties within assigned territory
-        // Chunk .in() queries to avoid URL length limits
         const allResults: any[] = [];
         const CHUNK_SIZE = 100;
         for (let i = 0; i < areaPropertyIds.length; i += CHUNK_SIZE) {
@@ -430,7 +435,6 @@ export default function GooglePropertyMarkersLayer({
         }
         rawProperties = allResults;
       } else {
-        // Default mode: load all properties in viewport
         const res = await supabase
           .from('canvassiq_properties')
           .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
@@ -443,8 +447,13 @@ export default function GooglePropertyMarkersLayer({
         rawProperties = res.data;
         error = res.error;
       }
+
+      // Bail if this load is already stale
+      if (thisLoadVersion < loadVersionRef.current) {
+        loadingRef.current = false;
+        return;
+      }
       
-      // Client-side deduplication to handle any remaining duplicates
       const properties = rawProperties ? deduplicateProperties(rawProperties as CanvassiqProperty[]) : [];
       
       if (error) {
@@ -461,11 +470,10 @@ export default function GooglePropertyMarkersLayer({
         if (unloadedCells.length > 0) {
           console.log('[GooglePropertyMarkersLayer] Unloaded cells:', unloadedCells.length, 'of', visibleCells.length);
           
-          // Group unloaded cells into clusters of nearby cells
+          // Group unloaded cells into clusters
           const clusters: string[][] = [];
           const remaining = [...unloadedCells];
           while (remaining.length > 0 && clusters.length < MAX_CONCURRENT_LOADS) {
-            // Take a seed cell and grab all cells within ~2 grid cells distance
             const seed = remaining.shift()!;
             const [seedLatStr, seedLngStr] = seed.split('_');
             const seedLat = parseFloat(seedLatStr);
@@ -485,12 +493,10 @@ export default function GooglePropertyMarkersLayer({
           
           setIsLoading(true);
           onLoadingChange?.(true);
-          loadingRef.current = false;
           
-          // Fire cluster loads concurrently
+          // Fire cluster loads concurrently (keep loadingRef locked!)
           const radius = getLoadRadius(zoom);
           const loadPromises = clusters.map(cluster => {
-            // Compute center of this cluster's cells
             let sumLat = 0, sumLng = 0;
             for (const cell of cluster) {
               const [cLatStr, cLngStr] = cell.split('_');
@@ -502,6 +508,15 @@ export default function GooglePropertyMarkersLayer({
           });
           
           const results = await Promise.allSettled(loadPromises);
+
+          // Bail if stale
+          if (thisLoadVersion < loadVersionRef.current) {
+            setIsLoading(false);
+            onLoadingChange?.(false);
+            loadingRef.current = false;
+            return;
+          }
+
           const anyLoaded = results.some(r => r.status === 'fulfilled' && r.value === true);
           
           if (anyLoaded) {
@@ -516,11 +531,16 @@ export default function GooglePropertyMarkersLayer({
               .lte('lng', ne.lng())
               .limit(limit);
             
-            const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
-            
-            if (newProperties.length > 0) {
-              updateMarkersIncrementally(newProperties, zoom);
+            // Final staleness check before reconciliation
+            if (thisLoadVersion < loadVersionRef.current) {
+              setIsLoading(false);
+              onLoadingChange?.(false);
+              loadingRef.current = false;
+              return;
             }
+
+            const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
+            reconcileMarkers(newProperties, zoom, thisLoadVersion);
           }
           
           setIsLoading(false);
@@ -531,8 +551,8 @@ export default function GooglePropertyMarkersLayer({
         }
       }
       
-      // Use incremental update instead of clearing all markers
-      updateMarkersIncrementally(properties || [], zoom);
+      // Use deterministic reconciliation
+      reconcileMarkers(properties || [], zoom, thisLoadVersion);
       
       setCurrentZoom(zoom);
     } catch (err) {
@@ -540,7 +560,7 @@ export default function GooglePropertyMarkersLayer({
     } finally {
       loadingRef.current = false;
     }
-  }, [profile?.tenant_id, map, updateMarkersIncrementally, loadParcelsForCluster, getLoadRadius, onLoadingChange]);
+  }, [profile?.tenant_id, map, reconcileMarkers, loadParcelsForCluster, getLoadRadius, onLoadingChange, areaPropertyIds]);
 
   // Update marker sizes when zoom changes significantly
   const updateMarkerSizes = useCallback(() => {
@@ -548,7 +568,6 @@ export default function GooglePropertyMarkersLayer({
     
     const zoom = map.getZoom() || 18;
     if (Math.abs(zoom - currentZoom) >= 1) {
-      // Reload properties when zoom changes significantly
       loadProperties();
     }
   }, [map, currentZoom, loadProperties]);
@@ -568,7 +587,6 @@ export default function GooglePropertyMarkersLayer({
   // Handle refreshKey changes (disposition updates)
   useEffect(() => {
     if (refreshKey !== undefined && refreshKey > 0) {
-      // Force reload when refreshKey changes (e.g., after disposition update)
       loadProperties();
     }
   }, [refreshKey, loadProperties]);
@@ -585,7 +603,6 @@ export default function GooglePropertyMarkersLayer({
   useEffect(() => {
     if (!map) return;
     
-    // Use debounced version to prevent rapid-fire API calls during panning
     const idleListener = map.addListener('idle', debouncedLoadProperties);
     const zoomListener = map.addListener('zoom_changed', updateMarkerSizes);
     
