@@ -883,17 +883,73 @@ export default function PropertyInfoPanel({
             </RadioGroup>
           </div>
 
-          {/* Add Customer Button */}
-          <Button 
-            onClick={handleAddCustomer}
-            className="w-full mb-4 bg-primary hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Customer
-          </Button>
+          {/* Contact Info Section - Show immediately when data exists */}
+          {(phoneNumbers?.length > 0 || emails?.length > 0) && (
+            <div className="space-y-2 mb-4">
+              {phoneNumbers && phoneNumbers.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Phone className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {[...phoneNumbers]
+                      .sort((a: any, b: any) => {
+                        const aDnc = typeof a === 'object' && a.dnc === true ? 1 : 0;
+                        const bDnc = typeof b === 'object' && b.dnc === true ? 1 : 0;
+                        return aDnc - bDnc;
+                      })
+                      .slice(0, 3).map((phone: any, idx: number) => {
+                      const phoneNumber = typeof phone === 'string' ? phone : phone.number;
+                      const phoneType = typeof phone === 'object' ? phone.type : null;
+                      const isDnc = typeof phone === 'object' && phone.dnc === true;
+                      return (
+                        <div key={idx} className="flex items-center gap-1">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => !isDnc && handleCall(phoneNumber)}
+                            className={cn("text-xs h-7", isDnc && "opacity-40 line-through cursor-not-allowed")}
+                            disabled={isDnc}
+                          >
+                            {isDnc && <PhoneOff className="h-3 w-3 mr-1 text-destructive" />}
+                            {phoneNumber}
+                            {phoneType && phoneType !== 'Unknown' && (
+                              <span className="text-muted-foreground ml-1">({phoneType})</span>
+                            )}
+                          </Button>
+                          {isDnc && (
+                            <Badge variant="destructive" className="text-[9px] h-5 px-1">DNC</Badge>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+              {emails && emails.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <Mail className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex flex-wrap gap-1.5">
+                    {emails.slice(0, 3).map((email: any, idx: number) => {
+                      const emailAddress = typeof email === 'string' ? email : email.address;
+                      return (
+                        <Button
+                          key={idx}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEmail(emailAddress)}
+                          className="text-xs h-7 truncate max-w-[220px]"
+                        >
+                          {emailAddress}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-          {/* Contact Info Section - Always visible */}
-          {phoneNumbers?.length === 0 && emails?.length === 0 && !publicLookupLoading && publicLookupDoneRef.current === property.id && (
+          {/* Get Contact Info CTA - only when no phones AND no emails */}
+          {phoneNumbers?.length === 0 && emails?.length === 0 && !publicLookupLoading && (
             <div className="mb-4 p-3 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 text-center">
               <Phone className="h-5 w-5 mx-auto text-primary/60 mb-1.5" />
               <p className="text-xs text-muted-foreground mb-2">Phone & email require a skip-trace lookup</p>
@@ -916,6 +972,15 @@ export default function PropertyInfoPanel({
               )}
             </div>
           )}
+
+          {/* Add Customer Button */}
+          <Button 
+            onClick={handleAddCustomer}
+            className="w-full mb-4 bg-primary hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Customer
+          </Button>
           {(phoneNumbers?.length > 0 || emails?.length > 0) && (
             <div className="space-y-2 mb-4">
               {phoneNumbers && phoneNumbers.length > 0 && (

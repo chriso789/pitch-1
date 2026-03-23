@@ -3,6 +3,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
+import { type SymbolSettings, DEFAULT_DISPOSITION_SYMBOLS } from './MapSymbolSettings';
+
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
   userLocation: { lat: number; lng: number };
@@ -11,6 +13,7 @@ interface GooglePropertyMarkersLayerProps {
   onPropertiesLoaded?: (count: number) => void;
   refreshKey?: number;
   areaPropertyIds?: string[];
+  symbolSettings?: SymbolSettings;
 }
 
 interface CanvassiqProperty {
