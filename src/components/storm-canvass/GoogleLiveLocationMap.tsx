@@ -83,6 +83,7 @@ export default function GoogleLiveLocationMap({
   onMapClick,
   followUser = true,
   symbolSettings,
+  initialZoom,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
