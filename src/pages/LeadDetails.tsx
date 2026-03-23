@@ -805,7 +805,7 @@ const LeadDetails = () => {
               >
                 <SelectTrigger className="h-auto w-auto shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors [&>svg:last-child]:hidden">
                   <div className={`w-2 h-2 rounded-full ${stages.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
-                  <span className="text-sm font-medium capitalize">
+                  <span className="text-sm font-medium capitalize whitespace-nowrap">
                     {stages.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
                   </span>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
