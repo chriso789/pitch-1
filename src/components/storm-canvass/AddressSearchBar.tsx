@@ -119,7 +119,7 @@ export default function AddressSearchBar({ userLocation, onAddressSelect }: Addr
   };
 
   return (
-    <Command className="relative rounded-lg border shadow-md bg-background">
+    <Command shouldFilter={false} className="relative rounded-lg border shadow-md bg-background">
       <div className="flex items-center border-b px-3">
         <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
         <CommandInput
