@@ -125,9 +125,9 @@ function normalizeAddressKeyClient(streetOrFormatted: string): string {
 
 // Get normalized address key for deduplication — ALWAYS returns address-based key, never falls back to id
 function getNormalizedAddressKey(property: CanvassiqProperty): string {
-  // Use pre-computed key if available — re-normalize through canonical function
+  // Use pre-computed key DIRECTLY if available — server already normalized it
   if (property.normalized_address_key) {
-    return normalizeAddressKeyClient(property.normalized_address_key.replace(/_/g, " "));
+    return property.normalized_address_key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
   }
   
   // Fallback: compute from address fields
@@ -136,23 +136,27 @@ function getNormalizedAddressKey(property: CanvassiqProperty): string {
     try {
       parsed = JSON.parse(parsed);
     } catch {
-      // Try to normalize the raw string itself
       const raw = property.address?.trim();
       return raw ? normalizeAddressKeyClient(raw) : '';
     }
   }
   
-  // Try street_number + street_name first
   const streetNumber = parsed?.street_number || '';
   const streetName = parsed?.street_name || parsed?.street || '';
   const combined = `${streetNumber} ${streetName}`.trim();
   if (combined && combined.length > 1) return normalizeAddressKeyClient(combined);
 
-  // Try formatted address
   const formatted = parsed?.formatted || parsed?.address_line1 || '';
   if (formatted) return normalizeAddressKeyClient(formatted);
 
   return '';
+}
+
+// Extract house-number + street-name core for secondary dedup
+function getAddressCore(key: string): string {
+  // Extract leading digits and first word after them
+  const match = key.match(/^(\d+)_([a-z]+)/);
+  return match ? `${match[1]}_${match[2]}` : key;
 }
 
 // Deduplicate properties by normalized address key
