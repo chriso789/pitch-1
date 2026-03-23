@@ -452,8 +452,8 @@ export default function GooglePropertyMarkersLayer({
         error = res.error;
       }
 
-      // Bail if this load is already stale
-      if (thisLoadVersion < loadVersionRef.current) {
+      // Bail if this load is already stale or component unmounted
+      if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
         loadingRef.current = false;
         return;
       }
