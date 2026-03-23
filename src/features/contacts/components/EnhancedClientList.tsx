@@ -509,7 +509,7 @@ export const EnhancedClientList = () => {
 
       // Fetch pipeline entries with contact and communication data
       console.log("Fetching pipeline entries...");
-      const { data: pipelineData, error: pipelineError } = await supabase
+      let pipelineQuery = supabase
         .from("pipeline_entries")
         .select(`
           *,
