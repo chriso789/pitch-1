@@ -325,6 +325,8 @@ export default function GooglePropertyMarkersLayer({
     const disposition = property.disposition || 'not_contacted';
     const color = getDispositionColor(disposition);
     const isNotContacted = disposition === 'not_contacted' || !property.disposition;
+    const symbols = symbolSettings || DEFAULT_DISPOSITION_SYMBOLS;
+    const symbol = symbols[disposition] || '';
     
     // Size based on zoom level — number-only labels
     let size = 16;
@@ -348,11 +350,30 @@ export default function GooglePropertyMarkersLayer({
     const fillColor = isNotContacted ? '#FFFFFF' : color;
     const strokeColor = isNotContacted ? color : '#FFFFFF';
     const textColor = isNotContacted ? '#1F2937' : '#FFFFFF';
+
+    // Symbol badge dimensions
+    const badgeSize = Math.max(10, Math.round(size * 0.35));
+    const badgeFontSize = Math.max(6, Math.round(badgeSize * 0.7));
+    const badgeX = size - badgeSize / 2 - 1;
+    const badgeY = size - badgeSize / 2 - 1;
+    
+    // At low zoom without number, show symbol as primary content
+    const showSymbolAsPrimary = !showNumber && symbol && !isNotContacted;
     
     const svg = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
         <rect x="1" y="1" width="${size - 2}" height="${size - 2}" rx="${size / 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
-        ${streetNumber ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>` : ''}
+        ${showSymbolAsPrimary
+          ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
+          : streetNumber
+            ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>`
+            : ''
+        }
+        ${symbol && showNumber && !isNotContacted
+          ? `<circle cx="${badgeX}" cy="${badgeY}" r="${badgeSize/2}" fill="${color}" stroke="#FFFFFF" stroke-width="1"/>
+             <text x="${badgeX}" y="${badgeY + badgeFontSize * 0.35}" text-anchor="middle" font-size="${badgeFontSize}" fill="#FFFFFF" font-weight="700" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
+          : ''
+        }
       </svg>
     `;
     
@@ -361,7 +382,7 @@ export default function GooglePropertyMarkersLayer({
       scaledSize: new google.maps.Size(size, size),
       anchor: new google.maps.Point(size / 2, size / 2),
     };
-  }, []);
+  }, [symbolSettings]);
 
   // Fully deterministic marker reconciliation — keyed by canonical address
   const reconcileMarkers = useCallback((properties: CanvassiqProperty[], zoom: number, loadVersion: number) => {
