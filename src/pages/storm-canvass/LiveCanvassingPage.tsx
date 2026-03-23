@@ -259,14 +259,9 @@ export default function LiveCanvassingPage() {
           return;
         }
 
-        // Position unavailable (code 2) or other: show once
+        // Position unavailable (code 2) or other: silently log, watchPosition keeps retrying
         if (error.code !== 1) {
-          console.error('Location watch error:', error);
-          toast({
-            title: 'GPS Tracking Error',
-            description: error.message,
-            variant: 'destructive',
-          });
+          console.warn('[Canvassing] GPS watch error (retrying):', error.code, error.message);
         }
       }
     );
