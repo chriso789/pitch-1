@@ -506,6 +506,7 @@ export default function LiveCanvassingPage() {
             onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
             followUser={canvassMode === 'knock'}
             symbolSettings={symbolSettings}
+            initialZoom={initialZoom}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-background">
