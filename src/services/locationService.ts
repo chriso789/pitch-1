@@ -91,7 +91,7 @@ class LocationService {
     const options = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 60000, // 1 minute
+      maximumAge: 300000, // 5 minutes - accept cached positions
     };
 
     this.watchId = navigator.geolocation.watchPosition(
