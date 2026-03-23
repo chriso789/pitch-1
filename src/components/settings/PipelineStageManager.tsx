@@ -297,15 +297,16 @@ export const PipelineStageManager: React.FC = () => {
   const [reordering, setReordering] = useState<string | null>(null);
   const { toast } = useToast();
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
 
   const fetchStages = async () => {
-    if (!profile?.tenant_id) return;
+    if (!effectiveTenantId) return;
     
     try {
       const { data, error } = await supabase
         .from('pipeline_stages')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .order('stage_order', { ascending: true });
       
       if (error) throw error;
@@ -319,10 +320,10 @@ export const PipelineStageManager: React.FC = () => {
   };
 
   useEffect(() => {
-    if (profile?.tenant_id) {
+    if (effectiveTenantId) {
       fetchStages();
     }
-  }, [profile?.tenant_id]);
+  }, [effectiveTenantId]);
 
   const moveStage = async (stageId: string, direction: 'up' | 'down') => {
     const stageIndex = stages.findIndex(s => s.id === stageId);
