@@ -132,6 +132,9 @@ export default function AIAgentSettingsPage() {
       days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
     },
     qualification_questions: DEFAULT_QUESTIONS,
+    auto_create_leads: true,
+    auto_schedule_appointments: true,
+    sms_notify_rep: true,
   });
 
   const [telnyxLocations, setTelnyxLocations] = useState<TelnyxLocation[]>([]);
