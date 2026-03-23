@@ -14,6 +14,7 @@ import { Plus, Edit, Trash2, GripVertical, ArrowUp, ArrowDown, Loader2, AlertTri
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { cn } from '@/lib/utils';
 
 interface PipelineStage {
