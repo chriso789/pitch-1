@@ -25,8 +25,9 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 
-// Default location (Tampa, FL) for instant map load before GPS acquires
-const DEFAULT_LOCATION = { lat: 27.9506, lng: -82.4572 };
+// Neutral US center (geographic center of contiguous US) — only used if GPS never resolves
+const NEUTRAL_FALLBACK = { lat: 39.8283, lng: -98.5795 };
+const NEUTRAL_FALLBACK_ZOOM = 4; // zoomed out so it's obviously not "your location"
 
 interface Contact {
   id: string;
