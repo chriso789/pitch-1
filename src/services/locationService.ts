@@ -129,6 +129,13 @@ class LocationService {
 
     this.watchId = navigator.geolocation.watchPosition(
       async (position) => {
+        // Reject stale watch fixes (> 60s old)
+        const fixAge = Date.now() - position.timestamp;
+        if (fixAge > 60000) {
+          console.warn(`[LocationService] Watch: rejecting stale fix (${Math.round(fixAge / 1000)}s old)`);
+          return;
+        }
+
         const locationData: LocationData = {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
