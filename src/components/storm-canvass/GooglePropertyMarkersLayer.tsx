@@ -212,7 +212,6 @@ export default function GooglePropertyMarkersLayer({
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const [currentZoom, setCurrentZoom] = useState(18);
   const [isLoading, setIsLoading] = useState(false);
-  const loadingRef = useRef(false);
   const loadedGridCellsRef = useRef<Set<string>>(new Set());
   const propertiesCacheRef = useRef<Map<string, CanvassiqProperty>>(new Map());
 
@@ -399,16 +398,13 @@ export default function GooglePropertyMarkersLayer({
     // Acquire a new load version; any in-flight load with a lower version is now stale
     const thisLoadVersion = ++loadVersionRef.current;
 
-    // If another load is still running, don't block — the version guard handles staleness
-    if (loadingRef.current) return;
-    loadingRef.current = true;
+    // No loadingRef gate — concurrent loads are allowed but only the latest
+    // version's results will be rendered. This prevents "skipped load leaves
+    // stale/duplicate markers" when rapid idle events fire.
     
     try {
       const bounds = map.getBounds();
-      if (!bounds) {
-        loadingRef.current = false;
-        return;
-      }
+      if (!bounds) return;
       
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
@@ -453,16 +449,12 @@ export default function GooglePropertyMarkersLayer({
       }
 
       // Bail if this load is already stale or component unmounted
-      if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
-        loadingRef.current = false;
-        return;
-      }
+      if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) return;
       
       const properties = rawProperties ? deduplicateProperties(rawProperties as CanvassiqProperty[]) : [];
       
       if (error) {
         console.error('Error loading properties:', error);
-        loadingRef.current = false;
         return;
       }
       
@@ -498,7 +490,7 @@ export default function GooglePropertyMarkersLayer({
           setIsLoading(true);
           onLoadingChange?.(true);
           
-          // Fire cluster loads concurrently (keep loadingRef locked!)
+          // Fire cluster loads concurrently
           const radius = getLoadRadius(zoom);
           const loadPromises = clusters.map(cluster => {
             let sumLat = 0, sumLng = 0;
@@ -517,7 +509,6 @@ export default function GooglePropertyMarkersLayer({
           if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
             setIsLoading(false);
             onLoadingChange?.(false);
-            loadingRef.current = false;
             return;
           }
 
@@ -539,7 +530,6 @@ export default function GooglePropertyMarkersLayer({
             if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
               setIsLoading(false);
               onLoadingChange?.(false);
-              loadingRef.current = false;
               return;
             }
 
@@ -550,7 +540,6 @@ export default function GooglePropertyMarkersLayer({
           setIsLoading(false);
           onLoadingChange?.(false);
           setCurrentZoom(zoom);
-          loadingRef.current = false;
           return;
         }
       }
@@ -561,8 +550,6 @@ export default function GooglePropertyMarkersLayer({
       setCurrentZoom(zoom);
     } catch (err) {
       console.error('Error in loadProperties:', err);
-    } finally {
-      loadingRef.current = false;
     }
   }, [profile?.tenant_id, map, reconcileMarkers, loadParcelsForCluster, getLoadRadius, onLoadingChange, areaPropertyIds]);
 
