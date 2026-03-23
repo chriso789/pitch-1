@@ -281,9 +281,17 @@ export default function LiveCanvassingPage() {
       setHasGPS((current) => {
         if (!current) {
           console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
-          // If we still don't have a location, use neutral fallback so map renders
-          setUserLocation(prev => prev || NEUTRAL_FALLBACK);
-          setCurrentAddress('Location unavailable — use search or tap recenter');
+          // Prefer assigned area centroid over neutral US center
+          const fallback = areaCentroid || NEUTRAL_FALLBACK;
+          const zoom = areaCentroid ? 16 : NEUTRAL_FALLBACK_ZOOM;
+          setUserLocation(prev => {
+            if (!prev) {
+              setInitialZoom(zoom);
+              setCurrentAddress(areaCentroid ? 'Showing assigned area — use recenter for GPS' : 'Location unavailable — use search or tap recenter');
+              return fallback;
+            }
+            return prev;
+          });
         }
         return true;
       });
