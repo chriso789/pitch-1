@@ -601,7 +601,7 @@ export default function LiveCanvassingPage() {
           if (!open) setSelectedProperty(null);
         }}
         property={selectedProperty}
-        userLocation={userLocation}
+        userLocation={userLocation || NEUTRAL_FALLBACK}
         onDispositionUpdate={() => {
           // Force refresh markers by incrementing the key
           setMarkersRefreshKey(prev => prev + 1);
