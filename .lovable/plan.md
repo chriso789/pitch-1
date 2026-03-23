@@ -1,47 +1,55 @@
 
-Fix the actual causes of the wrong owner display for 4063 Fonsica Ave and the duplicate pins.
+Fix the “multiple pins per address” confusion by separating real duplicate markers from Google’s built-in street-number labels and tightening marker identity.
 
-1. Fix the lookup authority bug in `locationResolver`
-- Update `supabase/functions/_shared/public_data/locationResolver.ts` so an explicit `address` is used as the primary source when both `address` and `lat/lng` are present.
-- Right now it still reverse-geocodes the coordinates first, which is why `4063` is resolving to `4083`.
-- Keep `lat/lng` only for county/context fallback, not parcel identity.
+1. Confirm and preserve the actual data model
+- Keep the current DB dedupe path for `canvassiq_properties` by canonical address key.
+- Do not treat the screenshot as proof of duplicate rows: the queried Fonsica addresses each currently have one property row.
 
-2. Make `storm-public-lookup` reject mismatched results end-to-end
-- Keep the existing writeback guard, but also return a structured mismatch flag in the response, including stored address vs resolved/result address.
-- If the lookup resolves to a different house number, do not cache that result under the selected property key and do not return it as the panel’s effective property data.
-- Prefer a second pass using the stored address only when a coordinate-based result disagrees.
+2. Remove the visual double-number effect in Google map view
+- The screenshot pattern matches two overlapping systems:
+  - our custom circular markers that render street numbers
+  - Google hybrid-map address labels rendered by the base map
+- Update `GoogleLiveLocationMap.tsx` map styling for the active canvass view to hide Google road/address labels in this mode, especially on satellite/hybrid.
+- Keep parcel/house markers as the single visible numbering system.
 
-3. Stop the UI from showing blocked/mismatched owner data
-- Update `src/components/storm-canvass/PropertyInfoPanel.tsx` so it does not merge `pipelineResult.owner_name`, parcel, sqft, or year built into `localProperty` when the backend reports an address mismatch.
-- Show the stored property data only, and optionally surface a small “lookup mismatch prevented” warning instead of rendering the neighbor’s owner.
+3. Tighten marker identity in the Google markers layer
+- Update `GooglePropertyMarkersLayer.tsx` so marker keys are based on canonical property identity instead of raw row id alone:
+  - prefer `normalized_address_key`
+  - fallback to `address_hash` / place id
+  - fallback to row id only if needed
+- Use that same canonical key for both `markersRef` and `propertiesCacheRef`.
+- This prevents multiple markers from surviving when two rows represent the same home or when reloaded data swaps between equivalent records.
 
-4. Fix the duplicate pin source, not just rendering symptoms
-- The database currently has duplicate Fonsica rows for the same homes (`4063_fonsicaave` and `4063_fonsica_ave`, same place_id/address).
-- Update parcel loading/upsert logic to canonicalize keys before insert/upsert so old and new normalization formats collapse to one record.
-- Add a cleanup migration to merge or remove legacy duplicate `canvassiq_properties` rows for the same tenant + place_id / canonical normalized key.
+4. Make dedupe resilient to legacy address payloads
+- Improve `getNormalizedAddressKey()` in `GooglePropertyMarkersLayer.tsx` so it derives the same canonical key from:
+  - `normalized_address_key`
+  - `address.street`
+  - `address.formatted`
+  - parsed street number + short street name
+- Normalize suffixes consistently (`street` → `st`, `avenue` → `ave`) before marker rendering.
 
-5. Make marker identity use canonical address identity
-- Update `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` so marker/cache identity is based on canonical normalized address key (or place_id fallback), not raw row id alone.
-- This prevents legacy duplicate rows from rendering as separate pins during incremental loads.
+5. Prevent same-number / nearby-address confusion
+- Right now nearby homes on different streets can legitimately share the same house number in the same viewport.
+- Adjust marker labeling rules so the Google marker only shows:
+  - number-only at lower zoom
+  - number + short street hint at very high zoom or selected state
+- This avoids “4063 twice” appearing ambiguous when one is a Google basemap label or a nearby cross-street property.
 
-6. Repair the polluted 4063 flow
-- Add a repair path so forcing a refresh on 4063 re-runs lookup against the stored address and overwrites stale local/public enrichment only when the result matches 4063 exactly.
-- Ensure no 4083-derived cache row is reused for 4063.
+6. Keep parcel loads from reintroducing apparent duplicates
+- Review `canvassiq-load-parcels` insertion identity and ensure canonical normalized keys are used consistently before insert/upsert.
+- If needed, expand the existing cleanup migration strategy to merge any remaining legacy rows keyed by underscore/non-underscore variants.
 
 Technical details
-- I verified the core bug: `storm-public-lookup` logs “Using stored address "4063 Fonsica Avenue"” but then `resolveLocation()` still prefers `lat/lng`, and the live function response returns `4083 Fonsica Ave` / `KONEWECKI PIOTR`.
-- I also verified duplicates in `canvassiq_properties` for Fonsica addresses caused by mixed normalization keys from older vs newer ingestion.
+- Current evidence suggests the screenshot is not primarily caused by duplicate database rows for 4052, 4063, 4083, 4122, or 4123.
+- The stronger root cause is visual duplication in Google hybrid mode: Google renders house-number/address labels on the basemap while the app also renders number badges.
+- A second, smaller risk remains in `GooglePropertyMarkersLayer.tsx`: markers are deduped by address during query processing, but rendered/tracked by raw `property.id`, so equivalent rows can still become separate on incremental reloads.
 
 Files to update
-- `supabase/functions/_shared/public_data/locationResolver.ts`
-- `supabase/functions/storm-public-lookup/index.ts`
-- `src/components/storm-canvass/PropertyInfoPanel.tsx`
-- `supabase/functions/canvassiq-load-parcels/index.ts`
+- `src/components/storm-canvass/GoogleLiveLocationMap.tsx`
 - `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`
-- one new Supabase migration to dedupe legacy `canvassiq_properties` rows
+- optionally `supabase/functions/canvassiq-load-parcels/index.ts` if any remaining canonicalization gap is found during implementation review
 
 Expected result
-- 4063 Fonsica Ave no longer resolves to Peter/4083.
-- The panel will not display neighbor data even transiently.
-- Only one pin appears per property address.
-- Future enrichments persist only when the resolved property exactly matches the selected address.
+- Only one app-controlled marker appears per property.
+- Google’s built-in street-number labels no longer visually “duplicate” the app pins in canvass mode.
+- Same-number homes in nearby streets are less confusing because marker labeling becomes context-aware.
