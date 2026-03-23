@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, User, Briefcase, Target, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
