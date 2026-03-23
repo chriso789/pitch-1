@@ -1,28 +1,43 @@
 
 
-## Plan: Fix Address Search Not Showing Results in Canvassing
+## Plan: Eliminate GPS Blocking on Start Canvassing
 
-### Root Cause
+### Problem
 
-The `AddressSearchBar` uses the `Command` component from `cmdk`, which has **built-in client-side filtering enabled by default**. When Chris types an address, two things happen simultaneously:
+When Chris clicks "Start Canvassing," the page can get stuck showing a "GPS Tracking Error" toast and a persistent "Acquiring precise location..." overlay. Three issues cause this:
 
-1. The Google Places API returns matching addresses (this works -- verified by testing the edge function directly)
-2. `cmdk` internally tries to filter the `CommandItem` list using its own fuzzy matching against the typed text
+1. **`watchLocation` still shows "GPS Tracking Error" toast** for position-unavailable errors (code 2) — these should be silently suppressed like timeouts
+2. **GPS acquiring overlay never dismisses** if `getCurrentLocation` fails — `hasGPS` stays `false` forever, blocking the UI
+3. **`gpsTrailService` uses strict 10-second timeout** with only 1-second cache — triggers its own errors on slow GPS devices
+4. **`canvassiq_properties` RLS doesn't support company switching** — uses `profiles.tenant_id` instead of `COALESCE(active_tenant_id, tenant_id)`, so switched users can't see their company's pins
 
-The problem: `cmdk`'s internal filter compares the typed input against each `CommandItem`'s `value` prop (the full `description` like "123 Main Street, Queens, NY, USA"). Its matching algorithm often rejects valid results, so users see "No results found" even though Google returned addresses.
+### Changes
 
-### Fix
+#### 1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Never block on GPS
 
-**File: `src/components/storm-canvass/AddressSearchBar.tsx`**
+- **Watch error handler (lines 268-276)**: Remove the "GPS Tracking Error" toast entirely. Only show a toast for permission denied (code 1). All other errors (code 2, code 3, unknown) are silently logged — `watchPosition` keeps retrying automatically.
+- **GPS overlay auto-dismiss**: Add a 10-second timeout that sets `hasGPS = true` even without a GPS lock, so the overlay dismisses and the user can use the map at the default location. The GPS will update the position when it eventually locks.
+- **Initial location catch (lines 202-218)**: Remove the destructive "Location Error" toast for non-permission errors. Just log a warning — the map already loads at default location.
 
-Add `shouldFilter={false}` to the `<Command>` component (line 122). This disables cmdk's internal filtering and lets the Google Places API handle all search logic — which is the correct behavior for an async autocomplete.
+#### 2. `src/services/gpsTrailService.ts` — Lenient GPS options
 
-One-line change:
-```tsx
-<Command shouldFilter={false} className="relative rounded-lg border shadow-md bg-background">
-```
+- Change `maximumAge` from `1000` to `300000` (5 minutes) to match `locationService`
+- Change `timeout` from `10000` to `30000` (30 seconds) to match `locationService`
+
+#### 3. Database migration — Fix `canvassiq_properties` RLS for company switching
+
+Update all four RLS policies on `canvassiq_properties` to use `COALESCE(profiles.active_tenant_id, profiles.tenant_id)` instead of just `profiles.tenant_id`. This matches the pattern already used on `canvass_areas`, `canvass_area_assignments`, and `canvass_area_properties`.
+
+### Result
+
+- GPS errors never block the canvassing page — users always get a working map
+- The "GPS Tracking Error" toast is eliminated entirely
+- GPS overlay auto-dismisses after 10 seconds worst case
+- Company-switched users see the correct canvass pins for their active company
 
 ### Files to Change
 
-1. `src/components/storm-canvass/AddressSearchBar.tsx` — add `shouldFilter={false}` to `Command`
+1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — suppress error toasts, add overlay auto-dismiss
+2. `src/services/gpsTrailService.ts` — increase `maximumAge` and `timeout`
+3. Database migration — update `canvassiq_properties` RLS policies
 
