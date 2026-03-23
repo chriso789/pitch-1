@@ -172,14 +172,12 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     if (!existing) {
       addressMap.set(key, property);
     } else {
-      // Prefer snapped properties
       const currentSnapped = property.building_snapped === true;
       const existingSnapped = existing.building_snapped === true;
       
       if (currentSnapped && !existingSnapped) {
         addressMap.set(key, property);
       } else if (currentSnapped === existingSnapped) {
-        // If same snapped status, prefer newer
         const currentDate = new Date(property.created_at || 0).getTime();
         const existingDate = new Date(existing.created_at || 0).getTime();
         if (currentDate > existingDate) {
@@ -189,12 +187,42 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     }
   }
   
-  // Also include properties with no derivable key (keyed by id as last resort)
+  // Include properties with no derivable key
   for (const property of properties) {
     const key = getNormalizedAddressKey(property);
     if (!key || key === '_') {
       if (!addressMap.has(property.id)) {
         addressMap.set(property.id, property);
+      }
+    }
+  }
+
+  // Secondary dedup: if two different keys share the same house-number + street core, keep best
+  const coreMap = new Map<string, { key: string; property: CanvassiqProperty }>();
+  for (const [key, property] of addressMap.entries()) {
+    const core = getAddressCore(key);
+    if (!core || core === key) continue; // skip if no simplification
+    const existing = coreMap.get(core);
+    if (!existing) {
+      coreMap.set(core, { key, property });
+    } else {
+      // Keep snapped, then newest
+      const currentSnapped = property.building_snapped === true;
+      const existingSnapped = existing.property.building_snapped === true;
+      if (currentSnapped && !existingSnapped) {
+        addressMap.delete(existing.key);
+        coreMap.set(core, { key, property });
+      } else if (!currentSnapped && existingSnapped) {
+        addressMap.delete(key);
+      } else {
+        const currentDate = new Date(property.created_at || 0).getTime();
+        const existingDate = new Date(existing.property.created_at || 0).getTime();
+        if (currentDate > existingDate) {
+          addressMap.delete(existing.key);
+          coreMap.set(core, { key, property });
+        } else {
+          addressMap.delete(key);
+        }
       }
     }
   }
