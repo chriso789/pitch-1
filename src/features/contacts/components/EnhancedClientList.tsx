@@ -528,7 +528,14 @@ export const EnhancedClientList = () => {
             last_name
           )
         `)
-        .eq('tenant_id', effectiveTenantId)
+        .eq('tenant_id', effectiveTenantId);
+
+      // Sales reps only see pipeline entries assigned to them or created by them
+      if (profile && !canViewAllRecords(profile.role)) {
+        pipelineQuery = pipelineQuery.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+      }
+
+      const { data: pipelineData, error: pipelineError } = await pipelineQuery
         .order("created_at", { ascending: false });
 
       if (pipelineError) {
