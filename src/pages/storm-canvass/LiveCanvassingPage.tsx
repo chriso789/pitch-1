@@ -403,6 +403,13 @@ export default function LiveCanvassingPage() {
         {/* Map style toggle + Stats */}
         <div className="flex items-center gap-2 px-2 pt-2 pointer-events-auto">
           <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
+          {profile?.tenant_id && (
+            <MapSymbolSettings
+              tenantId={profile.tenant_id}
+              symbolSettings={symbolSettings}
+              onSettingsChange={setSymbolSettings}
+            />
+          )}
           <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         </div>
       </div>
