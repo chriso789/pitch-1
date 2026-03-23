@@ -394,7 +394,7 @@ export default function GooglePropertyMarkersLayer({
   }, []);
 
   const loadProperties = useCallback(async () => {
-    if (!profile?.tenant_id || !map) return;
+    if (!profile?.tenant_id || !map || !mountedRef.current) return;
     
     // Acquire a new load version; any in-flight load with a lower version is now stale
     const thisLoadVersion = ++loadVersionRef.current;
