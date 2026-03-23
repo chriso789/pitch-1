@@ -14,6 +14,7 @@ import { Plus, Edit, Trash2, GripVertical, ArrowUp, ArrowDown, Loader2, AlertTri
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { cn } from '@/lib/utils';
 
 interface PipelineStage {
@@ -71,6 +72,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
   const [isActive, setIsActive] = useState(stage?.is_active ?? true);
   const { toast } = useToast();
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
 
   useEffect(() => {
     if (open && stage) {
@@ -144,7 +146,7 @@ const StageDialog: React.FC<StageDialogProps> = ({ stage, existingStages, onSave
         const { error } = await supabase
           .from('pipeline_stages')
           .insert({
-            tenant_id: profile?.tenant_id,
+            tenant_id: effectiveTenantId,
             name: name.trim(),
             key: finalKey,
             description: description.trim() || null,
@@ -296,15 +298,16 @@ export const PipelineStageManager: React.FC = () => {
   const [reordering, setReordering] = useState<string | null>(null);
   const { toast } = useToast();
   const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
 
   const fetchStages = async () => {
-    if (!profile?.tenant_id) return;
+    if (!effectiveTenantId) return;
     
     try {
       const { data, error } = await supabase
         .from('pipeline_stages')
         .select('*')
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .order('stage_order', { ascending: true });
       
       if (error) throw error;
@@ -318,10 +321,10 @@ export const PipelineStageManager: React.FC = () => {
   };
 
   useEffect(() => {
-    if (profile?.tenant_id) {
+    if (effectiveTenantId) {
       fetchStages();
     }
-  }, [profile?.tenant_id]);
+  }, [effectiveTenantId]);
 
   const moveStage = async (stageId: string, direction: 'up' | 'down') => {
     const stageIndex = stages.findIndex(s => s.id === stageId);
