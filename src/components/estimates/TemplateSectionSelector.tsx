@@ -459,6 +459,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                   <TableCell className="font-medium">{item.item_name}</TableCell>
                   <TableCell>
                     {isLocked ? (
+                      <span className="text-sm text-muted-foreground">{item.notes || '—'}</span>
+                    ) : (
+                      <Input
+                        value={item.notes || ''}
+                        onChange={(e) => handleUpdateItem(item.id, 'notes', e.target.value)}
+                        onBlur={handleSave}
+                        placeholder="e.g. Weathered Wood"
+                        className="h-8 text-sm"
+                      />
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {isLocked ? (
                       <span className="text-right block">{item.qty}</span>
                     ) : (
                       <Input
