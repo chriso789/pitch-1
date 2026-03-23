@@ -3,6 +3,8 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 
+import { type SymbolSettings, DEFAULT_DISPOSITION_SYMBOLS } from './MapSymbolSettings';
+
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
   userLocation: { lat: number; lng: number };
@@ -11,6 +13,7 @@ interface GooglePropertyMarkersLayerProps {
   onPropertiesLoaded?: (count: number) => void;
   refreshKey?: number;
   areaPropertyIds?: string[];
+  symbolSettings?: SymbolSettings;
 }
 
 interface CanvassiqProperty {
@@ -122,9 +125,9 @@ function normalizeAddressKeyClient(streetOrFormatted: string): string {
 
 // Get normalized address key for deduplication — ALWAYS returns address-based key, never falls back to id
 function getNormalizedAddressKey(property: CanvassiqProperty): string {
-  // Use pre-computed key if available — re-normalize through canonical function
+  // Use pre-computed key DIRECTLY if available — server already normalized it
   if (property.normalized_address_key) {
-    return normalizeAddressKeyClient(property.normalized_address_key.replace(/_/g, " "));
+    return property.normalized_address_key.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
   }
   
   // Fallback: compute from address fields
@@ -133,23 +136,27 @@ function getNormalizedAddressKey(property: CanvassiqProperty): string {
     try {
       parsed = JSON.parse(parsed);
     } catch {
-      // Try to normalize the raw string itself
       const raw = property.address?.trim();
       return raw ? normalizeAddressKeyClient(raw) : '';
     }
   }
   
-  // Try street_number + street_name first
   const streetNumber = parsed?.street_number || '';
   const streetName = parsed?.street_name || parsed?.street || '';
   const combined = `${streetNumber} ${streetName}`.trim();
   if (combined && combined.length > 1) return normalizeAddressKeyClient(combined);
 
-  // Try formatted address
   const formatted = parsed?.formatted || parsed?.address_line1 || '';
   if (formatted) return normalizeAddressKeyClient(formatted);
 
   return '';
+}
+
+// Extract house-number + street-name core for secondary dedup
+function getAddressCore(key: string): string {
+  // Extract leading digits and first word after them
+  const match = key.match(/^(\d+)_([a-z]+)/);
+  return match ? `${match[1]}_${match[2]}` : key;
 }
 
 // Deduplicate properties by normalized address key
@@ -165,14 +172,12 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     if (!existing) {
       addressMap.set(key, property);
     } else {
-      // Prefer snapped properties
       const currentSnapped = property.building_snapped === true;
       const existingSnapped = existing.building_snapped === true;
       
       if (currentSnapped && !existingSnapped) {
         addressMap.set(key, property);
       } else if (currentSnapped === existingSnapped) {
-        // If same snapped status, prefer newer
         const currentDate = new Date(property.created_at || 0).getTime();
         const existingDate = new Date(existing.created_at || 0).getTime();
         if (currentDate > existingDate) {
@@ -182,12 +187,42 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     }
   }
   
-  // Also include properties with no derivable key (keyed by id as last resort)
+  // Include properties with no derivable key
   for (const property of properties) {
     const key = getNormalizedAddressKey(property);
     if (!key || key === '_') {
       if (!addressMap.has(property.id)) {
         addressMap.set(property.id, property);
+      }
+    }
+  }
+
+  // Secondary dedup: if two different keys share the same house-number + street core, keep best
+  const coreMap = new Map<string, { key: string; property: CanvassiqProperty }>();
+  for (const [key, property] of addressMap.entries()) {
+    const core = getAddressCore(key);
+    if (!core || core === key) continue; // skip if no simplification
+    const existing = coreMap.get(core);
+    if (!existing) {
+      coreMap.set(core, { key, property });
+    } else {
+      // Keep snapped, then newest
+      const currentSnapped = property.building_snapped === true;
+      const existingSnapped = existing.property.building_snapped === true;
+      if (currentSnapped && !existingSnapped) {
+        addressMap.delete(existing.key);
+        coreMap.set(core, { key, property });
+      } else if (!currentSnapped && existingSnapped) {
+        addressMap.delete(key);
+      } else {
+        const currentDate = new Date(property.created_at || 0).getTime();
+        const existingDate = new Date(existing.property.created_at || 0).getTime();
+        if (currentDate > existingDate) {
+          addressMap.delete(existing.key);
+          coreMap.set(core, { key, property });
+        } else {
+          addressMap.delete(key);
+        }
       }
     }
   }
@@ -203,6 +238,7 @@ export default function GooglePropertyMarkersLayer({
   onPropertiesLoaded,
   refreshKey,
   areaPropertyIds,
+  symbolSettings,
 }: GooglePropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
   // Ref for onPropertyClick so marker listeners never go stale
@@ -289,6 +325,8 @@ export default function GooglePropertyMarkersLayer({
     const disposition = property.disposition || 'not_contacted';
     const color = getDispositionColor(disposition);
     const isNotContacted = disposition === 'not_contacted' || !property.disposition;
+    const symbols = symbolSettings || DEFAULT_DISPOSITION_SYMBOLS;
+    const symbol = symbols[disposition] || '';
     
     // Size based on zoom level — number-only labels
     let size = 16;
@@ -312,11 +350,30 @@ export default function GooglePropertyMarkersLayer({
     const fillColor = isNotContacted ? '#FFFFFF' : color;
     const strokeColor = isNotContacted ? color : '#FFFFFF';
     const textColor = isNotContacted ? '#1F2937' : '#FFFFFF';
+
+    // Symbol badge dimensions
+    const badgeSize = Math.max(10, Math.round(size * 0.35));
+    const badgeFontSize = Math.max(6, Math.round(badgeSize * 0.7));
+    const badgeX = size - badgeSize / 2 - 1;
+    const badgeY = size - badgeSize / 2 - 1;
+    
+    // At low zoom without number, show symbol as primary content
+    const showSymbolAsPrimary = !showNumber && symbol && !isNotContacted;
     
     const svg = `
       <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
         <rect x="1" y="1" width="${size - 2}" height="${size - 2}" rx="${size / 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
-        ${streetNumber ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>` : ''}
+        ${showSymbolAsPrimary
+          ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
+          : streetNumber
+            ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>`
+            : ''
+        }
+        ${symbol && showNumber && !isNotContacted
+          ? `<circle cx="${badgeX}" cy="${badgeY}" r="${badgeSize/2}" fill="${color}" stroke="#FFFFFF" stroke-width="1"/>
+             <text x="${badgeX}" y="${badgeY + badgeFontSize * 0.35}" text-anchor="middle" font-size="${badgeFontSize}" fill="#FFFFFF" font-weight="700" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
+          : ''
+        }
       </svg>
     `;
     
@@ -325,18 +382,17 @@ export default function GooglePropertyMarkersLayer({
       scaledSize: new google.maps.Size(size, size),
       anchor: new google.maps.Point(size / 2, size / 2),
     };
-  }, []);
+  }, [symbolSettings]);
 
-  // Fully deterministic marker reconciliation — keyed by canonical address
+  // Fully deterministic marker reconciliation — clear all then re-add to prevent orphaned keys
   const reconcileMarkers = useCallback((properties: CanvassiqProperty[], zoom: number, loadVersion: number) => {
-    // Discard if unmounted or stale
     if (!mountedRef.current) return;
     if (loadVersion < loadVersionRef.current) {
       console.log('[GooglePropertyMarkersLayer] Discarding stale load v', loadVersion, '< current v', loadVersionRef.current);
       return;
     }
 
-    // Build canonical key → property map (dedup already ran, but guard here too)
+    // Build canonical key → property map
     const currentKeys = new Map<string, CanvassiqProperty>();
     for (const p of properties) {
       const key = getNormalizedAddressKey(p) || p.id;
@@ -345,14 +401,10 @@ export default function GooglePropertyMarkersLayer({
       }
     }
     
-    // Remove markers whose key is no longer in this load's set
-    markersRef.current.forEach((marker, key) => {
-      if (!currentKeys.has(key)) {
-        marker.setMap(null);
-        markersRef.current.delete(key);
-        propertiesCacheRef.current.delete(key);
-      }
-    });
+    // Clear ALL existing markers to prevent orphaned keys from key-mismatch across loads
+    markersRef.current.forEach((marker) => marker.setMap(null));
+    markersRef.current.clear();
+    propertiesCacheRef.current.clear();
     
     // Add new markers or update existing ones (position + icon always)
     currentKeys.forEach((property, key) => {

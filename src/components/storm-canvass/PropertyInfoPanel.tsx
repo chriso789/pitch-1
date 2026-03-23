@@ -734,6 +734,11 @@ export default function PropertyInfoPanel({
                 <SheetTitle className="flex items-center gap-2 text-lg">
                   <User className="h-5 w-5 text-primary" />
                   {ownerName}
+                  {primaryOwner?.age && (
+                    <Badge variant="outline" className="text-[10px] font-normal ml-1">
+                      Age {primaryOwner.age}
+                    </Badge>
+                  )}
                   {/* Confidence badge from public data */}
                   {localProperty.property_data?.confidence_score != null && (
                     <Badge 
@@ -883,39 +888,7 @@ export default function PropertyInfoPanel({
             </RadioGroup>
           </div>
 
-          {/* Add Customer Button */}
-          <Button 
-            onClick={handleAddCustomer}
-            className="w-full mb-4 bg-primary hover:bg-primary/90"
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Customer
-          </Button>
-
-          {/* Contact Info Section - Always visible */}
-          {phoneNumbers?.length === 0 && emails?.length === 0 && !publicLookupLoading && publicLookupDoneRef.current === property.id && (
-            <div className="mb-4 p-3 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 text-center">
-              <Phone className="h-5 w-5 mx-auto text-primary/60 mb-1.5" />
-              <p className="text-xs text-muted-foreground mb-2">Phone & email require a skip-trace lookup</p>
-              <Button
-                variant="default"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => handleSkipTrace()}
-                disabled={enriching}
-              >
-                {enriching ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <Sparkles className="h-3.5 w-3.5" />
-                )}
-                {enriching ? 'Looking up contacts…' : 'Get Contact Info'}
-              </Button>
-              {skipTraceError && (
-                <p className="text-[10px] text-destructive mt-1.5">{skipTraceError}</p>
-              )}
-            </div>
-          )}
+          {/* Contact Info Section - Show immediately when data exists */}
           {(phoneNumbers?.length > 0 || emails?.length > 0) && (
             <div className="space-y-2 mb-4">
               {phoneNumbers && phoneNumbers.length > 0 && (
@@ -979,6 +952,40 @@ export default function PropertyInfoPanel({
               )}
             </div>
           )}
+
+          {/* Get Contact Info CTA - only when no phones AND no emails */}
+          {phoneNumbers?.length === 0 && emails?.length === 0 && !publicLookupLoading && (
+            <div className="mb-4 p-3 border-2 border-dashed border-primary/30 rounded-lg bg-primary/5 text-center">
+              <Phone className="h-5 w-5 mx-auto text-primary/60 mb-1.5" />
+              <p className="text-xs text-muted-foreground mb-2">Phone & email require a skip-trace lookup</p>
+              <Button
+                variant="default"
+                size="sm"
+                className="gap-1.5"
+                onClick={() => handleSkipTrace()}
+                disabled={enriching}
+              >
+                {enriching ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5" />
+                )}
+                {enriching ? 'Looking up contacts…' : 'Get Contact Info'}
+              </Button>
+              {skipTraceError && (
+                <p className="text-[10px] text-destructive mt-1.5">{skipTraceError}</p>
+              )}
+            </div>
+          )}
+
+          {/* Add Customer Button */}
+          <Button 
+            onClick={handleAddCustomer}
+            className="w-full mb-4 bg-primary hover:bg-primary/90"
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Customer
+          </Button>
 
           {/* Skip-trace failure feedback */}
           {skipTraceError && phoneNumbers?.length === 0 && emails?.length === 0 && !enriching && (

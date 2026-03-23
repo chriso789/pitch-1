@@ -9,6 +9,7 @@ import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
 import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
+import MapSymbolSettings, { loadSymbolSettings, type SymbolSettings } from '@/components/storm-canvass/MapSymbolSettings';
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import PropertyLoadingIndicator from '@/components/storm-canvass/PropertyLoadingIndicator';
@@ -71,6 +72,9 @@ export default function LiveCanvassingPage() {
   const [showPropertyPanel, setShowPropertyPanel] = useState(false);
   const [canvassMode, setCanvassMode] = useState<'knock' | 'canvas'>('knock');
   const [dropPinCoords, setDropPinCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [symbolSettings, setSymbolSettings] = useState<SymbolSettings>(() => 
+    loadSymbolSettings(profile?.tenant_id || '')
+  );
   const [destination, setDestination] = useState<{
     lat: number;
     lng: number;
@@ -362,6 +366,7 @@ export default function LiveCanvassingPage() {
           areaPolygon={areaPolygon}
           onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
           followUser={canvassMode === 'knock'}
+          symbolSettings={symbolSettings}
         />
       </div>
 
@@ -398,6 +403,13 @@ export default function LiveCanvassingPage() {
         {/* Map style toggle + Stats */}
         <div className="flex items-center gap-2 px-2 pt-2 pointer-events-auto">
           <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
+          {profile?.tenant_id && (
+            <MapSymbolSettings
+              tenantId={profile.tenant_id}
+              symbolSettings={symbolSettings}
+              onSettingsChange={setSymbolSettings}
+            />
+          )}
           <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         </div>
       </div>
