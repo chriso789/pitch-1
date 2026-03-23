@@ -277,6 +277,7 @@ export default function LiveCanvassingPage() {
     );
 
     return () => {
+      clearTimeout(gpsTimeout);
       stopWatching();
       locationService.stopWatching();
     };

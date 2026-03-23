@@ -58,8 +58,8 @@ class GPSTrailService {
         (error) => console.error('[GPSTrailService] Watch error:', error),
         {
           enableHighAccuracy: true,
-          maximumAge: 1000,
-          timeout: 10000,
+          maximumAge: 300000,
+          timeout: 30000,
         }
       );
     }
