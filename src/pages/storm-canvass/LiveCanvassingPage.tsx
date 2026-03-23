@@ -583,11 +583,10 @@ export default function LiveCanvassingPage() {
       {/* Mobile Disposition Panel (for contacts) */}
       <MobileDispositionPanel
         contact={selectedContact}
-        userLocation={userLocation}
+        userLocation={userLocation || NEUTRAL_FALLBACK}
         dispositions={dispositions}
         onClose={() => setSelectedContact(null)}
         onUpdate={() => {
-          // Refresh map/markers after disposition update
           setSelectedContact(null);
         }}
         onNavigate={handleNavigateToContact}
