@@ -86,6 +86,9 @@ interface AIConfig {
     days: string[];
   };
   qualification_questions: QualificationQuestion[];
+  auto_create_leads: boolean;
+  auto_schedule_appointments: boolean;
+  sms_notify_rep: boolean;
 }
 
 const VOICE_OPTIONS = [
@@ -129,6 +132,9 @@ export default function AIAgentSettingsPage() {
       days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'],
     },
     qualification_questions: DEFAULT_QUESTIONS,
+    auto_create_leads: true,
+    auto_schedule_appointments: true,
+    sms_notify_rep: true,
   });
 
   const [telnyxLocations, setTelnyxLocations] = useState<TelnyxLocation[]>([]);
@@ -200,6 +206,9 @@ export default function AIAgentSettingsPage() {
         location_id: (data as any).location_id || null,
         business_hours: (data.business_hours as any) || config.business_hours,
         qualification_questions: questions,
+        auto_create_leads: (data as any).auto_create_leads ?? true,
+        auto_schedule_appointments: (data as any).auto_schedule_appointments ?? true,
+        sms_notify_rep: (data as any).sms_notify_rep ?? true,
       });
     }
   };
@@ -238,6 +247,9 @@ export default function AIAgentSettingsPage() {
           location_id: config.location_id,
           business_hours: config.business_hours,
           qualification_questions: config.qualification_questions as any,
+          auto_create_leads: config.auto_create_leads,
+          auto_schedule_appointments: config.auto_schedule_appointments,
+          sms_notify_rep: config.sms_notify_rep,
         } as any, {
           onConflict: 'tenant_id',
         });
@@ -409,6 +421,51 @@ export default function AIAgentSettingsPage() {
             <Switch
               checked={config.is_enabled}
               onCheckedChange={(checked) => setConfig({ ...config, is_enabled: checked })}
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Automation Toggles */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Automation
+          </CardTitle>
+          <CardDescription>
+            Control what happens automatically when the AI qualifies a caller
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Auto-Create Leads</p>
+              <p className="text-xs text-muted-foreground">Automatically create a lead in the pipeline from AI-qualified calls</p>
+            </div>
+            <Switch
+              checked={config.auto_create_leads}
+              onCheckedChange={(checked) => setConfig({ ...config, auto_create_leads: checked })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">Auto-Schedule Appointments</p>
+              <p className="text-xs text-muted-foreground">Let the AI book inspection appointments when callers request them</p>
+            </div>
+            <Switch
+              checked={config.auto_schedule_appointments}
+              onCheckedChange={(checked) => setConfig({ ...config, auto_schedule_appointments: checked })}
+            />
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium text-sm">SMS Notify Rep</p>
+              <p className="text-xs text-muted-foreground">Send an SMS to the assigned rep when a new AI lead is created</p>
+            </div>
+            <Switch
+              checked={config.sms_notify_rep}
+              onCheckedChange={(checked) => setConfig({ ...config, sms_notify_rep: checked })}
             />
           </div>
         </CardContent>

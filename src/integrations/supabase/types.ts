@@ -610,6 +610,8 @@ export type Database = {
           after_hours_greeting: string | null
           ai_model: string | null
           ai_voice: string | null
+          auto_create_leads: boolean | null
+          auto_schedule_appointments: boolean | null
           business_hours: Json | null
           created_at: string | null
           escalation_keywords: string[] | null
@@ -619,6 +621,7 @@ export type Database = {
           location_id: string | null
           qualification_questions: Json | null
           required_fields: string[] | null
+          sms_notify_rep: boolean | null
           temperature: number | null
           tenant_id: string | null
           updated_at: string | null
@@ -627,6 +630,8 @@ export type Database = {
           after_hours_greeting?: string | null
           ai_model?: string | null
           ai_voice?: string | null
+          auto_create_leads?: boolean | null
+          auto_schedule_appointments?: boolean | null
           business_hours?: Json | null
           created_at?: string | null
           escalation_keywords?: string[] | null
@@ -636,6 +641,7 @@ export type Database = {
           location_id?: string | null
           qualification_questions?: Json | null
           required_fields?: string[] | null
+          sms_notify_rep?: boolean | null
           temperature?: number | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -644,6 +650,8 @@ export type Database = {
           after_hours_greeting?: string | null
           ai_model?: string | null
           ai_voice?: string | null
+          auto_create_leads?: boolean | null
+          auto_schedule_appointments?: boolean | null
           business_hours?: Json | null
           created_at?: string | null
           escalation_keywords?: string[] | null
@@ -653,6 +661,7 @@ export type Database = {
           location_id?: string | null
           qualification_questions?: Json | null
           required_fields?: string[] | null
+          sms_notify_rep?: boolean | null
           temperature?: number | null
           tenant_id?: string | null
           updated_at?: string | null
