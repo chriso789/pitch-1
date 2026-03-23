@@ -30329,6 +30329,7 @@ export type Database = {
           parsed: Json
           provider: string
           report_number: string | null
+          tenant_id: string | null
         }
         Insert: {
           address?: string | null
@@ -30343,6 +30344,7 @@ export type Database = {
           parsed?: Json
           provider: string
           report_number?: string | null
+          tenant_id?: string | null
         }
         Update: {
           address?: string | null
@@ -30357,8 +30359,17 @@ export type Database = {
           parsed?: Json
           provider?: string
           report_number?: string | null
+          tenant_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "roof_vendor_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       roof_waste_calculations: {
         Row: {
