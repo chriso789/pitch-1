@@ -271,13 +271,13 @@ export default function GoogleLiveLocationMap({
       {mapReady && map.current && (
         <>
           <GooglePropertyMarkersLayer
-            key={`markers-${refreshKey || 0}`}
             map={map.current}
             userLocation={userLocation}
             onPropertyClick={onParcelSelect}
             onLoadingChange={onLoadingChange}
             onPropertiesLoaded={onPropertiesLoaded}
             areaPropertyIds={areaPropertyIds}
+            refreshKey={refreshKey}
           />
           {routeData?.polyline && destination && (
             <GoogleRouteVisualization

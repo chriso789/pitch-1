@@ -219,6 +219,9 @@ export default function GooglePropertyMarkersLayer({
   // Monotonically increasing load version — stale loads are discarded
   const loadVersionRef = useRef(0);
 
+  // Mounted guard — prevents orphaned async loads from drawing after unmount
+  const mountedRef = useRef(true);
+
   // Calculate load radius based on zoom level
   const getLoadRadius = useCallback((zoom: number): number => {
     if (zoom >= 18) return 0.15;
