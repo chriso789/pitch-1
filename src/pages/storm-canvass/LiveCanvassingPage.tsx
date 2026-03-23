@@ -502,7 +502,7 @@ export default function LiveCanvassingPage() {
         {/* Search bar */}
         <div className="px-2 pt-2 pointer-events-auto">
           <AddressSearchBar
-            userLocation={userLocation}
+            userLocation={userLocation || NEUTRAL_FALLBACK}
             onAddressSelect={handleAddressSelect}
           />
         </div>
