@@ -39,14 +39,21 @@ serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an invoice data extraction assistant. Extract structured data from invoice documents. Be precise with numbers and dates. If you cannot determine a field, return null for it.`
+            content: `You are an expert invoice data extraction assistant for the construction and roofing industry. You process invoices from suppliers like Beacon Roofing Supply, ABC Supply, SRS Distribution, and similar vendors. Extract ALL data precisely:
+- Read every line item including description, quantity, unit price, and extended/line total
+- Capture the invoice total, subtotal, and any tax amounts
+- Identify the vendor/company name from the header or letterhead
+- Find the invoice number (may be labeled as Invoice #, Inv #, Document #, etc.)
+- Find the invoice date
+- Be precise with dollar amounts — never round, use exact values from the document
+- If a field is not visible or cannot be determined, return null for it`
           },
           {
             role: "user",
             content: [
               {
                 type: "text",
-                text: "Extract the invoice number, invoice date, total amount, and vendor name from this invoice document."
+                text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
               },
               {
                 type: "image_url",
@@ -60,7 +67,7 @@ serve(async (req) => {
             type: "function",
             function: {
               name: "extract_invoice_data",
-              description: "Extract structured invoice data from the document",
+              description: "Extract structured invoice data including line items from the document",
               parameters: {
                 type: "object",
                 properties: {
@@ -72,16 +79,50 @@ serve(async (req) => {
                     type: "string",
                     description: "The invoice date in YYYY-MM-DD format"
                   },
-                  invoice_amount: {
-                    type: "number",
-                    description: "The total amount of the invoice in dollars (numeric only, no currency symbols)"
-                  },
                   vendor_name: {
                     type: "string",
-                    description: "The vendor or company name on the invoice"
+                    description: "The vendor or company name on the invoice (e.g. Beacon Roofing Supply)"
+                  },
+                  line_items: {
+                    type: "array",
+                    description: "All individual line items on the invoice",
+                    items: {
+                      type: "object",
+                      properties: {
+                        description: {
+                          type: "string",
+                          description: "Product or service description"
+                        },
+                        quantity: {
+                          type: "number",
+                          description: "Quantity ordered"
+                        },
+                        unit_price: {
+                          type: "number",
+                          description: "Price per unit in dollars"
+                        },
+                        line_total: {
+                          type: "number",
+                          description: "Extended total for this line item in dollars"
+                        }
+                      },
+                      required: ["description"]
+                    }
+                  },
+                  subtotal: {
+                    type: "number",
+                    description: "Subtotal before tax in dollars"
+                  },
+                  tax_amount: {
+                    type: "number",
+                    description: "Tax amount in dollars"
+                  },
+                  total_amount: {
+                    type: "number",
+                    description: "Grand total of the invoice in dollars (the final amount due)"
                   }
                 },
-                required: ["invoice_number", "invoice_date", "invoice_amount", "vendor_name"]
+                required: ["vendor_name", "total_amount"]
               }
             }
           }
@@ -115,7 +156,6 @@ serve(async (req) => {
     const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0];
 
     if (!toolCall?.function?.arguments) {
-      // Fallback: try to parse from content
       console.warn("[parse-invoice] No tool call in response, returning empty");
       return new Response(
         JSON.stringify({ parsed: null, message: "Could not extract invoice data" }),
@@ -124,6 +164,12 @@ serve(async (req) => {
     }
 
     const parsed = JSON.parse(toolCall.function.arguments);
+    
+    // Backward compat: also set invoice_amount from total_amount
+    if (parsed.total_amount && !parsed.invoice_amount) {
+      parsed.invoice_amount = parsed.total_amount;
+    }
+    
     console.log("[parse-invoice] Extracted:", JSON.stringify(parsed));
 
     return new Response(

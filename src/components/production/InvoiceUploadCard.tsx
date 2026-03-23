@@ -14,7 +14,10 @@ import {
   Package,
   Wrench,
   Receipt,
-  ScanLine
+  ScanLine,
+  ChevronDown,
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 import {
   Select,
@@ -23,8 +26,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+
+interface LineItem {
+  description: string;
+  quantity?: number;
+  unit_price?: number;
+  line_total?: number;
+}
 
 interface InvoiceUploadCardProps {
   projectId?: string;
@@ -53,6 +72,10 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [scanSuccess, setScanSuccess] = useState(false);
+  const [lineItems, setLineItems] = useState<LineItem[]>([]);
+  const [lineItemsOpen, setLineItemsOpen] = useState(false);
+  const [parsedTotals, setParsedTotals] = useState<{ subtotal?: number; tax?: number; total?: number }>({});
   const [formData, setFormData] = useState({
     vendor_name: '',
     crew_name: '',
@@ -65,8 +88,20 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     notes: ''
   });
 
+  const formatLineItemsSummary = (items: LineItem[]): string => {
+    if (!items.length) return '';
+    const lines = items.map(item => {
+      const parts = [item.description];
+      if (item.quantity) parts.push(`Qty: ${item.quantity}`);
+      if (item.line_total) parts.push(`$${item.line_total.toFixed(2)}`);
+      return parts.join(' — ');
+    });
+    return lines.join('\n');
+  };
+
   const parseInvoiceWithAI = async (documentUrl: string) => {
     setScanning(true);
+    setScanSuccess(false);
     try {
       const { data, error } = await supabase.functions.invoke('parse-invoice-document', {
         body: { document_url: documentUrl }
@@ -79,17 +114,33 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       if (data?.parsed) {
         const parsed = data.parsed;
+        const amount = parsed.total_amount || parsed.invoice_amount;
+        const items: LineItem[] = parsed.line_items || [];
+        
+        setLineItems(items);
+        setParsedTotals({
+          subtotal: parsed.subtotal,
+          tax: parsed.tax_amount,
+          total: amount
+        });
+        if (items.length > 0) setLineItemsOpen(true);
+
+        // Build notes from line items
+        const itemsSummary = formatLineItemsSummary(items);
+
         setFormData(prev => ({
           ...prev,
           invoice_number: parsed.invoice_number || prev.invoice_number,
           invoice_date: parsed.invoice_date || prev.invoice_date,
-          invoice_amount: parsed.invoice_amount ? String(parsed.invoice_amount) : prev.invoice_amount,
+          invoice_amount: amount ? String(amount) : prev.invoice_amount,
           vendor_name: parsed.vendor_name || prev.vendor_name,
+          notes: itemsSummary || prev.notes,
         }));
 
+        setScanSuccess(true);
         toast({
-          title: 'Invoice Scanned',
-          description: 'Fields auto-filled from invoice. Please verify before submitting.',
+          title: 'Invoice Scanned Successfully',
+          description: `Extracted ${items.length} line item${items.length !== 1 ? 's' : ''} — total $${amount ? Number(amount).toFixed(2) : '0.00'}. Verify and submit.`,
         });
       }
     } catch (err) {
@@ -198,6 +249,10 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         document_name: '',
         notes: ''
       });
+      setLineItems([]);
+      setParsedTotals({});
+      setScanSuccess(false);
+      setLineItemsOpen(false);
 
       onSuccess?.(data.invoice);
     } catch (error: any) {
@@ -231,10 +286,16 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
               Scanning invoice...
             </Badge>
           )}
+          {scanSuccess && !scanning && (
+            <Badge className="ml-auto flex items-center gap-1 text-xs bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border-green-200 dark:border-green-800">
+              <Sparkles className="h-3 w-3" />
+              AI fields populated
+            </Badge>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        {/* File Upload - Moved to top so AI can auto-fill fields below */}
+        {/* File Upload */}
         <div>
           <Label>Invoice Document</Label>
           {formData.document_url ? (
@@ -245,7 +306,12 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 variant="ghost"
                 size="icon"
                 className="h-6 w-6"
-                onClick={() => setFormData(prev => ({ ...prev, document_url: '', document_name: '' }))}
+                onClick={() => {
+                  setFormData(prev => ({ ...prev, document_url: '', document_name: '' }));
+                  setLineItems([]);
+                  setParsedTotals({});
+                  setScanSuccess(false);
+                }}
               >
                 <X className="h-3 w-3" />
               </Button>
@@ -272,6 +338,71 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             </div>
           )}
         </div>
+
+        {/* Extracted Line Items */}
+        {lineItems.length > 0 && (
+          <Collapsible open={lineItemsOpen} onOpenChange={setLineItemsOpen}>
+            <CollapsibleTrigger asChild>
+              <Button variant="outline" size="sm" className="w-full flex items-center justify-between text-xs">
+                <span className="flex items-center gap-1.5">
+                  <FileText className="h-3.5 w-3.5" />
+                  {lineItems.length} extracted line item{lineItems.length !== 1 ? 's' : ''}
+                </span>
+                {lineItemsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2">
+              <div className="rounded-md border border-border overflow-hidden">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      <TableHead className="text-xs py-1.5">Description</TableHead>
+                      <TableHead className="text-xs py-1.5 text-right w-16">Qty</TableHead>
+                      <TableHead className="text-xs py-1.5 text-right w-20">Unit $</TableHead>
+                      <TableHead className="text-xs py-1.5 text-right w-24">Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {lineItems.map((item, idx) => (
+                      <TableRow key={idx}>
+                        <TableCell className="text-xs py-1.5 max-w-[200px] truncate">{item.description}</TableCell>
+                        <TableCell className="text-xs py-1.5 text-right">{item.quantity ?? '—'}</TableCell>
+                        <TableCell className="text-xs py-1.5 text-right">
+                          {item.unit_price != null ? `$${item.unit_price.toFixed(2)}` : '—'}
+                        </TableCell>
+                        <TableCell className="text-xs py-1.5 text-right font-medium">
+                          {item.line_total != null ? `$${item.line_total.toFixed(2)}` : '—'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {(parsedTotals.subtotal != null || parsedTotals.tax != null || parsedTotals.total != null) && (
+                  <div className="border-t border-border bg-muted/30 px-3 py-2 space-y-0.5">
+                    {parsedTotals.subtotal != null && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Subtotal</span>
+                        <span>${parsedTotals.subtotal.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {parsedTotals.tax != null && (
+                      <div className="flex justify-between text-xs text-muted-foreground">
+                        <span>Tax</span>
+                        <span>${parsedTotals.tax.toFixed(2)}</span>
+                      </div>
+                    )}
+                    {parsedTotals.total != null && (
+                      <div className="flex justify-between text-xs font-semibold">
+                        <span>Total</span>
+                        <span>${parsedTotals.total.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
 
         <div className="grid grid-cols-2 gap-3">
           {isMaterial && (
