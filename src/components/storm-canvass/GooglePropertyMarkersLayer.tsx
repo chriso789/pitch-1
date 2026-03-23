@@ -212,7 +212,6 @@ export default function GooglePropertyMarkersLayer({
   const markersRef = useRef<Map<string, google.maps.Marker>>(new Map());
   const [currentZoom, setCurrentZoom] = useState(18);
   const [isLoading, setIsLoading] = useState(false);
-  const loadingRef = useRef(false);
   const loadedGridCellsRef = useRef<Set<string>>(new Set());
   const propertiesCacheRef = useRef<Map<string, CanvassiqProperty>>(new Map());
 
