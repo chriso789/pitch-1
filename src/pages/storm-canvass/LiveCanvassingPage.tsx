@@ -215,6 +215,16 @@ export default function LiveCanvassingPage() {
 
     initLocation();
 
+    // Auto-dismiss GPS overlay after 10 seconds even without a lock
+    const gpsTimeout = setTimeout(() => {
+      setHasGPS((current) => {
+        if (!current) {
+          console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
+        }
+        return true;
+      });
+    }, 10000);
+
     // Start watching location
     const stopWatching = locationService.watchLocation(
       (location) => {
