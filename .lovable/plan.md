@@ -1,55 +1,76 @@
 
 
-## Plan: Fix 3 Issues — Estimate Bar Sync, Material Color Export, Map Still Showing Tampa
+## Plan: Fix Search, Location Prompts, Henderson Ave Pin, and Owner Population
 
-### Issue 1: Saved Estimate Not Reflecting in Top Bar
+### Issue 1: Search Not Finding "Mariotti"
 
-**Root Cause**: The hyperlink bar at the top pulls data from the `api_estimate_hyperlink_bar` RPC, which reads from `pipeline_entries.metadata.selected_estimate_id`. When an estimate is selected in the SavedEstimatesList, it correctly invalidates the `hyperlink-data` query. However, the screenshot shows the top bar displaying $7,518 while the saved estimate shows $10,898 — indicating the RPC is reading from a different or stale estimate, or the `selected_estimate_id` metadata was not properly updated.
+**Root Cause**: The `CLJSearchBar` component wraps results in a `<Command>` component (cmdk) but does NOT set `shouldFilter={false}`. The cmdk library applies its own client-side fuzzy filtering on top of the RPC results. When the RPC returns "KEVIN MARIOTTI", cmdk's internal filter may suppress it because it matches against the `value` prop of `CommandItem` elements.
 
-**Fix**: The `SavedEstimatesList.handleSelectEstimate` already invalidates `hyperlink-data`. The issue is likely that the `calculations` fallback data in `EstimateHyperlinkBar` is being shown instead of the RPC data. When `hyperlinkData` is null or loading, it falls back to the `calculations` prop which comes from a different source.
+The RPC itself works correctly — calling `search_contacts_and_jobs` directly returns both the contact and job for "mariotti". The `AddressSearchBar` already uses `shouldFilter={false}` for this exact reason.
 
-**Changes**:
-- In `EstimateHyperlinkBar.tsx`: When an estimate is selected (`hyperlinkData?.selected_estimate_id` exists), always use `hyperlinkData` values and never fall back to the `calculations` prop. The fallback path should only be used when no estimate is selected.
-- Ensure `SavedEstimatesList` also invalidates the `estimate-costs` query key that `TemplateSectionSelector` uses, so the Materials/Labor tabs update too.
+**Fix**: Add `shouldFilter={false}` to the `<Command>` component in `CLJSearchBar.tsx` (line 166).
 
----
-
-### Issue 2: Colors Not Exporting in Material Order PDF
-
-**Root Cause**: The `MaterialLineItemsExport` component already supports `notes` and `color_specs` fields and renders them in the PDF. But in `TemplateSectionSelector.tsx` (line 611-618), when it passes `lineItems` to `MaterialLineItemsExport`, the `lineItems` array contains `notes` fields — however the export PDF logic looks correct. The issue is likely that the `notes` field we just added is not being populated/saved yet, or the existing material order export (which may go through a different path like `material_orders` table) doesn't include the notes.
-
-**Fix**: Verify the `lineItems` passed to `MaterialLineItemsExport` actually contain the `notes` data. The PDF rendering code in `MaterialLineItemsExport.tsx` already handles `item.notes || item.color_specs` — so if the data is there, it will render. The gap is likely in how line items are loaded from the database — the `notes` field needs to be preserved during load/save.
-
-**Changes**:
-- In `TemplateSectionSelector.tsx`: Ensure when loading line items from `enhanced_estimates.line_items` JSON, the `notes` field is mapped into each `LineItem` object.
-- Confirm the save mutation includes `notes` in the serialized JSON (this was added in the previous change but needs verification).
+**File**: `src/components/CLJSearchBar.tsx` — line 166, add `shouldFilter={false}` to `<Command>`.
 
 ---
 
-### Issue 3: Storm Canvass Map Still Showing Tampa
+### Issue 2: Repeated Location Permission Prompts
 
-**Root Cause**: The area-based fallback we implemented is completely inert. Database query confirms: `canvass_areas` has 0 rows and `canvass_area_assignments` has 0 active assignments. So `areaCentroid` is always `null`, and the distance sanity check never fires. Chris's browser returns a cached Tampa GPS fix, and since `areaCentroid` is null, the sanity check is skipped entirely — the Tampa coordinates are accepted as valid.
+**Root Cause**: The `gpsTrailService.startRecording()` in `LiveCanvassingPage` calls `navigator.geolocation.watchPosition` every time the page mounts, with `maximumAge: 300000`. On iOS/Capacitor, this can trigger a fresh permission dialog each session since the browser may not persist "Allow" indefinitely. Additionally, multiple components (LiveCanvassingPage, gpsTrailService, locationService) all independently call geolocation APIs, creating multiple concurrent permission requests.
 
-Chris's actual contacts are all in Pennsylvania (lat ~39.9, lng ~-75.3).
+The user wants location prompts only on the storm canvass page, not when opening Pitch CRM generally.
 
-**Fix**: Since the area assignment system isn't populated, we need a different fallback strategy. Use the tenant's contact/property data centroid as the fallback when no assigned area exists.
+**Fix**:
+1. In `gpsTrailService.ts`: Check `navigator.permissions.query({ name: 'geolocation' })` before calling `watchPosition`. Only start watching if permission is already `'granted'`. If `'prompt'`, skip silently (the main locationService in LiveCanvassingPage will handle the prompt).
+2. In `LiveCanvassingPage.tsx`: Before calling `locationService.getCurrentLocation`, check the permission state. If already `'granted'`, proceed silently. If `'prompt'`, show a toast explaining why location is needed before triggering the browser prompt. If `'denied'`, show the existing settings guidance.
+3. Ensure no other pages outside storm canvass trigger geolocation calls on mount (verified: no other global page does).
 
-**Changes in `LiveCanvassingPage.tsx`**:
-- When `areaCentroid` is null (no assigned area), query the tenant's contacts table to compute a contact centroid from the average lat/lng of all geocoded contacts.
-- Use this contact centroid for the same distance sanity check (> 200 miles = reject GPS fix).
-- This gives Chris a Pennsylvania-based fallback derived from his actual data.
-- Keep the existing area-based logic so it works when areas are eventually set up.
-
-**Changes in `locationService.ts`**:
-- Reduce `maximumAge` to 0 (already done) but also add a secondary check: if the GPS timestamp is older than 60 seconds, treat it as stale and reject it. Mobile Safari can return "fresh" positions from its internal cache even with `maximumAge: 0`.
+**Files**: 
+- `src/services/gpsTrailService.ts` — check permission before watchPosition
+- `src/pages/storm-canvass/LiveCanvassingPage.tsx` — pre-check permission state
 
 ---
 
-### Files to Change
+### Issue 3: 101 Henderson Ave Not Showing a Pin
 
-1. **`src/components/estimates/EstimateHyperlinkBar.tsx`** — Ensure selected estimate data from RPC always overrides the calculations prop fallback
-2. **`src/components/estimates/TemplateSectionSelector.tsx`** — Verify notes field is preserved during load from JSON
-3. **`src/components/orders/MaterialLineItemsExport.tsx`** — No changes needed (already handles notes)
-4. **`src/pages/storm-canvass/LiveCanvassingPage.tsx`** — Add tenant contact centroid fallback when no assigned area exists
-5. **`src/services/locationService.ts`** — Add GPS timestamp staleness check
+**Root Cause**: The property DOES exist in the database (id: `e4e1640c`, lat: 39.8754621, lng: -75.3260292, address: "101 Henderson Avenue, Ridley Park, PA 19078"). The pin should appear when the user pans to that area and the `GooglePropertyMarkersLayer` loads the grid cells containing it.
+
+The most likely issue is that the user searched for "101 Henderson Ave, Ridley Park, PA" in the `AddressSearchBar`, which only pans the map to that location. If the grid cell for that location wasn't loaded yet (loading is triggered by map movement), the pin wouldn't appear immediately. The `canvassiq-load-parcels` function checks density and may short-circuit if existing properties >= 50 in the bounding box.
+
+**Fix**: After an address search pans the map, force a marker refresh. In `LiveCanvassingPage.handleAddressSelect`, after setting the map center, increment `markersRefreshKey` to trigger a fresh property load for the new viewport.
+
+**File**: `src/pages/storm-canvass/LiveCanvassingPage.tsx` — add `setMarkersRefreshKey(prev => prev + 1)` in `handleAddressSelect`.
+
+---
+
+### Issue 4: Owners Not Populating When Selecting a Pin
+
+**Root Cause**: The `storm-public-lookup` enrichment pipeline is resolving the **wrong county** for Ridley Park, PA addresses. Database evidence:
+- 101 Henderson Ave → county: "york region" (WRONG — should be Delaware County, PA)
+- Other Ridley Park addresses → counties: "new haven", "nassau", "suffolk", "erie", "bay"
+
+All of these are correct Delaware County, PA addresses but the county resolver returned nonsensical counties. The FCC Census Area API is likely timing out (6 second timeout), and the Nominatim `county_hint` fallback is providing garbage values because Nominatim returns unpredictable county names for PA addresses.
+
+When the wrong county is resolved, the appraiser scraper searches the wrong county's property records website and finds nothing → confidence_score: 0, no owner_name.
+
+**Fix**: 
+1. In `countyResolver.ts`: Increase the FCC timeout from 6s to 10s (the overall function timeout is 15s). The FCC API is the reliable source and should be given more time.
+2. In `countyResolver.ts`: After FCC resolves, validate that the returned `stateCode` matches the expected `state` parameter. If FCC returns a state that doesn't match the address's state, discard it and fall through to TIGER.
+3. In `storm-public-lookup/index.ts`: Add a county validation — if the resolved county state doesn't match `loc.state`, log a warning and retry with just the TIGER geocoder.
+4. In the `locationResolver.ts`: The Nominatim `county_hint` is unreliable for PA. When `county_hint` appears to be from a different state context, clear it rather than pass garbage downstream.
+
+**Files**:
+- `supabase/functions/_shared/public_data/countyResolver.ts` — increase FCC timeout, add state validation
+- `supabase/functions/_shared/geo/fccArea.ts` — no changes needed
+- `supabase/functions/storm-public-lookup/index.ts` — add county state cross-check
+
+---
+
+### Summary of Files to Change
+
+1. **`src/components/CLJSearchBar.tsx`** — Add `shouldFilter={false}` to Command
+2. **`src/services/gpsTrailService.ts`** — Check permission before watchPosition
+3. **`src/pages/storm-canvass/LiveCanvassingPage.tsx`** — Pre-check permission; force marker refresh after address search
+4. **`supabase/functions/_shared/public_data/countyResolver.ts`** — Increase FCC timeout, add state cross-validation
+5. **`supabase/functions/storm-public-lookup/index.ts`** — Add county/state sanity check
 
