@@ -1,31 +1,28 @@
 
 
-## Plan: Resilient GPS Handling for Start Canvassing
+## Plan: Fix Address Search Not Showing Results in Canvassing
 
-### Problem
+### Root Cause
 
-When a user has previously denied location permission, clicking "Start Canvassing" immediately fails with a "GPS Tracking Error" toast. The browser won't re-prompt automatically once denied — the user gets stuck. Additionally, timeout errors (slow GPS lock) also show scary error toasts even though `watchPosition` keeps retrying.
+The `AddressSearchBar` uses the `Command` component from `cmdk`, which has **built-in client-side filtering enabled by default**. When Chris types an address, two things happen simultaneously:
 
-### Changes
+1. The Google Places API returns matching addresses (this works -- verified by testing the edge function directly)
+2. `cmdk` internally tries to filter the `CommandItem` list using its own fuzzy matching against the typed text
 
-#### 1. `src/services/locationService.ts` — More resilient watch options
+The problem: `cmdk`'s internal filter compares the typed input against each `CommandItem`'s `value` prop (the full `description` like "123 Main Street, Queens, NY, USA"). Its matching algorithm often rejects valid results, so users see "No results found" even though Google returned addresses.
 
-- **Line 94**: Change `maximumAge` from `60000` to `300000` (5 min) to accept cached positions
-- **Line 115**: Pass the raw `GeolocationPositionError` object (with `.code`) instead of wrapping in a generic `Error`, so callers can distinguish timeout vs denied vs unavailable
+### Fix
 
-#### 2. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Smart error handling + re-prompt
+**File: `src/components/storm-canvass/AddressSearchBar.tsx`**
 
-- **Lines 178-185** (initial location catch): Instead of just showing a toast, check if the error is a permission denial. If so, show a helpful toast explaining how to enable location in browser settings, but still load the map at the default location so the page isn't blocked.
+Add `shouldFilter={false}` to the `<Command>` component (line 122). This disables cmdk's internal filtering and lets the Google Places API handle all search logic — which is the correct behavior for an async autocomplete.
 
-- **Lines 213-220** (watch error handler): 
-  - **Timeout errors (code 3)**: Silently log — `watchPosition` will keep retrying on its own. No toast.
-  - **Permission denied (code 1)**: Show a one-time toast with instructions to enable location in browser settings. Don't spam repeated toasts.
-  - **Position unavailable (code 2)**: Show toast once.
-
-- **Before starting the watch** (~line 164): Add a permission check using `navigator.permissions.query({ name: 'geolocation' })`. If status is `'denied'`, show a clear message explaining they need to allow location in their browser settings (with a "Try Again" button that calls `getCurrentPosition` to trigger the browser prompt). If `'prompt'`, proceed normally — the browser will ask. If `'granted'`, proceed normally.
+One-line change:
+```tsx
+<Command shouldFilter={false} className="relative rounded-lg border shadow-md bg-background">
+```
 
 ### Files to Change
 
-1. `src/services/locationService.ts` — increase `maximumAge`, expose error codes
-2. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — add permission check on mount, handle errors by type, suppress timeout toasts
+1. `src/components/storm-canvass/AddressSearchBar.tsx` — add `shouldFilter={false}` to `Command`
 
