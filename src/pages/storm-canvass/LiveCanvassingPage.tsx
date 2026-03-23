@@ -371,7 +371,7 @@ export default function LiveCanvassingPage() {
       stopWatching();
       locationService.stopWatching();
     };
-  }, []);
+  }, [areaCentroid]);
 
   // Calculate route when destination is selected
   const calculateRoute = async (dest: { lat: number; lng: number; address: string }) => {
