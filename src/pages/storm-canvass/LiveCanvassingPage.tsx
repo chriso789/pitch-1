@@ -312,6 +312,15 @@ export default function LiveCanvassingPage() {
         const newLat = location.lat;
         const newLng = location.lng;
 
+        // Distance sanity check against assigned area
+        if (areaCentroid && !previousLocation.current) {
+          const dist = locationService.calculateDistance(newLat, newLng, areaCentroid.lat, areaCentroid.lng, 'miles');
+          if (dist.distance > 200) {
+            console.warn(`[Canvassing] Watch: fix ${dist.distance}mi from area — ignoring`);
+            return;
+          }
+        }
+
         // Calculate distance traveled if we have previous location
         if (previousLocation.current) {
           const distance = locationService.calculateDistance(
