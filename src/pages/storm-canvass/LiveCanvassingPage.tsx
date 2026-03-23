@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft, Crosshair } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -60,8 +60,20 @@ export default function LiveCanvassingPage() {
   const { profile } = useUserProfile();
   const layout = useDeviceLayout();
   const { assignedArea, areaPolygon, propertyIds: areaPropertyIds, loading: areaLoading } = useAssignedArea();
+
+  // Compute assigned area centroid as intelligent fallback
+  const areaCentroid = useMemo(() => {
+    if (!areaPolygon) return null;
+    const coords = areaPolygon?.coordinates?.[0] || areaPolygon?.geometry?.coordinates?.[0];
+    if (!coords || coords.length < 3) return null;
+    let sumLat = 0, sumLng = 0;
+    for (const c of coords) { sumLng += c[0]; sumLat += c[1]; }
+    return { lat: sumLat / coords.length, lng: sumLng / coords.length };
+  }, [areaPolygon]);
+
   // Start with null — map won't render until we have a real GPS fix or fallback
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [initialZoom, setInitialZoom] = useState<number | undefined>(undefined);
   const [hasGPS, setHasGPS] = useState(false);
   const [gpsAttempted, setGpsAttempted] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
@@ -208,10 +220,30 @@ export default function LiveCanvassingPage() {
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
             const location = await locationService.getCurrentLocation({ skipGeocoding: true });
-            setUserLocation({ lat: location.lat, lng: location.lng });
+            const gpsLoc = { lat: location.lat, lng: location.lng };
+
+            // Sanity check: if assigned area exists and GPS is > 200 miles away, prefer area center
+            if (areaCentroid) {
+              const dist = locationService.calculateDistance(gpsLoc.lat, gpsLoc.lng, areaCentroid.lat, areaCentroid.lng, 'miles');
+              if (dist.distance > 200) {
+                console.warn(`[Canvassing] GPS fix ${dist.distance}mi from assigned area — using area center`);
+                setUserLocation(areaCentroid);
+                setInitialZoom(16);
+                setHasGPS(true);
+                setIsTracking(true);
+                previousLocation.current = areaCentroid;
+                toast({ title: 'GPS location appears incorrect', description: 'Showing your assigned area instead.' });
+                locationService['reverseGeocode'](areaCentroid.lat, areaCentroid.lng)
+                  .then(address => setCurrentAddress(address))
+                  .catch(() => setCurrentAddress('Assigned area'));
+                break;
+              }
+            }
+
+            setUserLocation(gpsLoc);
             setHasGPS(true);
             setIsTracking(true);
-            previousLocation.current = { lat: location.lat, lng: location.lng };
+            previousLocation.current = gpsLoc;
 
             // Fetch address in background (non-blocking)
             locationService['reverseGeocode'](location.lat, location.lng)
@@ -249,9 +281,17 @@ export default function LiveCanvassingPage() {
       setHasGPS((current) => {
         if (!current) {
           console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
-          // If we still don't have a location, use neutral fallback so map renders
-          setUserLocation(prev => prev || NEUTRAL_FALLBACK);
-          setCurrentAddress('Location unavailable — use search or tap recenter');
+          // Prefer assigned area centroid over neutral US center
+          const fallback = areaCentroid || NEUTRAL_FALLBACK;
+          const zoom = areaCentroid ? 16 : NEUTRAL_FALLBACK_ZOOM;
+          setUserLocation(prev => {
+            if (!prev) {
+              setInitialZoom(zoom);
+              setCurrentAddress(areaCentroid ? 'Showing assigned area — use recenter for GPS' : 'Location unavailable — use search or tap recenter');
+              return fallback;
+            }
+            return prev;
+          });
         }
         return true;
       });
@@ -271,6 +311,15 @@ export default function LiveCanvassingPage() {
 
         const newLat = location.lat;
         const newLng = location.lng;
+
+        // Distance sanity check against assigned area
+        if (areaCentroid && !previousLocation.current) {
+          const dist = locationService.calculateDistance(newLat, newLng, areaCentroid.lat, areaCentroid.lng, 'miles');
+          if (dist.distance > 200) {
+            console.warn(`[Canvassing] Watch: fix ${dist.distance}mi from area — ignoring`);
+            return;
+          }
+        }
 
         // Calculate distance traveled if we have previous location
         if (previousLocation.current) {
@@ -322,7 +371,7 @@ export default function LiveCanvassingPage() {
       stopWatching();
       locationService.stopWatching();
     };
-  }, []);
+  }, [areaCentroid]);
 
   // Calculate route when destination is selected
   const calculateRoute = async (dest: { lat: number; lng: number; address: string }) => {
@@ -466,6 +515,7 @@ export default function LiveCanvassingPage() {
             onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
             followUser={canvassMode === 'knock'}
             symbolSettings={symbolSettings}
+            initialZoom={initialZoom}
           />
         ) : (
           <div className="absolute inset-0 flex items-center justify-center bg-background">

@@ -22,7 +22,7 @@ class LocationService {
    * @param options.skipGeocoding - If true, resolves immediately without waiting for address
    */
   /** Maximum accuracy radius (meters) to accept for initial map centering */
-  static readonly ACCURACY_THRESHOLD = 500; // reject coarse IP-based fixes (often 2000m+)
+  static readonly ACCURACY_THRESHOLD = 5000; // relaxed — real protection is distance-from-area check
 
   /**
    * Get current user location

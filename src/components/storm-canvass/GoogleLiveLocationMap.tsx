@@ -25,6 +25,7 @@ interface GoogleLiveLocationMapProps {
   onMapClick?: (lat: number, lng: number) => void;
   followUser?: boolean;
   symbolSettings?: SymbolSettings;
+  initialZoom?: number;
 }
 
 const MAP_TYPE_IDS: Record<MapStyle, string> = {
@@ -82,6 +83,7 @@ export default function GoogleLiveLocationMap({
   onMapClick,
   followUser = true,
   symbolSettings,
+  initialZoom,
 }: GoogleLiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<google.maps.Map | null>(null);
@@ -104,7 +106,7 @@ export default function GoogleLiveLocationMap({
 
         map.current = new google.maps.Map(mapContainer.current, {
           center: { lat: userLocation.lat, lng: userLocation.lng },
-          zoom: 18,
+          zoom: initialZoom ?? 18,
           tilt: 0,
           heading: 0,
           mapTypeId: MAP_TYPE_IDS[mapStyle],
