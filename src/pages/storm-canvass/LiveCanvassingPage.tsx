@@ -9,6 +9,7 @@ import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
 import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
+import MapSymbolSettings, { loadSymbolSettings, type SymbolSettings } from '@/components/storm-canvass/MapSymbolSettings';
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import PropertyLoadingIndicator from '@/components/storm-canvass/PropertyLoadingIndicator';
