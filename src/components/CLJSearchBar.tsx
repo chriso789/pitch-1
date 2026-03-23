@@ -58,6 +58,7 @@ export const CLJSearchBar = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
+  const { activeTenantId } = useActiveTenantId();
 
   // Handle clicks outside to close dropdown
   useEffect(() => {
