@@ -162,27 +162,64 @@ export default function LiveCanvassingPage() {
   }, [profile?.id, profile?.tenant_id]);
 
   useEffect(() => {
-    // Request initial location with skipGeocoding for faster response
-    locationService.getCurrentLocation({ skipGeocoding: true })
-      .then((location) => {
+    let permissionDeniedToastShown = false;
+
+    const initLocation = async () => {
+      // Check permission status first
+      let permissionState: string | null = null;
+      try {
+        if (navigator.permissions) {
+          const result = await navigator.permissions.query({ name: 'geolocation' });
+          permissionState = result.state;
+        }
+      } catch {
+        // permissions API not supported, proceed normally
+      }
+
+      if (permissionState === 'denied') {
+        // Permission was previously denied — show helpful message
+        toast({
+          title: 'Location Access Required',
+          description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
+          variant: 'destructive',
+        });
+        // Still load the page — don't block
+        return;
+      }
+
+      // Request initial location
+      try {
+        const location = await locationService.getCurrentLocation({ skipGeocoding: true });
         setUserLocation({ lat: location.lat, lng: location.lng });
         setHasGPS(true);
         setIsTracking(true);
         previousLocation.current = { lat: location.lat, lng: location.lng };
-        
+
         // Fetch address in background (non-blocking)
         locationService['reverseGeocode'](location.lat, location.lng)
           .then(address => setCurrentAddress(address))
           .catch(() => setCurrentAddress('Address unavailable'));
-      })
-      .catch((error) => {
+      } catch (error: any) {
         console.error('Location error:', error);
-        toast({
-          title: 'Location Error',
-          description: 'Unable to access your location. Using default location.',
-          variant: 'destructive',
-        });
-      });
+        if (error?.code === 1) {
+          // Permission denied during the prompt
+          toast({
+            title: 'Location Access Required',
+            description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
+            variant: 'destructive',
+          });
+          permissionDeniedToastShown = true;
+        } else {
+          toast({
+            title: 'Location Error',
+            description: 'Unable to access your location. Using default location.',
+            variant: 'destructive',
+          });
+        }
+      }
+    };
+
+    initLocation();
 
     // Start watching location
     const stopWatching = locationService.watchLocation(
@@ -210,13 +247,33 @@ export default function LiveCanvassingPage() {
           setCurrentAddress(location.address);
         }
       },
-      (error) => {
-        console.error('Location watch error:', error);
-        toast({
-          title: 'GPS Tracking Error',
-          description: error.message,
-          variant: 'destructive',
-        });
+      (error: Error & { code?: number }) => {
+        // Timeout (code 3): watchPosition keeps retrying — don't show error
+        if (error.code === 3) {
+          console.warn('GPS timeout, retrying in background...');
+          return;
+        }
+
+        // Permission denied (code 1): show once
+        if (error.code === 1 && !permissionDeniedToastShown) {
+          permissionDeniedToastShown = true;
+          toast({
+            title: 'Location Access Required',
+            description: 'Please enable location access in your browser settings, then refresh this page.',
+            variant: 'destructive',
+          });
+          return;
+        }
+
+        // Position unavailable (code 2) or other: show once
+        if (error.code !== 1) {
+          console.error('Location watch error:', error);
+          toast({
+            title: 'GPS Tracking Error',
+            description: error.message,
+            variant: 'destructive',
+          });
+        }
       }
     );
 

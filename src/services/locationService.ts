@@ -91,7 +91,7 @@ class LocationService {
     const options = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 60000, // 1 minute
+      maximumAge: 300000, // 5 minutes - accept cached positions
     };
 
     this.watchId = navigator.geolocation.watchPosition(
@@ -112,7 +112,12 @@ class LocationService {
 
         onLocationUpdate(locationData);
       },
-      (error) => onError(new Error(`Geolocation error: ${error.message}`)),
+      (error) => {
+        // Pass a custom error that preserves the GeolocationPositionError code
+        const geoError = new Error(error.message) as Error & { code?: number };
+        geoError.code = error.code;
+        onError(geoError);
+      },
       options
     );
 
