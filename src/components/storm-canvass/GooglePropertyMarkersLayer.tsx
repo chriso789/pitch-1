@@ -535,8 +535,8 @@ export default function GooglePropertyMarkersLayer({
               .lte('lng', ne.lng())
               .limit(limit);
             
-            // Final staleness check before reconciliation
-            if (thisLoadVersion < loadVersionRef.current) {
+            // Final staleness + unmount check before reconciliation
+            if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
               setIsLoading(false);
               onLoadingChange?.(false);
               loadingRef.current = false;
