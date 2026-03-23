@@ -50,3 +50,8 @@ export const canViewAllLeads = (role: string): boolean => {
   // Same logic - sales managers and above see everything
   return getRoleLevel(role) <= 6;
 };
+
+export const canViewAllRecords = (role: string): boolean => {
+  // office_admin (level 4) and above can see all records
+  return getRoleLevel(role) <= 4;
+};

@@ -428,6 +428,11 @@ export const EnhancedClientList = () => {
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
         
+        // Sales reps only see contacts assigned to them or created by them
+        if (profile && !canViewAllRecords(profile.role)) {
+          batchQuery = batchQuery.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+        }
+
         // Apply location filter - only show contacts explicitly assigned to this location
         if (currentLocationId && locations.length > 0) {
           console.log("Applying location filter:", currentLocationId);
