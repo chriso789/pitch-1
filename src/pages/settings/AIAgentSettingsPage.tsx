@@ -469,6 +469,7 @@ export default function AIAgentSettingsPage() {
             />
           </div>
         </CardContent>
+      </Card>
 
       {/* Phone Number Selection */}
       <Card>
