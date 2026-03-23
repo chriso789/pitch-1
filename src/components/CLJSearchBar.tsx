@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Search, User, Briefcase, Target, Building2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
 import { Badge } from '@/components/ui/badge';
@@ -57,6 +58,7 @@ export const CLJSearchBar = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { currentLocationId } = useLocation();
+  const { activeTenantId } = useActiveTenantId();
 
   // Handle clicks outside to close dropdown
   useEffect(() => {
@@ -85,24 +87,19 @@ export const CLJSearchBar = () => {
 
       setLoading(true);
       try {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (!user) return;
-
-        // Get tenant_id from profiles
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tenant_id')
-          .eq('id', user.id)
-          .maybeSingle();
-
-        if (!profile?.tenant_id) return;
+        if (!activeTenantId) {
+          console.warn('[CLJSearch] No active tenant ID available — skipping search');
+          return;
+        }
 
         // Call the universal search RPC with location filter
         const { data, error } = await supabase.rpc('search_contacts_and_jobs', {
-          p_tenant_id: profile.tenant_id,
+          p_tenant_id: activeTenantId,
           p_search_term: searchTerm,
           p_location_id: currentLocationId
         });
+
+        console.log('[CLJSearch]', { searchTerm, activeTenantId, resultCount: data?.length ?? 0 });
 
         if (error) throw error;
         setResults((data || []) as SearchResult[]);
@@ -121,7 +118,7 @@ export const CLJSearchBar = () => {
 
     const timeoutId = setTimeout(searchAll, 300);
     return () => clearTimeout(timeoutId);
-  }, [searchTerm, currentLocationId, toast]);
+  }, [searchTerm, currentLocationId, activeTenantId, toast]);
 
   const handleSelect = (result: SearchResult) => {
     const routes: Record<string, string> = {
