@@ -187,9 +187,10 @@ export default function LiveCanvassingPage() {
         // so watchPosition is still started (user may enable permission mid-session)
       }
 
-      // Request initial location
-      try {
-        const location = await locationService.getCurrentLocation({ skipGeocoding: true });
+      // Only attempt getCurrentPosition if permission isn't already denied
+      if (permissionState !== 'denied') {
+        try {
+          const location = await locationService.getCurrentLocation({ skipGeocoding: true });
         setUserLocation({ lat: location.lat, lng: location.lng });
         setHasGPS(true);
         setIsTracking(true);
