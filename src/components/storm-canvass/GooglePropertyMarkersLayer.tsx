@@ -219,6 +219,9 @@ export default function GooglePropertyMarkersLayer({
   // Monotonically increasing load version — stale loads are discarded
   const loadVersionRef = useRef(0);
 
+  // Mounted guard — prevents orphaned async loads from drawing after unmount
+  const mountedRef = useRef(true);
+
   // Calculate load radius based on zoom level
   const getLoadRadius = useCallback((zoom: number): number => {
     if (zoom >= 18) return 0.15;
@@ -327,7 +330,8 @@ export default function GooglePropertyMarkersLayer({
 
   // Fully deterministic marker reconciliation — keyed by canonical address
   const reconcileMarkers = useCallback((properties: CanvassiqProperty[], zoom: number, loadVersion: number) => {
-    // Discard stale loads
+    // Discard if unmounted or stale
+    if (!mountedRef.current) return;
     if (loadVersion < loadVersionRef.current) {
       console.log('[GooglePropertyMarkersLayer] Discarding stale load v', loadVersion, '< current v', loadVersionRef.current);
       return;
@@ -390,7 +394,7 @@ export default function GooglePropertyMarkersLayer({
   }, []);
 
   const loadProperties = useCallback(async () => {
-    if (!profile?.tenant_id || !map) return;
+    if (!profile?.tenant_id || !map || !mountedRef.current) return;
     
     // Acquire a new load version; any in-flight load with a lower version is now stale
     const thisLoadVersion = ++loadVersionRef.current;
@@ -448,8 +452,8 @@ export default function GooglePropertyMarkersLayer({
         error = res.error;
       }
 
-      // Bail if this load is already stale
-      if (thisLoadVersion < loadVersionRef.current) {
+      // Bail if this load is already stale or component unmounted
+      if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
         loadingRef.current = false;
         return;
       }
@@ -509,8 +513,8 @@ export default function GooglePropertyMarkersLayer({
           
           const results = await Promise.allSettled(loadPromises);
 
-          // Bail if stale
-          if (thisLoadVersion < loadVersionRef.current) {
+          // Bail if stale or unmounted
+          if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
             setIsLoading(false);
             onLoadingChange?.(false);
             loadingRef.current = false;
@@ -531,8 +535,8 @@ export default function GooglePropertyMarkersLayer({
               .lte('lng', ne.lng())
               .limit(limit);
             
-            // Final staleness check before reconciliation
-            if (thisLoadVersion < loadVersionRef.current) {
+            // Final staleness + unmount check before reconciliation
+            if (thisLoadVersion < loadVersionRef.current || !mountedRef.current) {
               setIsLoading(false);
               onLoadingChange?.(false);
               loadingRef.current = false;
@@ -591,9 +595,13 @@ export default function GooglePropertyMarkersLayer({
     }
   }, [refreshKey, loadProperties]);
 
-  // Clean up all markers only on unmount
+  // Mark mounted on mount, clean up all markers + invalidate loads on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      // Invalidate any in-flight loads
+      loadVersionRef.current++;
       clearAllMarkers();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
