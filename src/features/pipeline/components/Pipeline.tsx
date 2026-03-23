@@ -269,6 +269,11 @@ const Pipeline = () => {
           query = query.lte('created_at', filters.dateTo + 'T23:59:59');
         }
 
+        // Sales reps only see pipeline entries assigned to them or created by them
+        if (currentProfile?.role && !canViewAllRecords(currentProfile.role)) {
+          query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
+        }
+
         return query.order('created_at', { ascending: filters.sortOrder === 'asc' });
       };
       
