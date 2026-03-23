@@ -546,8 +546,17 @@ export default function LiveCanvassingPage() {
         loadedCount={stableCount}
       />
 
-      {/* Floating Knock/Canvas Toggle */}
-      <div className="fixed z-40 pointer-events-auto" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', right: '12px' }}>
+      {/* Floating Recenter + Knock/Canvas Toggle */}
+      <div className="fixed z-40 pointer-events-auto flex items-center gap-2" style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 12px)', right: '12px' }}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-10 bg-background/90 backdrop-blur-sm shadow-md border border-border/50 rounded-full"
+          onClick={handleRecenterGPS}
+          title="Center on my location"
+        >
+          <Crosshair className="h-5 w-5" />
+        </Button>
         <CanvassModeToggle mode={canvassMode} onModeChange={setCanvassMode} />
       </div>
 
