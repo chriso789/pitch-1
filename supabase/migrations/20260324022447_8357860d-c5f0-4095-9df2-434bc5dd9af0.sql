@@ -1,0 +1,1 @@
+ALTER TABLE sms_blasts ALTER COLUMN list_id DROP NOT NULL;
