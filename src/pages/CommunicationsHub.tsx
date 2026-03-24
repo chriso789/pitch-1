@@ -222,6 +222,11 @@ const CommunicationsHub = () => {
           <TabsContent value="email-activity" className="flex-1 m-0 overflow-hidden">
             <EmailActivityDashboard />
           </TabsContent>
+
+          {/* Text Blast Tab */}
+          <TabsContent value="text-blast" className="flex-1 m-0 overflow-hidden">
+            <TextBlastManager />
+          </TabsContent>
         </Tabs>
       </div>
 
