@@ -134,7 +134,7 @@ const Pipeline = () => {
           event: '*',
           schema: 'public',
           table: 'pipeline_entries',
-          filter: `tenant_id=eq.${tenantId}`
+          filter: `tenant_id=eq.${resolvedTenantId}`
         },
         () => {
           // Debounce: batch rapid changes into a single refetch
