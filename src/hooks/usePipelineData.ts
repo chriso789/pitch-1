@@ -36,7 +36,7 @@ export interface PipelineEntry {
 // Legacy export for backwards compatibility - now dynamically loaded
 export const LEAD_STAGES = DEFAULT_STAGES;
 
-async function fetchPipelineEntries(locationId: string | null): Promise<PipelineEntry[]> {
+async function fetchPipelineEntries(locationId: string | null, tenantId: string | null): Promise<PipelineEntry[]> {
   let query = supabase
     .from('pipeline_entries')
     .select(`
@@ -67,6 +67,11 @@ async function fetchPipelineEntries(locationId: string | null): Promise<Pipeline
       )
     `)
     .eq('is_deleted', false);
+  
+  // CRITICAL: Explicit tenant filter — belt-and-suspenders with RLS
+  if (tenantId) {
+    query = query.eq('tenant_id', tenantId);
+  }
   
   // Filter by location if a location is selected
   if (locationId) {
