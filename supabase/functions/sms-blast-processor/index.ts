@@ -63,7 +63,7 @@ serve(async (req) => {
       const { data: optOut } = await supabaseAdmin
         .from('opt_outs')
         .select('id')
-        .eq('phone_number', item.phone)
+        .eq('phone', item.phone)
         .eq('tenant_id', blast.tenant_id)
         .maybeSingle();
 
