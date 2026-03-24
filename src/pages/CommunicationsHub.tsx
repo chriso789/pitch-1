@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
   Inbox, Settings, RefreshCw, Mail, Megaphone
