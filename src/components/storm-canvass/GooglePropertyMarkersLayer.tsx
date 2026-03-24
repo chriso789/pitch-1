@@ -328,15 +328,17 @@ export default function GooglePropertyMarkersLayer({
     const symbols = symbolSettings || DEFAULT_DISPOSITION_SYMBOLS;
     const symbol = symbols[disposition] || '';
     
-    // Size based on zoom level — number-only labels
+    // Size based on zoom level — number-only labels (street name added at zoom ≥ 19)
     let size = 16;
     let showNumber = false;
     let fontSize = 8;
+    let showStreetName = false;
     
     if (zoom >= 19) {
-      size = 32;
+      size = 44;
       showNumber = true;
-      fontSize = 11;
+      showStreetName = true;
+      fontSize = 9;
     } else if (zoom >= 17) {
       size = 26;
       showNumber = true;
@@ -347,6 +349,15 @@ export default function GooglePropertyMarkersLayer({
     }
     
     const streetNumber = showNumber ? getStreetNumber(property.address) : '';
+    // At zoom ≥ 19, extract first word of street name for disambiguation
+    let streetLabel = streetNumber;
+    if (showStreetName && streetNumber && property.address) {
+      const parts = property.address.replace(/^\d+\s*/, '').split(/\s+/);
+      const firstWord = parts[0] || '';
+      if (firstWord) {
+        streetLabel = `${streetNumber} ${firstWord}`;
+      }
+    }
     const fillColor = isNotContacted ? '#FFFFFF' : color;
     const strokeColor = isNotContacted ? color : '#FFFFFF';
     const textColor = isNotContacted ? '#1F2937' : '#FFFFFF';
