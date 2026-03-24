@@ -1,73 +1,52 @@
 
 
-## Plan: Build Text Blast Feature in Follow Up Hub
+## Plan: Add Manual Number Entry + In-Hub List Builder to Text Blast
 
-### Overview
+### What Changes
 
-Add a "Text Blast" tab to the Follow Up Hub (`CommunicationsHub.tsx`) that lets users select a contact list (reusing existing `dialer_lists`/`dialer_list_items` tables), write or pick a script, and send bulk SMS. The system will automatically honor opt-outs by checking the existing `opt_outs` table before sending, and the existing inbound STOP keyword handling in `messaging-inbound-webhook` already records opt-outs — so the "stop clause" is already wired on the receiving end.
+The Text Blast creator currently only supports selecting from `dialer_lists` (built in the Call Center). Two additions are needed:
 
-### Database Changes
+1. **Manual single number entry** — A toggle/option to type one phone number directly instead of selecting a list
+2. **Build list from contacts within Follow Up Hub** — A "Build List" button that opens a contact picker dialog (reusing the same pattern as `CallCenterListBuilder`) to create a new `dialer_lists` entry without leaving the Text Blast flow
 
-**New table: `sms_blasts`** — tracks each blast campaign:
-- `id`, `tenant_id`, `created_by`, `list_id` (FK → dialer_lists), `name`, `script` (the message template), `status` (draft/sending/completed/cancelled), `total_recipients`, `sent_count`, `failed_count`, `opted_out_count`, `created_at`, `started_at`, `completed_at`
+### File Changes
 
-**New table: `sms_blast_items`** — per-recipient status:
-- `id`, `blast_id` (FK → sms_blasts), `contact_id`, `phone`, `contact_name`, `status` (pending/sent/failed/opted_out/replied_stop), `sent_at`, `error_message`
+#### 1. `src/components/communications/TextBlastCreator.tsx`
+- Add a **send mode toggle**: "Single Number" vs "Contact List" (radio/tabs at top of Campaign Details card)
+- **Single Number mode**: Show a phone number input field + optional name field. When sending, create a single `sms_blast_items` entry with the manually entered number instead of pulling from a list. Set `list_id` to null (make it optional in the insert).
+- **Contact List mode** (current behavior): Keep the list dropdown, but add a "Build New List" button next to it that opens the list builder dialog.
+- Update `handleSend` to handle both modes — single number creates one blast item; list mode works as before.
+- Update the send button label to reflect mode ("Send to 1 Recipient" vs "Send to N Recipients").
 
-RLS: tenant-scoped via `get_user_tenant_id()`.
+#### 2. `src/components/communications/TextBlastListBuilder.tsx` (New)
+- Reuse the pattern from `CallCenterListBuilder.tsx` — fetch contacts with phone numbers, filter by status/source/search, checkbox selection, name the list, save to `dialer_lists` + `dialer_list_items`.
+- Dialog title: "Build Text Blast List" instead of "Build Dialer List"
+- On save, return the new list ID so `TextBlastCreator` can auto-select it.
 
-### New Edge Function: `sms-blast-processor`
+#### 3. `supabase/migrations/` — Make `list_id` nullable on `sms_blasts`
+- `ALTER TABLE sms_blasts ALTER COLUMN list_id DROP NOT NULL;` — needed for single-number blasts that have no associated list.
 
-Processes a blast by:
-1. Loading all `sms_blast_items` with status `pending` for the given blast
-2. For each item, checking `opt_outs` table — if opted out, mark as `opted_out` and skip
-3. Calling `telnyx-send-sms` for each non-opted-out contact with a short delay between sends (rate limiting)
-4. Updating `sms_blast_items.status` and `sms_blasts` counters as it goes
-5. Marking blast as `completed` when done
+### Key Logic
 
-### UI Components
+```text
+TextBlastCreator
+├── Mode: "single" | "list"
+│
+├── Single mode:
+│   ├── Phone input + Name input
+│   └── handleSend → insert blast (list_id=null), insert 1 item
+│
+└── List mode:
+    ├── Select existing list (dropdown)
+    ├── "Build New List" button → opens TextBlastListBuilder dialog
+    └── handleSend → insert blast + items from list (existing flow)
+```
 
-**1. New tab in `CommunicationsHub.tsx`**: "Text Blast" tab with a megaphone icon, added alongside the existing Inbox/SMS/Calls/Recordings/Email tabs.
+### Files Summary
 
-**2. `TextBlastManager.tsx`** — Main component rendered in the tab:
-- **Blast list view**: Shows existing blasts with status, sent/total counts, created date
-- **Create new blast button** → opens creation flow
-
-**3. `TextBlastCreator.tsx`** — Creation/edit form:
-- **List selector**: Dropdown pulling from `dialer_lists` (same lists used by Power Dialer)
-- **Script editor**: Textarea with variable support (`{{first_name}}`, `{{company_name}}`)
-- **Script templates**: Quick-pick from saved scripts (stored in `sms_blasts` as reusable templates)
-- **Preview**: Shows rendered message with sample data
-- **Recipient count**: Shows total contacts in list, minus opt-outs
-- **Opt-out notice**: Always appends "Reply STOP to opt out" to every message (TCPA compliance)
-- **Send / Schedule buttons**
-
-**4. `TextBlastDetail.tsx`** — Shows blast progress:
-- Real-time sent/failed/opted-out counters
-- Per-recipient status list
-- Cancel button (sets remaining pending items to cancelled)
-
-### Stop Clause Integration
-
-The system already handles STOP replies via `messaging-inbound-webhook` → inserts into `opt_outs` table. The Text Blast processor checks `opt_outs` before each send. Additionally:
-- Every blast message auto-appends "\nReply STOP to opt out" unless the script already contains "STOP"
-- The blast detail view shows opted-out contacts clearly
-- A manual "Add to opt-out" button on each recipient row
-
-### Files to Create/Modify
-
-1. **Migration SQL** — Create `sms_blasts` and `sms_blast_items` tables with RLS
-2. **`supabase/functions/sms-blast-processor/index.ts`** — Edge function to process blast sends
-3. **`src/components/communications/TextBlastManager.tsx`** — Blast list view
-4. **`src/components/communications/TextBlastCreator.tsx`** — Create/edit blast form
-5. **`src/components/communications/TextBlastDetail.tsx`** — Blast progress/detail view
-6. **`src/pages/CommunicationsHub.tsx`** — Add "Text Blast" tab
-
-### Technical Details
-
-- Reuses existing `dialer_lists` / `dialer_list_items` for contact lists (no duplicate list management)
-- Reuses existing `telnyx-send-sms` for actual delivery (location-aware from-number resolution)
-- Reuses existing `opt_outs` table and `check_opt_out()` function for compliance
-- The processor handles rate limiting (100ms delay between sends) to avoid carrier throttling
-- Template variables resolved from `dialer_list_items.first_name`, `last_name`, and joined `contacts` data
+| File | Action |
+|------|--------|
+| `src/components/communications/TextBlastCreator.tsx` | Modify — add mode toggle, manual number input, build list button |
+| `src/components/communications/TextBlastListBuilder.tsx` | Create — contact picker dialog for building lists in-hub |
+| Migration SQL | Create — make `list_id` nullable on `sms_blasts` |
 
