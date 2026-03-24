@@ -1,37 +1,73 @@
 
 
-## Plan: Fix Status Display Truncation + Debug Search
+## Plan: Build Text Blast Feature in Follow Up Hub
 
-### Issue 1: Status Shows "In..." Instead of "In Production"
+### Overview
 
-**Root Cause**: In `LeadDetails.tsx` line 789, the status `<Select>` is inside a flex row with the lead name (large h1 text) and Edit button. The flex container squeezes the Select, truncating "In Production" to "In...".
+Add a "Text Blast" tab to the Follow Up Hub (`CommunicationsHub.tsx`) that lets users select a contact list (reusing existing `dialer_lists`/`dialer_list_items` tables), write or pick a script, and send bulk SMS. The system will automatically honor opt-outs by checking the existing `opt_outs` table before sending, and the existing inbound STOP keyword handling in `messaging-inbound-webhook` already records opt-outs — so the "stop clause" is already wired on the receiving end.
 
-**Fix**: Add `shrink-0` to the `<Select>` wrapper or to the `<SelectTrigger>` so it doesn't get compressed by the large name text. Also add `whitespace-nowrap` to the status text span.
+### Database Changes
 
-**File**: `src/pages/LeadDetails.tsx` — line 806, add `shrink-0` to SelectTrigger classes.
+**New table: `sms_blasts`** — tracks each blast campaign:
+- `id`, `tenant_id`, `created_by`, `list_id` (FK → dialer_lists), `name`, `script` (the message template), `status` (draft/sending/completed/cancelled), `total_recipients`, `sent_count`, `failed_count`, `opted_out_count`, `created_at`, `started_at`, `completed_at`
 
----
+**New table: `sms_blast_items`** — per-recipient status:
+- `id`, `blast_id` (FK → sms_blasts), `contact_id`, `phone`, `contact_name`, `status` (pending/sent/failed/opted_out/replied_stop), `sent_at`, `error_message`
 
-### Issue 2: Search Still Not Finding "Mariotti"
+RLS: tenant-scoped via `get_user_tenant_id()`.
 
-**Root Cause**: The `shouldFilter={false}` fix was applied, and the RPC works when called directly (returns both contact and job for "mariotti"). The RPC is `SECURITY DEFINER` so RLS isn't an issue. The problem is likely one of:
-- The profile query (line 92-96) returning null `tenant_id` for the logged-in user
-- The `supabase.auth.getUser()` returning null (unauthenticated)
-- The code silently returning on lines 89 or 98 with no error indication
+### New Edge Function: `sms-blast-processor`
 
-The code has silent failures — `if (!user) return` and `if (!profile?.tenant_id) return` both exit without any feedback, leaving "No results found" displayed.
+Processes a blast by:
+1. Loading all `sms_blast_items` with status `pending` for the given blast
+2. For each item, checking `opt_outs` table — if opted out, mark as `opted_out` and skip
+3. Calling `telnyx-send-sms` for each non-opted-out contact with a short delay between sends (rate limiting)
+4. Updating `sms_blast_items.status` and `sms_blasts` counters as it goes
+5. Marking blast as `completed` when done
 
-**Fix**:
-1. Add `console.log` diagnostics to trace the search flow (user, tenant_id, RPC response)
-2. Remove the per-search profile lookup — cache tenant_id from the auth context instead of querying `profiles` table on every keystroke
-3. Show a meaningful message when auth/profile is missing instead of silently returning empty results
+### UI Components
 
-**File**: `src/components/CLJSearchBar.tsx` — use `useAuth()` context (already available in the app) to get tenant_id directly instead of querying profiles each time. Add console.warn for diagnostic.
+**1. New tab in `CommunicationsHub.tsx`**: "Text Blast" tab with a megaphone icon, added alongside the existing Inbox/SMS/Calls/Recordings/Email tabs.
 
----
+**2. `TextBlastManager.tsx`** — Main component rendered in the tab:
+- **Blast list view**: Shows existing blasts with status, sent/total counts, created date
+- **Create new blast button** → opens creation flow
 
-### Files to Change
+**3. `TextBlastCreator.tsx`** — Creation/edit form:
+- **List selector**: Dropdown pulling from `dialer_lists` (same lists used by Power Dialer)
+- **Script editor**: Textarea with variable support (`{{first_name}}`, `{{company_name}}`)
+- **Script templates**: Quick-pick from saved scripts (stored in `sms_blasts` as reusable templates)
+- **Preview**: Shows rendered message with sample data
+- **Recipient count**: Shows total contacts in list, minus opt-outs
+- **Opt-out notice**: Always appends "Reply STOP to opt out" to every message (TCPA compliance)
+- **Send / Schedule buttons**
 
-1. **`src/pages/LeadDetails.tsx`** — Add `shrink-0` to the status SelectTrigger to prevent truncation
-2. **`src/components/CLJSearchBar.tsx`** — Replace per-search profile query with auth context; add diagnostic logging for failed searches
+**4. `TextBlastDetail.tsx`** — Shows blast progress:
+- Real-time sent/failed/opted-out counters
+- Per-recipient status list
+- Cancel button (sets remaining pending items to cancelled)
+
+### Stop Clause Integration
+
+The system already handles STOP replies via `messaging-inbound-webhook` → inserts into `opt_outs` table. The Text Blast processor checks `opt_outs` before each send. Additionally:
+- Every blast message auto-appends "\nReply STOP to opt out" unless the script already contains "STOP"
+- The blast detail view shows opted-out contacts clearly
+- A manual "Add to opt-out" button on each recipient row
+
+### Files to Create/Modify
+
+1. **Migration SQL** — Create `sms_blasts` and `sms_blast_items` tables with RLS
+2. **`supabase/functions/sms-blast-processor/index.ts`** — Edge function to process blast sends
+3. **`src/components/communications/TextBlastManager.tsx`** — Blast list view
+4. **`src/components/communications/TextBlastCreator.tsx`** — Create/edit blast form
+5. **`src/components/communications/TextBlastDetail.tsx`** — Blast progress/detail view
+6. **`src/pages/CommunicationsHub.tsx`** — Add "Text Blast" tab
+
+### Technical Details
+
+- Reuses existing `dialer_lists` / `dialer_list_items` for contact lists (no duplicate list management)
+- Reuses existing `telnyx-send-sms` for actual delivery (location-aware from-number resolution)
+- Reuses existing `opt_outs` table and `check_opt_out()` function for compliance
+- The processor handles rate limiting (100ms delay between sends) to avoid carrier throttling
+- Template variables resolved from `dialer_list_items.first_name`, `last_name`, and joined `contacts` data
 
