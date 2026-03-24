@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { useToast } from '@/hooks/use-toast';
@@ -10,7 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Send, Eye, Users, AlertTriangle } from 'lucide-react';
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { ArrowLeft, Send, Eye, Users, AlertTriangle, UserPlus, ListPlus, Phone } from 'lucide-react';
+import { TextBlastListBuilder } from './TextBlastListBuilder';
 
 interface TextBlastCreatorProps {
   onBack: () => void;
@@ -20,11 +22,16 @@ interface TextBlastCreatorProps {
 export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) => {
   const { activeTenantId } = useActiveTenantId();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [name, setName] = useState('');
+  const [sendMode, setSendMode] = useState<'single' | 'list'>('list');
   const [selectedListId, setSelectedListId] = useState('');
+  const [manualPhone, setManualPhone] = useState('');
+  const [manualName, setManualName] = useState('');
   const [script, setScript] = useState('');
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showListBuilder, setShowListBuilder] = useState(false);
 
   // Fetch dialer lists
   const { data: lists } = useQuery({
@@ -57,77 +64,122 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
     enabled: !!selectedListId,
   });
 
-  const recipientCount = listItems?.length || 0;
+  const recipientCount = sendMode === 'single' ? (manualPhone.trim() ? 1 : 0) : (listItems?.length || 0);
 
   const previewMessage = script
-    .replace(/\{\{first_name\}\}/gi, 'John')
-    .replace(/\{\{last_name\}\}/gi, 'Smith')
-    .replace(/\{\{full_name\}\}/gi, 'John Smith')
-    .replace(/\{\{phone\}\}/gi, '+15551234567');
+    .replace(/\{\{first_name\}\}/gi, sendMode === 'single' ? (manualName.split(' ')[0] || 'Friend') : 'John')
+    .replace(/\{\{last_name\}\}/gi, sendMode === 'single' ? (manualName.split(' ').slice(1).join(' ') || '') : 'Smith')
+    .replace(/\{\{full_name\}\}/gi, sendMode === 'single' ? (manualName || 'Friend') : 'John Smith')
+    .replace(/\{\{phone\}\}/gi, manualPhone || '+15551234567');
 
   const hasStopClause = /stop/i.test(script);
   const finalPreview = hasStopClause ? previewMessage : previewMessage + '\n\nReply STOP to opt out.';
 
+  const isValid = sendMode === 'single'
+    ? name.trim() && manualPhone.trim() && script.trim()
+    : name.trim() && selectedListId && script.trim() && (listItems?.length || 0) > 0;
+
   const handleSend = async () => {
-    if (!name.trim() || !selectedListId || !script.trim()) {
-      toast({ title: 'Missing fields', description: 'Please fill in all required fields.', variant: 'destructive' });
-      return;
-    }
-    if (!activeTenantId || !listItems?.length) return;
+    if (!isValid || !activeTenantId) return;
 
     setSending(true);
     try {
-      // Create the blast record
-      const { data: blast, error: blastError } = await supabase
-        .from('sms_blasts')
-        .insert({
-          tenant_id: activeTenantId,
-          name: name.trim(),
-          script: script.trim(),
-          list_id: selectedListId,
-          total_recipients: listItems.length,
-          status: 'draft',
-        })
-        .select()
-        .single();
+      if (sendMode === 'single') {
+        // Single number mode
+        const { data: blast, error: blastError } = await supabase
+          .from('sms_blasts')
+          .insert({
+            tenant_id: activeTenantId,
+            name: name.trim(),
+            script: script.trim(),
+            list_id: null,
+            total_recipients: 1,
+            status: 'draft',
+          })
+          .select()
+          .single();
 
-      if (blastError) throw blastError;
+        if (blastError) throw blastError;
 
-      // Create blast items from list items
-      const items = listItems.map((li: any) => ({
-        blast_id: blast.id,
-        tenant_id: activeTenantId,
-        contact_id: li.contact_id || null,
-        phone: li.phone_number,
-        contact_name: [li.first_name, li.last_name].filter(Boolean).join(' ') || null,
-        status: 'pending',
-      }));
+        const { error: itemsError } = await supabase
+          .from('sms_blast_items')
+          .insert({
+            blast_id: blast.id,
+            tenant_id: activeTenantId,
+            contact_id: null,
+            phone: manualPhone.trim(),
+            contact_name: manualName.trim() || null,
+            status: 'pending',
+          });
 
-      const { error: itemsError } = await supabase
-        .from('sms_blast_items')
-        .insert(items);
+        if (itemsError) throw itemsError;
 
-      if (itemsError) throw itemsError;
+        const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+          body: { blast_id: blast.id },
+        });
 
-      // Trigger the processor
-      const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
-        body: { blast_id: blast.id },
-      });
+        if (processorError) {
+          toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+        } else {
+          toast({ title: 'Text Blast Started!', description: `Sending to 1 recipient...` });
+        }
 
-      if (processorError) {
-        console.error('Processor error:', processorError);
-        toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+        onCreated(blast.id);
       } else {
-        toast({ title: 'Text Blast Started!', description: `Sending to ${listItems.length} recipients...` });
-      }
+        // List mode (existing logic)
+        const { data: blast, error: blastError } = await supabase
+          .from('sms_blasts')
+          .insert({
+            tenant_id: activeTenantId,
+            name: name.trim(),
+            script: script.trim(),
+            list_id: selectedListId,
+            total_recipients: listItems!.length,
+            status: 'draft',
+          })
+          .select()
+          .single();
 
-      onCreated(blast.id);
+        if (blastError) throw blastError;
+
+        const items = listItems!.map((li: any) => ({
+          blast_id: blast.id,
+          tenant_id: activeTenantId,
+          contact_id: li.contact_id || null,
+          phone: li.phone_number,
+          contact_name: [li.first_name, li.last_name].filter(Boolean).join(' ') || null,
+          status: 'pending',
+        }));
+
+        const { error: itemsError } = await supabase
+          .from('sms_blast_items')
+          .insert(items);
+
+        if (itemsError) throw itemsError;
+
+        const { error: processorError } = await supabase.functions.invoke('sms-blast-processor', {
+          body: { blast_id: blast.id },
+        });
+
+        if (processorError) {
+          toast({ title: 'Blast created but processing failed', description: processorError.message, variant: 'destructive' });
+        } else {
+          toast({ title: 'Text Blast Started!', description: `Sending to ${listItems!.length} recipients...` });
+        }
+
+        onCreated(blast.id);
+      }
     } catch (error: any) {
       console.error('Error creating blast:', error);
       toast({ title: 'Error', description: error.message, variant: 'destructive' });
     } finally {
       setSending(false);
     }
+  };
+
+  const handleListCreated = (listId: string) => {
+    queryClient.invalidateQueries({ queryKey: ['dialer-lists', activeTenantId] });
+    setSelectedListId(listId);
   };
 
   return (
@@ -158,25 +210,83 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
                 />
               </div>
 
-              <div>
-                <Label>Contact List</Label>
-                <Select value={selectedListId} onValueChange={setSelectedListId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a dialer list" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {lists?.map((list: any) => (
-                      <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedListId && (
-                  <div className="flex items-center gap-2 mt-2">
-                    <Users className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">{recipientCount} recipients</span>
+              {/* Send Mode Toggle */}
+              <div className="space-y-2">
+                <Label>Send To</Label>
+                <RadioGroup
+                  value={sendMode}
+                  onValueChange={(v) => setSendMode(v as 'single' | 'list')}
+                  className="flex gap-4"
+                >
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="single" id="mode-single" />
+                    <Label htmlFor="mode-single" className="cursor-pointer flex items-center gap-1.5 font-normal">
+                      <Phone className="h-3.5 w-3.5" />
+                      Single Number
+                    </Label>
                   </div>
-                )}
+                  <div className="flex items-center gap-2">
+                    <RadioGroupItem value="list" id="mode-list" />
+                    <Label htmlFor="mode-list" className="cursor-pointer flex items-center gap-1.5 font-normal">
+                      <Users className="h-3.5 w-3.5" />
+                      Contact List
+                    </Label>
+                  </div>
+                </RadioGroup>
               </div>
+
+              {sendMode === 'single' ? (
+                <div className="space-y-3 p-3 rounded-md border border-border bg-muted/30">
+                  <div>
+                    <Label htmlFor="manual-phone">Phone Number *</Label>
+                    <Input
+                      id="manual-phone"
+                      placeholder="+1 (555) 123-4567"
+                      value={manualPhone}
+                      onChange={(e) => setManualPhone(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="manual-name">Recipient Name (optional)</Label>
+                    <Input
+                      id="manual-name"
+                      placeholder="John Smith"
+                      value={manualName}
+                      onChange={(e) => setManualName(e.target.value)}
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1">
+                      <Label>Contact List</Label>
+                      <Select value={selectedListId} onValueChange={setSelectedListId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select a contact list" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {lists?.map((list: any) => (
+                            <SelectItem key={list.id} value={list.id}>{list.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="pt-5">
+                      <Button variant="outline" size="sm" onClick={() => setShowListBuilder(true)}>
+                        <ListPlus className="h-4 w-4 mr-1" />
+                        Build List
+                      </Button>
+                    </div>
+                  </div>
+                  {selectedListId && (
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm text-muted-foreground">{listItems?.length || 0} recipients</span>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -215,11 +325,11 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           <div className="flex gap-2">
             <Button
               onClick={handleSend}
-              disabled={sending || !name.trim() || !selectedListId || !script.trim() || !recipientCount}
+              disabled={sending || !isValid}
               className="flex-1"
             >
               <Send className="h-4 w-4 mr-2" />
-              {sending ? 'Creating...' : `Send to ${recipientCount} Recipients`}
+              {sending ? 'Creating...' : `Send to ${recipientCount} Recipient${recipientCount !== 1 ? 's' : ''}`}
             </Button>
             <Button variant="outline" onClick={() => setShowPreview(!showPreview)}>
               <Eye className="h-4 w-4 mr-2" />
@@ -247,6 +357,12 @@ export const TextBlastCreator = ({ onBack, onCreated }: TextBlastCreatorProps) =
           )}
         </div>
       </div>
+
+      <TextBlastListBuilder
+        open={showListBuilder}
+        onOpenChange={setShowListBuilder}
+        onListCreated={handleListCreated}
+      />
     </div>
   );
 };
