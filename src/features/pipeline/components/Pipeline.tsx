@@ -75,6 +75,7 @@ const Pipeline = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { currentLocationId, currentLocation } = useLocation();
+  const [resolvedTenantId, setResolvedTenantId] = useState<string | null>(null);
 
   const { stages: dynamicStages } = usePipelineStages();
 
@@ -122,14 +123,18 @@ const Pipeline = () => {
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     
+    // Skip realtime if no tenant resolved yet
+    if (!resolvedTenantId) return;
+    
     const channel = supabase
-      .channel('pipeline-entries-changes')
+      .channel(`pipeline-entries-changes-${resolvedTenantId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'pipeline_entries'
+          table: 'pipeline_entries',
+          filter: `tenant_id=eq.${resolvedTenantId}`
         },
         () => {
           // Debounce: batch rapid changes into a single refetch
@@ -145,7 +150,7 @@ const Pipeline = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [filters]);
+  }, [filters, resolvedTenantId]);
 
   const fetchUserRole = async () => {
     try {
@@ -203,6 +208,9 @@ const Pipeline = () => {
       // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
       const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
       
+      // Store resolved tenant for realtime subscription
+      setResolvedTenantId(effectiveTenantId || null);
+      
       // Also set user role from the same profile fetch (avoid duplicate query)
       if (currentProfile?.role) {
         setUserRole(currentProfile.role);
@@ -257,7 +265,8 @@ const Pipeline = () => {
               last_name
             )
           `)
-          .eq('is_deleted', false);
+          .eq('is_deleted', false)
+          .eq('tenant_id', effectiveTenantId);
 
         if (currentLocationId) {
           query = query.eq('location_id', currentLocationId);

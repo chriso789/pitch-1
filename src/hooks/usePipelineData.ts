@@ -4,6 +4,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { useEffect } from 'react';
 import { usePipelineStages, type PipelineStage, DEFAULT_STAGES } from './usePipelineStages';
+import { useEffectiveTenantId } from './useEffectiveTenantId';
 
 export interface PipelineEntry {
   id: string;
@@ -35,7 +36,7 @@ export interface PipelineEntry {
 // Legacy export for backwards compatibility - now dynamically loaded
 export const LEAD_STAGES = DEFAULT_STAGES;
 
-async function fetchPipelineEntries(locationId: string | null): Promise<PipelineEntry[]> {
+async function fetchPipelineEntries(locationId: string | null, tenantId: string | null): Promise<PipelineEntry[]> {
   let query = supabase
     .from('pipeline_entries')
     .select(`
@@ -66,6 +67,11 @@ async function fetchPipelineEntries(locationId: string | null): Promise<Pipeline
       )
     `)
     .eq('is_deleted', false);
+  
+  // CRITICAL: Explicit tenant filter — belt-and-suspenders with RLS
+  if (tenantId) {
+    query = query.eq('tenant_id', tenantId);
+  }
   
   // Filter by location if a location is selected
   if (locationId) {
@@ -112,15 +118,17 @@ export function usePipelineData() {
   const { profile } = useUserProfile();
   const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   
   // Load dynamic stages from database
   const { stages, isLoading: stagesLoading } = usePipelineStages();
 
   const query = useQuery({
-    queryKey: ['pipeline-entries', currentLocationId],
-    queryFn: () => fetchPipelineEntries(currentLocationId),
-    staleTime: 30 * 1000, // 30 seconds - data is fresh
-    gcTime: 5 * 60 * 1000, // 5 minutes in cache
+    queryKey: ['pipeline-entries', currentLocationId, effectiveTenantId],
+    queryFn: () => fetchPipelineEntries(currentLocationId, effectiveTenantId),
+    enabled: !!effectiveTenantId, // Don't fetch until tenant is resolved
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
   
@@ -138,7 +146,7 @@ export function usePipelineData() {
 
   // Optimistic update for drag operations
   const updateEntryStatus = (entryId: string, fromStatus: string, toStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
       if (!old) return old;
       return old.map(entry => 
         entry.id === entryId ? { ...entry, status: toStatus } : entry
@@ -148,7 +156,7 @@ export function usePipelineData() {
 
   // Revert optimistic update
   const revertEntryStatus = (entryId: string, originalStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
       if (!old) return old;
       return old.map(entry => 
         entry.id === entryId ? { ...entry, status: originalStatus } : entry
@@ -158,7 +166,7 @@ export function usePipelineData() {
 
   // Remove entry from cache (for delete)
   const removeEntry = (entryId: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
       if (!old) return old;
       return old.filter(entry => entry.id !== entryId);
     });
