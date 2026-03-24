@@ -122,14 +122,19 @@ const Pipeline = () => {
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     
+    // Skip realtime if no tenant resolved yet
+    if (!effectiveTenantIdRef.current) return;
+    
+    const tenantId = effectiveTenantIdRef.current;
     const channel = supabase
-      .channel('pipeline-entries-changes')
+      .channel(`pipeline-entries-changes-${tenantId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'pipeline_entries'
+          table: 'pipeline_entries',
+          filter: `tenant_id=eq.${tenantId}`
         },
         () => {
           // Debounce: batch rapid changes into a single refetch
@@ -145,7 +150,7 @@ const Pipeline = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [filters]);
+  }, [filters, effectiveTenantIdRef.current]);
 
   const fetchUserRole = async () => {
     try {
