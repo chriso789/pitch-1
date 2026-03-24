@@ -118,15 +118,17 @@ export function usePipelineData() {
   const { profile } = useUserProfile();
   const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
   
   // Load dynamic stages from database
   const { stages, isLoading: stagesLoading } = usePipelineStages();
 
   const query = useQuery({
-    queryKey: ['pipeline-entries', currentLocationId],
-    queryFn: () => fetchPipelineEntries(currentLocationId),
-    staleTime: 30 * 1000, // 30 seconds - data is fresh
-    gcTime: 5 * 60 * 1000, // 5 minutes in cache
+    queryKey: ['pipeline-entries', currentLocationId, effectiveTenantId],
+    queryFn: () => fetchPipelineEntries(currentLocationId, effectiveTenantId),
+    enabled: !!effectiveTenantId, // Don't fetch until tenant is resolved
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
   
