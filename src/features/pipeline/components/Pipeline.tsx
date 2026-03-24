@@ -124,11 +124,10 @@ const Pipeline = () => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     
     // Skip realtime if no tenant resolved yet
-    if (!effectiveTenantIdRef.current) return;
+    if (!resolvedTenantId) return;
     
-    const tenantId = effectiveTenantIdRef.current;
     const channel = supabase
-      .channel(`pipeline-entries-changes-${tenantId}`)
+      .channel(`pipeline-entries-changes-${resolvedTenantId}`)
       .on(
         'postgres_changes',
         {
