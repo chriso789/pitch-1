@@ -75,7 +75,7 @@ const Pipeline = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { currentLocationId, currentLocation } = useLocation();
-  const effectiveTenantIdRef = useRef<string | null>(null);
+  const [resolvedTenantId, setResolvedTenantId] = useState<string | null>(null);
 
   const { stages: dynamicStages } = usePipelineStages();
 
