@@ -146,7 +146,7 @@ export function usePipelineData() {
 
   // Optimistic update for drag operations
   const updateEntryStatus = (entryId: string, fromStatus: string, toStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
       if (!old) return old;
       return old.map(entry => 
         entry.id === entryId ? { ...entry, status: toStatus } : entry
@@ -156,7 +156,7 @@ export function usePipelineData() {
 
   // Revert optimistic update
   const revertEntryStatus = (entryId: string, originalStatus: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
       if (!old) return old;
       return old.map(entry => 
         entry.id === entryId ? { ...entry, status: originalStatus } : entry
@@ -166,7 +166,7 @@ export function usePipelineData() {
 
   // Remove entry from cache (for delete)
   const removeEntry = (entryId: string) => {
-    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId], (old) => {
+    queryClient.setQueryData<PipelineEntry[]>(['pipeline-entries', currentLocationId, effectiveTenantId], (old) => {
       if (!old) return old;
       return old.filter(entry => entry.id !== entryId);
     });
