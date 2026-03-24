@@ -208,8 +208,8 @@ const Pipeline = () => {
       // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
       const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
       
-      // Store in ref for realtime subscription to use
-      effectiveTenantIdRef.current = effectiveTenantId || null;
+      // Store resolved tenant for realtime subscription
+      setResolvedTenantId(effectiveTenantId || null);
       
       // Also set user role from the same profile fetch (avoid duplicate query)
       if (currentProfile?.role) {

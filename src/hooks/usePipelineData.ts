@@ -4,6 +4,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useLocation } from '@/contexts/LocationContext';
 import { useEffect } from 'react';
 import { usePipelineStages, type PipelineStage, DEFAULT_STAGES } from './usePipelineStages';
+import { useEffectiveTenantId } from './useEffectiveTenantId';
 
 export interface PipelineEntry {
   id: string;
