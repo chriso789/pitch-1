@@ -4,6 +4,7 @@
  */
 
 import { useState } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
   Inbox, Settings, RefreshCw, Mail, Megaphone
@@ -23,6 +24,7 @@ import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommu
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
 const CommunicationsHub = () => {
+  const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState('inbox');
   const [selectedThread, setSelectedThread] = useState<SMSThread | null>(null);
   const [selectedInboxItem, setSelectedInboxItem] = useState<UnifiedInboxItem | null>(null);
@@ -189,13 +191,13 @@ const CommunicationsHub = () => {
           {/* SMS Tab */}
           <TabsContent value="sms" className="flex-1 m-0 overflow-hidden">
             <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
-              <div className="h-full overflow-hidden">
+              <div className={`h-full overflow-hidden ${isMobile && selectedThread ? 'hidden' : ''}`}>
                 <SMSThreadList 
                   onSelectThread={handleSelectThread}
                   selectedThreadId={selectedThread?.id}
                 />
               </div>
-              <div className="h-full overflow-hidden">
+              <div className={`h-full overflow-hidden ${isMobile && !selectedThread ? 'hidden' : ''}`}>
                 <SMSConversationThread
                   thread={selectedThread || undefined}
                   onBack={() => setSelectedThread(null)}

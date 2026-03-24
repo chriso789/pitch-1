@@ -137,6 +137,37 @@ serve(async (req) => {
       }
     }
 
+    // Also update sms_messages table so thread UI reflects delivery status
+    const { data: smsRecords, error: smsFindError } = await supabaseAdmin
+      .from('sms_messages')
+      .select('id')
+      .eq('provider_message_id', messageId);
+
+    if (!smsFindError && smsRecords && smsRecords.length > 0) {
+      for (const smsRecord of smsRecords) {
+        const updatePayload: Record<string, unknown> = {
+          status: deliveryStatus,
+        };
+        if (deliveryStatus === 'delivered') {
+          updatePayload.delivered_at = new Date().toISOString();
+        }
+        if (deliveryStatus === 'failed' && errorTitle) {
+          updatePayload.error_message = `${errorCode || ''}: ${errorTitle}`.trim();
+        }
+
+        const { error: smsUpdateError } = await supabaseAdmin
+          .from('sms_messages')
+          .update(updatePayload)
+          .eq('id', smsRecord.id);
+
+        if (smsUpdateError) {
+          console.error(`❌ Error updating sms_messages ${smsRecord.id}:`, smsUpdateError);
+        } else {
+          console.log(`✅ Updated sms_messages ${smsRecord.id} to status: ${deliveryStatus}`);
+        }
+      }
+    }
+
     return new Response(
       JSON.stringify({ 
         success: true, 

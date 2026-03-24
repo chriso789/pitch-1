@@ -322,15 +322,18 @@ serve(async (req) => {
         },
       });
 
-      // Also update/create SMS thread with location_id
+      // Upsert SMS thread (create if missing)
       const { data: existingThread } = await supabaseAdmin
         .from('sms_threads')
         .select('id')
         .eq('tenant_id', tenantId)
         .eq('phone_number', formattedTo)
-        .single();
+        .maybeSingle();
+
+      let threadId: string;
 
       if (existingThread) {
+        threadId = existingThread.id;
         await supabaseAdmin
           .from('sms_threads')
           .update({
@@ -339,6 +342,55 @@ serve(async (req) => {
             location_id: resolvedLocationId || null,
           })
           .eq('id', existingThread.id);
+      } else {
+        // Create new thread for this phone number
+        const { data: newThread, error: threadError } = await supabaseAdmin
+          .from('sms_threads')
+          .insert({
+            tenant_id: tenantId,
+            phone_number: formattedTo,
+            contact_id: contactId || null,
+            last_message_at: new Date().toISOString(),
+            last_message_preview: message.substring(0, 100),
+            location_id: resolvedLocationId || null,
+            unread_count: 0,
+          })
+          .select('id')
+          .single();
+
+        if (threadError) {
+          console.error('Failed to create SMS thread:', threadError);
+        }
+        threadId = newThread?.id;
+        console.log('Created new SMS thread:', threadId);
+      }
+
+      // Insert into sms_messages so message appears in conversation UI
+      if (threadId) {
+        const { error: msgError } = await supabaseAdmin
+          .from('sms_messages')
+          .insert({
+            thread_id: threadId,
+            tenant_id: tenantId,
+            contact_id: contactId || null,
+            body: message,
+            direction: 'outbound',
+            from_number: finalFromNumber,
+            to_number: formattedTo,
+            provider_message_id: data.data?.id || null,
+            telnyx_message_id: data.data?.id || null,
+            provider: 'telnyx',
+            status: 'queued',
+            sent_at: new Date().toISOString(),
+            location_id: resolvedLocationId || null,
+            is_read: true,
+          });
+
+        if (msgError) {
+          console.error('Failed to insert sms_messages row:', msgError);
+        } else {
+          console.log('Inserted sms_messages row for thread:', threadId);
+        }
       }
     }
 
