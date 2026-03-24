@@ -371,13 +371,17 @@ export default function GooglePropertyMarkersLayer({
     // At low zoom without number, show symbol as primary content
     const showSymbolAsPrimary = !showNumber && symbol && !isNotContacted;
     
+    // For zoom ≥ 19 with street name, use pill shape; otherwise circle
+    const pinWidth = showStreetName && streetLabel.length > 4 ? Math.max(size, streetLabel.length * 7 + 12) : size;
+    const rx = showStreetName ? size / 2 : size / 2;
+    
     const svg = `
-      <svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <rect x="1" y="1" width="${size - 2}" height="${size - 2}" rx="${size / 2}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
+      <svg xmlns="http://www.w3.org/2000/svg" width="${pinWidth}" height="${size}" viewBox="0 0 ${pinWidth} ${size}">
+        <rect x="1" y="1" width="${pinWidth - 2}" height="${size - 2}" rx="${rx}" fill="${fillColor}" stroke="${strokeColor}" stroke-width="2"/>
         ${showSymbolAsPrimary
-          ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
-          : streetNumber
-            ? `<text x="${size/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetNumber}</text>`
+          ? `<text x="${pinWidth/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${symbol}</text>`
+          : streetLabel
+            ? `<text x="${pinWidth/2}" y="${size/2 + fontSize/3}" text-anchor="middle" font-size="${fontSize}" fill="${textColor}" font-weight="600" font-family="system-ui, -apple-system, sans-serif">${streetLabel}</text>`
             : ''
         }
         ${symbol && showNumber && !isNotContacted
