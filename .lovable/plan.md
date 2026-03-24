@@ -1,58 +1,51 @@
 
 
-## Plan: Fix SMS Thread Visibility + Outbound Message Threading
+## Plan: Fix Double Pins (Same House Number, Different Streets) + GPS Drift
 
-### Problem Summary
+### Issue 1: Double Pins — Root Cause
 
-Two issues are causing messages not to show in threads:
+The database has **no duplicates**. The "double pins" are different addresses on **parallel streets** with the same house number (e.g., `4102 Cherokee St` and `4102 Fonsica Ave`). Google reverse geocoding places both near the street centerline, so at zoom 17-19 they overlap visually, creating the illusion of duplicates.
 
-1. **Text Blast messages don't appear in SMS threads**: The `telnyx-send-sms` function (used by blast processor) writes to `communication_history` and updates `sms_threads` metadata, but **never inserts into `sms_messages`**. The thread UI (`SMSConversationThread`) reads from `sms_messages`, so blast-sent messages are invisible in conversation view.
+**Evidence** (from DB query):
+- `4083 Cherokee St` at 27.08208, -82.19653
+- `4083 Fonsica Ave` at 27.08206, -82.19644 (only ~10m apart)
 
-2. **Delivery status webhook doesn't update `sms_messages`**: The `telnyx-sms-status-webhook` only updates `communication_history`. It does NOT update `sms_messages.delivery_status`, so even manually sent messages show stale status in the thread UI. (The `messaging-inbound-webhook` handles this for inbound, but the outbound status webhook does not.)
+**Fix**: Two changes:
+1. **Building snapping**: After geocoding, use Google's rooftop-level coordinates or offset pins toward the correct side of the street using the street bearing. This is a backend change in `canvassiq-load-parcels` — use `location_type: ROOFTOP` filtering (already returned by Google but not enforced).
+2. **Street name in pin label at high zoom**: At zoom ≥ 19, show `"4083 Cherokee"` instead of just `"4083"` to disambiguate overlapping numbers. This is a frontend change in `GooglePropertyMarkersLayer.tsx`.
 
-3. **SMS tab thread selection doesn't work on mobile**: The thread list and conversation are in a 2-column grid (`lg:grid-cols-2`), but on smaller screens both show `grid-cols-1` — the conversation panel is `overflow-hidden` with no mobile toggle to switch between list and thread view.
+### Issue 2: GPS Pulling to Middle of Nowhere — Root Cause
+
+The `watchPosition` callback in `LiveCanvassingPage.tsx` (line 340-380) has **no accuracy filter** for ongoing watch fixes once `previousLocation.current` is set. The 200-mile sanity check (line 354-359) only runs when `!previousLocation.current`. So if:
+- First fix is good → sets `previousLocation`
+- Subsequent watch fix is IP-based/coarse (accuracy > 5000m) → map pans to wrong location with no guard
+
+**Fix**: Add accuracy rejection in the watch callback. If accuracy > 1000m, skip the fix. Also add a distance jump guard — if a watch fix is > 50 miles from the previous fix, reject it as anomalous.
 
 ### Changes
 
-#### 1. `supabase/functions/telnyx-send-sms/index.ts` — Insert `sms_messages` row
+#### 1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Watch accuracy guard
 
-After the existing `communication_history` insert (line 305), also insert into `sms_messages` so the message appears in the thread conversation view. Include `provider_message_id` so delivery webhooks can find and update it.
+In the `watchLocation` callback (line 340), add:
+- Reject watch fixes with `location.accuracy > 1000` (coarse/IP-based)
+- Reject fixes that jump > 50 miles from `previousLocation.current` (anomalous drift)
 
-#### 2. `supabase/functions/telnyx-sms-status-webhook/index.ts` — Also update `sms_messages`
+#### 2. `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` — Show street name at high zoom
 
-After updating `communication_history`, also look up `sms_messages` by `provider_message_id` and update `delivery_status` + `error_message`. This is the same pattern already used in `messaging-inbound-webhook`'s `handleDeliveryStatusUpdate`.
+In `createMarkerIcon` (line 324), at zoom ≥ 19:
+- Extract street name (not just number) from the property address
+- Display truncated `"4083 Cherokee"` instead of `"4083"` to disambiguate pins on parallel streets
+- Increase pin size at zoom 19+ to accommodate the longer label
 
-#### 3. `src/pages/CommunicationsHub.tsx` + `SMSThreadList.tsx` — Mobile thread navigation
+#### 3. `supabase/functions/canvassiq-load-parcels/index.ts` — Prefer ROOFTOP coordinates
 
-On mobile, when a thread is selected, show only the conversation (hide the list). Add a back button to return to the list. This requires:
-- Track `selectedThread` state to conditionally show list vs thread on small screens
-- On `< lg` breakpoints: show thread list when no thread selected, show conversation when thread selected
-- The `SMSConversationThread` already has an `onBack` prop wired up
-
-#### 4. `supabase/functions/telnyx-send-sms/index.ts` — Create thread if missing
-
-Currently the function only updates existing threads but doesn't create new ones (line 326-342 only queries for existing). If no thread exists for the recipient phone number, create one — matching what `sms-send-reply` already does.
+In `reverseGeocode` (line 404), filter results by `geometry.location_type === 'ROOFTOP'` when available, and skip `APPROXIMATE` or `GEOMETRIC_CENTER` results that place pins at street centerlines. This pushes pins toward actual building locations, naturally separating parallel-street addresses.
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/telnyx-send-sms/index.ts` | Insert `sms_messages` row + create thread if missing |
-| `supabase/functions/telnyx-sms-status-webhook/index.ts` | Update `sms_messages.delivery_status` alongside `communication_history` |
-| `src/pages/CommunicationsHub.tsx` | Mobile-responsive thread selection (show/hide list vs conversation) |
-
-### Data Flow After Fix
-
-```text
-Outbound SMS (blast or direct):
-  telnyx-send-sms → Telnyx API
-    → INSERT communication_history (with message_id)
-    → INSERT sms_messages (with provider_message_id)  ← NEW
-    → UPSERT sms_threads (create if missing)          ← ENHANCED
-
-Delivery webhook:
-  Telnyx → telnyx-sms-status-webhook
-    → UPDATE communication_history.delivery_status     (existing)
-    → UPDATE sms_messages.delivery_status              ← NEW
-```
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Add accuracy + distance-jump guard to watch callback |
+| `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` | Show street name in pin at zoom ≥ 19 |
+| `supabase/functions/canvassiq-load-parcels/index.ts` | Prefer ROOFTOP geocoding results |
 
