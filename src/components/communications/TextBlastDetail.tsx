@@ -66,9 +66,11 @@ export const TextBlastDetail = ({ blastId, onBack }: TextBlastDetailProps) => {
   const handleAddOptOut = async (phone: string, itemId: string) => {
     if (!blast?.tenant_id) return;
     await supabase.from('opt_outs').insert({
-      phone_number: phone,
+      phone: phone,
       tenant_id: blast.tenant_id,
+      channel: 'sms',
       reason: 'manual_blast_opt_out',
+      source: 'text_blast',
     });
     await supabase
       .from('sms_blast_items')
