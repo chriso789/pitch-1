@@ -190,13 +190,13 @@ const CommunicationsHub = () => {
           {/* SMS Tab */}
           <TabsContent value="sms" className="flex-1 m-0 overflow-hidden">
             <div className="h-full grid grid-cols-1 lg:grid-cols-2 gap-0 lg:divide-x">
-              <div className="h-full overflow-hidden">
+              <div className={`h-full overflow-hidden ${isMobile && selectedThread ? 'hidden' : ''}`}>
                 <SMSThreadList 
                   onSelectThread={handleSelectThread}
                   selectedThreadId={selectedThread?.id}
                 />
               </div>
-              <div className="h-full overflow-hidden">
+              <div className={`h-full overflow-hidden ${isMobile && !selectedThread ? 'hidden' : ''}`}>
                 <SMSConversationThread
                   thread={selectedThread || undefined}
                   onBack={() => setSelectedThread(null)}
