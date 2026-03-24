@@ -262,7 +262,8 @@ const Pipeline = () => {
               last_name
             )
           `)
-          .eq('is_deleted', false);
+          .eq('is_deleted', false)
+          .eq('tenant_id', effectiveTenantId);
 
         if (currentLocationId) {
           query = query.eq('location_id', currentLocationId);
