@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
-  Inbox, Settings, RefreshCw, Mail
+  Inbox, Settings, RefreshCw, Mail, Megaphone
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
