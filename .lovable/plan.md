@@ -1,52 +1,45 @@
 
 
-## Plan: Add Manual Number Entry + In-Hub List Builder to Text Blast
+## Plan: Lock Down Cross-Tenant Data Leakage in Pipeline
 
-### What Changes
+### Root Cause
 
-The Text Blast creator currently only supports selecting from `dialer_lists` (built in the Call Center). Two additions are needed:
+The **Pipeline page** (`src/features/pipeline/components/Pipeline.tsx`) does NOT include an explicit `tenant_id` filter on its `pipeline_entries` query (line 240-277). It relies entirely on the `get_user_tenant_id()` RLS function. By contrast, the **Contacts page** already has `.eq('tenant_id', effectiveTenantId)` (line 428).
 
-1. **Manual single number entry** — A toggle/option to type one phone number directly instead of selecting a list
-2. **Build list from contacts within Follow Up Hub** — A "Build List" button that opens a contact picker dialog (reusing the same pattern as `CallCenterListBuilder`) to create a new `dialer_lists` entry without leaving the Text Blast flow
+The `effectiveTenantId` is already computed at line 204 in Pipeline.tsx but is only used for reps and locations queries — not for the main pipeline query. This means any RLS timing issue, caching, or stale session can leak data across tenants.
 
-### File Changes
+Additionally, the realtime subscription (line 125-142) subscribes to ALL `pipeline_entries` changes globally without any tenant filter, meaning changes from other tenants trigger refetches.
 
-#### 1. `src/components/communications/TextBlastCreator.tsx`
-- Add a **send mode toggle**: "Single Number" vs "Contact List" (radio/tabs at top of Campaign Details card)
-- **Single Number mode**: Show a phone number input field + optional name field. When sending, create a single `sms_blast_items` entry with the manually entered number instead of pulling from a list. Set `list_id` to null (make it optional in the insert).
-- **Contact List mode** (current behavior): Keep the list dropdown, but add a "Build New List" button next to it that opens the list builder dialog.
-- Update `handleSend` to handle both modes — single number creates one blast item; list mode works as before.
-- Update the send button label to reflect mode ("Send to 1 Recipient" vs "Send to N Recipients").
+### Changes
 
-#### 2. `src/components/communications/TextBlastListBuilder.tsx` (New)
-- Reuse the pattern from `CallCenterListBuilder.tsx` — fetch contacts with phone numbers, filter by status/source/search, checkbox selection, name the list, save to `dialer_lists` + `dialer_list_items`.
-- Dialog title: "Build Text Blast List" instead of "Build Dialer List"
-- On save, return the new list ID so `TextBlastCreator` can auto-select it.
+#### 1. `src/features/pipeline/components/Pipeline.tsx` — Add explicit tenant filter
 
-#### 3. `supabase/migrations/` — Make `list_id` nullable on `sms_blasts`
-- `ALTER TABLE sms_blasts ALTER COLUMN list_id DROP NOT NULL;` — needed for single-number blasts that have no associated list.
+- **Pipeline query** (line 260): Add `.eq('tenant_id', effectiveTenantId)` right after `.eq('is_deleted', false)`. Belt-and-suspenders with RLS.
+- **Realtime subscription** (line 125-142): Add `filter: 'tenant_id=eq.{effectiveTenantId}'` to the postgres_changes subscription so only the current tenant's changes trigger refetches. Also make the channel name tenant-specific and add `effectiveTenantId` to the useEffect dependency array.
+- **Early return**: If `effectiveTenantId` is null/undefined, skip fetching entirely (don't show stale data).
 
-### Key Logic
+#### 2. `src/hooks/usePipelineData.ts` — Add tenant filter
+
+- The `fetchPipelineEntries` function (line 38-41) also queries `pipeline_entries` without an explicit tenant filter. Add `.eq('tenant_id', tenantId)` parameter.
+
+#### 3. `src/features/dashboard/components/TaskDashboard.tsx` — Verify tenant scoping
+
+- Check if `pipeline_entries` join query at line 59 needs explicit tenant filtering (currently scoped by `assigned_to` user ID which limits exposure, but should still add belt-and-suspenders).
+
+### Technical Details
+
+The key fix in Pipeline.tsx (the most impactful change):
 
 ```text
-TextBlastCreator
-├── Mode: "single" | "list"
-│
-├── Single mode:
-│   ├── Phone input + Name input
-│   └── handleSend → insert blast (list_id=null), insert 1 item
-│
-└── List mode:
-    ├── Select existing list (dropdown)
-    ├── "Build New List" button → opens TextBlastListBuilder dialog
-    └── handleSend → insert blast + items from list (existing flow)
+Pipeline query:
+  BEFORE:  .eq('is_deleted', false)  // relies on RLS alone
+  AFTER:   .eq('is_deleted', false).eq('tenant_id', effectiveTenantId)
+
+Realtime channel:
+  BEFORE:  event: '*', table: 'pipeline_entries'  // all tenants
+  AFTER:   event: '*', table: 'pipeline_entries',
+           filter: `tenant_id=eq.${effectiveTenantId}`
 ```
 
-### Files Summary
-
-| File | Action |
-|------|--------|
-| `src/components/communications/TextBlastCreator.tsx` | Modify — add mode toggle, manual number input, build list button |
-| `src/components/communications/TextBlastListBuilder.tsx` | Create — contact picker dialog for building lists in-hub |
-| Migration SQL | Create — make `list_id` nullable on `sms_blasts` |
+This is the same pattern already used successfully in `EnhancedClientList.tsx` for contacts.
 
