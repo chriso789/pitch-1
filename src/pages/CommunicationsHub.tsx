@@ -6,7 +6,7 @@
 import { useState } from 'react';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
-  Inbox, Settings, RefreshCw, Mail
+  Inbox, Settings, RefreshCw, Mail, Megaphone
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -18,6 +18,7 @@ import { RecordingLibrary } from '@/components/communications/RecordingLibrary';
 import { GlobalSoftphone } from '@/components/communications/GlobalSoftphone';
 import { SoftphonePanel } from '@/components/telephony/SoftphonePanel';
 import { EmailActivityDashboard } from '@/components/communications/EmailActivityDashboard';
+import { TextBlastManager } from '@/components/communications/TextBlastManager';
 import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommunications';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
@@ -132,6 +133,10 @@ const CommunicationsHub = () => {
                 <Mail className="h-4 w-4" />
                 Email Activity
               </TabsTrigger>
+              <TabsTrigger value="text-blast" className="gap-2">
+                <Megaphone className="h-4 w-4" />
+                Text Blast
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -216,6 +221,11 @@ const CommunicationsHub = () => {
           {/* Email Activity Tab */}
           <TabsContent value="email-activity" className="flex-1 m-0 overflow-hidden">
             <EmailActivityDashboard />
+          </TabsContent>
+
+          {/* Text Blast Tab */}
+          <TabsContent value="text-blast" className="flex-1 m-0 overflow-hidden">
+            <TextBlastManager />
           </TabsContent>
         </Tabs>
       </div>

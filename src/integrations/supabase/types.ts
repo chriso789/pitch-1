@@ -32603,6 +32603,137 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_blast_items: {
+        Row: {
+          blast_id: string
+          contact_id: string | null
+          contact_name: string | null
+          error_message: string | null
+          id: string
+          phone: string
+          sent_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          blast_id: string
+          contact_id?: string | null
+          contact_name?: string | null
+          error_message?: string | null
+          id?: string
+          phone: string
+          sent_at?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          blast_id?: string
+          contact_id?: string | null
+          contact_name?: string | null
+          error_message?: string | null
+          id?: string
+          phone?: string
+          sent_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_blast_items_blast_id_fkey"
+            columns: ["blast_id"]
+            isOneToOne: false
+            referencedRelation: "sms_blasts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_blast_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_blast_items_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "sms_blast_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_blasts: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          failed_count: number
+          id: string
+          list_id: string | null
+          name: string
+          opted_out_count: number
+          script: string
+          sent_count: number
+          started_at: string | null
+          status: string
+          tenant_id: string
+          total_recipients: number
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_count?: number
+          id?: string
+          list_id?: string | null
+          name: string
+          opted_out_count?: number
+          script: string
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          total_recipients?: number
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          failed_count?: number
+          id?: string
+          list_id?: string | null
+          name?: string
+          opted_out_count?: number
+          script?: string
+          sent_count?: number
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          total_recipients?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_blasts_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "dialer_lists"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_blasts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sms_messages: {
         Row: {
           body: string
