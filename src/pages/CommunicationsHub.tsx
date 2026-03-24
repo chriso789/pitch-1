@@ -25,6 +25,7 @@ import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
 const CommunicationsHub = () => {
   const isMobile = useIsMobile();
+  const [activeTab, setActiveTab] = useState('inbox');
   const [selectedThread, setSelectedThread] = useState<SMSThread | null>(null);
   const [selectedInboxItem, setSelectedInboxItem] = useState<UnifiedInboxItem | null>(null);
   const [softphoneOpen, setSoftphoneOpen] = useState(false);
