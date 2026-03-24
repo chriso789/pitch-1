@@ -150,7 +150,7 @@ const Pipeline = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [filters, effectiveTenantIdRef.current]);
+  }, [filters, resolvedTenantId]);
 
   const fetchUserRole = async () => {
     try {
