@@ -409,7 +409,12 @@ async function reverseGeocode(lat: number, lng: number, apiKey: string): Promise
   
   if (data.status !== 'OK' || !data.results?.length) return null;
   
-  const result = data.results[0];
+  // Prefer ROOFTOP-level results to snap pins to actual buildings
+  // This separates parallel-street addresses that share the same house number
+  const rooftopResult = data.results.find(
+    (r: any) => r.geometry?.location_type === 'ROOFTOP'
+  );
+  const result = rooftopResult || data.results[0];
   const components = result.address_components || [];
   
   let streetNumber = '', streetName = '', city = '', state = '', zip = '';

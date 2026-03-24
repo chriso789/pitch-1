@@ -340,17 +340,22 @@ export default function LiveCanvassingPage() {
       (location) => {
         const accuracy = location.accuracy ?? Infinity;
 
-        // Reject coarse watch fixes if we don't yet have GPS
-        // (once we have a fix, accept all updates to keep the dot moving)
-        if (!previousLocation.current && accuracy > 500) {
+        // Reject coarse/IP-based fixes (accuracy > 1000m)
+        if (accuracy > 1000) {
           console.warn(`[Canvassing] Watch: ignoring coarse fix (${Math.round(accuracy)}m)`);
+          return;
+        }
+
+        // Reject coarse watch fixes if we don't yet have GPS
+        if (!previousLocation.current && accuracy > 500) {
+          console.warn(`[Canvassing] Watch: ignoring medium-accuracy fix before first lock (${Math.round(accuracy)}m)`);
           return;
         }
 
         const newLat = location.lat;
         const newLng = location.lng;
 
-        // Distance sanity check against assigned area
+        // Distance sanity check against assigned area (first fix only)
         if (areaCentroid && !previousLocation.current) {
           const dist = locationService.calculateDistance(newLat, newLng, areaCentroid.lat, areaCentroid.lng, 'miles');
           if (dist.distance > 200) {
@@ -359,16 +364,20 @@ export default function LiveCanvassingPage() {
           }
         }
 
-        // Calculate distance traveled if we have previous location
+        // Distance jump guard — reject anomalous jumps > 50 miles from previous fix
         if (previousLocation.current) {
-          const distance = locationService.calculateDistance(
+          const jumpDist = locationService.calculateDistance(
             previousLocation.current.lat,
             previousLocation.current.lng,
             newLat,
             newLng,
             'miles'
           );
-          setDistanceTraveled((prev) => prev + distance.distance);
+          if (jumpDist.distance > 50) {
+            console.warn(`[Canvassing] Watch: rejecting ${jumpDist.distance.toFixed(1)}mi jump from previous fix`);
+            return;
+          }
+          setDistanceTraveled((prev) => prev + jumpDist.distance);
         }
 
         setUserLocation({ lat: newLat, lng: newLng });

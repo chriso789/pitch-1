@@ -394,8 +394,8 @@ export default function GooglePropertyMarkersLayer({
     
     return {
       url: `data:image/svg+xml,${encodeURIComponent(svg)}`,
-      scaledSize: new google.maps.Size(size, size),
-      anchor: new google.maps.Point(size / 2, size / 2),
+      scaledSize: new google.maps.Size(pinWidth, size),
+      anchor: new google.maps.Point(pinWidth / 2, size / 2),
     };
   }, [symbolSettings]);
 
