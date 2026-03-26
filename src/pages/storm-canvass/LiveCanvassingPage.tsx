@@ -433,7 +433,7 @@ export default function LiveCanvassingPage() {
           }
         }
 
-        // Distance jump guard — reject anomalous jumps > 50 miles from previous fix
+        // Distance jump guard — reject anomalous jumps > 50 miles from previous real fix
         if (previousLocation.current) {
           const jumpDist = locationService.calculateDistance(
             previousLocation.current.lat,
@@ -449,9 +449,12 @@ export default function LiveCanvassingPage() {
           setDistanceTraveled((prev) => prev + jumpDist.distance);
         }
 
+        // Upgrade from fallback to real GPS — snap map to live user position
         setUserLocation({ lat: newLat, lng: newLng });
         previousLocation.current = { lat: newLat, lng: newLng };
         setHasGPS(true);
+        setHasRealGpsLock(true);
+        setIsTracking(true);
         
         if (location.address) {
           setCurrentAddress(location.address);
