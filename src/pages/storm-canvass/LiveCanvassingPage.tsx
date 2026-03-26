@@ -303,7 +303,7 @@ export default function LiveCanvassingPage() {
         // Try up to 3 times to get a precise fix
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const location = await locationService.getCurrentLocation({ skipGeocoding: true });
+            const location = await locationService.getCurrentLocation({ skipGeocoding: true, timeout: 30000 });
             const gpsLoc = { lat: location.lat, lng: location.lng };
 
             // Sanity check: if assigned area exists and GPS is > 200 miles away, prefer area center
