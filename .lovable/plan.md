@@ -1,86 +1,37 @@
 
 
-## Plan: Fix Distance Label, Owner Display, and Map Follow in Knock Mode
+## Plan: Fix Recenter Button GPS Failures
 
-### 3 Issues to Address
+### Root Cause
 
----
+The console logs show the exact failure sequence:
+1. `getCurrentLocation` is called with `maximumAge: 0` — but Mobile Safari returns a **776-second-old cached fix** anyway (known Safari bug)
+2. The 60-second staleness check rejects this fix → `code: 99`
+3. Fresh GPS requests then **time out** (20s timeout) because the device needs a cold GPS start
+4. After 3 failed attempts, the recenter button shows "GPS Unavailable"
 
-### 1. Remove "Too far" label — just show distance
+The combination of `maximumAge: 0` + 60s staleness rejection + 20s timeout is too aggressive. The browser gives a cached position (which `maximumAge: 0` should prevent but doesn't on Safari), the code rejects it, and fresh fixes take longer than 20s on cold start.
 
-**File: `src/hooks/useDistanceVerification.ts`** (lines 82-98)
+### Fix
 
-Currently the badge text says "Too far" for blocked distances. Change to just show the distance without judgment:
+**File: `src/services/locationService.ts`**
 
-- `verified`: keep as-is (`📍 X ft - At door` / `📍 X ft away`)
-- `warning`: keep as-is (`⚠️ X ft away`)
-- `blocked`: change from `🚫 X ft away - Too far` → `📍 X.XX mi away` or `📍 X ft away` (no "Too far", no block emoji)
-
-Also remove the blocking behavior in `PropertyInfoPanel.tsx` (lines 427-434) — dispositions should be allowed regardless of distance. The distance is still **logged** with the activity for audit purposes, but it no longer prevents the action.
-
-Remove the warning toast as well (lines 437-442) — just silently log distance.
-
----
-
-### 2. Owner information not pulling/displaying
-
-**File: `src/components/storm-canvass/PropertyInfoPanel.tsx`**
-
-The owner shows "Primary Owner" (the fallback) when:
-- `handlePublicLookup` returns an address mismatch (line 137-140) — owner data is blocked
-- The `storm-public-lookup` edge function returns no `owner_name`
-- The loading spinner is still showing (enrichment in progress)
-
-The screenshot shows a loading spinner next to "Primary Owner", which means the public lookup is still running or returned no data. I need to check:
-- Whether the `storm-public-lookup` function is being called successfully
-- Whether the `canvassiq_properties` table already has cached `searchbug_data` or `owner_name` for this property
-
-**Fix**: When the panel opens and `handlePublicLookup` completes without an owner, immediately display whatever `owner_name` is already on the `canvassiq_properties` record (from prior enrichment or parcel loading). Currently line 370 does this as fallback, but the issue is likely that `localProperty.owner_name` is null because the property was loaded from the parcel engine without owner data.
-
-Add a secondary fallback: if public lookup returns no owner and no owner is on the property record, show the address-based placeholder ("Homeowner at 1708 NW Ave L") instead of generic "Primary Owner".
-
----
-
-### 3. Map must follow user perfectly in knock mode, even while driving
-
-**File: `src/components/storm-canvass/GoogleLiveLocationMap.tsx`** (lines 204-224)
-
-Current behavior: map only pans if the user's position has drifted >50 meters from the map center. This means while driving at speed, the user moves off-screen before the map catches up.
-
-**Fix**:
-- Reduce the pan threshold from 50m to **10m** — pan sooner so the user stays centered
-- Use `panTo` with smooth animation (already does this)
-- In knock mode specifically, the interaction pause should be **shorter** (5 seconds instead of 15) so the map re-locks faster after a manual drag
-
-**File: `src/services/locationService.ts`** (line 114)
-
-The 5-meter minimum distance filter is fine for walking but causes lag while driving. When driving at 30mph, the user moves ~13m/s, so 5m filter fires every ~0.4s which is adequate. The real bottleneck is the `reverseGeocode` call (line 190-194) which is `await`ed before `onLocationUpdate` fires — if geocoding is slow, position updates are delayed.
-
-**Fix**: Fire `onLocationUpdate` immediately with coordinates, then update address asynchronously. Move the reverse geocode call to be non-blocking:
-
-```typescript
-// Fire location update immediately (no waiting for geocode)
-onLocationUpdate(locationData);
-
-// Update address in background (non-blocking)
-this.reverseGeocode(newLat, newLng)
-  .then(address => { locationData.address = address; })
-  .catch(() => {});
-```
+1. Make the staleness threshold configurable via an options parameter (default 60s, but callers can relax it)
+2. Add a `maxAge` option that maps to `maximumAge` in the geolocation API (default 0, but callers can allow cached positions)
 
 **File: `src/pages/storm-canvass/LiveCanvassingPage.tsx`**
 
-Reduce interaction pause from 15s to 5s in knock mode so the map re-follows quickly.
-
----
+1. **Recenter button (`handleRecenterGPS`)**: Call `getCurrentLocation` with relaxed settings:
+   - `maximumAge: 30000` (accept positions up to 30s old — good enough for recentering)
+   - `stalenessThreshold: 300` (accept fixes up to 5 minutes old — the browser's `maximumAge` param should handle freshness, this is just the Safari workaround)
+   - `timeout: 30000` (give GPS 30s to get a fix on cold start)
+2. **Initial location (`initLocation`)**: Keep current strict settings but increase timeout from 20s to 30s
+3. **Add a two-stage fallback for recenter**: First try strict (fresh fix), if that fails within 5s, retry with relaxed settings accepting cached positions
 
 ### Files to Modify
 
 | File | Change |
 |------|--------|
-| `src/hooks/useDistanceVerification.ts` | Remove "Too far" text, just show distance |
-| `src/components/storm-canvass/PropertyInfoPanel.tsx` | Remove disposition blocking by distance; improve owner fallback text |
-| `src/components/storm-canvass/GoogleLiveLocationMap.tsx` | Reduce pan threshold from 50m to 10m |
-| `src/services/locationService.ts` | Make reverse geocode non-blocking so position updates fire instantly |
-| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Reduce interaction pause to 5s in knock mode |
+| `src/services/locationService.ts` | Add configurable `stalenessThreshold` and `maxAge` options to `getCurrentLocation` |
+| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Recenter uses relaxed GPS settings; initial lock uses longer timeout |
 
