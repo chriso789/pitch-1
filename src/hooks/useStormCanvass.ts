@@ -347,10 +347,18 @@ export const useStormCanvass = () => {
         return new Date(a.date).getTime() - new Date(b.date).getTime();
       });
 
-      // Calculate disposition breakdown
+      // Calculate disposition breakdown from activity_data when available, fallback to contact status
       const dispositionMap = new Map<string, number>();
       activities.forEach((activity) => {
-        const status = activity.contact?.qualification_status || 'unknown';
+        let status = 'unknown';
+        // Prefer disposition from activity_data (reliable, logged at time of action)
+        if (activity.activity_data?.disposition_name) {
+          status = activity.activity_data.disposition_name;
+        } else if (activity.activity_data?.disposition) {
+          status = activity.activity_data.disposition;
+        } else if (activity.contact?.qualification_status) {
+          status = activity.contact.qualification_status;
+        }
         dispositionMap.set(status, (dispositionMap.get(status) || 0) + 1);
       });
 
