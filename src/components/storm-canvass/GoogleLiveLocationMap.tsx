@@ -217,7 +217,7 @@ export default function GoogleLiveLocationMap({
         new google.maps.LatLng(center.lat(), center.lng()),
         new google.maps.LatLng(newPos.lat, newPos.lng)
       );
-      if (distance > 50) {
+      if (distance > 10) {
         map.current.panTo(newPos);
       }
     }

@@ -378,7 +378,8 @@ export default function PropertyInfoPanel({
   const enrichedName = primaryOwner 
     ? ([primaryOwner.first_name, primaryOwner.last_name].filter(Boolean).join(' ') || primaryOwner.name)
     : null;
-  const ownerName = validOwner(enrichedName) || validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Unknown Owner';
+  const streetAddr = address?.street || address?.formatted || localProperty.address;
+  const ownerName = validOwner(enrichedName) || validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || (streetAddr ? `Homeowner at ${streetAddr}` : 'Unknown Owner');
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
@@ -424,22 +425,7 @@ export default function PropertyInfoPanel({
   const handleDisposition = async (dispositionId: string) => {
     if (!profile?.tenant_id || !property.id) return;
 
-    // Check if rep is too far (blocked)
-    if (verification.isBlocked) {
-      toast.error('You are too far from this property to set a disposition. Please move closer.', {
-        description: `Current distance: ${Math.round(verification.distanceFeet)} ft (max: 328 ft / 100m)`,
-        duration: 5000,
-      });
-      return;
-    }
-
-    // Show warning if in warning zone
-    if (verification.isWarning) {
-      toast.warning('You are far from this property. Move closer for verified visits.', {
-        description: `Current distance: ${Math.round(verification.distanceFeet)} ft`,
-        duration: 3000,
-      });
-    }
+    // Distance is logged for audit but does not block dispositions
 
     try {
       const { error } = await supabase

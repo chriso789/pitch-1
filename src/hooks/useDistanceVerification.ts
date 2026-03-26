@@ -88,13 +88,13 @@ export function getVerificationStatus(
   } else if (isWarning) {
     verificationStatus = 'warning';
     badgeVariant = 'secondary';
-    badgeText = `⚠️ ${Math.round(distanceFeet)} ft away`;
+    badgeText = `📍 ${Math.round(distanceFeet)} ft away`;
   } else {
     verificationStatus = 'blocked';
-    badgeVariant = 'destructive';
+    badgeVariant = 'secondary';
     badgeText = distanceFeet > 1000 
-      ? `🚫 ${distanceMiles.toFixed(2)} mi away - Too far` 
-      : `🚫 ${Math.round(distanceFeet)} ft away - Too far`;
+      ? `📍 ${distanceMiles.toFixed(2)} mi away` 
+      : `📍 ${Math.round(distanceFeet)} ft away`;
   }
   
   return {

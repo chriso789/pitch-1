@@ -186,14 +186,13 @@ class LocationService {
           timestamp: new Date().toISOString(),
         };
 
-        try {
-          const address = await this.reverseGeocode(locationData.lat, locationData.lng);
-          locationData.address = address;
-        } catch (error) {
-          console.warn("Failed to reverse geocode location:", error);
-        }
-
+        // Fire location update immediately — don't wait for geocode
         onLocationUpdate(locationData);
+
+        // Update address asynchronously (non-blocking)
+        this.reverseGeocode(locationData.lat, locationData.lng)
+          .then(address => { locationData.address = address; })
+          .catch(() => {});
       },
       (error) => {
         const geoError = new Error(error.message) as Error & { code?: number };

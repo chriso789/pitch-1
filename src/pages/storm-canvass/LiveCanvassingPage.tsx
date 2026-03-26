@@ -161,7 +161,7 @@ export default function LiveCanvassingPage() {
     if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
     interactionTimerRef.current = setTimeout(() => {
       setUserInteractionPaused(false);
-    }, 15000); // Resume auto-follow after 15 seconds
+    }, 5000); // Resume auto-follow after 5 seconds
   }, []);
   
   useEffect(() => {
