@@ -380,7 +380,7 @@ export const useStormCanvass = () => {
 
       // Calculate basic metrics
       const doorsKnocked = activities.filter(a => a.activity_type === 'door_knock').length;
-      const leadsGenerated = activities.filter(a => a.activity_type === 'lead_created').length;
+      const leadsGenerated = activities.filter(a => a.activity_type === 'lead_created' || a.activity_type === 'disposition_set').length;
       const photosUploaded = activities.filter(a => a.activity_type === 'photo_upload').length;
       const conversionRate = doorsKnocked > 0 
         ? ((leadsGenerated / doorsKnocked) * 100).toFixed(1)

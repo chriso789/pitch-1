@@ -563,6 +563,19 @@ export default function PropertyInfoPanel({
               .update({ contact_id: createdContact.id })
               .eq('id', property.id);
 
+            // Update the activity log entry with the new contact_id
+            // (the door_knock we just inserted above didn't have it yet)
+            if (!activityContactId) {
+              await supabase
+                .from('canvass_activity_log')
+                .update({ contact_id: createdContact.id })
+                .eq('user_id', profile.id)
+                .eq('activity_type', 'door_knock')
+                .is('contact_id', null)
+                .order('created_at', { ascending: false })
+                .limit(1);
+            }
+
             toast.success(`Contact created: ${createdContact.first_name} ${createdContact.last_name}`);
           }
         }
