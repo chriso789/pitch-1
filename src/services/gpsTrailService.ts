@@ -101,6 +101,7 @@ class GPSTrailService {
       this.RECORDING_INTERVAL_MS * this.BATCH_SIZE
     );
 
+    this.startingForUser = null; // clear guard
     console.log(`[GPSTrailService] Started recording session ${sessionId}`);
     return sessionId;
   }
