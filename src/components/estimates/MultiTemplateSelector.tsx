@@ -1599,14 +1599,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           is_fixed_price: isFixedPrice,
           rep_commission_percent: config.repCommissionPercent,
           rep_commission_amount: breakdown.repCommissionAmount,
-          // Always compute actual profit from the final saved values (gross profit = selling - costs - overhead, before commission)
+          // Always compute actual profit from PRE-TAX selling price (tax collected is not profit)
           actual_profit_amount: (() => {
-            const gp = breakdown.sellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
+            const gp = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
             return Math.round(gp * 100) / 100;
           })(),
           actual_profit_percent: (() => {
-            const gp = breakdown.sellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
-            return breakdown.sellingPrice > 0 ? Math.round((gp / breakdown.sellingPrice) * 10000) / 100 : 0;
+            const gp = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
+            return breakdown.preTaxSellingPrice > 0 ? Math.round((gp / breakdown.preTaxSellingPrice) * 10000) / 100 : 0;
           })(),
           sales_tax_rate: config.salesTaxEnabled ? config.salesTaxRate : 0,
           sales_tax_amount: breakdown.salesTaxAmount,

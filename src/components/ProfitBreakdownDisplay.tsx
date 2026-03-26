@@ -19,8 +19,10 @@ export const ProfitBreakdownDisplay: React.FC<ProfitBreakdownProps> = ({
     }).format(amount);
   };
 
-  const grossProfit = calculations.selling_price - calculations.material_total - calculations.labor_total;
-  const profitMargin = calculations.selling_price > 0 ? (grossProfit / calculations.selling_price) * 100 : 0;
+  const salesTax = calculations.sales_tax_amount || 0;
+  const preTaxPrice = calculations.selling_price - salesTax;
+  const grossProfit = preTaxPrice - calculations.material_total - calculations.labor_total - (calculations.overhead_amount || 0);
+  const profitMargin = preTaxPrice > 0 ? (grossProfit / preTaxPrice) * 100 : 0;
 
   return (
     <Card className="border-success/20">
