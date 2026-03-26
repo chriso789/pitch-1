@@ -110,6 +110,7 @@ class GPSTrailService {
    * Stop recording GPS trail
    */
   async stopRecording(): Promise<void> {
+    this.startingForUser = null; // clear guard
     if (!this.session) return;
 
     // Clear watch
