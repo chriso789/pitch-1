@@ -151,6 +151,24 @@ export default function LiveCanvassingPage() {
   
   const previousLocation = useRef<{ lat: number; lng: number } | null>(null);
   const gpsTrailStarted = useRef(false);
+  
+  // Auto-follow pause: user drags/zooms map → pause follow for 15s
+  const [userInteractionPaused, setUserInteractionPaused] = useState(false);
+  const interactionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleUserMapInteraction = useCallback(() => {
+    setUserInteractionPaused(true);
+    if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    interactionTimerRef.current = setTimeout(() => {
+      setUserInteractionPaused(false);
+    }, 15000); // Resume auto-follow after 15 seconds
+  }, []);
+  
+  useEffect(() => {
+    return () => {
+      if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     // Load dispositions
@@ -213,8 +231,12 @@ export default function LiveCanvassingPage() {
     };
   }, [profile?.id, profile?.tenant_id]);
 
-  // Manual recenter handler
+  // Manual recenter handler — also resumes auto-follow
   const handleRecenterGPS = useCallback(async () => {
+    // Resume auto-follow immediately
+    setUserInteractionPaused(false);
+    if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    
     try {
       const location = await locationService.getCurrentLocation({ skipGeocoding: true, accuracyThreshold: 1000 });
       setUserLocation({ lat: location.lat, lng: location.lng });
@@ -565,7 +587,8 @@ export default function LiveCanvassingPage() {
             areaPropertyIds={canvassMode === 'knock' && areaPropertyIds.length > 0 ? areaPropertyIds : undefined}
             areaPolygon={areaPolygon}
             onMapClick={canvassMode === 'canvas' ? (lat, lng) => setDropPinCoords({ lat, lng }) : undefined}
-            followUser={canvassMode === 'knock'}
+            followUser={!userInteractionPaused}
+            onUserInteraction={handleUserMapInteraction}
             symbolSettings={symbolSettings}
             initialZoom={initialZoom}
           />

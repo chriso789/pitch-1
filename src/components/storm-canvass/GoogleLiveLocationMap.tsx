@@ -24,6 +24,7 @@ interface GoogleLiveLocationMapProps {
   areaPolygon?: any;
   onMapClick?: (lat: number, lng: number) => void;
   followUser?: boolean;
+  onUserInteraction?: () => void;
   symbolSettings?: SymbolSettings;
   initialZoom?: number;
 }
@@ -82,6 +83,7 @@ export default function GoogleLiveLocationMap({
   areaPolygon,
   onMapClick,
   followUser = true,
+  onUserInteraction,
   symbolSettings,
   initialZoom,
 }: GoogleLiveLocationMapProps) {
@@ -151,6 +153,11 @@ export default function GoogleLiveLocationMap({
             map.current.setHeading(0);
           }
         });
+
+        // Detect user interaction (drag/zoom) to pause auto-follow
+        if (onUserInteraction) {
+          map.current.addListener('dragstart', () => onUserInteraction());
+        }
 
         setMapReady(true);
       } catch (err) {

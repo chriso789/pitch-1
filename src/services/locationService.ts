@@ -15,7 +15,8 @@ export interface DistanceCalculation {
 }
 
 class LocationService {
-  private watchId: number | null = null;
+  private watchers: Map<number, { lastReportedPosition: { lat: number; lng: number } | null }> = new Map();
+  private nextWatcherId = 1;
 
   /**
    * Get current user location
@@ -109,8 +110,26 @@ class LocationService {
     });
   }
 
+  /** Minimum distance in meters to report a new position (prevents jitter) */
+  private static readonly MIN_DISTANCE_METERS = 5;
+
+  /**
+   * Calculate distance between two points in meters (Haversine)
+   */
+  private distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+    const R = 6371000;
+    const dLat = this.toRadians(lat2 - lat1);
+    const dLng = this.toRadians(lng2 - lng1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
+      Math.sin(dLng / 2) * Math.sin(dLng / 2);
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
   /**
    * Watch user location changes
+   * Returns a cleanup function. Each call gets its own independent watcher.
    */
   watchLocation(
     onLocationUpdate: (location: LocationData) => void,
@@ -124,11 +143,17 @@ class LocationService {
     const options = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 10000, // 10 seconds - accept recent positions but not stale ones
+      maximumAge: 0, // Force fresh GPS fixes — never use cached/stale positions
     };
 
-    this.watchId = navigator.geolocation.watchPosition(
+    const watcherId = this.nextWatcherId++;
+    this.watchers.set(watcherId, { lastReportedPosition: null });
+
+    const browserWatchId = navigator.geolocation.watchPosition(
       async (position) => {
+        const watcherState = this.watchers.get(watcherId);
+        if (!watcherState) return; // watcher was cleaned up
+
         // Reject stale watch fixes (> 60s old)
         const fixAge = Date.now() - position.timestamp;
         if (fixAge > 60000) {
@@ -136,9 +161,27 @@ class LocationService {
           return;
         }
 
+        const newLat = position.coords.latitude;
+        const newLng = position.coords.longitude;
+
+        // Distance filter: only report if moved ≥5 meters from last reported position
+        if (watcherState.lastReportedPosition) {
+          const moved = this.distanceMeters(
+            watcherState.lastReportedPosition.lat,
+            watcherState.lastReportedPosition.lng,
+            newLat,
+            newLng
+          );
+          if (moved < LocationService.MIN_DISTANCE_METERS) {
+            return; // Haven't moved enough — suppress jitter
+          }
+        }
+
+        watcherState.lastReportedPosition = { lat: newLat, lng: newLng };
+
         const locationData: LocationData = {
-          lat: position.coords.latitude,
-          lng: position.coords.longitude,
+          lat: newLat,
+          lng: newLng,
           accuracy: position.coords.accuracy,
           timestamp: new Date().toISOString(),
         };
@@ -153,7 +196,6 @@ class LocationService {
         onLocationUpdate(locationData);
       },
       (error) => {
-        // Pass a custom error that preserves the GeolocationPositionError code
         const geoError = new Error(error.message) as Error & { code?: number };
         geoError.code = error.code;
         onError(geoError);
@@ -161,18 +203,19 @@ class LocationService {
       options
     );
 
-    // Return cleanup function
-    return () => this.stopWatching();
+    // Return cleanup function for this specific watcher
+    return () => {
+      navigator.geolocation.clearWatch(browserWatchId);
+      this.watchers.delete(watcherId);
+    };
   }
 
   /**
-   * Stop watching location
+   * Stop all watchers (legacy compat)
    */
   stopWatching(): void {
-    if (this.watchId !== null) {
-      navigator.geolocation.clearWatch(this.watchId);
-      this.watchId = null;
-    }
+    // Individual cleanup functions handle their own watchers now
+    // This is kept for backward compat but is a no-op with the new pattern
   }
 
   /**
