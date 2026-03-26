@@ -122,10 +122,11 @@ const RepProfitBreakdown: React.FC<RepProfitBreakdownProps> = ({
   // For two profit-split reps, they must have the same overhead
   const overheadRate = primaryOverheadRate;
 
-  // Calculate costs and profits (overhead on FULL tax-included selling price)
+  // Calculate costs and profits — use pre-tax selling price (tax is not profit)
+  const preTaxSellingPrice = sellingPrice - salesTaxAmount;
   const totalCost = materialCost + laborCost;
-  const grossProfit = sellingPrice - totalCost;
-  const overheadAmount = sellingPrice * (overheadRate / 100);
+  const grossProfit = preTaxSellingPrice - totalCost;
+  const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
   const profitAfterOverhead = grossProfit - overheadAmount;
 
   // Step 1: If secondary rep is "percentage_contract_price" (Percent of Contract), 
