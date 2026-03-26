@@ -24,6 +24,7 @@ interface GoogleLiveLocationMapProps {
   areaPolygon?: any;
   onMapClick?: (lat: number, lng: number) => void;
   followUser?: boolean;
+  onUserInteraction?: () => void;
   symbolSettings?: SymbolSettings;
   initialZoom?: number;
 }
