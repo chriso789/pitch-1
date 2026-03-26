@@ -1,51 +1,62 @@
 
 
-## Plan: Fix Double Pins (Same House Number, Different Streets) + GPS Drift
+## Root Cause Analysis: 90% Profit Margin Bug
 
-### Issue 1: Double Pins — Root Cause
+### What Happened
 
-The database has **no duplicates**. The "double pins" are different addresses on **parallel streets** with the same house number (e.g., `4102 Cherokee St` and `4102 Fonsica Ave`). Google reverse geocoding places both near the street centerline, so at zoom 17-19 they overlap visually, creating the illusion of duplicates.
+The bug had **two layers**:
 
-**Evidence** (from DB query):
-- `4083 Cherokee St` at 27.08208, -82.19653
-- `4083 Fonsica Ave` at 27.08206, -82.19644 (only ~10m apart)
+**Layer 1 — Stale database values (the original sin)**
 
-**Fix**: Two changes:
-1. **Building snapping**: After geocoding, use Google's rooftop-level coordinates or offset pins toward the correct side of the street using the street bearing. This is a backend change in `canvassiq-load-parcels` — use `location_type: ROOFTOP` filtering (already returned by Google but not enforced).
-2. **Street name in pin label at high zoom**: At zoom ≥ 19, show `"4083 Cherokee"` instead of just `"4083"` to disambiguate overlapping numbers. This is a frontend change in `GooglePropertyMarkersLayer.tsx`.
+When estimates were first saved by `MultiTemplateSelector.tsx`, the `actual_profit_percent` was computed using `selling_price` (which **includes sales tax**) as if it were revenue. Tax collected is pass-through, not profit — so the formula was:
 
-### Issue 2: GPS Pulling to Middle of Nowhere — Root Cause
+```text
+WRONG:  profit = sellingPrice - materials - labor - overhead
+        margin = profit / sellingPrice
 
-The `watchPosition` callback in `LiveCanvassingPage.tsx` (line 340-380) has **no accuracy filter** for ongoing watch fixes once `previousLocation.current` is set. The 200-mile sanity check (line 354-359) only runs when `!previousLocation.current`. So if:
-- First fix is good → sets `previousLocation`
-- Subsequent watch fix is IP-based/coarse (accuracy > 5000m) → map pans to wrong location with no guard
+RIGHT:  profit = (sellingPrice - salesTax) - materials - labor - overhead
+        margin = profit / (sellingPrice - salesTax)
+```
 
-**Fix**: Add accuracy rejection in the watch callback. If accuracy > 1000m, skip the fix. Also add a distance jump guard — if a watch fix is > 50 miles from the previous fix, reject it as anomalous.
+For Andrea Iacono, if the selling price was ~$15,000 with ~$1,000 tax and ~$1,500 in costs, the wrong formula would yield an inflated profit %. These wrong values were written to `actual_profit_percent` in the `enhanced_estimates` table.
 
-### Changes
+**Layer 2 — The HyperlinkBar trusted the stored value**
 
-#### 1. `src/pages/storm-canvass/LiveCanvassingPage.tsx` — Watch accuracy guard
+The `api_estimate_hyperlink_bar` RPC (line 95) reads `actual_profit_percent` directly from the database and returns it as `margin_pct`. The `EstimateHyperlinkBar` component was **displaying `margin_pct` from the RPC verbatim** without recalculating. So even after the save formula was fixed, old estimates retained the stale 90% value in the database and the bar kept showing it.
 
-In the `watchLocation` callback (line 340), add:
-- Reject watch fixes with `location.accuracy > 1000` (coarse/IP-based)
-- Reject fixes that jump > 50 miles from `previousLocation.current` (anomalous drift)
+### What Was Fixed
 
-#### 2. `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` — Show street name at high zoom
+1. **Save path** (`MultiTemplateSelector.tsx` lines 1602-1610): Now uses `breakdown.preTaxSellingPrice` instead of `breakdown.sellingPrice` for profit calculations before writing to DB.
 
-In `createMarkerIcon` (line 324), at zoom ≥ 19:
-- Extract street name (not just number) from the property address
-- Display truncated `"4083 Cherokee"` instead of `"4083"` to disambiguate pins on parallel streets
-- Increase pin size at zoom 19+ to accommodate the longer label
+2. **Display path** (`EstimateHyperlinkBar.tsx` line 307): Now **ignores** the stored `margin_pct` and recalculates live from materials, labor, overhead, and sale price. This means even old estimates with stale DB values display correctly.
 
-#### 3. `supabase/functions/canvassiq-load-parcels/index.ts` — Prefer ROOFTOP coordinates
+3. **Price override path** (`EstimateHyperlinkBar.tsx` lines 168-174): When a user adjusts the price via the slider, it now subtracts `salesTaxAmount` before computing overhead and profit.
 
-In `reverseGeocode` (line 404), filter results by `geometry.location_type === 'ROOFTOP'` when available, and skip `APPROXIMATE` or `GEOMETRIC_CENTER` results that place pins at street centerlines. This pushes pins toward actual building locations, naturally separating parallel-street addresses.
+### How to Prevent This From Recurring
 
-### Files to Modify
+Two guardrails are needed:
+
+#### 1. Add a database-level constraint/trigger (migration)
+
+Create a CHECK constraint or trigger on `enhanced_estimates` that validates `actual_profit_percent` is between -100% and +85% (reasonable construction industry bounds). This catches obviously wrong values at write time.
+
+```sql
+ALTER TABLE enhanced_estimates
+ADD CONSTRAINT chk_profit_percent_range
+CHECK (actual_profit_percent IS NULL OR actual_profit_percent BETWEEN -100 AND 85);
+```
+
+#### 2. Add a unit test for the pricing calculation
+
+Create a Vitest test in `src/hooks/__tests__/useEstimatePricing.test.ts` that verifies:
+- Profit margin is calculated from pre-tax revenue
+- Sales tax does not inflate profit
+- A known scenario (e.g., $10K sale, $700 tax, $6K costs) produces the expected margin (~33%, not ~40%)
+
+### Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Add accuracy + distance-jump guard to watch callback |
-| `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` | Show street name in pin at zoom ≥ 19 |
-| `supabase/functions/canvassiq-load-parcels/index.ts` | Prefer ROOFTOP geocoding results |
+| `supabase/migrations/new_migration.sql` | Add CHECK constraint on `actual_profit_percent` range |
+| `src/hooks/__tests__/useEstimatePricing.test.ts` | Unit test: profit excludes tax from revenue denominator |
 
