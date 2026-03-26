@@ -339,7 +339,7 @@ export const useStormCanvass = () => {
         const day = dailyMap.get(date)!;
         
         if (activity.activity_type === 'door_knock') day.doors++;
-        if (activity.activity_type === 'lead_created') day.leads++;
+        if (activity.activity_type === 'lead_created' || activity.activity_type === 'disposition_set') day.leads++;
         if (activity.activity_type === 'photo_upload') day.photos++;
       });
 
