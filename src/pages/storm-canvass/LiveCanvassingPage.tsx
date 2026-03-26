@@ -231,8 +231,12 @@ export default function LiveCanvassingPage() {
     };
   }, [profile?.id, profile?.tenant_id]);
 
-  // Manual recenter handler
+  // Manual recenter handler — also resumes auto-follow
   const handleRecenterGPS = useCallback(async () => {
+    // Resume auto-follow immediately
+    setUserInteractionPaused(false);
+    if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    
     try {
       const location = await locationService.getCurrentLocation({ skipGeocoding: true, accuracyThreshold: 1000 });
       setUserLocation({ lat: location.lat, lng: location.lng });

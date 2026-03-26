@@ -154,6 +154,11 @@ export default function GoogleLiveLocationMap({
           }
         });
 
+        // Detect user interaction (drag/zoom) to pause auto-follow
+        if (onUserInteraction) {
+          map.current.addListener('dragstart', () => onUserInteraction());
+        }
+
         setMapReady(true);
       } catch (err) {
         console.error('Failed to initialize Google Maps:', err);
