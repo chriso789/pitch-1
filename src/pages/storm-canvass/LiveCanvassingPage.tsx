@@ -113,6 +113,7 @@ export default function LiveCanvassingPage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [initialZoom, setInitialZoom] = useState<number | undefined>(undefined);
   const [hasGPS, setHasGPS] = useState(false);
+  const [hasRealGpsLock, setHasRealGpsLock] = useState(false); // true only when live GPS fix received
   const [gpsAttempted, setGpsAttempted] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
   const [isTracking, setIsTracking] = useState(false);
@@ -241,6 +242,7 @@ export default function LiveCanvassingPage() {
     const applyLocation = (location: any) => {
       setUserLocation({ lat: location.lat, lng: location.lng });
       setHasGPS(true);
+      setHasRealGpsLock(true);
       previousLocation.current = { lat: location.lat, lng: location.lng };
       locationService['reverseGeocode'](location.lat, location.lng)
         .then(address => setCurrentAddress(address))
@@ -300,10 +302,12 @@ export default function LiveCanvassingPage() {
 
       // Only attempt getCurrentPosition if permission isn't already denied
       if (permissionState !== 'denied') {
-        // Try up to 3 times to get a precise fix
+        let gotLock = false;
+
+        // Stage 1: strict fresh fix (up to 3 attempts)
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const location = await locationService.getCurrentLocation({ skipGeocoding: true, timeout: 30000 });
+            const location = await locationService.getCurrentLocation({ skipGeocoding: true, timeout: 10000 });
             const gpsLoc = { lat: location.lat, lng: location.lng };
 
             // Sanity check: if assigned area exists and GPS is > 200 miles away, prefer area center
@@ -311,47 +315,87 @@ export default function LiveCanvassingPage() {
               const dist = locationService.calculateDistance(gpsLoc.lat, gpsLoc.lng, areaCentroid.lat, areaCentroid.lng, 'miles');
               if (dist.distance > 200) {
                 console.warn(`[Canvassing] GPS fix ${dist.distance}mi from assigned area — using area center`);
-                setUserLocation(areaCentroid);
-                setInitialZoom(16);
-                setHasGPS(true);
-                setIsTracking(true);
-                previousLocation.current = areaCentroid;
-                toast({ title: 'GPS location appears incorrect', description: 'Showing your assigned area instead.' });
-                locationService['reverseGeocode'](areaCentroid.lat, areaCentroid.lng)
-                  .then(address => setCurrentAddress(address))
-                  .catch(() => setCurrentAddress('Assigned area'));
-                break;
+                break; // fall through to fallback
               }
             }
 
             setUserLocation(gpsLoc);
             setHasGPS(true);
+            setHasRealGpsLock(true);
             setIsTracking(true);
             previousLocation.current = gpsLoc;
+            gotLock = true;
 
-            // Fetch address in background (non-blocking)
             locationService['reverseGeocode'](location.lat, location.lng)
               .then(address => setCurrentAddress(address))
               .catch(() => setCurrentAddress('Address unavailable'));
-            break; // success — stop retrying
+            break;
           } catch (error: any) {
             console.warn(`[Canvassing] Location attempt ${attempt + 1} failed:`, error?.message, 'code:', error?.code);
             if (error?.code === 1) {
+              permissionDeniedToastShown = true;
               toast({
                 title: 'Location Access Required',
-                description: 'Please enable location access in your browser settings (click the lock icon in the address bar), then refresh this page.',
+                description: 'Please enable location access in your browser settings, then refresh this page.',
                 variant: 'destructive',
               });
-              permissionDeniedToastShown = true;
-              break; // don't retry permission denied
+              break;
             }
-            // code 99 = too imprecise — retry after a brief delay
             if (error?.code === 99 && attempt < 2) {
               await new Promise(r => setTimeout(r, 2000));
               continue;
             }
-            // Other errors on final attempt: don't set location (map stays in loading/fallback)
           }
+        }
+
+        // Stage 2: if strict failed, try relaxed (Safari cached fix workaround)
+        if (!gotLock && !permissionDeniedToastShown) {
+          try {
+            console.log('[Canvassing] Stage 2: trying relaxed GPS acquisition');
+            const location = await locationService.getCurrentLocation({
+              skipGeocoding: true,
+              timeout: 15000,
+              maxAge: 30000,
+              stalenessThreshold: 300,
+              accuracyThreshold: 2000,
+            });
+            const gpsLoc = { lat: location.lat, lng: location.lng };
+
+            if (areaCentroid) {
+              const dist = locationService.calculateDistance(gpsLoc.lat, gpsLoc.lng, areaCentroid.lat, areaCentroid.lng, 'miles');
+              if (dist.distance <= 200) {
+                setUserLocation(gpsLoc);
+                setHasGPS(true);
+                setHasRealGpsLock(true);
+                setIsTracking(true);
+                previousLocation.current = gpsLoc;
+                gotLock = true;
+                locationService['reverseGeocode'](location.lat, location.lng)
+                  .then(address => setCurrentAddress(address))
+                  .catch(() => setCurrentAddress('Address unavailable'));
+              }
+            } else {
+              setUserLocation(gpsLoc);
+              setHasGPS(true);
+              setHasRealGpsLock(true);
+              setIsTracking(true);
+              previousLocation.current = gpsLoc;
+              gotLock = true;
+            }
+          } catch {
+            console.warn('[Canvassing] Stage 2 relaxed GPS also failed');
+          }
+        }
+
+        // Stage 3: show fallback immediately but DON'T mark as real GPS
+        if (!gotLock) {
+          const fallback = areaCentroid || NEUTRAL_FALLBACK;
+          const zoom = areaCentroid ? 16 : NEUTRAL_FALLBACK_ZOOM;
+          setUserLocation(fallback);
+          setInitialZoom(zoom);
+          setHasGPS(true); // dismiss overlay
+          // hasRealGpsLock stays false — watch will upgrade when real fix arrives
+          setCurrentAddress(areaCentroid ? 'Showing assigned area — GPS acquiring...' : 'Location unavailable — use search or tap recenter');
         }
       }
 
@@ -359,27 +403,6 @@ export default function LiveCanvassingPage() {
     };
 
     initLocation();
-
-    // Auto-dismiss GPS overlay after 10 seconds even without a lock
-    const gpsTimeout = setTimeout(() => {
-      setHasGPS((current) => {
-        if (!current) {
-          console.warn('[Canvassing] GPS overlay auto-dismissed after 10s timeout');
-          // Prefer assigned area centroid over neutral US center
-          const fallback = areaCentroid || NEUTRAL_FALLBACK;
-          const zoom = areaCentroid ? 16 : NEUTRAL_FALLBACK_ZOOM;
-          setUserLocation(prev => {
-            if (!prev) {
-              setInitialZoom(zoom);
-              setCurrentAddress(areaCentroid ? 'Showing assigned area — use recenter for GPS' : 'Location unavailable — use search or tap recenter');
-              return fallback;
-            }
-            return prev;
-          });
-        }
-        return true;
-      });
-    }, 10000);
 
     // Start watching location
     const stopWatching = locationService.watchLocation(
@@ -410,7 +433,7 @@ export default function LiveCanvassingPage() {
           }
         }
 
-        // Distance jump guard — reject anomalous jumps > 50 miles from previous fix
+        // Distance jump guard — reject anomalous jumps > 50 miles from previous real fix
         if (previousLocation.current) {
           const jumpDist = locationService.calculateDistance(
             previousLocation.current.lat,
@@ -426,9 +449,12 @@ export default function LiveCanvassingPage() {
           setDistanceTraveled((prev) => prev + jumpDist.distance);
         }
 
+        // Upgrade from fallback to real GPS — snap map to live user position
         setUserLocation({ lat: newLat, lng: newLng });
         previousLocation.current = { lat: newLat, lng: newLng };
         setHasGPS(true);
+        setHasRealGpsLock(true);
+        setIsTracking(true);
         
         if (location.address) {
           setCurrentAddress(location.address);
@@ -460,7 +486,6 @@ export default function LiveCanvassingPage() {
     );
 
     return () => {
-      clearTimeout(gpsTimeout);
       stopWatching();
       locationService.stopWatching();
     };
