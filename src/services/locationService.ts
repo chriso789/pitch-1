@@ -30,7 +30,13 @@ class LocationService {
    * @param options.skipGeocoding - If true, resolves immediately without waiting for address
    * @param options.accuracyThreshold - Max accuracy radius in meters to accept (default 500m)
    */
-  async getCurrentLocation(options?: { skipGeocoding?: boolean; accuracyThreshold?: number }): Promise<LocationData> {
+  async getCurrentLocation(options?: {
+    skipGeocoding?: boolean;
+    accuracyThreshold?: number;
+    maxAge?: number;
+    stalenessThreshold?: number;
+    timeout?: number;
+  }): Promise<LocationData> {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error("Geolocation is not supported by this browser"));
@@ -39,8 +45,8 @@ class LocationService {
 
       const geoOptions = {
         enableHighAccuracy: true,
-        timeout: 20000,
-        maximumAge: 0, // Always get fresh position for initial lock
+        timeout: options?.timeout ?? 20000,
+        maximumAge: options?.maxAge ?? 0,
       };
 
       navigator.geolocation.getCurrentPosition(
@@ -53,15 +59,16 @@ class LocationService {
               `[LocationService] Rejecting coarse fix: accuracy=${position.coords.accuracy}m > threshold=${threshold}m`
             );
             const coarseError = new Error(`Location too imprecise (${Math.round(position.coords.accuracy)}m)`) as Error & { code?: number };
-            coarseError.code = 99; // custom code for "too imprecise"
+            coarseError.code = 99;
             reject(coarseError);
             return;
           }
 
           // Reject stale GPS fixes — Mobile Safari can return cached positions even with maximumAge: 0
+          const stalenessMs = (options?.stalenessThreshold ?? 60) * 1000;
           const fixAge = Date.now() - position.timestamp;
-          if (fixAge > 60000) {
-            console.warn(`[LocationService] Rejecting stale GPS fix: age=${Math.round(fixAge / 1000)}s`);
+          if (fixAge > stalenessMs) {
+            console.warn(`[LocationService] Rejecting stale GPS fix: age=${Math.round(fixAge / 1000)}s > threshold=${options?.stalenessThreshold ?? 60}s`);
             const staleError = new Error(`GPS fix is stale (${Math.round(fixAge / 1000)}s old)`) as Error & { code?: number };
             staleError.code = 99;
             reject(staleError);
