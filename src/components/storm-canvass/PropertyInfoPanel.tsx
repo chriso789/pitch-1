@@ -471,12 +471,23 @@ export default function PropertyInfoPanel({
         started_at: new Date().toISOString(),
       });
 
-      // Log activity
+      // Log activity - find contact_id if one exists for this property
+      let activityContactId: string | null = null;
+      const { data: linkedContact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('canvassiq_property_id', property.id)
+        .maybeSingle();
+      activityContactId = linkedContact?.id || null;
+
       await supabase.from('canvass_activity_log').insert({
         user_id: profile.id,
         tenant_id: profile.tenant_id,
         activity_type: 'door_knock',
-        metadata: { 
+        contact_id: activityContactId,
+        latitude: propertyLat,
+        longitude: propertyLng,
+        activity_data: { 
           property_id: property.id, 
           disposition: dispositionId,
           distance_meters: verification.distanceMeters,
