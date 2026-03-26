@@ -378,7 +378,8 @@ export default function PropertyInfoPanel({
   const enrichedName = primaryOwner 
     ? ([primaryOwner.first_name, primaryOwner.last_name].filter(Boolean).join(' ') || primaryOwner.name)
     : null;
-  const ownerName = validOwner(enrichedName) || validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || 'Unknown Owner';
+  const streetAddr = address?.street || address?.formatted || localProperty.address;
+  const ownerName = validOwner(enrichedName) || validOwner(localProperty.owner_name) || validOwner(homeowner?.name) || (streetAddr ? `Homeowner at ${streetAddr}` : 'Unknown Owner');
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
