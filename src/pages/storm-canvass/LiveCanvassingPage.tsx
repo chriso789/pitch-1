@@ -151,6 +151,24 @@ export default function LiveCanvassingPage() {
   
   const previousLocation = useRef<{ lat: number; lng: number } | null>(null);
   const gpsTrailStarted = useRef(false);
+  
+  // Auto-follow pause: user drags/zooms map → pause follow for 15s
+  const [userInteractionPaused, setUserInteractionPaused] = useState(false);
+  const interactionTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const handleUserMapInteraction = useCallback(() => {
+    setUserInteractionPaused(true);
+    if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    interactionTimerRef.current = setTimeout(() => {
+      setUserInteractionPaused(false);
+    }, 15000); // Resume auto-follow after 15 seconds
+  }, []);
+  
+  useEffect(() => {
+    return () => {
+      if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     // Load dispositions
