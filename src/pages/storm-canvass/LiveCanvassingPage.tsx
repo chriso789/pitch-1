@@ -232,13 +232,13 @@ export default function LiveCanvassingPage() {
   }, [profile?.id, profile?.tenant_id]);
 
   // Manual recenter handler — also resumes auto-follow
+  // Uses two-stage fallback: strict first, then relaxed if strict fails
   const handleRecenterGPS = useCallback(async () => {
     // Resume auto-follow immediately
     setUserInteractionPaused(false);
     if (interactionTimerRef.current) clearTimeout(interactionTimerRef.current);
-    
-    try {
-      const location = await locationService.getCurrentLocation({ skipGeocoding: true, accuracyThreshold: 1000 });
+
+    const applyLocation = (location: any) => {
       setUserLocation({ lat: location.lat, lng: location.lng });
       setHasGPS(true);
       previousLocation.current = { lat: location.lat, lng: location.lng };
@@ -246,8 +246,32 @@ export default function LiveCanvassingPage() {
         .then(address => setCurrentAddress(address))
         .catch(() => {});
       toast({ title: 'Location Updated', description: `Accuracy: ${Math.round(location.accuracy || 0)}m` });
+    };
+
+    try {
+      // Stage 1: Try strict fresh fix (5s timeout)
+      const location = await locationService.getCurrentLocation({
+        skipGeocoding: true,
+        accuracyThreshold: 1000,
+        timeout: 5000,
+        maxAge: 0,
+        stalenessThreshold: 60,
+      });
+      applyLocation(location);
     } catch {
-      toast({ title: 'GPS Unavailable', description: 'Could not get a precise location fix.', variant: 'destructive' });
+      try {
+        // Stage 2: Relaxed — accept cached positions (Safari workaround)
+        const location = await locationService.getCurrentLocation({
+          skipGeocoding: true,
+          accuracyThreshold: 2000,
+          timeout: 30000,
+          maxAge: 30000,
+          stalenessThreshold: 300,
+        });
+        applyLocation(location);
+      } catch {
+        toast({ title: 'GPS Unavailable', description: 'Could not get a location fix. Please check GPS settings.', variant: 'destructive' });
+      }
     }
   }, [toast]);
 
@@ -279,7 +303,7 @@ export default function LiveCanvassingPage() {
         // Try up to 3 times to get a precise fix
         for (let attempt = 0; attempt < 3; attempt++) {
           try {
-            const location = await locationService.getCurrentLocation({ skipGeocoding: true });
+            const location = await locationService.getCurrentLocation({ skipGeocoding: true, timeout: 30000 });
             const gpsLoc = { lat: location.lat, lng: location.lng };
 
             // Sanity check: if assigned area exists and GPS is > 200 miles away, prefer area center
