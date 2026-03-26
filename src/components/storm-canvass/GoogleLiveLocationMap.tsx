@@ -83,6 +83,7 @@ export default function GoogleLiveLocationMap({
   areaPolygon,
   onMapClick,
   followUser = true,
+  onUserInteraction,
   symbolSettings,
   initialZoom,
 }: GoogleLiveLocationMapProps) {
