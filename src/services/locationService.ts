@@ -15,7 +15,8 @@ export interface DistanceCalculation {
 }
 
 class LocationService {
-  private watchId: number | null = null;
+  private watchers: Map<number, { lastReportedPosition: { lat: number; lng: number } | null }> = new Map();
+  private nextWatcherId = 1;
 
   /**
    * Get current user location
