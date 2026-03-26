@@ -150,68 +150,102 @@ class LocationService {
     const options = {
       enableHighAccuracy: true,
       timeout: 30000,
-      maximumAge: 0, // Force fresh GPS fixes — never use cached/stale positions
+      maximumAge: 0,
     };
 
     const watcherId = this.nextWatcherId++;
     this.watchers.set(watcherId, { lastReportedPosition: null });
+    let cleaned = false;
+    let browserWatchId: number | null = null;
+    let consecutiveCode2 = 0;
+    let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
-    const browserWatchId = navigator.geolocation.watchPosition(
-      async (position) => {
-        const watcherState = this.watchers.get(watcherId);
-        if (!watcherState) return; // watcher was cleaned up
+    const startWatch = () => {
+      if (cleaned) return;
+      browserWatchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const watcherState = this.watchers.get(watcherId);
+          if (!watcherState) return;
 
-        // Reject stale watch fixes (> 60s old)
-        const fixAge = Date.now() - position.timestamp;
-        if (fixAge > 60000) {
-          console.warn(`[LocationService] Watch: rejecting stale fix (${Math.round(fixAge / 1000)}s old)`);
-          return;
-        }
+          // Reset failure counter on success
+          consecutiveCode2 = 0;
 
-        const newLat = position.coords.latitude;
-        const newLng = position.coords.longitude;
-
-        // Distance filter: only report if moved ≥5 meters from last reported position
-        if (watcherState.lastReportedPosition) {
-          const moved = this.distanceMeters(
-            watcherState.lastReportedPosition.lat,
-            watcherState.lastReportedPosition.lng,
-            newLat,
-            newLng
-          );
-          if (moved < LocationService.MIN_DISTANCE_METERS) {
-            return; // Haven't moved enough — suppress jitter
+          // Reject stale watch fixes (> 60s old)
+          const fixAge = Date.now() - position.timestamp;
+          if (fixAge > 60000) {
+            console.warn(`[LocationService] Watch: rejecting stale fix (${Math.round(fixAge / 1000)}s old)`);
+            return;
           }
-        }
 
-        watcherState.lastReportedPosition = { lat: newLat, lng: newLng };
+          const newLat = position.coords.latitude;
+          const newLng = position.coords.longitude;
 
-        const locationData: LocationData = {
-          lat: newLat,
-          lng: newLng,
-          accuracy: position.coords.accuracy,
-          timestamp: new Date().toISOString(),
-        };
+          // Distance filter: only report if moved ≥5 meters from last reported position
+          if (watcherState.lastReportedPosition) {
+            const moved = this.distanceMeters(
+              watcherState.lastReportedPosition.lat,
+              watcherState.lastReportedPosition.lng,
+              newLat,
+              newLng
+            );
+            if (moved < LocationService.MIN_DISTANCE_METERS) {
+              return;
+            }
+          }
 
-        // Fire location update immediately — don't wait for geocode
-        onLocationUpdate(locationData);
+          watcherState.lastReportedPosition = { lat: newLat, lng: newLng };
 
-        // Update address asynchronously (non-blocking)
-        this.reverseGeocode(locationData.lat, locationData.lng)
-          .then(address => { locationData.address = address; })
-          .catch(() => {});
-      },
-      (error) => {
-        const geoError = new Error(error.message) as Error & { code?: number };
-        geoError.code = error.code;
-        onError(geoError);
-      },
-      options
-    );
+          const locationData: LocationData = {
+            lat: newLat,
+            lng: newLng,
+            accuracy: position.coords.accuracy,
+            timestamp: new Date().toISOString(),
+          };
 
-    // Return cleanup function for this specific watcher
+          onLocationUpdate(locationData);
+
+          this.reverseGeocode(locationData.lat, locationData.lng)
+            .then(address => { locationData.address = address; })
+            .catch(() => {});
+        },
+        (error) => {
+          const geoError = new Error(error.message) as Error & { code?: number };
+          geoError.code = error.code;
+
+          // Auto-recover from POSITION_UNAVAILABLE (code 2) by restarting watch
+          if (error.code === 2) {
+            consecutiveCode2++;
+            if (consecutiveCode2 >= 3 && !restartTimer) {
+              console.warn(`[LocationService] ${consecutiveCode2} consecutive code:2 errors — restarting watch in 3s`);
+              if (browserWatchId !== null) {
+                navigator.geolocation.clearWatch(browserWatchId);
+                browserWatchId = null;
+              }
+              restartTimer = setTimeout(() => {
+                restartTimer = null;
+                consecutiveCode2 = 0;
+                console.log('[LocationService] Restarting geolocation watch after code:2 recovery');
+                startWatch();
+              }, 3000);
+              return; // don't propagate to caller during recovery
+            }
+          }
+
+          onError(geoError);
+        },
+        options
+      );
+    };
+
+    startWatch();
+
+    // Return cleanup function
     return () => {
-      navigator.geolocation.clearWatch(browserWatchId);
+      cleaned = true;
+      if (browserWatchId !== null) {
+        navigator.geolocation.clearWatch(browserWatchId);
+      }
+      if (restartTimer) clearTimeout(restartTimer);
       this.watchers.delete(watcherId);
     };
   }

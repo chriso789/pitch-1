@@ -27,15 +27,30 @@ interface TrailSession {
 
 class GPSTrailService {
   private session: TrailSession | null = null;
-  private readonly RECORDING_INTERVAL_MS = 5000; // Record every 5 seconds
-  private readonly BATCH_SIZE = 10; // Flush to DB every 10 positions
-  private readonly MIN_DISTANCE_METERS = 3; // Only record if moved at least 3 meters
+  private startingForUser: string | null = null; // idempotent guard
+  private readonly RECORDING_INTERVAL_MS = 5000;
+  private readonly BATCH_SIZE = 10;
+  private readonly MIN_DISTANCE_METERS = 3;
 
   /**
    * Start recording GPS trail for a canvassing session
+   * Idempotent: ignores duplicate starts for the same user
    */
   async startRecording(userId: string, tenantId: string): Promise<string> {
-    // Stop any existing session
+    // Idempotent guard: if already recording for this user, return existing session
+    if (this.session?.userId === userId && this.session.isRecording) {
+      console.log(`[GPSTrailService] Already recording for user ${userId}, returning existing session`);
+      return this.session.sessionId;
+    }
+
+    // Guard against concurrent starts (React Strict Mode)
+    if (this.startingForUser === userId) {
+      console.log(`[GPSTrailService] Start already in progress for user ${userId}, ignoring duplicate`);
+      return 'pending';
+    }
+    this.startingForUser = userId;
+
+    // Stop any existing session for a different user
     await this.stopRecording();
 
     const sessionId = crypto.randomUUID();
