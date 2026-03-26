@@ -290,7 +290,7 @@ export const useStormCanvass = () => {
       if (error) throw error;
 
       const doorsKnocked = data?.filter((a) => a.activity_type === 'door_knock').length || 0;
-      const leadsGenerated = data?.filter((a) => a.activity_type === 'lead_created').length || 0;
+      const leadsGenerated = data?.filter((a) => a.activity_type === 'lead_created' || a.activity_type === 'disposition_set').length || 0;
       const photosUploaded = data?.filter((a) => a.activity_type === 'photo_upload').length || 0;
 
       return {
