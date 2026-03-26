@@ -147,6 +147,13 @@ export const useStormCanvass = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('No active session');
 
+      // Get user profile for tenant_id
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, tenant_id')
+        .eq('id', user.id)
+        .single();
+
       // Get disposition details
       const { data: disposition, error: dispError } = await supabase
         .from('dialer_dispositions')
@@ -158,18 +165,61 @@ export const useStormCanvass = () => {
         throw new Error('Disposition not found');
       }
 
+      // Check current contact status before overwriting
+      const { data: currentContact } = await supabase
+        .from('contacts')
+        .select('qualification_status, latitude, longitude')
+        .eq('id', contactId)
+        .single();
+
+      const protectedStatuses = ['project', 'closed', 'past_customer', 'completed'];
+      const currentStatus = currentContact?.qualification_status?.toLowerCase();
+      const isProtected = currentStatus && protectedStatuses.includes(currentStatus);
+
       const qualificationStatus = disposition.is_positive ? 'qualified' : 'not_interested';
 
-      // Update contact
-      const { error: updateError } = await supabase
-        .from('contacts')
-        .update({
-          qualification_status: qualificationStatus,
-          notes: notes ? `${notes}\n\nDisposition: ${disposition.name}` : `Disposition: ${disposition.name}`,
-        })
-        .eq('id', contactId);
+      // Only update qualification_status if not in a protected lifecycle stage
+      if (!isProtected) {
+        const { error: updateError } = await supabase
+          .from('contacts')
+          .update({
+            qualification_status: qualificationStatus,
+            notes: notes ? `${notes}\n\nDisposition: ${disposition.name}` : `Disposition: ${disposition.name}`,
+          })
+          .eq('id', contactId);
 
-      if (updateError) throw updateError;
+        if (updateError) throw updateError;
+      } else {
+        // Still update notes even if status is protected
+        const { error: updateError } = await supabase
+          .from('contacts')
+          .update({
+            notes: notes ? `${notes}\n\nDisposition: ${disposition.name} (status preserved: ${currentStatus})` : `Disposition: ${disposition.name} (status preserved: ${currentStatus})`,
+          })
+          .eq('id', contactId);
+
+        if (updateError) throw updateError;
+      }
+
+      // Log activity to canvass_activity_log
+      if (profile?.tenant_id) {
+        await supabase.from('canvass_activity_log').insert({
+          user_id: user.id,
+          tenant_id: profile.tenant_id,
+          activity_type: 'disposition_set',
+          contact_id: contactId,
+          latitude: currentContact?.latitude || null,
+          longitude: currentContact?.longitude || null,
+          activity_data: {
+            disposition_id: dispositionId,
+            disposition_name: disposition.name,
+            is_positive: disposition.is_positive,
+            qualification_status: isProtected ? currentStatus : qualificationStatus,
+            status_protected: isProtected,
+            notes: notes || null,
+          },
+        });
+      }
 
       let pipelineCreated = false;
 
@@ -201,7 +251,9 @@ export const useStormCanvass = () => {
 
       toast({
         title: 'Disposition updated',
-        description: `Contact marked as ${disposition.name}`,
+        description: isProtected
+          ? `Disposition logged. Status "${currentStatus}" preserved.`
+          : `Contact marked as ${disposition.name}`,
       });
 
       if (pipelineCreated) {
@@ -238,7 +290,7 @@ export const useStormCanvass = () => {
       if (error) throw error;
 
       const doorsKnocked = data?.filter((a) => a.activity_type === 'door_knock').length || 0;
-      const leadsGenerated = data?.filter((a) => a.activity_type === 'lead_created').length || 0;
+      const leadsGenerated = data?.filter((a) => a.activity_type === 'lead_created' || a.activity_type === 'disposition_set').length || 0;
       const photosUploaded = data?.filter((a) => a.activity_type === 'photo_upload').length || 0;
 
       return {
@@ -287,7 +339,7 @@ export const useStormCanvass = () => {
         const day = dailyMap.get(date)!;
         
         if (activity.activity_type === 'door_knock') day.doors++;
-        if (activity.activity_type === 'lead_created') day.leads++;
+        if (activity.activity_type === 'lead_created' || activity.activity_type === 'disposition_set') day.leads++;
         if (activity.activity_type === 'photo_upload') day.photos++;
       });
 
@@ -295,10 +347,18 @@ export const useStormCanvass = () => {
         return new Date(a.date).getTime() - new Date(b.date).getTime();
       });
 
-      // Calculate disposition breakdown
+      // Calculate disposition breakdown from activity_data when available, fallback to contact status
       const dispositionMap = new Map<string, number>();
       activities.forEach((activity) => {
-        const status = activity.contact?.qualification_status || 'unknown';
+        let status = 'unknown';
+        // Prefer disposition from activity_data (reliable, logged at time of action)
+        if (activity.activity_data?.disposition_name) {
+          status = activity.activity_data.disposition_name;
+        } else if (activity.activity_data?.disposition) {
+          status = activity.activity_data.disposition;
+        } else if (activity.contact?.qualification_status) {
+          status = activity.contact.qualification_status;
+        }
         dispositionMap.set(status, (dispositionMap.get(status) || 0) + 1);
       });
 
@@ -320,7 +380,7 @@ export const useStormCanvass = () => {
 
       // Calculate basic metrics
       const doorsKnocked = activities.filter(a => a.activity_type === 'door_knock').length;
-      const leadsGenerated = activities.filter(a => a.activity_type === 'lead_created').length;
+      const leadsGenerated = activities.filter(a => a.activity_type === 'lead_created' || a.activity_type === 'disposition_set').length;
       const photosUploaded = activities.filter(a => a.activity_type === 'photo_upload').length;
       const conversionRate = doorsKnocked > 0 
         ? ((leadsGenerated / doorsKnocked) * 100).toFixed(1)
