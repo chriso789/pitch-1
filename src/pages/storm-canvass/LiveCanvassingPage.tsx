@@ -242,6 +242,7 @@ export default function LiveCanvassingPage() {
     const applyLocation = (location: any) => {
       setUserLocation({ lat: location.lat, lng: location.lng });
       setHasGPS(true);
+      setHasRealGpsLock(true);
       previousLocation.current = { lat: location.lat, lng: location.lng };
       locationService['reverseGeocode'](location.lat, location.lng)
         .then(address => setCurrentAddress(address))
