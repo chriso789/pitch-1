@@ -113,6 +113,7 @@ export default function LiveCanvassingPage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [initialZoom, setInitialZoom] = useState<number | undefined>(undefined);
   const [hasGPS, setHasGPS] = useState(false);
+  const [hasRealGpsLock, setHasRealGpsLock] = useState(false); // true only when live GPS fix received
   const [gpsAttempted, setGpsAttempted] = useState(false);
   const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
   const [isTracking, setIsTracking] = useState(false);
