@@ -165,12 +165,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
         throw new Error('Could not fetch estimate');
       }
       
-      // Recalculate dependent values - overhead on FULL tax-included selling price
+      // Recalculate dependent values - subtract tax before computing overhead/profit
       const directCost = (estimate.material_cost || 0) + (estimate.labor_cost || 0);
+      const salesTaxAmount = estimate.sales_tax_amount || 0;
+      const preTaxPrice = newPrice - salesTaxAmount;
       const overheadRate = estimate.overhead_percent || salesRepOverheadRate;
-      const overheadAmount = newPrice * (overheadRate / 100);
-      const profitAmount = newPrice - directCost - overheadAmount;
-      const profitPercent = newPrice > 0 ? (profitAmount / newPrice) * 100 : 0;
+      const overheadAmount = preTaxPrice * (overheadRate / 100);
+      const profitAmount = preTaxPrice - directCost - overheadAmount;
+      const profitPercent = preTaxPrice > 0 ? (profitAmount / preTaxPrice) * 100 : 0;
       
       // Update all values together
       const { error } = await supabase

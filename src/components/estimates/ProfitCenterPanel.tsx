@@ -188,10 +188,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const overheadAmount = preTaxSellingPrice * (overheadRate / 100);
   // Total cost = materials + labor + percentage overhead + other charges (permits, dumps, etc.)
   const totalCost = effectiveMaterialCost + effectiveLaborCost + overheadAmount + otherChargesTotal;
-  const grossProfit = sellingPrice - totalCost;
+  const grossProfit = preTaxSellingPrice - totalCost;
   const repCommission = grossProfit * (commissionRate / 100);
   const companyNet = grossProfit - repCommission;
-  const profitMargin = sellingPrice > 0 ? (grossProfit / sellingPrice) * 100 : 0;
+  const profitMargin = preTaxSellingPrice > 0 ? (grossProfit / preTaxSellingPrice) * 100 : 0;
 
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
