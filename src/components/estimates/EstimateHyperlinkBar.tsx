@@ -304,17 +304,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       label: 'Profit',
       icon: TrendingUp,
       value: (() => {
-        // If we have actual costs, recalculate profit margin
-        if (hasActualMaterials || hasActualLabor) {
-          const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
-          const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
-          const salePrice = hyperlinkData.sale_price;
-          const overhead = calculateRepOverhead() + otherChargesTotal;
-          const actualProfit = salePrice - effectiveMaterial - effectiveLabor - overhead;
-          const actualMargin = salePrice > 0 ? (actualProfit / salePrice) * 100 : 0;
-          return `${Math.round(actualMargin)}%`;
-        }
-        return `${Math.round(hyperlinkData.margin_pct || 30)}%`;
+        // Always recalculate profit margin from actual numbers — don't trust stored margin_pct
+        const effectiveMaterial = hasActualMaterials ? actualMaterialCost : hyperlinkData.materials;
+        const effectiveLabor = hasActualLabor ? actualLaborCost : hyperlinkData.labor;
+        const salePrice = hyperlinkData.sale_price;
+        const overhead = calculateRepOverhead() + otherChargesTotal;
+        const profit = salePrice - effectiveMaterial - effectiveLabor - overhead;
+        const margin = salePrice > 0 ? (profit / salePrice) * 100 : 0;
+        return `${Math.round(margin)}%`;
       })(),
       hint: (hasActualMaterials || hasActualLabor) ? 'Actual' : null,
       description: 'Target gross margin percentage'
