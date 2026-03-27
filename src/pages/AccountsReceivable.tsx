@@ -47,13 +47,13 @@ export default function AccountsReceivable() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
-        .select('id, contact_name, address, created_at, status')
+        .select('id, lead_name, created_at, status, contacts(first_name, last_name, address_line1, address_city, address_state)')
         .eq('tenant_id', activeTenantId!)
         .eq('is_deleted', false)
         .eq('status', 'project')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      return data || [];
+      return (data || []) as any[];
     },
     enabled: !!activeTenantId,
   });
