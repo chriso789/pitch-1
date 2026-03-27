@@ -25,6 +25,16 @@ const TIME_FILTERS: { value: TimeFilter; label: string }[] = [
   { value: 'year', label: 'This Year' },
 ];
 
+const AR_INCLUDED_STATUSES = [
+  'project',
+  'inspection_scheduled',
+  'in_production',
+  'production',
+  'install_scheduled',
+  'completed',
+  'closed',
+] as const;
+
 function getFilterDate(filter: TimeFilter): Date | null {
   const now = new Date();
   switch (filter) {
@@ -41,7 +51,7 @@ export default function AccountsReceivable() {
   const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
 
-  // Fetch all projects (pipeline_entries with status 'project')
+  // Fetch receivable-stage pipeline entries
   const { data: projects, isLoading: projectsLoading } = useQuery({
     queryKey: ['ar-projects', activeTenantId],
     queryFn: async () => {
@@ -50,7 +60,7 @@ export default function AccountsReceivable() {
         .select('id, lead_name, created_at, status, metadata, contacts(first_name, last_name, address_line1, address_city, address_state)')
         .eq('tenant_id', activeTenantId!)
         .eq('is_deleted', false)
-        .in('status', ['project', 'completed'])
+        .in('status', [...AR_INCLUDED_STATUSES])
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as any[];
@@ -87,16 +97,18 @@ export default function AccountsReceivable() {
     enabled: !!activeTenantId,
   });
 
-  // Fetch estimate data using selected_estimate_id from pipeline entry metadata
+  // Fetch selected estimates linked from pipeline entry metadata
   const estimateIds = useMemo(() => {
     if (!projects) return [];
-    return projects
-      .map((p: any) => p.metadata?.selected_estimate_id)
-      .filter(Boolean) as string[];
+    return Array.from(new Set(
+      projects
+        .map((p: any) => p.metadata?.selected_estimate_id)
+        .filter(Boolean)
+    )) as string[];
   }, [projects]);
 
   const { data: estimates } = useQuery({
-    queryKey: ['ar-estimates', estimateIds],
+    queryKey: ['ar-estimates', activeTenantId, estimateIds],
     queryFn: async () => {
       if (estimateIds.length === 0) return [];
       const { data, error } = await supabase
@@ -106,7 +118,7 @@ export default function AccountsReceivable() {
       if (error) throw error;
       return (data || []) as any[];
     },
-    enabled: estimateIds.length > 0,
+    enabled: !!activeTenantId && estimateIds.length > 0,
   });
 
   const now = new Date();
