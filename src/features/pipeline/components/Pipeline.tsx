@@ -102,17 +102,12 @@ const Pipeline = () => {
     );
   };
 
-  // Fetch user role
+  // Fetch pipeline data when tenant, location, stages, or filters change
   useEffect(() => {
-    fetchUserRole();
-  }, []);
-
-  // Fetch pipeline data from Supabase
-  useEffect(() => {
-    if (dynamicStages.length > 0) {
+    if (dynamicStages.length > 0 && effectiveTenantId) {
       fetchPipelineData();
     }
-  }, [filters, currentLocationId, dynamicStages]);
+  }, [filters, currentLocationId, dynamicStages, effectiveTenantId]);
 
   // Listen for location changes
   useEffect(() => {
@@ -129,17 +124,17 @@ const Pipeline = () => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     
     // Skip realtime if no tenant resolved yet
-    if (!resolvedTenantId) return;
+    if (!effectiveTenantId) return;
     
     const channel = supabase
-      .channel(`pipeline-entries-changes-${resolvedTenantId}`)
+      .channel(`pipeline-entries-changes-${effectiveTenantId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'pipeline_entries',
-          filter: `tenant_id=eq.${resolvedTenantId}`
+          filter: `tenant_id=eq.${effectiveTenantId}`
         },
         () => {
           // Debounce: batch rapid changes into a single refetch
@@ -155,7 +150,7 @@ const Pipeline = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [filters, resolvedTenantId]);
+  }, [filters, effectiveTenantId]);
 
   const fetchUserRole = async () => {
     try {
