@@ -87,17 +87,17 @@ export default function AccountsReceivable() {
     enabled: !!activeTenantId,
   });
 
-  // Fetch estimate data for all projects (selling price, materials, labor)
+  // Fetch estimate data for all projects (selling price, materials, labor) — use approved status
   const { data: estimates } = useQuery({
     queryKey: ['ar-estimates', activeTenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enhanced_estimates')
-        .select('pipeline_entry_id, selling_price, material_cost, labor_cost, is_selected')
+        .select('pipeline_entry_id, selling_price, material_cost, labor_cost, status')
         .eq('tenant_id', activeTenantId!)
-        .eq('is_selected', true);
+        .eq('status', 'approved');
       if (error) throw error;
-      return data || [];
+      return (data || []) as any[];
     },
     enabled: !!activeTenantId,
   });
