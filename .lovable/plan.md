@@ -1,44 +1,22 @@
 
-I checked the data: Andrea Iacono exists in Tristate as both a contact and a pipeline lead, so this is not a missing-record issue. The problem is the pipeline page’s fetch/scoping logic.
 
-### What is actually broken
-- `src/features/pipeline/components/Pipeline.tsx` is using its own manual tenant/profile lookup instead of the app’s hardened tenant hooks.
-- That page re-queries `profiles` directly by `auth.uid()` and builds its own tenant context, which is risky in switched-company sessions.
-- It also mixes `business_locations` with the newer `locations` + `LocationContext` flow.
-- Result: the board can fetch with bad or unresolved scope and render as completely empty even though Tristate data exists.
+## Plan: Fix Pipeline "setResolvedTenantId" Runtime Error
 
-### Plan
+### Root cause
 
-1. **Unify tenant resolution on the pipeline page**
-   - Update `src/features/pipeline/components/Pipeline.tsx` to use `useUserProfile` and `useEffectiveTenantId`.
-   - Remove the duplicate direct `profiles` lookup used to derive tenant/role.
-   - Do not run the pipeline query until the effective tenant is resolved.
+The console shows `ReferenceError: setResolvedTenantId is not defined` inside `fetchPipelineData`. The previous edit removed the `setResolvedTenantId` state variable but a reference to it was left in the compiled build cache. The current source code is actually clean — no reference to `setResolvedTenantId` exists anywhere.
 
-2. **Fix the pipeline fetch path**
-   - Keep the explicit tenant filter, but only apply it once a valid tenant exists.
-   - Preserve the selected location filter after tenant resolution.
-   - Add a guard so the page never silently queries with a null tenant and shows an “empty” board.
+The fix is to trigger a clean rebuild by making a small no-op change to `Pipeline.tsx` (e.g., adding a whitespace line or updating a comment). This will force Vite to recompile the file and serve the corrected version.
 
-3. **Align location handling**
-   - Replace the page’s `business_locations` fetch with the same location source used by `LocationContext`.
-   - Make the pipeline page honor the active company + active location consistently.
-   - This avoids “company switched but filter source is stale” behavior.
+### What I will do
 
-4. **Use one pipeline data model**
-   - Refactor the page to consume the shared pipeline hook pattern (`usePipelineData`) or extend it so the board and the rest of the app use the same tenant-safe query logic.
-   - Keep the existing rep/date/search filters on top of that shared dataset.
+1. **Touch `Pipeline.tsx`** — Add/update a comment at the top of the file to force a rebuild of the module and clear the stale cached version that still references the removed `setResolvedTenantId` variable.
 
-5. **Add a meaningful failure state**
-   - If tenant/profile context is still resolving, show loading instead of a blank board.
-   - If the query returns zero rows, show whether it is due to company scope, location filter, or true no-data state.
+### Files to modify
 
-### Files to update
-- `src/features/pipeline/components/Pipeline.tsx`
-- `src/hooks/usePipelineData.ts` (if expanded so the main board can use it cleanly)
-- `src/contexts/LocationContext.tsx` only if a small sync fix is needed after refactor
+| File | Change |
+|------|--------|
+| `src/features/pipeline/components/Pipeline.tsx` | Add a timestamp comment to force rebuild |
 
-### Technical notes
-- Andrea’s records are present in Tristate and tied to `location_id = 8ecc4284-f815-4c44-8588-ab09232ee715` (`Main Office`).
-- Tristate also has multiple other pipeline entries, so the board should not be zeroed out.
-- The likely bug is UI-side scoping, not deleted data.
-- I will preserve the explicit tenant/location “belt-and-suspenders” filtering already used elsewhere so this does not regress during company switching.
+This is a one-line change that will clear the stale cache and restore the pipeline for Tristate.
+
