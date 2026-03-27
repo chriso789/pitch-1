@@ -11,17 +11,18 @@ export interface PipelineStage {
   probability_percent: number;
   stage_order: number;
   is_active: boolean;
+  is_terminal: boolean;
 }
 
 // Default fallback stages (used when no custom stages exist)
 export const DEFAULT_STAGES: PipelineStage[] = [
-  { id: 'default-1', name: 'New Lead', key: 'new_lead', color: 'bg-blue-500', description: null, probability_percent: 10, stage_order: 1, is_active: true },
-  { id: 'default-2', name: 'Contacted', key: 'contacted', color: 'bg-yellow-500', description: null, probability_percent: 25, stage_order: 2, is_active: true },
-  { id: 'default-3', name: 'Qualified', key: 'qualified', color: 'bg-orange-500', description: null, probability_percent: 50, stage_order: 3, is_active: true },
-  { id: 'default-4', name: 'Proposal Sent', key: 'proposal_sent', color: 'bg-purple-500', description: null, probability_percent: 70, stage_order: 4, is_active: true },
-  { id: 'default-5', name: 'Negotiating', key: 'negotiating', color: 'bg-cyan-500', description: null, probability_percent: 80, stage_order: 5, is_active: true },
-  { id: 'default-6', name: 'Closed Won', key: 'closed_won', color: 'bg-green-500', description: null, probability_percent: 100, stage_order: 6, is_active: true },
-  { id: 'default-7', name: 'Closed Lost', key: 'closed_lost', color: 'bg-gray-500', description: null, probability_percent: 0, stage_order: 7, is_active: true },
+  { id: 'default-1', name: 'New Lead', key: 'new_lead', color: 'bg-blue-500', description: null, probability_percent: 10, stage_order: 1, is_active: true, is_terminal: false },
+  { id: 'default-2', name: 'Contacted', key: 'contacted', color: 'bg-yellow-500', description: null, probability_percent: 25, stage_order: 2, is_active: true, is_terminal: false },
+  { id: 'default-3', name: 'Qualified', key: 'qualified', color: 'bg-orange-500', description: null, probability_percent: 50, stage_order: 3, is_active: true, is_terminal: false },
+  { id: 'default-4', name: 'Proposal Sent', key: 'proposal_sent', color: 'bg-purple-500', description: null, probability_percent: 70, stage_order: 4, is_active: true, is_terminal: false },
+  { id: 'default-5', name: 'Negotiating', key: 'negotiating', color: 'bg-cyan-500', description: null, probability_percent: 80, stage_order: 5, is_active: true, is_terminal: false },
+  { id: 'default-6', name: 'Closed Won', key: 'closed_won', color: 'bg-green-500', description: null, probability_percent: 100, stage_order: 6, is_active: true, is_terminal: false },
+  { id: 'default-7', name: 'Closed Lost', key: 'closed_lost', color: 'bg-gray-500', description: null, probability_percent: 0, stage_order: 7, is_active: true, is_terminal: true },
 ];
 
 // Convert hex color to Tailwind class
@@ -81,13 +82,13 @@ export function usePipelineStages() {
       return data.map(stage => ({
         id: stage.id,
         name: stage.name,
-        // Use database key if set, otherwise fallback to auto-generated
         key: stage.key || generateStageKey(stage.name),
         color: hexToTailwindColor(stage.color),
         description: stage.description,
         probability_percent: stage.probability_percent,
         stage_order: stage.stage_order,
         is_active: stage.is_active,
+        is_terminal: stage.is_terminal ?? false,
       }));
     },
     staleTime: 5 * 60 * 1000, // 5 minutes

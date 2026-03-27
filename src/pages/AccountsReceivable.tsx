@@ -3,6 +3,7 @@ import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { usePipelineStages } from '@/hooks/usePipelineStages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,15 +26,11 @@ const TIME_FILTERS: { value: TimeFilter; label: string }[] = [
   { value: 'year', label: 'This Year' },
 ];
 
-const AR_INCLUDED_STATUSES = [
-  'project',
-  'inspection_scheduled',
-  'in_production',
-  'production',
-  'install_scheduled',
-  'completed',
-  'closed',
-] as const;
+// Known post-approval stage keys as a fallback hint
+const POST_APPROVAL_KEYS = [
+  'contracted', 'project', 'completed', 'closed', 'capped_out',
+  'in_production', 'production', 'install_scheduled', 'inspection_scheduled',
+];
 
 function getFilterDate(filter: TimeFilter): Date | null {
   const now = new Date();
@@ -50,22 +47,41 @@ export default function AccountsReceivable() {
   const { activeTenantId } = useActiveTenantId();
   const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
+  const { stages, isLoading: stagesLoading } = usePipelineStages();
+
+  // Dynamically compute AR-eligible statuses from the tenant's pipeline stages
+  const arStatuses = useMemo(() => {
+    // Find the first post-approval stage (contracted or project)
+    const contractedStage = stages.find(s =>
+      ['contracted', 'project'].includes(s.key) && !s.is_terminal
+    );
+    const threshold = contractedStage?.stage_order ?? 7;
+
+    const dynamicKeys = stages
+      .filter(s => s.stage_order >= threshold && s.is_active && !s.is_terminal)
+      .map(s => s.key);
+
+    // Merge with known post-approval keys for safety
+    const merged = new Set([...dynamicKeys, ...POST_APPROVAL_KEYS]);
+    return Array.from(merged);
+  }, [stages]);
 
   // Fetch receivable-stage pipeline entries
   const { data: projects, isLoading: projectsLoading } = useQuery({
-    queryKey: ['ar-projects', activeTenantId],
+    queryKey: ['ar-projects', activeTenantId, arStatuses],
     queryFn: async () => {
+      if (arStatuses.length === 0) return [];
       const { data, error } = await supabase
         .from('pipeline_entries')
         .select('id, lead_name, created_at, status, metadata, contacts(first_name, last_name, address_line1, address_city, address_state)')
         .eq('tenant_id', activeTenantId!)
         .eq('is_deleted', false)
-        .in('status', [...AR_INCLUDED_STATUSES])
+        .in('status', arStatuses)
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as any[];
     },
-    enabled: !!activeTenantId,
+    enabled: !!activeTenantId && arStatuses.length > 0,
   });
 
   // Fetch invoices for all projects
@@ -200,7 +216,7 @@ export default function AccountsReceivable() {
     return { items, totalOutstanding, totalMaterial, totalLabor, buckets };
   }, [projects, estimates, payments, invoices, filterDate]);
 
-  if (projectsLoading) {
+  if (projectsLoading || stagesLoading) {
     return (
       <GlobalLayout>
         <div className="flex items-center justify-center h-64">
