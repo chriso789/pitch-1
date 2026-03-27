@@ -155,7 +155,6 @@ export const CLJSearchBar = () => {
   const clearRecents = () => {
     localStorage.removeItem(RECENT_SEARCHES_KEY);
     setRecents([]);
-    setShowRecents(false);
     setOpen(false);
   };
 
