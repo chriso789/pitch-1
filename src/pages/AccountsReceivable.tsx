@@ -113,28 +113,21 @@ export default function AccountsReceivable() {
     enabled: !!activeTenantId,
   });
 
-  // Fetch selected estimates linked from pipeline entry metadata
-  const estimateIds = useMemo(() => {
-    if (!projects) return [];
-    return Array.from(new Set(
-      projects
-        .map((p: any) => p.metadata?.selected_estimate_id ?? p.metadata?.enhanced_estimate_id)
-        .filter(Boolean)
-    )) as string[];
-  }, [projects]);
+  // Fetch estimates by pipeline_entry_id (not metadata — metadata keys are often missing)
+  const projectIds = useMemo(() => (projects || []).map((p: any) => p.id), [projects]);
 
   const { data: estimates } = useQuery({
-    queryKey: ['ar-estimates', activeTenantId, estimateIds],
+    queryKey: ['ar-estimates', activeTenantId, projectIds],
     queryFn: async () => {
-      if (estimateIds.length === 0) return [];
+      if (projectIds.length === 0) return [];
       const { data, error } = await supabase
         .from('enhanced_estimates')
         .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost')
-        .in('id', estimateIds);
+        .in('pipeline_entry_id', projectIds);
       if (error) throw error;
       return (data || []) as any[];
     },
-    enabled: !!activeTenantId && estimateIds.length > 0,
+    enabled: !!activeTenantId && projectIds.length > 0,
   });
 
   const now = new Date();
