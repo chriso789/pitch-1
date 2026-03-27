@@ -79,7 +79,7 @@ export const OverheadTab: React.FC<OverheadTabProps> = ({ pipelineEntryId }) => 
   const dumpTotal = dumpPrice * dumpCount;
 
   const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(amount);
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
 
   // Add dump fee as overhead invoice
   const addDumpFeeMutation = useMutation({

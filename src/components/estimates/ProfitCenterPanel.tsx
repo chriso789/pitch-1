@@ -6,7 +6,8 @@ import { Separator } from '@/components/ui/separator';
 import { 
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
-  ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3
+  ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
+  CreditCard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
+import { PaymentsTab } from '@/components/estimates/PaymentsTab';
 import { format } from 'date-fns';
 
 interface ProfitCenterPanelProps {
@@ -137,8 +139,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
       currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
     }).format(amount);
   };
 
@@ -311,6 +313,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               </TabsTrigger>
               {isProject && (
                 <>
+                  <TabsTrigger value="payments" className="text-xs flex-shrink-0">
+                    <CreditCard className="h-3 w-3 mr-1" />
+                    Payments
+                  </TabsTrigger>
                   <TabsTrigger value="budget" className="text-xs flex-shrink-0">
                     <BarChart3 className="h-3 w-3 mr-1" />
                     Budget
@@ -585,6 +591,13 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               </>
             )}
           </TabsContent>
+
+          {/* Payments Tab - Project only */}
+          {isProject && (
+            <TabsContent value="payments" className="mt-0">
+              <PaymentsTab pipelineEntryId={pipelineEntryId} sellingPrice={sellingPrice} />
+            </TabsContent>
+          )}
 
           {/* Budget Tab - Project only */}
           {isProject && (

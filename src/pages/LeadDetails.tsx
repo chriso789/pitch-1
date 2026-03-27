@@ -629,6 +629,42 @@ const LeadDetails = () => {
         // Non-blocking — project was still approved
       }
 
+      // Auto-create AR invoice from selected estimate selling price
+      try {
+        const { data: entry } = await supabase
+          .from('pipeline_entries')
+          .select('metadata, tenant_id')
+          .eq('id', id)
+          .single();
+
+        const selectedEstimateId = (entry?.metadata as any)?.selected_estimate_id;
+        if (selectedEstimateId && entry?.tenant_id) {
+          const { data: estimate } = await supabase
+            .from('enhanced_estimates')
+            .select('selling_price')
+            .eq('id', selectedEstimateId)
+            .single();
+
+          const sellingPrice = Number(estimate?.selling_price) || 0;
+          if (sellingPrice > 0) {
+            const invoiceNumber = `INV-${id!.slice(0, 6).toUpperCase()}-001`;
+            await supabase.from('project_invoices').insert({
+              tenant_id: entry.tenant_id,
+              pipeline_entry_id: id!,
+              invoice_number: invoiceNumber,
+              amount: sellingPrice,
+              balance: sellingPrice,
+              status: 'draft',
+              notes: 'Auto-created on project approval',
+              created_by: (await supabase.auth.getUser()).data.user?.id,
+            });
+          }
+        }
+      } catch (arError) {
+        console.error('Error creating AR invoice:', arError);
+        // Non-blocking
+      }
+
       toast({
         title: 'Lead Approved!',
         description: 'This lead has been approved and converted to a project. Budget seeded from estimate.',
