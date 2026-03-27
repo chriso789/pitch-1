@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { canViewAllRecords } from "@/lib/roleUtils";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -45,6 +45,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
 import { useLocation } from "@/contexts/LocationContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
@@ -63,9 +65,6 @@ const Pipeline = () => {
   const [bulkActionMode, setBulkActionMode] = useState(false);
   const [stageTotals, setStageTotals] = useState({});
   const [salesReps, setSalesReps] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [userRole, setUserRole] = useState<string>('');
-  const [isManager, setIsManager] = useState(false);
   const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<{
     entryId: string;
@@ -75,7 +74,13 @@ const Pipeline = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { currentLocationId, currentLocation } = useLocation();
-  const [resolvedTenantId, setResolvedTenantId] = useState<string | null>(null);
+  
+  // Use unified tenant and profile hooks instead of manual lookups
+  const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
+  
+  const userRole = profile?.role || '';
+  const isManager = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(userRole);
 
   const { stages: dynamicStages } = usePipelineStages();
 
