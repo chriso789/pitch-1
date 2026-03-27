@@ -152,25 +152,7 @@ const Pipeline = () => {
     };
   }, [filters, effectiveTenantId]);
 
-  const fetchUserRole = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profile) {
-        setUserRole(profile.role);
-        setIsManager(['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(profile.role));
-      }
-    } catch (error) {
-      console.error('Error fetching user role:', error);
-    }
-  };
+  // fetchUserRole removed — role comes from useUserProfile hook
 
   // Filter data based on search query
   const filterBySearch = (data: any[]) => {
