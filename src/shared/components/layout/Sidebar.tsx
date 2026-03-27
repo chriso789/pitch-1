@@ -254,6 +254,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       description: "Production workflow"
     },
     {
+      name: "Accounts Receivable",
+      href: "accounts-receivable",
+      path: "/accounts-receivable",
+      icon: DollarSign,
+      description: "Track invoices & payments"
+    },
+    {
       name: "Calendar",
       href: "calendar",
       path: "/calendar",
