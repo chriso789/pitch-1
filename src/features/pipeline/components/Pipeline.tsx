@@ -321,7 +321,7 @@ const Pipeline = () => {
 
       // Batch-fetch selling prices from enhanced_estimates for entries with a selected estimate
       const estimateIds = filteredData
-        .map(entry => (entry.metadata as any)?.selected_estimate_id)
+        .map(entry => (entry.metadata as any)?.selected_estimate_id ?? (entry.metadata as any)?.enhanced_estimate_id)
         .filter(Boolean);
       
       const estimatePriceMap = new Map<string, number>();

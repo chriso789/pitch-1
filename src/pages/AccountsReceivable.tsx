@@ -118,7 +118,7 @@ export default function AccountsReceivable() {
     if (!projects) return [];
     return Array.from(new Set(
       projects
-        .map((p: any) => p.metadata?.selected_estimate_id)
+        .map((p: any) => p.metadata?.selected_estimate_id ?? p.metadata?.enhanced_estimate_id)
         .filter(Boolean)
     )) as string[];
   }, [projects]);
