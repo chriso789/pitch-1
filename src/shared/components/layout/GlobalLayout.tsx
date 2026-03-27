@@ -8,8 +8,9 @@ import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { isMobileApp } from "@/utils/mobileDetection";
-import { Menu } from "lucide-react";
+import { Menu, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface GlobalLayoutProps {
   children: React.ReactNode;
