@@ -178,7 +178,6 @@ export const CLJSearchBar = () => {
             const r = loadRecents();
             if (r.length > 0) {
               setRecents(r);
-              setShowRecents(true);
               setOpen(true);
             }
           }
