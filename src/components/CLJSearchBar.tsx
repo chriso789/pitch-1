@@ -204,6 +204,51 @@ export const CLJSearchBar = () => {
               {!loading && results.length === 0 && searchTerm.length >= 2 && (
                 <CommandEmpty>No results found</CommandEmpty>
               )}
+
+              {/* Recent Searches */}
+              {showRecents && recents.length > 0 && searchTerm.length < 2 && (
+                <CommandGroup heading={
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span>Recent</span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); clearRecents(); }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                }>
+                  {recents.map((result) => {
+                    const config = ENTITY_CONFIG[result.entity_type];
+                    const Icon = config.icon;
+                    return (
+                      <CommandItem
+                        key={`recent-${result.entity_id}`}
+                        onSelect={() => handleSelect(result)}
+                        className="flex items-center justify-between cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={cn("p-1 rounded", result.entity_type === 'contact' ? 'bg-blue-50' : result.entity_type === 'lead' ? 'bg-orange-50' : 'bg-green-50')}>
+                            <Icon className={cn("h-4 w-4", config.iconClass)} />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{result.entity_name}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {result.entity_subtext}
+                            </span>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={cn("text-xs shrink-0 ml-2", config.badgeClass)}>
+                          {config.label}
+                        </Badge>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
+              )}
               
               {/* Contacts Group */}
               {!loading && contacts.length > 0 && (
