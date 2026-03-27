@@ -1,3 +1,4 @@
+// Pipeline board — rebuild 2026-03-27T14:05
 import React, { useState, useEffect, useCallback } from 'react';
 import { canViewAllRecords } from "@/lib/roleUtils";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
