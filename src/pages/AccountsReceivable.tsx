@@ -280,7 +280,7 @@ export default function AccountsReceivable() {
                     onClick={() => navigate(`/lead/${item.id}?tab=total`)}
                   >
                     <div>
-                      <p className="text-sm font-medium">{item.contact_name || 'Unknown'}</p>
+                      <p className="text-sm font-medium">{item.name || 'Unknown'}</p>
                       <p className="text-xs text-muted-foreground">
                         {item.address && `${item.address} · `}
                         Contract: {fmt(item.contractValue)} · Paid: {fmt(item.totalPaid)}
