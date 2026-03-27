@@ -48,11 +48,29 @@ interface SearchResult {
   match_score: number;
 }
 
+const RECENT_SEARCHES_KEY = 'pitch-recent-searches';
+const MAX_RECENTS = 5;
+
+const loadRecents = (): SearchResult[] => {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+  } catch { return []; }
+};
+
+const saveRecent = (result: SearchResult) => {
+  const existing = loadRecents();
+  const filtered = existing.filter(r => r.entity_id !== result.entity_id);
+  const updated = [result, ...filtered].slice(0, MAX_RECENTS);
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+};
+
 export const CLJSearchBar = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [recents, setRecents] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [showRecents, setShowRecents] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
