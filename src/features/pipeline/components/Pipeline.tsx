@@ -1153,10 +1153,20 @@ const Pipeline = () => {
         </CardContent>
       </Card>
 
-      {loading ? (
+      {(loading || !effectiveTenantId) ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading pipeline data...</span>
+          <span className="ml-2">
+            {!effectiveTenantId ? 'Resolving company context...' : 'Loading pipeline data...'}
+          </span>
+        </div>
+      ) : Object.values(pipelineData).every((arr: any) => arr.length === 0) ? (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+          <AlertCircle className="h-12 w-12 mb-4 opacity-50" />
+          <p className="text-lg font-medium">No pipeline entries found</p>
+          <p className="text-sm mt-1">
+            {currentLocation ? `Showing results for ${currentLocation.name}` : 'No location filter applied'}
+          </p>
         </div>
       ) : (
         <DndContext
