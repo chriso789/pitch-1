@@ -46,6 +46,7 @@ import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { OverheadTab } from '@/components/estimates/OverheadTab';
+import { TotalsTab } from '@/components/estimates/TotalsTab';
 import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
 import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
 import { TransitionReasonDialog } from '@/components/pipeline/TransitionReasonDialog';
