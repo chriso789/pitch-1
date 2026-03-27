@@ -47,10 +47,10 @@ export default function AccountsReceivable() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
-        .select('id, lead_name, created_at, status, contacts(first_name, last_name, address_line1, address_city, address_state)')
+        .select('id, lead_name, created_at, status, metadata, contacts(first_name, last_name, address_line1, address_city, address_state)')
         .eq('tenant_id', activeTenantId!)
         .eq('is_deleted', false)
-        .eq('status', 'project')
+        .in('status', ['project', 'completed'])
         .order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as any[];
@@ -87,19 +87,26 @@ export default function AccountsReceivable() {
     enabled: !!activeTenantId,
   });
 
-  // Fetch estimate data for all projects (selling price, materials, labor) — use approved status
+  // Fetch estimate data using selected_estimate_id from pipeline entry metadata
+  const estimateIds = useMemo(() => {
+    if (!projects) return [];
+    return projects
+      .map((p: any) => p.metadata?.selected_estimate_id)
+      .filter(Boolean) as string[];
+  }, [projects]);
+
   const { data: estimates } = useQuery({
-    queryKey: ['ar-estimates', activeTenantId],
+    queryKey: ['ar-estimates', estimateIds],
     queryFn: async () => {
+      if (estimateIds.length === 0) return [];
       const { data, error } = await supabase
         .from('enhanced_estimates')
-        .select('pipeline_entry_id, selling_price, material_cost, labor_cost, status')
-        .eq('tenant_id', activeTenantId!)
-        .eq('status', 'approved');
+        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost')
+        .in('id', estimateIds);
       if (error) throw error;
       return (data || []) as any[];
     },
-    enabled: !!activeTenantId,
+    enabled: estimateIds.length > 0,
   });
 
   const now = new Date();
