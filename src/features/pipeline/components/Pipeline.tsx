@@ -1,4 +1,4 @@
-// Pipeline board — rebuild 2026-03-27T16:30
+// Pipeline board — rebuild 2026-03-27T17:00 — estimate price lookup fix
 import React, { useState, useEffect, useCallback } from 'react';
 import { canViewAllRecords } from "@/lib/roleUtils";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
