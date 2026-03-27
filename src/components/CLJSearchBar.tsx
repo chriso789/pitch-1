@@ -149,7 +149,6 @@ export const CLJSearchBar = () => {
     saveRecent(result);
     navigate(routes[result.entity_type]);
     setOpen(false);
-    setShowRecents(false);
     setSearchTerm('');
   };
 
