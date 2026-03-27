@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search, User, Briefcase, Target, Building2 } from 'lucide-react';
+import { Search, User, Briefcase, Target, Building2, Clock, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { useNavigate } from 'react-router-dom';
@@ -48,11 +48,29 @@ interface SearchResult {
   match_score: number;
 }
 
+const RECENT_SEARCHES_KEY = 'pitch-recent-searches';
+const MAX_RECENTS = 5;
+
+const loadRecents = (): SearchResult[] => {
+  try {
+    return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+  } catch { return []; }
+};
+
+const saveRecent = (result: SearchResult) => {
+  const existing = loadRecents();
+  const filtered = existing.filter(r => r.entity_id !== result.entity_id);
+  const updated = [result, ...filtered].slice(0, MAX_RECENTS);
+  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+};
+
 export const CLJSearchBar = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
+  const [recents, setRecents] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
+  const [showRecents, setShowRecents] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -81,9 +99,11 @@ export const CLJSearchBar = () => {
     const searchAll = async () => {
       if (searchTerm.length < 2) {
         setResults([]);
-        setOpen(false);
+        // Don't close if showing recents
+        if (!showRecents) setOpen(false);
         return;
       }
+      setShowRecents(false);
 
       setLoading(true);
       try {
@@ -127,9 +147,18 @@ export const CLJSearchBar = () => {
       job: `/lead/${result.entity_id}`
     };
 
+    saveRecent(result);
     navigate(routes[result.entity_type]);
     setOpen(false);
+    setShowRecents(false);
     setSearchTerm('');
+  };
+
+  const clearRecents = () => {
+    localStorage.removeItem(RECENT_SEARCHES_KEY);
+    setRecents([]);
+    setShowRecents(false);
+    setOpen(false);
   };
 
   // Group results by type
@@ -148,6 +177,13 @@ export const CLJSearchBar = () => {
         onFocus={() => {
           if (searchTerm.length >= 2 && results.length > 0) {
             setOpen(true);
+          } else if (searchTerm.length < 2) {
+            const r = loadRecents();
+            if (r.length > 0) {
+              setRecents(r);
+              setShowRecents(true);
+              setOpen(true);
+            }
           }
         }}
         className="pl-9"
@@ -167,6 +203,51 @@ export const CLJSearchBar = () => {
               )}
               {!loading && results.length === 0 && searchTerm.length >= 2 && (
                 <CommandEmpty>No results found</CommandEmpty>
+              )}
+
+              {/* Recent Searches */}
+              {showRecents && recents.length > 0 && searchTerm.length < 2 && (
+                <CommandGroup heading={
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-1.5">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                      <span>Recent</span>
+                    </div>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); clearRecents(); }}
+                      className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                }>
+                  {recents.map((result) => {
+                    const config = ENTITY_CONFIG[result.entity_type];
+                    const Icon = config.icon;
+                    return (
+                      <CommandItem
+                        key={`recent-${result.entity_id}`}
+                        onSelect={() => handleSelect(result)}
+                        className="flex items-center justify-between cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          <div className={cn("p-1 rounded", result.entity_type === 'contact' ? 'bg-blue-50' : result.entity_type === 'lead' ? 'bg-orange-50' : 'bg-green-50')}>
+                            <Icon className={cn("h-4 w-4", config.iconClass)} />
+                          </div>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-medium truncate">{result.entity_name}</span>
+                            <span className="text-xs text-muted-foreground truncate">
+                              {result.entity_subtext}
+                            </span>
+                          </div>
+                        </div>
+                        <Badge variant="outline" className={cn("text-xs shrink-0 ml-2", config.badgeClass)}>
+                          {config.label}
+                        </Badge>
+                      </CommandItem>
+                    );
+                  })}
+                </CommandGroup>
               )}
               
               {/* Contacts Group */}
