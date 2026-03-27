@@ -1,93 +1,113 @@
 
-Do I know what the issue is? Yes.
 
-## What is actually happening
+## Plan: Penny-Precise Pricing + Payments/AR System in Profit Center
 
-The map is staying at the same spot because the app is often never getting a usable live GPS fix on initial load, so it falls back to the assigned-area/contact centroid and keeps showing that location until a later watch update succeeds.
+### Two Changes
 
-The console logs show the exact failure chain:
-- `Position update is unavailable` (`code: 2`)
-- then repeated `Timeout expired` (`code: 3`)
-- after 10 seconds the page auto-dismisses GPS loading and centers on the fallback area
-- that fallback is what you are seeing “stuck” on the map
+---
 
-There is also a second problem making this worse:
-- `GPSTrailService` is starting twice
-- two trail sessions are created at the same time
-- this comes from React Strict Mode mount behavior plus the current start logic
-- that means multiple high-accuracy geolocation watchers are running at once, which can interfere with stability on mobile Safari / iPhone
+### 1. Allow penny-precise pricing everywhere
 
-## Exact problem
+**Problem**: Several places round selling price to whole dollars:
+- `EstimateBreakdownCard.tsx` line 68: `Math.round(breakdown.sellingPrice)` when toggling fixed price — strips cents
+- `EstimateHyperlinkBar.tsx` lines 211-217: `formatCurrency` uses `minimumFractionDigits: 0, maximumFractionDigits: 0` — displays without cents
+- `ProfitCenterPanel.tsx` lines 136-142: same `formatCurrency` with 0 decimal digits
+- `SavedEstimatesList.tsx`, `RepProfitBreakdown.tsx`, `OverheadTab.tsx`: same pattern
 
-This is not mainly a map-rendering bug. It is a GPS acquisition/state-management bug:
+**Fix**: Change all `formatCurrency` functions in the estimates module to use `minimumFractionDigits: 2, maximumFractionDigits: 2`. Remove the `Math.round` on line 68 of `EstimateBreakdownCard.tsx` — keep `Math.max(100, breakdown.sellingPrice)` but don't round. The fixed price input already accepts `parseFloat` and passes decimal values through (line 79-81), so the storage path is fine.
 
-1. `LiveCanvassingPage.tsx`
-   - initial GPS acquisition is still too fragile for first load
-   - after failure, fallback centroid is promoted too early
-   - `hasGPS` becomes `true` even when the app is only showing fallback, which hides the real GPS failure state
+**Files**:
+| File | Change |
+|------|--------|
+| `EstimateBreakdownCard.tsx` | Remove `Math.round` on fixed price default |
+| `EstimateHyperlinkBar.tsx` | `formatCurrency` → 2 decimal places |
+| `ProfitCenterPanel.tsx` | `formatCurrency` → 2 decimal places |
+| `SavedEstimatesList.tsx` | `formatCurrency` → 2 decimal places |
+| `RepProfitBreakdown.tsx` | `formatCurrency` → 2 decimal places |
+| `OverheadTab.tsx` | `formatCurrency` → 2 decimal places |
+| `ProfitSlider.tsx` | `formatCurrency` → 2 decimal places |
 
-2. `gpsTrailService.ts`
-   - starts a second geolocation watch during page startup
-   - duplicate watcher/session behavior is visible in the logs
+---
 
-3. `locationService.ts`
-   - watch handling is better than before, but it still has no explicit “recover from code 2 by restarting watch” strategy
-   - background geocoding is fine now, but the page still depends too heavily on first-lock success
+### 2. Add Payments tab to Profit Center + Auto-create AR entry on project approval
 
-## Plan
+This is a significant feature. Here's the approach:
 
-### 1. Separate “real GPS lock” from “fallback map center”
-Update `LiveCanvassingPage.tsx` so fallback positioning does not pretend to be GPS:
-- keep a separate state for `hasRealGpsLock`
-- keep fallback centroid display separate from live GPS state
-- do not mark GPS as acquired when only fallback is shown
-- keep retrying for a real lock even after fallback map center is displayed
+#### Database (new migration)
 
-Result: the map can show the work area immediately, but still switch to the real moving user location the moment GPS succeeds.
+Create a new `project_invoices` table for internal invoicing (not QBO-dependent) and a `project_payments` table for payment tracking:
 
-### 2. Make initial GPS acquisition use the same resilient fallback strategy as recenter
-Right now recenter has a better two-stage strategy than first load. I’ll align them:
-- first-load GPS attempt: strict fresh fix
-- automatic fallback attempt: relaxed cached fix for Safari/mobile recovery
-- if both fail, show area center visually but continue silent background retries until a valid moving fix arrives
+```sql
+CREATE TABLE project_invoices (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  pipeline_entry_id UUID NOT NULL,
+  invoice_number TEXT NOT NULL,
+  amount NUMERIC(12,2) NOT NULL,
+  balance NUMERIC(12,2) NOT NULL,
+  status TEXT DEFAULT 'draft', -- draft, sent, partial, paid, void
+  due_date DATE,
+  sent_at TIMESTAMPTZ,
+  notes TEXT,
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ DEFAULT now(),
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
 
-Result: first page load behaves like the recenter button instead of failing into a static map.
+CREATE TABLE project_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_id UUID NOT NULL,
+  pipeline_entry_id UUID NOT NULL,
+  invoice_id UUID REFERENCES project_invoices(id),
+  amount NUMERIC(12,2) NOT NULL,
+  payment_method TEXT, -- check, card, ach, cash, financing
+  reference_number TEXT,
+  payment_date DATE NOT NULL DEFAULT CURRENT_DATE,
+  notes TEXT,
+  created_by UUID REFERENCES profiles(id),
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+```
 
-### 3. Prevent duplicate geolocation watchers from GPS trail recording
-Update `gpsTrailService.ts` so it cannot start multiple concurrent watch sessions:
-- add an idempotent start guard
-- ignore duplicate starts for the same user/session mount cycle
-- harden cleanup so Strict Mode remounts do not leave overlapping watches behind
+Enable RLS on both tables using `tenant_id = get_user_tenant_id()`.
 
-Result: only one trail watch and one UI watch run as intended.
+#### Auto-create AR entry on project approval
 
-### 4. Add watch recovery for `POSITION_UNAVAILABLE`
-Update `locationService.ts` / page watch handling to recover from `code: 2`:
-- if the watch reports repeated `POSITION_UNAVAILABLE`, restart the watcher after a short backoff
-- keep timeout errors non-fatal
-- only accept fixes that pass the existing accuracy/jump filters
+In `LeadDetails.tsx` `handleApproveToProject`, after setting status to 'project', automatically insert a `project_invoices` record with the full contract value (selling_price from the selected estimate) and balance = selling_price. This creates the initial AR entry.
 
-Result: the app can recover instead of sitting on fallback indefinitely.
+#### Payments tab in ProfitCenterPanel
 
-### 5. Keep knock mode aggressively locked to the real user once a valid fix exists
-After GPS lock is recovered:
-- force map follow in knock mode from the real live coordinates
-- keep manual interaction pause logic only after a genuine user drag
-- if app is currently on fallback and a real GPS fix arrives, immediately snap from fallback center to live user center
+Add a "Payments" tab (alongside Summary, Invoices, Details, Budget) that shows:
+- **Contract balance**: selling price minus total payments received
+- **Invoice list**: all `project_invoices` for this pipeline entry with status badges
+- **Create Invoice button**: generates an invoice for the remaining balance (or custom amount)
+- **Record Payment button**: opens a form to record a payment (amount, method, date, reference #, optional invoice link)
+- **Payment history**: chronological list of all payments received
 
-Result: once location resolves, the map follows the canvasser instead of lingering on the old fallback point.
+#### Company-wide AR Dashboard
 
-## Files to modify
+Create a new `AccountsReceivable` component accessible from the main nav (or a new page) that queries all `project_invoices` with outstanding balances across the tenant. Shows:
+- Total AR outstanding
+- Aging buckets (current, 30, 60, 90+ days)
+- List of all projects with balances, sortable/filterable
+- Quick link to each project's payment tab
+
+#### Files to create/modify
 
 | File | Change |
-|---|---|
-| `src/pages/storm-canvass/LiveCanvassingPage.tsx` | Separate fallback vs real GPS state, improve initial acquisition, continue retries after fallback |
-| `src/services/gpsTrailService.ts` | Prevent duplicate recording/watch sessions, harden Strict Mode behavior |
-| `src/services/locationService.ts` | Add watcher recovery/restart strategy for repeated `code: 2` failures |
+|------|--------|
+| New migration | Create `project_invoices` and `project_payments` tables with RLS |
+| `src/pages/LeadDetails.tsx` | Auto-insert initial invoice on project approval |
+| `src/components/estimates/ProfitCenterPanel.tsx` | Add "Payments" tab with invoice/payment management |
+| `src/components/estimates/PaymentsTab.tsx` | **New** — Payment recording, invoice creation, payment history |
+| `src/pages/AccountsReceivable.tsx` | **New** — Company-wide AR dashboard page |
+| `src/App.tsx` | Add route for `/accounts-receivable` |
+| Navigation | Add AR link to main sidebar/nav |
 
-## Technical details
+### Technical notes
 
-- Root cause confirmed from logs: `code: 2` and `code: 3` prevent first GPS lock, then fallback centroid becomes the visible map center.
-- Duplicate evidence from logs: two `GPSTrailService` sessions start at the same timestamp.
-- The “same location” symptom is therefore mostly the fallback center being shown as if it were live GPS.
-- I do not need to change the database for this fix; this is client-side GPS/watch orchestration and map-state handling.
+- The `project_invoices` table is independent of the QBO `invoice_ar_mirror` table — it works without QuickBooks
+- Payments are linked to `pipeline_entry_id` (not `project_id`) since the lead/project page uses pipeline entries as the primary entity
+- The auto-created invoice on approval uses the selected estimate's `selling_price` as the total amount
+- All currency displays will use 2 decimal places for penny precision
+
