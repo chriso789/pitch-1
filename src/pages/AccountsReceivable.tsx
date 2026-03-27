@@ -3,6 +3,7 @@ import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { usePipelineStages } from '@/hooks/usePipelineStages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -25,15 +26,11 @@ const TIME_FILTERS: { value: TimeFilter; label: string }[] = [
   { value: 'year', label: 'This Year' },
 ];
 
-const AR_INCLUDED_STATUSES = [
-  'project',
-  'inspection_scheduled',
-  'in_production',
-  'production',
-  'install_scheduled',
-  'completed',
-  'closed',
-] as const;
+// Known post-approval stage keys as a fallback hint
+const POST_APPROVAL_KEYS = [
+  'contracted', 'project', 'completed', 'closed', 'capped_out',
+  'in_production', 'production', 'install_scheduled', 'inspection_scheduled',
+];
 
 function getFilterDate(filter: TimeFilter): Date | null {
   const now = new Date();
