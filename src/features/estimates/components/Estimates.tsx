@@ -31,9 +31,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canViewAllEstimates } from '@/lib/roleUtils';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 const Estimates = () => {
   const { user, loading: userLoading } = useCurrentUser();
+  const effectiveTenantId = useEffectiveTenantId();
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -52,7 +54,7 @@ const Estimates = () => {
   
   // Extract stable primitive values to avoid infinite re-renders
   const userId = user?.id;
-  const tenantId = user?.active_tenant_id || user?.tenant_id;
+  const tenantId = effectiveTenantId;
   const userRole = user?.role;
   const canSeeAllEstimates = userRole ? canViewAllEstimates(userRole) : false;
 

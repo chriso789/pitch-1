@@ -8,8 +8,9 @@ import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 import { isMobileApp } from "@/utils/mobileDetection";
-import { Menu } from "lucide-react";
+import { Menu, LayoutDashboard } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useNavigate, useLocation } from "react-router-dom";
 
 interface GlobalLayoutProps {
   children: React.ReactNode;
@@ -18,6 +19,22 @@ interface GlobalLayoutProps {
 export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
   const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const isOnDashboard = location.pathname === '/dashboard';
+
+  const DashboardButton = () => (
+    <Button
+      variant={isOnDashboard ? "default" : "ghost"}
+      size="icon"
+      className="h-9 w-9 flex-shrink-0"
+      onClick={() => navigate('/dashboard')}
+      title="Dashboard"
+    >
+      <LayoutDashboard className="h-5 w-5" />
+    </Button>
+  );
+
   return (
     <div className="flex min-h-screen w-full">
       <CollapsibleSidebar mobileOpen={mobileOpen} onMobileOpenChange={setMobileOpen}>
@@ -28,7 +45,7 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
           {isMobile ? (
             /* Mobile: Two-row header */
             <div className="flex flex-col">
-              {/* Row 1: Menu button, location switcher, notifications, company */}
+              {/* Row 1: Menu button, location switcher, dashboard, notifications, company */}
               <div className="flex h-12 items-center gap-1 justify-between px-2">
                 <div className="flex items-center gap-1">
                   <Button
@@ -42,6 +59,7 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
                   <QuickLocationSwitcher isCollapsed={false} />
                 </div>
                 <div className="flex items-center gap-1">
+                  <DashboardButton />
                   <NotificationCenter />
                   <CompanySwitcher />
                 </div>
@@ -52,10 +70,11 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
               </div>
             </div>
           ) : (
-            /* Desktop: Single-row header (unchanged) */
+            /* Desktop: Single-row header */
             <div className="flex h-16 items-center gap-4 justify-between px-6">
               <CLJSearchBar />
               <div className="flex items-center gap-2">
+                <DashboardButton />
                 <NotificationCenter />
                 <CompanySwitcher />
               </div>

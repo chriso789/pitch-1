@@ -208,14 +208,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
 
   const navigation = [
     {
-      name: "Dashboard",
-      href: "dashboard",
-      path: "/dashboard",
-      icon: Home,
-      description: "Overview & metrics",
-      testId: TEST_IDS.sidebar.dashboard
-    },
-    {
       name: "Pipeline",
       href: "pipeline",
       path: "/pipeline",
