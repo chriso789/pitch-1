@@ -750,29 +750,7 @@ const LeadDetails = () => {
       case 'profit':
         return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} />;
       case 'total':
-        return (
-          <Card>
-            <CardHeader>
-              <CardTitle>Final Selling Price</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-12">
-                <DollarSign className="h-12 w-12 text-primary mx-auto mb-4" />
-                <div className="text-3xl font-bold text-primary mb-2">
-                  {measurementReadiness.isReady ? '$34,000' : '$0'}
-                </div>
-                <p className="text-muted-foreground mb-4">
-                  {measurementReadiness.isReady ? 'With guaranteed 30% margin' : 'Pending calculations'}
-                </p>
-                {measurementReadiness.isReady && (
-                  <p className="text-sm text-success">
-                    ${((measurementReadiness.data?.roof_area_sq_ft || 0) > 0 ? (34000 / measurementReadiness.data.roof_area_sq_ft).toFixed(2) : '0')} per sq ft
-                  </p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        );
+        return <TotalsTab pipelineEntryId={id!} />;
       default:
         return (
           <Card>
