@@ -99,9 +99,11 @@ export const CLJSearchBar = () => {
     const searchAll = async () => {
       if (searchTerm.length < 2) {
         setResults([]);
-        setOpen(false);
+        // Don't close if showing recents
+        if (!showRecents) setOpen(false);
         return;
       }
+      setShowRecents(false);
 
       setLoading(true);
       try {
