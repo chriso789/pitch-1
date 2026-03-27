@@ -44,7 +44,7 @@ function getFilterDate(filter: TimeFilter): Date | null {
 }
 
 export default function AccountsReceivable() {
-  const { activeTenantId } = useActiveTenantId();
+  const activeTenantId = useEffectiveTenantId();
   const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
