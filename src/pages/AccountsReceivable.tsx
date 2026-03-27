@@ -113,28 +113,21 @@ export default function AccountsReceivable() {
     enabled: !!activeTenantId,
   });
 
-  // Fetch selected estimates linked from pipeline entry metadata
-  const estimateIds = useMemo(() => {
-    if (!projects) return [];
-    return Array.from(new Set(
-      projects
-        .map((p: any) => p.metadata?.selected_estimate_id ?? p.metadata?.enhanced_estimate_id)
-        .filter(Boolean)
-    )) as string[];
-  }, [projects]);
+  // Fetch estimates by pipeline_entry_id (not metadata — metadata keys are often missing)
+  const projectIds = useMemo(() => (projects || []).map((p: any) => p.id), [projects]);
 
   const { data: estimates } = useQuery({
-    queryKey: ['ar-estimates', activeTenantId, estimateIds],
+    queryKey: ['ar-estimates', activeTenantId, projectIds],
     queryFn: async () => {
-      if (estimateIds.length === 0) return [];
+      if (projectIds.length === 0) return [];
       const { data, error } = await supabase
         .from('enhanced_estimates')
         .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost')
-        .in('id', estimateIds);
+        .in('pipeline_entry_id', projectIds);
       if (error) throw error;
       return (data || []) as any[];
     },
-    enabled: !!activeTenantId && estimateIds.length > 0,
+    enabled: !!activeTenantId && projectIds.length > 0,
   });
 
   const now = new Date();
@@ -143,13 +136,26 @@ export default function AccountsReceivable() {
   const arData = useMemo(() => {
     if (!projects) return { items: [], totalOutstanding: 0, totalMaterial: 0, totalLabor: 0, buckets: { current: 0, days30: 0, days60: 0, days90: 0 } };
 
+    // Group estimates by pipeline_entry_id, then pick the selected one or highest-priced
     const estimateMap = new Map<string, { selling_price: number; material_cost: number; labor_cost: number }>();
+    const groupedEstimates = new Map<string, any[]>();
     (estimates || []).forEach(e => {
-      estimateMap.set(e.pipeline_entry_id, {
-        selling_price: Number(e.selling_price) || 0,
-        material_cost: Number(e.material_cost) || 0,
-        labor_cost: Number(e.labor_cost) || 0,
-      });
+      const list = groupedEstimates.get(e.pipeline_entry_id) || [];
+      list.push(e);
+      groupedEstimates.set(e.pipeline_entry_id, list);
+    });
+    groupedEstimates.forEach((list, entryId) => {
+      const project = (projects || []).find((p: any) => p.id === entryId);
+      const selectedId = project?.metadata?.selected_estimate_id ?? project?.metadata?.enhanced_estimate_id;
+      const picked = list.find(e => e.id === selectedId)
+        || list.sort((a, b) => Number(b.selling_price) - Number(a.selling_price))[0];
+      if (picked) {
+        estimateMap.set(entryId, {
+          selling_price: Number(picked.selling_price) || 0,
+          material_cost: Number(picked.material_cost) || 0,
+          labor_cost: Number(picked.labor_cost) || 0,
+        });
+      }
     });
 
     const paymentMap = new Map<string, number>();

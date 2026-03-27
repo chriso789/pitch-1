@@ -319,22 +319,32 @@ const Pipeline = () => {
       
       // Note: salesReps and locations are loaded separately above, not derived from pipeline data
 
-      // Batch-fetch selling prices from enhanced_estimates for entries with a selected estimate
-      const estimateIds = filteredData
-        .map(entry => (entry.metadata as any)?.selected_estimate_id ?? (entry.metadata as any)?.enhanced_estimate_id)
-        .filter(Boolean);
+      // Batch-fetch selling prices from enhanced_estimates by pipeline_entry_id (not metadata)
+      const entryIds = filteredData.map(entry => entry.id).filter(Boolean);
       
       const estimatePriceMap = new Map<string, number>();
-      if (estimateIds.length > 0) {
-        const uniqueEstimateIds = [...new Set(estimateIds)] as string[];
+      if (entryIds.length > 0) {
         const { data: estimates } = await supabase
           .from('enhanced_estimates')
           .select('id, pipeline_entry_id, selling_price')
-          .in('id', uniqueEstimateIds);
+          .in('pipeline_entry_id', entryIds);
         
+        // Group by pipeline_entry_id, pick selected or highest-priced
+        const grouped = new Map<string, any[]>();
         (estimates || []).forEach((est: any) => {
           if (est.pipeline_entry_id) {
-            estimatePriceMap.set(est.pipeline_entry_id, Number(est.selling_price) || 0);
+            const list = grouped.get(est.pipeline_entry_id) || [];
+            list.push(est);
+            grouped.set(est.pipeline_entry_id, list);
+          }
+        });
+        grouped.forEach((list, pipelineEntryId) => {
+          const entry = filteredData.find(e => e.id === pipelineEntryId);
+          const selectedId = (entry?.metadata as any)?.selected_estimate_id ?? (entry?.metadata as any)?.enhanced_estimate_id;
+          const picked = list.find(e => e.id === selectedId)
+            || list.sort((a, b) => Number(b.selling_price) - Number(a.selling_price))[0];
+          if (picked) {
+            estimatePriceMap.set(pipelineEntryId, Number(picked.selling_price) || 0);
           }
         });
       }
