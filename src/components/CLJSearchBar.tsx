@@ -70,7 +70,7 @@ export const CLJSearchBar = () => {
   const [recents, setRecents] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
-  const [showRecents, setShowRecents] = useState(false);
+  
   const inputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -99,11 +99,10 @@ export const CLJSearchBar = () => {
     const searchAll = async () => {
       if (searchTerm.length < 2) {
         setResults([]);
-        // Don't close if showing recents
-        if (!showRecents) setOpen(false);
+        // Don't close if recents are showing
+        if (recents.length === 0) setOpen(false);
         return;
       }
-      setShowRecents(false);
 
       setLoading(true);
       try {
@@ -150,14 +149,12 @@ export const CLJSearchBar = () => {
     saveRecent(result);
     navigate(routes[result.entity_type]);
     setOpen(false);
-    setShowRecents(false);
     setSearchTerm('');
   };
 
   const clearRecents = () => {
     localStorage.removeItem(RECENT_SEARCHES_KEY);
     setRecents([]);
-    setShowRecents(false);
     setOpen(false);
   };
 
@@ -181,7 +178,6 @@ export const CLJSearchBar = () => {
             const r = loadRecents();
             if (r.length > 0) {
               setRecents(r);
-              setShowRecents(true);
               setOpen(true);
             }
           }
@@ -206,7 +202,7 @@ export const CLJSearchBar = () => {
               )}
 
               {/* Recent Searches */}
-              {showRecents && recents.length > 0 && searchTerm.length < 2 && (
+              {recents.length > 0 && searchTerm.length < 2 && (
                 <CommandGroup heading={
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-1.5">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -6,35 +6,76 @@ import { useActiveTenantId } from '@/hooks/useActiveTenantId';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Loader2, DollarSign, Clock, AlertCircle, CheckCircle } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Loader2, DollarSign, Clock, CheckCircle, Package, Hammer, Filter } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { format, differenceInDays } from 'date-fns';
+import { format, differenceInDays, subDays, startOfMonth, startOfQuarter, startOfYear } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 
-const formatCurrency = (amount: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(amount);
+const fmt = (n: number) =>
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+type TimeFilter = 'all' | 'month' | '30days' | 'quarter' | 'year';
+
+const TIME_FILTERS: { value: TimeFilter; label: string }[] = [
+  { value: 'all', label: 'All Time' },
+  { value: 'month', label: 'This Month' },
+  { value: '30days', label: 'Last 30 Days' },
+  { value: 'quarter', label: 'This Quarter' },
+  { value: 'year', label: 'This Year' },
+];
+
+function getFilterDate(filter: TimeFilter): Date | null {
+  const now = new Date();
+  switch (filter) {
+    case 'month': return startOfMonth(now);
+    case '30days': return subDays(now, 30);
+    case 'quarter': return startOfQuarter(now);
+    case 'year': return startOfYear(now);
+    default: return null;
+  }
+}
 
 export default function AccountsReceivable() {
   const { activeTenantId } = useActiveTenantId();
   const navigate = useNavigate();
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
 
-  const { data: invoices, isLoading } = useQuery({
-    queryKey: ['ar-all-invoices', activeTenantId],
+  // Fetch all projects (pipeline_entries with status 'project')
+  const { data: projects, isLoading: projectsLoading } = useQuery({
+    queryKey: ['ar-projects', activeTenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('id, lead_name, created_at, status, contacts(first_name, last_name, address_line1, address_city, address_state)')
+        .eq('tenant_id', activeTenantId!)
+        .eq('is_deleted', false)
+        .eq('status', 'project')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    enabled: !!activeTenantId,
+  });
+
+  // Fetch invoices for all projects
+  const { data: invoices } = useQuery({
+    queryKey: ['ar-invoices', activeTenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_invoices')
-        .select('*, pipeline_entries!inner(id, contact_name, address)')
+        .select('id, pipeline_entry_id, invoice_number, amount, balance, status, due_date, created_at')
         .eq('tenant_id', activeTenantId!)
-        .in('status', ['draft', 'sent', 'partial'])
-        .order('created_at', { ascending: false });
+        .in('status', ['draft', 'sent', 'partial']);
       if (error) throw error;
       return data || [];
     },
     enabled: !!activeTenantId,
   });
 
+  // Fetch payments
   const { data: payments } = useQuery({
-    queryKey: ['ar-all-payments', activeTenantId],
+    queryKey: ['ar-payments', activeTenantId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('project_payments')
@@ -46,7 +87,101 @@ export default function AccountsReceivable() {
     enabled: !!activeTenantId,
   });
 
-  if (isLoading) {
+  // Fetch estimate data for all projects (selling price, materials, labor) — use approved status
+  const { data: estimates } = useQuery({
+    queryKey: ['ar-estimates', activeTenantId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('pipeline_entry_id, selling_price, material_cost, labor_cost, status')
+        .eq('tenant_id', activeTenantId!)
+        .eq('status', 'approved');
+      if (error) throw error;
+      return (data || []) as any[];
+    },
+    enabled: !!activeTenantId,
+  });
+
+  const now = new Date();
+  const filterDate = getFilterDate(timeFilter);
+
+  const arData = useMemo(() => {
+    if (!projects) return { items: [], totalOutstanding: 0, totalMaterial: 0, totalLabor: 0, buckets: { current: 0, days30: 0, days60: 0, days90: 0 } };
+
+    const estimateMap = new Map<string, { selling_price: number; material_cost: number; labor_cost: number }>();
+    (estimates || []).forEach(e => {
+      estimateMap.set(e.pipeline_entry_id, {
+        selling_price: Number(e.selling_price) || 0,
+        material_cost: Number(e.material_cost) || 0,
+        labor_cost: Number(e.labor_cost) || 0,
+      });
+    });
+
+    const paymentMap = new Map<string, number>();
+    (payments || []).forEach(p => {
+      paymentMap.set(p.pipeline_entry_id, (paymentMap.get(p.pipeline_entry_id) || 0) + Number(p.amount));
+    });
+
+    const invoiceMap = new Map<string, typeof invoices>();
+    (invoices || []).forEach(inv => {
+      const list = invoiceMap.get(inv.pipeline_entry_id) || [];
+      list.push(inv);
+      invoiceMap.set(inv.pipeline_entry_id, list);
+    });
+
+    let filtered = projects;
+    if (filterDate) {
+      filtered = projects.filter(p => new Date(p.created_at) >= filterDate);
+    }
+
+    let totalOutstanding = 0;
+    let totalMaterial = 0;
+    let totalLabor = 0;
+    const buckets = { current: 0, days30: 0, days60: 0, days90: 0 };
+
+    const items = filtered.map(project => {
+      const est = estimateMap.get(project.id);
+      const contractValue = est?.selling_price || 0;
+      const totalPaid = paymentMap.get(project.id) || 0;
+      const projectInvoices = invoiceMap.get(project.id) || [];
+      const balance = contractValue - totalPaid;
+
+      totalMaterial += est?.material_cost || 0;
+      totalLabor += est?.labor_cost || 0;
+
+      if (balance > 0) {
+        totalOutstanding += balance;
+        // Aging: use earliest unpaid invoice due_date, or project created_at
+        const oldestDue = projectInvoices
+          .filter(i => Number(i.balance) > 0 && i.due_date)
+          .sort((a, b) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())[0];
+
+        const age = oldestDue?.due_date ? differenceInDays(now, new Date(oldestDue.due_date)) : 0;
+        if (age <= 0) buckets.current += balance;
+        else if (age <= 30) buckets.days30 += balance;
+        else if (age <= 60) buckets.days60 += balance;
+        else buckets.days90 += balance;
+      }
+
+      const contact = Array.isArray(project.contacts) ? project.contacts[0] : project.contacts;
+      return {
+        id: project.id,
+        name: project.lead_name || 
+          (contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'Unknown'),
+        address: contact ? [contact.address_line1, contact.address_city, contact.address_state].filter(Boolean).join(', ') : '',
+        contractValue,
+        totalPaid,
+        balance,
+        invoiceCount: projectInvoices.length,
+        hasInvoice: projectInvoices.length > 0,
+      };
+    }).filter(p => p.balance > 0)
+      .sort((a, b) => b.balance - a.balance);
+
+    return { items, totalOutstanding, totalMaterial, totalLabor, buckets };
+  }, [projects, estimates, payments, invoices, filterDate]);
+
+  if (projectsLoading) {
     return (
       <GlobalLayout>
         <div className="flex items-center justify-center h-64">
@@ -56,111 +191,114 @@ export default function AccountsReceivable() {
     );
   }
 
-  const now = new Date();
-  const totalOutstanding = (invoices || []).reduce((sum, inv) => sum + Number(inv.balance), 0);
-
-  // Aging buckets
-  const buckets = { current: 0, days30: 0, days60: 0, days90: 0 };
-  (invoices || []).forEach(inv => {
-    const age = inv.due_date ? differenceInDays(now, new Date(inv.due_date)) : 0;
-    const bal = Number(inv.balance);
-    if (age <= 0) buckets.current += bal;
-    else if (age <= 30) buckets.days30 += bal;
-    else if (age <= 60) buckets.days60 += bal;
-    else buckets.days90 += bal;
-  });
-
   return (
     <GlobalLayout>
       <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold mb-2">Accounts Receivable</h1>
-          <p className="text-muted-foreground">Track outstanding invoices and payments across all projects</p>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Accounts Receivable</h1>
+            <p className="text-muted-foreground">Track outstanding balances, costs, and payments across all projects</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Filter className="h-4 w-4 text-muted-foreground" />
+            <Select value={timeFilter} onValueChange={(v) => setTimeFilter(v as TimeFilter)}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {TIME_FILTERS.map(f => (
+                  <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">Total Outstanding</p>
-              <p className="text-xl font-bold">{formatCurrency(totalOutstanding)}</p>
+              <p className="text-xl font-bold">{fmt(arData.totalOutstanding)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total Material Cost</p>
+              <p className="text-xl font-bold text-blue-600">{fmt(arData.totalMaterial)}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total Labor Cost</p>
+              <p className="text-xl font-bold text-orange-600">{fmt(arData.totalLabor)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">Current</p>
-              <p className="text-xl font-bold text-green-600">{formatCurrency(buckets.current)}</p>
+              <p className="text-xl font-bold text-green-600">{fmt(arData.buckets.current)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">1-30 Days</p>
-              <p className="text-xl font-bold text-yellow-600">{formatCurrency(buckets.days30)}</p>
+              <p className="text-xl font-bold text-yellow-600">{fmt(arData.buckets.days30)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">31-60 Days</p>
-              <p className="text-xl font-bold text-orange-600">{formatCurrency(buckets.days60)}</p>
+              <p className="text-xl font-bold text-orange-600">{fmt(arData.buckets.days60)}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
               <p className="text-xs text-muted-foreground">90+ Days</p>
-              <p className="text-xl font-bold text-red-600">{formatCurrency(buckets.days90)}</p>
+              <p className="text-xl font-bold text-red-600">{fmt(arData.buckets.days90)}</p>
             </CardContent>
           </Card>
         </div>
 
-        {/* Invoice List */}
+        {/* Project List */}
         <Card>
           <CardHeader>
-            <CardTitle>Outstanding Invoices</CardTitle>
+            <CardTitle>Outstanding Projects ({arData.items.length})</CardTitle>
           </CardHeader>
           <CardContent>
-            {(invoices || []).length === 0 ? (
+            {arData.items.length === 0 ? (
               <div className="text-center py-8">
                 <CheckCircle className="h-12 w-12 text-green-500 mx-auto mb-3" />
-                <p className="text-muted-foreground">No outstanding invoices — all caught up!</p>
+                <p className="text-muted-foreground">No outstanding balances — all caught up!</p>
               </div>
             ) : (
               <div className="space-y-2">
-                {(invoices || []).map(inv => {
-                  const entry = inv.pipeline_entries as any;
-                  const age = inv.due_date ? differenceInDays(now, new Date(inv.due_date)) : 0;
-                  return (
-                    <div
-                      key={inv.id}
-                      className="flex items-center justify-between p-4 bg-muted/30 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                      onClick={() => navigate(`/lead/${inv.pipeline_entry_id}?tab=estimate`)}
-                    >
-                      <div>
-                        <p className="text-sm font-medium">{entry?.contact_name || 'Unknown'}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {inv.invoice_number}
-                          {entry?.address && ` · ${entry.address}`}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <p className="text-sm font-bold">{formatCurrency(Number(inv.balance))}</p>
-                          {inv.due_date && (
-                            <p className={cn("text-xs", age > 0 ? "text-red-500" : "text-muted-foreground")}>
-                              {age > 0 ? `${age}d overdue` : `Due ${format(new Date(inv.due_date), 'MMM d')}`}
-                            </p>
-                          )}
-                        </div>
-                        <Badge variant="outline" className={cn("text-xs",
-                          inv.status === 'sent' && "bg-blue-500/10 text-blue-600 border-blue-500/30",
-                          inv.status === 'partial' && "bg-yellow-500/10 text-yellow-600 border-yellow-500/30",
-                          inv.status === 'draft' && "bg-muted text-muted-foreground",
-                        )}>
-                          {inv.status}
-                        </Badge>
-                      </div>
+                {arData.items.map(item => (
+                  <div
+                    key={item.id}
+                    className="flex items-center justify-between p-4 bg-muted/30 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
+                    onClick={() => navigate(`/lead/${item.id}?tab=total`)}
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{item.name || 'Unknown'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.address && `${item.address} · `}
+                        Contract: {fmt(item.contractValue)} · Paid: {fmt(item.totalPaid)}
+                      </p>
                     </div>
-                  );
-                })}
+                    <div className="flex items-center gap-3">
+                      <div className="text-right">
+                        <p className="text-sm font-bold">{fmt(item.balance)}</p>
+                        <p className="text-xs text-muted-foreground">balance</p>
+                      </div>
+                      {!item.hasInvoice && (
+                        <Badge variant="outline" className="text-xs bg-yellow-500/10 text-yellow-600 border-yellow-500/30">
+                          No Invoice
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
