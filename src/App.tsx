@@ -148,6 +148,7 @@ import GoodBetterBestBuilderPage from "./pages/GoodBetterBestBuilderPage";
 import AutomatedReviewCollectionPage from "./pages/AutomatedReviewCollectionPage";
 import LoyaltyPointsPage from "./pages/LoyaltyPointsPage";
 import MarketingAssetsPage from "./pages/MarketingAssetsPage";
+import AccountsReceivable from "./pages/AccountsReceivable";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
