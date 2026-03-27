@@ -163,6 +163,7 @@ export default function AccountsReceivable() {
         else buckets.days90 += balance;
       }
 
+      const contact = Array.isArray(project.contacts) ? project.contacts[0] : project.contacts;
       return {
         id: project.id,
         name: project.lead_name || 
