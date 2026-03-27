@@ -6,7 +6,8 @@ import { Separator } from '@/components/ui/separator';
 import { 
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
-  ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3
+  ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
+  CreditCard
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -14,6 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
+import { PaymentsTab } from '@/components/estimates/PaymentsTab';
 import { format } from 'date-fns';
 
 interface ProfitCenterPanelProps {
