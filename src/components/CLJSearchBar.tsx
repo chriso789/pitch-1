@@ -177,6 +177,13 @@ export const CLJSearchBar = () => {
         onFocus={() => {
           if (searchTerm.length >= 2 && results.length > 0) {
             setOpen(true);
+          } else if (searchTerm.length < 2) {
+            const r = loadRecents();
+            if (r.length > 0) {
+              setRecents(r);
+              setShowRecents(true);
+              setOpen(true);
+            }
           }
         }}
         className="pl-9"
