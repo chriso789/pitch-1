@@ -82,13 +82,13 @@ export function usePipelineStages() {
       return data.map(stage => ({
         id: stage.id,
         name: stage.name,
-        // Use database key if set, otherwise fallback to auto-generated
         key: stage.key || generateStageKey(stage.name),
         color: hexToTailwindColor(stage.color),
         description: stage.description,
         probability_percent: stage.probability_percent,
         stage_order: stage.stage_order,
         is_active: stage.is_active,
+        is_terminal: stage.is_terminal ?? false,
       }));
     },
     staleTime: 5 * 60 * 1000, // 5 minutes
