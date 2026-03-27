@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { canViewAllRecords } from "@/lib/roleUtils";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -45,6 +45,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
 import { useLocation } from "@/contexts/LocationContext";
+import { useUserProfile } from "@/contexts/UserProfileContext";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
@@ -63,9 +65,6 @@ const Pipeline = () => {
   const [bulkActionMode, setBulkActionMode] = useState(false);
   const [stageTotals, setStageTotals] = useState({});
   const [salesReps, setSalesReps] = useState([]);
-  const [locations, setLocations] = useState([]);
-  const [userRole, setUserRole] = useState<string>('');
-  const [isManager, setIsManager] = useState(false);
   const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
   const [pendingTransition, setPendingTransition] = useState<{
     entryId: string;
@@ -75,7 +74,13 @@ const Pipeline = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const { currentLocationId, currentLocation } = useLocation();
-  const [resolvedTenantId, setResolvedTenantId] = useState<string | null>(null);
+  
+  // Use unified tenant and profile hooks instead of manual lookups
+  const { profile } = useUserProfile();
+  const effectiveTenantId = useEffectiveTenantId();
+  
+  const userRole = profile?.role || '';
+  const isManager = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(userRole);
 
   const { stages: dynamicStages } = usePipelineStages();
 
@@ -97,17 +102,12 @@ const Pipeline = () => {
     );
   };
 
-  // Fetch user role
+  // Fetch pipeline data when tenant, location, stages, or filters change
   useEffect(() => {
-    fetchUserRole();
-  }, []);
-
-  // Fetch pipeline data from Supabase
-  useEffect(() => {
-    if (dynamicStages.length > 0) {
+    if (dynamicStages.length > 0 && effectiveTenantId) {
       fetchPipelineData();
     }
-  }, [filters, currentLocationId, dynamicStages]);
+  }, [filters, currentLocationId, dynamicStages, effectiveTenantId]);
 
   // Listen for location changes
   useEffect(() => {
@@ -124,17 +124,17 @@ const Pipeline = () => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     
     // Skip realtime if no tenant resolved yet
-    if (!resolvedTenantId) return;
+    if (!effectiveTenantId) return;
     
     const channel = supabase
-      .channel(`pipeline-entries-changes-${resolvedTenantId}`)
+      .channel(`pipeline-entries-changes-${effectiveTenantId}`)
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
           table: 'pipeline_entries',
-          filter: `tenant_id=eq.${resolvedTenantId}`
+          filter: `tenant_id=eq.${effectiveTenantId}`
         },
         () => {
           // Debounce: batch rapid changes into a single refetch
@@ -150,27 +150,9 @@ const Pipeline = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       supabase.removeChannel(channel);
     };
-  }, [filters, resolvedTenantId]);
+  }, [filters, effectiveTenantId]);
 
-  const fetchUserRole = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .maybeSingle();
-
-      if (profile) {
-        setUserRole(profile.role);
-        setIsManager(['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(profile.role));
-      }
-    } catch (error) {
-      console.error('Error fetching user role:', error);
-    }
-  };
+  // fetchUserRole removed — role comes from useUserProfile hook
 
   // Filter data based on search query
   const filterBySearch = (data: any[]) => {
@@ -195,29 +177,17 @@ const Pipeline = () => {
     try {
       setLoading(true);
       
-      // Get current user's effective tenant ID
+      // Guard: don't fetch without a resolved tenant
+      if (!effectiveTenantId) {
+        setLoading(false);
+        return;
+      }
+      
+      // Get current user ID for role-based filtering
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
-      const { data: currentProfile } = await supabase
-        .from('profiles')
-        .select('tenant_id, active_tenant_id, role')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
-      const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
-      
-      // Store resolved tenant for realtime subscription
-      setResolvedTenantId(effectiveTenantId || null);
-      
-      // Also set user role from the same profile fetch (avoid duplicate query)
-      if (currentProfile?.role) {
-        setUserRole(currentProfile.role);
-        setIsManager(['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(currentProfile.role));
-      }
-      
-      // --- Run reps, locations, and pipeline queries in PARALLEL ---
+      // --- Run reps and pipeline queries in PARALLEL ---
       
       // Build reps query (needs location assignments first if location is set)
       const fetchReps = async () => {
@@ -279,25 +249,16 @@ const Pipeline = () => {
         }
 
         // Sales reps only see pipeline entries assigned to them or created by them
-        if (currentProfile?.role && !canViewAllRecords(currentProfile.role)) {
+        if (userRole && !canViewAllRecords(userRole)) {
           query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
         }
 
         return query.order('created_at', { ascending: filters.sortOrder === 'asc' });
       };
       
-      // Fetch locations query
-      const fetchLocations = () => supabase
-        .from('business_locations')
-        .select('id, name')
-        .eq('tenant_id', effectiveTenantId)
-        .eq('status', 'active')
-        .order('name');
-      
-      // Execute all three in parallel
-      const [repsResult, locationsResult, pipelineResult] = await Promise.all([
+      // Execute both in parallel (locations come from LocationContext now)
+      const [repsResult, pipelineResult] = await Promise.all([
         fetchReps(),
-        fetchLocations(),
         fetchPipeline(),
       ]);
       
@@ -311,11 +272,6 @@ const Pipeline = () => {
           id: rep.id,
           name: `${rep.first_name} ${rep.last_name}`
         })));
-      }
-      
-      // Process locations
-      if (locationsResult.data) {
-        setLocations(locationsResult.data);
       }
       
       // Process pipeline
@@ -1197,10 +1153,20 @@ const Pipeline = () => {
         </CardContent>
       </Card>
 
-      {loading ? (
+      {(loading || !effectiveTenantId) ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin" />
-          <span className="ml-2">Loading pipeline data...</span>
+          <span className="ml-2">
+            {!effectiveTenantId ? 'Resolving company context...' : 'Loading pipeline data...'}
+          </span>
+        </div>
+      ) : Object.values(pipelineData).every((arr: any) => arr.length === 0) ? (
+        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+          <AlertCircle className="h-12 w-12 mb-4 opacity-50" />
+          <p className="text-lg font-medium">No pipeline entries found</p>
+          <p className="text-sm mt-1">
+            {currentLocation ? `Showing results for ${currentLocation.name}` : 'No location filter applied'}
+          </p>
         </div>
       ) : (
         <DndContext
