@@ -164,7 +164,10 @@ export default function AccountsReceivable() {
       }
 
       return {
-        ...project,
+        id: project.id,
+        name: project.lead_name || 
+          (contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'Unknown'),
+        address: contact ? [contact.address_line1, contact.address_city, contact.address_state].filter(Boolean).join(', ') : '',
         contractValue,
         totalPaid,
         balance,
