@@ -11,6 +11,7 @@ export interface PipelineStage {
   probability_percent: number;
   stage_order: number;
   is_active: boolean;
+  is_terminal: boolean;
 }
 
 // Default fallback stages (used when no custom stages exist)
