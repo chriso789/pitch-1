@@ -202,7 +202,7 @@ export const CLJSearchBar = () => {
               )}
 
               {/* Recent Searches */}
-              {showRecents && recents.length > 0 && searchTerm.length < 2 && (
+              {recents.length > 0 && searchTerm.length < 2 && (
                 <CommandGroup heading={
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-1.5">
