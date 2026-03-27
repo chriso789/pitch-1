@@ -177,29 +177,17 @@ const Pipeline = () => {
     try {
       setLoading(true);
       
-      // Get current user's effective tenant ID
+      // Guard: don't fetch without a resolved tenant
+      if (!effectiveTenantId) {
+        setLoading(false);
+        return;
+      }
+      
+      // Get current user ID for role-based filtering
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
       
-      const { data: currentProfile } = await supabase
-        .from('profiles')
-        .select('tenant_id, active_tenant_id, role')
-        .eq('id', user.id)
-        .maybeSingle();
-      
-      // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
-      const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
-      
-      // Store resolved tenant for realtime subscription
-      setResolvedTenantId(effectiveTenantId || null);
-      
-      // Also set user role from the same profile fetch (avoid duplicate query)
-      if (currentProfile?.role) {
-        setUserRole(currentProfile.role);
-        setIsManager(['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(currentProfile.role));
-      }
-      
-      // --- Run reps, locations, and pipeline queries in PARALLEL ---
+      // --- Run reps and pipeline queries in PARALLEL ---
       
       // Build reps query (needs location assignments first if location is set)
       const fetchReps = async () => {
@@ -261,25 +249,16 @@ const Pipeline = () => {
         }
 
         // Sales reps only see pipeline entries assigned to them or created by them
-        if (currentProfile?.role && !canViewAllRecords(currentProfile.role)) {
+        if (userRole && !canViewAllRecords(userRole)) {
           query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
         }
 
         return query.order('created_at', { ascending: filters.sortOrder === 'asc' });
       };
       
-      // Fetch locations query
-      const fetchLocations = () => supabase
-        .from('business_locations')
-        .select('id, name')
-        .eq('tenant_id', effectiveTenantId)
-        .eq('status', 'active')
-        .order('name');
-      
-      // Execute all three in parallel
-      const [repsResult, locationsResult, pipelineResult] = await Promise.all([
+      // Execute both in parallel (locations come from LocationContext now)
+      const [repsResult, pipelineResult] = await Promise.all([
         fetchReps(),
-        fetchLocations(),
         fetchPipeline(),
       ]);
       
@@ -293,11 +272,6 @@ const Pipeline = () => {
           id: rep.id,
           name: `${rep.first_name} ${rep.last_name}`
         })));
-      }
-      
-      // Process locations
-      if (locationsResult.data) {
-        setLocations(locationsResult.data);
       }
       
       // Process pipeline
