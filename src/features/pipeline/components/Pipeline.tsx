@@ -1,4 +1,4 @@
-// Pipeline board — rebuild 2026-03-27T16:30
+// Pipeline board — rebuild 2026-03-27T17:00 — estimate price lookup fix
 import React, { useState, useEffect, useCallback } from 'react';
 import { canViewAllRecords } from "@/lib/roleUtils";
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
@@ -319,6 +319,26 @@ const Pipeline = () => {
       
       // Note: salesReps and locations are loaded separately above, not derived from pipeline data
 
+      // Batch-fetch selling prices from enhanced_estimates for entries with a selected estimate
+      const estimateIds = filteredData
+        .map(entry => (entry.metadata as any)?.selected_estimate_id)
+        .filter(Boolean);
+      
+      const estimatePriceMap = new Map<string, number>();
+      if (estimateIds.length > 0) {
+        const uniqueEstimateIds = [...new Set(estimateIds)] as string[];
+        const { data: estimates } = await supabase
+          .from('enhanced_estimates')
+          .select('id, pipeline_entry_id, selling_price')
+          .in('id', uniqueEstimateIds);
+        
+        (estimates || []).forEach((est: any) => {
+          if (est.pipeline_entry_id) {
+            estimatePriceMap.set(est.pipeline_entry_id, Number(est.selling_price) || 0);
+          }
+        });
+      }
+
       // Group data by status and calculate stage totals
       const groupedData = {};
       const totals = {};
@@ -328,9 +348,9 @@ const Pipeline = () => {
         const stageEntries = filterBySearch(filteredData.filter(entry => entry.status === stage.key));
         groupedData[stage.key] = stageEntries;
         
-        // Calculate total estimate value for this stage
+        // Calculate total estimate value for this stage using estimate prices
         const stageTotal = stageEntries.reduce((sum, entry) => {
-          return sum + (parseFloat(entry.selling_price) || 0);
+          return sum + (estimatePriceMap.get(entry.id) || 0);
         }, 0);
         
         totals[stage.key] = stageTotal;
@@ -344,7 +364,7 @@ const Pipeline = () => {
         const orphanedFiltered = filterBySearch(orphaned);
         groupedData[firstKey] = [...(groupedData[firstKey] || []), ...orphanedFiltered];
         // Add orphaned values to first stage total
-        const orphanedTotal = orphanedFiltered.reduce((sum, entry) => sum + (parseFloat(entry.selling_price) || 0), 0);
+        const orphanedTotal = orphanedFiltered.reduce((sum, entry) => sum + (estimatePriceMap.get(entry.id) || 0), 0);
         totals[firstKey] = (totals[firstKey] || 0) + orphanedTotal;
       }
 

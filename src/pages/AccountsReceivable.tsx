@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useActiveTenantId } from '@/hooks/useActiveTenantId';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { usePipelineStages } from '@/hooks/usePipelineStages';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -44,7 +44,7 @@ function getFilterDate(filter: TimeFilter): Date | null {
 }
 
 export default function AccountsReceivable() {
-  const { activeTenantId } = useActiveTenantId();
+  const activeTenantId = useEffectiveTenantId();
   const navigate = useNavigate();
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('all');
   const { stages, isLoading: stagesLoading } = usePipelineStages();
