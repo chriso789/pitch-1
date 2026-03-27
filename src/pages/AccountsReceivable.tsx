@@ -216,7 +216,7 @@ export default function AccountsReceivable() {
     return { items, totalOutstanding, totalMaterial, totalLabor, buckets };
   }, [projects, estimates, payments, invoices, filterDate]);
 
-  if (projectsLoading) {
+  if (projectsLoading || stagesLoading) {
     return (
       <GlobalLayout>
         <div className="flex items-center justify-center h-64">
