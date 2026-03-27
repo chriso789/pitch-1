@@ -1,54 +1,44 @@
 
+I checked the data: Andrea Iacono exists in Tristate as both a contact and a pipeline lead, so this is not a missing-record issue. The problem is the pipeline page’s fetch/scoping logic.
 
-## Plan: Fix 3 Issues — Totals Area Payments, Recent Search, AR Dashboard
+### What is actually broken
+- `src/features/pipeline/components/Pipeline.tsx` is using its own manual tenant/profile lookup instead of the app’s hardened tenant hooks.
+- That page re-queries `profiles` directly by `auth.uid()` and builds its own tenant context, which is risky in switched-company sessions.
+- It also mixes `business_locations` with the newer `locations` + `LocationContext` flow.
+- Result: the board can fetch with bad or unresolved scope and render as completely empty even though Tristate data exists.
 
-### Issue 1: "Totals" tab shows hardcoded $34,000 placeholder — needs real payments/invoice data
+### Plan
 
-The `total` tab in `LeadDetails.tsx` (line 752-775) is a static placeholder showing `$34,000` or `$0`. It needs to show actual contract value, payments received, invoices, and balance — pulling from `project_invoices` and `project_payments` tables plus the estimate data via `api_estimate_hyperlink_bar`.
+1. **Unify tenant resolution on the pipeline page**
+   - Update `src/features/pipeline/components/Pipeline.tsx` to use `useUserProfile` and `useEffectiveTenantId`.
+   - Remove the duplicate direct `profiles` lookup used to derive tenant/role.
+   - Do not run the pipeline query until the effective tenant is resolved.
 
-**Fix**: Replace the hardcoded "Final Selling Price" card with a real financial summary that includes:
-- Contract value (from selected estimate's selling price)
-- Total payments received
-- Outstanding balance
-- Invoice list with status
-- Create Invoice / Record Payment buttons (reuse `PaymentsTab` component)
-- Total material cost and total labor cost from the estimate
+2. **Fix the pipeline fetch path**
+   - Keep the explicit tenant filter, but only apply it once a valid tenant exists.
+   - Preserve the selected location filter after tenant resolution.
+   - Add a guard so the page never silently queries with a null tenant and shows an “empty” board.
 
-**File**: `src/pages/LeadDetails.tsx` — Replace lines 752-775 to render `PaymentsTab` + a financial summary card that pulls from `api_estimate_hyperlink_bar` for materials/labor/selling price, and `project_invoices`/`project_payments` for payment data.
+3. **Align location handling**
+   - Replace the page’s `business_locations` fetch with the same location source used by `LocationContext`.
+   - Make the pipeline page honor the active company + active location consistently.
+   - This avoids “company switched but filter source is stale” behavior.
 
----
+4. **Use one pipeline data model**
+   - Refactor the page to consume the shared pipeline hook pattern (`usePipelineData`) or extend it so the board and the rest of the app use the same tenant-safe query logic.
+   - Keep the existing rep/date/search filters on top of that shared dataset.
 
-### Issue 2: Recent searches not appearing on focus
+5. **Add a meaningful failure state**
+   - If tenant/profile context is still resolving, show loading instead of a blank board.
+   - If the query returns zero rows, show whether it is due to company scope, location filter, or true no-data state.
 
-The search bar code looks correct but there's a subtle issue: `showRecents` is set to `false` by the search effect (line 106) when `searchTerm.length < 2`, which fires on initial render and clears recents before the focus handler runs. The effect runs after mount setting `showRecents = false`, then when user focuses, `onFocus` sets `showRecents = true`, but then the effect fires again due to re-render and clears it.
+### Files to update
+- `src/features/pipeline/components/Pipeline.tsx`
+- `src/hooks/usePipelineData.ts` (if expanded so the main board can use it cleanly)
+- `src/contexts/LocationContext.tsx` only if a small sync fix is needed after refactor
 
-**Fix in `CLJSearchBar.tsx`**:
-- Remove the `showRecents` state entirely — it's redundant with checking `searchTerm.length < 2 && recents.length > 0`
-- In the dropdown rendering, show recents when `open && searchTerm.length < 2 && recents.length > 0` instead of checking `showRecents`
-- In the search effect, don't set `showRecents = false` — just return early when `searchTerm.length < 2` without closing the dropdown if recents are loaded
-
----
-
-### Issue 3: AR Dashboard shows $0 — existing projects have no invoices + need cost tracking and time filter
-
-**Root causes**:
-1. Projects approved before the AR auto-creation code was added have no `project_invoices` rows
-2. The AR dashboard only queries `project_invoices` — it has no way to show projects that should have AR but don't have invoices yet
-
-**Fix in `AccountsReceivable.tsx`**:
-- Query all `pipeline_entries` with `status = 'project'` joined with their selected estimate's selling price
-- Cross-reference with `project_invoices` and `project_payments` to calculate real balances
-- For projects without invoices, show the full estimate selling price as outstanding (with a "Create Invoice" action)
-- Add total material cost and total labor cost cards (aggregate from `enhanced_estimates` or `project_cost_invoices`)
-- Add a time filter (This Month, Last 30 Days, This Quarter, This Year, All Time) that filters by `created_at`
-
----
-
-### Files to modify
-
-| File | Change |
-|------|--------|
-| `src/pages/LeadDetails.tsx` | Replace hardcoded Totals tab with real financial summary using PaymentsTab + estimate data |
-| `src/components/CLJSearchBar.tsx` | Fix recent searches visibility logic — remove redundant `showRecents` state |
-| `src/pages/AccountsReceivable.tsx` | Query project pipeline entries for AR data, add material/labor cost totals, add time filter |
-
+### Technical notes
+- Andrea’s records are present in Tristate and tied to `location_id = 8ecc4284-f815-4c44-8588-ab09232ee715` (`Main Office`).
+- Tristate also has multiple other pipeline entries, so the board should not be zeroed out.
+- The likely bug is UI-side scoping, not deleted data.
+- I will preserve the explicit tenant/location “belt-and-suspenders” filtering already used elsewhere so this does not regress during company switching.
