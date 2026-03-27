@@ -313,6 +313,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               </TabsTrigger>
               {isProject && (
                 <>
+                  <TabsTrigger value="payments" className="text-xs flex-shrink-0">
+                    <CreditCard className="h-3 w-3 mr-1" />
+                    Payments
+                  </TabsTrigger>
                   <TabsTrigger value="budget" className="text-xs flex-shrink-0">
                     <BarChart3 className="h-3 w-3 mr-1" />
                     Budget
