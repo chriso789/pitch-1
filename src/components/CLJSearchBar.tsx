@@ -147,9 +147,18 @@ export const CLJSearchBar = () => {
       job: `/lead/${result.entity_id}`
     };
 
+    saveRecent(result);
     navigate(routes[result.entity_type]);
     setOpen(false);
+    setShowRecents(false);
     setSearchTerm('');
+  };
+
+  const clearRecents = () => {
+    localStorage.removeItem(RECENT_SEARCHES_KEY);
+    setRecents([]);
+    setShowRecents(false);
+    setOpen(false);
   };
 
   // Group results by type
