@@ -73,7 +73,7 @@ export default function AccountsReceivable() {
       if (arStatuses.length === 0) return [];
       const { data, error } = await supabase
         .from('pipeline_entries')
-        .select('id, lead_name, created_at, status, metadata, contacts(first_name, last_name, address_line1, address_city, address_state)')
+        .select('id, lead_name, created_at, status, metadata, contacts(first_name, last_name, address_street, address_city, address_state)')
         .eq('tenant_id', activeTenantId!)
         .eq('is_deleted', false)
         .in('status', arStatuses)
@@ -209,7 +209,7 @@ export default function AccountsReceivable() {
         id: project.id,
         name: project.lead_name || 
           (contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : 'Unknown'),
-        address: contact ? [contact.address_line1, contact.address_city, contact.address_state].filter(Boolean).join(', ') : '',
+        address: contact ? [contact.address_street, contact.address_city, contact.address_state].filter(Boolean).join(', ') : '',
         contractValue,
         totalPaid,
         balance,
