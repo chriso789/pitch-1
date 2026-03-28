@@ -224,14 +224,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       testId: TEST_IDS.sidebar.contacts
     },
     {
-      name: "Jobs",
-      href: "jobs",
-      path: "/jobs",
-      icon: Wrench,
-      description: "Job management",
-      testId: TEST_IDS.sidebar.jobs
-    },
-    {
       name: "Estimates",
       href: "estimates",
       path: "/estimates",
