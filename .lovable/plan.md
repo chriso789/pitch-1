@@ -1,38 +1,27 @@
 
 
-## Plan: Restructure AR Summary Cards Layout
+## Plan: Remove "Jobs" from Sidebar & Move "Follow Up Hub" Above "Pipeline"
 
-### Problem
-The 7 summary cards are crammed into one row. The "days" labels and dollar totals are truncated. The user wants:
-1. Move the aging bucket labels ("1-30 Days", "31-60 Days", etc.) above the totals
-2. Widen the total values so they're fully visible
+### Changes
 
-### Fix
+**File: `src/shared/components/layout/Sidebar.tsx`**
 
-**File: `src/pages/AccountsReceivable.tsx`** (lines 259-302)
+1. **Remove "Jobs" from the `navigation` array** (lines 226-233) — delete the entire Jobs object since jobs are already accessible via the Pipeline.
 
-Split the 7 cards into two rows:
-- **Row 1** (3 columns): Total Outstanding, Total Material Cost, Total Labor Cost — wider cards with `text-xl` values
-- **Row 2** (4 columns): Current, 1-30 Days, 31-60 Days, 90+ Days — aging buckets with `text-xl` values
+2. **Move "Follow Up Hub" above Pipeline** — The Follow Up Hub is currently rendered *after* the `navigation.map()` loop (line 425+). To place it above Pipeline, move the entire Communications expandable section block (lines 425-530ish) to *before* the `navigation.map()` loop, so it renders first in the nav list.
 
-Each row uses fewer columns, giving cards more space. Labels stay above values (already the case), but removing `truncate` from values and using larger text ensures full visibility.
+The navigation order will become:
+- Follow Up Hub (expandable)
+- Pipeline
+- Contacts
+- Estimates
+- Production
+- Accounts Receivable
+- Calendar
+- Storm Canvas Pro
+- Smart Docs
+- Presentations
+- Permit Expediter
 
-```tsx
-{/* Row 1: Totals */}
-<div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-  <Card>/* Total Outstanding - text-xl font-bold */</Card>
-  <Card>/* Total Material Cost */</Card>
-  <Card>/* Total Labor Cost */</Card>
-</div>
-
-{/* Row 2: Aging Buckets */}
-<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-  <Card>/* Current */</Card>
-  <Card>/* 1-30 Days */</Card>
-  <Card>/* 31-60 Days */</Card>
-  <Card>/* 90+ Days */</Card>
-</div>
-```
-
-Remove `truncate` from all value `<p>` elements and use `text-xl` so dollar amounts display fully. Single-file change.
+Single-file change.
 
