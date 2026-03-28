@@ -255,48 +255,52 @@ export default function AccountsReceivable() {
           </div>
         </div>
 
-        {/* Summary Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-4">
+        {/* Summary Cards - Row 1: Totals */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">Total Outstanding</p>
-              <p className="text-lg font-bold truncate">{fmt(arData.totalOutstanding)}</p>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total Outstanding</p>
+              <p className="text-xl font-bold">{fmt(arData.totalOutstanding)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">Total Material Cost</p>
-              <p className="text-lg font-bold text-blue-600 truncate">{fmt(arData.totalMaterial)}</p>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total Material Cost</p>
+              <p className="text-xl font-bold text-blue-600">{fmt(arData.totalMaterial)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">Total Labor Cost</p>
-              <p className="text-lg font-bold text-orange-600 truncate">{fmt(arData.totalLabor)}</p>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Total Labor Cost</p>
+              <p className="text-xl font-bold text-orange-600">{fmt(arData.totalLabor)}</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Summary Cards - Row 2: Aging Buckets */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">Current</p>
+              <p className="text-xl font-bold text-green-600">{fmt(arData.buckets.current)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">Current</p>
-              <p className="text-lg font-bold text-green-600 truncate">{fmt(arData.buckets.current)}</p>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">1-30 Days</p>
+              <p className="text-xl font-bold text-yellow-600">{fmt(arData.buckets.days30)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">1-30 Days</p>
-              <p className="text-lg font-bold text-yellow-600 truncate">{fmt(arData.buckets.days30)}</p>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">31-60 Days</p>
+              <p className="text-xl font-bold text-orange-600">{fmt(arData.buckets.days60)}</p>
             </CardContent>
           </Card>
           <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">31-60 Days</p>
-              <p className="text-lg font-bold text-orange-600 truncate">{fmt(arData.buckets.days60)}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardContent className="p-4 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">90+ Days</p>
-              <p className="text-lg font-bold text-red-600 truncate">{fmt(arData.buckets.days90)}</p>
+            <CardContent className="p-4">
+              <p className="text-xs text-muted-foreground">90+ Days</p>
+              <p className="text-xl font-bold text-red-600">{fmt(arData.buckets.days90)}</p>
             </CardContent>
           </Card>
         </div>
