@@ -380,7 +380,7 @@ serve(async (req) => {
             provider_message_id: data.data?.id || null,
             telnyx_message_id: data.data?.id || null,
             provider: 'telnyx',
-            status: 'queued',
+            status: 'sent',
             sent_at: new Date().toISOString(),
             location_id: resolvedLocationId || null,
             is_read: true,
