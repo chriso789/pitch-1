@@ -1,6 +1,7 @@
 import React from "react";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { PhoneProvisioningPanel } from "@/components/admin/PhoneProvisioningPanel";
+import { TenDLCRegistrationPanel } from "@/components/admin/TenDLCRegistrationPanel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Phone, Settings } from "lucide-react";
