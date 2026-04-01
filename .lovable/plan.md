@@ -1,42 +1,55 @@
 
 
-## Diagnosis: Text Blasts Failing — "Not 10DLC registered"
+## Plan: Add 10DLC Registration Manager to Phone Settings
 
-### Root Cause
+### Problem
+Users must manually navigate the Telnyx portal to register their brand and campaign for 10DLC compliance. PITCH CRM should handle this automatically since we already manage phone provisioning.
 
-The SMS messages ARE being sent to Telnyx successfully (API accepts them), but **carriers are rejecting delivery** with error code **40010: "Not 10DLC registered"**.
+### Approach
+Use the **Telnyx 10DLC API** (`/v2/10dlc/brands`, `/v2/10dlc/campaigns`, `/v2/10dlc/campaignNumberAssignments`) to build a guided registration flow directly in the Phone Settings admin page.
 
-**10DLC (10-Digit Long Code)** is a US carrier requirement (enforced by AT&T, T-Mobile, Verizon) that requires businesses to register their phone numbers and brand before sending application-to-person (A2P) SMS. Unregistered numbers get their messages silently dropped or rejected.
+### Changes
 
-Your Telnyx number `+19415410117` is not registered with the 10DLC campaign registry, so carriers are blocking all outbound SMS from it.
+**1. New Edge Function: `supabase/functions/telnyx-10dlc/index.ts`**
+- Authenticated admin-only endpoint
+- Actions: `register-brand`, `create-campaign`, `assign-number`, `check-status`
+- `register-brand`: POST to Telnyx `/v2/10dlc/brands` with company name, EIN, vertical, website, etc.
+- `create-campaign`: POST to `/v2/10dlc/campaigns` with use case, description, sample messages, keywords (STOP/HELP/START), opt-in workflow description
+- `assign-number`: POST to `/v2/10dlc/campaignNumberAssignments` to link phone numbers to the approved campaign
+- `check-status`: GET brand/campaign status to poll for approval
+- Stores brand_id and campaign_id in a new `tenant_10dlc_registrations` table or in tenant settings JSONB
 
-### This is NOT a code bug — it's a carrier compliance issue
+**2. New Component: `src/components/admin/TenDLCRegistrationPanel.tsx`**
+- 3-step wizard UI matching what Telnyx portal shows (the screenshot):
+  - **Step 1 — Register Brand**: Company name, EIN, website URL, vertical dropdown, company address
+  - **Step 2 — Create Campaign**: Use case description, opt-in workflow, sample messages, keywords (START/STOP/HELP), auto-response messages
+  - **Step 3 — Assign Numbers**: Select from provisioned numbers, assign to campaign
+- Status badges showing brand/campaign approval state (pending, approved, rejected)
+- Auto-fills company info from tenant settings where possible
+- Pre-populates sensible defaults for a construction CRM (vertical: "Construction", keywords: STOP/HELP/START, sample opt-in/opt-out messages)
 
-The code is working correctly:
-- Blast processor runs fine
-- Telnyx API accepts the message
-- Carrier rejects delivery post-acceptance
-- Status webhook correctly updates the record to "failed" with the error
+**3. Update `src/pages/admin/PhoneSettings.tsx`**
+- Add `TenDLCRegistrationPanel` below the `PhoneProvisioningPanel`
+- Show compliance status banner: "10DLC Required — Register to enable SMS delivery"
 
-### What You Need to Do (in Telnyx portal)
+**4. New DB migration**
+- Table `ten_dlc_registrations` to store brand_id, campaign_id, status, tenant_id
+- Or store in existing tenant/location settings JSONB (simpler)
 
-1. **Log into your Telnyx account** at portal.telnyx.com
-2. Go to **Messaging → 10DLC** (or Brand Registration)
-3. **Register your brand** (company name, EIN, business type)
-4. **Create a 10DLC campaign** (describe the use case: "CRM notifications and customer communications for construction company")
-5. **Assign your phone number(s)** to the approved campaign
-6. Approval typically takes 1-5 business days
+### Technical Details
 
-### Secondary Code Fix (non-blocking)
+Telnyx 10DLC API endpoints:
+- `POST /v2/10dlc/brands` — register brand (EIN, company info)
+- `GET /v2/10dlc/brands/{id}` — check brand status
+- `POST /v2/10dlc/campaigns` — create campaign (use case, sample messages, keywords)
+- `GET /v2/10dlc/campaigns/{id}` — check campaign status  
+- `POST /v2/10dlc/campaignNumberAssignments` — assign numbers
 
-There is also a minor code issue: the `telnyx-send-sms` function inserts `sms_messages` with status `'queued'`, but the database check constraint only allows `pending`, `sent`, `delivered`, `failed`, `received`. This causes the thread message insert to fail silently. I'll fix this by changing `'queued'` to `'pending'` in the insert.
+The edge function uses the existing `telnyxFetch` helper from `_shared/telnyx.ts`.
 
-### Plan
-
-**File: `supabase/functions/telnyx-send-sms/index.ts`** (line 383)
-- Change `status: 'queued'` to `status: 'sent'` in the `sms_messages` insert
-
-Then redeploy `telnyx-send-sms`.
-
-**But the primary fix is 10DLC registration in the Telnyx portal — no code change can bypass carrier enforcement.**
+### Files
+- **New**: `supabase/functions/telnyx-10dlc/index.ts`
+- **New**: `src/components/admin/TenDLCRegistrationPanel.tsx`
+- **Edit**: `src/pages/admin/PhoneSettings.tsx` (add panel)
+- **New**: SQL migration for registration tracking
 
