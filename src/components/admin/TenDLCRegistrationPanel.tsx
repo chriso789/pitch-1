@@ -110,9 +110,12 @@ export const TenDLCRegistrationPanel = () => {
 
   const loadAvailableNumbers = async () => {
     try {
-      const { data } = await supabase.rpc("get_location_phone_numbers").select();
-      if (data && Array.isArray(data)) {
-        setAvailableNumbers(data.map((d: Record<string, unknown>) => String(d.phone_number || "")));
+      const { data } = await supabase
+        .from("locations")
+        .select("telnyx_phone_number")
+        .not("telnyx_phone_number", "is", null);
+      if (data) {
+        setAvailableNumbers(data.map((d) => d.telnyx_phone_number).filter(Boolean) as string[]);
       }
     } catch (err) {
       console.error("Failed to load numbers:", err);
