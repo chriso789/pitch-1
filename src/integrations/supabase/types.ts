@@ -35905,6 +35905,62 @@ export type Database = {
           },
         ]
       }
+      ten_dlc_registrations: {
+        Row: {
+          assigned_numbers: string[] | null
+          brand_id: string | null
+          brand_payload: Json | null
+          brand_status: string | null
+          campaign_id: string | null
+          campaign_payload: Json | null
+          campaign_status: string | null
+          created_at: string | null
+          id: string
+          telnyx_brand_response: Json | null
+          telnyx_campaign_response: Json | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_numbers?: string[] | null
+          brand_id?: string | null
+          brand_payload?: Json | null
+          brand_status?: string | null
+          campaign_id?: string | null
+          campaign_payload?: Json | null
+          campaign_status?: string | null
+          created_at?: string | null
+          id?: string
+          telnyx_brand_response?: Json | null
+          telnyx_campaign_response?: Json | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_numbers?: string[] | null
+          brand_id?: string | null
+          brand_payload?: Json | null
+          brand_status?: string | null
+          campaign_id?: string | null
+          campaign_payload?: Json | null
+          campaign_status?: string | null
+          created_at?: string | null
+          id?: string
+          telnyx_brand_response?: Json | null
+          telnyx_campaign_response?: Json | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ten_dlc_registrations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_approval_requirements: {
         Row: {
           created_at: string | null
