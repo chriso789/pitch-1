@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
       }
 
       case 'create-campaign': {
-        const { brand_id, use_case, description, sample_messages, message_flow, opt_in_keywords, opt_out_keywords, help_keywords, opt_in_message, opt_out_message, help_message } = body;
+        const { brand_id, use_case, description, sample_messages, message_flow } = body;
 
         const campaignPayload: Record<string, unknown> = {
           brandId: brand_id,

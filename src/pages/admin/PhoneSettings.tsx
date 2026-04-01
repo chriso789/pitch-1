@@ -21,6 +21,8 @@ const PhoneSettings = () => {
           </p>
         </div>
 
+        <TenDLCRegistrationPanel />
+
         <PhoneProvisioningPanel />
 
         <Card>
