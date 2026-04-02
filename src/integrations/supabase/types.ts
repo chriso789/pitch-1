@@ -25495,6 +25495,7 @@ export type Database = {
           due_date: string | null
           id: string
           invoice_number: string
+          line_items: Json | null
           notes: string | null
           pipeline_entry_id: string
           sent_at: string | null
@@ -25510,6 +25511,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           invoice_number: string
+          line_items?: Json | null
           notes?: string | null
           pipeline_entry_id: string
           sent_at?: string | null
@@ -25525,6 +25527,7 @@ export type Database = {
           due_date?: string | null
           id?: string
           invoice_number?: string
+          line_items?: Json | null
           notes?: string | null
           pipeline_entry_id?: string
           sent_at?: string | null
