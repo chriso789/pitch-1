@@ -61,7 +61,9 @@ import { ContactStatusManager } from "@/components/settings/ContactStatusManager
 import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
 import { InspectionWalkthroughSettings } from "@/components/inspection/InspectionWalkthroughSettings";
 import { DialerSettings } from "@/components/call-center/DialerSettings";
-
+import { LeadCustomFieldsManager } from "@/components/settings/LeadCustomFieldsManager";
+import { AppointmentOutcomeSettings } from "@/components/settings/AppointmentOutcomeSettings";
+import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings";
 
 interface SettingsTab {
   id: string;
