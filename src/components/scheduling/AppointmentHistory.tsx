@@ -9,8 +9,8 @@ import { format, parseISO } from 'date-fns';
 interface HistoryEntry {
   id: string;
   change_type: string;
-  old_values: Record<string, any>;
-  new_values: Record<string, any>;
+  old_values: any;
+  new_values: any;
   created_at: string;
   changed_by_profile?: {
     first_name: string;
