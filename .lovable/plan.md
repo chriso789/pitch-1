@@ -1,36 +1,42 @@
 
 
-## Plan: Fix Line Item Total Not Recalculating After Price Edit
+## Plan: Scope Recent Searches by Active Tenant
 
 ### Problem
-When you edit a line item's unit cost (e.g., change it to $25.00), the line total doesn't update. The display still shows the old total ($5,801.00 instead of 16.02 × $25.00 = $400.50).
-
-### Root Cause
-In `MultiTemplateSelector.tsx`, the `handleUpdateLineItem` wrapper syncs edits into `tradeLineItems` state — but it copies the update without recalculating `line_total`. Then a merge `useEffect` overwrites the correctly-calculated line items with the stale `tradeLineItems`, reverting the total.
+Recent searches are stored in localStorage under a single key (`pitch-recent-searches`), so when a user switches company profiles (e.g., from Tristate Contracting to O'Brien Contracting), they still see search history from the other company.
 
 ### Fix
 
-**File: `src/components/estimates/MultiTemplateSelector.tsx`** (~line 1897-1905)
+**File: `src/components/CLJSearchBar.tsx`**
 
-In the `handleUpdateLineItem` function, recalculate `line_total` when syncing to `tradeLineItems`:
+Change the localStorage key to include the active tenant ID, so each company gets its own recent searches history.
+
+1. Update `loadRecents` and `saveRecent` to accept a `tenantId` parameter and use a tenant-scoped key: `pitch-recent-searches-{tenantId}`
+2. Update `clearRecents` similarly
+3. Update all call sites to pass `activeTenantId`
 
 ```typescript
-setTradeLineItems(prev => {
-  const next = { ...prev };
-  for (const key of Object.keys(next)) {
-    next[key] = next[key].map(item => {
-      if (item.id !== id) return item;
-      const updated = { ...item, ...updates };
-      // Recalculate line_total when qty or unit_cost changes
-      if ('qty' in updates || 'unit_cost' in updates) {
-        updated.line_total = updated.qty * updated.unit_cost;
-      }
-      return updated;
-    });
-  }
-  return next;
-});
+// Before
+const RECENT_SEARCHES_KEY = 'pitch-recent-searches';
+const loadRecents = (): SearchResult[] => { ... };
+const saveRecent = (result: SearchResult) => { ... };
+
+// After
+const getRecentsKey = (tenantId: string) => `pitch-recent-searches-${tenantId}`;
+const loadRecents = (tenantId: string | null): SearchResult[] => {
+  if (!tenantId) return [];
+  try {
+    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId)) || '[]');
+  } catch { return []; }
+};
+const saveRecent = (result: SearchResult, tenantId: string | null) => {
+  if (!tenantId) return;
+  const existing = loadRecents(tenantId);
+  const filtered = existing.filter(r => r.entity_id !== result.entity_id);
+  const updated = [result, ...filtered].slice(0, MAX_RECENTS);
+  localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(updated));
+};
 ```
 
-Single-file, ~5-line change.
+Single-file change, ~10 lines modified.
 
