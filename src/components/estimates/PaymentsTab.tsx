@@ -170,7 +170,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       const invoiceCount = (invoices || []).length + 1;
       const invoiceNumber = `INV-${pipelineEntryId.slice(0, 6).toUpperCase()}-${String(invoiceCount).padStart(3, '0')}`;
       
-      const lineItemsPayload: InvoiceLineItem[] = selectedItems.map(({ selected, ...item }) => item);
+      const lineItemsPayload: InvoiceLineItem[] = selectedItems.map(({ selected: _selected, ...item }) => item);
 
       const { error } = await supabase.from('project_invoices').insert({
         tenant_id: activeTenantId!,
