@@ -48,20 +48,22 @@ interface SearchResult {
   match_score: number;
 }
 
-const RECENT_SEARCHES_KEY = 'pitch-recent-searches';
 const MAX_RECENTS = 5;
+const getRecentsKey = (tenantId: string) => `pitch-recent-searches-${tenantId}`;
 
-const loadRecents = (): SearchResult[] => {
+const loadRecents = (tenantId: string | null): SearchResult[] => {
+  if (!tenantId) return [];
   try {
-    return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId)) || '[]');
   } catch { return []; }
 };
 
-const saveRecent = (result: SearchResult) => {
-  const existing = loadRecents();
+const saveRecent = (result: SearchResult, tenantId: string | null) => {
+  if (!tenantId) return;
+  const existing = loadRecents(tenantId);
   const filtered = existing.filter(r => r.entity_id !== result.entity_id);
   const updated = [result, ...filtered].slice(0, MAX_RECENTS);
-  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+  localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(updated));
 };
 
 export const CLJSearchBar = () => {
