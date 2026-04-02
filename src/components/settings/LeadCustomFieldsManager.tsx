@@ -50,7 +50,7 @@ export const LeadCustomFieldsManager = () => {
     if (error) {
       console.error('Error loading custom fields:', error);
     } else {
-      setFields((data || []).map(f => ({ ...f, options: f.options || [] })));
+      setFields((data || []).map(f => ({ ...f, options: Array.isArray(f.options) ? f.options : [] })));
     }
     setLoading(false);
   };
