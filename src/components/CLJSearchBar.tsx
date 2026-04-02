@@ -48,20 +48,22 @@ interface SearchResult {
   match_score: number;
 }
 
-const RECENT_SEARCHES_KEY = 'pitch-recent-searches';
 const MAX_RECENTS = 5;
+const getRecentsKey = (tenantId: string) => `pitch-recent-searches-${tenantId}`;
 
-const loadRecents = (): SearchResult[] => {
+const loadRecents = (tenantId: string | null): SearchResult[] => {
+  if (!tenantId) return [];
   try {
-    return JSON.parse(localStorage.getItem(RECENT_SEARCHES_KEY) || '[]');
+    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId)) || '[]');
   } catch { return []; }
 };
 
-const saveRecent = (result: SearchResult) => {
-  const existing = loadRecents();
+const saveRecent = (result: SearchResult, tenantId: string | null) => {
+  if (!tenantId) return;
+  const existing = loadRecents(tenantId);
   const filtered = existing.filter(r => r.entity_id !== result.entity_id);
   const updated = [result, ...filtered].slice(0, MAX_RECENTS);
-  localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(updated));
+  localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(updated));
 };
 
 export const CLJSearchBar = () => {
@@ -146,14 +148,16 @@ export const CLJSearchBar = () => {
       job: `/lead/${result.entity_id}`
     };
 
-    saveRecent(result);
+    saveRecent(result, activeTenantId);
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
   };
 
   const clearRecents = () => {
-    localStorage.removeItem(RECENT_SEARCHES_KEY);
+    if (activeTenantId) {
+      localStorage.removeItem(getRecentsKey(activeTenantId));
+    }
     setRecents([]);
     setOpen(false);
   };
@@ -175,7 +179,7 @@ export const CLJSearchBar = () => {
           if (searchTerm.length >= 2 && results.length > 0) {
             setOpen(true);
           } else if (searchTerm.length < 2) {
-            const r = loadRecents();
+            const r = loadRecents(activeTenantId);
             if (r.length > 0) {
               setRecents(r);
               setOpen(true);
