@@ -148,7 +148,7 @@ export const CLJSearchBar = () => {
       job: `/lead/${result.entity_id}`
     };
 
-    saveRecent(result);
+    saveRecent(result, activeTenantId);
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
