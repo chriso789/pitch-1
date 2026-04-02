@@ -61,7 +61,9 @@ import { ContactStatusManager } from "@/components/settings/ContactStatusManager
 import { AIAdminChat } from "@/components/ai-admin/AIAdminChat";
 import { InspectionWalkthroughSettings } from "@/components/inspection/InspectionWalkthroughSettings";
 import { DialerSettings } from "@/components/call-center/DialerSettings";
-
+import { LeadCustomFieldsManager } from "@/components/settings/LeadCustomFieldsManager";
+import { AppointmentOutcomeSettings } from "@/components/settings/AppointmentOutcomeSettings";
+import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings";
 
 interface SettingsTab {
   id: string;
@@ -118,6 +120,9 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   companies: "business",
   inspections: "business",
   dialer: "communications",
+  "custom-fields": "general",
+  "appointment-outcomes": "general",
+  "calendar-sync": "general",
 };
 
 // Product-related tab keys that get merged into one sidebar entry
@@ -545,6 +550,12 @@ export const Settings = () => {
         );
       case "dialer":
         return <DialerSettings />;
+      case "custom-fields":
+        return <LeadCustomFieldsManager />;
+      case "appointment-outcomes":
+        return <AppointmentOutcomeSettings />;
+      case "calendar-sync":
+        return <CalendarSyncSettings />;
       case "ai-admin":
         return <AIAdminChat />;
       default:
