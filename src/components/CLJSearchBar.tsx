@@ -179,7 +179,7 @@ export const CLJSearchBar = () => {
           if (searchTerm.length >= 2 && results.length > 0) {
             setOpen(true);
           } else if (searchTerm.length < 2) {
-            const r = loadRecents();
+            const r = loadRecents(activeTenantId);
             if (r.length > 0) {
               setRecents(r);
               setOpen(true);
