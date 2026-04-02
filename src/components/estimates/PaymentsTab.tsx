@@ -69,7 +69,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .from('enhanced_estimates')
         .select('id, line_items, selling_price, status')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .in('status', ['approved', 'sent', 'accepted'])
+        .in('status', ['approved', 'sent', 'signed'])
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
