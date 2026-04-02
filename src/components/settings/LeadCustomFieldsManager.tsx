@@ -16,7 +16,7 @@ interface CustomField {
   id: string;
   field_name: string;
   field_type: string;
-  options: string[];
+  options: any;
   sort_order: number;
   required: boolean;
   active: boolean;
