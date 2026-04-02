@@ -1990,6 +1990,109 @@ export type Database = {
           },
         ]
       }
+      appointment_history: {
+        Row: {
+          appointment_id: string
+          change_type: string
+          changed_by: string | null
+          created_at: string | null
+          id: string
+          new_values: Json | null
+          old_values: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          appointment_id: string
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string | null
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          appointment_id?: string
+          change_type?: string
+          changed_by?: string | null
+          created_at?: string | null
+          id?: string
+          new_values?: Json | null
+          old_values?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_history_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_history_changed_by_fkey"
+            columns: ["changed_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "appointment_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      appointment_outcome_types: {
+        Row: {
+          active: boolean | null
+          color: string
+          created_at: string | null
+          id: string
+          name: string
+          sort_order: number | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          color?: string
+          created_at?: string | null
+          id?: string
+          name: string
+          sort_order?: number | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          color?: string
+          created_at?: string | null
+          id?: string
+          name?: string
+          sort_order?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_outcome_types_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           address: string | null
@@ -2008,6 +2111,7 @@ export type Database = {
           latitude: number | null
           longitude: number | null
           notes: string | null
+          outcome_type_id: string | null
           scheduled_end: string
           scheduled_start: string
           status: string | null
@@ -2034,6 +2138,7 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           notes?: string | null
+          outcome_type_id?: string | null
           scheduled_end: string
           scheduled_start: string
           status?: string | null
@@ -2060,6 +2165,7 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           notes?: string | null
+          outcome_type_id?: string | null
           scheduled_end?: string
           scheduled_start?: string
           status?: string | null
@@ -2117,6 +2223,13 @@ export type Database = {
             columns: ["job_id"]
             isOneToOne: false
             referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_outcome_type_id_fkey"
+            columns: ["outcome_type_id"]
+            isOneToOne: false
+            referencedRelation: "appointment_outcome_types"
             referencedColumns: ["id"]
           },
           {
@@ -17315,6 +17428,53 @@ export type Database = {
           },
         ]
       }
+      lead_custom_fields: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          field_name: string
+          field_type: string
+          id: string
+          options: Json | null
+          required: boolean | null
+          sort_order: number | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          field_name: string
+          field_type?: string
+          id?: string
+          options?: Json | null
+          required?: boolean | null
+          sort_order?: number | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          field_name?: string
+          field_type?: string
+          id?: string
+          options?: Json | null
+          required?: boolean | null
+          sort_order?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_custom_fields_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lead_qualification_statuses: {
         Row: {
           auto_assign: boolean | null
@@ -24526,6 +24686,7 @@ export type Database = {
           hidden_at: string | null
           hidden_by: string | null
           hourly_rate: number | null
+          ical_token: string | null
           id: string
           is_active: boolean | null
           is_developer: boolean | null
@@ -24576,6 +24737,7 @@ export type Database = {
           hidden_at?: string | null
           hidden_by?: string | null
           hourly_rate?: number | null
+          ical_token?: string | null
           id: string
           is_active?: boolean | null
           is_developer?: boolean | null
@@ -24626,6 +24788,7 @@ export type Database = {
           hidden_at?: string | null
           hidden_by?: string | null
           hourly_rate?: number | null
+          ical_token?: string | null
           id?: string
           is_active?: boolean | null
           is_developer?: boolean | null
@@ -32140,6 +32303,7 @@ export type Database = {
           description: string | null
           id: string
           is_system: boolean | null
+          show_esign_watermark: boolean | null
           slug: string
           status: string | null
           tenant_id: string
@@ -32153,6 +32317,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_system?: boolean | null
+          show_esign_watermark?: boolean | null
           slug: string
           status?: string | null
           tenant_id: string
@@ -32166,6 +32331,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_system?: boolean | null
+          show_esign_watermark?: boolean | null
           slug?: string
           status?: string | null
           tenant_id?: string
@@ -40059,6 +40225,7 @@ export type Database = {
           description: string | null
           id: string
           is_system: boolean | null
+          show_esign_watermark: boolean | null
           slug: string
           status: string | null
           tenant_id: string
@@ -40081,6 +40248,7 @@ export type Database = {
           description: string | null
           id: string
           is_system: boolean | null
+          show_esign_watermark: boolean | null
           slug: string
           status: string | null
           tenant_id: string
