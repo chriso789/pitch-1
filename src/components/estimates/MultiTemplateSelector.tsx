@@ -1897,9 +1897,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     setTradeLineItems(prev => {
       const next = { ...prev };
       for (const key of Object.keys(next)) {
-        next[key] = next[key].map(item =>
-          item.id === id ? { ...item, ...updates } : item
-        );
+        next[key] = next[key].map(item => {
+          if (item.id !== id) return item;
+          const updated = { ...item, ...updates };
+          // Recalculate line_total when qty or unit_cost changes
+          if ('qty' in updates || 'unit_cost' in updates) {
+            updated.line_total = (updated.qty || 0) * (updated.unit_cost || 0);
+          }
+          return updated;
+        });
       }
       return next;
     });
