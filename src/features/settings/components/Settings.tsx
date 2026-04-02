@@ -547,6 +547,12 @@ export const Settings = () => {
         );
       case "dialer":
         return <DialerSettings />;
+      case "custom-fields":
+        return <LeadCustomFieldsManager />;
+      case "appointment-outcomes":
+        return <AppointmentOutcomeSettings />;
+      case "calendar-sync":
+        return <CalendarSyncSettings />;
       case "ai-admin":
         return <AIAdminChat />;
       default:
