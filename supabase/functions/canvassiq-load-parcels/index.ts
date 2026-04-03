@@ -316,7 +316,7 @@ async function loadRealParcelsFromGeocoding(
             address_hash: result.place_id,
             normalized_address_key: normalizedAddressKey,
             disposition: null,
-            owner_name: null, // Will be populated by storm-public-lookup
+            owner_name: null,
             property_data: {
               source: 'google_geocoding',
               geocoded_at: new Date().toISOString(),
@@ -324,17 +324,29 @@ async function loadRealParcelsFromGeocoding(
               deduplicated: false,
             }
           });
-        } else if (distanceFromCenter < existingEntry.distance) {
-          seenAddresses.set(normalizedAddressKey, { lat: result.lat, lng: result.lng, distance: distanceFromCenter });
+        } else {
+          // Calculate physical distance between this result and the existing one
+          const dLat = (result.lat - existingEntry.lat) * 111000;
+          const dLng = (result.lng - existingEntry.lng) * 111000 * Math.cos(existingEntry.lat * Math.PI / 180);
+          const physicalDistMeters = Math.sqrt(dLat * dLat + dLng * dLng);
           
-          const existingIdx = candidateProperties.findIndex(p => p.normalized_address_key === normalizedAddressKey);
-          if (existingIdx !== -1) {
-            candidateProperties[existingIdx] = {
-              ...candidateProperties[existingIdx],
+          if (physicalDistMeters > 20) {
+            // Separate lot — assign a suffixed key
+            let lotNum = 2;
+            let lotKey = `${normalizedAddressKey}_lot${lotNum}`;
+            while (seenAddresses.has(lotKey) || existingAddressKeys.has(lotKey)) {
+              lotNum++;
+              lotKey = `${normalizedAddressKey}_lot${lotNum}`;
+            }
+            seenAddresses.set(lotKey, { lat: result.lat, lng: result.lng, distance: distanceFromCenter });
+            
+            candidateProperties.push({
+              tenant_id: tenantId,
               lat: result.lat,
               lng: result.lng,
               original_lat: result.lat,
               original_lng: result.lng,
+              building_snapped: false,
               address: {
                 street: `${result.street_number} ${result.street_name}`,
                 street_number: result.street_number,
@@ -344,16 +356,53 @@ async function loadRealParcelsFromGeocoding(
                 zip: result.zip,
                 formatted: result.formatted_address,
                 place_id: result.place_id,
-                normalized_key: normalizedAddressKey
+                normalized_key: lotKey
               },
               address_hash: result.place_id,
+              normalized_address_key: lotKey,
+              disposition: null,
+              owner_name: null,
               property_data: {
                 source: 'google_geocoding',
                 geocoded_at: new Date().toISOString(),
                 building_snapped: false,
-                deduplicated: true
+                deduplicated: false,
+                is_additional_lot: true,
+                parent_address_key: normalizedAddressKey,
               }
-            };
+            });
+          } else if (distanceFromCenter < existingEntry.distance) {
+            // Same building, closer to center — replace
+            seenAddresses.set(normalizedAddressKey, { lat: result.lat, lng: result.lng, distance: distanceFromCenter });
+            
+            const existingIdx = candidateProperties.findIndex(p => p.normalized_address_key === normalizedAddressKey);
+            if (existingIdx !== -1) {
+              candidateProperties[existingIdx] = {
+                ...candidateProperties[existingIdx],
+                lat: result.lat,
+                lng: result.lng,
+                original_lat: result.lat,
+                original_lng: result.lng,
+                address: {
+                  street: `${result.street_number} ${result.street_name}`,
+                  street_number: result.street_number,
+                  street_name: result.street_name,
+                  city: result.city,
+                  state: result.state,
+                  zip: result.zip,
+                  formatted: result.formatted_address,
+                  place_id: result.place_id,
+                  normalized_key: normalizedAddressKey
+                },
+                address_hash: result.place_id,
+                property_data: {
+                  source: 'google_geocoding',
+                  geocoded_at: new Date().toISOString(),
+                  building_snapped: false,
+                  deduplicated: true
+                }
+              };
+            }
           }
         }
       }
