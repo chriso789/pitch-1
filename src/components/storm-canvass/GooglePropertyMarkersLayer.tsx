@@ -159,8 +159,16 @@ function getAddressCore(key: string): string {
   return match ? `${match[1]}_${match[2]}` : key;
 }
 
+// Haversine distance in meters between two lat/lng points
+function distanceMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = (lat2 - lat1) * 111000;
+  const dLng = (lng2 - lng1) * 111000 * Math.cos(lat1 * Math.PI / 180);
+  return Math.sqrt(dLat * dLat + dLng * dLng);
+}
+
 // Deduplicate properties by normalized address key
 // Prefer: building_snapped=true, then newest created_at
+// Properties with same key but >20m apart are treated as separate lots
 function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProperty[] {
   const addressMap = new Map<string, CanvassiqProperty>();
   
@@ -172,16 +180,29 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
     if (!existing) {
       addressMap.set(key, property);
     } else {
-      const currentSnapped = property.building_snapped === true;
-      const existingSnapped = existing.building_snapped === true;
-      
-      if (currentSnapped && !existingSnapped) {
-        addressMap.set(key, property);
-      } else if (currentSnapped === existingSnapped) {
-        const currentDate = new Date(property.created_at || 0).getTime();
-        const existingDate = new Date(existing.created_at || 0).getTime();
-        if (currentDate > existingDate) {
+      // Check physical distance — if >20m apart, these are separate lots
+      const dist = distanceMeters(
+        existing.lat, existing.lng,
+        property.lat, property.lng
+      );
+      if (dist > 20) {
+        // Keep both — use a suffixed key for the new one
+        let lotNum = 2;
+        let lotKey = `${key}_lot${lotNum}`;
+        while (addressMap.has(lotKey)) { lotNum++; lotKey = `${key}_lot${lotNum}`; }
+        addressMap.set(lotKey, property);
+      } else {
+        const currentSnapped = property.building_snapped === true;
+        const existingSnapped = existing.building_snapped === true;
+        
+        if (currentSnapped && !existingSnapped) {
           addressMap.set(key, property);
+        } else if (currentSnapped === existingSnapped) {
+          const currentDate = new Date(property.created_at || 0).getTime();
+          const existingDate = new Date(existing.created_at || 0).getTime();
+          if (currentDate > existingDate) {
+            addressMap.set(key, property);
+          }
         }
       }
     }
@@ -198,14 +219,23 @@ function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProper
   }
 
   // Secondary dedup: if two different keys share the same house-number + street core, keep best
+  // But respect the 20m distance threshold
   const coreMap = new Map<string, { key: string; property: CanvassiqProperty }>();
   for (const [key, property] of addressMap.entries()) {
     const core = getAddressCore(key);
-    if (!core || core === key) continue; // skip if no simplification
+    if (!core || core === key) continue;
     const existing = coreMap.get(core);
     if (!existing) {
       coreMap.set(core, { key, property });
     } else {
+      // Check physical distance — if >20m apart, keep both
+      const dist = distanceMeters(
+        existing.property.lat, existing.property.lng,
+        property.lat, property.lng
+      );
+      if (dist > 20) {
+        continue; // separate lots, keep both in addressMap
+      }
       // Keep snapped, then newest
       const currentSnapped = property.building_snapped === true;
       const existingSnapped = existing.property.building_snapped === true;
