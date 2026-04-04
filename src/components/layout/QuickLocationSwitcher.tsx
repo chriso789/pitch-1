@@ -1,4 +1,5 @@
 import React from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -20,6 +21,7 @@ interface QuickLocationSwitcherProps {
 
 export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }: QuickLocationSwitcherProps) => {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { 
     currentLocationId, 
     currentLocation, 
@@ -43,10 +45,8 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
     // Notify callback if provided
     onLocationChange?.(locationId);
     
-    // Full page redirect to dashboard
-    setTimeout(() => {
-      window.location.href = '/dashboard';
-    }, 150);
+    // SPA navigate instead of hard reload
+    navigate('/dashboard', { replace: true });
   };
 
   if (loading) {

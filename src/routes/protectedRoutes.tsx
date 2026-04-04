@@ -1,5 +1,5 @@
-import React from "react";
-import { Route } from "react-router-dom";
+import React, { Suspense } from "react";
+import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 const Dashboard = React.lazy(() => import("@/pages/Dashboard"));
@@ -87,93 +87,103 @@ const NotificationsPage = React.lazy(() => import("@/pages/NotificationsPage"));
 const CommissionReport = React.lazy(() => import("@/pages/CommissionReport"));
 const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPage"));
 
-export const protectedRoutes = (
-  <>
-    <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-    <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
-    <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
-    <Route path="/client-list" element={<ProtectedRoute><ClientList /></ProtectedRoute>} />
-    <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
-    <Route path="/storm-canvass" element={<ProtectedRoute><StormCanvass /></ProtectedRoute>} />
-    <Route path="/storm-canvass/live" element={<ProtectedRoute><LiveCanvassingPage /></ProtectedRoute>} />
-    <Route path="/storm-canvass/map" element={<ProtectedRoute><TerritoryMapPage /></ProtectedRoute>} />
-    <Route path="/storm-canvass/dashboard" element={<ProtectedRoute><CanvasserDashboard /></ProtectedRoute>} />
-    <Route path="/storm-canvass/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
-    <Route path="/storm-canvass/import" element={<ProtectedRoute><ImportContacts /></ProtectedRoute>} />
-    <Route path="/storm-canvass/property/:propertyId" element={<ProtectedRoute><PropertyInteractionPage /></ProtectedRoute>} />
-    <Route path="/communications" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
-    <Route path="/communications/unmatched" element={<ProtectedRoute><UnmatchedInboxPage /></ProtectedRoute>} />
-    <Route path="/communications/ai-queue" element={<ProtectedRoute><AIFollowupQueuePage /></ProtectedRoute>} />
-    <Route path="/communications/calls" element={<ProtectedRoute><CallCenterPage /></ProtectedRoute>} />
-    <Route path="/dialer" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
-    <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
-    <Route path="/smartdocs" element={<ProtectedRoute><SmartDocs /></ProtectedRoute>} />
-    <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
-    <Route path="/estimates" element={<ProtectedRoute><Estimates /></ProtectedRoute>} />
-    <Route path="/automation" element={<ProtectedRoute><AutomationDashboard /></ProtectedRoute>} />
-    <Route path="/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
-    <Route path="/lead-scoring" element={<ProtectedRoute><LeadScoringPage /></ProtectedRoute>} />
-    <Route path="/reviews" element={<ProtectedRoute><ReviewsPage /></ProtectedRoute>} />
-    <Route path="/presentations" element={<ProtectedRoute><PresentationsPage /></ProtectedRoute>} />
-    <Route path="/presentations/:id/edit" element={<ProtectedRoute><PresentationBuilderPage /></ProtectedRoute>} />
-    <Route path="/presentations/:id/present" element={<ProtectedRoute><PresentationModePage /></ProtectedRoute>} />
-    <Route path="/presentations/:id/view" element={<ProtectedRoute><CustomerPresentationView /></ProtectedRoute>} />
-    <Route path="/portal" element={<ProtectedRoute><CustomerPortal /></ProtectedRoute>} />
-    <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
-    <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-    <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
-    <Route path="/integration" element={<ProtectedRoute><IntegrationDashboard /></ProtectedRoute>} />
-    <Route path="/ai-agents" element={<ProtectedRoute><AIAgentsCommandCenter /></ProtectedRoute>} />
-    <Route path="/power-dialer-agent" element={<ProtectedRoute><PowerDialerAgent /></ProtectedRoute>} />
-    <Route path="/contract-reports" element={<ProtectedRoute><ContractReports /></ProtectedRoute>} />
-    <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
-    <Route path="/material-orders" element={<ProtectedRoute><MaterialOrders /></ProtectedRoute>} />
-    <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
-    <Route path="/approval-rules" element={<ProtectedRoute><ApprovalRules /></ProtectedRoute>} />
-    <Route path="/pending-approvals" element={<ProtectedRoute><PendingApprovals /></ProtectedRoute>} />
-    <Route path="/manager-approval-queue" element={<ProtectedRoute><ManagerApprovalQueue /></ProtectedRoute>} />
-    <Route path="/vendor-management" element={<ProtectedRoute><VendorManagement /></ProtectedRoute>} />
-    <Route path="/price-management" element={<ProtectedRoute><PriceManagement /></ProtectedRoute>} />
-    <Route path="/contact/:id" element={<ProtectedRoute><ContactProfile /></ProtectedRoute>} />
-    <Route path="/lead/:id" element={<ProtectedRoute><LeadDetails /></ProtectedRoute>} />
-    <Route path="/job/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
-    <Route path="/job-analytics" element={<ProtectedRoute><JobAnalytics /></ProtectedRoute>} />
-    <Route path="/job-analytics/drilldown" element={<ProtectedRoute><JobAnalyticsDrilldown /></ProtectedRoute>} />
-    <Route path="/pipeline-entry/:id/review" element={<ProtectedRoute><PipelineEntryReview /></ProtectedRoute>} />
-    <Route path="/project/:id" element={<ProtectedRoute><ProjectDetails /></ProtectedRoute>} />
-    <Route path="/enhanced-measurement/:id" element={<ProtectedRoute><EnhancedMeasurement /></ProtectedRoute>} />
-    <Route path="/professional-measurement/:id" element={<ProtectedRoute><ProfessionalMeasurement /></ProtectedRoute>} />
-    <Route path="/measurement-workflow" element={<ProtectedRoute><MeasurementWorkflowDemo /></ProtectedRoute>} />
-    <Route path="/roof-measure/:id" element={<ProtectedRoute><RoofMeasure /></ProtectedRoute>} />
-    <Route path="/roof-measure" element={<ProtectedRoute><RoofMeasure /></ProtectedRoute>} />
-    <Route path="/measurements/:id/corrections" element={<ProtectedRoute><MeasurementCorrectionPage /></ProtectedRoute>} />
-    <Route path="/measurement-analytics" element={<ProtectedRoute><MeasurementAnalyticsPage /></ProtectedRoute>} />
-    <Route path="/test-roof-measurement" element={<ProtectedRoute><TestRoofMeasurement /></ProtectedRoute>} />
-    <Route path="/canvasser-leaderboard" element={<ProtectedRoute><CanvasserLeaderboardPage /></ProtectedRoute>} />
-    <Route path="/templates/smart-editor" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
-    <Route path="/templates/smart-editor/:templateId" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
-    <Route path="/templates/calc-editor/:templateId" element={<ProtectedRoute><CalcTemplateEditorPage /></ProtectedRoute>} />
-    <Route path="/proposals/create/:projectId" element={<ProtectedRoute><ProposalEditorPage /></ProtectedRoute>} />
-    <Route path="/proposal-analytics" element={<ProtectedRoute><ProposalAnalyticsPage /></ProtectedRoute>} />
-    <Route path="/permits/expediter" element={<ProtectedRoute><PermitExpediter /></ProtectedRoute>} />
-    <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
-    <Route path="/insurance" element={<ProtectedRoute><InsuranceClaimsDashboard /></ProtectedRoute>} />
-    <Route path="/scope-intelligence" element={<ProtectedRoute><ScopeIntelligence /></ProtectedRoute>} />
-    <Route path="/dispatch" element={<ProtectedRoute><DispatchDashboard /></ProtectedRoute>} />
-    <Route path="/storm-canvass/config" element={<ProtectedRoute><StormCanvassConfig /></ProtectedRoute>} />
-    <Route path="/storm-canvass/photos" element={<ProtectedRoute><StormCanvassPhotos /></ProtectedRoute>} />
-    <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
-    <Route path="/surveys" element={<ProtectedRoute><SurveyDashboard /></ProtectedRoute>} />
-    <Route path="/referrals" element={<ProtectedRoute><ReferralDashboard /></ProtectedRoute>} />
-    <Route path="/marketing/facebook" element={<ProtectedRoute><FacebookMarketingDashboard /></ProtectedRoute>} />
-    <Route path="/marketing-assets" element={<ProtectedRoute><MarketingAssetsPage /></ProtectedRoute>} />
-    <Route path="/proposals/good-better-best" element={<ProtectedRoute><GoodBetterBestBuilderPage /></ProtectedRoute>} />
-    <Route path="/reviews/automated" element={<ProtectedRoute><AutomatedReviewCollectionPage /></ProtectedRoute>} />
-    <Route path="/loyalty" element={<ProtectedRoute><LoyaltyPointsPage /></ProtectedRoute>} />
-    <Route path="/accounts-receivable" element={<ProtectedRoute><AccountsReceivable /></ProtectedRoute>} />
-    <Route path="/report-import" element={<ProtectedRoute><ReportImportDashboard /></ProtectedRoute>} />
-    <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
-    <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
-    <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
-  </>
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
 );
+
+export default function ProtectedRoutes() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/pipeline" element={<ProtectedRoute><Pipeline /></ProtectedRoute>} />
+        <Route path="/production" element={<ProtectedRoute><Production /></ProtectedRoute>} />
+        <Route path="/client-list" element={<ProtectedRoute><ClientList /></ProtectedRoute>} />
+        <Route path="/calendar" element={<ProtectedRoute><Calendar /></ProtectedRoute>} />
+        <Route path="/storm-canvass" element={<ProtectedRoute><StormCanvass /></ProtectedRoute>} />
+        <Route path="/storm-canvass/live" element={<ProtectedRoute><LiveCanvassingPage /></ProtectedRoute>} />
+        <Route path="/storm-canvass/map" element={<ProtectedRoute><TerritoryMapPage /></ProtectedRoute>} />
+        <Route path="/storm-canvass/dashboard" element={<ProtectedRoute><CanvasserDashboard /></ProtectedRoute>} />
+        <Route path="/storm-canvass/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
+        <Route path="/storm-canvass/import" element={<ProtectedRoute><ImportContacts /></ProtectedRoute>} />
+        <Route path="/storm-canvass/property/:propertyId" element={<ProtectedRoute><PropertyInteractionPage /></ProtectedRoute>} />
+        <Route path="/communications" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
+        <Route path="/communications/unmatched" element={<ProtectedRoute><UnmatchedInboxPage /></ProtectedRoute>} />
+        <Route path="/communications/ai-queue" element={<ProtectedRoute><AIFollowupQueuePage /></ProtectedRoute>} />
+        <Route path="/communications/calls" element={<ProtectedRoute><CallCenterPage /></ProtectedRoute>} />
+        <Route path="/dialer" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
+        <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
+        <Route path="/smartdocs" element={<ProtectedRoute><SmartDocs /></ProtectedRoute>} />
+        <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
+        <Route path="/estimates" element={<ProtectedRoute><Estimates /></ProtectedRoute>} />
+        <Route path="/automation" element={<ProtectedRoute><AutomationDashboard /></ProtectedRoute>} />
+        <Route path="/tasks" element={<ProtectedRoute><TasksPage /></ProtectedRoute>} />
+        <Route path="/lead-scoring" element={<ProtectedRoute><LeadScoringPage /></ProtectedRoute>} />
+        <Route path="/reviews" element={<ProtectedRoute><ReviewsPage /></ProtectedRoute>} />
+        <Route path="/presentations" element={<ProtectedRoute><PresentationsPage /></ProtectedRoute>} />
+        <Route path="/presentations/:id/edit" element={<ProtectedRoute><PresentationBuilderPage /></ProtectedRoute>} />
+        <Route path="/presentations/:id/present" element={<ProtectedRoute><PresentationModePage /></ProtectedRoute>} />
+        <Route path="/presentations/:id/view" element={<ProtectedRoute><CustomerPresentationView /></ProtectedRoute>} />
+        <Route path="/portal" element={<ProtectedRoute><CustomerPortal /></ProtectedRoute>} />
+        <Route path="/approvals" element={<ProtectedRoute><Approvals /></ProtectedRoute>} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+        <Route path="/help" element={<ProtectedRoute><Help /></ProtectedRoute>} />
+        <Route path="/integration" element={<ProtectedRoute><IntegrationDashboard /></ProtectedRoute>} />
+        <Route path="/ai-agents" element={<ProtectedRoute><AIAgentsCommandCenter /></ProtectedRoute>} />
+        <Route path="/power-dialer-agent" element={<ProtectedRoute><PowerDialerAgent /></ProtectedRoute>} />
+        <Route path="/contract-reports" element={<ProtectedRoute><ContractReports /></ProtectedRoute>} />
+        <Route path="/material-calculations/:id" element={<ProtectedRoute><MaterialCalculations /></ProtectedRoute>} />
+        <Route path="/material-orders" element={<ProtectedRoute><MaterialOrders /></ProtectedRoute>} />
+        <Route path="/material-orders/:id" element={<ProtectedRoute><MaterialOrderDetail /></ProtectedRoute>} />
+        <Route path="/approval-rules" element={<ProtectedRoute><ApprovalRules /></ProtectedRoute>} />
+        <Route path="/pending-approvals" element={<ProtectedRoute><PendingApprovals /></ProtectedRoute>} />
+        <Route path="/manager-approval-queue" element={<ProtectedRoute><ManagerApprovalQueue /></ProtectedRoute>} />
+        <Route path="/vendor-management" element={<ProtectedRoute><VendorManagement /></ProtectedRoute>} />
+        <Route path="/price-management" element={<ProtectedRoute><PriceManagement /></ProtectedRoute>} />
+        <Route path="/contact/:id" element={<ProtectedRoute><ContactProfile /></ProtectedRoute>} />
+        <Route path="/lead/:id" element={<ProtectedRoute><LeadDetails /></ProtectedRoute>} />
+        <Route path="/job/:id" element={<ProtectedRoute><JobDetails /></ProtectedRoute>} />
+        <Route path="/job-analytics" element={<ProtectedRoute><JobAnalytics /></ProtectedRoute>} />
+        <Route path="/job-analytics/drilldown" element={<ProtectedRoute><JobAnalyticsDrilldown /></ProtectedRoute>} />
+        <Route path="/pipeline-entry/:id/review" element={<ProtectedRoute><PipelineEntryReview /></ProtectedRoute>} />
+        <Route path="/project/:id" element={<ProtectedRoute><ProjectDetails /></ProtectedRoute>} />
+        <Route path="/enhanced-measurement/:id" element={<ProtectedRoute><EnhancedMeasurement /></ProtectedRoute>} />
+        <Route path="/professional-measurement/:id" element={<ProtectedRoute><ProfessionalMeasurement /></ProtectedRoute>} />
+        <Route path="/measurement-workflow" element={<ProtectedRoute><MeasurementWorkflowDemo /></ProtectedRoute>} />
+        <Route path="/roof-measure/:id" element={<ProtectedRoute><RoofMeasure /></ProtectedRoute>} />
+        <Route path="/roof-measure" element={<ProtectedRoute><RoofMeasure /></ProtectedRoute>} />
+        <Route path="/measurements/:id/corrections" element={<ProtectedRoute><MeasurementCorrectionPage /></ProtectedRoute>} />
+        <Route path="/measurement-analytics" element={<ProtectedRoute><MeasurementAnalyticsPage /></ProtectedRoute>} />
+        <Route path="/test-roof-measurement" element={<ProtectedRoute><TestRoofMeasurement /></ProtectedRoute>} />
+        <Route path="/canvasser-leaderboard" element={<ProtectedRoute><CanvasserLeaderboardPage /></ProtectedRoute>} />
+        <Route path="/templates/smart-editor" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
+        <Route path="/templates/smart-editor/:templateId" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
+        <Route path="/templates/calc-editor/:templateId" element={<ProtectedRoute><CalcTemplateEditorPage /></ProtectedRoute>} />
+        <Route path="/proposals/create/:projectId" element={<ProtectedRoute><ProposalEditorPage /></ProtectedRoute>} />
+        <Route path="/proposal-analytics" element={<ProtectedRoute><ProposalAnalyticsPage /></ProtectedRoute>} />
+        <Route path="/permits/expediter" element={<ProtectedRoute><PermitExpediter /></ProtectedRoute>} />
+        <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
+        <Route path="/insurance" element={<ProtectedRoute><InsuranceClaimsDashboard /></ProtectedRoute>} />
+        <Route path="/scope-intelligence" element={<ProtectedRoute><ScopeIntelligence /></ProtectedRoute>} />
+        <Route path="/dispatch" element={<ProtectedRoute><DispatchDashboard /></ProtectedRoute>} />
+        <Route path="/storm-canvass/config" element={<ProtectedRoute><StormCanvassConfig /></ProtectedRoute>} />
+        <Route path="/storm-canvass/photos" element={<ProtectedRoute><StormCanvassPhotos /></ProtectedRoute>} />
+        <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
+        <Route path="/surveys" element={<ProtectedRoute><SurveyDashboard /></ProtectedRoute>} />
+        <Route path="/referrals" element={<ProtectedRoute><ReferralDashboard /></ProtectedRoute>} />
+        <Route path="/marketing/facebook" element={<ProtectedRoute><FacebookMarketingDashboard /></ProtectedRoute>} />
+        <Route path="/marketing-assets" element={<ProtectedRoute><MarketingAssetsPage /></ProtectedRoute>} />
+        <Route path="/proposals/good-better-best" element={<ProtectedRoute><GoodBetterBestBuilderPage /></ProtectedRoute>} />
+        <Route path="/reviews/automated" element={<ProtectedRoute><AutomatedReviewCollectionPage /></ProtectedRoute>} />
+        <Route path="/loyalty" element={<ProtectedRoute><LoyaltyPointsPage /></ProtectedRoute>} />
+        <Route path="/accounts-receivable" element={<ProtectedRoute><AccountsReceivable /></ProtectedRoute>} />
+        <Route path="/report-import" element={<ProtectedRoute><ReportImportDashboard /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+        <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
+        <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
+      </Routes>
+    </Suspense>
+  );
+}

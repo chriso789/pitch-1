@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -31,6 +32,7 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const navigate = useNavigate();
 
   // Fetch user's tenant ID for saving settings
   const { data: profile } = useQuery({
@@ -145,8 +147,8 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
       
       toast.success('Location selected');
 
-      // Full page redirect to dashboard to ensure all contexts reload properly
-      window.location.href = '/dashboard';
+      // Navigate without hard reload
+      navigate('/dashboard', { replace: true });
     } catch (error) {
       console.error('Error saving location:', error);
       toast.error('Failed to save location preference');

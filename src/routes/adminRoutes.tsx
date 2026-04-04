@@ -1,5 +1,5 @@
-import React from "react";
-import { Route } from "react-router-dom";
+import React, { Suspense } from "react";
+import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 const CompanyAdminPage = React.lazy(() => import("@/pages/admin/CompanyAdminPage"));
@@ -11,15 +11,23 @@ const AuditLogs = React.lazy(() => import("@/pages/AuditLogs"));
 const AIAgentSettingsPage = React.lazy(() => import("@/pages/settings/AIAgentSettingsPage"));
 const AIAdminPage = React.lazy(() => import("@/pages/settings/AIAdminPage"));
 
-export const adminRoutes = (
-  <>
-    <Route path="/admin/companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />
-    <Route path="/admin/monitoring" element={<ProtectedRoute><MonitoringPage /></ProtectedRoute>} />
-    <Route path="/admin/phone-settings" element={<ProtectedRoute><PhoneSettings /></ProtectedRoute>} />
-    <Route path="/admin/activity" element={<ProtectedRoute><ActivityDashboardPage /></ProtectedRoute>} />
-    <Route path="/admin/portal-users" element={<ProtectedRoute><HomeownerPortalAdmin /></ProtectedRoute>} />
-    <Route path="/admin/audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
-    <Route path="/settings/ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
-    <Route path="/settings/ai-admin" element={<ProtectedRoute><AIAdminPage /></ProtectedRoute>} />
-  </>
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
 );
+
+export default function AdminRoutes() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />
+        <Route path="monitoring" element={<ProtectedRoute><MonitoringPage /></ProtectedRoute>} />
+        <Route path="phone-settings" element={<ProtectedRoute><PhoneSettings /></ProtectedRoute>} />
+        <Route path="activity" element={<ProtectedRoute><ActivityDashboardPage /></ProtectedRoute>} />
+        <Route path="portal-users" element={<ProtectedRoute><HomeownerPortalAdmin /></ProtectedRoute>} />
+        <Route path="audit-logs" element={<ProtectedRoute><AuditLogs /></ProtectedRoute>} />
+      </Routes>
+    </Suspense>
+  );
+}

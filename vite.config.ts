@@ -15,7 +15,7 @@ export default defineConfig(({ mode }) => ({
       // connects through the proxy instead of failing.
       protocol: "wss",
       clientPort: 443,
-      timeout: 60000,
+      timeout: 120000,
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),

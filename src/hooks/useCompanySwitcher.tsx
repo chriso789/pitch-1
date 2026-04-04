@@ -107,10 +107,10 @@ export const useCompanySwitcher = () => {
         setActiveCompanyId(tenantId);
         queryClient.clear();
         
-        // Brief delay for smooth overlay animation before reload
-        setTimeout(() => {
-          window.location.href = '/dashboard';
-        }, 200);
+        // Use SPA-safe reload: clear cache and navigate
+        // Still use window.location.href here because company switch
+        // changes the entire tenant context including RLS policies
+        window.location.href = '/dashboard';
       } else {
         setIsSwitching(false);
         localStorage.removeItem('company-switching');
