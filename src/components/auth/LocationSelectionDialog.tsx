@@ -145,8 +145,8 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
       
       toast.success('Location selected');
 
-      // Full page redirect to dashboard to ensure all contexts reload properly
-      window.location.href = '/dashboard';
+      // Navigate without hard reload
+      navigate('/dashboard', { replace: true });
     } catch (error) {
       console.error('Error saving location:', error);
       toast.error('Failed to save location preference');

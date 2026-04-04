@@ -28,6 +28,7 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
   } = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const handleLocationSelect = async (locationId: string | null) => {
     const location = locations.find(l => l.id === locationId);
@@ -43,18 +44,14 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
       
       console.log('[LocationSwitcher] Database save successful for location:', locationId);
       
-      // Clear all React Query cache
+      // Clear all React Query cache and refetch
       queryClient.clear();
       
       // Notify callback if provided
       onLocationChange?.(locationId);
       
       // SPA navigate to dashboard (no hard reload)
-      window.dispatchEvent(new CustomEvent('location-switched'));
-      const nav = document.querySelector('[data-spa-navigate]');
-      // Use history API to avoid full reload
-      window.history.pushState({}, '', '/dashboard');
-      window.dispatchEvent(new PopStateEvent('popstate'));
+      navigate('/dashboard', { replace: true });
     } catch (error) {
       console.error('[LocationSwitcher] Failed to switch location:', error);
       // Clear the switching flag on error
