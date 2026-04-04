@@ -138,11 +138,24 @@ const CompanyAdminPage = () => {
 
   useEffect(() => {
     fetchCompanies();
+    fetchNewDemoCount();
     // Check if we should open create dialog
     if (searchParams.get('action') === 'create') {
       setCreateDialogOpen(true);
     }
   }, [searchParams]);
+
+  const fetchNewDemoCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('demo_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'new');
+      if (!error && count !== null) setNewDemoCount(count);
+    } catch (e) {
+      // silent
+    }
+  };
 
   const fetchCompanies = async () => {
     try {
