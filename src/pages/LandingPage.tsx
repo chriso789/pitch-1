@@ -21,12 +21,12 @@ import { useMarketingTracking } from '@/lib/analytics/usePageTracking';
 import { ConsentBanner } from '@/components/ConsentBanner';
 import DashboardMockup from '@/components/landing/DashboardMockup';
 import { PowerDialerMockup, EstimateMockup, PipelineMockup, AnalyticsMockup } from '@/components/landing/FeatureMockups';
-import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { DemoVideoModal } from '@/components/landing/DemoVideoModal';
 
 const LandingPage = () => {
   const navigate = useNavigate();
-  const [checkingAuth, setCheckingAuth] = useState(true);
+  const { user, loading: authLoading } = useAuth();
   const [showDemo, setShowDemo] = useState(false);
   const { 
     trackNavLogin, 
@@ -38,32 +38,13 @@ const LandingPage = () => {
 
   // Auto-redirect authenticated users to dashboard
   useEffect(() => {
-    let mounted = true;
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          console.log('[LandingPage] User authenticated, redirecting to dashboard');
-          navigate('/dashboard', { replace: true });
-          return; // Don't set checkingAuth false - let unmount handle it
-        }
-      } catch (error) {
-        console.error('[LandingPage] Auth check error:', error);
-      }
-      if (mounted) setCheckingAuth(false);
-    };
-
-    // Safety timeout: if auth check hangs, show landing page
-    const timeout = setTimeout(() => {
-      if (mounted) setCheckingAuth(false);
-    }, 3000);
-
-    checkAuth();
-    return () => { mounted = false; clearTimeout(timeout); };
-  }, [navigate]);
+    if (!authLoading && user) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   // Show loading while checking auth
-  if (checkingAuth) {
+  if (authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white">
         <div className="text-center">
@@ -73,6 +54,9 @@ const LandingPage = () => {
       </div>
     );
   }
+
+  // If user is authenticated, don't render landing (redirect effect will fire)
+  if (user) return null;
 
   const features = [
     {
