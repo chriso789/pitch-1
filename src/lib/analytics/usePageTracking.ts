@@ -16,8 +16,9 @@ export function usePageTracking() {
     trackingService.trackPageView(location.pathname);
   }, [location.pathname]);
 
-  // Track scroll depth
+  // Track scroll depth (production only)
   useEffect(() => {
+    if (!import.meta.env.PROD) return;
     const handleScroll = () => {
       const scrollTop = window.scrollY;
       const docHeight = document.documentElement.scrollHeight - window.innerHeight;
