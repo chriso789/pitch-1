@@ -104,6 +104,7 @@ const CompanyAdminPage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [billingAddressData, setBillingAddressData] = useState<any>(null);
   const [isSendingOnboarding, setIsSendingOnboarding] = useState(false);
+  const [newDemoCount, setNewDemoCount] = useState(0);
 
   // Form state (removed subdomain)
   const [formData, setFormData] = useState({
