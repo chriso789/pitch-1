@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useAuth } from "@/contexts/AuthContext";
+import { useFeatureAccess } from "@/hooks/useFeatureAccess";
 import { useLocation as useLocationContext } from "@/contexts/LocationContext";
 import { 
   Home, 
@@ -206,6 +207,8 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     return allRoles;
   };
 
+  const { hasFeature } = useFeatureAccess();
+
   const navigation = [
     {
       name: "Pipeline",
@@ -213,7 +216,8 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/pipeline",
       icon: TrendingUp,
       description: "Drag & drop sales pipeline",
-      testId: TEST_IDS.sidebar.pipeline
+      testId: TEST_IDS.sidebar.pipeline,
+      featureKey: "pipeline"
     },
     {
       name: "Contacts",
@@ -221,7 +225,8 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/client-list",
       icon: Users,
       description: "Contacts & jobs unified",
-      testId: TEST_IDS.sidebar.contacts
+      testId: TEST_IDS.sidebar.contacts,
+      featureKey: "contacts"
     },
     {
       name: "Estimates",
@@ -229,21 +234,24 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/estimates",
       icon: FileText,
       description: "Estimate builder & tracking",
-      testId: TEST_IDS.sidebar.estimates
+      testId: TEST_IDS.sidebar.estimates,
+      featureKey: "estimates"
     },
     {
       name: "Production",
       href: "production",
       path: "/production",
       icon: Target,
-      description: "Production workflow"
+      description: "Production workflow",
+      featureKey: "production"
     },
     {
       name: "Accounts Receivable",
       href: "accounts-receivable",
       path: "/accounts-receivable",
       icon: DollarSign,
-      description: "Track invoices & payments"
+      description: "Track invoices & payments",
+      featureKey: "accounts_receivable"
     },
     {
       name: "Calendar",
@@ -251,14 +259,16 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/calendar",
       icon: Calendar,
       description: "Schedule & appointments",
-      testId: TEST_IDS.sidebar.calendar
+      testId: TEST_IDS.sidebar.calendar,
+      featureKey: "calendar"
     },
     {
       name: "Storm Canvas Pro",
       href: "storm-canvass",
       path: "/storm-canvass",
       icon: CloudRain,
-      description: "Lead generation & canvasing"
+      description: "Lead generation & canvasing",
+      featureKey: "storm_canvass"
     },
     // Communications is now an expandable section - see communicationsSubNav below
     {
@@ -266,23 +276,26 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       href: "smartdocs",
       path: "/smartdocs",
       icon: BookOpen,
-      description: "Document templates & library"
+      description: "Document templates & library",
+      featureKey: "smart_docs"
     },
     {
       name: "Presentations",
       href: "presentations",
       path: "/presentations",
       icon: Presentation,
-      description: "Sales presentation builder"
+      description: "Sales presentation builder",
+      featureKey: "presentations"
     },
     {
       name: "Permit Expediter",
       href: "permits",
       path: "/permits/expediter",
       icon: ClipboardCheck,
-      description: "Permit packet builder & tracker"
+      description: "Permit packet builder & tracker",
+      featureKey: "permits"
     }
-  ];
+  ].filter(item => hasFeature(item.featureKey));
 
   const portalNavigation = [
     {
@@ -383,6 +396,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
           )}
           <nav className="space-y-0.5">
             {/* Communications Expandable Section - Follow Up Hub */}
+            {hasFeature('communications') && (
             <div className="space-y-0.5">
               <button
                 onClick={() => setFollowUpExpanded(!followUpExpanded)}
@@ -489,6 +503,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                 </div>
               )}
             </div>
+            )}
 
             {navigation.map((item) => (
               <Link

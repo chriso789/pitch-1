@@ -104,6 +104,7 @@ const CompanyAdminPage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [billingAddressData, setBillingAddressData] = useState<any>(null);
   const [isSendingOnboarding, setIsSendingOnboarding] = useState(false);
+  const [newDemoCount, setNewDemoCount] = useState(0);
 
   // Form state (removed subdomain)
   const [formData, setFormData] = useState({
@@ -137,11 +138,24 @@ const CompanyAdminPage = () => {
 
   useEffect(() => {
     fetchCompanies();
+    fetchNewDemoCount();
     // Check if we should open create dialog
     if (searchParams.get('action') === 'create') {
       setCreateDialogOpen(true);
     }
   }, [searchParams]);
+
+  const fetchNewDemoCount = async () => {
+    try {
+      const { count, error } = await supabase
+        .from('demo_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'new');
+      if (!error && count !== null) setNewDemoCount(count);
+    } catch (e) {
+      // silent
+    }
+  };
 
   const fetchCompanies = async () => {
     try {
@@ -590,9 +604,14 @@ const CompanyAdminPage = () => {
               <Building2 className="h-4 w-4" />
               Companies
             </TabsTrigger>
-            <TabsTrigger value="demos" className="flex items-center gap-2">
+            <TabsTrigger value="demos" className="flex items-center gap-2 relative">
               <UserCheck className="h-4 w-4" />
               Demo Requests
+              {newDemoCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                  {newDemoCount}
+                </span>
+              )}
             </TabsTrigger>
             <TabsTrigger value="features" className="flex items-center gap-2">
               <ToggleRight className="h-4 w-4" />

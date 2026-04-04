@@ -1,17 +1,11 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { Resend } from "https://esm.sh/resend@4.0.0";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { corsHeaders } from "npm:@supabase/supabase-js@2.49.1/cors";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
-
-// Centralized email config - demo requests go to admin
+// Primary recipient + BCC for admin notifications
 const DEMO_RECIPIENT = 'demos@pitch-crm.ai';
+const ADMIN_BCC = Deno.env.get("DEMO_ADMIN_EMAIL") || 'chrisobrien91@gmail.com';
 
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
@@ -152,17 +146,27 @@ const handler = async (req: Request): Promise<Response> => {
     const fromEmail = getFromEmail();
     const fromAddress = `PITCH CRM Demos <${fromEmail}>`;
     
-    console.log("[send-demo-request] Sending email from:", fromAddress, "to:", DEMO_RECIPIENT);
+    console.log("[send-demo-request] Sending email from:", fromAddress, "to:", DEMO_RECIPIENT, "bcc:", ADMIN_BCC);
     
-    const emailResponse = await resend.emails.send({
-      from: fromAddress,
-      to: [DEMO_RECIPIENT],
-      replyTo: requestData.email,
-      subject: `🎯 Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
-      html: emailHtml,
+    const emailResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [DEMO_RECIPIENT],
+        bcc: [ADMIN_BCC],
+        reply_to: requestData!.email,
+        subject: `🎯 Demo Request: ${requestData!.firstName} ${requestData!.lastName} from ${requestData!.companyName}`,
+        html: emailHtml,
+      }),
     });
     
-    console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResponse));
+    const emailResult = await emailResponse.json();
+    
+    console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResult));
 
     // Update database record with email status
     if (insertedRequest?.id) {
@@ -177,7 +181,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({ 
       success: true, 
       message: "Demo request submitted successfully",
-      emailId: emailResponse.data?.id 
+      emailId: emailResult?.id 
     }), {
       status: 200,
       headers: {
@@ -220,4 +224,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-serve(handler);
+Deno.serve(handler);
