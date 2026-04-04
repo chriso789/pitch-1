@@ -3,7 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { activityTracker } from '@/services/activityTracker';
 
 // Enable activity tracking in all environments for debugging
-const ENABLE_ACTIVITY_TRACKING = true;
+// Disable activity tracking in non-production (preview/dev) to reduce boot overhead
+const ENABLE_ACTIVITY_TRACKING = import.meta.env.PROD;
 
 /**
  * Global activity tracking hook that tracks:

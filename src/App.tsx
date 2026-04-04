@@ -204,12 +204,8 @@ const AppContent = () => {
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // Only enable activity tracking and monitoring in production
-  const isProd = import.meta.env.PROD;
-  if (isProd) {
-    // eslint-disable-next-line react-hooks/rules-of-hooks
-    useGlobalActivityTracking();
-  }
+  // Activity tracking is internally gated by ENABLE_ACTIVITY_TRACKING
+  useGlobalActivityTracking();
 
   useEffect(() => {
     if (isProd) {
