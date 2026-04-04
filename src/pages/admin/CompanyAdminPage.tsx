@@ -604,9 +604,14 @@ const CompanyAdminPage = () => {
               <Building2 className="h-4 w-4" />
               Companies
             </TabsTrigger>
-            <TabsTrigger value="demos" className="flex items-center gap-2">
+            <TabsTrigger value="demos" className="flex items-center gap-2 relative">
               <UserCheck className="h-4 w-4" />
               Demo Requests
+              {newDemoCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center h-5 min-w-[20px] px-1.5 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                  {newDemoCount}
+                </span>
+              )}
             </TabsTrigger>
             <TabsTrigger value="features" className="flex items-center gap-2">
               <ToggleRight className="h-4 w-4" />
