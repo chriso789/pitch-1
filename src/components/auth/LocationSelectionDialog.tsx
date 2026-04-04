@@ -32,6 +32,7 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [open, setOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const navigate = useNavigate();
 
   // Fetch user's tenant ID for saving settings
   const { data: profile } = useQuery({
