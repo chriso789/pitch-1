@@ -166,7 +166,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     const emailResult = await emailResponse.json();
     
-    console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResponse));
+    console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResult));
 
     // Update database record with email status
     if (insertedRequest?.id) {
@@ -181,7 +181,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(JSON.stringify({ 
       success: true, 
       message: "Demo request submitted successfully",
-      emailId: emailResponse.data?.id 
+      emailId: emailResult?.id 
     }), {
       status: 200,
       headers: {
