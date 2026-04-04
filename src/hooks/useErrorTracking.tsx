@@ -33,8 +33,10 @@ export const ErrorTrackingProvider: React.FC<{ children: React.ReactNode }> = ({
     setRuntimeErrors(errorTracker.getErrors());
     setScrubberIssues(scrubberReportService.getIssues());
     
-    // Try to load scrubber report
-    scrubberReportService.loadScrubberReport();
+    // Only load scrubber report in production (avoids 404 noise in dev/preview)
+    if (import.meta.env.PROD) {
+      scrubberReportService.loadScrubberReport();
+    }
 
     return () => {
       unsubscribeRuntime();
