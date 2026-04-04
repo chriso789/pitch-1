@@ -1,44 +1,53 @@
 
+Diagnosis
 
-## Plan: Place Extra Lots on Their Actual Location Instead of Stacking
+- This looks like a preview boot problem, not a normal in-app React crash.
+- I checked the code and found 3 likely causes working together:
+  1. `src/App.tsx` eagerly imports a very large part of the product up front (roughly the entire route tree), so `/` depends on many heavy pages that are unrelated to the landing page.
+  2. `vite.config.ts` has no explicit HMR settings, and the preview console shows Vite’s websocket failing against the proxied Lovable URL.
+  3. The app registers a service worker in `src/App.tsx` even during preview/dev, and both `public/sw.js` and `public/service-worker.js` use overlapping cache behavior (`pitch-crm-v1`). That can survive refreshes, which explains why refreshing 10 times does not help.
 
-### Problem
-When a homeowner owns multiple lots (e.g., their house lot + an adjacent vacant lot), Google reverse geocoding returns the **same address** for both locations. The current deduplication logic — both server-side in `canvassiq-load-parcels` and client-side in `GooglePropertyMarkersLayer` — collapses these into a single pin, discarding the extra lot entirely.
+Do I know what the issue is?
 
-### Solution
-Treat two geocoding results with the same address but **different physical locations** (>20 meters apart) as separate properties. Append a `_lot2`, `_lot3` suffix to the normalized address key for the additional lots so they survive dedup.
+- Yes: the app is likely failing before React fully mounts in preview, so you get a blank white shell instead of an error screen. This is why there are no runtime errors from React, but the page still appears empty.
 
-### Changes
+Plan
 
-**1. Edge Function: `supabase/functions/canvassiq-load-parcels/index.ts`**
+1. Fix preview websocket/HMR setup
+- Update `vite.config.ts` so HMR is configured for the Lovable preview proxy instead of default localhost behavior.
+- Keep the current host/port, but add explicit preview-safe HMR settings (`wss` / client port 443 style config).
 
-In the `loadRealParcelsFromGeocoding` function (~line 280-360), where same-address results are currently deduplicated by keeping only the closest to center:
+2. Disable service workers in preview/dev
+- In `src/App.tsx`, only register `/sw.js` in production.
+- In preview/development, proactively unregister any existing service workers and clear their caches so stale preview shells do not keep winning after refresh.
+- Review `public/sw.js` and `public/service-worker.js` so they do not interfere with preview boot.
 
-- When a result has the same `normalizedAddressKey` as an existing entry, calculate the **physical distance** between them (using Haversine or simple degree math — 0.0002 degrees ≈ 22 meters).
-- If distance > ~20 meters, treat it as a **separate lot**: append `_lot2` (or `_lot3`, etc.) to the `normalized_address_key` and add it as a new property rather than replacing the existing one.
-- If distance ≤ 20 meters, keep the existing closer-to-center behavior (same address, same building — true duplicate).
+3. Stop loading the whole app on `/`
+- Refactor `src/App.tsx` to lazy-load large route pages instead of statically importing everything.
+- Keep the landing/auth pages eager.
+- Lazy-load protected/admin/storm-canvass/detail pages behind `React.lazy` + `Suspense`.
+- This isolates `/` from unrelated files like `LeadDetails`, `ContactProfile`, etc.
 
-**2. Client-side: `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx`**
+4. Add a real boot fallback
+- Wrap lazy routes with a simple fallback/loading screen and a retry path so a failed chunk/module load shows something useful instead of a white page.
 
-In the `deduplicateProperties` function (~line 164-231):
+Files to change
 
-- Before merging two properties with the same normalized key, check the distance between their coordinates.
-- If they're > 20 meters apart, keep both — the second one is a separate lot, not a duplicate.
-- Use a simple Haversine distance check (can reuse the existing `calculateDistanceMeters` pattern from `gpsTrailService.ts`).
+- `vite.config.ts`
+- `src/App.tsx`
+- `public/sw.js`
+- `public/service-worker.js`
+- possibly `src/services/pushNotifications.ts` if push-worker registration also needs production-only gating
 
-Also update the secondary `getAddressCore` dedup (~line 200-228) with the same distance guard.
+Technical details
 
-### Technical Detail
+- `src/App.tsx` currently imports nearly all routes at startup, which is expensive in Vite preview.
+- `src/App.tsx` also registers `/sw.js` on mount without checking `import.meta.env.PROD`.
+- `public/sw.js` caches documents and static assets broadly, and both service worker files reuse `pitch-crm-v1`.
+- Preview console already confirms a Vite websocket problem, while runtime error snapshots show no React crash. That combination points to preview startup/module-loading instability rather than a broken landing page component.
 
-Distance threshold of 20m was chosen because:
-- A typical residential lot is ~15-25m wide
-- Two pins on the same building from GPS jitter are usually <5m apart
-- Adjacent vacant lots are typically 20-50m from the main structure
+Expected outcome
 
-### Files Changed
-
-| Action | File |
-|--------|------|
-| Edit | `supabase/functions/canvassiq-load-parcels/index.ts` — keep multi-lot results with suffixed keys |
-| Edit | `src/components/storm-canvass/GooglePropertyMarkersLayer.tsx` — distance-aware dedup |
-
+- The preview root page should render consistently again.
+- Hard refreshes should stop getting stuck on a blank white screen.
+- Published behavior should remain unchanged.
