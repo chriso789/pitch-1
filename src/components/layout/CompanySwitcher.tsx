@@ -20,6 +20,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 export const CompanySwitcher = () => {
   const { companies, activeCompany, loading, switchCompany } = useCompanySwitcher();
   const { user } = useCurrentUser();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
 
