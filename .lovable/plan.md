@@ -1,58 +1,47 @@
 
-Diagnosis
 
-- Do I know what the issue is? Mostly yes.
-- I do not see a current React runtime crash in the available snapshots. The stronger pattern in the code is:
-  1. `/` auto-redirects signed-in users to `/dashboard`, so a downstream boot failure can look like a blank home page.
-  2. `CompanySwitcher` opens Manage All Companies with `window.location.href = '/admin/companies'`, which forces a full reload into one of the heaviest routes.
-  3. `CompanyAdminPage` is route-lazy, but once opened it still pulls a very large admin bundle with multiple heavy management tools.
-  4. `App.tsx` still starts monitoring, fetch interception, and global activity tracking immediately on boot, which adds preview overhead.
-  5. There is also a real company-management bug: `LocationManagement` creates new locations with the logged-in user's `profile.tenant_id` instead of the company being edited.
+## Diagnosis: HMR Reconnection Loop Causing Constant Refresh
 
-Plan
+**What is happening:** The Vite dev server is running fine (no crashes in logs), but the HMR WebSocket connection keeps dropping and reconnecting. Each reconnection triggers a full page reload, creating the "constant refresh" loop you see. The login page briefly appears, then the connection drops, and the cycle repeats.
 
-1. Remove hard reloads for normal internal navigation
-- Replace the Manage All Companies `window.location.href` navigation with React Router `navigate('/admin/companies')`.
-- Audit similar nonessential hard reloads and keep full reloads only for true tenant/location context resets.
+**Root cause:** The module graph is enormous — 119 `React.lazy()` calls plus ~25 eager imports plus all context providers. Vite's HMR client has to track all of these, and the preview proxy connection is unstable under this load. Additionally, `ErrorTrackingProvider` fires a `scrub-merged.json` fetch on every mount (always 404), adding noise to every reload cycle.
 
-2. Break up the company admin route
-- Keep the main company list eager.
-- Lazy-load the heavy admin sections only when needed:
-  - Demo Requests
-  - Feature Control
-  - Locations tab
-  - Emails/Templates tab
-  - Website/logo tools
-- Add local `Suspense` fallbacks so the page shows a loading state instead of looking blank.
+**Why previous fixes didn't fully work:** The lazy loading reduced the *initial transform* load but didn't reduce the *HMR tracking* load — Vite still registers all 119 lazy entry points in its module graph.
 
-3. Reduce preview boot work
-- In preview/dev, defer or disable nonessential startup tasks from `App.tsx`:
-  - monitoring initialization
-  - fetch interceptor installation
-  - global activity tracking
-- Start them after first paint or only in production.
+## Plan
 
-4. Fix company management tenant scoping
-- Update `LocationManagement` to use `tenantId || activeCompanyId` consistently for inserts/updates.
-- This prevents admin actions from writing locations into the wrong company or failing unexpectedly.
+### 1. Group lazy routes into chunked barrel files
+Instead of 119 individual `React.lazy()` calls in App.tsx, create 4-5 route group files that each export their routes as a single lazy unit:
+- `src/routes/publicRoutes.tsx` — public/portal pages (~15 routes)
+- `src/routes/protectedRoutes.tsx` — main app pages (~40 routes)  
+- `src/routes/adminRoutes.tsx` — admin pages (~20 routes)
+- `src/routes/mobileRoutes.tsx` — mobile pages (~5 routes)
+- `src/routes/settingsRoutes.tsx` — settings pages (~20 routes)
 
-5. Harden the admin route
-- Add a role-aware guard before loading the heavy company admin UI.
-- If admin data fails to load, show an inline recovery state instead of a visually blank page.
+App.tsx then has ~5 lazy imports instead of 119, drastically reducing HMR pressure.
 
-Files to update
+### 2. Stop scrubber polling on mount
+Gate the `scrubberReportService.loadScrubberReport()` call in `useErrorTracking.tsx` behind `import.meta.env.PROD` so it doesn't fire 404 requests on every preview reload cycle.
 
-- `src/components/layout/CompanySwitcher.tsx`
-- `src/pages/admin/CompanyAdminPage.tsx`
-- `src/components/settings/LocationManagement.tsx`
-- `src/App.tsx`
-- likely `src/hooks/useGlobalActivityTracking.ts`
-- likely `src/lib/MonitoringSelfHealing.ts`
+### 3. Add HMR timeout configuration
+In `vite.config.ts`, add `hmr.timeout: 60000` to give the WebSocket more time before declaring the connection lost.
 
-Validation
+### Files to change
 
-- Load the app from `/` while signed in and confirm it no longer lands on a white screen.
-- Open Manage All Companies from the header and confirm it navigates without a full reload.
-- Open a company, switch tabs, and confirm loaders appear while admin sections load.
-- Add a location while editing a different company and confirm it saves to that company.
-- Refresh on `/admin/companies` and confirm the route still renders.
+| File | Change |
+|------|--------|
+| `src/routes/publicRoutes.tsx` | New — exports public `<Route>` elements |
+| `src/routes/protectedRoutes.tsx` | New — exports protected `<Route>` elements |
+| `src/routes/adminRoutes.tsx` | New — exports admin `<Route>` elements |
+| `src/routes/mobileRoutes.tsx` | New — exports mobile `<Route>` elements |
+| `src/routes/settingsRoutes.tsx` | New — exports settings `<Route>` elements |
+| `src/App.tsx` | Replace 119 lazy imports with 5 grouped route imports |
+| `src/hooks/useErrorTracking.tsx` | Gate scrubber report loading to production only |
+| `vite.config.ts` | Add `hmr.timeout: 60000` |
+
+### Expected outcome
+- App.tsx shrinks from 427 lines to ~80 lines
+- HMR tracks ~5 lazy modules instead of 119
+- Preview stops the constant refresh loop
+- No scrubber 404 noise in dev
+
