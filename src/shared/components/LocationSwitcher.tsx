@@ -48,8 +48,12 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
       // Notify callback if provided
       onLocationChange?.(locationId);
       
-      // Full page redirect to dashboard after successful save
-      window.location.href = '/dashboard';
+      // SPA navigate to dashboard (no hard reload)
+      window.dispatchEvent(new CustomEvent('location-switched'));
+      const nav = document.querySelector('[data-spa-navigate]');
+      // Use history API to avoid full reload
+      window.history.pushState({}, '', '/dashboard');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     } catch (error) {
       console.error('[LocationSwitcher] Failed to switch location:', error);
       // Clear the switching flag on error
