@@ -141,13 +141,8 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', user.id)
-        .single();
-
-      if (!profile) throw new Error('Profile not found');
+      // Use the explicit tenantId prop (when editing another company) or activeCompanyId
+      const effectiveTenantId = tenantId || activeCompanyId;
 
       const locationData = {
         name: formData.name,
@@ -178,11 +173,12 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
           description: "Location updated successfully",
         });
       } else {
+        if (!effectiveTenantId) throw new Error('No tenant context available');
         const { error } = await supabase
           .from('locations')
           .insert({
             ...locationData,
-            tenant_id: profile.tenant_id,
+            tenant_id: effectiveTenantId,
             created_by: user.id
           });
 

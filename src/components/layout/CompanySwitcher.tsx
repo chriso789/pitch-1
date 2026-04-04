@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Building2, ChevronDown, Check, Settings, Search } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +20,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 export const CompanySwitcher = () => {
   const { companies, activeCompany, loading, switchCompany } = useCompanySwitcher();
   const { user } = useCurrentUser();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(false);
 
@@ -135,7 +137,7 @@ export const CompanySwitcher = () => {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => window.location.href = '/admin/companies'}
+              onClick={() => navigate('/admin/companies')}
               className="cursor-pointer"
             >
               <Settings className="h-4 w-4 mr-2" />

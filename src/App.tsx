@@ -204,11 +204,14 @@ const AppContent = () => {
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
   const navigate = useNavigate();
 
+  // Activity tracking is internally gated by ENABLE_ACTIVITY_TRACKING
   useGlobalActivityTracking();
 
   useEffect(() => {
-    initializeMonitoring();
-    installFetchInterceptor();
+    if (import.meta.env.PROD) {
+      initializeMonitoring();
+      installFetchInterceptor();
+    }
     manageServiceWorkers();
     return () => { cleanupAllChannels(); };
   }, []);
