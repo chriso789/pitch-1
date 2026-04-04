@@ -178,11 +178,12 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
           description: "Location updated successfully",
         });
       } else {
+        if (!effectiveTenantId) throw new Error('No tenant context available');
         const { error } = await supabase
           .from('locations')
           .insert({
             ...locationData,
-            tenant_id: profile.tenant_id,
+            tenant_id: effectiveTenantId,
             created_by: user.id
           });
 

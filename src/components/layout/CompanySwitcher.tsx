@@ -137,7 +137,7 @@ export const CompanySwitcher = () => {
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              onClick={() => window.location.href = '/admin/companies'}
+              onClick={() => navigate('/admin/companies')}
               className="cursor-pointer"
             >
               <Settings className="h-4 w-4 mr-2" />

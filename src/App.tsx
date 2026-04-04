@@ -204,11 +204,18 @@ const AppContent = () => {
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  useGlobalActivityTracking();
+  // Only enable activity tracking and monitoring in production
+  const isProd = import.meta.env.PROD;
+  if (isProd) {
+    // eslint-disable-next-line react-hooks/rules-of-hooks
+    useGlobalActivityTracking();
+  }
 
   useEffect(() => {
-    initializeMonitoring();
-    installFetchInterceptor();
+    if (isProd) {
+      initializeMonitoring();
+      installFetchInterceptor();
+    }
     manageServiceWorkers();
     return () => { cleanupAllChannels(); };
   }, []);
