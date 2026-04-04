@@ -146,15 +146,25 @@ const handler = async (req: Request): Promise<Response> => {
     const fromEmail = getFromEmail();
     const fromAddress = `PITCH CRM Demos <${fromEmail}>`;
     
-    console.log("[send-demo-request] Sending email from:", fromAddress, "to:", DEMO_RECIPIENT);
+    console.log("[send-demo-request] Sending email from:", fromAddress, "to:", DEMO_RECIPIENT, "bcc:", ADMIN_BCC);
     
-    const emailResponse = await resend.emails.send({
-      from: fromAddress,
-      to: [DEMO_RECIPIENT],
-      replyTo: requestData.email,
-      subject: `🎯 Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
-      html: emailHtml,
+    const emailResponse = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: fromAddress,
+        to: [DEMO_RECIPIENT],
+        bcc: [ADMIN_BCC],
+        reply_to: requestData!.email,
+        subject: `🎯 Demo Request: ${requestData!.firstName} ${requestData!.lastName} from ${requestData!.companyName}`,
+        html: emailHtml,
+      }),
     });
+    
+    const emailResult = await emailResponse.json();
     
     console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResponse));
 
