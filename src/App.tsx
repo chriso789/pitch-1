@@ -6,7 +6,6 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
-import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
@@ -24,7 +23,7 @@ import { cleanupAllChannels } from "@/lib/realtimeManager";
 import { RealTimeNotificationProvider } from "@/components/notifications/RealTimeNotificationProvider";
 import { AIFixProvider } from "@/components/error/AIFixProvider";
 
-// Eager imports – landing / auth / lightweight public pages
+// Eager imports – only landing / auth pages (ultra-light boot path)
 import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -32,11 +31,12 @@ import SetupAccount from "./pages/SetupAccount";
 import ConfirmEmail from "./pages/ConfirmEmail";
 import NotFound from "./pages/NotFound";
 
-// Grouped route modules
-import { publicRoutes } from "./routes/publicRoutes";
-import { mobileRoutes } from "./routes/mobileRoutes";
-import { protectedRoutes } from "./routes/protectedRoutes";
-import { adminRoutes } from "./routes/adminRoutes";
+// Lazy section routers – each is a separate chunk loaded only when path matches
+const PublicRoutes = React.lazy(() => import("./routes/publicRoutes"));
+const MobileRoutes = React.lazy(() => import("./routes/mobileRoutes"));
+const ProtectedRoutes = React.lazy(() => import("./routes/protectedRoutes"));
+const AdminRoutes = React.lazy(() => import("./routes/adminRoutes"));
+const SettingsRoutes = React.lazy(() => import("./routes/settingsRoutes"));
 
 // Route-level loading fallback
 const PageLoader = () => (
@@ -121,7 +121,7 @@ const AppContent = () => {
       )}
       <Suspense fallback={<PageLoader />}>
         <Routes>
-          {/* Eager public routes */}
+          {/* Eager public routes – no lazy loading, instant render */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Login initialTab="signup" />} />
@@ -129,14 +129,34 @@ const AppContent = () => {
           <Route path="/setup-account" element={<SetupAccount />} />
           <Route path="/auth/confirm-email" element={<ConfirmEmail />} />
 
-          {/* Grouped route modules */}
-          {publicRoutes}
-          {mobileRoutes}
-          {protectedRoutes}
-          {adminRoutes}
+          {/* Lazy section routers – only loaded when path prefix matches */}
+          <Route path="/app/*" element={<MobileRoutes />} />
+          <Route path="/deeplink" element={<MobileRoutes />} />
+          <Route path="/admin/*" element={<AdminRoutes />} />
+          <Route path="/settings/*" element={<SettingsRoutes />} />
 
-          {/* Catch-all */}
-          <Route path="*" element={<NotFound />} />
+          {/* Public routes (portals, reports, legal, etc.) */}
+          <Route path="/demo-request" element={<PublicRoutes />} />
+          <Route path="/request-setup-link" element={<PublicRoutes />} />
+          <Route path="/pricing" element={<PublicRoutes />} />
+          <Route path="/features" element={<PublicRoutes />} />
+          <Route path="/legal/*" element={<PublicRoutes />} />
+          <Route path="/quickbooks/*" element={<PublicRoutes />} />
+          <Route path="/google-calendar/*" element={<PublicRoutes />} />
+          <Route path="/reports/*" element={<PublicRoutes />} />
+          <Route path="/r/*" element={<PublicRoutes />} />
+          <Route path="/onboarding/*" element={<PublicRoutes />} />
+          <Route path="/customer/*" element={<PublicRoutes />} />
+          <Route path="/sign/*" element={<PublicRoutes />} />
+          <Route path="/portal/*" element={<PublicRoutes />} />
+          <Route path="/crew" element={<PublicRoutes />} />
+          <Route path="/homeowner" element={<PublicRoutes />} />
+          <Route path="/view-quote/*" element={<PublicRoutes />} />
+          <Route path="/proposal/*" element={<PublicRoutes />} />
+          <Route path="/v/*" element={<PublicRoutes />} />
+
+          {/* All other paths → protected app routes (loaded lazily) */}
+          <Route path="/*" element={<ProtectedRoutes />} />
         </Routes>
       </Suspense>
     </>

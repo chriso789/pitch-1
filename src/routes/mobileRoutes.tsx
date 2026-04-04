@@ -1,5 +1,5 @@
-import React from "react";
-import { Route } from "react-router-dom";
+import React, { Suspense } from "react";
+import { Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 
 const MobileEntry = React.lazy(() => import("@/pages/MobileEntry"));
@@ -9,13 +9,22 @@ const MobileAlerts = React.lazy(() => import("@/pages/MobileAlerts"));
 const MobileJobPhotos = React.lazy(() => import("@/pages/MobileJobPhotos"));
 const MobileSettings = React.lazy(() => import("@/pages/MobileSettings"));
 
-export const mobileRoutes = (
-  <>
-    <Route path="/app/mobile" element={<MobileEntry />} />
-    <Route path="/deeplink" element={<DeepLinkResolver />} />
-    <Route path="/app/mobile/field" element={<ProtectedRoute><MobileFieldMode /></ProtectedRoute>} />
-    <Route path="/app/mobile/alerts" element={<ProtectedRoute><MobileAlerts /></ProtectedRoute>} />
-    <Route path="/app/mobile/jobs/:id/photos" element={<ProtectedRoute><MobileJobPhotos /></ProtectedRoute>} />
-    <Route path="/app/mobile/settings" element={<ProtectedRoute><MobileSettings /></ProtectedRoute>} />
-  </>
+const PageLoader = () => (
+  <div className="min-h-screen flex items-center justify-center bg-background">
+    <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+  </div>
 );
+
+export default function MobileRoutes() {
+  return (
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        <Route path="mobile" element={<MobileEntry />} />
+        <Route path="mobile/field" element={<ProtectedRoute><MobileFieldMode /></ProtectedRoute>} />
+        <Route path="mobile/alerts" element={<ProtectedRoute><MobileAlerts /></ProtectedRoute>} />
+        <Route path="mobile/jobs/:id/photos" element={<ProtectedRoute><MobileJobPhotos /></ProtectedRoute>} />
+        <Route path="mobile/settings" element={<ProtectedRoute><MobileSettings /></ProtectedRoute>} />
+      </Routes>
+    </Suspense>
+  );
+}
