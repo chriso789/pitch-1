@@ -1,16 +1,11 @@
 import { corsHeaders } from "npm:@supabase/supabase-js@2.49.1/cors";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
-const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
+const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-};
-
-// Centralized email config - demo requests go to admin
+// Primary recipient + BCC for admin notifications
 const DEMO_RECIPIENT = 'demos@pitch-crm.ai';
+const ADMIN_BCC = Deno.env.get("DEMO_ADMIN_EMAIL") || 'chrisobrien91@gmail.com';
 
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
