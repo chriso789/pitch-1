@@ -19,6 +19,7 @@ export default function MobileRoutes() {
   return (
     <Suspense fallback={<PageLoader />}>
       <Routes>
+        <Route index element={<DeepLinkResolver />} />
         <Route path="mobile" element={<MobileEntry />} />
         <Route path="mobile/field" element={<ProtectedRoute><MobileFieldMode /></ProtectedRoute>} />
         <Route path="mobile/alerts" element={<ProtectedRoute><MobileAlerts /></ProtectedRoute>} />
