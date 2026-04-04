@@ -1,53 +1,58 @@
 
 Diagnosis
 
-- This looks like a preview boot problem, not a normal in-app React crash.
-- I checked the code and found 3 likely causes working together:
-  1. `src/App.tsx` eagerly imports a very large part of the product up front (roughly the entire route tree), so `/` depends on many heavy pages that are unrelated to the landing page.
-  2. `vite.config.ts` has no explicit HMR settings, and the preview console shows Vite’s websocket failing against the proxied Lovable URL.
-  3. The app registers a service worker in `src/App.tsx` even during preview/dev, and both `public/sw.js` and `public/service-worker.js` use overlapping cache behavior (`pitch-crm-v1`). That can survive refreshes, which explains why refreshing 10 times does not help.
-
-Do I know what the issue is?
-
-- Yes: the app is likely failing before React fully mounts in preview, so you get a blank white shell instead of an error screen. This is why there are no runtime errors from React, but the page still appears empty.
+- Do I know what the issue is? Mostly yes.
+- I do not see a current React runtime crash in the available snapshots. The stronger pattern in the code is:
+  1. `/` auto-redirects signed-in users to `/dashboard`, so a downstream boot failure can look like a blank home page.
+  2. `CompanySwitcher` opens Manage All Companies with `window.location.href = '/admin/companies'`, which forces a full reload into one of the heaviest routes.
+  3. `CompanyAdminPage` is route-lazy, but once opened it still pulls a very large admin bundle with multiple heavy management tools.
+  4. `App.tsx` still starts monitoring, fetch interception, and global activity tracking immediately on boot, which adds preview overhead.
+  5. There is also a real company-management bug: `LocationManagement` creates new locations with the logged-in user's `profile.tenant_id` instead of the company being edited.
 
 Plan
 
-1. Fix preview websocket/HMR setup
-- Update `vite.config.ts` so HMR is configured for the Lovable preview proxy instead of default localhost behavior.
-- Keep the current host/port, but add explicit preview-safe HMR settings (`wss` / client port 443 style config).
+1. Remove hard reloads for normal internal navigation
+- Replace the Manage All Companies `window.location.href` navigation with React Router `navigate('/admin/companies')`.
+- Audit similar nonessential hard reloads and keep full reloads only for true tenant/location context resets.
 
-2. Disable service workers in preview/dev
-- In `src/App.tsx`, only register `/sw.js` in production.
-- In preview/development, proactively unregister any existing service workers and clear their caches so stale preview shells do not keep winning after refresh.
-- Review `public/sw.js` and `public/service-worker.js` so they do not interfere with preview boot.
+2. Break up the company admin route
+- Keep the main company list eager.
+- Lazy-load the heavy admin sections only when needed:
+  - Demo Requests
+  - Feature Control
+  - Locations tab
+  - Emails/Templates tab
+  - Website/logo tools
+- Add local `Suspense` fallbacks so the page shows a loading state instead of looking blank.
 
-3. Stop loading the whole app on `/`
-- Refactor `src/App.tsx` to lazy-load large route pages instead of statically importing everything.
-- Keep the landing/auth pages eager.
-- Lazy-load protected/admin/storm-canvass/detail pages behind `React.lazy` + `Suspense`.
-- This isolates `/` from unrelated files like `LeadDetails`, `ContactProfile`, etc.
+3. Reduce preview boot work
+- In preview/dev, defer or disable nonessential startup tasks from `App.tsx`:
+  - monitoring initialization
+  - fetch interceptor installation
+  - global activity tracking
+- Start them after first paint or only in production.
 
-4. Add a real boot fallback
-- Wrap lazy routes with a simple fallback/loading screen and a retry path so a failed chunk/module load shows something useful instead of a white page.
+4. Fix company management tenant scoping
+- Update `LocationManagement` to use `tenantId || activeCompanyId` consistently for inserts/updates.
+- This prevents admin actions from writing locations into the wrong company or failing unexpectedly.
 
-Files to change
+5. Harden the admin route
+- Add a role-aware guard before loading the heavy company admin UI.
+- If admin data fails to load, show an inline recovery state instead of a visually blank page.
 
-- `vite.config.ts`
+Files to update
+
+- `src/components/layout/CompanySwitcher.tsx`
+- `src/pages/admin/CompanyAdminPage.tsx`
+- `src/components/settings/LocationManagement.tsx`
 - `src/App.tsx`
-- `public/sw.js`
-- `public/service-worker.js`
-- possibly `src/services/pushNotifications.ts` if push-worker registration also needs production-only gating
+- likely `src/hooks/useGlobalActivityTracking.ts`
+- likely `src/lib/MonitoringSelfHealing.ts`
 
-Technical details
+Validation
 
-- `src/App.tsx` currently imports nearly all routes at startup, which is expensive in Vite preview.
-- `src/App.tsx` also registers `/sw.js` on mount without checking `import.meta.env.PROD`.
-- `public/sw.js` caches documents and static assets broadly, and both service worker files reuse `pitch-crm-v1`.
-- Preview console already confirms a Vite websocket problem, while runtime error snapshots show no React crash. That combination points to preview startup/module-loading instability rather than a broken landing page component.
-
-Expected outcome
-
-- The preview root page should render consistently again.
-- Hard refreshes should stop getting stuck on a blank white screen.
-- Published behavior should remain unchanged.
+- Load the app from `/` while signed in and confirm it no longer lands on a white screen.
+- Open Manage All Companies from the header and confirm it navigates without a full reload.
+- Open a company, switch tabs, and confirm loaders appear while admin sections load.
+- Add a location while editing a different company and confirm it saves to that company.
+- Refresh on `/admin/companies` and confirm the route still renders.
