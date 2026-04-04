@@ -396,6 +396,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
           )}
           <nav className="space-y-0.5">
             {/* Communications Expandable Section - Follow Up Hub */}
+            {hasFeature('communications') && (
             <div className="space-y-0.5">
               <button
                 onClick={() => setFollowUpExpanded(!followUpExpanded)}
@@ -502,6 +503,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                 </div>
               )}
             </div>
+            )}
 
             {navigation.map((item) => (
               <Link
