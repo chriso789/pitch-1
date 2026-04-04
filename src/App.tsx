@@ -208,7 +208,7 @@ const AppContent = () => {
   useGlobalActivityTracking();
 
   useEffect(() => {
-    if (isProd) {
+    if (import.meta.env.PROD) {
       initializeMonitoring();
       installFetchInterceptor();
     }
