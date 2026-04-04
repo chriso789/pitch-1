@@ -104,16 +104,13 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   };
 
   const handleResetAndRetry = async () => {
-    // Clear all app state and reload
     clearAllAppLocalStorage();
     await supabase.auth.signOut();
-    window.location.href = '/login';
   };
 
   const handleSignOut = async () => {
     clearAllAppLocalStorage();
     await supabase.auth.signOut();
-    window.location.href = '/login';
   };
 
   // Show loading while checking auth
