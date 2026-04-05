@@ -17,6 +17,7 @@ interface BridgeDialRequest {
   location_id?: string;
   record?: boolean;
   answering_machine_detection?: 'disabled' | 'detect' | 'premium';
+  list_item_id?: string;
 }
 
 serve(async (req) => {
