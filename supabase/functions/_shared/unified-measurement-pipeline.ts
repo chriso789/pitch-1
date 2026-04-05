@@ -214,8 +214,9 @@ export async function runUnifiedMeasurementPipeline(
     areaCalcMs: 0,
     fusionMs: 0,
     qaGateMs: 0,
+    calibrationMs: 0,
   };
-  
+
   const debug = request.enableDebugLogs ?? false;
   const log = (msg: string) => { if (debug) console.log(msg); };
   
