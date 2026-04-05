@@ -12,6 +12,8 @@ interface VoicemailDropRequest {
   call_control_id: string;
   voicemail_template_id: string;
   call_id?: string;
+  tenant_id?: string;
+  contact_id?: string;
 }
 
 serve(async (req) => {
