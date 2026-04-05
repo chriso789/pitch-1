@@ -528,7 +528,71 @@ export async function runUnifiedMeasurementPipeline(
   timing.qaGateMs = Date.now() - qaStart;
   
   // -------------------------------------------
-  // Step 6: Fetch Solar data layers metadata (optional, non-blocking)
+  // Step 6: Geometry alignment & calibration (if vendor geometry provided)
+  // -------------------------------------------
+  const calibrationStart = Date.now();
+  let finalReport: FinalReportPayload | null = null;
+  const hasVendorGeometry = !!request.vendorGeometry;
+  
+  if (request.vendorGeometry && request.vendorTruth) {
+    try {
+      log('📐 Step 6: Running geometry alignment & calibration...');
+      const grouped = flattenGeometrySegments(request.vendorGeometry);
+      
+      // Build vendor lengths map from vendorTruth
+      const vendorLengths: Record<string, number> = {};
+      if (request.vendorTruth.ridgeFt) vendorLengths.ridgeFt = request.vendorTruth.ridgeFt;
+      if (request.vendorTruth.hipFt) vendorLengths.hipFt = request.vendorTruth.hipFt;
+      if (request.vendorTruth.valleyFt) vendorLengths.valleyFt = request.vendorTruth.valleyFt;
+      if (request.vendorTruth.eaveFt) vendorLengths.eaveFt = request.vendorTruth.eaveFt;
+      if (request.vendorTruth.rakeFt) vendorLengths.rakeFt = request.vendorTruth.rakeFt;
+      
+      const { ftPerPixel, debug: calibDebug } = estimateFeetPerPixel(grouped, vendorLengths);
+      const measurements = lineMeasurementsFromGeometry(grouped, ftPerPixel);
+      
+      // Back-fill missing linear measurements in fusion
+      if (fused && ftPerPixel) {
+        const backfillMap: Record<LineKey, string> = {
+          ridge: 'ridgeFt', hip: 'hipFt', valley: 'valleyFt',
+          eave: 'eaveFt', rake: 'rakeFt',
+        };
+        for (const key of LINE_KEYS) {
+          const m = measurements[key];
+          const fusedKey = backfillMap[key] as keyof typeof fused.linear;
+          if (m.estimatedLengthFt && fused.linear[fusedKey] === 0) {
+            (fused.linear as Record<string, number>)[fusedKey] = Math.round(m.estimatedLengthFt * 1000) / 1000;
+            log(`  📏 Back-filled ${key}: ${m.estimatedLengthFt.toFixed(1)}ft from calibration`);
+          }
+        }
+      }
+      
+      // Determine pitch info
+      const solarPitchDeg = solarData?.roofSegments?.[0]?.pitchDegrees ?? null;
+      
+      finalReport = buildFinalReportPayload({
+        address: request.address || `${request.lat}, ${request.lng}`,
+        formattedAddress: request.address || null,
+        lat: request.lat,
+        lng: request.lng,
+        fusedAreaSqft: fused?.totalAreaSqft ?? null,
+        predominantPitch: fused?.pitchRatio || request.pitchOverride || null,
+        googlePitchDegrees: solarPitchDeg,
+        facets: request.vendorTruth.facetCount ?? areas?.facets?.length ?? null,
+        lineMeasurements: measurements,
+        calibrationDebug: calibDebug,
+      });
+      
+      log(`✅ Calibration: ft/px=${ftPerPixel?.toFixed(4) || 'N/A'}, final report built`);
+    } catch (err) {
+      warnings.push(`Calibration error: ${err}`);
+      log(`⚠️ Calibration error: ${err}`);
+    }
+  }
+  
+  timing.calibrationMs = Date.now() - calibrationStart;
+  
+  // -------------------------------------------
+  // Step 7: Fetch Solar data layers metadata (optional, non-blocking)
   // -------------------------------------------
   let solarDataLayers: SolarDataLayersMetadata | null = null;
   if (request.fetchDataLayers && keys.GOOGLE_SOLAR_API_KEY) {
@@ -563,6 +627,7 @@ export async function runUnifiedMeasurementPipeline(
     fused,
     snapResult,
     vendorTruthUsed,
+    finalReport,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
@@ -571,6 +636,7 @@ export async function runUnifiedMeasurementPipeline(
       pitch: fused?.pitchRatio || effectivePitch,
       fusionUsed: fused !== null,
       vendorTruth: vendorTruthUsed,
+      vendorGeometry: hasVendorGeometry,
     },
     timing,
     errors,
@@ -594,4 +660,6 @@ export type {
   FusedMeasurement,
   SnapResult,
   VendorTruth,
+  VendorGeometry,
+  FinalReportPayload,
 };
