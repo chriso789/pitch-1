@@ -74,9 +74,11 @@ export interface UnifiedMeasurementResult {
   areas: AreaCalculationResult | null;
   qa: QAGateResult | null;
   solarData: SolarAPIData | null;
+  solarDataLayers: SolarDataLayersMetadata | null;
   terrain: TerrainElevationResult | null;
   fused: FusedMeasurement | null;
   snapResult: SnapResult | null;
+  vendorTruthUsed: boolean;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
@@ -84,6 +86,7 @@ export interface UnifiedMeasurementResult {
     terrain: boolean;
     pitch: string;
     fusionUsed: boolean;
+    vendorTruth: boolean;
   };
   timing: {
     totalMs: number;
