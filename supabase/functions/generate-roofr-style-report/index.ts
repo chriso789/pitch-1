@@ -1,5 +1,4 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -12,30 +11,50 @@ const corsHeaders = {
 // Waste percentage options
 const WASTE_PERCENTAGES = [0, 10, 12, 15, 17, 20, 22]
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
 
   try {
-    const { measurementId, measurement, tags, address, companyInfo, pipelineEntryId } = await req.json()
+    const { measurementId, measurement, tags, address, companyInfo, pipelineEntryId, finalReport } = await req.json()
     console.log('📄 Generating Roofr-style report for:', address || measurementId)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // Extract measurement data
-    const totalArea = measurement?.summary?.total_area_sqft || tags?.['roof.plan_area'] || 0
-    const totalSquares = (totalArea / 100).toFixed(2)
-    const pitch = measurement?.summary?.pitch || measurement?.predominant_pitch || '6/12'
-    const facetCount = measurement?.faces?.length || tags?.['roof.faces_count'] || 0
-    
-    // Linear features
-    const eaves = tags?.['lf.eave'] || measurement?.summary?.eave_ft || 0
-    const rakes = tags?.['lf.rake'] || measurement?.summary?.rake_ft || 0
-    const ridges = tags?.['lf.ridge'] || measurement?.summary?.ridge_ft || 0
-    const hips = tags?.['lf.hip'] || measurement?.summary?.hip_ft || 0
-    const valleys = tags?.['lf.valley'] || measurement?.summary?.valley_ft || 0
-    const stepFlashing = tags?.['lf.step'] || 0
+    // Prefer structured finalReport from unified pipeline when available
+    let totalArea: number;
+    let pitch: string;
+    let facetCount: number;
+    let eaves: number, rakes: number, ridges: number, hips: number, valleys: number, stepFlashing: number;
+
+    if (finalReport?.report) {
+      const rpt = finalReport.report;
+      totalArea = rpt.totalRoofAreaSqft || 0;
+      pitch = rpt.predominantPitch || '6/12';
+      facetCount = rpt.facets || 0;
+      ridges = rpt.lineTotals?.ridge?.estimatedLengthFt || 0;
+      hips = rpt.lineTotals?.hip?.estimatedLengthFt || 0;
+      valleys = rpt.lineTotals?.valley?.estimatedLengthFt || 0;
+      eaves = rpt.lineTotals?.eave?.estimatedLengthFt || 0;
+      rakes = rpt.lineTotals?.rake?.estimatedLengthFt || 0;
+      stepFlashing = 0;
+      console.log('📋 Using structured finalReport payload from unified pipeline');
+    } else {
+      // Legacy path: extract from raw measurement/tags
+      totalArea = measurement?.summary?.total_area_sqft || tags?.['roof.plan_area'] || 0;
+      pitch = measurement?.summary?.pitch || measurement?.predominant_pitch || '6/12';
+      facetCount = measurement?.faces?.length || tags?.['roof.faces_count'] || 0;
+      eaves = tags?.['lf.eave'] || measurement?.summary?.eave_ft || 0;
+      rakes = tags?.['lf.rake'] || measurement?.summary?.rake_ft || 0;
+      ridges = tags?.['lf.ridge'] || measurement?.summary?.ridge_ft || 0;
+      hips = tags?.['lf.hip'] || measurement?.summary?.hip_ft || 0;
+      valleys = tags?.['lf.valley'] || measurement?.summary?.valley_ft || 0;
+      stepFlashing = tags?.['lf.step'] || 0;
+    }
+
+    const totalSquares = (totalArea / 100).toFixed(2);
+    const linear = { eaves, rakes, ridges, hips, valleys, stepFlashing };
 
     // Materials calculation
     const materials = {
