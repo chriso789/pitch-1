@@ -226,6 +226,7 @@ export async function runUnifiedMeasurementPipeline(
     fusionMs: 0,
     qaGateMs: 0,
     calibrationMs: 0,
+    refinementMs: 0,
   };
 
   const debug = request.enableDebugLogs ?? false;
