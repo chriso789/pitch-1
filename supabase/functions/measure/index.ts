@@ -6,8 +6,7 @@
 // Phase 5: Self-evaluation with overlay-evaluator
 // Phase 6: Continuous learning with correction-tracker
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { createClient, SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
 import { analyzeDSM, fetchDSMFromGoogleSolar, detectRidgeLinesFromDSM, detectValleyLinesFromDSM, fetchRoofMaskFromGoogleSolar, applyMaskToDSM } from "./dsm-analyzer.ts";
@@ -1784,7 +1783,7 @@ async function persistTags(supabase: any, measurementId: string, propertyId: str
 }
 
 // Main router
-serve(async (req) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url);
   const { pathname } = url;
 
