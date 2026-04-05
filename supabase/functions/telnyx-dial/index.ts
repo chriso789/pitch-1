@@ -18,6 +18,7 @@ interface DialRequest {
   to_e164?: string;
   record?: boolean;
   answering_machine_detection?: 'disabled' | 'detect' | 'premium';
+  list_item_id?: string;
 }
 
 serve(async (req) => {
@@ -168,6 +169,7 @@ serve(async (req) => {
         to_number: toNumber,
         status: 'initiated',
         call_type: 'manual',
+        list_item_id: body.list_item_id || null,
       })
       .select('id')
       .single();

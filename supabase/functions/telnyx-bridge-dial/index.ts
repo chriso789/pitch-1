@@ -17,6 +17,7 @@ interface BridgeDialRequest {
   location_id?: string;
   record?: boolean;
   answering_machine_detection?: 'disabled' | 'detect' | 'premium';
+  list_item_id?: string;
 }
 
 serve(async (req) => {
@@ -158,6 +159,7 @@ serve(async (req) => {
         to_number: leadNumber,
         status: 'initiated',
         call_type: 'bridge',
+        list_item_id: body.list_item_id || null,
         raw_payload: {
           bridge_mode: true,
           callback_number: callbackE164,

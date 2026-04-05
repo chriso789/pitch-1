@@ -139,6 +139,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
         location_id: locationId || undefined,
         record: true,
         answering_machine_detection: 'premium',
+        list_item_id: currentItem?.id || undefined,
       };
       if (useBridge) {
         body.callback_number = callbackNumber;
@@ -246,6 +247,8 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
           call_control_id: callRow.telnyx_call_control_id,
           voicemail_template_id: selectedVoicemailId,
           call_id: activeCallId,
+          tenant_id: tenantId,
+          contact_id: contactId,
         },
       });
 

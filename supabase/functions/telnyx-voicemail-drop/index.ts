@@ -12,6 +12,8 @@ interface VoicemailDropRequest {
   call_control_id: string;
   voicemail_template_id: string;
   call_id?: string;
+  tenant_id?: string;
+  contact_id?: string;
 }
 
 serve(async (req) => {
@@ -82,6 +84,21 @@ serve(async (req) => {
         status: 'voicemail_dropped',
         raw_payload: { voicemail_template_id: template.id, voicemail_template_name: template.name },
       }).eq('id', body.call_id);
+    }
+
+    // Insert voicemail_recordings record
+    if (body.tenant_id) {
+      await admin.from('voicemail_recordings').insert({
+        tenant_id: body.tenant_id,
+        call_id: body.call_id || null,
+        contact_id: body.contact_id || null,
+        template_id: template.id,
+        recording_url: template.audio_url,
+        status: 'dropped',
+        dropped_by: user.id,
+      }).then(({ error }) => {
+        if (error) console.error('[voicemail-drop] Failed to log voicemail_recordings:', error.message);
+      });
     }
 
     return json({
