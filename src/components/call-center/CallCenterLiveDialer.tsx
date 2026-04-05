@@ -139,6 +139,7 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
         location_id: locationId || undefined,
         record: true,
         answering_machine_detection: 'premium',
+        list_item_id: currentItem?.id || undefined,
       };
       if (useBridge) {
         body.callback_number = callbackNumber;
