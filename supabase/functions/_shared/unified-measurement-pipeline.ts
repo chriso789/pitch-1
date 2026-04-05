@@ -1,6 +1,7 @@
 // Unified Measurement Pipeline
 // Single entry point that handles all API integrations automatically
-// All API keys read from environment - no external dependencies needed
+// Includes: Solar API, footprint resolution, terrain elevation, topology,
+//           facet calculation, geometry snapping, multi-source fusion, and QA
 
 import { 
   resolveFootprint, 
@@ -29,6 +30,23 @@ import {
   type SolarAPIData 
 } from './google-solar-api.ts';
 
+import {
+  fetchTerrainElevation,
+  type TerrainElevationResult,
+} from './mapbox-terrain-fetcher.ts';
+
+import {
+  fuseMeasurements,
+  type FusionInput,
+  type FusedMeasurement,
+} from './measurement-fusion.ts';
+
+import {
+  snapEdgesToFootprint,
+  type DetectedEdge,
+  type SnapResult,
+} from './geometry-snapper.ts';
+
 // ============================================
 // TYPES
 // ============================================
@@ -50,18 +68,25 @@ export interface UnifiedMeasurementResult {
   areas: AreaCalculationResult | null;
   qa: QAGateResult | null;
   solarData: SolarAPIData | null;
+  terrain: TerrainElevationResult | null;
+  fused: FusedMeasurement | null;
+  snapResult: SnapResult | null;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
     solar: boolean;
+    terrain: boolean;
     pitch: string;
+    fusionUsed: boolean;
   };
   timing: {
     totalMs: number;
     solarFetchMs: number;
     footprintResolveMs: number;
+    terrainFetchMs: number;
     topologyBuildMs: number;
     areaCalcMs: number;
+    fusionMs: number;
     qaGateMs: number;
   };
   errors: string[];
@@ -86,12 +111,10 @@ function validateAPIKeys(): { valid: boolean; missing: string[] } {
   const keys = getAPIKeys();
   const missing: string[] = [];
   
-  // GOOGLE_SOLAR_API_KEY is required for best results
   if (!keys.GOOGLE_SOLAR_API_KEY) {
     missing.push('GOOGLE_SOLAR_API_KEY');
   }
   
-  // At least one footprint source must be available
   const hasFootprintSource = keys.MAPBOX_ACCESS_TOKEN || keys.REGRID_API_KEY;
   if (!hasFootprintSource) {
     missing.push('MAPBOX_ACCESS_TOKEN or REGRID_API_KEY');
@@ -101,6 +124,49 @@ function validateAPIKeys(): { valid: boolean; missing: string[] } {
     valid: missing.length === 0,
     missing
   };
+}
+
+// ============================================
+// HELPERS
+// ============================================
+
+function pitchRatioToDegrees(ratio: string): number {
+  if (ratio === 'flat') return 0;
+  const match = ratio.match(/^(\d+)\/(\d+)$/);
+  if (!match) return 20;
+  return Math.atan(parseInt(match[1]) / parseInt(match[2])) * (180 / Math.PI);
+}
+
+/**
+ * Extract ridge points from topology for terrain elevation sampling.
+ */
+function extractRidgePoints(topology: RoofTopology): [number, number][] {
+  const ridgeEdges = topology.skeleton.filter(e => e.edgeType === 'ridge');
+  const points: [number, number][] = [];
+  for (const edge of ridgeEdges) {
+    points.push(edge.start);
+    points.push(edge.end);
+  }
+  // Deduplicate by proximity
+  const unique: [number, number][] = [];
+  for (const p of points) {
+    const isDup = unique.some(u => Math.abs(u[0] - p[0]) < 0.0001 && Math.abs(u[1] - p[1]) < 0.0001);
+    if (!isDup) unique.push(p);
+  }
+  return unique;
+}
+
+/**
+ * Convert skeleton edges to DetectedEdge format for snapping.
+ */
+function skeletonToDetectedEdges(topology: RoofTopology): DetectedEdge[] {
+  return topology.skeleton.map(e => ({
+    start: e.start,
+    end: e.end,
+    type: (e.edgeType as DetectedEdge['type']) || 'unknown',
+    confidence: 0.8,
+    source: 'skeleton',
+  }));
 }
 
 // ============================================
@@ -117,17 +183,18 @@ export async function runUnifiedMeasurementPipeline(
     totalMs: 0,
     solarFetchMs: 0,
     footprintResolveMs: 0,
+    terrainFetchMs: 0,
     topologyBuildMs: 0,
     areaCalcMs: 0,
+    fusionMs: 0,
     qaGateMs: 0,
   };
   
   const debug = request.enableDebugLogs ?? false;
   const log = (msg: string) => { if (debug) console.log(msg); };
   
-  log(`🚀 Starting unified measurement pipeline for (${request.lat.toFixed(6)}, ${request.lng.toFixed(6)})`);
+  log(`🚀 Starting unified measurement pipeline v2 for (${request.lat.toFixed(6)}, ${request.lng.toFixed(6)})`);
   
-  // Validate API keys
   const keyValidation = validateAPIKeys();
   if (!keyValidation.valid) {
     warnings.push(`Missing API keys: ${keyValidation.missing.join(', ')}`);
@@ -137,47 +204,53 @@ export async function runUnifiedMeasurementPipeline(
   const keys = getAPIKeys();
   
   // -------------------------------------------
-  // Step 1: Fetch Solar API data
+  // Step 1: Fetch Solar API data + Footprint (parallel)
   // -------------------------------------------
-  log('📡 Step 1: Fetching Solar API data...');
-  const solarStart = Date.now();
+  log('📡 Step 1: Fetching Solar API + Footprint in parallel...');
+  const step1Start = Date.now();
   
   let solarData: SolarAPIData | null = null;
-  try {
-    solarData = await fetchGoogleSolarData(
-      request.lat, 
-      request.lng, 
-      keys.GOOGLE_SOLAR_API_KEY
-    );
+  let footprint: ResolvedFootprint | null = null;
+  
+  const [solarResult, footprintResult] = await Promise.allSettled([
+    // Solar fetch
+    (async () => {
+      const t = Date.now();
+      const data = await fetchGoogleSolarData(request.lat, request.lng, keys.GOOGLE_SOLAR_API_KEY);
+      timing.solarFetchMs = Date.now() - t;
+      return data;
+    })(),
+    // Footprint fetch
+    (async () => {
+      const t = Date.now();
+      const fp = await resolveFootprint({
+        lat: request.lat,
+        lng: request.lng,
+        mapboxToken: keys.MAPBOX_ACCESS_TOKEN,
+        regridApiKey: keys.REGRID_API_KEY,
+        eaveOverhangFt: request.eaveOverhangFt || 1.0,
+      });
+      timing.footprintResolveMs = Date.now() - t;
+      return fp;
+    })(),
+  ]);
+  
+  if (solarResult.status === 'fulfilled') {
+    solarData = solarResult.value;
     log(`✅ Solar API: ${solarData.available ? 'available' : 'unavailable'}`);
-  } catch (err) {
-    warnings.push(`Solar API fetch failed: ${err}`);
-    log(`⚠️ Solar API error: ${err}`);
+  } else {
+    warnings.push(`Solar API fetch failed: ${solarResult.reason}`);
+    log(`⚠️ Solar API error: ${solarResult.reason}`);
   }
   
-  timing.solarFetchMs = Date.now() - solarStart;
-  
-  // -------------------------------------------
-  // Step 2: Resolve footprint
-  // -------------------------------------------
-  log('📐 Step 2: Resolving footprint...');
-  const footprintStart = Date.now();
-  
-  let footprint: ResolvedFootprint | null = null;
-  try {
-    footprint = await resolveFootprint({
-      lat: request.lat,
-      lng: request.lng,
-      solarData: solarData || undefined,
-      mapboxToken: keys.MAPBOX_ACCESS_TOKEN,
-      regridApiKey: keys.REGRID_API_KEY,
-      eaveOverhangFt: request.eaveOverhangFt || 1.0,
-    });
-    
+  if (footprintResult.status === 'fulfilled') {
+    footprint = footprintResult.value;
     if (footprint) {
-      log(`✅ Footprint resolved: ${footprint.source} (${footprint.qaMetrics.vertexCount} vertices, ${footprint.qaMetrics.areaSqFt.toFixed(0)} sqft)`);
-      
-      // Collect validation warnings
+      // Re-resolve with solar data if we got it and footprint needs it
+      if (solarData && !footprint.validation.warnings.length) {
+        // Solar data available — footprint already resolved, just log
+      }
+      log(`✅ Footprint: ${footprint.source} (${footprint.qaMetrics.vertexCount} vertices, ${footprint.qaMetrics.areaSqFt.toFixed(0)} sqft)`);
       if (footprint.validation.warnings.length > 0) {
         warnings.push(...footprint.validation.warnings);
       }
@@ -185,39 +258,27 @@ export async function runUnifiedMeasurementPipeline(
       errors.push('No valid footprint found from any source');
       log('❌ Footprint resolution failed');
     }
-  } catch (err) {
-    errors.push(`Footprint resolution error: ${err}`);
-    log(`❌ Footprint error: ${err}`);
+  } else {
+    errors.push(`Footprint resolution error: ${footprintResult.reason}`);
+    log(`❌ Footprint error: ${footprintResult.reason}`);
   }
-  
-  timing.footprintResolveMs = Date.now() - footprintStart;
   
   // Cannot continue without footprint
   if (!footprint) {
     timing.totalMs = Date.now() - startTime;
     return {
       success: false,
-      footprint: null,
-      topology: null,
-      areas: null,
-      qa: null,
-      solarData,
-      apiSources: {
-        footprint: 'none',
-        ridgeDirection: 'none',
-        solar: solarData?.available ?? false,
-        pitch: 'unknown',
-      },
-      timing,
-      errors,
-      warnings,
+      footprint: null, topology: null, areas: null, qa: null,
+      solarData, terrain: null, fused: null, snapResult: null,
+      apiSources: { footprint: 'none', ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false },
+      timing, errors, warnings,
     };
   }
   
   // -------------------------------------------
-  // Step 3: Build roof topology
+  // Step 2: Build roof topology
   // -------------------------------------------
-  log('🏗️ Step 3: Building roof topology...');
+  log('🏗️ Step 2: Building roof topology...');
   const topologyStart = Date.now();
   
   let topology: RoofTopology | null = null;
@@ -227,12 +288,8 @@ export async function runUnifiedMeasurementPipeline(
       solarSegments: solarData?.roofSegments,
       eaveOffsetFt: request.eaveOverhangFt || 1.0,
     });
-    
-    log(`✅ Topology built: ${topology.ridgeSource} (${topology.skeleton.length} skeleton edges)`);
-    
-    if (topology.warnings.length > 0) {
-      warnings.push(...topology.warnings);
-    }
+    log(`✅ Topology: ${topology.ridgeSource} (${topology.skeleton.length} skeleton edges)`);
+    if (topology.warnings.length > 0) warnings.push(...topology.warnings);
   } catch (err) {
     errors.push(`Topology build error: ${err}`);
     log(`❌ Topology error: ${err}`);
@@ -240,53 +297,179 @@ export async function runUnifiedMeasurementPipeline(
   
   timing.topologyBuildMs = Date.now() - topologyStart;
   
-  // Cannot continue without topology
   if (!topology) {
     timing.totalMs = Date.now() - startTime;
     return {
       success: false,
-      footprint,
-      topology: null,
-      areas: null,
-      qa: null,
-      solarData,
-      apiSources: {
-        footprint: footprint.source,
-        ridgeDirection: 'none',
-        solar: solarData?.available ?? false,
-        pitch: 'unknown',
-      },
-      timing,
-      errors,
-      warnings,
+      footprint, topology: null, areas: null, qa: null,
+      solarData, terrain: null, fused: null, snapResult: null,
+      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false },
+      timing, errors, warnings,
     };
   }
   
   // -------------------------------------------
-  // Step 4: Compute facets and areas
+  // Step 2.5: Snap skeleton edges to footprint
   // -------------------------------------------
-  log('📊 Step 4: Computing facets and areas...');
-  const areaStart = Date.now();
+  log('📎 Step 2.5: Snapping edges to footprint...');
+  let snapResult: SnapResult | null = null;
+  try {
+    const detectedEdges = skeletonToDetectedEdges(topology);
+    snapResult = snapEdgesToFootprint(detectedEdges, footprint.vertices, 3.0, 5.0);
+    log(`✅ Snapping: ${snapResult.snapStats.edgesSnapped}/${snapResult.snapStats.totalEdges} edges snapped, ${snapResult.discardedCount} discarded`);
+    if (snapResult.discardedCount > 0) {
+      warnings.push(`${snapResult.discardedCount} detected edges discarded (outside footprint)`);
+    }
+  } catch (err) {
+    warnings.push(`Edge snapping error: ${err}`);
+    log(`⚠️ Snapping error: ${err}`);
+  }
   
-  // Determine pitch: override > solar > default
+  // -------------------------------------------
+  // Step 3: Fetch terrain elevation (parallel with area calc)
+  // -------------------------------------------
+  log('🏔️ Step 3: Fetching terrain elevation...');
+  const terrainStart = Date.now();
+  
+  let terrain: TerrainElevationResult | null = null;
+  
+  // Extract ridge points from topology for elevation sampling
+  const ridgePoints = extractRidgePoints(topology);
+  
+  // Run terrain fetch and area calc in parallel
   const effectivePitch = request.pitchOverride || 
     (solarData?.available ? getPredominantPitchFromSolar(solarData) : '6/12');
   
-  let areas: AreaCalculationResult | null = null;
-  try {
-    areas = computeFacetsAndAreas(
-      topology,
-      solarData?.roofSegments,
-      effectivePitch
-    );
-    
-    log(`✅ Areas computed: ${areas.totals.slopedAreaSqft.toFixed(0)} sqft (${areas.facets.length} facets)`);
-  } catch (err) {
-    errors.push(`Area calculation error: ${err}`);
-    log(`❌ Area error: ${err}`);
+  const [terrainResult, areaCalcResult] = await Promise.allSettled([
+    // Terrain fetch
+    (async () => {
+      if (!keys.MAPBOX_ACCESS_TOKEN) return null;
+      return await fetchTerrainElevation(
+        footprint!.vertices as [number, number][],
+        ridgePoints,
+        keys.MAPBOX_ACCESS_TOKEN
+      );
+    })(),
+    // Area calculation
+    (async () => {
+      return computeFacetsAndAreas(topology!, solarData?.roofSegments, effectivePitch);
+    })(),
+  ]);
+  
+  if (terrainResult.status === 'fulfilled' && terrainResult.value) {
+    terrain = terrainResult.value;
+    timing.terrainFetchMs = Date.now() - terrainStart;
+    log(`✅ Terrain: ${terrain.available ? `pitch=${terrain.estimatedPitchRatio || 'N/A'}` : 'unavailable'}`);
+  } else {
+    timing.terrainFetchMs = Date.now() - terrainStart;
+    if (terrainResult.status === 'rejected') {
+      warnings.push(`Terrain fetch failed: ${terrainResult.reason}`);
+    }
   }
   
-  timing.areaCalcMs = Date.now() - areaStart;
+  let areas: AreaCalculationResult | null = null;
+  if (areaCalcResult.status === 'fulfilled') {
+    areas = areaCalcResult.value;
+    timing.areaCalcMs = Date.now() - terrainStart;
+    log(`✅ Areas: ${areas.totals.slopedAreaSqft.toFixed(0)} sqft (${areas.facets.length} facets)`);
+  } else {
+    errors.push(`Area calculation error: ${areaCalcResult.reason}`);
+    timing.areaCalcMs = Date.now() - terrainStart;
+  }
+  
+  // -------------------------------------------
+  // Step 4: Multi-source fusion
+  // -------------------------------------------
+  log('🔀 Step 4: Running multi-source fusion...');
+  const fusionStart = Date.now();
+  
+  let fused: FusedMeasurement | null = null;
+  try {
+    const fusionInput: FusionInput = {
+      area: {},
+      pitch: {},
+      linear: {},
+    };
+    
+    // Populate area sources
+    if (footprint.qaMetrics.areaSqFt > 0) {
+      fusionInput.area.footprintPlanimetric = {
+        value: footprint.qaMetrics.areaSqFt,
+        confidence: footprint.source === 'mapbox_vector' ? 0.9 : 0.7,
+        source: `footprint_${footprint.source}`,
+      };
+    }
+    if (solarData?.available && solarData.buildingFootprintSqft) {
+      fusionInput.area.solarAPI = {
+        value: solarData.buildingFootprintSqft,
+        confidence: 0.85,
+        source: 'google_solar_api',
+      };
+    }
+    if (areas && areas.totals.planAreaSqft > 0) {
+      fusionInput.area.skeletonFacetSum = {
+        value: areas.totals.planAreaSqft,
+        confidence: 0.75,
+        source: 'skeleton_facet_sum',
+      };
+    }
+    
+    // Populate pitch sources
+    if (request.pitchOverride) {
+      fusionInput.pitch.userOverride = {
+        value: pitchRatioToDegrees(request.pitchOverride),
+        confidence: 1.0,
+        source: 'user_override',
+      };
+    }
+    if (solarData?.available && solarData.roofSegments && solarData.roofSegments.length > 0) {
+      const solarPitch = getPredominantPitchFromSolar(solarData);
+      fusionInput.pitch.solarSegments = {
+        value: pitchRatioToDegrees(solarPitch),
+        confidence: 0.85,
+        source: 'google_solar_segments',
+      };
+    }
+    if (terrain?.available && terrain.estimatedPitchDegrees !== undefined) {
+      fusionInput.pitch.terrainRGB = {
+        value: terrain.estimatedPitchDegrees,
+        confidence: terrain.confidence,
+        source: 'mapbox_terrain_rgb',
+      };
+    }
+    
+    // Populate linear sources from skeleton
+    if (areas) {
+      fusionInput.linear.ridgeFt = {
+        skeleton: { value: areas.linearTotals.ridgeFt, confidence: 0.8, source: 'skeleton' },
+      };
+      fusionInput.linear.hipFt = {
+        skeleton: { value: areas.linearTotals.hipFt, confidence: 0.8, source: 'skeleton' },
+      };
+      fusionInput.linear.valleyFt = {
+        skeleton: { value: areas.linearTotals.valleyFt, confidence: 0.8, source: 'skeleton' },
+      };
+      fusionInput.linear.eaveFt = {
+        skeleton: { value: areas.linearTotals.eaveFt, confidence: 0.85, source: 'skeleton' },
+      };
+      fusionInput.linear.rakeFt = {
+        skeleton: { value: areas.linearTotals.rakeFt, confidence: 0.8, source: 'skeleton' },
+      };
+    }
+    
+    fused = fuseMeasurements(fusionInput);
+    log(`✅ Fusion: ${fused.totalAreaSqft} sqft plan, ${fused.slopedAreaSqft} sqft sloped, pitch=${fused.pitchRatio} (confidence=${fused.confidence.overall.toFixed(2)})`);
+    
+    if (fused.requiresManualReview) {
+      warnings.push(...fused.reviewReasons);
+      log(`⚠️ Fusion flagged for review: ${fused.reviewReasons.join(', ')}`);
+    }
+  } catch (err) {
+    warnings.push(`Fusion error: ${err}`);
+    log(`⚠️ Fusion error: ${err}`);
+  }
+  
+  timing.fusionMs = Date.now() - fusionStart;
   
   // -------------------------------------------
   // Step 5: Run QA gate
@@ -299,13 +482,8 @@ export async function runUnifiedMeasurementPipeline(
     try {
       qa = runQAGate(topology, areas, solarData || undefined);
       log(`✅ QA: ${qa.passed ? 'PASSED' : 'FAILED'} (score: ${qa.overallScore.toFixed(2)})`);
-      
-      if (qa.warnings.length > 0) {
-        warnings.push(...qa.warnings);
-      }
-      if (qa.errors.length > 0) {
-        errors.push(...qa.errors);
-      }
+      if (qa.warnings.length > 0) warnings.push(...qa.warnings);
+      if (qa.errors.length > 0) errors.push(...qa.errors);
     } catch (err) {
       warnings.push(`QA gate error: ${err}`);
       log(`⚠️ QA error: ${err}`);
@@ -315,7 +493,7 @@ export async function runUnifiedMeasurementPipeline(
   timing.qaGateMs = Date.now() - qaStart;
   timing.totalMs = Date.now() - startTime;
   
-  log(`🏁 Pipeline complete in ${timing.totalMs}ms`);
+  log(`🏁 Pipeline v2 complete in ${timing.totalMs}ms`);
   
   // -------------------------------------------
   // Return result
@@ -327,11 +505,16 @@ export async function runUnifiedMeasurementPipeline(
     areas,
     qa,
     solarData,
+    terrain,
+    fused,
+    snapResult,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
       solar: solarData?.available ?? false,
-      pitch: effectivePitch,
+      terrain: terrain?.available ?? false,
+      pitch: fused?.pitchRatio || effectivePitch,
+      fusionUsed: fused !== null,
     },
     timing,
     errors,
@@ -350,4 +533,7 @@ export type {
   AreaCalculationResult,
   QAGateResult,
   SolarAPIData,
+  TerrainElevationResult,
+  FusedMeasurement,
+  SnapResult,
 };
