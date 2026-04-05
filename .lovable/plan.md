@@ -1,69 +1,54 @@
 
 
-## Integrate Python Fusion Pipeline into Existing TypeScript Measurement System
+## Port Stage 2: Alignment, Calibration & Report Shaping
 
-### What the Python script reveals vs. what already exists
+### What Stage 2 adds (not yet in TypeScript)
 
-| Python Script Step | Existing TypeScript Module | Gap? |
+The Python script's Stage 2 introduces five capabilities that the current TypeScript pipeline lacks:
+
+| Python Stage 2 Concept | TypeScript Equivalent | Status |
 |---|---|---|
-| `geocode_address()` | Google Geocoding used in `measure/index.ts` | No |
-| `get_google_solar_building_insights()` | `google-solar-api.ts` → `fetchGoogleSolarData()` | No |
-| `get_google_solar_data_layers()` | `dsm-analyzer.ts` → `fetchDSMFromGoogleSolar()` | **Partial** — DSM only, no full data layers metadata saved |
-| `mapbox_static_image()` | `fetch-mapbox-imagery` edge function | No |
-| `mapbox_raster_tile()` (terrain-rgb) | `mapbox-terrain-fetcher.ts` → `fetchTerrainElevation()` | No |
-| `mapbox_raster_tile()` (satellite tile) | `fetch-mapbox-imagery` | No |
-| `load_vendor_truth_from_folder()` | **Nothing** | **Yes — vendor truth ingestion missing** |
-| `fuse_measurements()` | `measurement-fusion.ts` → `fuseMeasurements()` | **Partial** — no vendor truth input channel |
-| `choose_value()` blending | `measurement-fusion.ts` weighted averaging | Similar logic, different tolerance model |
-| CLI + file output | `measure/index.ts` HTTP handler + DB writes | No |
+| `AlignmentTransform` (diagram → aerial mapping) | Nothing | Missing |
+| `estimate_feet_per_pixel()` (pixel→ft calibration from vendor line lengths) | `measurement-calibration` edge function exists but uses zoom math, not vendor truth | Gap |
+| `line_measurements_from_geometry()` (polyline length extraction per edge type) | Skeleton edges have lengths but no structured extraction matching report format | Partial |
+| `render_overlay_preview()` (draw lines on satellite image) | `generate-roof-overlay` exists but runs via AI vision, not deterministic rendering | Different approach |
+| `build_final_report_payload()` (structured report JSON matching Roofr format) | `generate-roofr-style-report` exists but doesn't pull from fused pipeline output | Gap |
 
-### Two real gaps to close
+### Implementation Plan
 
-**Gap 1: Vendor Truth Ingestion**
-The Python script loads parsed Roofr/EagleView JSON from disk and feeds it into fusion as the primary source. Your TypeScript pipeline has no equivalent. You already have `parse-roof-report-geometry` and `roof-report-ingest` edge functions, but their output isn't wired into the unified pipeline's `FusionInput`.
+**1. Create `geometry-alignment.ts` shared module**
+- Port `AlignmentTransform`, `infer_alignment_transform`, `apply_transform_to_polyline`
+- Add `flattenGeometrySegments()` to group parsed vendor geometry by edge type (ridge/valley/hip/eave/rake)
+- Add `estimateFeetPerPixel()` — uses median of vendor truth line lengths divided by pixel lengths for calibration (matching the Python median-based approach)
+- Add `lineMeasurementsFromGeometry()` — returns per-edge-type segment count, pixel length, and calibrated length in feet
 
-**Gap 2: Solar Data Layers Metadata**
-The Python script fetches `dataLayers:get` separately from `buildingInsights:findClosest` and saves the full layers metadata (DSM URLs, mask URLs, imagery date, etc.). Your `dsm-analyzer.ts` fetches data layers internally but doesn't expose the metadata. This metadata is useful for training data provenance and imagery quality assessment.
+**2. Wire calibration into unified pipeline**
+- Add optional `vendorGeometry` field to `UnifiedMeasurementRequest` (parsed polylines from ingested reports)
+- When vendor geometry + vendor truth are both present, run alignment transform and pixel-to-feet calibration
+- Back-fill any missing linear measurements in the fusion input with calibrated values
+- Store calibration debug metadata (ft_per_pixel, alignment transform params) on the result
 
-### Implementation plan
-
-**1. Wire vendor truth into the fusion pipeline**
-- Modify `unified-measurement-pipeline.ts` to accept an optional `vendorTruth` field on `UnifiedMeasurementRequest`
-- When present, vendor truth area/pitch/linear values become the highest-weight fusion sources (confidence 0.95)
-- Query `roof_measurements` for existing vendor reports at the same address to auto-populate vendor truth
-- This means: run a Roofr report, ingest it via `roof-report-ingest`, and future measurements at that address automatically calibrate against it
-
-**2. Add data layers metadata to Solar fetch**
-- Extend `google-solar-api.ts` with a `fetchGoogleSolarDataLayers()` function
-- Store imagery date, quality, and DSM/mask tile URLs on the pipeline result
-- This feeds the benchmark system with provenance info
-
-**3. Update `measure/index.ts` to delegate to unified pipeline**
-- The 3,925-line `measure/index.ts` currently runs its own parallel logic
-- Add a code path that calls `runUnifiedMeasurementPipeline()` when invoked with a `useUnifiedPipeline: true` flag (opt-in, safe rollout)
-- Once validated via benchmarks, make it the default
-
-**4. Add benchmark test addresses with vendor truth**
-- Insert known addresses (like the Palm Harbor one from the script) into `measurement_benchmark_cases` with their Roofr ground-truth values
-- The existing `run-measurement-benchmark` function can then validate the unified pipeline against vendor truth automatically
+**3. Update report output to match Roofr structure**
+- Create `buildFinalReportPayload()` in the pipeline that produces the exact JSON shape from Stage 2:
+  - `property` block (address, lat/lng)
+  - `report` block (area, squares, pitch, facets, per-line-type totals with segment counts)
+  - `calibration` block (debug/provenance info)
+- Wire this into the `UnifiedMeasurementResult` as a `finalReport` field
+- Update `generate-roofr-style-report` to consume this structured output instead of assembling its own
 
 ### Files to create/modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/_shared/unified-measurement-pipeline.ts` | Add `vendorTruth` to request type, wire into fusion as primary source |
-| `supabase/functions/_shared/google-solar-api.ts` | Add `fetchGoogleSolarDataLayers()` for full metadata |
-| `supabase/functions/_shared/measurement-fusion.ts` | Add `vendorTruth` source fields to `FusionInput` with weight 0.95 |
-| `supabase/functions/measure/index.ts` | Add `useUnifiedPipeline` flag to delegate to unified pipeline |
-| Database migration | Insert benchmark cases with vendor truth values |
+| `supabase/functions/_shared/geometry-alignment.ts` | New — alignment transform, pixel-to-feet calibration, line measurement extraction |
+| `supabase/functions/_shared/unified-measurement-pipeline.ts` | Add `vendorGeometry` input, wire alignment step between fusion and QA, add `finalReport` to result |
+| `supabase/functions/_shared/measurement-fusion.ts` | No changes needed — already accepts vendor sources |
+| `supabase/functions/generate-roofr-style-report/index.ts` | Pull from `finalReport` payload instead of raw measurement data |
 
-### What we are NOT doing
-- Not porting this Python script as-is — the TypeScript system already covers 90% of it
-- Not creating a separate Python service — everything stays in edge functions
-- Not replacing the existing `measure/index.ts` wholesale — opt-in delegation with a flag
+### Technical Details
 
-### Technical details
-- Vendor truth tolerance: when vendor and AI area differ by >12%, flag `vendor_ai_area_mismatch` (matching the Python script's tolerance)
-- Vendor truth blending: `choose_value()` logic from the script maps to adding a `vendorReport` source in `FusionInput.area` with confidence 0.95 and weight priority above all other sources
-- Data layers metadata fields: `imageryDate`, `imageryQuality`, `dsmUrl`, `rgbUrl`, `maskUrl`, `monthlyFluxUrl`
+- Pixel-to-feet calibration uses the Python script's median approach: for each line type with both pixel and vendor-truth lengths, compute `ft/px`, then take the median across all types for stability
+- Alignment transform is a simple proportional scale (no rotation/skew) — adequate for axis-aligned diagram-to-aerial mapping; affine transforms can be added later with control points
+- The `vendorGeometry` field accepts pre-parsed polylines (from `parse-roof-report-geometry` output), not raw PDFs
+- Report payload shape matches the Python `build_final_report_payload()` exactly for downstream compatibility
 
