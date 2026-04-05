@@ -346,5 +346,294 @@ export function buildFinalReportPayload(opts: {
       lineTotals,
     },
     calibration: opts.calibrationDebug,
+    confidence: opts.confidence ?? null,
   };
+}
+
+// ============================================
+// STAGE 3: GEOMETRY CLEANUP
+// ============================================
+
+const ANCHOR_ANGLES = [0, 45, 90, 135, 180, 225, 270, 315];
+
+function nearestAnchorAngleDeg(angleDeg: number): number {
+  let best = ANCHOR_ANGLES[0];
+  let bestDist = Infinity;
+  for (const a of ANCHOR_ANGLES) {
+    const dist = Math.abs(((angleDeg - a + 180) % 360) - 180);
+    if (dist < bestDist) { bestDist = dist; best = a; }
+  }
+  return best;
+}
+
+function simplifyPolylineToSegment(polyline: number[][]): number[][] {
+  if (!polyline || polyline.length === 0) return polyline;
+  if (polyline.length === 1) return [polyline[0], polyline[0]];
+  return [polyline[0], polyline[polyline.length - 1]];
+}
+
+function snapSegmentToAnchorAngles(seg: number[][]): number[][] {
+  if (seg.length !== 2) return seg;
+  const [x1, y1] = seg[0];
+  const [x2, y2] = seg[1];
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length === 0) return seg;
+  const angle = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+  const snapped = nearestAnchorAngleDeg(angle);
+  const rad = (snapped * Math.PI) / 180;
+  return [[x1, y1], [x1 + Math.cos(rad) * length, y1 + Math.sin(rad) * length]];
+}
+
+/**
+ * Clean up geometry: simplify polylines to start/end segments,
+ * snap to nearest anchor angle (0/45/90/135...), discard short segments.
+ */
+export function cleanupGeometry(
+  grouped: GroupedGeometry,
+  minSegmentPx: number = 6.0,
+): GroupedGeometry {
+  const cleaned = {} as GroupedGeometry;
+  for (const key of LINE_KEYS) {
+    cleaned[key] = [];
+    for (const seg of grouped[key] || []) {
+      const simplified = simplifyPolylineToSegment(seg);
+      const snapped = snapSegmentToAnchorAngles(simplified);
+      if (polylinePixelLength(snapped) >= minSegmentPx) {
+        cleaned[key].push(snapped);
+      }
+    }
+  }
+  return cleaned;
+}
+
+// ============================================
+// STAGE 3: BOUNDING BOX UTILITIES
+// ============================================
+
+export type BBox = [number, number, number, number]; // [x1, y1, x2, y2]
+
+export function bboxFromPoints(points: number[][]): BBox | null {
+  if (!points || points.length === 0) return null;
+  let x1 = Infinity, y1 = Infinity, x2 = -Infinity, y2 = -Infinity;
+  for (const p of points) {
+    if (p[0] < x1) x1 = p[0];
+    if (p[1] < y1) y1 = p[1];
+    if (p[0] > x2) x2 = p[0];
+    if (p[1] > y2) y2 = p[1];
+  }
+  return [x1, y1, x2, y2];
+}
+
+export function bboxArea(b: BBox): number {
+  return Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]);
+}
+
+export function iouBbox(a: BBox | null, b: BBox | null): number {
+  if (!a || !b) return 0;
+  const ix1 = Math.max(a[0], b[0]);
+  const iy1 = Math.max(a[1], b[1]);
+  const ix2 = Math.min(a[2], b[2]);
+  const iy2 = Math.min(a[3], b[3]);
+  const inter = ix2 > ix1 && iy2 > iy1 ? (ix2 - ix1) * (iy2 - iy1) : 0;
+  const union = bboxArea(a) + bboxArea(b) - inter;
+  return union > 0 ? inter / union : 0;
+}
+
+function collectAllPoints(grouped: GroupedGeometry): number[][] {
+  const pts: number[][] = [];
+  for (const key of LINE_KEYS) {
+    for (const seg of grouped[key] || []) {
+      for (const pt of seg) {
+        if (Array.isArray(pt) && pt.length >= 2) pts.push([pt[0], pt[1]]);
+      }
+    }
+  }
+  return pts;
+}
+
+// ============================================
+// STAGE 3: ALIGNMENT SCORING
+// ============================================
+
+export interface AlignmentDebug {
+  geometryBbox: BBox | null;
+  roofBbox: BBox | null;
+  imageBbox: BBox | null;
+  bboxInsideRatio: number;
+  roofBboxIou: number;
+  alignmentScore: number;
+}
+
+/**
+ * Score how well transformed geometry lands within the expected roof region.
+ */
+export function estimateControlPointAlignment(
+  transformedGeometry: GroupedGeometry,
+  roofBbox: BBox | null,
+  aerialSize: { width: number | null; height: number | null },
+): AlignmentDebug {
+  const pts = collectAllPoints(transformedGeometry);
+  const geomBbox = bboxFromPoints(pts);
+  const imageBbox: BBox | null =
+    aerialSize.width && aerialSize.height
+      ? [0, 0, aerialSize.width, aerialSize.height]
+      : null;
+
+  let bboxInsideRatio = 0;
+  if (geomBbox && imageBbox) {
+    const gArea = bboxArea(geomBbox);
+    if (gArea > 0) {
+      const insideW = Math.max(0, Math.min(geomBbox[2], imageBbox[2]) - Math.max(geomBbox[0], imageBbox[0]));
+      const insideH = Math.max(0, Math.min(geomBbox[3], imageBbox[3]) - Math.max(geomBbox[1], imageBbox[1]));
+      bboxInsideRatio = (insideW * insideH) / gArea;
+    }
+  }
+
+  const roofOverlap = iouBbox(geomBbox, roofBbox);
+  const score = 0.5 * bboxInsideRatio + 0.5 * roofOverlap;
+
+  return {
+    geometryBbox: geomBbox,
+    roofBbox,
+    imageBbox,
+    bboxInsideRatio: Math.round(bboxInsideRatio * 10000) / 10000,
+    roofBboxIou: Math.round(roofOverlap * 10000) / 10000,
+    alignmentScore: Math.round(score * 10000) / 10000,
+  };
+}
+
+// ============================================
+// STAGE 3: CONFIDENCE SCORING
+// ============================================
+
+export interface ConfidenceScore {
+  overall: number;
+  alignment: number;
+  calibration: number;
+  geometry: number;
+  notes: string[];
+}
+
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+/**
+ * Composite confidence score from alignment, calibration, and geometry agreement.
+ * overall = 0.4*alignment + 0.3*calibration + 0.3*geometry
+ */
+export function scoreConfidence(
+  alignmentDebug: AlignmentDebug,
+  calibrationDebug: CalibrationDebug,
+  measurements: Record<LineKey, LineMeasurement>,
+  vendorLengths: Partial<Record<string, number>>,
+): ConfidenceScore {
+  const notes: string[] = [];
+
+  // Alignment
+  const alignment = alignmentDebug.alignmentScore;
+  if (alignment < 0.35) notes.push('Weak geometry-to-roof alignment.');
+
+  // Calibration
+  const candidateCount = Object.keys(calibrationDebug.candidates).length;
+  let calibration = 0;
+  if (calibrationDebug.ftPerPixelFinal !== null) {
+    calibration = 0.35 + Math.min(0.65, 0.15 * candidateCount);
+  }
+  if (candidateCount < 2) notes.push('Calibration built from too few line classes.');
+  calibration = clamp(calibration, 0, 1);
+
+  // Geometry agreement
+  const vendorKeyMap: Record<LineKey, string> = {
+    ridge: 'ridgeFt', valley: 'valleyFt', hip: 'hipFt', eave: 'eaveFt', rake: 'rakeFt',
+  };
+  let classesWithLengths = 0;
+  let disagreements = 0;
+  for (const key of LINE_KEYS) {
+    const m = measurements[key];
+    if (m.estimatedLengthFt !== null) classesWithLengths++;
+    const vendorFt = vendorLengths[vendorKeyMap[key]];
+    if (vendorFt && m.estimatedLengthFt) {
+      const delta = Math.abs(m.estimatedLengthFt - vendorFt) / Math.max(1e-6, vendorFt);
+      if (delta > 0.18) disagreements++;
+    }
+  }
+  let geometry = clamp(classesWithLengths / Math.max(1, LINE_KEYS.length) - 0.12 * disagreements, 0, 1);
+  if (disagreements > 1) notes.push('Multiple calibrated line totals disagree with vendor truth.');
+
+  const overall = clamp(0.4 * alignment + 0.3 * calibration + 0.3 * geometry, 0, 1);
+
+  return {
+    overall: Math.round(overall * 10000) / 10000,
+    alignment: Math.round(alignment * 10000) / 10000,
+    calibration: Math.round(calibration * 10000) / 10000,
+    geometry: Math.round(geometry * 10000) / 10000,
+    notes,
+  };
+}
+
+// ============================================
+// STAGE 3: TRAINING EXPORT PACK
+// ============================================
+
+export interface TrainingPack {
+  manifest: Record<string, unknown>;
+  labels: Record<string, unknown>;
+  geometryGeoJSON: Record<string, unknown>;
+}
+
+function bboxToPolygon(bbox: BBox | null): number[][] {
+  if (!bbox) return [];
+  const [x1, y1, x2, y2] = bbox;
+  return [[x1, y1], [x2, y1], [x2, y2], [x1, y2], [x1, y1]];
+}
+
+/**
+ * Build a training export pack (JSON-only, no image copy).
+ * Returns structured manifest, labels, and geometry GeoJSON.
+ */
+export function buildTrainingExportPack(opts: {
+  aerialImageUrl: string | null;
+  roofBbox: BBox | null;
+  transformedGeometry: GroupedGeometry;
+  report: FinalReportPayload;
+  confidence: ConfidenceScore;
+}): TrainingPack {
+  const features: Record<string, unknown>[] = [
+    {
+      type: 'Feature',
+      properties: { kind: 'roof_footprint' },
+      geometry: { type: 'LineString', coordinates: bboxToPolygon(opts.roofBbox) },
+    },
+  ];
+  for (const key of LINE_KEYS) {
+    for (let idx = 0; idx < (opts.transformedGeometry[key]?.length || 0); idx++) {
+      features.push({
+        type: 'Feature',
+        properties: { kind: key, index: idx },
+        geometry: { type: 'LineString', coordinates: opts.transformedGeometry[key][idx] },
+      });
+    }
+  }
+
+  const geojson = { type: 'FeatureCollection', features };
+
+  const labels = {
+    areaSqft: opts.report.report.totalRoofAreaSqft,
+    facets: opts.report.report.facets,
+    predominantPitch: opts.report.report.predominantPitch,
+    lineTotals: opts.report.report.lineTotals,
+  };
+
+  const manifest = {
+    image: opts.aerialImageUrl,
+    roofPolygon: bboxToPolygon(opts.roofBbox),
+    geometry: opts.transformedGeometry,
+    report: opts.report,
+    confidence: opts.confidence,
+  };
+
+  return { manifest, labels, geometryGeoJSON: geojson };
 }
