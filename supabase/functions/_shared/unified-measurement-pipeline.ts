@@ -27,7 +27,9 @@ import {
 import { 
   fetchGoogleSolarData, 
   getPredominantPitchFromSolar,
-  type SolarAPIData 
+  fetchGoogleSolarDataLayers,
+  type SolarAPIData,
+  type SolarDataLayersMetadata,
 } from './google-solar-api.ts';
 
 import {
