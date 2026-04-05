@@ -1,48 +1,106 @@
 
 
-## Two Issues: Demo Request Email Delivery + Feature Toggle Enforcement
+## Communications & Dialer — Production Readiness Plan
 
-### 1. Demo Request Emails
+### Current State Summary
 
-**Current state:** Demo requests are saved to the `demo_requests` table and an email is sent via the `send-demo-request` edge function using Resend. The email goes to `demos@pitch-crm.ai` — but there are no edge function logs, which means the function may not be deployed or is failing silently.
+The Communications stack has real infrastructure (Telnyx keys, Resend, 10DLC support) and real data (12 calls, 3 text blasts, 5 dialer lists, 1 SMS thread). Bridge-dial calling works. But many pieces are scaffolded UI with gaps that prevent daily production use.
 
-**What's in the database:** 2 demo requests exist — one from Maria Hartley (Cox Roofing, converted) and one from Jared Janacek (O'Brien Contracting, still "new" status). Both show `email_sent: true`, so the emails were sent at some point.
+### What Needs to Be Fixed/Built (grouped by impact)
 
-**The problem:** The recipient address is `demos@pitch-crm.ai`, which is a domain you'd need to have configured to actually receive mail. If that inbox isn't set up, emails are being sent into the void. Additionally, there's no in-app notification system — you only find out about demo requests by checking the Demo Requests tab in the admin panel or checking that email inbox.
+---
 
-**What I'll build:**
-- Add a real-time notification to the admin dashboard when new demo requests come in
-- Update the `send-demo-request` edge function to also send a copy to your actual email (e.g. `chrisobrien91@gmail.com` as BCC or primary recipient)
-- Add an in-app notification badge on the Demo Requests tab so you can see new requests at a glance
-- Redeploy the edge function to ensure it's active
+### Group A: Call Center & Power Dialer (highest priority)
 
-### 2. Feature Toggle Buttons — Already Working, But Not Enforced
+1. **Recording permanence** — Call recordings use expiring Telnyx S3 URLs (600s TTL). The webhook *should* download and re-upload to Supabase Storage, but `call_recordings` has 0 rows. Fix the `telnyx-call-webhook` to reliably persist recordings to the `call-recordings` bucket and populate `call_recordings`.
 
-**Current state:** The `CompanyFeatureControl` component already has working toggle switches. They correctly read/write the `features_enabled` array on the `tenants` table. The database shows some companies have features set (e.g., East Coast Roofing has all 10 enabled) while others have empty arrays (e.g., C-Side Roofing, Coating Kingz, The Roof Panda, Tristate).
+2. **Transcription pipeline** — All 12 calls have `transcript: null`. Wire the `voice-transcribe` edge function to run after recording upload, storing the transcript on the `calls.transcript` column.
 
-**The real problem:** The feature toggles save to the database, but **nothing in the app actually checks `features_enabled`**. There is no hook, context, or gate that reads a tenant's enabled features and hides/shows sidebar items, routes, or page sections. The toggles are cosmetic right now.
+3. **Dialer list ↔ call linking** — `list_item_id` is null on all calls. When a call is initiated from the live dialer, pass the `list_item_id` through so call history links back to the list and item status updates to `called`.
 
-**What I'll build:**
-- Create a `useFeatureAccess` hook that fetches the current tenant's `features_enabled` and exposes a `hasFeature(key)` check
-- Wire it into the sidebar navigation to hide/show menu items based on enabled features
-- Add route-level guards so disabled features show a "Feature not available" page instead of the full UI
-- Map each sidebar item and route to its feature key (pipeline, estimates, dialer, etc.)
+4. **Call disposition persistence** — After disposition in the live dialer, update the `dialer_list_items.status` and log the disposition to `dialer_dispositions` so the list builder accurately reflects contacted vs. pending.
 
-### Files to create/modify
+5. **Voicemail drop completion** — `voicemail_templates` table exists but there is no `voicemail_recordings` table for dropped voicemails. Create the table and wire `telnyx-voicemail-drop` to store the result, then surface it in the call log.
 
-| File | Change |
-|------|--------|
-| `src/hooks/useFeatureAccess.ts` | New — hook to check tenant feature access |
-| `src/components/layout/Sidebar.tsx` (or equivalent) | Gate menu items by feature |
-| `src/components/admin/FeatureGate.tsx` | New — wrapper component for feature-gated content |
-| `supabase/functions/send-demo-request/index.ts` | Add your email as BCC, redeploy |
-| `src/components/settings/DemoRequestsPanel.tsx` | Add notification badge for new/unread count |
-| `src/pages/admin/CompanyAdminPage.tsx` | Show badge on Demo Requests tab |
+6. **Call log in Follow Up Hub** — The Call Center page has its own call log, but the Unified Inbox (`unified_inbox` table) has 0 rows. Write a trigger or post-call hook that inserts completed calls into `unified_inbox` so the Follow Up Hub shows call activity alongside SMS.
 
-### Technical details
+---
 
-- The `useFeatureAccess` hook will query `tenants.features_enabled` for the active tenant and cache it with React Query
-- Sidebar items will be filtered: if the tenant doesn't have `dialer` in their features, the Power Dialer link disappears
-- Feature keys map: `pipeline` → Pipeline, `estimates` → Estimates, `dialer` → Power Dialer, `smart_docs` → Smart Docs, `measurements` → AI Measurements, `projects` → Projects, `storm_canvass` → Storm Canvass, `territory` → Territory, `photos` → Photos, `payments` → Payments
-- Demo notification email will BCC your master account email so you get notified immediately when someone requests a demo
+### Group B: SMS & Messaging
+
+7. **Inbound SMS → thread sync** — The `telnyx-sms-status-webhook` and `messaging-inbound-webhook` need to reliably create/update `sms_threads` and insert into `sms_messages`. Currently only 1 thread exists from a text blast; inbound replies are likely not being captured.
+
+8. **SMS delivery status tracking** — Wire `telnyx-sms-status-webhook` to update `sms_messages.delivery_status` with Telnyx DLR events (delivered/failed/undelivered) so the conversation thread shows accurate delivery indicators.
+
+9. **Opt-out enforcement** — `opt_outs` has 0 rows. Ensure inbound "STOP" keyword handling in `messaging-inbound-webhook` inserts into `opt_outs` and that `sms-blast-processor` and `telnyx-send-sms` check it before sending.
+
+10. **Unmatched inbound routing** — `unmatched_inbound` has 0 rows. Verify that when an inbound SMS/call doesn't match a contact phone, it lands in `unmatched_inbound` so the Unmatched Inbox page actually populates.
+
+11. **Thread-level contact linking** — When a contact replies from a number that matches a blast recipient, auto-link the `sms_threads.contact_id` so the thread shows the contact name instead of just a phone number.
+
+---
+
+### Group C: Unified Inbox & AI Queue
+
+12. **Unified inbox population** — Build triggers/hooks so that every inbound SMS, call, and voicemail automatically creates a row in `unified_inbox`. Right now it's empty, making the Follow Up Hub's inbox tab useless.
+
+13. **AI Follow-up queue hydration** — `ai_outreach_queue` has 0 rows. Wire the `ai-followup-dispatch` function to actually schedule follow-ups based on pipeline activity (e.g., lead not contacted in 48h → auto-queue SMS/call).
+
+14. **AI auto-responder for inbound SMS** — The `sms-auto-responder` edge function exists. Verify it's deployed and connected to the inbound webhook, then add a tenant-level on/off toggle in the AI Queue settings.
+
+---
+
+### Group D: Email Activity
+
+15. **Email tracking webhook** — `EmailActivityDashboard` expects email status data. Wire the Resend webhook (`resend-webhook`) to update email delivery/open/click status in a tracked emails table so the dashboard shows real data.
+
+---
+
+### Group E: Infrastructure & Reliability
+
+16. **Webhook idempotency** — Add idempotency checks (dedupe by Telnyx event ID) to `telnyx-call-webhook` and `telnyx-sms-status-webhook` to prevent duplicate rows from retried webhook deliveries.
+
+17. **Error alerting** — When edge functions fail (call webhook, SMS send), log to a `system_errors` or `edge_function_errors` pattern and surface critical failures in the admin monitoring page.
+
+18. **RLS policy audit** — Verify `sms_threads`, `sms_messages`, `unified_inbox`, `calls`, `call_recordings`, `dialer_lists`, `dialer_list_items` all have proper tenant-scoped RLS so Company A cannot see Company B's communications.
+
+19. **10DLC status display** — The 10DLC registration manager exists in admin. Verify it accurately reflects registration status and blocks SMS sending for unregistered numbers with a clear user-facing message.
+
+20. **Real-time updates** — Add Supabase Realtime subscriptions to `sms_threads`, `unified_inbox`, and `calls` so new inbound messages/calls appear instantly without manual refresh.
+
+---
+
+### Implementation Order
+
+| Phase | Items | Scope |
+|-------|-------|-------|
+| **Phase 1** (this session) | 1-6 | Call recording, transcription, dialer data flow |
+| **Phase 2** (next session) | 7-11 | SMS reliability, delivery tracking, opt-outs |
+| **Phase 3** | 12-14 | Unified inbox + AI queue wiring |
+| **Phase 4** | 15-20 | Email tracking, infra hardening, real-time |
+
+### Files to Create/Modify
+
+**Edge Functions:**
+- `supabase/functions/telnyx-call-webhook/index.ts` — recording download + storage upload
+- `supabase/functions/voice-transcribe/index.ts` — post-recording transcription
+- `supabase/functions/telnyx-sms-status-webhook/index.ts` — DLR status updates
+- `supabase/functions/messaging-inbound-webhook/index.ts` — thread creation, unmatched routing, STOP handling
+
+**Database:**
+- Migration: create `voicemail_recordings` table
+- Migration: add triggers to populate `unified_inbox` from SMS/calls
+- RLS audit on communication tables
+
+**Frontend:**
+- `src/components/call-center/CallCenterLiveDialer.tsx` — pass `list_item_id`, fix disposition save
+- `src/hooks/useCommunications.ts` — add Realtime subscriptions
+- `src/components/communications/UnifiedInbox.tsx` — real-time refresh
+
+### Technical Details
+
+- Recording persistence: download Telnyx S3 URL within the 600s TTL window, upload to `supabase.storage.from('call-recordings')`, store the permanent public URL on `call_recordings.recording_url`
+- Transcription: use OpenAI Whisper API (key already configured) via the `voice-transcribe` function
+- Unified inbox triggers: Postgres `AFTER INSERT` triggers on `sms_messages` (direction='inbound') and `calls` (status='completed') that insert into `unified_inbox`
+- Realtime: subscribe to `sms_threads` and `unified_inbox` changes filtered by `tenant_id`
 
