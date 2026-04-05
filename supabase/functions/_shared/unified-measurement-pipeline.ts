@@ -39,8 +39,10 @@ import {
 
 import {
   fuseMeasurements,
+  mergeVendorIntoFusion,
   type FusionInput,
   type FusedMeasurement,
+  type VendorTruth,
 } from './measurement-fusion.ts';
 
 import {
