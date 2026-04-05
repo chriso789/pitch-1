@@ -317,6 +317,7 @@ export function buildFinalReportPayload(opts: {
   facets: number | null;
   lineMeasurements: Record<LineKey, LineMeasurement>;
   calibrationDebug: CalibrationDebug;
+  confidence?: ConfidenceScore | null;
 }): FinalReportPayload {
   const lineTotals: FinalReportPayload['report']['lineTotals'] = {};
   for (const key of LINE_KEYS) {
