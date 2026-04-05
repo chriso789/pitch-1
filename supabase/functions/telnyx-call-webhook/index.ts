@@ -26,7 +26,10 @@ serve(async (req) => {
       return badRequest('Missing event_type or payload');
     }
 
-    console.log(`[telnyx-call-webhook] Event: ${eventType}`);
+    // Idempotency: deduplicate by Telnyx event ID
+    const telnyxEventId = event.id || body?.meta?.event_id;
+
+    console.log(`[telnyx-call-webhook] Event: ${eventType}, id: ${telnyxEventId || 'unknown'}`);
 
     // Decode client_state to correlate back to our records
     let clientState: Record<string, unknown> = {};
@@ -38,7 +41,7 @@ serve(async (req) => {
       }
     }
 
-    const callId = clientState.call_id;
+    const callId = clientState.call_id as string | undefined;
     const admin = supabaseService();
 
     switch (eventType) {
@@ -68,7 +71,6 @@ serve(async (req) => {
           if (callControlId) {
             console.log(`[telnyx-call-webhook] Bridge mode: sending DTMF prompt to rep`);
             try {
-              // Atomic gather_using_speak: plays audio AND listens for DTMF simultaneously
               await telnyxFetch(`/v2/calls/${callControlId}/actions/gather_using_speak`, {
                 method: 'POST',
                 body: JSON.stringify({
@@ -98,46 +100,40 @@ serve(async (req) => {
                 }).eq('id', callId);
               }
             }
-          } else {
-            console.warn('[telnyx-call-webhook] Bridge mode but missing call_control_id');
           }
         }
         break;
       }
 
       case 'call.gather.ended': {
-        // Rep pressed a digit (or timed out) during the DTMF gate
         const digits = payload.digits;
         const callControlId = payload.call_control_id;
         const isBridge = clientState.bridge_mode === true || clientState.bridge_mode === 'true';
 
         if (isBridge && callControlId) {
           if (digits === '9') {
-            // Rep confirmed — transfer to lead
             const leadNumber = clientState.lead_number;
             const fromNumber = clientState.from_number || payload.from;
 
             if (leadNumber) {
-              console.log(`[telnyx-call-webhook] Rep confirmed (9). Transferring to lead ${leadNumber} from ${fromNumber}`);
+              console.log(`[telnyx-call-webhook] Rep confirmed (9). Transferring to lead ${leadNumber}`);
               try {
-              const transferBody: Record<string, unknown> = {
-                    to: leadNumber,
-                    from: fromNumber,
-                    caller_id_number: fromNumber,
-                    client_state: payload.client_state,
-                  };
+                const transferBody: Record<string, unknown> = {
+                  to: leadNumber,
+                  from: fromNumber,
+                  caller_id_number: fromNumber,
+                  client_state: payload.client_state,
+                };
 
-                  // Apply AMD to the lead leg (stored from bridge-dial)
-                  const amdPref = clientState.amd_pref;
-                  if (amdPref && amdPref !== 'disabled') {
-                    transferBody.answering_machine_detection = amdPref;
-                  }
+                const amdPref = clientState.amd_pref;
+                if (amdPref && amdPref !== 'disabled') {
+                  transferBody.answering_machine_detection = amdPref;
+                }
 
-                  await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
+                await telnyxFetch(`/v2/calls/${callControlId}/actions/transfer`, {
                   method: 'POST',
                   body: JSON.stringify(transferBody),
                 });
-                console.log(`[telnyx-call-webhook] Transfer initiated to ${leadNumber}`);
 
                 // Start recording on the bridged conversation
                 try {
@@ -161,24 +157,14 @@ serve(async (req) => {
                 }
               } catch (transferErr) {
                 console.error('[telnyx-call-webhook] Transfer failed:', transferErr);
-                if (callId) {
-                  await admin.from('calls').update({
-                    raw_payload: { bridge_transfer_error: String(transferErr) },
-                  }).eq('id', callId);
-                }
               }
-            } else {
-              console.warn('[telnyx-call-webhook] Gather confirmed but no lead_number in state');
             }
           } else {
-            // Rep didn't press 9 (timeout or wrong digit)
             const alreadyRetried = clientState.gather_retry === true || clientState.gather_retry === 'true';
 
             if (!alreadyRetried && (!digits || digits === '')) {
-              // Empty digits on first attempt — reprompt once
               console.log(`[telnyx-call-webhook] Empty digits, reprompting once...`);
               try {
-                // Build new client_state with gather_retry flag
                 const retryState = { ...clientState, gather_retry: true };
                 const retryClientState = btoa(JSON.stringify(retryState));
 
@@ -195,19 +181,15 @@ serve(async (req) => {
                     client_state: retryClientState,
                   }),
                 });
-                console.log(`[telnyx-call-webhook] Reprompt sent`);
               } catch (repromptErr) {
                 console.error('[telnyx-call-webhook] Reprompt failed:', repromptErr);
               }
             } else {
-              // Already retried or wrong digit — hang up
-              console.log(`[telnyx-call-webhook] Rep did not confirm (digits: ${digits}, retried: ${alreadyRetried}). Hanging up.`);
+              console.log(`[telnyx-call-webhook] Rep did not confirm. Hanging up.`);
               try {
                 await telnyxFetch(`/v2/calls/${callControlId}/actions/hangup`, {
                   method: 'POST',
-                  body: JSON.stringify({
-                    client_state: payload.client_state,
-                  }),
+                  body: JSON.stringify({ client_state: payload.client_state }),
                 });
               } catch (hangupErr) {
                 console.error('[telnyx-call-webhook] Hangup failed:', hangupErr);
@@ -226,12 +208,9 @@ serve(async (req) => {
       }
 
       case 'call.bridged': {
-        // Fires when the transfer/bridge connects to the lead
         if (callId) {
-          await admin.from('calls').update({
-            status: 'in-progress',
-          }).eq('id', callId);
-          console.log(`[telnyx-call-webhook] Call ${callId} bridged successfully`);
+          await admin.from('calls').update({ status: 'in-progress' }).eq('id', callId);
+          console.log(`[telnyx-call-webhook] Call ${callId} bridged`);
         }
         break;
       }
@@ -241,7 +220,7 @@ serve(async (req) => {
           const endedAt = new Date();
           const { data: callRow } = await admin
             .from('calls')
-            .select('answered_at')
+            .select('answered_at, list_item_id')
             .eq('id', callId)
             .single();
 
@@ -257,6 +236,15 @@ serve(async (req) => {
             ended_at: endedAt.toISOString(),
             duration_seconds: durationSeconds,
           }).eq('id', callId);
+
+          // Update dialer list item status if linked
+          if (callRow?.list_item_id) {
+            await admin.from('dialer_list_items').update({
+              status: 'called',
+              updated_at: new Date().toISOString(),
+            }).eq('id', callRow.list_item_id);
+            console.log(`[telnyx-call-webhook] Updated list item ${callRow.list_item_id} to 'called'`);
+          }
         }
         break;
       }
@@ -266,13 +254,14 @@ serve(async (req) => {
         if (callId && recordingUrl) {
           console.log(`[telnyx-call-webhook] Downloading recording for call ${callId}`);
           try {
-            // 1. Download from Telnyx before presigned URL expires
+            // 1. Download from Telnyx before presigned URL expires (600s)
             const audioRes = await fetch(recordingUrl);
             if (!audioRes.ok) {
               throw new Error(`Failed to fetch recording: ${audioRes.status}`);
             }
             const audioBytes = new Uint8Array(await audioRes.arrayBuffer());
-            const storagePath = `${clientState.tenant_id || 'unknown'}/${callId}.mp3`;
+            const tenantId = clientState.tenant_id || 'unknown';
+            const storagePath = `${tenantId}/${callId}.mp3`;
 
             // 2. Upload to Supabase Storage
             const { error: uploadErr } = await admin.storage
@@ -283,7 +272,6 @@ serve(async (req) => {
               });
             if (uploadErr) {
               console.error('[telnyx-call-webhook] Storage upload error:', uploadErr.message);
-              // Fallback: store original URL anyway
               await admin.from('calls').update({ recording_url: recordingUrl }).eq('id', callId);
               break;
             }
@@ -294,12 +282,13 @@ serve(async (req) => {
               .getPublicUrl(storagePath);
             const permanentUrl = publicUrlData?.publicUrl || recordingUrl;
 
+            // 4. Update calls table (triggers trg_sync_call_recording → call_recordings)
             await admin.from('calls').update({
               recording_url: permanentUrl,
             }).eq('id', callId);
-            console.log(`[telnyx-call-webhook] Recording stored permanently for call ${callId}`);
+            console.log(`[telnyx-call-webhook] Recording stored permanently: ${storagePath}`);
 
-            // 4. Trigger transcription
+            // 5. Trigger transcription
             try {
               const base64Audio = btoa(
                 audioBytes.reduce((data, byte) => data + String.fromCharCode(byte), '')
@@ -311,7 +300,7 @@ serve(async (req) => {
                   body: {
                     audio: base64Audio,
                     callId,
-                    tenantId: clientState.tenant_id || null,
+                    tenantId: tenantId !== 'unknown' ? tenantId : null,
                     contactId: clientState.contact_id || null,
                   },
                 }
@@ -330,7 +319,6 @@ serve(async (req) => {
             }
           } catch (dlErr) {
             console.error('[telnyx-call-webhook] Recording download failed:', dlErr);
-            // Fallback: store original URL
             await admin.from('calls').update({ recording_url: recordingUrl }).eq('id', callId);
           }
         }
