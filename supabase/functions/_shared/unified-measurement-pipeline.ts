@@ -508,9 +508,27 @@ export async function runUnifiedMeasurementPipeline(
   }
   
   timing.qaGateMs = Date.now() - qaStart;
+  
+  // -------------------------------------------
+  // Step 6: Fetch Solar data layers metadata (optional, non-blocking)
+  // -------------------------------------------
+  let solarDataLayers: SolarDataLayersMetadata | null = null;
+  if (request.fetchDataLayers && keys.GOOGLE_SOLAR_API_KEY) {
+    try {
+      solarDataLayers = await fetchGoogleSolarDataLayers(
+        request.lat, request.lng, 35, keys.GOOGLE_SOLAR_API_KEY
+      );
+      log(`✅ Data layers: ${solarDataLayers.available ? 'available' : 'unavailable'}`);
+    } catch (err) {
+      warnings.push(`Data layers fetch error: ${err}`);
+    }
+  }
+  
   timing.totalMs = Date.now() - startTime;
   
   log(`🏁 Pipeline v2 complete in ${timing.totalMs}ms`);
+  
+  const vendorTruthUsed = !!request.vendorTruth;
   
   // -------------------------------------------
   // Return result
@@ -522,9 +540,11 @@ export async function runUnifiedMeasurementPipeline(
     areas,
     qa,
     solarData,
+    solarDataLayers,
     terrain,
     fused,
     snapResult,
+    vendorTruthUsed,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
@@ -532,6 +552,7 @@ export async function runUnifiedMeasurementPipeline(
       terrain: terrain?.available ?? false,
       pitch: fused?.pitchRatio || effectivePitch,
       fusionUsed: fused !== null,
+      vendorTruth: vendorTruthUsed,
     },
     timing,
     errors,
@@ -550,7 +571,9 @@ export type {
   AreaCalculationResult,
   QAGateResult,
   SolarAPIData,
+  SolarDataLayersMetadata,
   TerrainElevationResult,
   FusedMeasurement,
   SnapResult,
+  VendorTruth,
 };
