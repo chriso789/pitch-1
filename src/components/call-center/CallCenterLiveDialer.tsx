@@ -247,6 +247,8 @@ export const CallCenterLiveDialer: React.FC<CallCenterLiveDialerProps> = ({
           call_control_id: callRow.telnyx_call_control_id,
           voicemail_template_id: selectedVoicemailId,
           call_id: activeCallId,
+          tenant_id: tenantId,
+          contact_id: contactId,
         },
       });
 
