@@ -11,7 +11,7 @@ const corsHeaders = {
 // Waste percentage options
 const WASTE_PERCENTAGES = [0, 10, 12, 15, 17, 20, 22]
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
