@@ -38711,6 +38711,90 @@ export type Database = {
           },
         ]
       }
+      voicemail_recordings: {
+        Row: {
+          call_id: string | null
+          contact_id: string | null
+          created_at: string
+          dropped_by: string | null
+          duration_seconds: number | null
+          error_message: string | null
+          id: string
+          recording_url: string | null
+          status: string
+          storage_path: string | null
+          template_id: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          call_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          dropped_by?: string | null
+          duration_seconds?: number | null
+          error_message?: string | null
+          id?: string
+          recording_url?: string | null
+          status?: string
+          storage_path?: string | null
+          template_id?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          call_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          dropped_by?: string | null
+          duration_seconds?: number | null
+          error_message?: string | null
+          id?: string
+          recording_url?: string | null
+          status?: string
+          storage_path?: string | null
+          template_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voicemail_recordings_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voicemail_recordings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voicemail_recordings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "voicemail_recordings_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "voicemail_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voicemail_recordings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       voicemail_templates: {
         Row: {
           audio_url: string | null
