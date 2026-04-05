@@ -1,106 +1,149 @@
 
 
-## Communications & Dialer — Production Readiness Plan
+## Data Fusion Layer — Multi-Source Measurement Accuracy Overhaul
 
-### Current State Summary
+### What You Already Have (It's More Than You Think)
 
-The Communications stack has real infrastructure (Telnyx keys, Resend, 10DLC support) and real data (12 calls, 3 text blasts, 5 dialer lists, 1 SMS thread). Bridge-dial calling works. But many pieces are scaffolded UI with gaps that prevent daily production use.
+Your system is NOT starting from zero. Here's what's already wired and working:
 
-### What Needs to Be Fixed/Built (grouped by impact)
+| Layer | Status | Source |
+|-------|--------|--------|
+| Google Solar API (pitch, segments, area) | Built | `google-solar-api.ts`, `measure/index.ts` |
+| Mapbox Satellite imagery | Built | `fetch-mapbox-imagery`, `analyze-roof-aerial` |
+| Mapbox Vector footprints (Tilequery) | Built | `mapbox-footprint-extractor.ts` |
+| Microsoft/Esri buildings fallback | Built | `footprint-resolver.ts` |
+| OSM buildings fallback | Built | `footprint-resolver.ts` |
+| Straight skeleton topology | Built | `straight-skeleton.ts`, `roof-topology-builder.ts` |
+| DSM elevation analysis | Built | `dsm-analyzer.ts` (reads Solar API DSM) |
+| Facet splitting + area calc | Built | `facet-area-calculator.ts`, `facet-splitter.ts` |
+| Edge classification (ridge/hip/valley/eave/rake) | Built | `gable-detector.ts`, `segment-topology-analyzer.ts` |
+| QA gate + cross-validation | Built | `measurement-qa-gate.ts`, `qa-checks.ts` |
+| Unified pipeline orchestrator | Built | `unified-measurement-pipeline.ts` |
+| Ridge calibration | Built | `ridge-calibrator.ts` |
+| Correction tracker (learning) | Built | `correction-tracker.ts` |
 
----
+**What's actually broken is not the components — it's that they don't fuse properly.**
 
-### Group A: Call Center & Power Dialer (highest priority)
+### What's Actually Missing (The Gaps)
 
-1. **Recording permanence** — Call recordings use expiring Telnyx S3 URLs (600s TTL). The webhook *should* download and re-upload to Supabase Storage, but `call_recordings` has 0 rows. Fix the `telnyx-call-webhook` to reliably persist recordings to the `call-recordings` bucket and populate `call_recordings`.
+1. **No Mapbox Terrain elevation** — You use Solar API DSM (which only covers buildings Google has scanned). Mapbox Terrain-RGB tiles cover everywhere and give ground + surface elevation for proper pitch calculation on buildings Solar doesn't cover.
 
-2. **Transcription pipeline** — All 12 calls have `transcript: null`. Wire the `voice-transcribe` edge function to run after recording upload, storing the transcript on the `calls.transcript` column.
+2. **No imagery-to-geometry calibration** — The AI vision functions (`analyze-roof-aerial`, `roof-segmentation`, `generate-roof-overlay`) detect lines in pixel space but don't have a reliable pixel→feet conversion anchored to the footprint polygon. The `measurement-calibration` edge function exists but isn't wired into the main pipeline.
 
-3. **Dialer list ↔ call linking** — `list_item_id` is null on all calls. When a call is initiated from the live dialer, pass the `list_item_id` through so call history links back to the list and item status updates to `called`.
+3. **No fusion reconciliation** — When Solar says 2,800 sqft and the skeleton says 2,400 sqft, there's no arbitration logic. The pipeline just picks one. Roofr cross-validates and weighted-averages.
 
-4. **Call disposition persistence** — After disposition in the live dialer, update the `dialer_list_items.status` and log the disposition to `dialer_dispositions` so the list builder accurately reflects contacted vs. pending.
+4. **AI vision runs independently** — `analyze-roof-aerial` and `roof-segmentation` produce edge detections but they're not snapped to the authoritative footprint polygon. Detected ridges float in pixel space instead of being constrained to actual building geometry.
 
-5. **Voicemail drop completion** — `voicemail_templates` table exists but there is no `voicemail_recordings` table for dropped voicemails. Create the table and wire `telnyx-voicemail-drop` to store the result, then surface it in the call log.
+5. **No Mapbox Tilequery for edge snapping** — The Tilequery API can return features at a point, useful for snapping detected geometry to known building edges. This is referenced in your stack description but not implemented.
 
-6. **Call log in Follow Up Hub** — The Call Center page has its own call log, but the Unified Inbox (`unified_inbox` table) has 0 rows. Write a trigger or post-call hook that inserts completed calls into `unified_inbox` so the Follow Up Hub shows call activity alongside SMS.
+6. **`measure/index.ts` is 3,925 lines** — The main orchestrator has grown unwieldy. The unified pipeline (`unified-measurement-pipeline.ts`) exists as the intended replacement but the `measure` function still runs its own parallel logic.
 
----
-
-### Group B: SMS & Messaging
-
-7. **Inbound SMS → thread sync** — The `telnyx-sms-status-webhook` and `messaging-inbound-webhook` need to reliably create/update `sms_threads` and insert into `sms_messages`. Currently only 1 thread exists from a text blast; inbound replies are likely not being captured.
-
-8. **SMS delivery status tracking** — Wire `telnyx-sms-status-webhook` to update `sms_messages.delivery_status` with Telnyx DLR events (delivered/failed/undelivered) so the conversation thread shows accurate delivery indicators.
-
-9. **Opt-out enforcement** — `opt_outs` has 0 rows. Ensure inbound "STOP" keyword handling in `messaging-inbound-webhook` inserts into `opt_outs` and that `sms-blast-processor` and `telnyx-send-sms` check it before sending.
-
-10. **Unmatched inbound routing** — `unmatched_inbound` has 0 rows. Verify that when an inbound SMS/call doesn't match a contact phone, it lands in `unmatched_inbound` so the Unmatched Inbox page actually populates.
-
-11. **Thread-level contact linking** — When a contact replies from a number that matches a blast recipient, auto-link the `sms_threads.contact_id` so the thread shows the contact name instead of just a phone number.
-
----
-
-### Group C: Unified Inbox & AI Queue
-
-12. **Unified inbox population** — Build triggers/hooks so that every inbound SMS, call, and voicemail automatically creates a row in `unified_inbox`. Right now it's empty, making the Follow Up Hub's inbox tab useless.
-
-13. **AI Follow-up queue hydration** — `ai_outreach_queue` has 0 rows. Wire the `ai-followup-dispatch` function to actually schedule follow-ups based on pipeline activity (e.g., lead not contacted in 48h → auto-queue SMS/call).
-
-14. **AI auto-responder for inbound SMS** — The `sms-auto-responder` edge function exists. Verify it's deployed and connected to the inbound webhook, then add a tenant-level on/off toggle in the AI Queue settings.
+### The Plan: Data Fusion Layer (3 Phases)
 
 ---
 
-### Group D: Email Activity
+#### Phase 1: Terrain + Calibration Integration
 
-15. **Email tracking webhook** — `EmailActivityDashboard` expects email status data. Wire the Resend webhook (`resend-webhook`) to update email delivery/open/click status in a tracked emails table so the dashboard shows real data.
+**1a. Add Mapbox Terrain-RGB elevation fetching**
+- Create `supabase/functions/_shared/mapbox-terrain-fetcher.ts`
+- Fetch terrain-rgb tiles at the building location
+- Decode RGB→elevation using Mapbox formula: `height = -10000 + ((R * 256 * 256 + G * 256 + B) * 0.1)`
+- Sample elevation at footprint vertices and along detected edges
+- Use elevation delta between eave and ridge to compute pitch independently of Solar API
+
+**1b. Wire calibration into the pipeline**
+- The `measurement-calibration` edge function already computes `pixelToFeetRatio` — integrate its output into `unified-measurement-pipeline.ts` Step 2.5 (between footprint and topology)
+- Use the footprint polygon's known real-world dimensions (from Mapbox Vector) as the calibration anchor instead of relying solely on zoom-level math
+
+**1c. Constrain AI detections to footprint**
+- In `unified-measurement-pipeline.ts`, after AI vision runs, clip all detected lines to the footprint polygon boundary
+- Snap endpoints within 3ft of a footprint vertex to that vertex
+- Discard any detected line that falls entirely outside the footprint + 5ft buffer
 
 ---
 
-### Group E: Infrastructure & Reliability
+#### Phase 2: Source Fusion + Reconciliation Engine
 
-16. **Webhook idempotency** — Add idempotency checks (dedupe by Telnyx event ID) to `telnyx-call-webhook` and `telnyx-sms-status-webhook` to prevent duplicate rows from retried webhook deliveries.
+**2a. Create fusion reconciliation module**
+- New file: `supabase/functions/_shared/measurement-fusion.ts`
+- Takes inputs from all sources: Solar API area/pitch, skeleton-derived area, AI-detected lines, Terrain-derived pitch, footprint polygon area
+- Applies weighted averaging based on source confidence:
 
-17. **Error alerting** — When edge functions fail (call webhook, SMS send), log to a `system_errors` or `edge_function_errors` pattern and surface critical failures in the admin monitoring page.
+```text
+Source Priority (area):
+  1. Footprint polygon planimetric area (Mapbox Vector) — weight 0.4
+  2. Solar API wholeRoofStats                          — weight 0.35
+  3. Skeleton-derived facet sum                        — weight 0.25
 
-18. **RLS policy audit** — Verify `sms_threads`, `sms_messages`, `unified_inbox`, `calls`, `call_recordings`, `dialer_lists`, `dialer_list_items` all have proper tenant-scoped RLS so Company A cannot see Company B's communications.
+Source Priority (pitch):
+  1. Solar API segment pitchDegrees (per-facet)        — weight 0.5
+  2. Terrain-RGB elevation delta                       — weight 0.3
+  3. DSM ridge-to-eave analysis                        — weight 0.2
 
-19. **10DLC status display** — The 10DLC registration manager exists in admin. Verify it accurately reflects registration status and blocks SMS sending for unregistered numbers with a clear user-facing message.
+Source Priority (linear features):
+  1. Skeleton edges (constrained to footprint)         — weight 0.5
+  2. AI vision detected + snapped edges                — weight 0.3
+  3. Solar segment boundary inference                  — weight 0.2
+```
 
-20. **Real-time updates** — Add Supabase Realtime subscriptions to `sms_threads`, `unified_inbox`, and `calls` so new inbound messages/calls appear instantly without manual refresh.
+- When sources disagree by >10%, flag for manual review with specific deviation details
+- Output a single fused measurement with per-component confidence scores
+
+**2b. Consolidate `measure/index.ts` into `unified-measurement-pipeline.ts`**
+- The 3,925-line `measure/index.ts` duplicates logic that the unified pipeline handles
+- Route all new measurement requests through `runUnifiedMeasurementPipeline`
+- Keep `measure/index.ts` as the HTTP handler only (request parsing, auth, DB writes) — delegate all computation to the unified pipeline
+- This prevents the two pipelines from drifting further apart
 
 ---
+
+#### Phase 3: Output Parity with Roofr/EagleView Reports
+
+**3a. Structured geometry output**
+- Ensure the pipeline returns per-facet data matching Roofr's report structure:
+  - Facet ID, polygon WKT, plan area, sloped area, pitch, orientation
+  - Per-edge: type (ridge/hip/valley/eave/rake), length in feet, start/end coords
+  - Totals: ridge ft, hip ft, valley ft, eave ft, rake ft, perimeter ft, total area, squares
+
+**3b. Accuracy benchmarking against known reports**
+- The `compare-accuracy` and `run-measurement-benchmark` functions exist but aren't systematically used
+- Create a benchmark runner that takes a Roofr/EagleView report's known values (area, line lengths) and compares against pipeline output
+- Store deviation percentages per component to track improvement over time
+- Target: <3% area deviation, <5% linear measurement deviation
+
+**3c. Report generation alignment**
+- Update `generate-roofr-style-report` to pull from the fused measurement output
+- Ensure the PDF matches Roofr's structure: summary page, lengths breakdown, facet diagram
+
+### Files to Create
+
+| File | Purpose |
+|------|---------|
+| `supabase/functions/_shared/mapbox-terrain-fetcher.ts` | Terrain-RGB elevation sampling |
+| `supabase/functions/_shared/measurement-fusion.ts` | Multi-source weighted reconciliation |
+| `supabase/functions/_shared/geometry-snapper.ts` | Snap AI detections to footprint |
+
+### Files to Modify
+
+| File | Change |
+|------|--------|
+| `supabase/functions/_shared/unified-measurement-pipeline.ts` | Add terrain fetch, calibration, fusion, and snapping steps |
+| `supabase/functions/measure/index.ts` | Delegate computation to unified pipeline |
+| `supabase/functions/_shared/facet-area-calculator.ts` | Accept multi-source pitch inputs |
+| `supabase/functions/generate-roofr-style-report/index.ts` | Pull from fused output |
 
 ### Implementation Order
 
-| Phase | Items | Scope |
-|-------|-------|-------|
-| **Phase 1** (this session) | 1-6 | Call recording, transcription, dialer data flow |
-| **Phase 2** (next session) | 7-11 | SMS reliability, delivery tracking, opt-outs |
-| **Phase 3** | 12-14 | Unified inbox + AI queue wiring |
-| **Phase 4** | 15-20 | Email tracking, infra hardening, real-time |
-
-### Files to Create/Modify
-
-**Edge Functions:**
-- `supabase/functions/telnyx-call-webhook/index.ts` — recording download + storage upload
-- `supabase/functions/voice-transcribe/index.ts` — post-recording transcription
-- `supabase/functions/telnyx-sms-status-webhook/index.ts` — DLR status updates
-- `supabase/functions/messaging-inbound-webhook/index.ts` — thread creation, unmatched routing, STOP handling
-
-**Database:**
-- Migration: create `voicemail_recordings` table
-- Migration: add triggers to populate `unified_inbox` from SMS/calls
-- RLS audit on communication tables
-
-**Frontend:**
-- `src/components/call-center/CallCenterLiveDialer.tsx` — pass `list_item_id`, fix disposition save
-- `src/hooks/useCommunications.ts` — add Realtime subscriptions
-- `src/components/communications/UnifiedInbox.tsx` — real-time refresh
+| Session | Scope | Impact |
+|---------|-------|--------|
+| This session | Phase 1 (terrain, calibration, snapping) | Fixes pitch accuracy and edge alignment |
+| Next session | Phase 2 (fusion engine, measure consolidation) | Eliminates source disagreement, single pipeline |
+| Following session | Phase 3 (output parity, benchmarking) | Validates against real Roofr reports |
 
 ### Technical Details
 
-- Recording persistence: download Telnyx S3 URL within the 600s TTL window, upload to `supabase.storage.from('call-recordings')`, store the permanent public URL on `call_recordings.recording_url`
-- Transcription: use OpenAI Whisper API (key already configured) via the `voice-transcribe` function
-- Unified inbox triggers: Postgres `AFTER INSERT` triggers on `sms_messages` (direction='inbound') and `calls` (status='completed') that insert into `unified_inbox`
-- Realtime: subscribe to `sms_threads` and `unified_inbox` changes filtered by `tenant_id`
+- Mapbox Terrain-RGB tiles are free up to 200k requests/month on the free tier and use standard `https://api.mapbox.com/v4/mapbox.mapbox-terrain-dem-v1/{z}/{x}/{y}.pngraw?access_token=TOKEN` endpoint
+- The fusion engine uses a Bayesian-inspired weighting where each source's weight is multiplied by its confidence score, then normalized
+- Geometry snapping uses point-to-segment projection with a configurable tolerance (default 3ft / ~1m)
+- The benchmark table schema already exists via `run-measurement-benchmark` — we'll add systematic test addresses
 
