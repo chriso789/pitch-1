@@ -62,6 +62,8 @@ export interface UnifiedMeasurementRequest {
   pitchOverride?: string;
   eaveOverhangFt?: number;
   enableDebugLogs?: boolean;
+  vendorTruth?: VendorTruth;
+  fetchDataLayers?: boolean;
 }
 
 export interface UnifiedMeasurementResult {
