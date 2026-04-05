@@ -1783,7 +1783,7 @@ async function persistTags(supabase: any, measurementId: string, propertyId: str
 }
 
 // Main router
-serve(async (req) => {
+Deno.serve(async (req) => {
   const url = new URL(req.url);
   const { pathname } = url;
 
