@@ -1863,7 +1863,76 @@ serve(async (req) => {
         // Phase 1: Added 'engine' parameter for baseline detection method
         // 'skeleton' = geometric straight-skeleton algorithm (default, fast)
         // 'vision' = AI vision-based detection from satellite imagery (more accurate)
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton' } = body;
+        // 'unified' = NEW: Full multi-source fusion pipeline (opt-in)
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth } = body;
+
+        // --- Unified Pipeline Delegation (opt-in) ---
+        if (useUnifiedPipeline || engine === 'unified') {
+          console.log('[pull] 🔀 Delegating to unified measurement pipeline');
+          try {
+            const { runUnifiedMeasurementPipeline } = await import('../_shared/unified-measurement-pipeline.ts');
+            const unifiedResult = await runUnifiedMeasurementPipeline({
+              lat: Number(lat),
+              lng: Number(lng),
+              address,
+              vendorTruth: vendorTruth || undefined,
+              fetchDataLayers: true,
+              enableDebugLogs: true,
+            });
+            
+            // Store result in roof_measurements if we have a property
+            if (propertyId && unifiedResult.fused) {
+              const fused = unifiedResult.fused;
+              await supabase.from('roof_measurements').insert({
+                property_id: propertyId,
+                source: 'unified_pipeline',
+                measurement_data: {
+                  summary: {
+                    total_area_sqft: fused.totalAreaSqft,
+                    total_squares: fused.squares,
+                    pitch: fused.pitchRatio,
+                    ridge_ft: fused.linear.ridgeFt,
+                    hip_ft: fused.linear.hipFt,
+                    valley_ft: fused.linear.valleyFt,
+                    eave_ft: fused.linear.eaveFt,
+                    rake_ft: fused.linear.rakeFt,
+                    perimeter_ft: fused.linear.perimeterFt,
+                    sloped_area_sqft: fused.slopedAreaSqft,
+                  },
+                  fusion: {
+                    confidence: fused.confidence,
+                    sourceAttribution: fused.sourceAttribution,
+                    deviations: fused.deviations,
+                  },
+                  apiSources: unifiedResult.apiSources,
+                  timing: unifiedResult.timing,
+                  vendorTruthUsed: unifiedResult.vendorTruthUsed,
+                },
+                created_by: (await supabase.auth.getUser()).data?.user?.id,
+              });
+            }
+            
+            return json({
+              ok: unifiedResult.success,
+              engine: 'unified',
+              data: {
+                measurement: unifiedResult.fused,
+                footprint: unifiedResult.footprint ? { source: unifiedResult.footprint.source, areaSqft: unifiedResult.footprint.qaMetrics.areaSqFt } : null,
+                apiSources: unifiedResult.apiSources,
+                timing: unifiedResult.timing,
+                confidence: unifiedResult.fused?.confidence,
+                vendorTruthUsed: unifiedResult.vendorTruthUsed,
+                solarDataLayers: unifiedResult.solarDataLayers,
+              },
+              warnings: unifiedResult.warnings,
+              errors: unifiedResult.errors,
+            }, corsHeaders);
+          } catch (unifiedErr) {
+            console.error('[pull] Unified pipeline failed, falling back to legacy:', unifiedErr);
+            warnings.push(`Unified pipeline failed: ${unifiedErr.message}`);
+            // Fall through to legacy engine
+          }
+        }
 
         if (!propertyId) {
           return json({ 
