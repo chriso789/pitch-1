@@ -51,6 +51,19 @@ import {
   type SnapResult,
 } from './geometry-snapper.ts';
 
+import {
+  flattenGeometrySegments,
+  estimateFeetPerPixel,
+  lineMeasurementsFromGeometry,
+  buildFinalReportPayload,
+  type VendorGeometry,
+  type FinalReportPayload,
+  type GroupedGeometry,
+  type LineMeasurement,
+  type LineKey,
+  LINE_KEYS,
+} from './geometry-alignment.ts';
+
 // ============================================
 // TYPES
 // ============================================
