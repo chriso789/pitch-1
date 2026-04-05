@@ -99,6 +99,7 @@ serve(async (req) => {
       }).then(({ error }) => {
         if (error) console.error('[voicemail-drop] Failed to log voicemail_recordings:', error.message);
       });
+    }
 
     return json({
       ok: true,
