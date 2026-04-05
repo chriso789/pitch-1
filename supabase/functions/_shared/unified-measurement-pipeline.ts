@@ -331,8 +331,8 @@ export async function runUnifiedMeasurementPipeline(
       success: false,
       footprint, topology: null, areas: null, qa: null,
       solarData, solarDataLayers: null, terrain: null, fused: null, snapResult: null,
-      vendorTruthUsed: false,
-      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false },
+      vendorTruthUsed: false, finalReport: null,
+      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false, vendorGeometry: false },
       timing, errors, warnings,
     };
   }
