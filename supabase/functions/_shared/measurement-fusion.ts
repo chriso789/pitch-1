@@ -298,3 +298,68 @@ export function fuseMeasurements(input: FusionInput): FusedMeasurement {
     reviewReasons,
   };
 }
+
+/**
+ * Convert VendorTruth into FusionInput sources, to be merged with other sources.
+ */
+export function vendorTruthToFusionSources(vendor: VendorTruth): Partial<FusionInput> {
+  const conf = vendor.confidence ?? 0.95;
+  const src = `vendor_${vendor.source}`;
+  const input: Partial<FusionInput> = { area: {}, pitch: {}, linear: {} };
+
+  if (vendor.areaSqft && vendor.areaSqft > 0) {
+    input.area!.vendorReport = { value: vendor.areaSqft, confidence: conf, source: src };
+  }
+
+  if (vendor.pitchDegrees && vendor.pitchDegrees > 0) {
+    input.pitch!.vendorReport = { value: vendor.pitchDegrees, confidence: conf, source: src };
+  } else if (vendor.pitchRatio) {
+    const match = vendor.pitchRatio.match(/^(\d+)\/(\d+)$/);
+    if (match) {
+      const deg = Math.atan(parseInt(match[1]) / parseInt(match[2])) * (180 / Math.PI);
+      input.pitch!.vendorReport = { value: deg, confidence: conf, source: src };
+    }
+  }
+
+  const linearSource = (val?: number) => val && val > 0
+    ? { vendorReport: { value: val, confidence: conf, source: src } }
+    : undefined;
+
+  input.linear!.ridgeFt = linearSource(vendor.ridgeFt);
+  input.linear!.hipFt = linearSource(vendor.hipFt);
+  input.linear!.valleyFt = linearSource(vendor.valleyFt);
+  input.linear!.eaveFt = linearSource(vendor.eaveFt);
+  input.linear!.rakeFt = linearSource(vendor.rakeFt);
+
+  return input;
+}
+
+/**
+ * Merge vendor truth sources into an existing FusionInput.
+ */
+export function mergeVendorIntoFusion(base: FusionInput, vendor: VendorTruth): FusionInput {
+  const vendorSources = vendorTruthToFusionSources(vendor);
+  
+  // Merge area
+  if (vendorSources.area?.vendorReport) {
+    base.area.vendorReport = vendorSources.area.vendorReport;
+  }
+  
+  // Merge pitch
+  if (vendorSources.pitch?.vendorReport) {
+    base.pitch.vendorReport = vendorSources.pitch.vendorReport;
+  }
+  
+  // Merge linear — add vendorReport to each linear type
+  for (const key of ['ridgeFt', 'hipFt', 'valleyFt', 'eaveFt', 'rakeFt'] as const) {
+    const vendorLinear = vendorSources.linear?.[key];
+    if (vendorLinear?.vendorReport) {
+      if (!base.linear[key]) {
+        base.linear[key] = {};
+      }
+      base.linear[key]!.vendorReport = vendorLinear.vendorReport;
+    }
+  }
+  
+  return base;
+}

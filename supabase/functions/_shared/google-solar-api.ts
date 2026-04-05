@@ -183,3 +183,66 @@ export function analyzeRidgeDirectionFromSolar(solarData: SolarAPIData): {
   
   return { direction: 'unknown', confidence: 0.5 };
 }
+
+// ============================================
+// DATA LAYERS METADATA
+// ============================================
+
+export interface SolarDataLayersMetadata {
+  available: boolean;
+  imageryDate?: { year: number; month: number; day: number };
+  imageryQuality?: string;
+  dsmUrl?: string;
+  rgbUrl?: string;
+  maskUrl?: string;
+  annualFluxUrl?: string;
+  monthlyFluxUrl?: string;
+  hourlyShadeUrls?: string[];
+  imageryProcessedDate?: string;
+}
+
+/**
+ * Fetch Solar API data layers metadata (DSM/RGB/mask URLs, imagery date).
+ * Provides provenance info for training data and quality assessment.
+ */
+export async function fetchGoogleSolarDataLayers(
+  lat: number,
+  lng: number,
+  radiusMeters = 35,
+  apiKey?: string
+): Promise<SolarDataLayersMetadata> {
+  const key = apiKey || Deno.env.get('GOOGLE_SOLAR_API_KEY') || '';
+  
+  if (!key) {
+    return { available: false };
+  }
+  
+  try {
+    const url = `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}&location.longitude=${lng}&radiusMeters=${radiusMeters}&view=FULL_LAYERS&requiredQuality=HIGH&pixelSizeMeters=0.1&key=${key}`;
+    
+    const response = await fetch(url);
+    
+    if (!response.ok) {
+      console.warn(`Solar DataLayers error: ${response.status}`);
+      return { available: false };
+    }
+    
+    const data = await response.json();
+    
+    return {
+      available: true,
+      imageryDate: data.imageryDate,
+      imageryQuality: data.imageryQuality,
+      dsmUrl: data.dsmUrl,
+      rgbUrl: data.rgbUrl,
+      maskUrl: data.maskUrl,
+      annualFluxUrl: data.annualFluxUrl,
+      monthlyFluxUrl: data.monthlyFluxUrl,
+      hourlyShadeUrls: data.hourlyShadeUrls,
+      imageryProcessedDate: data.imageryProcessedDate,
+    };
+  } catch (error) {
+    console.error('Solar DataLayers fetch failed:', error);
+    return { available: false };
+  }
+}
