@@ -90,6 +90,7 @@ export interface FusionDeviation {
 
 // Default weights per source type
 const AREA_WEIGHTS: Record<string, number> = {
+  vendorReport: 0.60,        // Vendor truth highest priority
   footprintPlanimetric: 0.40,
   solarAPI: 0.35,
   skeletonFacetSum: 0.25,
@@ -98,16 +99,20 @@ const AREA_WEIGHTS: Record<string, number> = {
 
 const PITCH_WEIGHTS: Record<string, number> = {
   userOverride: 1.0,  // Always wins if provided
+  vendorReport: 0.65, // Vendor truth second only to user override
   solarSegments: 0.50,
   terrainRGB: 0.30,
   dsmAnalysis: 0.20,
 };
 
 const LINEAR_WEIGHTS: Record<string, number> = {
+  vendorReport: 0.60,        // Vendor truth highest priority
   skeleton: 0.50,
   aiVision: 0.30,
   solarInferred: 0.20,
 };
+
+const VENDOR_DEVIATION_THRESHOLD_PCT = 12; // Match Python pipeline tolerance
 
 const DEVIATION_THRESHOLD_PCT = 10; // Flag when sources disagree by >10%
 
