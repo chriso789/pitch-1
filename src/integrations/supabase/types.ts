@@ -19260,6 +19260,8 @@ export type Database = {
           lng: number
           roof_style: string
           test_category: string | null
+          vendor_truth_data: Json | null
+          vendor_truth_source: string | null
         }
         Insert: {
           address: string
@@ -19280,6 +19282,8 @@ export type Database = {
           lng: number
           roof_style: string
           test_category?: string | null
+          vendor_truth_data?: Json | null
+          vendor_truth_source?: string | null
         }
         Update: {
           address?: string
@@ -19300,6 +19304,8 @@ export type Database = {
           lng?: number
           roof_style?: string
           test_category?: string | null
+          vendor_truth_data?: Json | null
+          vendor_truth_source?: string | null
         }
         Relationships: []
       }
