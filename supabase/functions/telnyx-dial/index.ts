@@ -18,6 +18,7 @@ interface DialRequest {
   to_e164?: string;
   record?: boolean;
   answering_machine_detection?: 'disabled' | 'detect' | 'premium';
+  list_item_id?: string;
 }
 
 serve(async (req) => {
