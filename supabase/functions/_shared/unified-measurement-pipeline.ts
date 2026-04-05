@@ -604,6 +604,78 @@ export async function runUnifiedMeasurementPipeline(
   timing.calibrationMs = Date.now() - calibrationStart;
   
   // -------------------------------------------
+  // Step 6.5: Geometry refinement, confidence scoring & training export
+  // -------------------------------------------
+  const refinementStart = Date.now();
+  let pipelineConfidence: ConfidenceScore | null = null;
+  let trainingPack: TrainingPack | null = null;
+  
+  if (request.vendorGeometry && request.vendorTruth) {
+    try {
+      log('🔬 Step 6.5: Running geometry refinement & confidence scoring...');
+      const grouped = flattenGeometrySegments(request.vendorGeometry);
+      const cleaned = cleanupGeometry(grouped);
+      
+      // Build vendor lengths for scoring
+      const vendorLengths: Record<string, number> = {};
+      if (request.vendorTruth.ridgeFt) vendorLengths.ridgeFt = request.vendorTruth.ridgeFt;
+      if (request.vendorTruth.hipFt) vendorLengths.hipFt = request.vendorTruth.hipFt;
+      if (request.vendorTruth.valleyFt) vendorLengths.valleyFt = request.vendorTruth.valleyFt;
+      if (request.vendorTruth.eaveFt) vendorLengths.eaveFt = request.vendorTruth.eaveFt;
+      if (request.vendorTruth.rakeFt) vendorLengths.rakeFt = request.vendorTruth.rakeFt;
+      
+      const { ftPerPixel, debug: calibDebug } = estimateFeetPerPixel(cleaned, vendorLengths);
+      const measurements = lineMeasurementsFromGeometry(cleaned, ftPerPixel);
+      
+      // Use footprint bbox as roof bbox if available
+      const roofBbox: BBox | null = footprint
+        ? bboxFromPoints(footprint.vertices.map(v => [v[0], v[1]]))
+        : null;
+      
+      const alignmentDebug = estimateControlPointAlignment(
+        cleaned,
+        roofBbox,
+        { width: null, height: null }, // No aerial image dimensions in edge function context
+      );
+      
+      pipelineConfidence = scoreConfidence(alignmentDebug, calibDebug, measurements, vendorLengths);
+      
+      // Attach confidence to finalReport if it exists
+      if (finalReport) {
+        finalReport.confidence = pipelineConfidence;
+      }
+      
+      // Build training export pack
+      trainingPack = buildTrainingExportPack({
+        aerialImageUrl: null, // No local image in edge function context
+        roofBbox,
+        transformedGeometry: cleaned,
+        report: finalReport || buildFinalReportPayload({
+          address: request.address || `${request.lat}, ${request.lng}`,
+          formattedAddress: request.address || null,
+          lat: request.lat,
+          lng: request.lng,
+          fusedAreaSqft: fused?.totalAreaSqft ?? null,
+          predominantPitch: fused?.pitchRatio || request.pitchOverride || null,
+          googlePitchDegrees: solarData?.roofSegments?.[0]?.pitchDegrees ?? null,
+          facets: request.vendorTruth.facetCount ?? areas?.facets?.length ?? null,
+          lineMeasurements: measurements,
+          calibrationDebug: calibDebug,
+          confidence: pipelineConfidence,
+        }),
+        confidence: pipelineConfidence,
+      });
+      
+      log(`✅ Refinement: confidence=${pipelineConfidence.overall.toFixed(4)}, training pack built`);
+    } catch (err) {
+      warnings.push(`Refinement error: ${err}`);
+      log(`⚠️ Refinement error: ${err}`);
+    }
+  }
+  
+  timing.refinementMs = Date.now() - refinementStart;
+  
+  // -------------------------------------------
   // Step 7: Fetch Solar data layers metadata (optional, non-blocking)
   // -------------------------------------------
   let solarDataLayers: SolarDataLayersMetadata | null = null;
@@ -640,6 +712,8 @@ export async function runUnifiedMeasurementPipeline(
     snapResult,
     vendorTruthUsed,
     finalReport,
+    confidence: pipelineConfidence,
+    trainingPack,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
