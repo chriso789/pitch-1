@@ -93,6 +93,7 @@ export interface UnifiedMeasurementResult {
   fused: FusedMeasurement | null;
   snapResult: SnapResult | null;
   vendorTruthUsed: boolean;
+  finalReport: FinalReportPayload | null;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
@@ -101,6 +102,7 @@ export interface UnifiedMeasurementResult {
     pitch: string;
     fusionUsed: boolean;
     vendorTruth: boolean;
+    vendorGeometry: boolean;
   };
   timing: {
     totalMs: number;
@@ -111,6 +113,7 @@ export interface UnifiedMeasurementResult {
     areaCalcMs: number;
     fusionMs: number;
     qaGateMs: number;
+    calibrationMs: number;
   };
   errors: string[];
   warnings: string[];
