@@ -11,24 +11,44 @@ export interface FusionSource {
 
 export interface FusionInput {
   area: {
+    vendorReport?: FusionSource;           // Roofr/EagleView ground truth (highest priority)
     footprintPlanimetric?: FusionSource;   // Mapbox Vector polygon area
     solarAPI?: FusionSource;               // Google Solar wholeRoofStats
     skeletonFacetSum?: FusionSource;       // Sum of skeleton-derived facets
     aiVision?: FusionSource;               // AI detected area
   };
   pitch: {
+    vendorReport?: FusionSource;           // Roofr/EagleView ground truth pitch
     solarSegments?: FusionSource;          // Google Solar pitchDegrees
     terrainRGB?: FusionSource;             // Mapbox Terrain elevation delta
     dsmAnalysis?: FusionSource;            // DSM ridge-to-eave
     userOverride?: FusionSource;           // Manual input
   };
   linear: {
-    ridgeFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    hipFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    valleyFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    eaveFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    rakeFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    ridgeFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    hipFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    valleyFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    eaveFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    rakeFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
   };
+}
+
+/**
+ * Vendor truth data from parsed Roofr/EagleView reports.
+ * Fed into the fusion pipeline as the highest-confidence source.
+ */
+export interface VendorTruth {
+  source: 'roofr' | 'eagleview' | 'hover' | 'manual' | string;
+  areaSqft?: number;
+  pitchRatio?: string;       // e.g. "5/12"
+  pitchDegrees?: number;
+  ridgeFt?: number;
+  hipFt?: number;
+  valleyFt?: number;
+  eaveFt?: number;
+  rakeFt?: number;
+  facetCount?: number;
+  confidence?: number;       // Default 0.95
 }
 
 export interface FusedMeasurement {
