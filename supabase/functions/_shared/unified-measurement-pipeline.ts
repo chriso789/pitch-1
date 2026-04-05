@@ -312,8 +312,9 @@ export async function runUnifiedMeasurementPipeline(
     return {
       success: false,
       footprint, topology: null, areas: null, qa: null,
-      solarData, terrain: null, fused: null, snapResult: null,
-      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false },
+      solarData, solarDataLayers: null, terrain: null, fused: null, snapResult: null,
+      vendorTruthUsed: false,
+      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false },
       timing, errors, warnings,
     };
   }
