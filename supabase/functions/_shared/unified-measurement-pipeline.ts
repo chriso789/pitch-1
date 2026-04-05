@@ -748,4 +748,6 @@ export type {
   VendorTruth,
   VendorGeometry,
   FinalReportPayload,
+  ConfidenceScore,
+  TrainingPack,
 };
