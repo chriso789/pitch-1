@@ -11,24 +11,44 @@ export interface FusionSource {
 
 export interface FusionInput {
   area: {
+    vendorReport?: FusionSource;           // Roofr/EagleView ground truth (highest priority)
     footprintPlanimetric?: FusionSource;   // Mapbox Vector polygon area
     solarAPI?: FusionSource;               // Google Solar wholeRoofStats
     skeletonFacetSum?: FusionSource;       // Sum of skeleton-derived facets
     aiVision?: FusionSource;               // AI detected area
   };
   pitch: {
+    vendorReport?: FusionSource;           // Roofr/EagleView ground truth pitch
     solarSegments?: FusionSource;          // Google Solar pitchDegrees
     terrainRGB?: FusionSource;             // Mapbox Terrain elevation delta
     dsmAnalysis?: FusionSource;            // DSM ridge-to-eave
     userOverride?: FusionSource;           // Manual input
   };
   linear: {
-    ridgeFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    hipFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    valleyFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    eaveFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
-    rakeFt?: { skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    ridgeFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    hipFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    valleyFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    eaveFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
+    rakeFt?: { vendorReport?: FusionSource; skeleton?: FusionSource; aiVision?: FusionSource; solarInferred?: FusionSource };
   };
+}
+
+/**
+ * Vendor truth data from parsed Roofr/EagleView reports.
+ * Fed into the fusion pipeline as the highest-confidence source.
+ */
+export interface VendorTruth {
+  source: 'roofr' | 'eagleview' | 'hover' | 'manual' | string;
+  areaSqft?: number;
+  pitchRatio?: string;       // e.g. "5/12"
+  pitchDegrees?: number;
+  ridgeFt?: number;
+  hipFt?: number;
+  valleyFt?: number;
+  eaveFt?: number;
+  rakeFt?: number;
+  facetCount?: number;
+  confidence?: number;       // Default 0.95
 }
 
 export interface FusedMeasurement {
@@ -70,6 +90,7 @@ export interface FusionDeviation {
 
 // Default weights per source type
 const AREA_WEIGHTS: Record<string, number> = {
+  vendorReport: 0.60,        // Vendor truth highest priority
   footprintPlanimetric: 0.40,
   solarAPI: 0.35,
   skeletonFacetSum: 0.25,
@@ -78,16 +99,20 @@ const AREA_WEIGHTS: Record<string, number> = {
 
 const PITCH_WEIGHTS: Record<string, number> = {
   userOverride: 1.0,  // Always wins if provided
+  vendorReport: 0.65, // Vendor truth second only to user override
   solarSegments: 0.50,
   terrainRGB: 0.30,
   dsmAnalysis: 0.20,
 };
 
 const LINEAR_WEIGHTS: Record<string, number> = {
+  vendorReport: 0.60,        // Vendor truth highest priority
   skeleton: 0.50,
   aiVision: 0.30,
   solarInferred: 0.20,
 };
+
+const VENDOR_DEVIATION_THRESHOLD_PCT = 12; // Match Python pipeline tolerance
 
 const DEVIATION_THRESHOLD_PCT = 10; // Flag when sources disagree by >10%
 
@@ -272,4 +297,69 @@ export function fuseMeasurements(input: FusionInput): FusedMeasurement {
     requiresManualReview: reviewReasons.length > 0,
     reviewReasons,
   };
+}
+
+/**
+ * Convert VendorTruth into FusionInput sources, to be merged with other sources.
+ */
+export function vendorTruthToFusionSources(vendor: VendorTruth): Partial<FusionInput> {
+  const conf = vendor.confidence ?? 0.95;
+  const src = `vendor_${vendor.source}`;
+  const input: Partial<FusionInput> = { area: {}, pitch: {}, linear: {} };
+
+  if (vendor.areaSqft && vendor.areaSqft > 0) {
+    input.area!.vendorReport = { value: vendor.areaSqft, confidence: conf, source: src };
+  }
+
+  if (vendor.pitchDegrees && vendor.pitchDegrees > 0) {
+    input.pitch!.vendorReport = { value: vendor.pitchDegrees, confidence: conf, source: src };
+  } else if (vendor.pitchRatio) {
+    const match = vendor.pitchRatio.match(/^(\d+)\/(\d+)$/);
+    if (match) {
+      const deg = Math.atan(parseInt(match[1]) / parseInt(match[2])) * (180 / Math.PI);
+      input.pitch!.vendorReport = { value: deg, confidence: conf, source: src };
+    }
+  }
+
+  const linearSource = (val?: number) => val && val > 0
+    ? { vendorReport: { value: val, confidence: conf, source: src } }
+    : undefined;
+
+  input.linear!.ridgeFt = linearSource(vendor.ridgeFt);
+  input.linear!.hipFt = linearSource(vendor.hipFt);
+  input.linear!.valleyFt = linearSource(vendor.valleyFt);
+  input.linear!.eaveFt = linearSource(vendor.eaveFt);
+  input.linear!.rakeFt = linearSource(vendor.rakeFt);
+
+  return input;
+}
+
+/**
+ * Merge vendor truth sources into an existing FusionInput.
+ */
+export function mergeVendorIntoFusion(base: FusionInput, vendor: VendorTruth): FusionInput {
+  const vendorSources = vendorTruthToFusionSources(vendor);
+  
+  // Merge area
+  if (vendorSources.area?.vendorReport) {
+    base.area.vendorReport = vendorSources.area.vendorReport;
+  }
+  
+  // Merge pitch
+  if (vendorSources.pitch?.vendorReport) {
+    base.pitch.vendorReport = vendorSources.pitch.vendorReport;
+  }
+  
+  // Merge linear — add vendorReport to each linear type
+  for (const key of ['ridgeFt', 'hipFt', 'valleyFt', 'eaveFt', 'rakeFt'] as const) {
+    const vendorLinear = vendorSources.linear?.[key];
+    if (vendorLinear?.vendorReport) {
+      if (!base.linear[key]) {
+        base.linear[key] = {};
+      }
+      base.linear[key]!.vendorReport = vendorLinear.vendorReport;
+    }
+  }
+  
+  return base;
 }

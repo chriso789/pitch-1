@@ -27,7 +27,9 @@ import {
 import { 
   fetchGoogleSolarData, 
   getPredominantPitchFromSolar,
-  type SolarAPIData 
+  fetchGoogleSolarDataLayers,
+  type SolarAPIData,
+  type SolarDataLayersMetadata,
 } from './google-solar-api.ts';
 
 import {
@@ -37,8 +39,10 @@ import {
 
 import {
   fuseMeasurements,
+  mergeVendorIntoFusion,
   type FusionInput,
   type FusedMeasurement,
+  type VendorTruth,
 } from './measurement-fusion.ts';
 
 import {
@@ -58,6 +62,8 @@ export interface UnifiedMeasurementRequest {
   pitchOverride?: string;
   eaveOverhangFt?: number;
   enableDebugLogs?: boolean;
+  vendorTruth?: VendorTruth;
+  fetchDataLayers?: boolean;
 }
 
 export interface UnifiedMeasurementResult {
@@ -68,9 +74,11 @@ export interface UnifiedMeasurementResult {
   areas: AreaCalculationResult | null;
   qa: QAGateResult | null;
   solarData: SolarAPIData | null;
+  solarDataLayers: SolarDataLayersMetadata | null;
   terrain: TerrainElevationResult | null;
   fused: FusedMeasurement | null;
   snapResult: SnapResult | null;
+  vendorTruthUsed: boolean;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
@@ -78,6 +86,7 @@ export interface UnifiedMeasurementResult {
     terrain: boolean;
     pitch: string;
     fusionUsed: boolean;
+    vendorTruth: boolean;
   };
   timing: {
     totalMs: number;
@@ -269,8 +278,9 @@ export async function runUnifiedMeasurementPipeline(
     return {
       success: false,
       footprint: null, topology: null, areas: null, qa: null,
-      solarData, terrain: null, fused: null, snapResult: null,
-      apiSources: { footprint: 'none', ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false },
+      solarData, solarDataLayers: null, terrain: null, fused: null, snapResult: null,
+      vendorTruthUsed: false,
+      apiSources: { footprint: 'none', ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false },
       timing, errors, warnings,
     };
   }
@@ -302,8 +312,9 @@ export async function runUnifiedMeasurementPipeline(
     return {
       success: false,
       footprint, topology: null, areas: null, qa: null,
-      solarData, terrain: null, fused: null, snapResult: null,
-      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false },
+      solarData, solarDataLayers: null, terrain: null, fused: null, snapResult: null,
+      vendorTruthUsed: false,
+      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false },
       timing, errors, warnings,
     };
   }
@@ -457,6 +468,12 @@ export async function runUnifiedMeasurementPipeline(
       };
     }
     
+    // Merge vendor truth if provided
+    if (request.vendorTruth) {
+      mergeVendorIntoFusion(fusionInput, request.vendorTruth);
+      log(`📋 Vendor truth merged: source=${request.vendorTruth.source}, area=${request.vendorTruth.areaSqft || 'N/A'}`);
+    }
+    
     fused = fuseMeasurements(fusionInput);
     log(`✅ Fusion: ${fused.totalAreaSqft} sqft plan, ${fused.slopedAreaSqft} sqft sloped, pitch=${fused.pitchRatio} (confidence=${fused.confidence.overall.toFixed(2)})`);
     
@@ -491,9 +508,27 @@ export async function runUnifiedMeasurementPipeline(
   }
   
   timing.qaGateMs = Date.now() - qaStart;
+  
+  // -------------------------------------------
+  // Step 6: Fetch Solar data layers metadata (optional, non-blocking)
+  // -------------------------------------------
+  let solarDataLayers: SolarDataLayersMetadata | null = null;
+  if (request.fetchDataLayers && keys.GOOGLE_SOLAR_API_KEY) {
+    try {
+      solarDataLayers = await fetchGoogleSolarDataLayers(
+        request.lat, request.lng, 35, keys.GOOGLE_SOLAR_API_KEY
+      );
+      log(`✅ Data layers: ${solarDataLayers.available ? 'available' : 'unavailable'}`);
+    } catch (err) {
+      warnings.push(`Data layers fetch error: ${err}`);
+    }
+  }
+  
   timing.totalMs = Date.now() - startTime;
   
   log(`🏁 Pipeline v2 complete in ${timing.totalMs}ms`);
+  
+  const vendorTruthUsed = !!request.vendorTruth;
   
   // -------------------------------------------
   // Return result
@@ -505,9 +540,11 @@ export async function runUnifiedMeasurementPipeline(
     areas,
     qa,
     solarData,
+    solarDataLayers,
     terrain,
     fused,
     snapResult,
+    vendorTruthUsed,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
@@ -515,6 +552,7 @@ export async function runUnifiedMeasurementPipeline(
       terrain: terrain?.available ?? false,
       pitch: fused?.pitchRatio || effectivePitch,
       fusionUsed: fused !== null,
+      vendorTruth: vendorTruthUsed,
     },
     timing,
     errors,
@@ -533,7 +571,9 @@ export type {
   AreaCalculationResult,
   QAGateResult,
   SolarAPIData,
+  SolarDataLayersMetadata,
   TerrainElevationResult,
   FusedMeasurement,
   SnapResult,
+  VendorTruth,
 };
