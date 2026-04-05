@@ -102,6 +102,8 @@ export interface UnifiedMeasurementResult {
   snapResult: SnapResult | null;
   vendorTruthUsed: boolean;
   finalReport: FinalReportPayload | null;
+  confidence: ConfidenceScore | null;
+  trainingPack: TrainingPack | null;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
@@ -122,6 +124,7 @@ export interface UnifiedMeasurementResult {
     fusionMs: number;
     qaGateMs: number;
     calibrationMs: number;
+    refinementMs: number;
   };
   errors: string[];
   warnings: string[];
