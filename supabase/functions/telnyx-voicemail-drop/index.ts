@@ -86,6 +86,20 @@ serve(async (req) => {
       }).eq('id', body.call_id);
     }
 
+    // Insert voicemail_recordings record
+    if (body.tenant_id) {
+      await admin.from('voicemail_recordings').insert({
+        tenant_id: body.tenant_id,
+        call_id: body.call_id || null,
+        contact_id: body.contact_id || null,
+        template_id: template.id,
+        recording_url: template.audio_url,
+        status: 'dropped',
+        dropped_by: user.id,
+      }).then(({ error }) => {
+        if (error) console.error('[voicemail-drop] Failed to log voicemail_recordings:', error.message);
+      });
+
     return json({
       ok: true,
       message: `Voicemail "${template.name}" is playing`,
