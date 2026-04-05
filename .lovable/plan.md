@@ -1,54 +1,61 @@
 
 
-## Port Stage 2: Alignment, Calibration & Report Shaping
+## Port Stage 3: Geometry Cleanup, Confidence Scoring & Training Export
 
-### What Stage 2 adds (not yet in TypeScript)
+### What Stage 3 adds (not yet in TypeScript)
 
-The Python script's Stage 2 introduces five capabilities that the current TypeScript pipeline lacks:
-
-| Python Stage 2 Concept | TypeScript Equivalent | Status |
-|---|---|---|
-| `AlignmentTransform` (diagram → aerial mapping) | Nothing | Missing |
-| `estimate_feet_per_pixel()` (pixel→ft calibration from vendor line lengths) | `measurement-calibration` edge function exists but uses zoom math, not vendor truth | Gap |
-| `line_measurements_from_geometry()` (polyline length extraction per edge type) | Skeleton edges have lengths but no structured extraction matching report format | Partial |
-| `render_overlay_preview()` (draw lines on satellite image) | `generate-roof-overlay` exists but runs via AI vision, not deterministic rendering | Different approach |
-| `build_final_report_payload()` (structured report JSON matching Roofr format) | `generate-roofr-style-report` exists but doesn't pull from fused pipeline output | Gap |
+| Python Stage 3 Concept | TypeScript Status |
+|---|---|
+| `cleanup_geometry()` — snap segments to anchor angles (0/45/90), drop short segments | Missing |
+| `automatic_roof_footprint_bbox()` — fallback bbox from imagery contrast analysis | Missing (we have footprint-resolver but no image-based fallback) |
+| `estimate_control_point_alignment()` — score how well geometry lands on roof region | Missing |
+| `score_confidence()` — composite confidence from alignment + calibration + geometry agreement | Missing (fusion has per-source confidence but no overall pipeline score) |
+| `export_training_pack()` — manifest.json, labels.json, geometry.geojson for model training | Missing |
+| `iou_bbox()` / `bbox_from_points()` — geometric utility functions | Missing |
 
 ### Implementation Plan
 
-**1. Create `geometry-alignment.ts` shared module**
-- Port `AlignmentTransform`, `infer_alignment_transform`, `apply_transform_to_polyline`
-- Add `flattenGeometrySegments()` to group parsed vendor geometry by edge type (ridge/valley/hip/eave/rake)
-- Add `estimateFeetPerPixel()` — uses median of vendor truth line lengths divided by pixel lengths for calibration (matching the Python median-based approach)
-- Add `lineMeasurementsFromGeometry()` — returns per-edge-type segment count, pixel length, and calibrated length in feet
+**1. Extend `geometry-alignment.ts` with Stage 3 utilities**
 
-**2. Wire calibration into unified pipeline**
-- Add optional `vendorGeometry` field to `UnifiedMeasurementRequest` (parsed polylines from ingested reports)
-- When vendor geometry + vendor truth are both present, run alignment transform and pixel-to-feet calibration
-- Back-fill any missing linear measurements in the fusion input with calibrated values
-- Store calibration debug metadata (ft_per_pixel, alignment transform params) on the result
+Add the following functions:
+- `cleanupGeometry(grouped, minSegmentPx)` — simplify polylines to start/end, snap to nearest anchor angle (0/45/90/135...), discard segments shorter than threshold
+- `bboxFromPoints()`, `bboxArea()`, `iouBbox()` — bounding box helpers
+- `estimateControlPointAlignment()` — score whether transformed geometry lands within the expected roof region (uses bbox overlap IoU)
+- `scoreConfidence()` — composite `ConfidenceScore` (overall = 0.4*alignment + 0.3*calibration + 0.3*geometry) with quality notes
+- `buildTrainingExportPack()` — returns structured manifest with labels, geometry GeoJSON, and confidence metadata
 
-**3. Update report output to match Roofr structure**
-- Create `buildFinalReportPayload()` in the pipeline that produces the exact JSON shape from Stage 2:
-  - `property` block (address, lat/lng)
-  - `report` block (area, squares, pitch, facets, per-line-type totals with segment counts)
-  - `calibration` block (debug/provenance info)
-- Wire this into the `UnifiedMeasurementResult` as a `finalReport` field
-- Update `generate-roofr-style-report` to consume this structured output instead of assembling its own
+New types: `ConfidenceScore { overall, alignment, calibration, geometry, notes }`, `TrainingPack { manifest, labels, geometryGeoJSON }`
 
-### Files to create/modify
+**2. Wire Stage 3 into the unified pipeline**
+
+After Step 6 (calibration), add Step 6.5:
+- Run `cleanupGeometry()` on the grouped/transformed geometry
+- Compute `estimateControlPointAlignment()` using the cleaned geometry and footprint bbox
+- Compute `scoreConfidence()` from alignment debug, calibration debug, and measurement-vs-vendor disagreement
+- Build training export pack
+- Attach `confidence` and `trainingPack` to the pipeline result
+
+Update `UnifiedMeasurementResult`:
+- Add `confidence: ConfidenceScore | null`
+- Add `trainingPack: TrainingPack | null`
+
+**3. Update `FinalReportPayload` to include confidence**
+
+Add `confidence` field to the report so downstream consumers (generate-roofr-style-report) can surface quality scores.
+
+### Files to modify
 
 | File | Change |
 |------|--------|
-| `supabase/functions/_shared/geometry-alignment.ts` | New — alignment transform, pixel-to-feet calibration, line measurement extraction |
-| `supabase/functions/_shared/unified-measurement-pipeline.ts` | Add `vendorGeometry` input, wire alignment step between fusion and QA, add `finalReport` to result |
-| `supabase/functions/_shared/measurement-fusion.ts` | No changes needed — already accepts vendor sources |
-| `supabase/functions/generate-roofr-style-report/index.ts` | Pull from `finalReport` payload instead of raw measurement data |
+| `supabase/functions/_shared/geometry-alignment.ts` | Add cleanup, bbox, alignment scoring, confidence scoring, training export functions |
+| `supabase/functions/_shared/unified-measurement-pipeline.ts` | Add Step 6.5, new result fields |
 
 ### Technical Details
 
-- Pixel-to-feet calibration uses the Python script's median approach: for each line type with both pixel and vendor-truth lengths, compute `ft/px`, then take the median across all types for stability
-- Alignment transform is a simple proportional scale (no rotation/skew) — adequate for axis-aligned diagram-to-aerial mapping; affine transforms can be added later with control points
-- The `vendorGeometry` field accepts pre-parsed polylines (from `parse-roof-report-geometry` output), not raw PDFs
-- Report payload shape matches the Python `build_final_report_payload()` exactly for downstream compatibility
+- Anchor angle snapping uses nearest of [0, 45, 90, 135, 180, 225, 270, 315] degrees — matching Python's `nearest_axis_angle_deg()`
+- Confidence scoring formula: `overall = 0.4 * alignment + 0.3 * calibration + 0.3 * geometry`, clamped [0, 1]
+- Calibration confidence: `0.35 + min(0.65, 0.15 * candidateCount)` — more line types used = higher confidence
+- Geometry confidence penalizes by 0.12 per line type where calibrated vs vendor disagrees by >18%
+- Training pack is a JSON-only export (no image copy in edge function context) — manifest references the aerial imagery URL
+- `automatic_roof_footprint_bbox()` from Python uses PIL/numpy for image analysis — we skip this since the TypeScript pipeline already has `footprint-resolver` with multiple authoritative sources; the Python version is explicitly described as "brutally simple fallback"
 
