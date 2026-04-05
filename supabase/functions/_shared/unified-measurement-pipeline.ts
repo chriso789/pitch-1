@@ -76,6 +76,7 @@ export interface UnifiedMeasurementRequest {
   eaveOverhangFt?: number;
   enableDebugLogs?: boolean;
   vendorTruth?: VendorTruth;
+  vendorGeometry?: VendorGeometry;
   fetchDataLayers?: boolean;
 }
 
