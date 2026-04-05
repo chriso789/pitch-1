@@ -468,6 +468,12 @@ export async function runUnifiedMeasurementPipeline(
       };
     }
     
+    // Merge vendor truth if provided
+    if (request.vendorTruth) {
+      mergeVendorIntoFusion(fusionInput, request.vendorTruth);
+      log(`📋 Vendor truth merged: source=${request.vendorTruth.source}, area=${request.vendorTruth.areaSqft || 'N/A'}`);
+    }
+    
     fused = fuseMeasurements(fusionInput);
     log(`✅ Fusion: ${fused.totalAreaSqft} sqft plan, ${fused.slopedAreaSqft} sqft sloped, pitch=${fused.pitchRatio} (confidence=${fused.confidence.overall.toFixed(2)})`);
     
