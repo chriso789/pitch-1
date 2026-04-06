@@ -30655,6 +30655,8 @@ export type Database = {
         Row: {
           address: string | null
           created_at: string
+          diagram_geometry: Json | null
+          diagram_image_url: string | null
           extracted_text: string | null
           file_bucket: string | null
           file_hash: string | null
@@ -30670,6 +30672,8 @@ export type Database = {
         Insert: {
           address?: string | null
           created_at?: string
+          diagram_geometry?: Json | null
+          diagram_image_url?: string | null
           extracted_text?: string | null
           file_bucket?: string | null
           file_hash?: string | null
@@ -30685,6 +30689,8 @@ export type Database = {
         Update: {
           address?: string | null
           created_at?: string
+          diagram_geometry?: Json | null
+          diagram_image_url?: string | null
           extracted_text?: string | null
           file_bucket?: string | null
           file_hash?: string | null

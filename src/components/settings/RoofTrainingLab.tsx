@@ -10,6 +10,7 @@ import { TrainingSessionList } from './TrainingSessionList';
 import { TrainingSessionDetail } from './TrainingSessionDetail';
 import { TrainingLeadSelector } from './TrainingLeadSelector';
 import { TrainingAnalyticsDashboard } from './TrainingAnalyticsDashboard';
+import { BulkReportImporter } from '@/components/measurements/BulkReportImporter';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { toast } from 'sonner';
 
@@ -131,10 +132,13 @@ export function RoofTrainingLab() {
             </p>
           </div>
         </div>
-        <Button onClick={() => setShowLeadSelector(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          New Training Session
-        </Button>
+        <div className="flex items-center gap-2">
+          <BulkReportImporter onComplete={() => refetch()} />
+          <Button onClick={() => setShowLeadSelector(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            New Training Session
+          </Button>
+        </div>
       </div>
 
       {/* Stats Cards */}
