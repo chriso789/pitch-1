@@ -156,9 +156,12 @@ serve(async (req) => {
 
       if (fpResponse.ok) {
         const result = await fpResponse.json();
-        if (result.footprint?.vertices) {
-          footprintVertices = result.footprint.vertices;
-          console.log(`✅ Footprint resolved: ${footprintVertices!.length} vertices`);
+        const rawVerts = result?.footprint?.vertices || result?.data?.footprint?.vertices;
+        if (rawVerts) {
+          footprintVertices = ensureArray(rawVerts).filter(
+            (v: unknown) => Array.isArray(v) && (v as number[]).length >= 2
+          ) as [number, number][];
+          console.log(`✅ Footprint resolved: ${footprintVertices.length} vertices`);
         }
       }
 
