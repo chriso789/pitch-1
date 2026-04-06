@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 class RoofLossV2(nn.Module):
-    def __init__(self, seg_weight=1.0, reg_weight=1.2):
+    def __init__(self, seg_weight=2.0, reg_weight=0.5):
         super().__init__()
         self.seg_loss = nn.BCEWithLogitsLoss()
         self.reg_loss = nn.MSELoss()
