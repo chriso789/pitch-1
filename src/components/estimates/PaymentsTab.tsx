@@ -693,6 +693,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               const lineItems = Array.isArray((inv as any).line_items) ? (inv as any).line_items as InvoiceLineItem[] : [];
               const hasLineItems = lineItems.length > 0;
               const isExpanded = expandedInvoices.has(inv.id);
+              const pendingZelleLink = (zelleLinks || []).find(
+                (zl: any) => zl.invoice_id === inv.id && zl.zelle_confirmation_status === 'pending'
+              );
 
               return (
                 <div key={inv.id} className="bg-muted/30 rounded-lg overflow-hidden">
@@ -713,32 +716,72 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* Send Payment Link button */}
+                      {/* Payment link actions */}
                       {inv.status !== 'paid' && inv.status !== 'void' && Number(inv.balance) > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={generatingLinkForInvoice === inv.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if ((inv as any).stripe_payment_link_url) {
-                              navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
-                              toast.success('Payment link copied!');
-                            } else {
-                              handleSendPaymentLink(inv);
-                            }
-                          }}
-                          title={(inv as any).stripe_payment_link_url ? 'Copy payment link' : 'Generate payment link'}
-                        >
-                          {generatingLinkForInvoice === inv.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (inv as any).stripe_payment_link_url ? (
-                            <Copy className="h-3.5 w-3.5 text-green-600" />
-                          ) : (
-                            <Link2 className="h-3.5 w-3.5" />
+                        <>
+                          {/* Confirm Zelle payment */}
+                          {pendingZelleLink && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConfirmZellePayment(pendingZelleLink, inv);
+                              }}
+                            >
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Confirm Zelle
+                            </Button>
                           )}
-                        </Button>
+                          {/* Payment link dropdown */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={generatingLinkForInvoice === inv.id}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {generatingLinkForInvoice === inv.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (inv as any).stripe_payment_link_url ? (
+                                  <Copy className="h-3.5 w-3.5 text-primary" />
+                                ) : (
+                                  <Link2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem onClick={() => {
+                                if ((inv as any).stripe_payment_link_url) {
+                                  navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
+                                  toast.success('Stripe link copied!');
+                                } else {
+                                  handleSendPaymentLink(inv);
+                                }
+                              }}>
+                                <CreditCard className="h-4 w-4 mr-2" />
+                                {(inv as any).stripe_payment_link_url ? 'Copy Stripe Link' : 'Stripe Payment Link'}
+                              </DropdownMenuItem>
+                              {zelleEnabled && (
+                                <DropdownMenuItem onClick={() => {
+                                  if (pendingZelleLink) {
+                                    const url = `${window.location.origin}/pay/${pendingZelleLink.shareable_token}`;
+                                    navigator.clipboard.writeText(url);
+                                    toast.success('Zelle link copied!');
+                                  } else {
+                                    handleSendZelleLink(inv);
+                                  }
+                                }}>
+                                  <DollarSign className="h-4 w-4 mr-2" />
+                                  {pendingZelleLink ? 'Copy Zelle Link' : 'Zelle Payment Link'}
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </>
                       )}
                       <div className="text-right">
                         <p className="text-sm font-medium">{formatCurrency(Number(inv.amount))}</p>
