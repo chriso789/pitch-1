@@ -587,6 +587,33 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Send Payment Link button */}
+                      {inv.status !== 'paid' && inv.status !== 'void' && Number(inv.balance) > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={generatingLinkForInvoice === inv.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if ((inv as any).stripe_payment_link_url) {
+                              navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
+                              toast.success('Payment link copied!');
+                            } else {
+                              handleSendPaymentLink(inv);
+                            }
+                          }}
+                          title={(inv as any).stripe_payment_link_url ? 'Copy payment link' : 'Generate payment link'}
+                        >
+                          {generatingLinkForInvoice === inv.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (inv as any).stripe_payment_link_url ? (
+                            <Copy className="h-3.5 w-3.5 text-green-600" />
+                          ) : (
+                            <Link2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
                       <div className="text-right">
                         <p className="text-sm font-medium">{formatCurrency(Number(inv.amount))}</p>
                         {Number(inv.balance) !== Number(inv.amount) && (
