@@ -112,16 +112,16 @@ serve(async (req) => {
         .limit(300);
       if (error) throw error;
 
-      // Get already-processed vendor report IDs from training_pairs source field
+      // Get already-processed vendor report IDs from training_pairs vendor_source field
       const { data: existing } = await supabase
         .from('training_pairs')
-        .select('source')
-        .like('source', 'vendor_%');
+        .select('vendor_source')
+        .like('vendor_source', 'vendor_%');
       
       const processedIds = new Set(
         (existing || []).map((e: any) => {
-          // source format: "vendor_XXXXXXXX_diagram" or "vendor_XXXXXXXX_synthetic"
-          const match = (e.source || '').match(/^vendor_([a-f0-9]{8})_/);
+          // vendor_source format: "vendor_XXXXXXXX_diagram" or "vendor_XXXXXXXX_synthetic"
+          const match = (e.vendor_source || '').match(/^vendor_([a-f0-9]{8})_/);
           return match ? match[1] : null;
         }).filter(Boolean)
       );
