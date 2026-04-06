@@ -165,7 +165,7 @@ serve(async (req) => {
         }
       }
 
-      if (!footprintVertices) {
+      if (!footprintVertices || footprintVertices.length === 0) {
         throw new Error('Could not resolve footprint. Provide footprintVertices directly.');
       }
     }
