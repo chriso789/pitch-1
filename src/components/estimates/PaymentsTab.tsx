@@ -13,11 +13,14 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2 
+  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { 
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger 
+} from '@/components/ui/dropdown-menu';
 
 interface PaymentsTabProps {
   pipelineEntryId: string;
@@ -152,6 +155,39 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       return data || [];
     },
   });
+
+  // Fetch Zelle payment links for this pipeline entry
+  const { data: zelleLinks } = useQuery({
+    queryKey: ['zelle-payment-links', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('payment_links')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('payment_type', 'zelle')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch tenant Zelle settings
+  const { data: zelleSettings } = useQuery({
+    queryKey: ['tenant-zelle-enabled', activeTenantId],
+    queryFn: async () => {
+      if (!activeTenantId) return null;
+      const { data, error } = await supabase
+        .from('tenant_settings')
+        .select('zelle_enabled')
+        .eq('tenant_id', activeTenantId)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!activeTenantId,
+  });
+
+  const zelleEnabled = zelleSettings?.zelle_enabled || false;
 
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const contractBalance = sellingPrice - totalPaid;
@@ -308,17 +344,15 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       if (error) throw error;
 
       if (data?.paymentLink?.url) {
-        // Save URL to invoice
         await supabase
           .from('project_invoices')
           .update({ stripe_payment_link_url: data.paymentLink.url, status: invoice.status === 'draft' ? 'sent' : invoice.status })
           .eq('id', invoice.id);
 
-        // Copy to clipboard
         await navigator.clipboard.writeText(data.paymentLink.url);
         
         queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
-        toast.success('Payment link copied to clipboard!', {
+        toast.success('Stripe payment link copied to clipboard!', {
           action: {
             label: 'Open',
             onClick: () => window.open(data.paymentLink.url, '_blank'),
@@ -330,6 +364,98 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       toast.error(error.message || 'Failed to generate payment link');
     } finally {
       setGeneratingLinkForInvoice(null);
+    }
+  };
+
+  const handleSendZelleLink = async (invoice: any) => {
+    setGeneratingLinkForInvoice(invoice.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Generate a unique shareable token
+      const shareableToken = crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+
+      // Create payment link record for Zelle
+      const { error } = await supabase.from('payment_links').insert({
+        tenant_id: activeTenantId!,
+        invoice_id: invoice.id,
+        pipeline_entry_id: pipelineEntryId,
+        amount: Number(invoice.balance),
+        currency: 'usd',
+        description: `Invoice ${invoice.invoice_number}`,
+        payment_type: 'zelle',
+        shareable_token: shareableToken,
+        zelle_confirmation_status: 'pending',
+        status: 'active',
+        created_by: user.id,
+      });
+
+      if (error) throw error;
+
+      const paymentUrl = `${window.location.origin}/pay/${shareableToken}`;
+
+      // Update invoice status
+      if (invoice.status === 'draft') {
+        await supabase.from('project_invoices')
+          .update({ status: 'sent' })
+          .eq('id', invoice.id);
+      }
+
+      await navigator.clipboard.writeText(paymentUrl);
+      
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['zelle-payment-links', pipelineEntryId] });
+      toast.success('Zelle payment link copied to clipboard!', {
+        action: {
+          label: 'Open',
+          onClick: () => window.open(paymentUrl, '_blank'),
+        },
+      });
+    } catch (error: any) {
+      console.error('Error generating Zelle link:', error);
+      toast.error(error.message || 'Failed to generate Zelle link');
+    } finally {
+      setGeneratingLinkForInvoice(null);
+    }
+  };
+
+  const handleConfirmZellePayment = async (paymentLink: any, invoice: any) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // Record payment
+      await supabase.from('project_payments').insert({
+        tenant_id: activeTenantId!,
+        pipeline_entry_id: pipelineEntryId,
+        invoice_id: invoice.id,
+        amount: Number(paymentLink.amount),
+        payment_method: 'zelle',
+        reference_number: `ZELLE-${paymentLink.shareable_token}`,
+        payment_date: format(new Date(), 'yyyy-MM-dd'),
+        notes: 'Zelle payment confirmed',
+        created_by: user.id,
+      });
+
+      // Update invoice balance
+      const newBalance = Math.max(0, Number(invoice.balance) - Number(paymentLink.amount));
+      const newStatus = newBalance === 0 ? 'paid' : 'partial';
+      await supabase.from('project_invoices')
+        .update({ balance: newBalance, status: newStatus })
+        .eq('id', invoice.id);
+
+      // Mark Zelle link as confirmed
+      await supabase.from('payment_links')
+        .update({ zelle_confirmation_status: 'confirmed', status: 'completed' })
+        .eq('id', paymentLink.id);
+
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['project-ar-payments', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['zelle-payment-links', pipelineEntryId] });
+      toast.success('Zelle payment confirmed!');
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to confirm payment');
     }
   };
 
@@ -506,6 +632,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                     <SelectItem value="check">Check</SelectItem>
                     <SelectItem value="card">Card</SelectItem>
                     <SelectItem value="ach">ACH</SelectItem>
+                    <SelectItem value="zelle">Zelle</SelectItem>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="financing">Financing</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
@@ -567,6 +694,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               const lineItems = Array.isArray((inv as any).line_items) ? (inv as any).line_items as InvoiceLineItem[] : [];
               const hasLineItems = lineItems.length > 0;
               const isExpanded = expandedInvoices.has(inv.id);
+              const pendingZelleLink = (zelleLinks || []).find(
+                (zl: any) => zl.invoice_id === inv.id && zl.zelle_confirmation_status === 'pending'
+              );
 
               return (
                 <div key={inv.id} className="bg-muted/30 rounded-lg overflow-hidden">
@@ -587,32 +717,72 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      {/* Send Payment Link button */}
+                      {/* Payment link actions */}
                       {inv.status !== 'paid' && inv.status !== 'void' && Number(inv.balance) > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          disabled={generatingLinkForInvoice === inv.id}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if ((inv as any).stripe_payment_link_url) {
-                              navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
-                              toast.success('Payment link copied!');
-                            } else {
-                              handleSendPaymentLink(inv);
-                            }
-                          }}
-                          title={(inv as any).stripe_payment_link_url ? 'Copy payment link' : 'Generate payment link'}
-                        >
-                          {generatingLinkForInvoice === inv.id ? (
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          ) : (inv as any).stripe_payment_link_url ? (
-                            <Copy className="h-3.5 w-3.5 text-green-600" />
-                          ) : (
-                            <Link2 className="h-3.5 w-3.5" />
+                        <>
+                          {/* Confirm Zelle payment */}
+                          {pendingZelleLink && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleConfirmZellePayment(pendingZelleLink, inv);
+                              }}
+                            >
+                              <CheckCircle2 className="h-3 w-3 mr-1" />
+                              Confirm Zelle
+                            </Button>
                           )}
-                        </Button>
+                          {/* Payment link dropdown */}
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                disabled={generatingLinkForInvoice === inv.id}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {generatingLinkForInvoice === inv.id ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (inv as any).stripe_payment_link_url ? (
+                                  <Copy className="h-3.5 w-3.5 text-primary" />
+                                ) : (
+                                  <Link2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem onClick={() => {
+                                if ((inv as any).stripe_payment_link_url) {
+                                  navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
+                                  toast.success('Stripe link copied!');
+                                } else {
+                                  handleSendPaymentLink(inv);
+                                }
+                              }}>
+                                <CreditCard className="h-4 w-4 mr-2" />
+                                {(inv as any).stripe_payment_link_url ? 'Copy Stripe Link' : 'Stripe Payment Link'}
+                              </DropdownMenuItem>
+                              {zelleEnabled && (
+                                <DropdownMenuItem onClick={() => {
+                                  if (pendingZelleLink) {
+                                    const url = `${window.location.origin}/pay/${pendingZelleLink.shareable_token}`;
+                                    navigator.clipboard.writeText(url);
+                                    toast.success('Zelle link copied!');
+                                  } else {
+                                    handleSendZelleLink(inv);
+                                  }
+                                }}>
+                                  <DollarSign className="h-4 w-4 mr-2" />
+                                  {pendingZelleLink ? 'Copy Zelle Link' : 'Zelle Payment Link'}
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </>
                       )}
                       <div className="text-right">
                         <p className="text-sm font-medium">{formatCurrency(Number(inv.amount))}</p>

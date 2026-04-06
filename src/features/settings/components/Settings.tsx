@@ -66,6 +66,8 @@ import { AppointmentOutcomeSettings } from "@/components/settings/AppointmentOut
 import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings";
 import { InventoryManager } from "@/components/inventory/InventoryManager";
 
+import ZelleSettings from "@/components/settings/ZelleSettings";
+
 interface SettingsTab {
   id: string;
   tab_key: string;
@@ -409,6 +411,7 @@ export const Settings = () => {
           <div className="space-y-6">
             <QuickBooksSettings />
             <JobTypeQBOMapping />
+            <ZelleSettings />
           </div>
         );
       case "reports":

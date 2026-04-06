@@ -21459,13 +21459,16 @@ export type Database = {
           id: string
           invoice_id: string | null
           payment_id: string | null
+          payment_type: string
           pipeline_entry_id: string | null
           project_id: string | null
+          shareable_token: string | null
           status: string
           stripe_payment_link_id: string | null
           stripe_payment_link_url: string | null
           tenant_id: string
           updated_at: string
+          zelle_confirmation_status: string | null
         }
         Insert: {
           amount: number
@@ -21477,13 +21480,16 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           payment_id?: string | null
+          payment_type?: string
           pipeline_entry_id?: string | null
           project_id?: string | null
+          shareable_token?: string | null
           status?: string
           stripe_payment_link_id?: string | null
           stripe_payment_link_url?: string | null
           tenant_id: string
           updated_at?: string
+          zelle_confirmation_status?: string | null
         }
         Update: {
           amount?: number
@@ -21495,13 +21501,16 @@ export type Database = {
           id?: string
           invoice_id?: string | null
           payment_id?: string | null
+          payment_type?: string
           pipeline_entry_id?: string | null
           project_id?: string | null
+          shareable_token?: string | null
           status?: string
           stripe_payment_link_id?: string | null
           stripe_payment_link_url?: string | null
           tenant_id?: string
           updated_at?: string
+          zelle_confirmation_status?: string | null
         }
         Relationships: [
           {
@@ -36418,6 +36427,11 @@ export type Database = {
           portal_show_photos: boolean | null
           tenant_id: string | null
           updated_at: string | null
+          zelle_display_name: string | null
+          zelle_email: string | null
+          zelle_enabled: boolean
+          zelle_instructions: string | null
+          zelle_phone: string | null
         }
         Insert: {
           created_at?: string | null
@@ -36431,6 +36445,11 @@ export type Database = {
           portal_show_photos?: boolean | null
           tenant_id?: string | null
           updated_at?: string | null
+          zelle_display_name?: string | null
+          zelle_email?: string | null
+          zelle_enabled?: boolean
+          zelle_instructions?: string | null
+          zelle_phone?: string | null
         }
         Update: {
           created_at?: string | null
@@ -36444,6 +36463,11 @@ export type Database = {
           portal_show_photos?: boolean | null
           tenant_id?: string | null
           updated_at?: string | null
+          zelle_display_name?: string | null
+          zelle_email?: string | null
+          zelle_enabled?: boolean
+          zelle_instructions?: string | null
+          zelle_phone?: string | null
         }
         Relationships: [
           {
