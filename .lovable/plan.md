@@ -1,38 +1,69 @@
 
 
-## Fix `generate-training-pair` Iteration Bug + Harden All Inputs
+## Mass Training Pair Generation from Real Vendor Reports
 
-### Root Cause
+### Problem
+You have **156 vendor reports** with real measurement data (120 with valleys, 123 with hips, 107 with full diagram geometry), but **none** of your 205 training pairs actually use this data. They were all generated with simple synthetic box/gable templates. The vendor reports also lack geocoded coordinates, blocking training pair generation.
 
-The "object is not iterable" error occurs when:
-1. **`footprintVertices`** from the `measure` call returns as an object or undefined (line 172 of index.ts calls `extractFootprintPixelCoords` which does `.map()` on it)
-2. **`vendorGeometry`** keys (ridge/valley/hip/eave/rake) may contain objects instead of arrays, causing `flattenGeometrySegments` to push non-array values
+### Plan
 
-### Changes
+**Step 1 — Geocode all vendor report addresses**
 
-**File 1: `supabase/functions/generate-training-pair/index.ts`**
+Create a batch script that:
+- Queries all 145 vendor reports that have addresses but no coordinates
+- Geocodes each address using the Mapbox geocoding API (already have token)
+- Stores `geocoded_lat` and `geocoded_lng` on the vendor report (requires adding these columns via migration)
 
-Add `ensureArray` helper and harden all iterable inputs:
+**Step 2 — Add geocode columns to `roof_vendor_reports`**
 
-- Add `ensureArray` function at top of file
-- Add debug logging before processing (line ~79): log types of vendorGeometry, footprintVertices
-- Wrap `body.vendorGeometry` through `ensureArray` for each key before passing to `flattenGeometrySegments` (around line 157)
-- Wrap `footprintVertices` with `ensureArray` before passing to `extractFootprintPixelCoords` (line 172)
-- Wrap `result.footprint?.vertices` extraction (line 144) with `ensureArray`
+Migration to add:
+```sql
+ALTER TABLE public.roof_vendor_reports
+  ADD COLUMN IF NOT EXISTS geocoded_lat double precision,
+  ADD COLUMN IF NOT EXISTS geocoded_lng double precision;
+```
 
-**File 2: `supabase/functions/_shared/geometry-alignment.ts`**
+**Step 3 — Convert diagram_geometry to vendorGeometry format**
 
-Harden `flattenGeometrySegments`:
-- In the else branch (line 177-183), wrap `input[key]` with `ensureArray` before pushing
-- Guard individual segments: skip if not array of arrays
+The 107 reports with `diagram_geometry` have vertex/edge structures like:
+```json
+{"vertices": [{"id":"V1","x":0.15,"y":0.2}, ...], "edges": [{"from":"V1","to":"V2","type":"ridge"}, ...]}
+```
 
-**File 3: `supabase/functions/_shared/spatial-alignment-engine.ts`**
+Build a converter function that:
+- Resolves vertex references to coordinate pairs
+- Groups edges by type (ridge/valley/hip/eave/rake) into the `vendorGeometry` format: `{ ridge: [[[x1,y1],[x2,y2]]], valley: [...] }`
+- Scales relative coordinates to pixel space (512x512)
 
-Harden `extractFootprintPixelCoords`:
-- Add early return of empty array if input is falsy or not iterable
-- Filter out non-array coordinate pairs
+**Step 4 — Batch generate real training pairs**
 
-### After Deploy
+Script that processes each geocoded vendor report:
+1. Uses the report's `geocoded_lat/lng` for satellite imagery
+2. Converts `diagram_geometry` → `vendorGeometry` (for 107 reports with diagrams)
+3. Falls back to building geometry from parsed linear measurements for the remaining 49 reports (using `parsed.ridges_ft`, `parsed.valleys_ft`, etc. to create proportional synthetic geometry)
+4. Passes real `vendorTruth` labels from `parsed` data (areaSqft, valleyFt, hipFt, etc.)
+5. Calls `generate-training-pair` edge function
 
-Re-run the validation script — training pair generation and mask generation should pass, unblocking Stage 5.
+**Step 5 — Verify dataset quality**
+
+Query to confirm:
+- 100+ training pairs with real vendor-sourced labels
+- 60+ with valleys > 0
+- 60+ with hips > 0
+- Mask coverage validation
+
+### Technical Details
+
+- **Geocoding**: Mapbox forward geocoding API — `https://api.mapbox.com/geocoding/v5/mapbox.places/{address}.json`
+- **Diagram conversion**: The `diagram_geometry.vertices` use relative coordinates (0-1 range). These get scaled to 512x512 pixel space for the `vendorGeometry` input.
+- **Rate limiting**: 1-second delay between geocoding calls (Mapbox TOS), 2-second delay between training pair generation calls (edge function cold starts)
+- **Files modified**: One migration (add geocode columns), one batch Python script in `/tmp/`
+
+### Expected Outcome
+
+After completion:
+- 100-145 new training pairs using **real** vendor data
+- Valleys in 80+ pairs, hips in 80+ pairs
+- Labels sourced from actual Roofr/EagleView measurements, not synthetic values
+- Dataset ready for meaningful Stage 5 model training
 
