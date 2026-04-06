@@ -6,7 +6,7 @@
  * Critical for scaling AI/measurement operations.
  */
 
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 
 interface CacheOptions {
   /** Time-to-live in seconds */

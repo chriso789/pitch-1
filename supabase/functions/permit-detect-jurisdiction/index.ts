@@ -1,5 +1,5 @@
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-import * as turf from "https://esm.sh/@turf/turf@7.1.0";
+import * as turf from "npm:@turf/turf@7.1.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

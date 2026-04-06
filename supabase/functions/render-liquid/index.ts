@@ -5,7 +5,7 @@
 // - Also calls `api_dynamic_tags_frequently_used` to return the curated tag list.
 
 import { createClient } from "npm:@supabase/supabase-js@2.49.1"
-import { Liquid } from 'https://esm.sh/liquidjs@10'
+import { Liquid } from "npm:liquidjs@10"
 import { corsHeaders } from '../_shared/cors.ts'
 
 type RenderPayload = {
