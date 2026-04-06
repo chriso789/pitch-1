@@ -1509,7 +1509,7 @@ If no diagram is found, return: {"diagram_found": false}`;
             .from('roof_training_sessions')
             .insert({
               tenant_id: userTenantId,
-              pipeline_entry_id: lead_id || null, // Fixed: was property_id which doesn't exist
+              pipeline_entry_id: lead_id || null,
               ai_measurement_id: aiMeasurementId,
               vendor_report_id: reportRow.id,
               ground_truth_source: 'vendor_report',
@@ -1518,6 +1518,7 @@ If no diagram is found, return: {"diagram_found": false}`;
               ai_totals: aiTotals || {},
               traced_totals: tracedTotals,
               property_address: parsed.address,
+              satellite_image_url: diagramImageUrl || null,
               name: `Vendor Report - ${parsed.address || 'Unknown'}`,
               created_by: userId,
             })
