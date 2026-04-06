@@ -112,12 +112,29 @@ serve(async (req) => {
         .limit(300);
       if (error) throw error;
 
-      // Filter to real data
+      // Get already-processed vendor report IDs from training_pairs source field
+      const { data: existing } = await supabase
+        .from('training_pairs')
+        .select('source')
+        .like('source', 'vendor_%');
+      
+      const processedIds = new Set(
+        (existing || []).map((e: any) => {
+          // source format: "vendor_XXXXXXXX_diagram" or "vendor_XXXXXXXX_synthetic"
+          const match = (e.source || '').match(/^vendor_([a-f0-9]{8})_/);
+          return match ? match[1] : null;
+        }).filter(Boolean)
+      );
+
+      // Filter to real data, skip already processed
       const ready = (reports || [])
-        .filter((r: any) => r.parsed && parseFloat(r.parsed.total_area_sqft || 0) > 0)
+        .filter((r: any) => {
+          if (!r.parsed || parseFloat(r.parsed.total_area_sqft || 0) <= 0) return false;
+          return !processedIds.has(r.id.substring(0, 8));
+        })
         .slice(0, batchSize);
 
-      console.log(`Generating training pairs for ${ready.length} reports`);
+      console.log(`Generating training pairs for ${ready.length} reports (${processedIds.size} already done)`);
 
       let success = 0, failed = 0;
       const results: any[] = [];
