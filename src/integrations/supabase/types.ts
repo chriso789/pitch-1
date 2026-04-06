@@ -36840,6 +36840,57 @@ export type Database = {
           },
         ]
       }
+      training_pairs: {
+        Row: {
+          address: string
+          aerial_image_url: string
+          alignment_matrix: Json | null
+          alignment_quality: number | null
+          confidence_score: number | null
+          created_at: string | null
+          id: string
+          is_verified: boolean | null
+          labels: Json
+          lat: number
+          lng: number
+          mask_storage_path: string | null
+          tenant_id: string | null
+          vendor_source: string | null
+        }
+        Insert: {
+          address: string
+          aerial_image_url: string
+          alignment_matrix?: Json | null
+          alignment_quality?: number | null
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          is_verified?: boolean | null
+          labels?: Json
+          lat: number
+          lng: number
+          mask_storage_path?: string | null
+          tenant_id?: string | null
+          vendor_source?: string | null
+        }
+        Update: {
+          address?: string
+          aerial_image_url?: string
+          alignment_matrix?: Json | null
+          alignment_quality?: number | null
+          confidence_score?: number | null
+          created_at?: string | null
+          id?: string
+          is_verified?: boolean | null
+          labels?: Json
+          lat?: number
+          lng?: number
+          mask_storage_path?: string | null
+          tenant_id?: string | null
+          vendor_source?: string | null
+        }
+        Relationships: []
+      }
       transition_rules: {
         Row: {
           conditions: Json | null
