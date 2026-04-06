@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Shield, Code, Building, AlertTriangle, Eye } from "lucide-react";
+import { Shield, Code, Building, AlertTriangle, Eye, Upload } from "lucide-react";
+import { BulkReportImporter } from "@/components/measurements/BulkReportImporter";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -287,6 +288,25 @@ export const DeveloperAccess = () => {
             <Button variant="outline" className="w-full">
               Performance Metrics
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Bulk Vendor Report Import - Developer Only */}
+      {isDeveloperMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary" />
+              Bulk Vendor Report Import
+            </CardTitle>
+            <CardDescription>
+              Upload 200+ paid roof reports (Roofr, EagleView, Xactimate, etc.) as AI training ground truth. 
+              Each report is parsed, geocoded, and stored with 3x confidence weight for model training.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BulkReportImporter />
           </CardContent>
         </Card>
       )}
