@@ -72,6 +72,14 @@ import {
   LINE_KEYS,
 } from './geometry-alignment.ts';
 
+import {
+  alignVendorToAerial,
+  extractFootprintPixelCoords,
+  type SpatialAlignmentResult,
+  type ImageBounds,
+  type ImageDims,
+} from './spatial-alignment-engine.ts';
+
 // ============================================
 // TYPES
 // ============================================
@@ -104,6 +112,11 @@ export interface UnifiedMeasurementResult {
   finalReport: FinalReportPayload | null;
   confidence: ConfidenceScore | null;
   trainingPack: TrainingPack | null;
+  spatialAlignment: {
+    quality: string;
+    residualError: number;
+    normalizedError: number;
+  } | null;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
@@ -113,6 +126,7 @@ export interface UnifiedMeasurementResult {
     fusionUsed: boolean;
     vendorTruth: boolean;
     vendorGeometry: boolean;
+    spatialAlignmentUsed: boolean;
   };
   timing: {
     totalMs: number;
@@ -309,8 +323,8 @@ export async function runUnifiedMeasurementPipeline(
       success: false,
       footprint: null, topology: null, areas: null, qa: null,
       solarData, solarDataLayers: null, terrain: null, fused: null, snapResult: null,
-      vendorTruthUsed: false, finalReport: null, confidence: null, trainingPack: null,
-      apiSources: { footprint: 'none', ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false, vendorGeometry: false },
+      vendorTruthUsed: false, finalReport: null, confidence: null, trainingPack: null, spatialAlignment: null,
+      apiSources: { footprint: 'none', ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false, vendorGeometry: false, spatialAlignmentUsed: false },
       timing, errors, warnings,
     };
   }
@@ -343,8 +357,8 @@ export async function runUnifiedMeasurementPipeline(
       success: false,
       footprint, topology: null, areas: null, qa: null,
       solarData, solarDataLayers: null, terrain: null, fused: null, snapResult: null,
-      vendorTruthUsed: false, finalReport: null, confidence: null, trainingPack: null,
-      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false, vendorGeometry: false },
+      vendorTruthUsed: false, finalReport: null, confidence: null, trainingPack: null, spatialAlignment: null,
+      apiSources: { footprint: footprint.source, ridgeDirection: 'none', solar: solarData?.available ?? false, terrain: false, pitch: 'unknown', fusionUsed: false, vendorTruth: false, vendorGeometry: false, spatialAlignmentUsed: false },
       timing, errors, warnings,
     };
   }
@@ -604,11 +618,13 @@ export async function runUnifiedMeasurementPipeline(
   timing.calibrationMs = Date.now() - calibrationStart;
   
   // -------------------------------------------
-  // Step 6.5: Geometry refinement, confidence scoring & training export
+  // Step 6.5: Spatial alignment, confidence scoring & training export
   // -------------------------------------------
   const refinementStart = Date.now();
   let pipelineConfidence: ConfidenceScore | null = null;
   let trainingPack: TrainingPack | null = null;
+  let spatialAlignmentInfo: UnifiedMeasurementResult['spatialAlignment'] = null;
+  let spatialAlignmentUsed = false;
   
   if (request.vendorGeometry && request.vendorTruth) {
     try {
@@ -624,8 +640,55 @@ export async function runUnifiedMeasurementPipeline(
       if (request.vendorTruth.eaveFt) vendorLengths.eaveFt = request.vendorTruth.eaveFt;
       if (request.vendorTruth.rakeFt) vendorLengths.rakeFt = request.vendorTruth.rakeFt;
       
-      const { ftPerPixel, debug: calibDebug } = estimateFeetPerPixel(cleaned, vendorLengths);
-      const measurements = lineMeasurementsFromGeometry(cleaned, ftPerPixel);
+      // Try spatial alignment when footprint is available
+      let alignedGeometry = cleaned;
+      if (footprint && footprint.vertices.length >= 3) {
+        try {
+          log('🔄 Running Stage 4 spatial alignment...');
+          // Compute aerial image bounds from footprint center
+          const zoom = 20;
+          const imgW = 1280;
+          const imgH = 1280;
+          const centerLat = request.lat;
+          const centerLng = request.lng;
+          const mpp = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
+          const wm = imgW * mpp;
+          const hm = imgH * mpp;
+          const latOff = (hm / 2) / 111320;
+          const lngOff = (wm / 2) / (111320 * Math.cos(centerLat * Math.PI / 180));
+          
+          const imageBounds: ImageBounds = {
+            topLeft: { lat: centerLat + latOff, lng: centerLng - lngOff },
+            topRight: { lat: centerLat + latOff, lng: centerLng + lngOff },
+            bottomLeft: { lat: centerLat - latOff, lng: centerLng - lngOff },
+            bottomRight: { lat: centerLat - latOff, lng: centerLng + lngOff },
+          };
+          const imageDims: ImageDims = { width: imgW, height: imgH };
+          
+          const spatialResult = alignVendorToAerial({
+            vendorGeometry: cleaned,
+            footprintVertices: footprint.vertices as [number, number][],
+            imageBounds,
+            imageDims,
+          });
+          
+          alignedGeometry = spatialResult.alignedGeometry;
+          spatialAlignmentUsed = true;
+          spatialAlignmentInfo = {
+            quality: spatialResult.quality.grade,
+            residualError: Math.round(spatialResult.residualError * 100) / 100,
+            normalizedError: Math.round(spatialResult.quality.normalizedError * 10000) / 10000,
+          };
+          
+          log(`✅ Spatial alignment: grade=${spatialResult.quality.grade}, residual=${spatialResult.residualError.toFixed(2)}px`);
+        } catch (spatialErr) {
+          warnings.push(`Spatial alignment error (falling back to bbox): ${spatialErr}`);
+          log(`⚠️ Spatial alignment failed, using cleaned geometry: ${spatialErr}`);
+        }
+      }
+      
+      const { ftPerPixel, debug: calibDebug } = estimateFeetPerPixel(alignedGeometry, vendorLengths);
+      const measurements = lineMeasurementsFromGeometry(alignedGeometry, ftPerPixel);
       
       // Use footprint bbox as roof bbox if available
       const roofBbox: BBox | null = footprint
@@ -633,9 +696,9 @@ export async function runUnifiedMeasurementPipeline(
         : null;
       
       const alignmentDebug = estimateControlPointAlignment(
-        cleaned,
+        alignedGeometry,
         roofBbox,
-        { width: null, height: null }, // No aerial image dimensions in edge function context
+        { width: null, height: null },
       );
       
       pipelineConfidence = scoreConfidence(alignmentDebug, calibDebug, measurements, vendorLengths);
@@ -647,9 +710,9 @@ export async function runUnifiedMeasurementPipeline(
       
       // Build training export pack
       trainingPack = buildTrainingExportPack({
-        aerialImageUrl: null, // No local image in edge function context
+        aerialImageUrl: null,
         roofBbox,
-        transformedGeometry: cleaned,
+        transformedGeometry: alignedGeometry,
         report: finalReport || buildFinalReportPayload({
           address: request.address || `${request.lat}, ${request.lng}`,
           formattedAddress: request.address || null,
@@ -714,6 +777,7 @@ export async function runUnifiedMeasurementPipeline(
     finalReport,
     confidence: pipelineConfidence,
     trainingPack,
+    spatialAlignment: spatialAlignmentInfo,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
@@ -723,6 +787,7 @@ export async function runUnifiedMeasurementPipeline(
       fusionUsed: fused !== null,
       vendorTruth: vendorTruthUsed,
       vendorGeometry: hasVendorGeometry,
+      spatialAlignmentUsed,
     },
     timing,
     errors,
@@ -750,4 +815,5 @@ export type {
   FinalReportPayload,
   ConfidenceScore,
   TrainingPack,
+  SpatialAlignmentResult,
 };
