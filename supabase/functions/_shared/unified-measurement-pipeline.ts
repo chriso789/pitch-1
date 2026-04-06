@@ -112,6 +112,11 @@ export interface UnifiedMeasurementResult {
   finalReport: FinalReportPayload | null;
   confidence: ConfidenceScore | null;
   trainingPack: TrainingPack | null;
+  spatialAlignment: {
+    quality: string;
+    residualError: number;
+    normalizedError: number;
+  } | null;
   apiSources: {
     footprint: FootprintSource | 'none';
     ridgeDirection: string;
@@ -121,6 +126,7 @@ export interface UnifiedMeasurementResult {
     fusionUsed: boolean;
     vendorTruth: boolean;
     vendorGeometry: boolean;
+    spatialAlignmentUsed: boolean;
   };
   timing: {
     totalMs: number;
