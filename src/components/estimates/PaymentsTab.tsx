@@ -156,6 +156,39 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     },
   });
 
+  // Fetch Zelle payment links for this pipeline entry
+  const { data: zelleLinks } = useQuery({
+    queryKey: ['zelle-payment-links', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('payment_links')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('payment_type', 'zelle')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
+  // Fetch tenant Zelle settings
+  const { data: zelleSettings } = useQuery({
+    queryKey: ['tenant-zelle-enabled', activeTenantId],
+    queryFn: async () => {
+      if (!activeTenantId) return null;
+      const { data, error } = await supabase
+        .from('tenant_settings')
+        .select('zelle_enabled')
+        .eq('tenant_id', activeTenantId)
+        .single();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!activeTenantId,
+  });
+
+  const zelleEnabled = zelleSettings?.zelle_enabled || false;
+
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const contractBalance = sellingPrice - totalPaid;
 
