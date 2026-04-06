@@ -815,4 +815,5 @@ export type {
   FinalReportPayload,
   ConfidenceScore,
   TrainingPack,
+  SpatialAlignmentResult,
 };
