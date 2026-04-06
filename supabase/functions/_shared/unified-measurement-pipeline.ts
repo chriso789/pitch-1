@@ -72,6 +72,14 @@ import {
   LINE_KEYS,
 } from './geometry-alignment.ts';
 
+import {
+  alignVendorToAerial,
+  extractFootprintPixelCoords,
+  type SpatialAlignmentResult,
+  type ImageBounds,
+  type ImageDims,
+} from './spatial-alignment-engine.ts';
+
 // ============================================
 // TYPES
 // ============================================
