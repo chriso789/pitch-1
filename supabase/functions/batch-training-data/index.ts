@@ -112,25 +112,21 @@ serve(async (req) => {
         .limit(300);
       if (error) throw error;
 
-      // Get already-processed vendor report IDs from training_pairs vendor_source field
+      // Get already-processed addresses from training_pairs
       const { data: existing } = await supabase
         .from('training_pairs')
-        .select('vendor_source')
-        .like('vendor_source', 'vendor_%');
+        .select('address');
       
-      const processedIds = new Set(
-        (existing || []).map((e: any) => {
-          // vendor_source format: "vendor_XXXXXXXX_diagram" or "vendor_XXXXXXXX_synthetic"
-          const match = (e.vendor_source || '').match(/^vendor_([a-f0-9]{8})_/);
-          return match ? match[1] : null;
-        }).filter(Boolean)
+      const processedAddresses = new Set(
+        (existing || []).map((e: any) => (e.address || '').toLowerCase().trim())
       );
 
-      // Filter to real data, skip already processed
+      // Filter to real data, skip already processed addresses
       const ready = (reports || [])
         .filter((r: any) => {
           if (!r.parsed || parseFloat(r.parsed.total_area_sqft || 0) <= 0) return false;
-          return !processedIds.has(r.id.substring(0, 8));
+          const addr = (r.address || '').toLowerCase().trim();
+          return !processedAddresses.has(addr);
         })
         .slice(0, batchSize);
 
