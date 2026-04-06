@@ -1,62 +1,57 @@
 
 
-## Stage 5: Export Filtered Dataset + Multi-Channel Mask Rasterization + Training
+## Stage 5: Filtered Export + Multi-Channel Training Pipeline
 
-### Current State
+### Dataset Reality Check
 
-- **368 total** training pairs, **279 with masks**, **237 pass ridge filter**
-- Masks are stored as **vector segments** (coordinate arrays like `[[584, 565.3], [696, 565.3]]`), not raster images
-- Labels exist as JSON with `lineLengths.ridge/valley/hip/eave` and `totalAreaSqft`, `predominantPitch`
-- `alignment_quality` is numeric (0.0 to 1.0), not text — filtering will use a threshold (e.g., > 0.01 to exclude the 157 zero-quality synthetics, or keep all with ridge >= 1)
-- No existing `train_v2.py` or dataset export scripts in the codebase
+- **173 samples** pass quality filter (alignment_quality >= 0.02 + ridge >= 1)
+- Of those: **161 have valleys**, **166 have hips** — excellent coverage
+- Labels are nested: `labels->'lineLengths'->'ridge'` etc., pitch as string `"6/12"`
+- Aerial URLs use Mapbox with embedded token (valid)
+- No `ml/` directory exists yet — creating from scratch
 
 ### Plan
 
-**Step 1 — Export script: query, filter, rasterize, save**
+**Step 1 — Create export script** (`/tmp/export_dataset.py`)
 
-Create `/tmp/export_dataset.py` that:
-1. Queries all 237 eligible training pairs (has ridge >= 1, has aerial_image_url, has line_masks)
-2. Downloads each aerial image to `data/training/images/{id}.png` (resized to 512x512)
-3. Rasterizes vector masks into **4 separate per-class PNGs** using OpenCV `cv2.polylines()`:
-   - `data/training/masks/{id}_ridge.png`
-   - `data/training/masks/{id}_valley.png`
-   - `data/training/masks/{id}_hip.png`
-   - `data/training/masks/{id}_eave.png`
-   - Line width of 3px for visibility
-4. Exports `data/training/labels.json` with normalized values:
-   ```json
-   { "abc123": { "area": 2200, "ridge": 35, "valley": 0, "hip": 0, "eave": 120, "pitch": 6 } }
-   ```
-5. Writes summary stats to console
+Python script that:
+1. Queries 173 filtered training pairs via psql (alignment_quality >= 0.02, ridge count >= 1)
+2. Downloads each aerial image URL, resizes to 512x512 PNG
+3. Rasterizes vector masks into **4 per-class PNGs** using `cv2.polylines(thickness=3)`:
+   - `{id}_ridge.png`, `{id}_valley.png`, `{id}_hip.png`, `{id}_eave.png`
+4. Exports `labels.json` with parsed values:
+   - `area` from `labels.totalAreaSqft`
+   - `ridge/valley/hip/eave` from `labels.lineLengths.*`
+   - `pitch` parsed from `"6/12"` → `6.0`
+5. Output to `/tmp/training_data/images/` and `/tmp/training_data/masks/`
 
-**Step 2 — Training files**
+**Step 2 — Create ML pipeline** (4 files in `ml/`)
 
-Create in project root `ml/`:
-- `ml/dataset_v2.py` — Multi-channel dataset loader (4-class masks)
-- `ml/model_v3.py` — RoofNetV3 (ResNet50 encoder, 4-class seg head, 6-value regression head)
-- `ml/loss_v2.py` — BCE + MSE combined loss
-- `ml/train_v3.py` — Training loop (80 epochs, AdamW, lr=2e-4, batch=6)
+- `ml/dataset_v2.py` — Multi-channel dataset (4 mask classes), loads per-class PNGs
+- `ml/model_v3.py` — RoofNetV3: ResNet50 encoder + **upsampling** seg head (bilinear to 512x512) with 4 output channels + 6-value regression head
+- `ml/loss_v2.py` — BCE (seg) + MSE (reg) combined loss
+- `ml/train_v3.py` — 20 epochs on CPU (sandbox constraint), AdamW lr=2e-4, batch=4, saves checkpoint
 
-**Step 3 — Run export + training**
+Key fix vs user-provided model: the seg head needs `F.interpolate(seg, size=(512,512))` since ResNet50 produces 16x16 feature maps from 512x512 input.
 
-1. Run export script to materialize dataset to disk
-2. Run `train_v3.py` for 80 epochs
-3. Save model checkpoint to `/mnt/documents/roofnet_v3.pth`
-4. Generate sample predictions: 1 input image, 1 multi-channel mask overlay, 1 prediction overlay
+**Step 3 — Run export + train**
 
-### Key Technical Details
+1. Export filtered dataset (~173 samples)
+2. Train 20 epochs (CPU, ~30-40 min)
+3. Save checkpoint to `/mnt/documents/roofnet_v3.pth`
+4. Generate sample visualization: input image + 4-channel mask overlay + prediction overlay → `/mnt/documents/sample_prediction.png`
 
-- **Vector-to-raster**: Each mask segment has `points: [[x1,y1],[x2,y2],...]`. These are drawn as polylines on a blank 512x512 canvas with `cv2.polylines(canvas, [pts], False, 255, thickness=3)`
-- **Pitch parsing**: `predominantPitch` is stored as string like `"6/12"` — parse to numeric `6.0`
-- **Quality filter**: Keep pairs where `ridge_count >= 1` and `aerial_image_url` exists (237 samples). The 157 with `alignment_quality=0.0` still have valid geometry from templates — worth keeping for volume
-- **No GPU available** in sandbox — training will use CPU, so batch_size=4 and we may cap at 20-30 epochs for time, then deliver checkpoint + script for full training on user's MPS machine
+### Technical Details
+
+- **Rasterization**: Each mask segment has `points: [[x1,y1],[x2,y2],...]` in 512px space. Drawn as polylines on blank 512x512 canvas, thickness=3
+- **Seg head upsampling**: ResNet50 `[:-2]` gives 2048x16x16. Seg head: Conv2d(2048,512,3,pad=1) → ReLU → Conv2d(512,4,1) → bilinear upsample to 512x512
+- **Label normalization**: area/1000, lengths/100, pitch as-is (keeps values in reasonable range for MSE)
+- **CPU training**: batch_size=4, 20 epochs achievable in sandbox. Full script provided for user to run 80 epochs on MPS
 
 ### Expected Output
 
-- `data/training/images/` — ~237 aerial PNGs (512x512)
-- `data/training/masks/` — ~948 per-class mask PNGs
-- `data/training/labels.json` — regression labels
-- `ml/` — training code (4 files)
-- `/mnt/documents/roofnet_v3.pth` — model checkpoint
+- `/tmp/training_data/` — 173 images + 692 mask PNGs + labels.json
+- `ml/` — 4 Python files (dataset, model, loss, train)
+- `/mnt/documents/roofnet_v3.pth` — trained checkpoint
 - `/mnt/documents/sample_prediction.png` — visual QA
 
