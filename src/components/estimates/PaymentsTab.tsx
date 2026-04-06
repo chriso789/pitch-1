@@ -56,6 +56,12 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [generatingLinkForInvoice, setGeneratingLinkForInvoice] = useState<string | null>(null);
 
+  // Invoice builder state
+  const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
+  const [invoiceDueDate, setInvoiceDueDate] = useState('');
+  const [invoiceNotes, setInvoiceNotes] = useState('');
+  const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+
   // Fetch estimates for this pipeline entry to auto-populate line items
   const { data: estimates } = useQuery({
     queryKey: ['estimate-line-items', pipelineEntryId],
