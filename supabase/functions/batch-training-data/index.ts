@@ -175,6 +175,7 @@ serve(async (req) => {
           hipFt: parseFloat(parsed.hips_ft || 0),
           eaveFt: parseFloat(parsed.eaves_ft || 0),
           rakeFt: parseFloat(parsed.rakes_ft || 0),
+          source: `vendor_${r.id.substring(0, 8)}_${geoSource}`,
         };
 
         try {
