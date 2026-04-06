@@ -46,13 +46,15 @@ export default function ZellePaymentPage() {
         throw new Error(err.error || "Payment link not found");
       }
 
-      setData(await response.json());
-    } catch (err: any) {
-      setError(err.message || "Failed to load payment details");
-    } finally {
-      setLoading(false);
-    }
-  };
+        setData(await response.json());
+      } catch (err: any) {
+        setError(err.message || "Failed to load payment details");
+      } finally {
+        setLoading(false);
+      }
+    };
+    load();
+  }, [token]);
 
   if (loading) {
     return (
