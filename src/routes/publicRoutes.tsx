@@ -23,6 +23,7 @@ const ViewQuote = React.lazy(() => import("@/pages/ViewQuote"));
 const PublicProposalView = React.lazy(() => import("@/pages/PublicProposalView"));
 const PublicPortalView = React.lazy(() => import("@/pages/PublicPortalView"));
 const PublicDocumentView = React.lazy(() => import("@/pages/PublicDocumentView"));
+const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
 
 const PageLoader = () => (
   <div className="min-h-screen flex items-center justify-center bg-background">
