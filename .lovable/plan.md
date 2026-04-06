@@ -1,69 +1,62 @@
 
 
-## Mass Training Pair Generation from Real Vendor Reports
+## Stage 5: Export Filtered Dataset + Multi-Channel Mask Rasterization + Training
 
-### Problem
-You have **156 vendor reports** with real measurement data (120 with valleys, 123 with hips, 107 with full diagram geometry), but **none** of your 205 training pairs actually use this data. They were all generated with simple synthetic box/gable templates. The vendor reports also lack geocoded coordinates, blocking training pair generation.
+### Current State
+
+- **368 total** training pairs, **279 with masks**, **237 pass ridge filter**
+- Masks are stored as **vector segments** (coordinate arrays like `[[584, 565.3], [696, 565.3]]`), not raster images
+- Labels exist as JSON with `lineLengths.ridge/valley/hip/eave` and `totalAreaSqft`, `predominantPitch`
+- `alignment_quality` is numeric (0.0 to 1.0), not text — filtering will use a threshold (e.g., > 0.01 to exclude the 157 zero-quality synthetics, or keep all with ridge >= 1)
+- No existing `train_v2.py` or dataset export scripts in the codebase
 
 ### Plan
 
-**Step 1 — Geocode all vendor report addresses**
+**Step 1 — Export script: query, filter, rasterize, save**
 
-Create a batch script that:
-- Queries all 145 vendor reports that have addresses but no coordinates
-- Geocodes each address using the Mapbox geocoding API (already have token)
-- Stores `geocoded_lat` and `geocoded_lng` on the vendor report (requires adding these columns via migration)
+Create `/tmp/export_dataset.py` that:
+1. Queries all 237 eligible training pairs (has ridge >= 1, has aerial_image_url, has line_masks)
+2. Downloads each aerial image to `data/training/images/{id}.png` (resized to 512x512)
+3. Rasterizes vector masks into **4 separate per-class PNGs** using OpenCV `cv2.polylines()`:
+   - `data/training/masks/{id}_ridge.png`
+   - `data/training/masks/{id}_valley.png`
+   - `data/training/masks/{id}_hip.png`
+   - `data/training/masks/{id}_eave.png`
+   - Line width of 3px for visibility
+4. Exports `data/training/labels.json` with normalized values:
+   ```json
+   { "abc123": { "area": 2200, "ridge": 35, "valley": 0, "hip": 0, "eave": 120, "pitch": 6 } }
+   ```
+5. Writes summary stats to console
 
-**Step 2 — Add geocode columns to `roof_vendor_reports`**
+**Step 2 — Training files**
 
-Migration to add:
-```sql
-ALTER TABLE public.roof_vendor_reports
-  ADD COLUMN IF NOT EXISTS geocoded_lat double precision,
-  ADD COLUMN IF NOT EXISTS geocoded_lng double precision;
-```
+Create in project root `ml/`:
+- `ml/dataset_v2.py` — Multi-channel dataset loader (4-class masks)
+- `ml/model_v3.py` — RoofNetV3 (ResNet50 encoder, 4-class seg head, 6-value regression head)
+- `ml/loss_v2.py` — BCE + MSE combined loss
+- `ml/train_v3.py` — Training loop (80 epochs, AdamW, lr=2e-4, batch=6)
 
-**Step 3 — Convert diagram_geometry to vendorGeometry format**
+**Step 3 — Run export + training**
 
-The 107 reports with `diagram_geometry` have vertex/edge structures like:
-```json
-{"vertices": [{"id":"V1","x":0.15,"y":0.2}, ...], "edges": [{"from":"V1","to":"V2","type":"ridge"}, ...]}
-```
+1. Run export script to materialize dataset to disk
+2. Run `train_v3.py` for 80 epochs
+3. Save model checkpoint to `/mnt/documents/roofnet_v3.pth`
+4. Generate sample predictions: 1 input image, 1 multi-channel mask overlay, 1 prediction overlay
 
-Build a converter function that:
-- Resolves vertex references to coordinate pairs
-- Groups edges by type (ridge/valley/hip/eave/rake) into the `vendorGeometry` format: `{ ridge: [[[x1,y1],[x2,y2]]], valley: [...] }`
-- Scales relative coordinates to pixel space (512x512)
+### Key Technical Details
 
-**Step 4 — Batch generate real training pairs**
+- **Vector-to-raster**: Each mask segment has `points: [[x1,y1],[x2,y2],...]`. These are drawn as polylines on a blank 512x512 canvas with `cv2.polylines(canvas, [pts], False, 255, thickness=3)`
+- **Pitch parsing**: `predominantPitch` is stored as string like `"6/12"` — parse to numeric `6.0`
+- **Quality filter**: Keep pairs where `ridge_count >= 1` and `aerial_image_url` exists (237 samples). The 157 with `alignment_quality=0.0` still have valid geometry from templates — worth keeping for volume
+- **No GPU available** in sandbox — training will use CPU, so batch_size=4 and we may cap at 20-30 epochs for time, then deliver checkpoint + script for full training on user's MPS machine
 
-Script that processes each geocoded vendor report:
-1. Uses the report's `geocoded_lat/lng` for satellite imagery
-2. Converts `diagram_geometry` → `vendorGeometry` (for 107 reports with diagrams)
-3. Falls back to building geometry from parsed linear measurements for the remaining 49 reports (using `parsed.ridges_ft`, `parsed.valleys_ft`, etc. to create proportional synthetic geometry)
-4. Passes real `vendorTruth` labels from `parsed` data (areaSqft, valleyFt, hipFt, etc.)
-5. Calls `generate-training-pair` edge function
+### Expected Output
 
-**Step 5 — Verify dataset quality**
-
-Query to confirm:
-- 100+ training pairs with real vendor-sourced labels
-- 60+ with valleys > 0
-- 60+ with hips > 0
-- Mask coverage validation
-
-### Technical Details
-
-- **Geocoding**: Mapbox forward geocoding API — `https://api.mapbox.com/geocoding/v5/mapbox.places/{address}.json`
-- **Diagram conversion**: The `diagram_geometry.vertices` use relative coordinates (0-1 range). These get scaled to 512x512 pixel space for the `vendorGeometry` input.
-- **Rate limiting**: 1-second delay between geocoding calls (Mapbox TOS), 2-second delay between training pair generation calls (edge function cold starts)
-- **Files modified**: One migration (add geocode columns), one batch Python script in `/tmp/`
-
-### Expected Outcome
-
-After completion:
-- 100-145 new training pairs using **real** vendor data
-- Valleys in 80+ pairs, hips in 80+ pairs
-- Labels sourced from actual Roofr/EagleView measurements, not synthetic values
-- Dataset ready for meaningful Stage 5 model training
+- `data/training/images/` — ~237 aerial PNGs (512x512)
+- `data/training/masks/` — ~948 per-class mask PNGs
+- `data/training/labels.json` — regression labels
+- `ml/` — training code (4 files)
+- `/mnt/documents/roofnet_v3.pth` — model checkpoint
+- `/mnt/documents/sample_prediction.png` — visual QA
 
