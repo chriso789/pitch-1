@@ -1,63 +1,61 @@
 
 
-## Add Bulk Upload + Diagram Extraction to Training Lab
+## Two-Part Fix: Report Failures + Material Inventory System
 
-### What You're Asking For
+### Part 1: Why Reports Failed
 
-You want to add the bulk upload button directly into the Roof Measurement Training Lab (the screen you screenshotted), and you want the ingestion to not only extract measurement text but also **extract the drawn roof diagrams/images** from the PDFs. These diagrams become the visual ground truth so when a user clicks "AI Measurement," the system can generate an exact replica of that roof shape.
+The "Failed to send a request to the Edge Function" error is a **network timeout**, not a parsing bug. Your `roof-report-ingest` function now does:
+1. PDF text extraction via pdfjs
+2. Vision AI diagram extraction (sends each page image to Gemini)
+3. Database writes + storage uploads
 
-### Current State
+For large PDFs (10+ pages), this easily exceeds the default timeout. The reports that succeeded were smaller/faster. The ones that failed simply timed out before completing.
 
-- **BulkReportImporter** component already exists and handles multi-file PDF upload, measurement parsing, geocoding, and training session creation
-- **roof-report-ingest** edge function extracts text and measurements but does NOT extract embedded images/diagrams from PDFs
-- No diagram images are currently stored from vendor reports
+**Fix:** Add retry logic with a longer timeout in `BulkReportImporter.tsx`, and add a `skipDiagram` option for bulk imports to process text-only first, then backfill diagrams separately.
 
-### Plan
+### Part 2: Material Inventory Tracking System
 
-**1. Add Bulk Upload button to RoofTrainingLab header** (`src/components/settings/RoofTrainingLab.tsx`)
-- Import `BulkReportImporter` 
-- Place it next to the "New Training Session" button in the header
-- Wire `onComplete` to trigger `refetch()` so new sessions appear immediately
+The database already has full inventory tables (`inventory_items`, `inventory_levels`, `inventory_locations`, `inventory_transactions`). Need to build the UI.
 
-**2. Enhance `roof-report-ingest` to extract diagram images** (`supabase/functions/roof-report-ingest/index.ts`)
-- After PDF text extraction, use pdfjs to render each page as an image
-- Send each page image to Vision AI with a specialized prompt: "Identify which page contains the roof diagram/drawing showing the roof outline, facets, ridges, valleys, and hips. Extract the diagram as a structured description including vertex positions, edge labels, and facet boundaries."
-- Store the diagram page image in Supabase Storage (`vendor-reports/{report_id}/diagram.png`)
-- Add `diagram_image_url` and `diagram_data` (structured geometry JSON) to the `roof_vendor_reports` row
-- Also pass `diagram_image_url` into the training session creation so it's available as visual ground truth
+**New Component: `InventoryManager.tsx`**
 
-**3. Database migration** - Add columns to `roof_vendor_reports`:
-- `diagram_image_url TEXT` - URL to the extracted diagram page image
-- `diagram_geometry JSONB` - AI-extracted structured geometry from the diagram (vertices, edges, facet labels, dimensions)
+A full inventory management panel with these capabilities:
 
-**4. Update training session creation** (in both `roof-report-ingest/index.ts` and `BulkReportImporter.tsx`)
-- Pass `satellite_image_url` = diagram image URL into training sessions created from vendor reports
-- This links the visual diagram to the training data so the AI learns what each roof shape looks like
+- **Items List View**: Searchable/filterable table of all inventory items (SKU, name, brand, category, qty on hand, unit cost, barcode)
+- **Add Item**: Form to add single items manually (name, SKU, brand, category, UOM, cost, price, barcode/UPC)
+- **Bulk Add**: Upload multiple of the same item — enter item + quantity, creates an `inventory_transaction` of type `receive`
+- **Receive Stock**: Select existing item, enter quantity received, auto-updates `inventory_levels`
+- **Locations**: View/create storage locations (warehouse, truck, job site)
+- **Transaction History**: Log of all stock movements (received, used, transferred, adjusted)
+- **Photo/UPC Placeholder**: UI section with camera icon and barcode scanner icon, labeled "Coming Soon — Snap a photo or scan UPC to auto-identify product." This sets up the future feature.
 
-### How Diagram Extraction Works
+**Integration into Settings:**
 
-For each uploaded PDF:
-1. Parse text for measurements (existing)
-2. Render each PDF page to a canvas image via pdfjs
-3. Send page images to Vision AI asking: "Does this page contain a roof diagram? If yes, describe the geometry: outline vertices, labeled edges (ridge/hip/valley/eave/rake), facet areas, and pitch markings"
-4. Store the diagram page image in Supabase Storage
-5. Store the structured geometry JSON alongside the report
-6. When AI measurement runs later, it can reference this exact geometry to replicate the roof shape
+- Add `"inventory"` to `TAB_TO_CATEGORY` under `"products"` category
+- Add it as a sub-tab inside the "Products & Pricing" section alongside materials, estimates, suppliers
+- Available to all company profiles (not developer-only)
 
-### Files to Modify
+### Files to Create/Modify
 
 | File | Change |
 |------|--------|
-| `src/components/settings/RoofTrainingLab.tsx` | Add BulkReportImporter next to "New Training Session" button, wire refetch |
-| `supabase/functions/roof-report-ingest/index.ts` | Add diagram page detection, image rendering, storage upload, and geometry extraction via Vision AI |
-| Database migration | Add `diagram_image_url` and `diagram_geometry` columns to `roof_vendor_reports` |
+| `src/components/inventory/InventoryManager.tsx` | Main inventory management component with items list, add/receive/bulk flows |
+| `src/components/inventory/InventoryItemForm.tsx` | Add/edit item form (name, SKU, brand, category, UOM, barcode, cost) |
+| `src/components/inventory/InventoryReceiveDialog.tsx` | Dialog for receiving stock — single or bulk quantity entry |
+| `src/components/inventory/InventoryTransactionLog.tsx` | Transaction history table |
+| `src/components/inventory/InventoryLocationManager.tsx` | Create/manage storage locations |
+| `src/features/settings/components/Settings.tsx` | Add inventory sub-tab to Products & Pricing section |
+| `src/components/measurements/BulkReportImporter.tsx` | Add retry logic with extended timeout; add `skipDiagram` fast-mode option for reliability |
 
-### Technical Detail: Diagram Extraction Prompt
+### Database
 
-The Vision AI will receive each PDF page image with instructions to:
-- Identify pages with roof plan-view diagrams (bird's-eye drawings showing facets, edges, dimensions)
-- Extract vertex coordinates (relative to image), edge types (ridge/hip/valley/eave/rake), facet labels, and dimension annotations
-- Return structured JSON that the AI measurement system can use to reconstruct the exact roof geometry
+No migration needed — `inventory_items`, `inventory_levels`, `inventory_locations`, and `inventory_transactions` tables already exist with full schema including `barcode`, `brand`, `category`, `unit_cost`, `quantity_on_hand`, `transaction_type`, etc.
 
-This means when a user later clicks "AI Measurement," the system already has vendor-verified geometry to compare against or replicate directly.
+### Technical Notes
+
+- All queries scoped with `tenant_id` using `useEffectiveTenantId()`
+- Receiving stock creates an `inventory_transaction` (type: `receive`) and upserts `inventory_levels`
+- Bulk receive = single transaction with quantity > 1
+- Photo scanning will use device camera API + a barcode detection library (future phase) — for now, manual barcode/UPC text entry field
+- Report retry: wrap `supabase.functions.invoke` call with 2 retries and 90s timeout per attempt
 
