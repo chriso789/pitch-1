@@ -132,8 +132,8 @@ serve(async (req) => {
     const imageDims: ImageDims = { width: aerialImage.width, height: aerialImage.height };
 
     // ----- Step 2: Resolve footprint -----
-    let footprintVertices = body.footprintVertices;
-    if (!footprintVertices) {
+    let footprintVertices = ensureArray(body.footprintVertices) as [number, number][];
+    if (!footprintVertices || footprintVertices.length === 0) {
       // Try to call footprint-resolver via Supabase
       console.log('🏠 Resolving footprint...');
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
