@@ -158,26 +158,35 @@ export function flattenGeometrySegments(
 ): GroupedGeometry {
   const grouped: GroupedGeometry = { ridge: [], valley: [], hip: [], eave: [], rake: [] };
 
+  // Helper to safely coerce to array
+  function ensureArr(v: unknown): unknown[] {
+    if (!v) return [];
+    if (Array.isArray(v)) return v;
+    if (typeof v === 'object') return Object.values(v as Record<string, unknown>);
+    return [];
+  }
+
   if (Array.isArray(input)) {
     for (const item of input) {
       const gd = item?.data;
       if (!gd || typeof gd !== 'object') continue;
       for (const key of LINE_KEYS) {
         const value = (gd as Record<string, unknown>)[key];
-        if (Array.isArray(value)) {
-          for (const segment of value) {
-            if (Array.isArray(segment) && segment.length >= 2) {
-              grouped[key].push(segment as number[][]);
-            }
+        const segments = ensureArr(value);
+        for (const segment of segments) {
+          if (Array.isArray(segment) && segment.length >= 2) {
+            grouped[key].push(segment as number[][]);
           }
         }
       }
     }
   } else {
     for (const key of LINE_KEYS) {
-      const segments = input[key];
-      if (Array.isArray(segments)) {
-        grouped[key].push(...segments);
+      const segments = ensureArr(input?.[key]);
+      for (const segment of segments) {
+        if (Array.isArray(segment) && segment.length >= 2) {
+          grouped[key].push(segment as number[][]);
+        }
       }
     }
   }

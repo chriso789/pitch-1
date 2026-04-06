@@ -26,6 +26,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/** Safely coerce any value to an array — handles undefined, objects, and arrays. */
+function ensureArray(input: unknown): unknown[] {
+  if (!input) return [];
+  if (Array.isArray(input)) return input;
+  if (typeof input === 'object') return Object.values(input as Record<string, unknown>);
+  return [];
+}
+
 interface TrainingPairRequest {
   lat: number;
   lng: number;
@@ -77,6 +85,13 @@ serve(async (req) => {
     }
 
     console.log(`🎯 Generating training pair for: ${body.address}`);
+    console.log('DEBUG INPUT:', {
+      vendorGeometryType: typeof body.vendorGeometry,
+      ridgeType: typeof body.vendorGeometry?.ridge,
+      ridgeIsArray: Array.isArray(body.vendorGeometry?.ridge),
+      footprintType: typeof body.footprintVertices,
+      footprintIsArray: Array.isArray(body.footprintVertices),
+    });
 
     // ----- Step 1: Resolve aerial image -----
     let aerialImage = body.aerialImage;
@@ -117,8 +132,8 @@ serve(async (req) => {
     const imageDims: ImageDims = { width: aerialImage.width, height: aerialImage.height };
 
     // ----- Step 2: Resolve footprint -----
-    let footprintVertices = body.footprintVertices;
-    if (!footprintVertices) {
+    let footprintVertices = ensureArray(body.footprintVertices) as [number, number][];
+    if (!footprintVertices || footprintVertices.length === 0) {
       // Try to call footprint-resolver via Supabase
       console.log('🏠 Resolving footprint...');
       const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -141,20 +156,31 @@ serve(async (req) => {
 
       if (fpResponse.ok) {
         const result = await fpResponse.json();
-        if (result.footprint?.vertices) {
-          footprintVertices = result.footprint.vertices;
-          console.log(`✅ Footprint resolved: ${footprintVertices!.length} vertices`);
+        const rawVerts = result?.footprint?.vertices || result?.data?.footprint?.vertices;
+        if (rawVerts) {
+          footprintVertices = ensureArray(rawVerts).filter(
+            (v: unknown) => Array.isArray(v) && (v as number[]).length >= 2
+          ) as [number, number][];
+          console.log(`✅ Footprint resolved: ${footprintVertices.length} vertices`);
         }
       }
 
-      if (!footprintVertices) {
+      if (!footprintVertices || footprintVertices.length === 0) {
         throw new Error('Could not resolve footprint. Provide footprintVertices directly.');
       }
     }
 
-    // ----- Step 3: Run spatial alignment -----
+    // ----- Step 3: Harden vendorGeometry & run spatial alignment -----
     console.log('🔄 Running spatial alignment...');
-    const grouped = flattenGeometrySegments(body.vendorGeometry);
+    const rawVG = body.vendorGeometry || {};
+    const hardenedVG: VendorGeometry = {
+      ridge: ensureArray(rawVG.ridge) as number[][][],
+      valley: ensureArray(rawVG.valley) as number[][][],
+      hip: ensureArray(rawVG.hip) as number[][][],
+      eave: ensureArray(rawVG.eave) as number[][][],
+      rake: ensureArray(rawVG.rake) as number[][][],
+    };
+    const grouped = flattenGeometrySegments(hardenedVG);
     const cleaned = cleanupGeometry(grouped);
 
     const alignmentResult = alignVendorToAerial({
