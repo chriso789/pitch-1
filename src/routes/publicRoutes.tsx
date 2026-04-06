@@ -57,6 +57,7 @@ export default function PublicRoutes() {
         <Route path="/proposal/:token" element={<PublicProposalView />} />
         <Route path="/portal/:shareToken" element={<PublicPortalView />} />
         <Route path="/v/:token" element={<PublicDocumentView />} />
+        <Route path="/pay/:token" element={<ZellePaymentPage />} />
       </Routes>
     </Suspense>
   );
