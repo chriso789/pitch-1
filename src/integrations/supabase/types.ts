@@ -30662,6 +30662,8 @@ export type Database = {
           file_hash: string | null
           file_path: string | null
           file_url: string | null
+          geocoded_lat: number | null
+          geocoded_lng: number | null
           id: string
           lead_id: string | null
           parsed: Json
@@ -30679,6 +30681,8 @@ export type Database = {
           file_hash?: string | null
           file_path?: string | null
           file_url?: string | null
+          geocoded_lat?: number | null
+          geocoded_lng?: number | null
           id?: string
           lead_id?: string | null
           parsed?: Json
@@ -30696,6 +30700,8 @@ export type Database = {
           file_hash?: string | null
           file_path?: string | null
           file_url?: string | null
+          geocoded_lat?: number | null
+          geocoded_lng?: number | null
           id?: string
           lead_id?: string | null
           parsed?: Json
