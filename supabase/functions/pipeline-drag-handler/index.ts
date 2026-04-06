@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { corsHeaders } from '../_shared/cors.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -15,7 +14,7 @@ const LEGACY_ROLE_MAPPINGS: Record<string, string[]> = {
   'sales_rep': ['project_manager'],
 };
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

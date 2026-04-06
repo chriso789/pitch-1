@@ -5,7 +5,6 @@
 // NOTE: This function does NOT "measure" roofs from imagery.
 // It formats a measurement object into a full report payload.
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 
 type PitchBreakdownRow = {
   pitch: string; // e.g. "6/12"
@@ -242,7 +241,7 @@ function materialsForWaste(measurements: RoofMeasurements, wastePct: number) {
   };
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {

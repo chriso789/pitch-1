@@ -3,8 +3,7 @@
 // Find prior paid examples for disputed line items
 // ============================================================
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -48,7 +47,7 @@ interface PriceStats {
   sample_count: number;
 }
 
-serve(async (req: Request) => {
+Deno.Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

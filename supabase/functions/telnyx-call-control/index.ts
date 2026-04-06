@@ -3,7 +3,6 @@
 // Sends Call Control commands to active Telnyx calls
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleOptions, json, badRequest, unauthorized, serverError } from '../_shared/http.ts';
 import { supabaseAnon, supabaseService, getAuthUser } from '../_shared/supabase.ts';
 import { telnyxFetch } from '../_shared/telnyx.ts';
@@ -13,7 +12,7 @@ interface CallControlRequest {
   call_id: string; // Our internal call ID
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

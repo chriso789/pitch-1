@@ -3,7 +3,6 @@
 // Processes ai_outreach_queue to send automated SMS and calls
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleOptions, json, badRequest, serverError } from '../_shared/http.ts';
 import { supabaseService } from '../_shared/supabase.ts';
 import { normalizeE164 } from '../_shared/phone.ts';
@@ -115,7 +114,7 @@ function isWithinWorkingHours(workingHours: {
   }
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

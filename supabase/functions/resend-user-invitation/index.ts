@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { EMAIL_CONFIG, getFromEmail } from "../_shared/email-config.ts";
 import { createSetupToken } from "../_shared/setup-tokens.ts";
 
@@ -13,7 +12,7 @@ interface ResendInvitationRequest {
   userId: string;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

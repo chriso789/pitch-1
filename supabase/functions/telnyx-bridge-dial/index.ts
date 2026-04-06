@@ -3,7 +3,6 @@
 // Calls the rep's personal phone first, then bridges to the lead
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleOptions, json, badRequest, unauthorized, serverError } from '../_shared/http.ts';
 import { supabaseAnon, supabaseService, getAuthUser } from '../_shared/supabase.ts';
 import { normalizeE164, isValidE164 } from '../_shared/phone.ts';
@@ -20,7 +19,7 @@ interface BridgeDialRequest {
   list_item_id?: string;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

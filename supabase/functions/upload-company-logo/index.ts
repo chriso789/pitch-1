@@ -4,7 +4,6 @@
 // with explicit tenant membership verification
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAnon, supabaseService, getAuthUser, verifyTenantMembership } from '../_shared/supabase.ts';
 
 const corsHeaders = {
@@ -19,7 +18,7 @@ interface UploadRequest {
   fileExt: string;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

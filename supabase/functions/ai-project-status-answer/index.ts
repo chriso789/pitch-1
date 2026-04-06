@@ -4,8 +4,7 @@
  * Integrates with Telnyx for voice control
  */
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { generateAIResponse } from "../_shared/lovable-ai.ts";
 
 const corsHeaders = {
@@ -40,7 +39,7 @@ interface TelnyxWebhookPayload {
   };
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

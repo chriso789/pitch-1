@@ -1,7 +1,7 @@
 // supabase/functions/door-knock-strategy/index.ts
 // AI-powered door knock strategy generator with structured output + audit logging
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { generateAIResponse, parseAIJson } from "../_shared/lovable-ai.ts";
 import type { DoorKnockStrategyRequest, DoorKnockStrategyResponse } from "../_shared/types/contracts.ts";
 

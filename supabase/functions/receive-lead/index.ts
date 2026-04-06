@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseService } from '../_shared/supabase.ts';
 import { getEnv } from '../_shared/env.ts';
 
@@ -43,7 +42,7 @@ function normalizePhone(phone: string): string {
   return phone?.replace(/\D/g, '') || '';
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

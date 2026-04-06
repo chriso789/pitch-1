@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { generateAIResponse } from "../_shared/lovable-ai.ts";
 
 const corsHeaders = {
@@ -12,7 +11,7 @@ const LANG_NAMES: Record<string, string> = {
   ht: 'Haitian Creole',
 };
 
-serve(async (req: Request) => {
+Deno.Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

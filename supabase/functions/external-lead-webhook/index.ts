@@ -1,5 +1,4 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,7 +83,7 @@ function parseAppointmentDateTime(date?: string, time?: string): Date {
   return appointmentDate;
 }
 
-serve(async (req: Request) => {
+Deno.Deno.serve(async (req: Request) => {
   console.log('[external-lead-webhook] Request received');
   
   // Handle CORS preflight

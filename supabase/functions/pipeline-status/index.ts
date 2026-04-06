@@ -1,11 +1,10 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseAuth, supabaseService, getAuthUser } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
 // Manager roles that can override transition rules
 const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

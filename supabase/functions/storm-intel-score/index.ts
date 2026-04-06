@@ -1,6 +1,6 @@
 // supabase/functions/storm-intel-score/index.ts
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { scoreDamage } from "../_shared/intel/damage.ts";
 import { scoreEquity } from "../_shared/intel/equity.ts";
 import { scoreClaimLikelihood } from "../_shared/intel/claim.ts";
