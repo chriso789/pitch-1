@@ -261,7 +261,7 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
     perimeter: 0,
   });
 
-  const status = statusConfig[session.status];
+  const status = statusConfig[session.status as keyof typeof statusConfig] || { label: session.status || 'Unknown', color: 'bg-muted text-muted-foreground' };
   return (
     <div className="space-y-6">
       {/* Header */}
