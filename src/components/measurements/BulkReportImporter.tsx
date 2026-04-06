@@ -144,6 +144,27 @@ export function BulkReportImporter({ onComplete }: BulkReportImporterProps) {
     }
   };
 
+  const invokeWithRetry = async (body: any, retries = 2, timeoutMs = 90000): Promise<any> => {
+    for (let attempt = 0; attempt <= retries; attempt++) {
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
+        
+        const { data, error } = await supabase.functions.invoke('roof-report-ingest', {
+          body,
+        });
+        
+        clearTimeout(timer);
+        if (error) throw error;
+        return data;
+      } catch (err: any) {
+        if (attempt >= retries) throw err;
+        console.warn(`[BulkImport] Attempt ${attempt + 1} failed, retrying...`, err.message);
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+      }
+    }
+  };
+
   const processFile = async (file: File, index: number): Promise<ImportResult> => {
     const result: ImportResult = {
       fileName: file.name,
@@ -164,16 +185,8 @@ export function BulkReportImporter({ onComplete }: BulkReportImporterProps) {
       }
       const base64 = btoa(binary);
 
-      // Call roof-report-ingest
-      const { data, error } = await supabase.functions.invoke('roof-report-ingest', {
-        body: { base64_pdf: base64 }
-      });
-
-      if (error) {
-        result.status = 'error';
-        result.error = error.message;
-        return result;
-      }
+      // Call roof-report-ingest with retry logic and skip diagram for speed
+      const data = await invokeWithRetry({ base64_pdf: base64, skipDiagram: true });
 
       result.provider = data.provider;
       result.address = data.parsed?.address;

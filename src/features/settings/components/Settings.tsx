@@ -356,6 +356,10 @@ export const Settings = () => {
                   <LucideIcons.Ruler className="h-4 w-4" />
                   Measurements
                 </TabsTrigger>
+                <TabsTrigger value="inventory" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Warehouse className="h-4 w-4" />
+                  Inventory
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="materials"><MaterialCatalogManager /></TabsContent>
               <TabsContent value="estimates"><EstimateTemplateList /></TabsContent>
@@ -363,6 +367,7 @@ export const Settings = () => {
               <TabsContent value="products"><ProductCatalogManager /></TabsContent>
               <TabsContent value="pricing"><PriceManagementDashboard /></TabsContent>
               <TabsContent value="measurements"><BatchRegenerationPanel /></TabsContent>
+              <TabsContent value="inventory"><InventoryManager /></TabsContent>
             </Tabs>
           </div>
         );
