@@ -1,40 +1,63 @@
 
 
-## Complete the Interrupted Training Pipeline
+## Add Stripe Payment Links to Project Invoices
 
-### What's Missing
+### What We're Building
+A "Send Payment Link" button on each invoice in the PaymentsTab that generates a Stripe Payment Link and lets the client pay online. When the client pays, the webhook automatically records the payment and updates the invoice balance.
 
-1. **Training data gone** — `/tmp/training_data/` is empty (ephemeral storage wiped)
-2. **Label scaling not applied** — `dataset_v2.py` still uses weak normalization (area/1000, lengths/100)
-3. **Loss weighting not applied** — `loss_v2.py` still uses seg=1.0, reg=1.2 (regression dominates)
-4. **No v2 visualization** — `sample_prediction_v2.png` never generated
+### Current State
+- `stripe-create-payment-link` edge function exists and works (creates Stripe Payment Links)
+- `stripe-webhook-handler` exists but updates a generic `payments` table, NOT `project_payments`/`project_invoices`
+- `PaymentsTab.tsx` has invoice creation and manual payment recording — no Stripe integration
+- `STRIPE_SECRET_KEY` and `STRIPE_PUBLISHABLE_KEY` are already configured
+- **Missing**: `STRIPE_WEBHOOK_SECRET` secret (needed for webhook verification)
+- **Missing**: `payment_links` table doesn't exist yet (the edge function tries to insert into it)
 
 ### Steps
 
-**Step 1 — Re-export training dataset from database**
-- Query properties with `alignment_quality >= 0.02` and `ridge_count >= 1`
-- Download aerial images (512x512) to `/tmp/training_data/images/`
-- Rasterize vector masks (ridge/valley/hip/eave) to `/tmp/training_data/masks/`
-- Write `labels.json` with area, line lengths, pitch
+**Step 1 — Create `payment_links` table + add `stripe_payment_link_url` to `project_invoices`**
 
-**Step 2 — Apply the 3 fixes to ML files**
-- `ml/dataset_v2.py`: area/10000, lengths/500, pitch/12
-- `ml/loss_v2.py`: seg_weight=2.0, reg_weight=0.5
-- Visualization threshold lowered to 0.2
+Migration to:
+- Create `payment_links` table (stores Stripe link ID, URL, amount, status, linked invoice_id)
+- Add `stripe_payment_link_url` column to `project_invoices` for quick access
+- Add RLS policies
 
-**Step 3 — Train 5-10 epochs on CPU**
-- Save checkpoint to `/mnt/documents/roofnet_v3_v2.pth`
+**Step 2 — Update `stripe-webhook-handler` to record payments in `project_payments`**
 
-**Step 4 — Generate improved visualization**
-- 3 samples: input + ground truth + prediction (threshold 0.2) + raw logit heatmaps
-- De-scaled regression values in readout
-- Save to `/mnt/documents/sample_prediction_v2.png`
+When `checkout.session.completed` fires:
+- Look up the `payment_links` record by metadata
+- Find the linked `project_invoices` record
+- Insert into `project_payments` (amount, method='stripe', reference=stripe session ID)
+- Update `project_invoices` balance and status
+- Update `payment_links` status to 'completed'
 
-**Step 5 — Split checkpoint for download**
-- Split into 40MB parts for downloadability
+**Step 3 — Add "Send Payment Link" button to PaymentsTab invoice cards**
 
-### Technical Notes
-- Dataset export requires querying Supabase for property records and downloading Mapbox aerial tiles
-- The previous export produced 92 high-quality samples; we should get a similar count
-- CPU training at batch_size=4 for 5 epochs should complete within sandbox timeout (~5 min)
+For each invoice row:
+- Add a small "Send Link" / link icon button
+- On click: call `stripe-create-payment-link` with invoice amount, invoice_id in metadata
+- Show the generated URL (copy to clipboard)
+- Show link status badge (active/paid) if a link exists
+
+**Step 4 — Request `STRIPE_WEBHOOK_SECRET`**
+
+Prompt user to add the webhook secret so payment confirmations work end-to-end.
+
+### Technical Details
+
+```text
+Flow:
+  User creates invoice → clicks "Send Payment Link"
+       → Edge function creates Stripe Payment Link
+       → URL saved to payment_links table + project_invoices
+       → User copies/sends URL to client
+       → Client pays via Stripe
+       → Stripe webhook fires checkout.session.completed
+       → Webhook handler records payment in project_payments
+       → Invoice balance auto-updates
+```
+
+- The `stripe-create-payment-link` edge function already handles Stripe customer creation from contacts
+- We'll pass `invoice_id` and `pipeline_entry_id` in metadata so the webhook can route correctly
+- Payment links are one-time use by default (Stripe handles this)
 
