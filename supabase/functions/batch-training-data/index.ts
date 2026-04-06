@@ -177,7 +177,7 @@ serve(async (req) => {
               address: r.address || 'Unknown',
               vendorGeometry,
               vendorTruth,
-              footprintVerticesGeo: footprint,
+              footprintVertices: footprint,
               source: `vendor_${r.id.substring(0, 8)}_${geoSource}`,
             }),
           });
