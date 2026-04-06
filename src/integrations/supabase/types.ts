@@ -36854,10 +36854,12 @@ export type Database = {
           alignment_quality: number | null
           confidence_score: number | null
           created_at: string | null
+          footprint_mask: Json | null
           id: string
           is_verified: boolean | null
           labels: Json
           lat: number
+          line_masks: Json | null
           lng: number
           mask_storage_path: string | null
           tenant_id: string | null
@@ -36870,10 +36872,12 @@ export type Database = {
           alignment_quality?: number | null
           confidence_score?: number | null
           created_at?: string | null
+          footprint_mask?: Json | null
           id?: string
           is_verified?: boolean | null
           labels?: Json
           lat: number
+          line_masks?: Json | null
           lng: number
           mask_storage_path?: string | null
           tenant_id?: string | null
@@ -36886,10 +36890,12 @@ export type Database = {
           alignment_quality?: number | null
           confidence_score?: number | null
           created_at?: string | null
+          footprint_mask?: Json | null
           id?: string
           is_verified?: boolean | null
           labels?: Json
           lat?: number
+          line_masks?: Json | null
           lng?: number
           mask_storage_path?: string | null
           tenant_id?: string | null
