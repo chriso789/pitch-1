@@ -80,7 +80,7 @@ export function TrainingSessionList({ sessions, isLoading, onSelectSession }: Tr
       ) : (
         <div className="space-y-2">
           {filteredSessions.map((session) => {
-            const status = statusConfig[session.status];
+            const status = statusConfig[session.status as keyof typeof statusConfig] || { label: session.status || 'Unknown', variant: 'outline' as const, className: 'border-muted-foreground/50 text-muted-foreground' };
             return (
               <Card
                 key={session.id}
