@@ -170,9 +170,17 @@ serve(async (req) => {
       }
     }
 
-    // ----- Step 3: Run spatial alignment -----
+    // ----- Step 3: Harden vendorGeometry & run spatial alignment -----
     console.log('🔄 Running spatial alignment...');
-    const grouped = flattenGeometrySegments(body.vendorGeometry);
+    const rawVG = body.vendorGeometry || {};
+    const hardenedVG: VendorGeometry = {
+      ridge: ensureArray(rawVG.ridge) as number[][][],
+      valley: ensureArray(rawVG.valley) as number[][][],
+      hip: ensureArray(rawVG.hip) as number[][][],
+      eave: ensureArray(rawVG.eave) as number[][][],
+      rake: ensureArray(rawVG.rake) as number[][][],
+    };
+    const grouped = flattenGeometrySegments(hardenedVG);
     const cleaned = cleanupGeometry(grouped);
 
     const alignmentResult = alignVendorToAerial({
