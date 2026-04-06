@@ -126,7 +126,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
 };
 
 // Product-related tab keys that get merged into one sidebar entry
-const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements"];
+const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements", "inventory"];
 
 export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
