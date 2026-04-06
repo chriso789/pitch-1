@@ -632,6 +632,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                     <SelectItem value="check">Check</SelectItem>
                     <SelectItem value="card">Card</SelectItem>
                     <SelectItem value="ach">ACH</SelectItem>
+                    <SelectItem value="zelle">Zelle</SelectItem>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="financing">Financing</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
