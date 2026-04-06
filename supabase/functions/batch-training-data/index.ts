@@ -130,7 +130,7 @@ serve(async (req) => {
         })
         .slice(0, batchSize);
 
-      console.log(`Generating training pairs for ${ready.length} reports (${processedIds.size} already done)`);
+      console.log(`Generating training pairs for ${ready.length} reports (${processedAddresses.size} already done)`);
 
       let success = 0, failed = 0;
       const results: any[] = [];
