@@ -85,6 +85,13 @@ serve(async (req) => {
     }
 
     console.log(`🎯 Generating training pair for: ${body.address}`);
+    console.log('DEBUG INPUT:', {
+      vendorGeometryType: typeof body.vendorGeometry,
+      ridgeType: typeof body.vendorGeometry?.ridge,
+      ridgeIsArray: Array.isArray(body.vendorGeometry?.ridge),
+      footprintType: typeof body.footprintVertices,
+      footprintIsArray: Array.isArray(body.footprintVertices),
+    });
 
     // ----- Step 1: Resolve aerial image -----
     let aerialImage = body.aerialImage;
