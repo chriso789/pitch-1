@@ -1,35 +1,50 @@
 
 
-## Restart Training Pipeline
+## Fix 3 Training Issues + Retrain RoofNetV3
 
-### Current State
-- **Dataset ready**: 92 images (512x512), 368 per-class masks (ridge/valley/hip/eave), labels.json — all on disk at `/tmp/training_data/`
-- **Dependencies installed**: PyTorch 2.11, torchvision 0.26, OpenCV 4.13
-- **ML files missing**: The `ml/` directory only has `__pycache__/` — the .py files from the previous interrupted run need to be recreated
+### Problems Identified
 
-### Plan
+1. **Label scaling too weak** — Currently dividing area by 1000 and lengths by 100. With areas ~10,000+ and lengths ~300+, normalized values are still 10+ and 3+, causing MSE to dominate. Need much more aggressive normalization.
+2. **Loss weighting backwards** — `reg_weight=1.2` makes regression overpower segmentation. Segmentation head starves, produces near-blank outputs.
+3. **Visualization threshold** — Sample prediction likely uses 0.5 threshold on weak logits, showing blank masks.
 
-**Step 1 — Recreate 4 ML files in `ml/`**
+### Changes
 
-- `ml/dataset_v2.py` — Multi-channel dataset loader (reads 4 mask PNGs per sample + labels.json)
-- `ml/model_v3.py` — RoofNetV3: ResNet50 encoder, 4-channel seg head with bilinear upsample to 512x512, 6-value regression head
-- `ml/loss_v2.py` — BCE (seg) + MSE (reg) combined loss
-- `ml/train_v3.py` — Training loop: AdamW lr=2e-4, CosineAnnealingLR, batch=4, 15 epochs (CPU), saves best checkpoint
+**File 1: `ml/dataset_v2.py`** — Fix label scaling (lines 42-49)
+```python
+reg = torch.tensor([
+    lbl.get('area', 0) / 10000.0,    # was /1000
+    lbl.get('ridge', 0) / 500.0,     # was /100
+    lbl.get('valley', 0) / 500.0,    # was /100
+    lbl.get('hip', 0) / 500.0,       # was /100
+    lbl.get('eave', 0) / 500.0,      # was /100
+    lbl.get('pitch', 0) / 12.0,      # was raw
+], dtype=torch.float32)
+```
 
-**Step 2 — Run training (15 epochs on CPU)**
+**File 2: `ml/loss_v2.py`** — Flip loss weighting
+```python
+# seg_weight=2.0 (was 1.0), reg_weight=0.5 (was 1.2)
+# Forces model to learn shapes first, regression secondary
+```
 
-- Train on the 92-sample dataset
-- Save checkpoint to `/mnt/documents/roofnet_v3.pth`
-- Log per-epoch loss
+**File 3: `ml/train_v3.py`** — Train 10 epochs (sandbox max ~10 min), generate improved visualization with threshold=0.2 and raw logit heatmaps
 
-**Step 3 — Generate sample prediction visualization**
+**File 4: Generate new `/mnt/documents/sample_prediction_v2.png`** — Show:
+- Input image
+- Ground truth masks (4-channel overlay)
+- Predicted masks at threshold 0.2
+- Raw logit heatmaps (no threshold)
+- Regression values with proper de-scaling (`pred[0] * 10000`, `pred[1:5] * 500`, `pred[5] * 12`)
 
-- Run inference on 3 test samples
-- Create overlay image showing input + ground truth masks + predicted masks
-- Save to `/mnt/documents/sample_prediction.png`
+### Why This Works
+- Scaling all labels to 0-1 range means MSE loss stays small, doesn't drown segmentation
+- 2x seg weight forces the model to prioritize learning mask structure
+- Lower threshold (0.2) reveals what the model actually learned vs what was hidden by harsh cutoff
+- 10 epochs on CPU is still limited — the script will be ready for 80+ epochs on user's MPS machine
 
-### Key Details
-- Seg head must upsample from 16x16 → 512x512 (ResNet50 stride 32)
-- Labels normalized: area/1000, lengths/100, pitch raw
-- ~15 epochs on CPU should take ~20 min with batch=4
+### Deliverables
+- Updated `ml/dataset_v2.py`, `ml/loss_v2.py`, `ml/train_v3.py`
+- New checkpoint: `/mnt/documents/roofnet_v3_v2.pth`
+- New QA image: `/mnt/documents/sample_prediction_v2.png`
 
