@@ -112,12 +112,25 @@ serve(async (req) => {
         .limit(300);
       if (error) throw error;
 
-      // Filter to real data
+      // Get already-processed addresses from training_pairs
+      const { data: existing } = await supabase
+        .from('training_pairs')
+        .select('address');
+      
+      const processedAddresses = new Set(
+        (existing || []).map((e: any) => (e.address || '').toLowerCase().trim())
+      );
+
+      // Filter to real data, skip already processed addresses
       const ready = (reports || [])
-        .filter((r: any) => r.parsed && parseFloat(r.parsed.total_area_sqft || 0) > 0)
+        .filter((r: any) => {
+          if (!r.parsed || parseFloat(r.parsed.total_area_sqft || 0) <= 0) return false;
+          const addr = (r.address || '').toLowerCase().trim();
+          return !processedAddresses.has(addr);
+        })
         .slice(0, batchSize);
 
-      console.log(`Generating training pairs for ${ready.length} reports`);
+      console.log(`Generating training pairs for ${ready.length} reports (${processedAddresses.size} already done)`);
 
       let success = 0, failed = 0;
       const results: any[] = [];
@@ -162,6 +175,7 @@ serve(async (req) => {
           hipFt: parseFloat(parsed.hips_ft || 0),
           eaveFt: parseFloat(parsed.eaves_ft || 0),
           rakeFt: parseFloat(parsed.rakes_ft || 0),
+          source: `vendor_${r.id.substring(0, 8)}_${geoSource}`,
         };
 
         try {
