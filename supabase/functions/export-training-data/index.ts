@@ -15,17 +15,13 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
 
-  const url = new URL(req.url)
-  const offset = parseInt(url.searchParams.get('offset') || '0')
-  const limit = parseInt(url.searchParams.get('limit') || '50')
-
   const { data, error } = await supabase
     .from('training_pairs')
     .select('id,aerial_image_url,labels,line_masks')
     .gte('alignment_quality', 0.02)
     .not('line_masks', 'is', null)
     .order('alignment_quality', { ascending: false })
-    .range(offset, offset + limit - 1)
+    .limit(1000)
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), {
