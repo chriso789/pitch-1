@@ -26,6 +26,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/** Safely coerce any value to an array — handles undefined, objects, and arrays. */
+function ensureArray(input: unknown): unknown[] {
+  if (!input) return [];
+  if (Array.isArray(input)) return input;
+  if (typeof input === 'object') return Object.values(input as Record<string, unknown>);
+  return [];
+}
+
 interface TrainingPairRequest {
   lat: number;
   lng: number;
