@@ -21448,6 +21448,113 @@ export type Database = {
           },
         ]
       }
+      payment_links: {
+        Row: {
+          amount: number
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          description: string | null
+          id: string
+          invoice_id: string | null
+          payment_id: string | null
+          pipeline_entry_id: string | null
+          project_id: string | null
+          status: string
+          stripe_payment_link_id: string | null
+          stripe_payment_link_url: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          amount: number
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string | null
+          id?: string
+          invoice_id?: string | null
+          payment_id?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          status?: string
+          stripe_payment_link_id?: string | null
+          stripe_payment_link_url?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          amount?: number
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          description?: string | null
+          id?: string
+          invoice_id?: string | null
+          payment_id?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          status?: string
+          stripe_payment_link_id?: string | null
+          stripe_payment_link_url?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_links_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "payment_links_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "project_invoices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_payment_id_fkey"
+            columns: ["payment_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       payment_milestones: {
         Row: {
           amount: number
@@ -25506,6 +25613,7 @@ export type Database = {
           pipeline_entry_id: string
           sent_at: string | null
           status: string
+          stripe_payment_link_url: string | null
           tenant_id: string
           updated_at: string | null
         }
@@ -25522,6 +25630,7 @@ export type Database = {
           pipeline_entry_id: string
           sent_at?: string | null
           status?: string
+          stripe_payment_link_url?: string | null
           tenant_id: string
           updated_at?: string | null
         }
@@ -25538,6 +25647,7 @@ export type Database = {
           pipeline_entry_id?: string
           sent_at?: string | null
           status?: string
+          stripe_payment_link_url?: string | null
           tenant_id?: string
           updated_at?: string | null
         }
