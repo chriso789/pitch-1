@@ -777,6 +777,7 @@ export async function runUnifiedMeasurementPipeline(
     finalReport,
     confidence: pipelineConfidence,
     trainingPack,
+    spatialAlignment: spatialAlignmentInfo,
     apiSources: {
       footprint: footprint.source,
       ridgeDirection: topology.ridgeSource,
@@ -786,6 +787,7 @@ export async function runUnifiedMeasurementPipeline(
       fusionUsed: fused !== null,
       vendorTruth: vendorTruthUsed,
       vendorGeometry: hasVendorGeometry,
+      spatialAlignmentUsed,
     },
     timing,
     errors,
