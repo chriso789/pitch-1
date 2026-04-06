@@ -15,6 +15,8 @@ Deno.serve(async (req) => {
     Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   )
 
+  const mapboxToken = Deno.env.get('MAPBOX_PUBLIC_TOKEN') || Deno.env.get('MAPBOX_ACCESS_TOKEN') || ''
+
   const { data, error } = await supabase
     .from('training_pairs')
     .select('id,aerial_image_url,labels,line_masks')
@@ -30,10 +32,13 @@ Deno.serve(async (req) => {
     })
   }
 
-  // Filter for totalSegments >= 1
-  const filtered = (data || []).filter(r => 
-    r.line_masks && typeof r.line_masks === 'object' && (r.line_masks as any).totalSegments >= 1
-  )
+  // Filter for totalSegments >= 1 and replace expired Mapbox tokens
+  const filtered = (data || [])
+    .filter(r => r.line_masks && typeof r.line_masks === 'object' && (r.line_masks as any).totalSegments >= 1)
+    .map(r => ({
+      ...r,
+      aerial_image_url: r.aerial_image_url?.replace(/access_token=[^&]+/, `access_token=${mapboxToken}`) || r.aerial_image_url
+    }))
 
   return new Response(JSON.stringify(filtered), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' }
