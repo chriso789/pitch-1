@@ -81,7 +81,7 @@ serve(async (req) => {
           .map((r: any) => r.id)
       );
 
-      const toGeocode = (reports || []).filter((r: any) => withArea.has(r.id));
+      const toGeocode = (reports || []).filter((r: any) => withArea.has(r.id)).slice(0, 30);
       let geocoded = 0;
       const results: any[] = [];
 
