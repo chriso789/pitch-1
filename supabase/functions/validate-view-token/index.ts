@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
   createServiceClient,
   hashToken,
@@ -17,7 +16,7 @@ interface ValidateTokenRequest {
   token: string;
 }
 
-serve(async (req: Request) => {
+Deno.Deno.serve(async (req: Request) => {
   // Handle CORS
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;

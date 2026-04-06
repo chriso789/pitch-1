@@ -1,7 +1,7 @@
 // supabase/functions/property-enrich-details/index.ts
 // Main orchestrator: FCC geo → public cache → contact cache → DNC gate → scoring cache
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { resolveLocation } from "../_shared/public_data/locationResolver.ts";
 import { fccArea, normalizeCountyName } from "../_shared/geo/fccArea.ts";
 import { getCountyContext } from "../_shared/public_data/countyResolver.ts";

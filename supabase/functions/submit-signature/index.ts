@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import {
   createServiceClient,
   hashToken,
@@ -22,7 +21,7 @@ interface SubmitSignatureRequest {
   field_values?: Record<string, string>;
 }
 
-serve(async (req: Request) => {
+Deno.Deno.serve(async (req: Request) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 

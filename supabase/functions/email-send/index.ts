@@ -3,8 +3,7 @@
  * Sends emails via Resend API and logs to communication_history
  */
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { EMAIL_CONFIG, getFromEmail } from "../_shared/email-config.ts";
 
 const corsHeaders = {
@@ -26,7 +25,7 @@ interface EmailRequest {
   metadata?: Record<string, unknown>;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

@@ -1,6 +1,6 @@
 // supabase/functions/storm-polygon-batch/index.ts
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { polygonToBbox, samplePolygonGrid } from "../_shared/public_data/geo.ts";
 import { fetchOverpassAddressesInPolygon } from "../_shared/public_data/overpass.ts";
 import { normalizeAddressKey } from "../_shared/public_data/normalize.ts";

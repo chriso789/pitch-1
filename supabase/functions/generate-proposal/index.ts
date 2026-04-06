@@ -2,7 +2,7 @@
 // GENERATE PROPOSAL - MAIN EDGE FUNCTION
 // ============================================================================
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { calculateTierPricing, PricingInput, TierPricing } from './pricing-engine.ts';
 import { generateProposalHTML, generatePreviewHTML, ProposalData } from './pdf-generator.ts';
 

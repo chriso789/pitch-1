@@ -1,6 +1,6 @@
 // supabase/functions/canvass-route-plan/index.ts
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { haversineMeters } from "../_shared/routing/haversine.ts";
 import { planRoute } from "../_shared/routing/routePlanner.ts";
 

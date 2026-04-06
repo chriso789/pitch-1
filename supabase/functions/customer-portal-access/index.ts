@@ -1,4 +1,4 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { corsHeaders } from '../_shared/cors.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -244,7 +244,7 @@ Deno.serve(async (req) => {
       }
 
       // Dynamic import of Stripe
-      const { default: Stripe } = await import('https://esm.sh/stripe@14.21.0?target=deno');
+      const { default: Stripe } = await import('npm:stripe@14.21.0');
       const stripe = new Stripe(stripeSecretKey, {
         apiVersion: '2023-10-16',
         httpClient: Stripe.createFetchHttpClient(),

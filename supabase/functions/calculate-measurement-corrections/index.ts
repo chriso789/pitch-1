@@ -3,7 +3,6 @@
 // Analyzes training sessions to compute correction factors for AI measurements
 // ============================================
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { corsHeaders } from "../_shared/cors.ts";
 import { supabaseService, supabaseAuth } from "../_shared/supabase.ts";
 
@@ -13,7 +12,7 @@ interface FeatureAccumulator {
   count: number;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 
@@ -19,7 +18,7 @@ interface ImageQualityResult {
   recommendation: 'proceed' | 'flag_for_review' | 'request_new_imagery'
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }

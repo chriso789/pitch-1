@@ -3,7 +3,7 @@
 // Builds the canonical PermitContext following exact resolution rules
 // ============================================
 
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 import { nowIso, buildFullAddress, splitOwnerName, isStale } from './util.ts';
 import type {
   CanonicalPermitContext,

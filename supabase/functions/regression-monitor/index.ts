@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseService } from '../_shared/supabase.ts';
 
 const corsHeaders = {
@@ -163,7 +162,7 @@ async function logRegression(supabase: any, alert: RegressionAlert, tenantId?: s
   });
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

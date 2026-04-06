@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -12,7 +11,7 @@ interface TaskGeneratorRequest {
   source_type: 'voice_note' | 'text_input' | 'meeting_notes' | 'call_summary';
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }

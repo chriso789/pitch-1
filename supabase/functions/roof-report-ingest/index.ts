@@ -10,8 +10,7 @@
 // then stores both raw+parsed output in Supabase tables.
 // Falls back to AI extraction for unknown formats.
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import * as pdfjsLib from "npm:pdfjs-dist@4.3.136/legacy/build/pdf.mjs";
 
 const corsHeaders: Record<string, string> = {
@@ -1046,7 +1045,7 @@ function hasValidMeasurements(parsed: any): boolean {
   );
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {

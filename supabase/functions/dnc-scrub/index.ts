@@ -1,7 +1,7 @@
 // supabase/functions/dnc-scrub/index.ts
 // DNC scrubbing edge function — checks cache, scrubs missing, upserts results
 
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { scrubPhonesMock } from "../_shared/dnc/providers/mockProvider.ts";
 import type { DNCScrubRequest, DNCScrubResponse } from "../_shared/types/contracts.ts";
 

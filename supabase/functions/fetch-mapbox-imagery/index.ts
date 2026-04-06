@@ -1,4 +1,3 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
 const MAPBOX_TOKEN = Deno.env.get('MAPBOX_PUBLIC_TOKEN')!
@@ -16,7 +15,7 @@ interface ImageRequest {
   height?: number
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }

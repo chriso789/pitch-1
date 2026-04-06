@@ -2,7 +2,7 @@
 // SUPABASE STORAGE UTILITIES
 // ============================================
 
-import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
+import { SupabaseClient } from "npm:@supabase/supabase-js@2.49.1";
 
 /**
  * Upload binary data to Supabase Storage

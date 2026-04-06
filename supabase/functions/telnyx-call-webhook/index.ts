@@ -3,12 +3,11 @@
 // Updates call records, stores recordings, handles AMD, bridges calls
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleOptions, json, badRequest, serverError } from '../_shared/http.ts';
 import { supabaseService } from '../_shared/supabase.ts';
 import { telnyxFetch } from '../_shared/telnyx.ts';
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

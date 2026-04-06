@@ -3,7 +3,6 @@
 // Plays pre-recorded audio on an active call and hangs up
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { handleOptions, json, badRequest, unauthorized, serverError } from '../_shared/http.ts';
 import { supabaseAnon, supabaseService, getAuthUser } from '../_shared/supabase.ts';
 import { telnyxFetch } from '../_shared/telnyx.ts';
@@ -16,7 +15,7 @@ interface VoicemailDropRequest {
   contact_id?: string;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

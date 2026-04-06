@@ -4,7 +4,6 @@
 // Generates or regenerates documents for an existing permit case
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { z } from 'https://deno.land/x/zod@v3.23.8/mod.ts';
 
 import { supabaseAuth, getAuthUser, supabaseService } from '../_shared/supabase.ts';
@@ -24,7 +23,7 @@ const ReqSchema = z.object({
   }).optional(),
 });
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 

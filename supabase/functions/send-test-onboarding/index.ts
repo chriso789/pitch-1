@@ -1,4 +1,3 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "npm:resend@2.0.0";
 
 const corsHeaders = {
@@ -640,7 +639,7 @@ const generateEnterpriseEmailHtml = (firstName: string, companyName: string, onb
 </html>
 `;
 
-serve(async (req: Request) => {
+Deno.Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

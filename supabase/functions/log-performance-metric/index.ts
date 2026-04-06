@@ -6,7 +6,6 @@
  * and stores them for analysis.
  */
 
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
@@ -17,7 +16,7 @@ interface PerformanceMetric {
   tenantId?: string;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

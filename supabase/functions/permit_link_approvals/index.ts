@@ -4,7 +4,6 @@
 // Links products from estimate to approval documents
 // ============================================
 
-import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 import { z } from 'https://deno.land/x/zod@v3.23.8/mod.ts';
 
 import { supabaseAuth, getAuthUser, supabaseService } from '../_shared/supabase.ts';
@@ -27,7 +26,7 @@ interface LinkedApproval {
   doc_id: string;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 

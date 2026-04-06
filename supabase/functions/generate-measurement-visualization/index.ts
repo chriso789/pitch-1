@@ -1,8 +1,7 @@
 // Supabase Edge Function: generate-measurement-visualization
 // Generates Mapbox static satellite images with measurement overlays
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const MAPBOX_TOKEN = Deno.env.get("MAPBOX_PUBLIC_TOKEN") || "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -41,7 +40,7 @@ interface MeasurementData {
   center_lng?: number;
 }
 
-serve(async (req) => {
+Deno.Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
