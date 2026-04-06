@@ -1,50 +1,40 @@
 
 
-## Fix 3 Training Issues + Retrain RoofNetV3
+## Complete the Interrupted Training Pipeline
 
-### Problems Identified
+### What's Missing
 
-1. **Label scaling too weak** — Currently dividing area by 1000 and lengths by 100. With areas ~10,000+ and lengths ~300+, normalized values are still 10+ and 3+, causing MSE to dominate. Need much more aggressive normalization.
-2. **Loss weighting backwards** — `reg_weight=1.2` makes regression overpower segmentation. Segmentation head starves, produces near-blank outputs.
-3. **Visualization threshold** — Sample prediction likely uses 0.5 threshold on weak logits, showing blank masks.
+1. **Training data gone** — `/tmp/training_data/` is empty (ephemeral storage wiped)
+2. **Label scaling not applied** — `dataset_v2.py` still uses weak normalization (area/1000, lengths/100)
+3. **Loss weighting not applied** — `loss_v2.py` still uses seg=1.0, reg=1.2 (regression dominates)
+4. **No v2 visualization** — `sample_prediction_v2.png` never generated
 
-### Changes
+### Steps
 
-**File 1: `ml/dataset_v2.py`** — Fix label scaling (lines 42-49)
-```python
-reg = torch.tensor([
-    lbl.get('area', 0) / 10000.0,    # was /1000
-    lbl.get('ridge', 0) / 500.0,     # was /100
-    lbl.get('valley', 0) / 500.0,    # was /100
-    lbl.get('hip', 0) / 500.0,       # was /100
-    lbl.get('eave', 0) / 500.0,      # was /100
-    lbl.get('pitch', 0) / 12.0,      # was raw
-], dtype=torch.float32)
-```
+**Step 1 — Re-export training dataset from database**
+- Query properties with `alignment_quality >= 0.02` and `ridge_count >= 1`
+- Download aerial images (512x512) to `/tmp/training_data/images/`
+- Rasterize vector masks (ridge/valley/hip/eave) to `/tmp/training_data/masks/`
+- Write `labels.json` with area, line lengths, pitch
 
-**File 2: `ml/loss_v2.py`** — Flip loss weighting
-```python
-# seg_weight=2.0 (was 1.0), reg_weight=0.5 (was 1.2)
-# Forces model to learn shapes first, regression secondary
-```
+**Step 2 — Apply the 3 fixes to ML files**
+- `ml/dataset_v2.py`: area/10000, lengths/500, pitch/12
+- `ml/loss_v2.py`: seg_weight=2.0, reg_weight=0.5
+- Visualization threshold lowered to 0.2
 
-**File 3: `ml/train_v3.py`** — Train 10 epochs (sandbox max ~10 min), generate improved visualization with threshold=0.2 and raw logit heatmaps
+**Step 3 — Train 5-10 epochs on CPU**
+- Save checkpoint to `/mnt/documents/roofnet_v3_v2.pth`
 
-**File 4: Generate new `/mnt/documents/sample_prediction_v2.png`** — Show:
-- Input image
-- Ground truth masks (4-channel overlay)
-- Predicted masks at threshold 0.2
-- Raw logit heatmaps (no threshold)
-- Regression values with proper de-scaling (`pred[0] * 10000`, `pred[1:5] * 500`, `pred[5] * 12`)
+**Step 4 — Generate improved visualization**
+- 3 samples: input + ground truth + prediction (threshold 0.2) + raw logit heatmaps
+- De-scaled regression values in readout
+- Save to `/mnt/documents/sample_prediction_v2.png`
 
-### Why This Works
-- Scaling all labels to 0-1 range means MSE loss stays small, doesn't drown segmentation
-- 2x seg weight forces the model to prioritize learning mask structure
-- Lower threshold (0.2) reveals what the model actually learned vs what was hidden by harsh cutoff
-- 10 epochs on CPU is still limited — the script will be ready for 80+ epochs on user's MPS machine
+**Step 5 — Split checkpoint for download**
+- Split into 40MB parts for downloadability
 
-### Deliverables
-- Updated `ml/dataset_v2.py`, `ml/loss_v2.py`, `ml/train_v3.py`
-- New checkpoint: `/mnt/documents/roofnet_v3_v2.pth`
-- New QA image: `/mnt/documents/sample_prediction_v2.png`
+### Technical Notes
+- Dataset export requires querying Supabase for property records and downloading Mapbox aerial tiles
+- The previous export produced 92 high-quality samples; we should get a similar count
+- CPU training at batch_size=4 for 5 epochs should complete within sandbox timeout (~5 min)
 
