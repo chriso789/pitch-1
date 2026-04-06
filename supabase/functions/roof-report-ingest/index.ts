@@ -1285,8 +1285,9 @@ serve(async (req) => {
     let diagramGeometry: any = null;
     
     try {
+      const skipDiagram = body.skipDiagram === true;
       const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
-      if (lovableApiKey && pdfBytes) {
+      if (lovableApiKey && pdfBytes && !skipDiagram) {
         console.log("roof-report-ingest: Starting diagram extraction...");
         
         // Send the full PDF to Vision AI to find and extract diagram geometry

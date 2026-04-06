@@ -64,6 +64,7 @@ import { DialerSettings } from "@/components/call-center/DialerSettings";
 import { LeadCustomFieldsManager } from "@/components/settings/LeadCustomFieldsManager";
 import { AppointmentOutcomeSettings } from "@/components/settings/AppointmentOutcomeSettings";
 import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings";
+import { InventoryManager } from "@/components/inventory/InventoryManager";
 
 interface SettingsTab {
   id: string;
@@ -126,7 +127,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
 };
 
 // Product-related tab keys that get merged into one sidebar entry
-const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements"];
+const PRODUCT_TAB_KEYS = ["materials", "products", "suppliers", "estimates", "pricing", "measurements", "inventory"];
 
 export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
@@ -355,6 +356,10 @@ export const Settings = () => {
                   <LucideIcons.Ruler className="h-4 w-4" />
                   Measurements
                 </TabsTrigger>
+                <TabsTrigger value="inventory" className="flex-shrink-0 flex items-center gap-2">
+                  <LucideIcons.Warehouse className="h-4 w-4" />
+                  Inventory
+                </TabsTrigger>
               </TabsList>
               <TabsContent value="materials"><MaterialCatalogManager /></TabsContent>
               <TabsContent value="estimates"><EstimateTemplateList /></TabsContent>
@@ -362,6 +367,7 @@ export const Settings = () => {
               <TabsContent value="products"><ProductCatalogManager /></TabsContent>
               <TabsContent value="pricing"><PriceManagementDashboard /></TabsContent>
               <TabsContent value="measurements"><BatchRegenerationPanel /></TabsContent>
+              <TabsContent value="inventory"><InventoryManager /></TabsContent>
             </Tabs>
           </div>
         );
