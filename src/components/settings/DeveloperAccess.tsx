@@ -291,6 +291,25 @@ export const DeveloperAccess = () => {
           </CardContent>
         </Card>
       )}
+
+      {/* Bulk Vendor Report Import - Developer Only */}
+      {isDeveloperMode && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Upload className="h-5 w-5 text-primary" />
+              Bulk Vendor Report Import
+            </CardTitle>
+            <CardDescription>
+              Upload 200+ paid roof reports (Roofr, EagleView, Xactimate, etc.) as AI training ground truth. 
+              Each report is parsed, geocoded, and stored with 3x confidence weight for model training.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <BulkReportImporter />
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
