@@ -64,6 +64,7 @@ import { DialerSettings } from "@/components/call-center/DialerSettings";
 import { LeadCustomFieldsManager } from "@/components/settings/LeadCustomFieldsManager";
 import { AppointmentOutcomeSettings } from "@/components/settings/AppointmentOutcomeSettings";
 import { CalendarSyncSettings } from "@/components/settings/CalendarSyncSettings";
+import { InventoryManager } from "@/components/inventory/InventoryManager";
 
 interface SettingsTab {
   id: string;
