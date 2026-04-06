@@ -258,6 +258,8 @@ serve(async (req) => {
         labels,
         confidence_score: trainingPair.metadata.confidenceScore,
         tenant_id: body.tenantId ?? null,
+        footprint_mask: trainingPair.footprintMask,
+        line_masks: trainingPair.lineMasks,
       }).select('id').single();
 
       if (error) {
