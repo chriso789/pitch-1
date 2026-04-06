@@ -39,8 +39,9 @@ serve(async (req) => {
     }
 
     if (action === 'batch-geocode') {
-      const MAPBOX_TOKEN = Deno.env.get('MAPBOX_PUBLIC_TOKEN');
-      if (!MAPBOX_TOKEN) throw new Error('No MAPBOX_PUBLIC_TOKEN');
+      const MAPBOX_TOKEN = Deno.env.get('MAPBOX_ACCESS_TOKEN') || Deno.env.get('MAPBOX_PUBLIC_TOKEN');
+      if (!MAPBOX_TOKEN) throw new Error('No MAPBOX_ACCESS_TOKEN or MAPBOX_PUBLIC_TOKEN');
+      console.log(`Using Mapbox token starting with: ${MAPBOX_TOKEN.substring(0, 10)}...`);
 
       const batchSize = body.batchSize || 25;
 
