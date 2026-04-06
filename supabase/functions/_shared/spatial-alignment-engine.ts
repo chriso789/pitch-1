@@ -104,10 +104,13 @@ export function extractFootprintPixelCoords(
   bounds: ImageBounds,
   dims: ImageDims,
 ): number[][] {
-  return footprintVertices.map(([lng, lat]) => {
-    const [px, py] = geoToPixel(lat, lng, bounds, dims);
-    return [px, py];
-  });
+  if (!footprintVertices || !Array.isArray(footprintVertices)) return [];
+  return footprintVertices
+    .filter((v): v is [number, number] => Array.isArray(v) && v.length >= 2 && typeof v[0] === 'number' && typeof v[1] === 'number')
+    .map(([lng, lat]) => {
+      const [px, py] = geoToPixel(lat, lng, bounds, dims);
+      return [px, py];
+    });
 }
 
 // ============================================
