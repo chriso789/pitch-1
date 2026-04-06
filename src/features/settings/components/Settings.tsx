@@ -411,6 +411,7 @@ export const Settings = () => {
           <div className="space-y-6">
             <QuickBooksSettings />
             <JobTypeQBOMapping />
+            <ZelleSettings />
           </div>
         );
       case "reports":
