@@ -30,19 +30,9 @@ export default function ZellePaymentPage() {
 
   useEffect(() => {
     if (!token) return;
-    fetchPaymentData();
-  }, [token]);
-
-  const fetchPaymentData = async () => {
-    try {
-      const { data: result, error: fnError } = await supabase.functions.invoke("zelle-payment-page", {
-        body: null,
-        method: "GET",
-        headers: {},
-      });
-
-      // Use query param approach instead
-      const response = await fetch(
+    const load = async () => {
+      try {
+        const response = await fetch(
         `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/zelle-payment-page?token=${token}`,
         {
           headers: {
