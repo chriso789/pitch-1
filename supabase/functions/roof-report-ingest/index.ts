@@ -1280,6 +1280,133 @@ serve(async (req) => {
 
     if (insertErr) throw new Error(`db_insert_failed: ${insertErr.message}`);
 
+    // ======= DIAGRAM EXTRACTION: Detect and extract roof diagram pages =======
+    let diagramImageUrl: string | null = null;
+    let diagramGeometry: any = null;
+    
+    try {
+      const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+      if (lovableApiKey && pdfBytes) {
+        console.log("roof-report-ingest: Starting diagram extraction...");
+        
+        // Send the full PDF to Vision AI to find and extract diagram geometry
+        const pdfBase64ForDiagram = bytesToBase64(pdfBytes);
+        
+        const diagramPrompt = `You are analyzing a professional roof measurement report PDF. Your task is to find the page(s) containing the ROOF DIAGRAM — the bird's-eye/plan-view drawing that shows the roof outline with labeled edges, facets, ridges, hips, valleys, eaves, and rakes.
+
+INSTRUCTIONS:
+1. Identify which page contains the main roof diagram/drawing
+2. Extract the diagram's geometry as structured data
+3. For each facet (roof plane), identify its approximate vertices as relative coordinates (0-1 range within the diagram)
+4. For each edge, identify its type (ridge, hip, valley, eave, rake) and the two vertices it connects
+5. Note any dimension labels (lengths in feet) shown on edges
+6. Note pitch markings on facets
+
+Return ONLY valid JSON (no markdown):
+{
+  "diagram_found": true/false,
+  "diagram_page": number (1-indexed),
+  "vertices": [
+    {"id": "V1", "x": 0.0-1.0, "y": 0.0-1.0}
+  ],
+  "edges": [
+    {"from": "V1", "to": "V2", "type": "ridge|hip|valley|eave|rake", "length_ft": number or null, "label": "optional text"}
+  ],
+  "facets": [
+    {"id": "F1", "vertices": ["V1","V2","V3"], "area_sqft": number or null, "pitch": "X/12" or null}
+  ],
+  "overall_shape": "hip|gable|dutch_hip|gambrel|mansard|flat|complex",
+  "notes": "any additional observations"
+}
+
+If no diagram is found, return: {"diagram_found": false}`;
+
+        const diagramResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${lovableApiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: diagramPrompt },
+              {
+                role: "user",
+                content: [
+                  { type: "text", text: "Find and extract the roof diagram geometry from this measurement report PDF:" },
+                  { type: "image_url", image_url: { url: `data:application/pdf;base64,${pdfBase64ForDiagram}` } }
+                ]
+              }
+            ],
+          }),
+        });
+
+        if (diagramResponse.ok) {
+          const diagramData = await diagramResponse.json();
+          const diagramContent = diagramData.choices?.[0]?.message?.content;
+          
+          if (diagramContent) {
+            const jsonMatch = diagramContent.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              const diagramResult = JSON.parse(jsonMatch[0]);
+              
+              if (diagramResult.diagram_found) {
+                console.log("roof-report-ingest: Diagram found on page", diagramResult.diagram_page, 
+                  "- vertices:", diagramResult.vertices?.length, 
+                  "edges:", diagramResult.edges?.length,
+                  "facets:", diagramResult.facets?.length);
+                
+                diagramGeometry = diagramResult;
+                
+                // Store the PDF page as an image in storage for visual reference
+                // Use the report ID as the folder
+                const diagramStoragePath = `vendor-diagrams/${reportRow.id}/diagram.pdf`;
+                const { error: diagramUploadErr } = await supabase.storage
+                  .from('documents')
+                  .upload(diagramStoragePath, pdfBytes, {
+                    contentType: 'application/pdf',
+                    upsert: true,
+                  });
+                
+                if (!diagramUploadErr) {
+                  const { data: signedUrl } = await supabase.storage
+                    .from('documents')
+                    .createSignedUrl(diagramStoragePath, 60 * 60 * 24 * 365); // 1 year
+                  
+                  diagramImageUrl = signedUrl?.signedUrl || null;
+                  console.log("roof-report-ingest: Diagram stored at:", diagramStoragePath);
+                } else {
+                  console.warn("roof-report-ingest: Diagram storage upload failed:", diagramUploadErr.message);
+                }
+                
+                // Update the vendor report with diagram data
+                const { error: updateErr } = await supabase
+                  .from('roof_vendor_reports')
+                  .update({
+                    diagram_image_url: diagramImageUrl,
+                    diagram_geometry: diagramGeometry,
+                  })
+                  .eq('id', reportRow.id);
+                
+                if (updateErr) {
+                  console.warn("roof-report-ingest: Failed to update diagram data:", updateErr.message);
+                } else {
+                  console.log("roof-report-ingest: Diagram geometry saved to vendor report");
+                }
+              } else {
+                console.log("roof-report-ingest: No diagram found in this report");
+              }
+            }
+          }
+        } else {
+          console.warn("roof-report-ingest: Diagram extraction API call failed:", diagramResponse.status);
+        }
+      }
+    } catch (diagramErr) {
+      console.warn("roof-report-ingest: Diagram extraction error (non-fatal):", diagramErr);
+    }
+
     // Also upsert a normalized measurements row
     const m = {
       report_id: reportRow.id,
