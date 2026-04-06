@@ -40,12 +40,12 @@ class RoofDatasetV2(Dataset):
         
         lbl = self.labels[sid]
         reg = torch.tensor([
-            lbl.get('area', 0) / 1000.0,
-            lbl.get('ridge', 0) / 100.0,
-            lbl.get('valley', 0) / 100.0,
-            lbl.get('hip', 0) / 100.0,
-            lbl.get('eave', 0) / 100.0,
-            lbl.get('pitch', 0),
+            lbl.get('area', 0) / 10000.0,
+            lbl.get('ridge', 0) / 500.0,
+            lbl.get('valley', 0) / 500.0,
+            lbl.get('hip', 0) / 500.0,
+            lbl.get('eave', 0) / 500.0,
+            lbl.get('pitch', 0) / 12.0,
         ], dtype=torch.float32)
         
         return img, mask, reg
