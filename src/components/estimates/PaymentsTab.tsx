@@ -282,6 +282,57 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     setInvoiceLineItems(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleSendPaymentLink = async (invoice: any) => {
+    setGeneratingLinkForInvoice(invoice.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('stripe-create-payment-link', {
+        body: {
+          amount: Number(invoice.balance),
+          currency: 'usd',
+          description: `Invoice ${invoice.invoice_number}`,
+          contactId: null,
+          projectId: null,
+          paymentId: null,
+          metadata: {
+            invoice_id: invoice.id,
+            pipeline_entry_id: pipelineEntryId,
+            invoice_number: invoice.invoice_number,
+            created_by: user.id,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.paymentLink?.url) {
+        // Save URL to invoice
+        await supabase
+          .from('project_invoices')
+          .update({ stripe_payment_link_url: data.paymentLink.url, status: invoice.status === 'draft' ? 'sent' : invoice.status })
+          .eq('id', invoice.id);
+
+        // Copy to clipboard
+        await navigator.clipboard.writeText(data.paymentLink.url);
+        
+        queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+        toast.success('Payment link copied to clipboard!', {
+          action: {
+            label: 'Open',
+            onClick: () => window.open(data.paymentLink.url, '_blank'),
+          },
+        });
+      }
+    } catch (error: any) {
+      console.error('Error generating payment link:', error);
+      toast.error(error.message || 'Failed to generate payment link');
+    } finally {
+      setGeneratingLinkForInvoice(null);
+    }
+  };
+
   const toggleInvoiceExpand = (id: string) => {
     setExpandedInvoices(prev => {
       const next = new Set(prev);
