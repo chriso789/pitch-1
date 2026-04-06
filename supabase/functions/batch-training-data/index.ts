@@ -172,8 +172,8 @@ serve(async (req) => {
               'Authorization': `Bearer ${ANON_KEY}`,
             },
             body: JSON.stringify({
-              latitude: lat,
-              longitude: lng,
+              lat,
+              lng,
               address: r.address || 'Unknown',
               vendorGeometry,
               vendorTruth,
