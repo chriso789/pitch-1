@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2 
+  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2 
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -54,6 +54,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [paymentDate, setPaymentDate] = useState(format(new Date(), 'yyyy-MM-dd'));
   const [paymentNotes, setPaymentNotes] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
+  const [generatingLinkForInvoice, setGeneratingLinkForInvoice] = useState<string | null>(null);
 
   // Invoice builder state
   const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
@@ -279,6 +280,57 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
   const removeLineItem = (index: number) => {
     setInvoiceLineItems(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSendPaymentLink = async (invoice: any) => {
+    setGeneratingLinkForInvoice(invoice.id);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase.functions.invoke('stripe-create-payment-link', {
+        body: {
+          amount: Number(invoice.balance),
+          currency: 'usd',
+          description: `Invoice ${invoice.invoice_number}`,
+          contactId: null,
+          projectId: null,
+          paymentId: null,
+          metadata: {
+            invoice_id: invoice.id,
+            pipeline_entry_id: pipelineEntryId,
+            invoice_number: invoice.invoice_number,
+            created_by: user.id,
+          },
+        },
+      });
+
+      if (error) throw error;
+
+      if (data?.paymentLink?.url) {
+        // Save URL to invoice
+        await supabase
+          .from('project_invoices')
+          .update({ stripe_payment_link_url: data.paymentLink.url, status: invoice.status === 'draft' ? 'sent' : invoice.status })
+          .eq('id', invoice.id);
+
+        // Copy to clipboard
+        await navigator.clipboard.writeText(data.paymentLink.url);
+        
+        queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+        toast.success('Payment link copied to clipboard!', {
+          action: {
+            label: 'Open',
+            onClick: () => window.open(data.paymentLink.url, '_blank'),
+          },
+        });
+      }
+    } catch (error: any) {
+      console.error('Error generating payment link:', error);
+      toast.error(error.message || 'Failed to generate payment link');
+    } finally {
+      setGeneratingLinkForInvoice(null);
+    }
   };
 
   const toggleInvoiceExpand = (id: string) => {
@@ -535,6 +587,33 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
+                      {/* Send Payment Link button */}
+                      {inv.status !== 'paid' && inv.status !== 'void' && Number(inv.balance) > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7"
+                          disabled={generatingLinkForInvoice === inv.id}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if ((inv as any).stripe_payment_link_url) {
+                              navigator.clipboard.writeText((inv as any).stripe_payment_link_url);
+                              toast.success('Payment link copied!');
+                            } else {
+                              handleSendPaymentLink(inv);
+                            }
+                          }}
+                          title={(inv as any).stripe_payment_link_url ? 'Copy payment link' : 'Generate payment link'}
+                        >
+                          {generatingLinkForInvoice === inv.id ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (inv as any).stripe_payment_link_url ? (
+                            <Copy className="h-3.5 w-3.5 text-green-600" />
+                          ) : (
+                            <Link2 className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      )}
                       <div className="text-right">
                         <p className="text-sm font-medium">{formatCurrency(Number(inv.amount))}</p>
                         {Number(inv.balance) !== Number(inv.amount) && (

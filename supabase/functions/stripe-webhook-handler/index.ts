@@ -147,7 +147,10 @@ async function handleCheckoutCompleted(
 ) {
   const metadata = session.metadata || {};
   const paymentId = metadata.payment_id;
+  const invoiceId = metadata.invoice_id;
+  const pipelineEntryId = metadata.pipeline_entry_id;
 
+  // Update legacy payments table if applicable
   if (paymentId) {
     await supabase
       .from('payments')
@@ -160,6 +163,62 @@ async function handleCheckoutCompleted(
       .eq('tenant_id', tenantId);
 
     console.log('Payment completed:', paymentId);
+  }
+
+  // Update payment_links status
+  const stripePaymentLinkId = (session as any).payment_link;
+  if (stripePaymentLinkId) {
+    await supabase
+      .from('payment_links')
+      .update({ status: 'completed', updated_at: new Date().toISOString() })
+      .eq('stripe_payment_link_id', stripePaymentLinkId);
+    
+    console.log('Payment link completed:', stripePaymentLinkId);
+  }
+
+  // Record in project_payments and update invoice if we have invoice context
+  if (invoiceId && pipelineEntryId && tenantId) {
+    const amountPaid = (session.amount_total || 0) / 100; // Convert cents to dollars
+
+    // Insert project_payment
+    const { error: paymentInsertError } = await supabase
+      .from('project_payments')
+      .insert({
+        tenant_id: tenantId,
+        pipeline_entry_id: pipelineEntryId,
+        invoice_id: invoiceId,
+        amount: amountPaid,
+        payment_method: 'stripe',
+        reference_number: session.payment_intent || session.id,
+        payment_date: new Date().toISOString(),
+        notes: `Stripe payment - ${session.customer_details?.email || 'online'}`,
+        created_by: metadata.created_by || null,
+      });
+
+    if (paymentInsertError) {
+      console.error('Error recording project payment:', paymentInsertError);
+    } else {
+      console.log('Project payment recorded for invoice:', invoiceId, 'amount:', amountPaid);
+    }
+
+    // Update invoice balance and status
+    const { data: invoice } = await supabase
+      .from('project_invoices')
+      .select('amount, balance')
+      .eq('id', invoiceId)
+      .single();
+
+    if (invoice) {
+      const newBalance = Math.max(0, Number(invoice.balance) - amountPaid);
+      const newStatus = newBalance === 0 ? 'paid' : 'partial';
+      
+      await supabase
+        .from('project_invoices')
+        .update({ balance: newBalance, status: newStatus })
+        .eq('id', invoiceId);
+
+      console.log('Invoice updated:', invoiceId, 'new balance:', newBalance, 'status:', newStatus);
+    }
   }
 }
 
