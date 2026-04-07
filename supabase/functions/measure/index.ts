@@ -1178,7 +1178,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         });
       });
     } else {
-      const defaultPitch = '4/12';
+      const defaultPitch = '6/12'; // Statistical mode from 156 vendor reports (50% are 6/12)
       const pf = pitchFactor(defaultPitch);
       faces.push({
         id: 'A',
