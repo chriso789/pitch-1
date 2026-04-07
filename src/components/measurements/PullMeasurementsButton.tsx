@@ -277,29 +277,33 @@ export function PullMeasurementsButton({
     }
   }
 
-  // When job completes, invalidate caches and show toast
-  const prevJobStatus = useState<string | null>(null);
-  if (job?.status === 'completed' && prevJobStatus[0] !== 'completed') {
-    prevJobStatus[1]('completed');
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 5000);
-    queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
-    queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
-    queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
-    toast({
-      title: "✅ Measurement Complete",
-      description: "AI analysis finished. Check the results below.",
-    });
-  } else if (job?.status === 'failed' && prevJobStatus[0] !== 'failed') {
-    prevJobStatus[1]('failed');
-    toast({
-      title: "Analysis Failed",
-      description: job.error || "AI measurement could not complete.",
-      variant: "destructive",
-    });
-  } else if (job?.status !== prevJobStatus[0]) {
-    prevJobStatus[1](job?.status || null);
-  }
+  // Track job status changes to show toasts
+  const [prevJobStatus, setPrevJobStatus] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (!job) return;
+    if (job.status === prevJobStatus) return;
+    
+    if (job.status === 'completed' && prevJobStatus !== 'completed') {
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 5000);
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+      toast({
+        title: "✅ Measurement Complete",
+        description: "AI analysis finished. Check the results below.",
+      });
+    } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
+      toast({
+        title: "Analysis Failed",
+        description: job.error || "AI measurement could not complete.",
+        variant: "destructive",
+      });
+    }
+    
+    setPrevJobStatus(job.status);
+  }, [job?.status, job?.error, prevJobStatus, propertyId, queryClient, toast]);
 
   const handleAcceptMeasurements = async (adjustedMeasurement?: any) => {
     if (!verificationData) return;
