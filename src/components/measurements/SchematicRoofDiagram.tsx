@@ -612,10 +612,10 @@ export function SchematicRoofDiagram({
 
       const latSpan = Math.max(focusMaxLat - focusMinLat, 0.00001);
       const lngSpan = Math.max(focusMaxLng - focusMinLng, 0.00001);
-      const minLatPadding = imageBounds ? (imageBounds.topLeft.lat - imageBounds.bottomLeft.lat) * 0.03 : 0;
-      const minLngPadding = imageBounds ? (imageBounds.topRight.lng - imageBounds.topLeft.lng) * 0.03 : 0;
-      const padLat = Math.max(latSpan * 0.14, minLatPadding);
-      const padLng = Math.max(lngSpan * 0.14, minLngPadding);
+      const minLatPadding = imageBounds ? (imageBounds.topLeft.lat - imageBounds.bottomLeft.lat) * 0.015 : 0;
+      const minLngPadding = imageBounds ? (imageBounds.topRight.lng - imageBounds.topLeft.lng) * 0.015 : 0;
+      const padLat = Math.max(latSpan * 0.05, minLatPadding);
+      const padLng = Math.max(lngSpan * 0.05, minLngPadding);
 
       const expanded = {
         minLat: focusMinLat - padLat,
