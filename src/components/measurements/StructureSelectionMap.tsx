@@ -117,6 +117,7 @@ export function StructureSelectionMap({
       console.log('✅ Mapbox token received');
       mapboxgl.accessToken = data.token;
 
+      // Use current prop values, not stale closure
       const lat = initialLat;
       const lng = initialLng;
 
@@ -199,7 +200,7 @@ export function StructureSelectionMap({
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [initialLat, initialLng, calculateDistance]);
 
   // Initialize map using ResizeObserver to detect when container has real dimensions
   useEffect(() => {
