@@ -482,6 +482,22 @@ export function SectionedLineItemsTable({
     </TableRow>
   );
 
+  // Auto-detect tear-off pattern
+  const TEAR_OFF_PATTERN = /tear|removal|strip|dispose|haul|demo/i;
+
+  // Split labor items into tear-off and install phases
+  const { tearOffItems, installItems } = useMemo(() => {
+    const tearOff = laborItems.filter(i => 
+      i.labor_phase === 'tear_off' || 
+      (!i.labor_phase && TEAR_OFF_PATTERN.test(i.item_name))
+    );
+    const install = laborItems.filter(i => !tearOff.includes(i));
+    return { tearOffItems: tearOff, installItems: install };
+  }, [laborItems]);
+
+  const tearOffTotal = useMemo(() => tearOffItems.reduce((sum, i) => sum + i.line_total, 0), [tearOffItems]);
+  const installTotal = useMemo(() => installItems.reduce((sum, i) => sum + i.line_total, 0), [installItems]);
+
   // Group items by trade_type if multi-trade items are present
   const hasMultipleTrades = useMemo(() => {
     // If parent declares multiple active trades, use that (even if some have zero items)
