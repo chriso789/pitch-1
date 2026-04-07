@@ -2178,7 +2178,8 @@ Deno.serve(async (req) => {
                 const vPf = pitchFactor(vendorPitch);
                 
                 for (const face of meas.faces) {
-                  if (face.pitch === '4/12' || face.pitch === '5/12') {
+                  // Override ANY assumed pitch with vendor truth (not just 4/12 or 5/12)
+                  if (meas.summary.pitch_method === 'assumed') {
                     const oldArea = face.area_sqft;
                     face.pitch = vendorPitch;
                     face.area_sqft = face.plan_area_sqft * vPf;
