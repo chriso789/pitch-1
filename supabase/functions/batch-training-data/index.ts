@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
     if (action === 'generate-batch') {
       const batchSize = body.batchSize || 10;
       const EDGE_URL = Deno.env.get('SUPABASE_URL')! + '/functions/v1/generate-training-pair';
-      const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
       // Get geocoded reports
       const { data: reports, error } = await supabase
