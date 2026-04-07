@@ -1,20 +1,21 @@
 
 
-## Update Edge Functions to Use pitchcrm.app Domain
+## Complete Remaining Tasks
 
-The signing links, proposal review buttons, and share URLs should all point to `https://pitchcrm.app` since that's your purchased and connected domain.
+The `FRONTEND_URL` secret is already configured. No more setup needed. Here's what remains:
 
-### Changes
+### 1. Deploy Updated Edge Functions
+Deploy the three functions that were already edited with the `pitchcrm.app` domain:
+- `email-signature-request`
+- `create-share-link`
+- `send-signature-envelope`
 
-1. **Update `email-signature-request/index.ts`** - Change fallback URL from `https://pitch-1.lovable.app` to `https://pitchcrm.app`
-2. **Update `create-share-link/index.ts`** - Change fallback URL from `https://pitch-1.lovable.app` to `https://pitchcrm.app`  
-3. **Update `send-signature-envelope/index.ts`** - Change fallback URL from `https://pitch-1.lovable.app` to `https://pitchcrm.app`
-4. **Set `FRONTEND_URL` Supabase secret** to `https://pitchcrm.app` so all functions use the correct domain dynamically
-5. **Redeploy** all three edge functions
-6. **Fix AR action buttons** - Verify and fix visibility of the dropdown menu in AccountsReceivable.tsx
+Also redeploy `signer-open` (the gateway function for public signing pages).
 
-### Result
-- "Review Your Proposal" button in emails will link to `https://pitchcrm.app/sign/...` which resolves to your app
-- All share links will use the correct domain
-- AR actions will be visible and functional
+### 2. Fix AR Action Button Visibility
+Investigate and fix why the dropdown actions aren't showing in the Accounts Receivable page. Will check `AccountsReceivable.tsx` for rendering issues — could be conditional rendering hiding the menu, or a styling/z-index problem.
+
+### Files to Change
+- Deploy only (no code changes needed — URLs were already updated in previous messages)
+- `src/pages/AccountsReceivable.tsx` — fix action button visibility if needed
 
