@@ -1,12 +1,6 @@
 name: Claude AI Documentation Generator
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - 'src/**/*.{ts,tsx}'
-      - 'supabase/functions/**/*.ts'
   workflow_dispatch:
     inputs:
       target_path:
@@ -24,82 +18,63 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Get changed files
-        id: changed-files
-        if: github.event_name == 'push'
-        uses: tj-actions/changed-files@v44
-        with:
-          files: |
-            src/**/*.{ts,tsx}
-            supabase/functions/**/*.ts
 
       - name: Generate documentation with Claude
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           TARGET_PATH: ${{ github.event.inputs.target_path || 'src' }}
         run: |
-          # Collect code files
-          find "$TARGET_PATH" -type f \( -name "*.ts" -o -name "*.tsx" \) > files_list.txt
-          
-          # Read file contents (limit to prevent token overflow)
-          CODE_CONTENT=""
+          touch code_bundle.txt
           FILE_COUNT=0
-          while IFS= read -r file && [ $FILE_COUNT -lt 20 ]; do
+          find "$TARGET_PATH" -type f \( -name "*.ts" -o -name "*.tsx" \) | head -20 | while read -r file; do
             if [ -f "$file" ]; then
               echo "### File: $file" >> code_bundle.txt
               echo '```typescript' >> code_bundle.txt
-              cat "$file" >> code_bundle.txt
+              head -n 200 "$file" >> code_bundle.txt
               echo '```' >> code_bundle.txt
-              echo "" >> code_bundle.txt
-              FILE_COUNT=$((FILE_COUNT + 1))
             fi
-          done < files_list.txt
-          
-          # Create documentation prompt
-          cat > doc_prompt.json << 'EOF'
-          {
-            "prompt": "Generate comprehensive technical documentation for this codebase. Include:\n\n1. **Overview** - High-level architecture and purpose\n2. **Components** - Key components/modules with their responsibilities\n3. **API Reference** - Important functions, hooks, types\n4. **Data Flow** - How data moves through the system\n5. **Usage Examples** - Code examples for common tasks\n6. **Setup Guide** - How to work with this code\n\nFormat in Markdown with clear sections and code examples.\n\n$(cat code_bundle.txt)",
-            "model": "anthropic/claude-sonnet-4-5",
-            "system_prompt": "You are a technical documentation expert. Create clear, comprehensive documentation that helps developers understand and use this code effectively.",
-            "max_tokens": 16384,
-            "temperature": 0.2
-          }
-          EOF
-          
-          # Call Claude AI
-          DOC_RESPONSE=$(curl -s -X POST \
+          done
+
+          CODE_CONTENT=$(cat code_bundle.txt | head -c 50000)
+
+          PROMPT="Generate comprehensive technical documentation for this codebase. Include:
+
+          1. **Overview** - High-level architecture and purpose
+          2. **Components** - Key components/modules with their responsibilities
+          3. **API Reference** - Important functions, hooks, types
+          4. **Data Flow** - How data moves through the system
+          5. **Usage Examples** - Code examples for common tasks
+
+          Format in Markdown with clear sections and code examples.
+
+          $CODE_CONTENT"
+
+          jq -n \
+            --arg prompt "$PROMPT" \
+            --arg system "You are a technical documentation expert. Create clear, comprehensive documentation." \
+            '{
+              prompt: $prompt,
+              model: "claude-sonnet-4-5",
+              system_prompt: $system,
+              max_tokens: 16384,
+              temperature: 0.2,
+              feature: "ci-documentation"
+            }' > doc_prompt.json
+
+          DOC_RESPONSE=$(curl -sf -X POST \
             "$SUPABASE_URL/functions/v1/ai-claude-processor" \
-            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
             -H "Content-Type: application/json" \
-            -d @doc_prompt.json)
-          
-          # Save documentation
-          echo "$DOC_RESPONSE" | jq -r '.response' > DOCUMENTATION.md
+            -d @doc_prompt.json) || {
+              echo "Edge function call failed"
+              exit 1
+            }
 
-      - name: Commit documentation
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          
-          if [ -f DOCUMENTATION.md ]; then
-            mkdir -p docs
-            mv DOCUMENTATION.md docs/DOCUMENTATION.md
-            git add docs/DOCUMENTATION.md
-            
-            if git diff --staged --quiet; then
-              echo "No documentation changes"
-            else
-              git commit -m "📝 Auto-generate documentation with Claude AI"
-              git push
-            fi
-          fi
+          mkdir -p docs
+          echo "$DOC_RESPONSE" | jq -r '.response // "Documentation generation failed"' > docs/DOCUMENTATION.md
 
-      - name: Create documentation PR (if workflow_dispatch)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Create documentation PR
         uses: peter-evans/create-pull-request@v6
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -111,7 +86,4 @@ jobs:
             Claude AI has generated documentation for: `${{ github.event.inputs.target_path }}`
             
             **Review the generated documentation and merge if accurate.**
-            
-            ---
-            *Generated by Claude Sonnet 4.5 via Lovable AI Gateway*
           branch: docs/auto-generated-${{ github.run_number }}

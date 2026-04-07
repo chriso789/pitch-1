@@ -109,9 +109,14 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader || '' } }
     })
 
-    // Get user from auth header
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    const userId = user?.id
+    // Get user from auth header (may be null in CI context)
+    let userId: string | undefined
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      userId = user?.id
+    } catch {
+      console.log('ℹ️ No authenticated user (CI context)')
+    }
     
     const { 
       prompt, 
