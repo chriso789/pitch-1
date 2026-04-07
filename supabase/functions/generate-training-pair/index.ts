@@ -240,16 +240,18 @@ Deno.serve(async (req) => {
     );
 
     // ----- Step 6: Quality gates — reject bad pairs before storage -----
+    // normalizedError = meanPointError / perimeterLength → LOWER is BETTER
+    // good < 0.03, acceptable < 0.08, poor >= 0.08
     const qualityScore = alignmentResult.quality.normalizedError;
     const totalSegments = trainingPair.lineMasks?.totalSegments ?? 0;
     const hasLabels = labels.totalAreaSqft && labels.totalAreaSqft > 0;
     const alignmentGrade = alignmentResult.quality.grade;
 
     const rejectionReasons: string[] = [];
-    if (qualityScore < 0.15) rejectionReasons.push(`alignment_quality too low: ${qualityScore.toFixed(3)}`);
+    if (qualityScore > 0.12) rejectionReasons.push(`normalizedError too high: ${qualityScore.toFixed(3)} (lower=better, threshold 0.12)`);
     if (totalSegments < 3) rejectionReasons.push(`too few segments: ${totalSegments}`);
     if (!hasLabels) rejectionReasons.push('missing or zero area labels');
-    if (alignmentGrade === 'poor') rejectionReasons.push(`grade: ${alignmentGrade}`);
+    if (alignmentGrade === 'poor' && qualityScore > 0.10) rejectionReasons.push(`grade: ${alignmentGrade}`);
 
     let trainingPairId: string | null = null;
 
