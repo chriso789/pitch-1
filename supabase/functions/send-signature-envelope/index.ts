@@ -111,7 +111,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send emails to recipients (in a real implementation, you'd use a proper email service)
     for (const recipient of envelope.recipients) {
-      const signingUrl = `${Deno.env.get('SUPABASE_URL')?.replace('/v1', '')}/sign/${recipient.access_token}`;
+      const frontendUrl = Deno.env.get('FRONTEND_URL') || 'https://pitch-1.lovable.app';
+      const signingUrl = `${frontendUrl}/sign/${recipient.access_token}`;
       
       // In production, implement actual email sending here
       console.log(`Would send email to ${recipient.recipient_email}:`);
