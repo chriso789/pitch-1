@@ -163,6 +163,7 @@ const AppContent = () => {
         <Route path="/view-quote/*" element={<PublicRoutes />} />
         <Route path="/proposal/*" element={<PublicRoutes />} />
         <Route path="/v/*" element={<PublicRoutes />} />
+        <Route path="/pay/*" element={<PublicRoutes />} />
 
         {/* All other paths → protected app routes */}
         <Route path="/*" element={<ProtectedRoutes />} />
