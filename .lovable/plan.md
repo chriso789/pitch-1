@@ -1,68 +1,50 @@
 
 
-# Reorder Estimate Line Items: Tear Off → Materials → Install
+# Fix Roof Diagram Alignment and Zoom
 
 ## Problem
-Currently, the estimate PDF and builder display items grouped as **Materials** then **Labor**. Real roofing workflow is: tear off the old roof, install materials, then install the new roof product. The ordering should reflect this: **Labor (Tear Off) → Materials → Labor (Install)**.
+Two issues cause the diagram to not align with the satellite image and not zoom in enough:
 
-## Approach
-Add a `labor_phase` field to `LineItem` that distinguishes tear-off labor from installation labor. Use this field to reorder sections in both the PDF renderer and the live builder table.
+1. **Coordinate field mismatch**: The `diagramMeasurement` object passes `target_lat`/`target_lng`, but `SchematicRoofDiagram` looks for `gps_coordinates.lat`, `measurement.lat`, or `measurement.center_lat`. None match, so `imageBounds` returns `null` and the GPS-to-pixel transform fails silently — lines are drawn using bounds-fit math that doesn't align with the satellite image underneath.
+
+2. **Missing metadata fields**: `analysis_zoom` and `analysis_image_size` are not passed to the diagram, though the defaults (zoom=20, 640x640) happen to match what the edge function stores. Still needs explicit pass-through for correctness.
 
 ## Changes
 
-### 1. Add `labor_phase` to LineItem interface
-**File: `src/hooks/useEstimatePricing.ts`**
-- Add `labor_phase?: 'tear_off' | 'install'` to the `LineItem` interface (defaults to `'install'` when unset).
+### 1. Fix coordinate mapping in `diagramMeasurement`
+**File: `src/components/measurements/UnifiedMeasurementPanel.tsx` (~line 601)**
 
-### 2. Update `buildRenderBlocks` ordering in PDF
-**File: `src/components/estimates/EstimatePDFDocument.tsx`**
-- Change the `buildRenderBlocks` function to split labor items into two groups based on `labor_phase`:
-  - **Tear Off** labor items (`labor_phase === 'tear_off'`)
-  - **Materials** (all material items)
-  - **Install** labor items (`labor_phase === 'install'` or unset)
-- Render sub-headers: "TEAR OFF" → "MATERIALS" → "INSTALLATION"
+Add the fields that `SchematicRoofDiagram` needs for satellite alignment:
 
-### 3. Update `SectionedLineItemsTable` section ordering
-**File: `src/components/estimates/SectionedLineItemsTable.tsx`**
-- Display three sections instead of two: Tear Off, Materials, Installation.
-- Each section gets its own header row and "Add item" button.
-
-### 4. Add labor phase selector when adding/editing labor items
-**File: `src/components/estimates/SectionedLineItemsTable.tsx`**
-- When adding a labor item, show a toggle or dropdown for "Tear Off" vs "Install" phase.
-- Default new labor items to "Install" unless the item name contains "tear" (auto-detect).
-
-### 5. Update default template items with correct phases
-**File: `src/components/estimates/TemplateSectionSelector.tsx`**
-- Tag default "Tear Off" labor items with `labor_phase: 'tear_off'`.
-- Tag "Shingle Install" and other install labor with `labor_phase: 'install'`.
-
-### 6. Preserve backward compatibility
-- Existing estimates without `labor_phase` will render labor items in the "Installation" section by default (no migration needed).
-- The `labor_phase` field is stored in the `line_items` JSONB column alongside other line item properties.
-
-## Section Order (PDF and Builder)
-```text
-┌─────────────────────────────┐
-│  TEAR OFF                   │
-│  - Tear Off          32 SQ  │
-│  - Haul Away          1 EA  │
-├─────────────────────────────┤
-│  MATERIALS                  │
-│  - OC Duration       40 SQ  │
-│  - Drip Edge         19 EA  │
-│  - Ridge Cap          7 BDL │
-│  - Ice & Water       19 RL  │
-│  - ...                      │
-├─────────────────────────────┤
-│  INSTALLATION               │
-│  - Shingle Install   36 SQ  │
-│  - Flashing Work      3 EA  │
-└─────────────────────────────┘
+```typescript
+const diagramMeasurement = {
+  id: ai.id,
+  target_lat: ai.target_lat,
+  target_lng: ai.target_lng,
+  // ADD THESE for imageBounds calculation:
+  gps_coordinates: { lat: ai.target_lat, lng: ai.target_lng },
+  analysis_zoom: 20,
+  analysis_image_size: { width: 640, height: 640 },
+  // existing fields...
+  linear_features_wkt: ai.linear_features_wkt,
+  perimeter_wkt: ai.perimeter_wkt,
+  footprint_vertices_geo: ai.footprint_vertices_geo,
+  footprint_confidence: ai.footprint_confidence,
+  footprint_source: ai.footprint_source,
+  detection_method: ai.detection_method,
+  total_adjusted_area: ai.total_area_adjusted_sqft || 0,
+};
 ```
 
-## Technical Notes
-- `labor_phase` is optional on LineItem — old data gracefully falls into "Installation"
-- Auto-detection: items with names matching `/tear|removal|strip|dispose|haul/i` default to `tear_off`
-- The `sort_order` within each phase section is preserved per existing standards
+### 2. Same fix for the MeasurementReportDialog data
+**File: `src/components/measurements/UnifiedMeasurementPanel.tsx` (~line 733)**
+
+Add `gps_coordinates`, `analysis_zoom`, and `analysis_image_size` to the measurement object passed to `MeasurementReportDialog` so the report's diagram also aligns correctly.
+
+### 3. Increase diagram size for better roof visibility
+**File: `src/components/measurements/UnifiedMeasurementPanel.tsx` (~line 639)**
+
+Increase the `SchematicRoofDiagram` rendering height from 280 to 350 to give the roof more visual space in the card.
+
+These three changes will make the ridge/hip/valley/eave lines align precisely with the satellite imagery, matching the roof structure visible in the photo.
 
