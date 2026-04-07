@@ -451,6 +451,28 @@ export function UnifiedMeasurementPanel({
   const otherMeasurements = approvals?.filter(a => a.id !== activeApprovalId) || [];
   const hasAnyMeasurements = approvals && approvals.length > 0;
 
+  // Find the latest AI measurement that hasn't been saved as an approval yet
+  const approvedMeasurementIds = new Set(
+    (approvals || [])
+      .filter(a => (a.saved_tags as any)?.source === 'ai_pulled')
+      .map(a => (a.saved_tags as any)?.imported_at)
+  );
+  const latestUnapprovedAI = useMemo(() => {
+    if (!aiMeasurements?.length) return null;
+    // The latest AI measurement that hasn't been saved
+    const latest = aiMeasurements[0]; // already sorted desc
+    // Check if this measurement's created_at matches any approval
+    const isSaved = (approvals || []).some(a => {
+      const tags = a.saved_tags as any;
+      return tags?.imported_at === latest.created_at || tags?.source === 'ai_pulled';
+    });
+    // Show if not saved AND has valid data
+    if (!isSaved && latest.total_area_adjusted_sqft && latest.total_area_adjusted_sqft > 0) {
+      return latest;
+    }
+    return null;
+  }, [aiMeasurements, approvals]);
+
   if (isLoading) {
     return (
       <Card>
