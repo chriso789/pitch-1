@@ -504,10 +504,10 @@ export function PullMeasurementsButton({
         </Button>
 
         {/* Re-analyze button - only shows when verified coordinates exist */}
-        {hasVerifiedCoords && !loading && !success && (
+        {hasVerifiedCoords && !loading && !success && !isJobRunning && (
           <Button
             onClick={handleReanalyze}
-            disabled={loading || loadingCoords}
+            disabled={buttonDisabled}
             variant="ghost"
             size="sm"
             title="Re-run analysis using stored verified coordinates"
