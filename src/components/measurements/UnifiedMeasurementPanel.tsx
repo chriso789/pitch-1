@@ -602,6 +602,9 @@ export function UnifiedMeasurementPanel({
               id: ai.id,
               target_lat: ai.target_lat,
               target_lng: ai.target_lng,
+              gps_coordinates: { lat: ai.target_lat, lng: ai.target_lng },
+              analysis_zoom: ai.analysis_zoom || 20,
+              analysis_image_size: ai.analysis_image_size || { width: 640, height: 640 },
               linear_features_wkt: ai.linear_features_wkt,
               perimeter_wkt: ai.perimeter_wkt,
               footprint_vertices_geo: ai.footprint_vertices_geo,
@@ -637,7 +640,7 @@ export function UnifiedMeasurementPanel({
                         tags={diagramTags}
                         measurementId={ai.id}
                         width={400}
-                        height={280}
+                        height={350}
                         showLengthLabels={true}
                         showLegend={true}
                         showCompass={false}
@@ -747,6 +750,9 @@ export function UnifiedMeasurementPanel({
                     faces: ai.faces_wkt || [],
                     center_lat: ai.target_lat,
                     center_lng: ai.target_lng,
+                    gps_coordinates: { lat: ai.target_lat, lng: ai.target_lng },
+                    analysis_zoom: ai.analysis_zoom || 20,
+                    analysis_image_size: ai.analysis_image_size || { width: 640, height: 640 },
                     google_maps_image_url: ai.google_maps_image_url,
                     satellite_overlay_url: ai.satellite_overlay_url,
                     perimeter_wkt: ai.perimeter_wkt,
