@@ -10,7 +10,7 @@ const corsHeaders = {
  * Handles inbound calls using Telnyx gather_using_ai to collect caller information
  * and store results in the CRM.
  */
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

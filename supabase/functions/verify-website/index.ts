@@ -77,7 +77,7 @@ function validateUrl(url: URL): { valid: boolean; error?: string } {
   return { valid: true };
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

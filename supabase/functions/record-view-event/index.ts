@@ -21,7 +21,7 @@ interface RecordViewEventRequest {
   session_id?: string;
 }
 
-Deno.Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   // Handle CORS
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;

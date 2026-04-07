@@ -14,7 +14,7 @@ const LEGACY_ROLE_MAPPINGS: Record<string, string[]> = {
   'sales_rep': ['project_manager'],
 };
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

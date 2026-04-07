@@ -15,7 +15,7 @@ const FREE_EMAIL_PROVIDERS = [
   'guerrillamail.com', 'tempmail.com', '10minutemail.com'
 ];
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

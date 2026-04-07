@@ -51,7 +51,7 @@ const DAMAGE_MAPPINGS: DamageToXactimateMapping = {
   "tear_off": { code: "RFG TOFF", description: "Tear off existing roofing", category: "Roofing", unit: "SQ", base_price: 65.00 },
 };
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

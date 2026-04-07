@@ -13,7 +13,7 @@ const callSessions = new Map<string, {
   startTime: Date;
 }>();
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const { headers } = req;
   const upgradeHeader = headers.get("upgrade") || "";
 

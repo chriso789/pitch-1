@@ -94,7 +94,7 @@ function resolveEmail(email: string | undefined): string | undefined {
   return EMAIL_ALIASES[normalized] || normalized;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

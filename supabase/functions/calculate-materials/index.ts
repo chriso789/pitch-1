@@ -33,7 +33,7 @@ interface MaterialCalculationRequest {
   };
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

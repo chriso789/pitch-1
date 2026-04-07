@@ -19,7 +19,7 @@ const answeringSessions = new Map<string, {
   collectingInfo: Record<string, any>;
 }>();
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const { headers } = req;
   const upgradeHeader = headers.get("upgrade") || "";
 

@@ -26,7 +26,7 @@ interface LinkedApproval {
   doc_id: string;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 

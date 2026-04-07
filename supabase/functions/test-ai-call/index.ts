@@ -9,7 +9,7 @@ const corsHeaders = {
  * Test AI Call - Initiates an outbound call to a test number
  * using the tenant's Telnyx number, then triggers the AI gather flow.
  */
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

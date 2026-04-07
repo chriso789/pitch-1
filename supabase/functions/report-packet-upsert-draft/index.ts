@@ -31,7 +31,7 @@ interface UpsertDraftRequest {
   template_id?: string;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

@@ -114,7 +114,7 @@ function isWithinWorkingHours(workingHours: {
   }
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

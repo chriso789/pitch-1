@@ -23,7 +23,7 @@ interface DeleteResult {
   referenced_docs?: { doc_id: string; approval_ids: string[] }[];
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });

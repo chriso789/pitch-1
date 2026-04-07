@@ -19,7 +19,7 @@ const decryptToken = (encrypted: string): string => {
   return atob(encrypted);
 };
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

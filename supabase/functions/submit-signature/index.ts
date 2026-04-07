@@ -21,7 +21,7 @@ interface SubmitSignatureRequest {
   field_values?: Record<string, string>;
 }
 
-Deno.Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;
 

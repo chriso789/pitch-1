@@ -3,7 +3,7 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 const openWeatherApiKey = Deno.env.get('OPENWEATHER_API_KEY');
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

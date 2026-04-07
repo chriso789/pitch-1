@@ -68,7 +68,7 @@ const OWNERS_TO_CREATE: OwnerData[] = [
   }
 ];
 
-Deno.Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

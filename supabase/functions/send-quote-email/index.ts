@@ -55,7 +55,7 @@ async function verifyTenantMembership(
   return !!access;
 }
 
-Deno.Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

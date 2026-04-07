@@ -45,7 +45,7 @@ const XACTIMATE_CODES = {
   dumpster: { selector: 'DMP ROLL', description: 'Dumpster - Roll off - per load' },
 };
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
