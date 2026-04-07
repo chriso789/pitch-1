@@ -505,11 +505,6 @@ export function UnifiedMeasurementPanel({
   const hasAnyMeasurements = approvals && approvals.length > 0;
 
   // Find the latest AI measurement that hasn't been saved as an approval yet
-  const approvedMeasurementIds = new Set(
-    (approvals || [])
-      .filter(a => (a.saved_tags as any)?.source === 'ai_pulled')
-      .map(a => (a.saved_tags as any)?.imported_at)
-  );
   const latestUnapprovedAI = useMemo(() => {
     if (!aiMeasurements?.length) return null;
     // The latest AI measurement that hasn't been saved
