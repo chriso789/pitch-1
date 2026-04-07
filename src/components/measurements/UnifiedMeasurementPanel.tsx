@@ -566,11 +566,14 @@ export function UnifiedMeasurementPanel({
                   <p className="font-semibold">{latestUnapprovedAI.predominant_pitch || '—'}</p>
                 </div>
               </div>
-              <MeasurementHistorySaveButton
-                measurement={latestUnapprovedAI}
-                pipelineEntryId={pipelineEntryId}
-                onSuccess={handleMeasurementSuccess}
-              />
+              <Button 
+                size="sm" 
+                className="w-full"
+                onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
+              >
+                <ArrowRight className="h-4 w-4 mr-1.5" />
+                Save to Estimates
+              </Button>
             </div>
           )}
 
