@@ -1583,7 +1583,7 @@ async function providerFreeFootprint(supabase: any, lat: number, lng: number, ad
   const topology = buildLinearFeaturesFromTopology(coords, midLat);
   
   // 4. Build face with assumed pitch
-  const defaultPitch = "4/12";
+  const defaultPitch = "6/12"; // Statistical mode from 156 vendor reports
   const wastePct = 12;
   const pf = pitchFactor(defaultPitch);
   const adjusted = footprint.plan_sqft * pf * (1 + wastePct / 100);
