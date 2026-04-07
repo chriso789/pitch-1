@@ -1,36 +1,26 @@
 
 
-# Show Full Measurement Report with Roof Diagram for AI Results
+# Add "View Full Report" to AI Measurement Card
 
 ## Problem
-When AI measurements are pulled, the "Latest AI Measurement" card only shows basic stats (squares, sqft, pitch) and a satellite thumbnail. It does not display a roof diagram with ridge, hip, valley, eave, and rake measurements drawn on the actual roof shape.
-
-## Solution
-Embed the existing `SchematicRoofDiagram` component directly into the "Latest AI Measurement" card, and expand the linear measurement summary. The diagram already supports rendering all edge types from `linear_features_wkt` data.
+The `MeasurementReportDialog` (which renders `ComprehensiveMeasurementReport` with roof diagram, facet breakdown, linear features, and export options) exists but is never opened from the `UnifiedMeasurementPanel`. After AI measurement completes, the user only sees a summary card with "Save to Estimates" — no way to view the detailed measurement report.
 
 ## Changes
 
-### 1. Update AI measurement query to fetch diagram data
+### 1. Add "View Report" button to the AI measurement card
 **File: `src/components/measurements/UnifiedMeasurementPanel.tsx`**
-- Add `linear_features_wkt`, `perimeter_wkt`, `target_lat`, `target_lng`, `footprint_vertices_geo`, `footprint_confidence`, `google_maps_image_url`, `satellite_overlay_url` to the `select()` call in the `aiMeasurements` query (line ~314).
+- Import `MeasurementReportDialog`.
+- Add state: `const [showReport, setShowReport] = useState(false)`.
+- Add a "View Report" button next to the existing "Save to Estimates" button inside the `latestUnapprovedAI` card (around line 703).
+- Transform the AI measurement data into the `MeasurementData` shape that `ComprehensiveMeasurementReport` expects (`summary`, `linear_features`, `faces`, `center_lat`, `center_lng`, etc.).
+- Render `<MeasurementReportDialog>` with the transformed data.
 
-### 2. Add SchematicRoofDiagram to the Latest AI Measurement card
-**File: `src/components/measurements/UnifiedMeasurementPanel.tsx`**
-- Import `SchematicRoofDiagram` from `@/components/measurements/SchematicRoofDiagram`.
-- Inside the `latestUnapprovedAI` card (line ~588-641), replace the static satellite image with:
-  - A `SchematicRoofDiagram` rendered with the AI measurement data, satellite overlay, and length labels enabled.
-  - Show legend for edge types (ridge, hip, valley, eave, rake).
-- Below the diagram, add a linear measurements summary grid showing: Ridge, Hip, Valley, Eave, Rake totals (already available as `total_ridge_length`, `total_hip_length`, etc.).
-
-### 3. Build tags object for the diagram
-- Construct a `tags` record from the AI measurement's linear length totals (`linear.ridge_ft`, `linear.hip_ft`, etc.) so the diagram renders correctly, similar to how `TrainingSchematicWrapper` does it.
-
-### 4. Also show diagram on saved MeasurementCards
-- When a saved measurement has `source: 'ai_pulled'`, add a collapsible "View Report" section that renders the same `SchematicRoofDiagram` by fetching the linked `roof_measurements` record.
+### 2. Also add "View Report" to saved MeasurementCards
+- When a saved measurement exists (the `activeMeasurement` or items in `otherMeasurements`), add a report icon button on the `MeasurementCard` that opens the same dialog for that measurement's data.
 
 ## Technical Details
-- `SchematicRoofDiagram` accepts a `measurement` prop with `linear_features_wkt` (array of `{type, wkt, length_ft}`) and `perimeter_wkt` — both stored in `roof_measurements`.
-- The component handles GPS-to-pixel projection, edge coloring by type, and length label rendering internally.
-- Satellite overlay uses `google_maps_image_url` or `satellite_overlay_url`.
-- No new components needed — reusing existing `SchematicRoofDiagram`.
+- The `ComprehensiveMeasurementReport` expects a `measurement` prop with shape `{ id, property_id, summary: { total_area_sqft, ridge_ft, hip_ft, ... }, linear_features, faces, center_lat, center_lng }`.
+- The AI measurement from `roof_measurements` stores these as flat columns (`total_area_adjusted_sqft`, `total_ridge_length`, etc.) — a simple mapping object bridges the two.
+- The `diagramTags` already constructed in the card can be passed as `tags`.
+- Two buttons in a flex row: "View Report" (outline) and "Save to Estimates" (primary).
 
