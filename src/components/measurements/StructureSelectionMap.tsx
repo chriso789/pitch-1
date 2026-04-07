@@ -9,9 +9,8 @@ import { Badge } from '@/components/ui/badge';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
-// Pitch options from flat to very steep
 const PITCH_OPTIONS = [
-  '0/12', '1/12', '2/12', '3/12', '4/12', '5/12', '6/12', 
+  '0/12', '1/12', '2/12', '3/12', '4/12', '5/12', '6/12',
   '7/12', '8/12', '9/12', '10/12', '11/12', '12/12',
   '14/12', '16/12', '18/12'
 ];
@@ -38,20 +37,18 @@ export function StructureSelectionMap({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const marker = useRef<mapboxgl.Marker | null>(null);
-  
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [pinPosition, setPinPosition] = useState({ lat: initialLat, lng: initialLng });
   const [distanceMoved, setDistanceMoved] = useState(0);
   const [hasInvalidCoords, setHasInvalidCoords] = useState(false);
   const [selectedPitch, setSelectedPitch] = useState(defaultPitch);
-  
-  // Check for invalid coordinates (0,0 or very close to it)
+
   const isValidCoordinate = (lat: number, lng: number) => {
     return Math.abs(lat) > 0.001 || Math.abs(lng) > 0.001;
   };
 
-  // Sync pinPosition state with props when they change
   useEffect(() => {
     if (isValidCoordinate(initialLat, initialLng)) {
       setPinPosition({ lat: initialLat, lng: initialLng });
@@ -60,23 +57,23 @@ export function StructureSelectionMap({
     }
   }, [initialLat, initialLng]);
 
-  // Recenter map AND marker when coordinates change AFTER map is already initialized
   useEffect(() => {
     if (map.current && marker.current && isValidCoordinate(initialLat, initialLng)) {
       console.log('📍 Recentering map to updated coordinates:', { initialLat, initialLng });
       marker.current.setLngLat([initialLng, initialLat]);
-      map.current.flyTo({ 
-        center: [initialLng, initialLat], 
+      map.current.flyTo({
+        center: [initialLng, initialLat],
         zoom: 19,
-        duration: 1000 
+        duration: 1000
       });
+      map.current.resize();
+      map.current.triggerRepaint();
       setDistanceMoved(0);
     }
   }, [initialLat, initialLng]);
 
-  // Calculate distance between two points in meters
   const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number) => {
-    const R = 6371e3; // Earth radius in meters
+    const R = 6371e3;
     const φ1 = (lat1 * Math.PI) / 180;
     const φ2 = (lat2 * Math.PI) / 180;
     const Δφ = ((lat2 - lat1) * Math.PI) / 180;
@@ -90,50 +87,56 @@ export function StructureSelectionMap({
 
   const initMap = useCallback(async () => {
     if (!mapContainer.current) return;
-    
-    // If map already exists and is valid, just resize
+
     if (map.current) {
       map.current.resize();
+      map.current.triggerRepaint();
       return;
     }
-    
+
     setLoading(true);
     setError(null);
-    
+
     try {
       console.log('📍 Fetching Mapbox token...');
       const { data, error: fnError } = await supabase.functions.invoke('get-mapbox-token');
-      
+
       if (fnError) {
         console.error('❌ Edge function error:', fnError);
         throw new Error(`Failed to fetch Mapbox token: ${fnError.message}`);
       }
-      
+
       if (!data?.token) {
         console.error('❌ No token in response:', data);
         throw new Error('Mapbox token not configured. Please add MAPBOX_PUBLIC_TOKEN to Supabase secrets.');
       }
-      
+
       console.log('✅ Mapbox token received');
       mapboxgl.accessToken = data.token;
 
-      // Use current prop values, not stale closure
       const lat = initialLat;
       const lng = initialLng;
 
       console.log('📍 Initializing Mapbox map at:', { lat, lng });
-      
+
       const newMap = new mapboxgl.Map({
         container: mapContainer.current,
-        style: 'mapbox://styles/mapbox/satellite-v9',
+        style: 'mapbox://styles/mapbox/satellite-streets-v12',
         center: [lng, lat],
         zoom: 19,
         pitch: 0,
+        maxPitch: 0,
+        fadeDuration: 0,
       });
 
       map.current = newMap;
 
-      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      newMap.addControl(
+        new mapboxgl.NavigationControl({
+          visualizePitch: false,
+        }),
+        'top-right'
+      );
 
       newMap.on('error', (e) => {
         console.error('❌ Mapbox error:', e);
@@ -141,17 +144,16 @@ export function StructureSelectionMap({
         setLoading(false);
       });
 
-      // Create custom PIN element
       const pinElement = document.createElement('div');
       pinElement.innerHTML = `
         <div class="relative cursor-grab active:cursor-grabbing">
-          <div class="absolute -top-1 -left-1 w-10 h-10 bg-red-500/30 rounded-full animate-ping"></div>
-          <div class="relative flex items-center justify-center w-8 h-8 bg-red-600 rounded-full border-4 border-white shadow-lg">
-            <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+          <div class="absolute -top-1 -left-1 h-10 w-10 rounded-full bg-red-500/30 animate-ping"></div>
+          <div class="relative flex h-8 w-8 items-center justify-center rounded-full bg-red-600 border-4 border-white shadow-lg">
+            <svg class="h-4 w-4 text-white" fill="currentColor" viewBox="0 0 20 20">
               <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
             </svg>
           </div>
-          <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/80 text-white text-xs px-2 py-1 rounded">
+          <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded bg-black/80 px-2 py-1 text-xs text-white">
             Drag to roof
           </div>
         </div>
@@ -174,35 +176,50 @@ export function StructureSelectionMap({
         }
       });
 
-      newMap.on('load', () => {
-        console.log('✅ Mapbox map loaded successfully');
+      let finalized = false;
+      const finalizeMapReady = () => {
+        if (finalized) return;
+        finalized = true;
+        console.log('✅ Mapbox map rendered successfully');
         setLoading(false);
-        // Multiple resize calls to handle dialog animation
-        setTimeout(() => newMap.resize(), 100);
-        setTimeout(() => newMap.resize(), 500);
-        setTimeout(() => newMap.resize(), 1000);
+
+        [0, 100, 300, 700, 1200].forEach((delay) => {
+          window.setTimeout(() => {
+            newMap.resize();
+            newMap.triggerRepaint();
+          }, delay);
+        });
+      };
+
+      newMap.once('load', () => {
+        console.log('✅ Mapbox style loaded successfully');
+        [0, 100, 250].forEach((delay) => {
+          window.setTimeout(() => {
+            newMap.resize();
+            newMap.triggerRepaint();
+          }, delay);
+        });
       });
 
-      // Timeout fallback
-      setTimeout(() => {
-        setLoading(prev => {
-          if (prev) {
-            console.warn('⚠️ Map load timeout - forcing completion');
-            newMap.resize();
-          }
-          return false;
-        });
-      }, 10000);
+      newMap.once('idle', () => {
+        finalizeMapReady();
+      });
 
+      window.setTimeout(() => {
+        if (!finalized) {
+          console.warn('⚠️ Map idle timeout - forcing repaint');
+          newMap.resize();
+          newMap.triggerRepaint();
+          finalizeMapReady();
+        }
+      }, 5000);
     } catch (err) {
       console.error('❌ Map initialization error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load map');
       setLoading(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialLat, initialLng, calculateDistance]);
 
-  // Initialize map using ResizeObserver to detect when container has real dimensions
   useEffect(() => {
     if (!open) return;
 
@@ -212,43 +229,52 @@ export function StructureSelectionMap({
       setLoading(false);
       return;
     }
-    
+
     setHasInvalidCoords(false);
-    
-    // Use ResizeObserver to wait until the container actually has dimensions
+
     let observer: ResizeObserver | null = null;
     let initialized = false;
-    
-    const tryInit = () => {
+    let initTimer: number | null = null;
+    let rafOne: number | null = null;
+    let rafTwo: number | null = null;
+
+    const scheduleInit = () => {
       if (initialized) return;
       const el = mapContainer.current;
       if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
         initialized = true;
         console.log('📍 MapContainer has dimensions:', el.offsetWidth, 'x', el.offsetHeight);
-        initMap();
+
+        rafOne = window.requestAnimationFrame(() => {
+          rafTwo = window.requestAnimationFrame(() => {
+            initTimer = window.setTimeout(() => {
+              initMap();
+            }, 180);
+          });
+        });
+
         observer?.disconnect();
       }
     };
 
-    // Try immediately
-    const timer = setTimeout(tryInit, 50);
-    
-    // Also observe for resize (dialog animation)
+    initTimer = window.setTimeout(scheduleInit, 120);
+
     if (mapContainer.current) {
-      observer = new ResizeObserver(tryInit);
+      observer = new ResizeObserver(scheduleInit);
       observer.observe(mapContainer.current);
     }
 
     return () => {
-      clearTimeout(timer);
+      if (rafOne !== null) window.cancelAnimationFrame(rafOne);
+      if (rafTwo !== null) window.cancelAnimationFrame(rafTwo);
+      if (initTimer !== null) window.clearTimeout(initTimer);
       observer?.disconnect();
       marker.current?.remove();
       map.current?.remove();
       map.current = null;
       marker.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, initialLat, initialLng, initMap]);
 
   const handleConfirm = () => {
     onLocationConfirmed(pinPosition.lat, pinPosition.lng, selectedPitch);
@@ -259,6 +285,8 @@ export function StructureSelectionMap({
     if (marker.current && map.current) {
       marker.current.setLngLat([initialLng, initialLat]);
       map.current.flyTo({ center: [initialLng, initialLat], zoom: 19 });
+      map.current.resize();
+      map.current.triggerRepaint();
       setPinPosition({ lat: initialLat, lng: initialLng });
       setDistanceMoved(0);
     }
@@ -266,7 +294,7 @@ export function StructureSelectionMap({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[90vh] sm:h-[80vh] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-4xl h-[90vh] sm:h-[80vh] max-h-[90vh] !flex flex-col p-0 gap-0 overflow-hidden data-[state=open]:animate-none data-[state=closed]:animate-none">
         <DialogHeader className="p-3 sm:p-4 pb-2 border-b shrink-0">
           <DialogTitle className="flex items-center gap-2 text-sm sm:text-base">
             <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
@@ -280,8 +308,7 @@ export function StructureSelectionMap({
               📍 {address}
             </p>
           )}
-          
-          {/* Pitch Selector */}
+
           <div className="flex items-center gap-2 mt-2 pt-2 border-t">
             <Label className="text-xs whitespace-nowrap">Roof Pitch:</Label>
             <Select value={selectedPitch} onValueChange={setSelectedPitch}>
@@ -298,15 +325,13 @@ export function StructureSelectionMap({
           </div>
         </DialogHeader>
 
-        {/* Map Container */}
-        <div className="flex-1 relative min-h-0">
+        <div className="flex-1 relative min-h-0 overflow-hidden bg-muted/20">
           {loading && !hasInvalidCoords && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
-          
-          {/* Error State */}
+
           {error && !loading && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <div className="bg-background p-6 rounded-lg shadow-lg max-w-md text-center">
@@ -326,8 +351,7 @@ export function StructureSelectionMap({
               </div>
             </div>
           )}
-          
-          {/* Invalid Coordinates Error */}
+
           {hasInvalidCoords && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <div className="bg-background p-6 rounded-lg shadow-lg max-w-md text-center">
@@ -336,7 +360,7 @@ export function StructureSelectionMap({
                 </div>
                 <h3 className="text-lg font-semibold mb-2">No Valid Coordinates</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  This property doesn't have valid GPS coordinates. Please verify the address in the contact details first, 
+                  This property doesn't have valid GPS coordinates. Please verify the address in the contact details first,
                   or manually enter the property address to generate coordinates.
                 </p>
                 <Button variant="outline" onClick={() => onOpenChange(false)}>
@@ -345,10 +369,9 @@ export function StructureSelectionMap({
               </div>
             </div>
           )}
-          
+
           <div ref={mapContainer} className="absolute inset-0" />
-          
-          {/* Instructions Overlay */}
+
           {!hasInvalidCoords && (
             <div className="absolute top-4 left-4 bg-background/95 backdrop-blur p-3 rounded-lg shadow-lg max-w-xs z-10">
               <div className="flex items-start gap-2">
@@ -363,11 +386,10 @@ export function StructureSelectionMap({
             </div>
           )}
 
-          {/* Distance Indicator */}
           {distanceMoved > 0 && !hasInvalidCoords && (
             <div className="absolute bottom-4 left-4 z-10">
-              <Badge 
-                variant={distanceMoved > 10 ? "default" : "secondary"} 
+              <Badge
+                variant={distanceMoved > 10 ? 'default' : 'secondary'}
                 className="text-sm px-3 py-1"
               >
                 Moved: {distanceMoved < 1 ? `${Math.round(distanceMoved * 100)}cm` : `${distanceMoved.toFixed(1)}m`}
