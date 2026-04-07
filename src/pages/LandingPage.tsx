@@ -449,7 +449,7 @@ const LandingPage = () => {
               size="lg" 
               variant="outline" 
               className="border-2 border-white text-white hover:bg-white/10 text-lg px-8 py-6"
-              onClick={() => trackCTAClick('cta_schedule_demo', 'Schedule Demo')}
+              onClick={() => { trackCTAClick('cta_schedule_demo', 'Schedule Demo'); navigate('/demo-request'); }}
             >
               Schedule Demo
             </Button>
