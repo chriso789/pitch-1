@@ -139,11 +139,13 @@ interface RenderBlock {
 }
 
 /**
- * Build render blocks from items: Trade Header → Materials sub-header → items → Labor sub-header → items
- * Then paginate blocks as units to preserve visual hierarchy across page breaks.
+ * Build render blocks from items: Trade Header → Tear Off → Materials → Installation
+ * Labor items are split by labor_phase: 'tear_off' comes before materials, 'install' (default) after.
  */
 function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
   if (items.length === 0) return [];
+
+  const TEAR_OFF_PATTERN = /tear|removal|strip|dispose|haul|demo/i;
 
   // Group by trade
   const tradeOrder: string[] = [];
@@ -164,26 +166,41 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
   tradeOrder.forEach(tradeType => {
     const group = tradeMap.get(tradeType)!;
     const materialItems = group.items.filter(i => (i as any).item_type === 'material').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
-    const laborItems = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
+    const allLabor = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
     const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
-    const hasBothTypes = materialItems.length > 0 && laborItems.length > 0;
+
+    // Split labor into tear-off vs install phases
+    const tearOffLabor = allLabor.filter(i => 
+      (i as any).labor_phase === 'tear_off' || 
+      (!(i as any).labor_phase && TEAR_OFF_PATTERN.test(i.item_name))
+    );
+    const installLabor = allLabor.filter(i => !tearOffLabor.includes(i));
+
+    const hasSections = tearOffLabor.length > 0 || materialItems.length > 0 || installLabor.length > 0;
 
     if (hasMultipleTrades) {
       blocks.push({ type: 'trade-header', label: group.label, tradeType });
     }
 
-    if (hasBothTypes) {
+    if (hasSections) {
+      // 1. Tear Off labor
+      if (tearOffLabor.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Tear Off' });
+        tearOffLabor.forEach(item => blocks.push({ type: 'item', item }));
+      }
+      // 2. Materials
       if (materialItems.length > 0) {
         blocks.push({ type: 'sub-header', label: 'Materials' });
         materialItems.forEach(item => blocks.push({ type: 'item', item }));
       }
-      if (laborItems.length > 0) {
-        blocks.push({ type: 'sub-header', label: 'Labor' });
-        laborItems.forEach(item => blocks.push({ type: 'item', item }));
+      // 3. Installation labor
+      if (installLabor.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Installation' });
+        installLabor.forEach(item => blocks.push({ type: 'item', item }));
       }
     } else {
       materialItems.forEach(item => blocks.push({ type: 'item', item }));
-      laborItems.forEach(item => blocks.push({ type: 'item', item }));
+      allLabor.forEach(item => blocks.push({ type: 'item', item }));
     }
     otherItems.forEach(item => blocks.push({ type: 'item', item }));
   });
