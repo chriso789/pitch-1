@@ -25,7 +25,8 @@ import {
   Receipt,
   Plus,
   StickyNote,
-  GripVertical
+  GripVertical,
+  Wrench
 } from 'lucide-react';
 import {
   DndContext,
