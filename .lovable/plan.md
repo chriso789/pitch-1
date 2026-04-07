@@ -1,91 +1,71 @@
 
 
-## Add Zelle Payment Support + Backend Readiness
+## Fix Landing Page Routes + Update Pricing to $50/user/month
 
-### Overview
+### Root Cause: All Public Routes Are Broken
 
-Add Zelle as a payment method alongside Stripe. Companies can configure their Zelle details (email/phone) in tenant settings, and the system generates "Zelle payment instruction links" (shareable pages with Zelle details + amount) that can be sent to clients. When clients pay via Zelle, staff manually confirms the payment (Zelle has no webhook API).
+Every public route (`/pricing`, `/features`, `/demo-request`, `/request-setup-link`) renders a **blank page**. Verified by navigating to each one in the browser.
 
-### What Zelle Actually Is
+**Why:** In `App.tsx`, routes like `<Route path="/pricing" element={<PublicRoutes />} />` mount PublicRoutes at an exact path. But inside `PublicRoutes`, there's a nested `<Routes>` component that also tries to match `path="/pricing"`. React Router v6 strips the matched prefix before passing to child Routes, so the inner route sees `""` but tries to match `/pricing` -- which fails silently, rendering nothing.
 
-Zelle is a bank-to-bank transfer system. There is **no Zelle API** for businesses to integrate programmatically. The workflow is:
-1. Company provides their Zelle-registered email or phone to the client
-2. Client opens their banking app, searches for that email/phone in Zelle, and sends money
-3. Company confirms receipt and records the payment
+### Audit Results -- All Landing Page Links
 
-So "Zelle payment links" = a branded instruction page showing the company's Zelle info + invoice amount.
+| Link | Target | Status | Issue |
+|------|--------|--------|-------|
+| Nav "Features" | `/features` | BROKEN | Blank page (routing bug) |
+| Nav "Pricing" | `/pricing` | BROKEN | Blank page (routing bug) |
+| Nav "Log In" | `/login` | Works | Direct route in App.tsx |
+| Nav "Start Free Trial" | `/signup` | Works | Direct route in App.tsx |
+| Hero "Start Free Trial" | `/signup` | Works | |
+| Hero "Watch Demo" | Modal | Works | |
+| Footer "Features" | `/features` | BROKEN | Same routing bug |
+| Footer "Pricing" | `/pricing` | BROKEN | Same routing bug |
+| Footer "Integration" | `/integration` | BROKEN | No route exists at all |
+| Footer "Request Demo" | `/demo-request` | BROKEN | Same routing bug |
+| Footer "Contact" | `/demo-request` | BROKEN | Same routing bug |
+| Footer "Support" | `/help` | Goes to protected route (requires auth) |
+| Footer "Privacy Policy" | `/legal/privacy` | Works | Has `/*` wildcard in App.tsx |
+| Footer "Terms of Service" | `/legal/terms` | Works | |
+| Footer "Security" | `/legal/security` | Works | |
+| CTA "Schedule Demo" | Nothing | BROKEN | onClick only tracks, no navigation |
 
-### Database Changes (1 migration)
+### Plan
 
-**Add Zelle columns to `tenant_settings`:**
-- `zelle_enabled` (boolean, default false)
-- `zelle_email` (text, nullable) — company's Zelle-registered email
-- `zelle_phone` (text, nullable) — company's Zelle-registered phone
-- `zelle_display_name` (text, nullable) — name shown to clients
-- `zelle_instructions` (text, nullable) — custom instructions
+**Step 1 -- Fix routing for all public pages**
 
-**Add columns to `payment_links`:**
-- `payment_type` (text, default 'stripe') — 'stripe' or 'zelle'
-- `zelle_confirmation_status` (text, default 'pending') — 'pending', 'confirmed', 'rejected'
-- `shareable_token` (text, unique) — short token for public Zelle payment page URL
+In `App.tsx`, the simplest fix: render `Pricing` and `Features` as **direct eager routes** (like `/login`), not through the `PublicRoutes` wrapper. Same for `/demo-request` and `/request-setup-link`. This avoids the nested Routes mismatch entirely.
 
-**Add `zelle` to payment method options in `project_payments`** (already text field, no schema change needed).
+```
+<Route path="/pricing" element={<Pricing />} />
+<Route path="/features" element={<Features />} />
+<Route path="/demo-request" element={<DemoRequest />} />
+<Route path="/request-setup-link" element={<RequestSetupLink />} />
+```
 
-### New Edge Function: `zelle-payment-page`
+**Step 2 -- Update pricing to $50/user/month**
 
-A public-facing edge function that serves/returns Zelle payment instructions:
-- Input: `token` (the shareable_token from payment_links)
-- Returns: JSON with company Zelle details, amount, invoice number, instructions
-- No auth required (public page for clients)
-- The frontend can render this as a nice branded page
+In `src/pages/Pricing.tsx`, change the plans array:
+- **Starter**: $50/month per user (was $199/month)
+- **Professional**: $99/month per user (scale proportionally, or keep as-is if you prefer -- will use $50 as base)
+- **Enterprise**: Custom (unchanged)
 
-### Frontend Changes
+Update copy to show "per user" pricing clearly.
 
-**1. Tenant Settings — Zelle Configuration (`src/components/settings/` or similar)**
-- New section in company settings: "Payment Methods"
-- Toggle to enable Zelle
-- Fields for Zelle email, phone, display name, custom instructions
-- Save to `tenant_settings` table
+**Step 3 -- Fix remaining broken links**
 
-**2. PaymentsTab.tsx — Add Zelle Payment Link Option**
-- When clicking the link icon on an invoice, show a choice: "Stripe" or "Zelle"
-- If Zelle selected: create a `payment_links` record with `payment_type='zelle'`, generate a shareable token, build a URL like `{app_url}/pay/{token}`
-- Copy the link to clipboard
-- Show Zelle link status badge (pending/confirmed)
+- Footer "Integration" link (`/integration`) -- no page exists. Change to link to `#features` section or remove it.
+- Footer "Support" (`/help`) -- goes to protected route. Either make it public or link to external support.
+- CTA "Schedule Demo" button -- add `navigate('/demo-request')` to its onClick.
 
-**3. New Route: `/pay/:token` — Public Zelle Payment Page**
-- Fetches payment details via the edge function
-- Shows: company name, Zelle email/phone, amount due, invoice number
-- Instructions: "Open your banking app → Send via Zelle to [email/phone] → Amount: $X,XXX"
-- Clean, branded, mobile-friendly page
-- "I've sent the payment" button that updates status to awaiting confirmation
+**Step 4 -- Fix footer links to use React Router navigation**
 
-**4. PaymentsTab.tsx — Confirm Zelle Payment**
-- For Zelle payment links with status 'pending', show "Confirm Payment" button
-- On confirm: record in `project_payments` (method: 'zelle'), update invoice balance, mark link as 'confirmed'
+Footer links use raw `<a href="...">` tags which cause full page reloads. Change to use `navigate()` or `<Link>` from react-router-dom for internal links.
 
-### Stripe Backend Readiness
+### Files to Edit
 
-The Stripe integration is already built and ready:
-- `stripe-create-payment-link` edge function exists
-- `stripe-webhook-handler` handles `checkout.session.completed` and updates invoices
-- `payment_links` table exists
-- PaymentsTab has the "Send Payment Link" button wired up
-
-**Only missing**: `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` secrets need to be added when you're ready to activate Stripe.
-
-### File Summary
-
-| File | Action |
+| File | Change |
 |------|--------|
-| Migration SQL | Add Zelle columns to `tenant_settings` + `payment_links` |
-| `supabase/functions/zelle-payment-page/index.ts` | New — public endpoint returning Zelle payment details |
-| `src/components/settings/ZelleSettings.tsx` | New — Zelle configuration UI for company settings |
-| `src/components/estimates/PaymentsTab.tsx` | Edit — add Zelle link generation + confirmation flow |
-| `src/pages/ZellePaymentPage.tsx` | New — public-facing payment instruction page |
-| Route config | Add `/pay/:token` route |
-
-### Mapbox Token
-
-The `get-mapbox-token` edge function requires auth headers. I'll test it via the browser once you're logged in, or I can update the function to not require auth. The token itself should be working if you updated it in Supabase Edge Function secrets.
+| `src/App.tsx` | Add direct routes for `/pricing`, `/features`, `/demo-request` |
+| `src/pages/Pricing.tsx` | Update pricing to $50/user/month base |
+| `src/pages/LandingPage.tsx` | Fix footer links (integration, support, Schedule Demo CTA) |
 
