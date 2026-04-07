@@ -215,7 +215,7 @@ export function StructureSelectionMap({
     
     setHasInvalidCoords(false);
     
-    // Small delay to ensure dialog content is rendered and mapContainer.current is available
+    // Longer delay to ensure dialog animation completes and container has dimensions
     const timer = setTimeout(() => {
       if (mapContainer.current) {
         console.log('📍 MapContainer ready, initializing map...');
@@ -225,7 +225,7 @@ export function StructureSelectionMap({
         setError('Map container not available. Please try again.');
         setLoading(false);
       }
-    }, 100);
+    }, 350);
 
     return () => {
       clearTimeout(timer);
