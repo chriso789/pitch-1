@@ -139,6 +139,9 @@ export function UnifiedMeasurementPanel({
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
 
+  // Track async measurement jobs
+  const { job: activeJob, isActive: jobIsActive } = useMeasurementJob(pipelineEntryId);
+
   // Build initialValues from saved_tags for edit mode
   const getInitialValuesFromTags = (tags: Record<string, any>): MeasurementFormData => {
     return {
