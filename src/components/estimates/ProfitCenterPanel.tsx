@@ -22,6 +22,7 @@ import { format } from 'date-fns';
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
   projectId?: string;
+  contactId?: string;
   className?: string;
 }
 
