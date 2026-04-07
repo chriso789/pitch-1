@@ -1178,7 +1178,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         });
       });
     } else {
-      const defaultPitch = '4/12';
+      const defaultPitch = '6/12'; // Statistical mode from 156 vendor reports (50% are 6/12)
       const pf = pitchFactor(defaultPitch);
       faces.push({
         id: 'A',
@@ -1329,7 +1329,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     });
   } else {
     // No segment data, use building footprint with assumed pitch
-    const defaultPitch = '4/12';
+    const defaultPitch = '6/12'; // Statistical mode from 156 vendor reports
     const pf = pitchFactor(defaultPitch);
     faces.push({
       id: 'A',
@@ -1583,7 +1583,7 @@ async function providerFreeFootprint(supabase: any, lat: number, lng: number, ad
   const topology = buildLinearFeaturesFromTopology(coords, midLat);
   
   // 4. Build face with assumed pitch
-  const defaultPitch = "4/12";
+  const defaultPitch = "6/12"; // Statistical mode from 156 vendor reports
   const wastePct = 12;
   const pf = pitchFactor(defaultPitch);
   const adjusted = footprint.plan_sqft * pf * (1 + wastePct / 100);
@@ -1655,7 +1655,7 @@ async function providerOSM(lat: number, lng: number) {
   }
 
   const plan_sqft = polygonAreaSqftFromLngLat(coords);
-  const defaultPitch = '4/12', wastePct = 12;
+  const defaultPitch = '6/12', wastePct = 12; // Statistical mode from 156 vendor reports
   const pf = pitchFactor(defaultPitch);
   const adjusted = plan_sqft * pf * (1 + wastePct/100);
 
@@ -2178,7 +2178,8 @@ Deno.serve(async (req) => {
                 const vPf = pitchFactor(vendorPitch);
                 
                 for (const face of meas.faces) {
-                  if (face.pitch === '4/12' || face.pitch === '5/12') {
+                  // Override ANY assumed pitch with vendor truth (not just 4/12 or 5/12)
+                  if (meas.summary.pitch_method === 'assumed') {
                     const oldArea = face.area_sqft;
                     face.pitch = vendorPitch;
                     face.area_sqft = face.plan_area_sqft * vPf;

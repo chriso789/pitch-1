@@ -87,7 +87,7 @@ function createFacetsFromGoogleSegments(
     const seg = sortedSegments[i];
     
     // Extract Solar API segment data with proper defaults
-    const pitchDeg = seg.pitchDegrees ?? seg.pitch ?? 20; // Default 4/12 (~18.5°)
+    const pitchDeg = seg.pitchDegrees ?? seg.pitch ?? 26.57; // Default 6/12 (26.57°) based on vendor data
     const azimuthDeg = seg.azimuthDegrees ?? seg.azimuth ?? 0;
     const areaSqM = seg.stats?.areaMeters2 || seg.area_m2 || 0;
     const areaSqFt = areaSqM * 10.7639;
