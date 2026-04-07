@@ -290,6 +290,8 @@ Deno.serve(async (req) => {
 
     return new Response(JSON.stringify({
       success: true,
+      stored: rejectionReasons.length === 0,
+      rejected: rejectionReasons.length > 0 ? rejectionReasons : undefined,
       trainingPairId,
       alignment: {
         quality: alignmentResult.quality,
