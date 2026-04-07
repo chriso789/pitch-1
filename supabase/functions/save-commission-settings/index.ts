@@ -21,7 +21,7 @@ interface SaveCommissionRequest {
   manager_override_location_id?: string | null;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

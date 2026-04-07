@@ -24,7 +24,7 @@ interface OptimizedStop extends RouteStop {
   travel_time_from_previous: number;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }

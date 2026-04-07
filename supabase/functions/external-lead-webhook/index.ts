@@ -83,7 +83,7 @@ function parseAppointmentDateTime(date?: string, time?: string): Date {
   return appointmentDate;
 }
 
-Deno.Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   console.log('[external-lead-webhook] Request received');
   
   // Handle CORS preflight

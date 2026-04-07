@@ -41,7 +41,7 @@ const ReqSchema = z.object({
   }).optional(),
 });
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   const corsResponse = handleCors(req);
   if (corsResponse) return corsResponse;

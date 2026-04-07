@@ -608,7 +608,7 @@ function generateReportHTML(report: ReportOutput['report']): string {
 // MAIN HANDLER
 // ============================================================================
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })

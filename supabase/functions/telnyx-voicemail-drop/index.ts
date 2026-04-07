@@ -15,7 +15,7 @@ interface VoicemailDropRequest {
   contact_id?: string;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

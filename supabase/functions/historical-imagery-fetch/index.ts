@@ -128,7 +128,7 @@ function generateMapboxSatelliteUrl(lat: number, lng: number, zoom: number, widt
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${zoom},0/${width}x${height}?access_token=${accessToken}`;
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

@@ -18,7 +18,7 @@ interface ImageQualityResult {
   recommendation: 'proceed' | 'flag_for_review' | 'request_new_imagery'
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }

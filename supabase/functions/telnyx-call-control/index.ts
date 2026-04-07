@@ -12,7 +12,7 @@ interface CallControlRequest {
   call_id: string; // Our internal call ID
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

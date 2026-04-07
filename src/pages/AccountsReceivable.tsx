@@ -8,10 +8,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, DollarSign, Clock, CheckCircle, Package, Hammer, Filter } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Loader2, DollarSign, Clock, CheckCircle, Package, Hammer, Filter, MoreVertical, FileText, CreditCard, Send, Eye, CheckSquare } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { format, differenceInDays, subDays, startOfMonth, startOfQuarter, startOfYear } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'sonner';
 
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
@@ -321,10 +323,9 @@ export default function AccountsReceivable() {
                 {arData.items.map(item => (
                   <div
                     key={item.id}
-                    className="flex items-center justify-between p-4 bg-muted/30 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors"
-                    onClick={() => navigate(`/lead/${item.id}?tab=total`)}
+                    className="flex items-center justify-between p-4 bg-muted/30 rounded-lg hover:bg-muted/50 transition-colors"
                   >
-                    <div>
+                    <div className="cursor-pointer flex-1" onClick={() => navigate(`/lead/${item.id}?tab=total`)}>
                       <p className="text-sm font-medium">{item.name || 'Unknown'}</p>
                       <p className="text-xs text-muted-foreground">
                         {item.address && `${item.address} · `}
@@ -341,6 +342,80 @@ export default function AccountsReceivable() {
                           No Invoice
                         </Badge>
                       )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => e.stopPropagation()}>
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => navigate(`/lead/${item.id}?tab=total`)}>
+                            <Eye className="h-4 w-4 mr-2" /> View Details
+                          </DropdownMenuItem>
+                          {!item.hasInvoice && (
+                            <DropdownMenuItem onClick={() => navigate(`/lead/${item.id}?tab=total&action=create-invoice`)}>
+                              <FileText className="h-4 w-4 mr-2" /> Create Invoice
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={async () => {
+                            try {
+                              const { data, error } = await supabase.functions.invoke('stripe-create-payment-link', {
+                                body: { pipeline_entry_id: item.id }
+                              });
+                              if (error) throw error;
+                              if (data?.url) {
+                                navigator.clipboard.writeText(data.url);
+                                toast.success('Payment link copied to clipboard');
+                              } else {
+                                toast.error(data?.error || 'Could not generate payment link');
+                              }
+                            } catch (e: any) {
+                              toast.error(e.message || 'Failed to create payment link');
+                            }
+                          }}>
+                            <CreditCard className="h-4 w-4 mr-2" /> Send Payment Link
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={async () => {
+                            try {
+                              const { data, error } = await supabase.functions.invoke('zelle-payment-page', {
+                                body: { pipeline_entry_id: item.id }
+                              });
+                              if (error) throw error;
+                              if (data?.url) {
+                                navigator.clipboard.writeText(data.url);
+                                toast.success('Zelle link copied to clipboard');
+                              } else {
+                                toast.error(data?.error || 'Could not generate Zelle link');
+                              }
+                            } catch (e: any) {
+                              toast.error(e.message || 'Failed to create Zelle link');
+                            }
+                          }}>
+                            <Send className="h-4 w-4 mr-2" /> Send Zelle Info
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={async () => {
+                            try {
+                              const amount = parseFloat(prompt(`Record payment for ${item.name}\nBalance: ${fmt(item.balance)}\n\nEnter amount:`) || '');
+                              if (!amount || isNaN(amount) || amount <= 0) return;
+                              const { error } = await supabase.from('project_payments').insert({
+                                tenant_id: activeTenantId!,
+                                pipeline_entry_id: item.id,
+                                amount,
+                                method: 'manual',
+                                notes: 'Manually recorded from AR dashboard',
+                              });
+                              if (error) throw error;
+                              toast.success(`Payment of ${fmt(amount)} recorded`);
+                            } catch (e: any) {
+                              toast.error(e.message || 'Failed to record payment');
+                            }
+                          }}>
+                            <CheckSquare className="h-4 w-4 mr-2" /> Mark Paid
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </div>
                 ))}

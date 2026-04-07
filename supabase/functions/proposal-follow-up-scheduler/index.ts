@@ -8,7 +8,7 @@ const corsHeaders = {
 // Follow-up schedule: Day 2, Day 5, Day 10
 const FOLLOW_UP_DAYS = [2, 5, 10];
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

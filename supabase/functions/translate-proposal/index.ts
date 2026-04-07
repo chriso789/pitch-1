@@ -11,7 +11,7 @@ const LANG_NAMES: Record<string, string> = {
   ht: 'Haitian Creole',
 };
 
-Deno.Deno.serve(async (req: Request) => {
+Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

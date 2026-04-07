@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS'
 };
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

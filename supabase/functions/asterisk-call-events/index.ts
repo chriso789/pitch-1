@@ -15,7 +15,7 @@ const DISPOSITION_TO_STATUS_MAP: Record<string, string> = {
   'appointment_set': 'inspection_scheduled',
 };
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }

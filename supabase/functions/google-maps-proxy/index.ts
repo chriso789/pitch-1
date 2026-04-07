@@ -117,7 +117,7 @@ async function cacheImage(cacheKey: string, imageBuffer: ArrayBuffer, params: UR
   }
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

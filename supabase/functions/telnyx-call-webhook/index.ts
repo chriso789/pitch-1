@@ -7,7 +7,7 @@ import { handleOptions, json, badRequest, serverError } from '../_shared/http.ts
 import { supabaseService } from '../_shared/supabase.ts';
 import { telnyxFetch } from '../_shared/telnyx.ts';
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   const opt = handleOptions(req);
   if (opt) return opt;
 

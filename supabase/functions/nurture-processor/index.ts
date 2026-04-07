@@ -7,7 +7,7 @@ interface NurturingRequest {
   action: 'enroll' | 'process_pending' | 'check_triggers';
 }
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

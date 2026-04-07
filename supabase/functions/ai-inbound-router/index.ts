@@ -41,7 +41,7 @@ const OPT_OUT_KEYWORDS = [
   "optout",
 ];
 
-Deno.Deno.serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
