@@ -131,7 +131,7 @@ Deno.serve(async (req: Request) => {
     });
 
     // Build share URL
-    const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://pitch-1.lovable.app';
+    const baseUrl = Deno.env.get('FRONTEND_URL') || 'https://pitchcrm.app';
     const shareUrl = body.permissions === 'sign'
       ? `${baseUrl}/sign/${plainToken}`
       : `${baseUrl}/view/${plainToken}`;

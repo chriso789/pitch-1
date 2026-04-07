@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
     }
 
     // Build signing URL
-    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitchcrm.app";
     const signingUrl = `${appUrl}/sign/${access_token}`;
 
     // Company logo HTML (if available)
