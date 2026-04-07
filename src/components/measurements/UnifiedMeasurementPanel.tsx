@@ -747,6 +747,9 @@ export function UnifiedMeasurementPanel({
                     faces: ai.faces_wkt || [],
                     center_lat: ai.target_lat,
                     center_lng: ai.target_lng,
+                    google_maps_image_url: ai.google_maps_image_url,
+                    satellite_overlay_url: ai.satellite_overlay_url,
+                    perimeter_wkt: ai.perimeter_wkt,
                   }}
                   tags={diagramTags}
                   address={address}

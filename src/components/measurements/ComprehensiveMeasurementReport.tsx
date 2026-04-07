@@ -261,39 +261,61 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
         customerPhone={customerPhone}
       />
 
-      {/* Visualization */}
+      {/* Roof Diagram */}
       <Card>
         <CardHeader>
-          <CardTitle>Satellite Visualization</CardTitle>
+          <CardTitle>Roof Diagram</CardTitle>
         </CardHeader>
         <CardContent>
-          {mode === 'view' && measurement.mapbox_visualization_url ? (
-            <div className="relative">
-              <img
-                src={measurement.mapbox_visualization_url}
-                alt="Roof measurement visualization"
-                className="w-full h-auto rounded-lg border"
+          {mode === 'view' ? (
+            <SegmentHoverProvider>
+              <SchematicRoofDiagram
+                measurement={{
+                  ...measurement,
+                  linear_features_wkt: measurement.linear_features?.map(lf => ({
+                    type: lf.type,
+                    wkt: lf.wkt,
+                    length_ft: lf.length_ft,
+                  })) || [],
+                  faces_wkt: measurement.faces?.map(f => ({
+                    id: f.id,
+                    polygon_wkt: f.wkt,
+                    area_sqft: f.area_sqft,
+                    plan_area_sqft: f.plan_area_sqft,
+                    pitch: f.pitch,
+                  })) || [],
+                  perimeter_wkt: measurement.perimeter_wkt,
+                  target_lat: measurement.center_lat,
+                  target_lng: measurement.center_lng,
+                }}
+                tags={tags || {}}
+                width={800}
+                height={600}
+                showLengthLabels={true}
+                showLegend={true}
+                showCompass={true}
+                showTotals={true}
+                showFacets={true}
+                satelliteImageUrl={measurement.google_maps_image_url || measurement.satellite_overlay_url}
+                showSatelliteOverlay={!!(measurement.google_maps_image_url || measurement.satellite_overlay_url)}
               />
-              <div className="absolute bottom-4 right-4 bg-background/90 backdrop-blur-sm px-3 py-1.5 rounded-md text-xs text-muted-foreground">
-                Generated: {measurement.visualization_metadata?.generated_at 
-                  ? new Date(measurement.visualization_metadata.generated_at).toLocaleDateString()
-                  : 'N/A'}
-              </div>
-            </div>
-          ) : mode === 'edit' ? (
-            <ComprehensiveMeasurementOverlay
-              satelliteImageUrl={measurement.mapbox_visualization_url || ''}
-              measurement={measurement}
-              tags={tags || {}}
+            </SegmentHoverProvider>
+          ) : (
+            <ManualPinDropEditor
+              satelliteImageUrl={measurement.google_maps_image_url || measurement.satellite_overlay_url || ''}
               centerLat={measurement.center_lat || 0}
               centerLng={measurement.center_lng || 0}
-              zoom={measurement.visualization_metadata?.zoom || 18}
-              onMeasurementUpdate={handleMeasurementChange}
+              zoom={measurement.visualization_metadata?.zoom || 20}
+              existingFeatures={measurement.linear_features}
+              onFeaturesChange={(features) => {
+                if (onMeasurementUpdate) {
+                  onMeasurementUpdate(
+                    { ...measurement, linear_features: features },
+                    tags
+                  );
+                }
+              }}
             />
-          ) : (
-            <div className="flex items-center justify-center h-64 bg-muted rounded-lg">
-              <p className="text-muted-foreground">No visualization available</p>
-            </div>
           )}
         </CardContent>
       </Card>
