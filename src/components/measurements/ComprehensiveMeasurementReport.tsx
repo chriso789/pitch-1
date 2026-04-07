@@ -48,10 +48,13 @@ interface MeasurementData {
   linear_features?: LinearFeature[];
   summary: MeasurementSummary;
   mapbox_visualization_url?: string;
+  google_maps_image_url?: string;
+  satellite_overlay_url?: string;
   center_lat?: number;
   center_lng?: number;
   visualization_metadata?: any;
   confidence?: number;
+  perimeter_wkt?: string;
 }
 
 interface ComprehensiveMeasurementReportProps {
