@@ -640,7 +640,7 @@ export function UnifiedMeasurementPanel({
                         tags={diagramTags}
                         measurementId={ai.id}
                         width={400}
-                        height={280}
+                        height={350}
                         showLengthLabels={true}
                         showLegend={true}
                         showCompass={false}
