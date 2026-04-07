@@ -493,8 +493,6 @@ export function SectionedLineItemsTable({
     return { tearOffItems: tearOff, installItems: install };
   }, [laborItems]);
 
-  const tearOffTotal = useMemo(() => tearOffItems.reduce((sum, i) => sum + i.line_total, 0), [tearOffItems]);
-  const installTotal = useMemo(() => installItems.reduce((sum, i) => sum + i.line_total, 0), [installItems]);
 
   // Group items by trade_type if multi-trade items are present
   const hasMultipleTrades = useMemo(() => {
