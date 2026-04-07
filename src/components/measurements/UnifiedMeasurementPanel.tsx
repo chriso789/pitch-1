@@ -450,6 +450,7 @@ export function UnifiedMeasurementPanel({
 
   // Quick save an AI measurement directly from the banner
   const [isSavingDirect, setIsSavingDirect] = useState(false);
+  const [showAiReport, setShowAiReport] = useState(false);
   const handleSaveAiMeasurementDirect = async (measurement: any) => {
     setIsSavingDirect(true);
     try {
