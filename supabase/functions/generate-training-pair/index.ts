@@ -239,40 +239,61 @@ Deno.serve(async (req) => {
       imageDims,
     );
 
-    // ----- Step 6: Store in database -----
+    // ----- Step 6: Quality gates — reject bad pairs before storage -----
+    // normalizedError = meanPointError / perimeterLength → LOWER is BETTER
+    // good < 0.03, acceptable < 0.08, poor >= 0.08
+    const qualityScore = alignmentResult.quality.normalizedError;
+    const totalSegments = trainingPair.lineMasks?.totalSegments ?? 0;
+    const hasLabels = labels.totalAreaSqft && labels.totalAreaSqft > 0;
+    const alignmentGrade = alignmentResult.quality.grade;
+
+    const rejectionReasons: string[] = [];
+    if (qualityScore > 0.12) rejectionReasons.push(`normalizedError too high: ${qualityScore.toFixed(3)} (lower=better, threshold 0.12)`);
+    if (totalSegments < 3) rejectionReasons.push(`too few segments: ${totalSegments}`);
+    if (!hasLabels) rejectionReasons.push('missing or zero area labels');
+    if (alignmentGrade === 'poor' && qualityScore > 0.10) rejectionReasons.push(`grade: ${alignmentGrade}`);
+
     let trainingPairId: string | null = null;
-    try {
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-      const sb = createClient(supabaseUrl, supabaseKey);
 
-      const { data, error } = await sb.from('training_pairs').insert({
-        address: body.address,
-        lat: body.lat,
-        lng: body.lng,
-        aerial_image_url: aerialImage.url,
-        vendor_source: body.vendorTruth?.source ?? null,
-        alignment_quality: alignmentResult.quality.normalizedError,
-        alignment_matrix: alignmentResult.affineMatrix,
-        labels,
-        confidence_score: trainingPair.metadata.confidenceScore,
-        tenant_id: body.tenantId ?? null,
-        footprint_mask: trainingPair.footprintMask,
-        line_masks: trainingPair.lineMasks,
-      }).select('id').single();
+    if (rejectionReasons.length > 0) {
+      console.warn(`🚫 REJECTED training pair for ${body.address}: ${rejectionReasons.join('; ')}`);
+    } else {
+      // ----- Store in database (quality passed) -----
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const sb = createClient(supabaseUrl, supabaseKey);
 
-      if (error) {
-        console.error('DB insert error:', error.message);
-      } else {
-        trainingPairId = data.id;
-        console.log(`✅ Stored training pair: ${trainingPairId}`);
+        const { data, error } = await sb.from('training_pairs').insert({
+          address: body.address,
+          lat: body.lat,
+          lng: body.lng,
+          aerial_image_url: aerialImage.url,
+          vendor_source: body.vendorTruth?.source ?? null,
+          alignment_quality: qualityScore,
+          alignment_matrix: alignmentResult.affineMatrix,
+          labels,
+          confidence_score: trainingPair.metadata.confidenceScore,
+          tenant_id: body.tenantId ?? null,
+          footprint_mask: trainingPair.footprintMask,
+          line_masks: trainingPair.lineMasks,
+        }).select('id').single();
+
+        if (error) {
+          console.error('DB insert error:', error.message);
+        } else {
+          trainingPairId = data.id;
+          console.log(`✅ Stored training pair: ${trainingPairId} (quality: ${qualityScore.toFixed(3)}, segments: ${totalSegments})`);
+        }
+      } catch (dbErr) {
+        console.warn('⚠️ Could not store training pair in DB:', dbErr);
       }
-    } catch (dbErr) {
-      console.warn('⚠️ Could not store training pair in DB:', dbErr);
     }
 
     return new Response(JSON.stringify({
       success: true,
+      stored: rejectionReasons.length === 0,
+      rejected: rejectionReasons.length > 0 ? rejectionReasons : undefined,
       trainingPairId,
       alignment: {
         quality: alignmentResult.quality,

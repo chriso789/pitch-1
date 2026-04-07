@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
     if (action === 'generate-batch') {
       const batchSize = body.batchSize || 10;
       const EDGE_URL = Deno.env.get('SUPABASE_URL')! + '/functions/v1/generate-training-pair';
-      const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
+      const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
       // Get geocoded reports
       const { data: reports, error } = await supabase
@@ -108,6 +108,7 @@ Deno.serve(async (req) => {
         .select('id, address, parsed, diagram_geometry, geocoded_lat, geocoded_lng')
         .not('geocoded_lat', 'is', null)
         .not('geocoded_lng', 'is', null)
+        .not('diagram_geometry', 'is', null)
         .limit(300);
       if (error) throw error;
 
@@ -182,7 +183,7 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${ANON_KEY}`,
+              'Authorization': `Bearer ${SERVICE_KEY}`,
             },
             body: JSON.stringify({
               lat,
@@ -196,9 +197,12 @@ Deno.serve(async (req) => {
           });
 
           const data = await resp.json();
-          if (data.success || data.trainingPairId) {
+          if (data.stored) {
             success++;
-            results.push({ id: r.id, status: 'ok', pairId: data.trainingPairId, source: geoSource });
+            results.push({ id: r.id, status: 'stored', pairId: data.trainingPairId, source: geoSource });
+          } else if (data.success && !data.stored) {
+            failed++;
+            results.push({ id: r.id, status: 'rejected', reasons: data.rejected, source: geoSource });
           } else {
             failed++;
             results.push({ id: r.id, status: 'fail', error: (data.error || '').substring(0, 100) });
