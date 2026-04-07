@@ -816,6 +816,39 @@ export function SchematicRoofDiagram({
     return (result as any).qaData as GeometryQA | undefined;
   }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
 
+  const overlayImageStyle = useMemo(() => {
+    const overlayViewport = debugInfo?.overlayViewport;
+
+    if (!localShowOverlay || !satelliteImageUrl || !imageBounds || !overlayViewport) {
+      return undefined;
+    }
+
+    const imageSize = measurement?.analysis_image_size || { width: 640, height: 640 };
+    const sourceWidth = typeof imageSize === 'object' ? imageSize.width || 640 : 640;
+    const sourceHeight = typeof imageSize === 'object' ? imageSize.height || 640 : 640;
+    const fullLatRange = Math.max(imageBounds.topLeft.lat - imageBounds.bottomLeft.lat, 0.0000001);
+    const fullLngRange = Math.max(imageBounds.topRight.lng - imageBounds.topLeft.lng, 0.0000001);
+
+    const rawCropX = ((overlayViewport.minLng - imageBounds.topLeft.lng) / fullLngRange) * sourceWidth;
+    const rawCropY = ((imageBounds.topLeft.lat - overlayViewport.maxLat) / fullLatRange) * sourceHeight;
+    const rawCropWidth = ((overlayViewport.maxLng - overlayViewport.minLng) / fullLngRange) * sourceWidth;
+    const rawCropHeight = ((overlayViewport.maxLat - overlayViewport.minLat) / fullLatRange) * sourceHeight;
+
+    const cropX = Math.min(Math.max(rawCropX, 0), sourceWidth - 1);
+    const cropY = Math.min(Math.max(rawCropY, 0), sourceHeight - 1);
+    const cropWidth = Math.min(Math.max(rawCropWidth, 1), sourceWidth - cropX);
+    const cropHeight = Math.min(Math.max(rawCropHeight, 1), sourceHeight - cropY);
+    const scaleX = width / cropWidth;
+    const scaleY = height / cropHeight;
+
+    return {
+      left: -cropX * scaleX,
+      top: -cropY * scaleY,
+      width: sourceWidth * scaleX,
+      height: sourceHeight * scaleY,
+    };
+  }, [debugInfo, height, imageBounds, localShowOverlay, measurement, satelliteImageUrl, width]);
+
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
     // Sum linear feature lengths from the ACTUAL rendered geometry (linearFeatures array)
