@@ -600,6 +600,16 @@ export function UnifiedMeasurementPanel({
                   {format(new Date(latestUnapprovedAI.created_at), 'MMM d, yyyy')}
                 </span>
               </div>
+              {/* Satellite Property Overview */}
+              {(latestUnapprovedAI as any).google_maps_image_url && (
+                <div className="rounded-lg overflow-hidden border border-border">
+                  <img 
+                    src={(latestUnapprovedAI as any).google_maps_image_url} 
+                    alt="Satellite view of property"
+                    className="w-full h-40 object-cover"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
                   <span className="text-muted-foreground text-xs">Squares</span>
