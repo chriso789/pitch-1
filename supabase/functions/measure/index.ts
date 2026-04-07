@@ -111,6 +111,13 @@ function pitchFactor(pitch?: string) {
   return isFinite(factor) && factor > 0 ? factor : 1;
 }
 
+// Helper for vendor cross-validation percentage error
+function pctErrorHelper(vendor: number, ai: number): number {
+  if (vendor === 0 && ai === 0) return 0;
+  if (vendor === 0) return 100;
+  return Math.abs((ai - vendor) / vendor) * 100;
+}
+
 function toPolygonWKT(coords: [number, number][]) {
   const inner = coords.map(c => `${c[0]} ${c[1]}`).join(', ');
   return `POLYGON((${inner}))`;
