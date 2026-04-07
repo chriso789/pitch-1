@@ -91,11 +91,16 @@ export function StructureSelectionMap({
   const initMap = useCallback(async () => {
     if (!mapContainer.current) return;
     
+    // If map already exists and is valid, just resize
+    if (map.current) {
+      map.current.resize();
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
     try {
-      // Fetch Mapbox token with detailed logging
       console.log('📍 Fetching Mapbox token...');
       const { data, error: fnError } = await supabase.functions.invoke('get-mapbox-token');
       
@@ -112,22 +117,24 @@ export function StructureSelectionMap({
       console.log('✅ Mapbox token received');
       mapboxgl.accessToken = data.token;
 
-      // Create map with error handling
-      console.log('📍 Initializing Mapbox map at:', { initialLat, initialLng });
+      const lat = initialLat;
+      const lng = initialLng;
+
+      console.log('📍 Initializing Mapbox map at:', { lat, lng });
       
-      map.current = new mapboxgl.Map({
+      const newMap = new mapboxgl.Map({
         container: mapContainer.current,
         style: 'mapbox://styles/mapbox/satellite-v9',
-        center: [initialLng, initialLat],
+        center: [lng, lat],
         zoom: 19,
         pitch: 0,
       });
 
-      // Add navigation controls
-      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+      map.current = newMap;
 
-      // Add error handler for map
-      map.current.on('error', (e) => {
+      newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+      newMap.on('error', (e) => {
         console.error('❌ Mapbox error:', e);
         setError('Map failed to load. Please check your internet connection and try again.');
         setLoading(false);
@@ -149,63 +156,55 @@ export function StructureSelectionMap({
         </div>
       `;
 
-      // Create draggable marker
       marker.current = new mapboxgl.Marker({
         element: pinElement,
         draggable: true,
         anchor: 'bottom'
       })
-        .setLngLat([initialLng, initialLat])
-        .addTo(map.current);
+        .setLngLat([lng, lat])
+        .addTo(newMap);
 
-      // Handle marker drag
       marker.current.on('dragend', () => {
         const lngLat = marker.current?.getLngLat();
         if (lngLat) {
           setPinPosition({ lat: lngLat.lat, lng: lngLat.lng });
-          const distance = calculateDistance(initialLat, initialLng, lngLat.lat, lngLat.lng);
+          const distance = calculateDistance(lat, lng, lngLat.lat, lngLat.lng);
           setDistanceMoved(distance);
         }
       });
 
-      map.current.on('load', () => {
+      newMap.on('load', () => {
         console.log('✅ Mapbox map loaded successfully');
         setLoading(false);
-        // Force resize after dialog animation settles to ensure tiles render
-        setTimeout(() => {
-          map.current?.resize();
-        }, 300);
+        // Multiple resize calls to handle dialog animation
+        setTimeout(() => newMap.resize(), 100);
+        setTimeout(() => newMap.resize(), 500);
+        setTimeout(() => newMap.resize(), 1000);
       });
 
-      // Also resize on idle to catch late rendering
-      map.current.on('idle', () => {
-        map.current?.resize();
-      });
-
-      // Timeout fallback in case load event never fires
+      // Timeout fallback
       setTimeout(() => {
         setLoading(prev => {
           if (prev) {
             console.warn('⚠️ Map load timeout - forcing completion');
-            // Force resize even on timeout
-            map.current?.resize();
+            newMap.resize();
           }
           return false;
         });
-      }, 10000); // 10 second timeout
+      }, 10000);
 
     } catch (err) {
       console.error('❌ Map initialization error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load map');
       setLoading(false);
     }
-  }, [initialLat, initialLng, calculateDistance]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  // Initialize map - wait for container to be available
+  // Initialize map using ResizeObserver to detect when container has real dimensions
   useEffect(() => {
     if (!open) return;
 
-    // Check for invalid coordinates before initializing map
     if (!isValidCoordinate(initialLat, initialLng)) {
       console.error('❌ Invalid coordinates received:', { initialLat, initialLng });
       setHasInvalidCoords(true);
@@ -215,26 +214,40 @@ export function StructureSelectionMap({
     
     setHasInvalidCoords(false);
     
-    // Longer delay to ensure dialog animation completes and container has dimensions
-    const timer = setTimeout(() => {
-      if (mapContainer.current) {
-        console.log('📍 MapContainer ready, initializing map...');
+    // Use ResizeObserver to wait until the container actually has dimensions
+    let observer: ResizeObserver | null = null;
+    let initialized = false;
+    
+    const tryInit = () => {
+      if (initialized) return;
+      const el = mapContainer.current;
+      if (el && el.offsetWidth > 0 && el.offsetHeight > 0) {
+        initialized = true;
+        console.log('📍 MapContainer has dimensions:', el.offsetWidth, 'x', el.offsetHeight);
         initMap();
-      } else {
-        console.error('❌ MapContainer still not available after delay');
-        setError('Map container not available. Please try again.');
-        setLoading(false);
+        observer?.disconnect();
       }
-    }, 350);
+    };
+
+    // Try immediately
+    const timer = setTimeout(tryInit, 50);
+    
+    // Also observe for resize (dialog animation)
+    if (mapContainer.current) {
+      observer = new ResizeObserver(tryInit);
+      observer.observe(mapContainer.current);
+    }
 
     return () => {
       clearTimeout(timer);
+      observer?.disconnect();
       marker.current?.remove();
       map.current?.remove();
       map.current = null;
       marker.current = null;
     };
-  }, [open, initialLat, initialLng, initMap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const handleConfirm = () => {
     onLocationConfirmed(pinPosition.lat, pinPosition.lng, selectedPitch);
