@@ -1017,8 +1017,18 @@ export function SchematicRoofDiagram({
         <img 
           src={satelliteImageUrl}
           alt="Satellite view"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ opacity: satelliteOpacity }}
+          loading="lazy"
+          className="absolute max-w-none select-none"
+          draggable={false}
+          style={{
+            opacity: satelliteOpacity,
+            left: 0,
+            top: 0,
+            width,
+            height,
+            objectFit: 'cover',
+            ...(overlayImageStyle || {}),
+          }}
         />
       )}
       
