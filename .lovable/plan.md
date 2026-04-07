@@ -1,71 +1,77 @@
 
 
-## Fix Landing Page Routes + Update Pricing to $50/user/month
+## Batch: Customer Portal + Payments + ML Training
 
-### Root Cause: All Public Routes Are Broken
+### Current State Assessment
 
-Every public route (`/pricing`, `/features`, `/demo-request`, `/request-setup-link`) renders a **blank page**. Verified by navigating to each one in the browser.
+**Already built and working:**
+- `PaymentsTab` with invoice creation, manual payment recording, Stripe/Zelle link generation
+- `customer-portal-access` edge function (token generation, validation, messaging, payment links)
+- `CustomerPortalPublic.tsx` (506-line public portal page with status, messages, documents, payments)
+- `ZellePaymentPage.tsx` and `zelle-payment-page` edge function
+- `stripe-create-payment-link` and `stripe-webhook-handler` edge functions
+- `payment_links` table with Stripe + Zelle support
+- Public routes at `/customer/:token` and `/pay/:token`
 
-**Why:** In `App.tsx`, routes like `<Route path="/pricing" element={<PublicRoutes />} />` mount PublicRoutes at an exact path. But inside `PublicRoutes`, there's a nested `<Routes>` component that also tries to match `path="/pricing"`. React Router v6 strips the matched prefix before passing to child Routes, so the inner route sees `""` but tries to match `/pricing` -- which fails silently, rendering nothing.
+**Missing / broken:**
+1. No "Send Customer Portal Link" button anywhere in the UI (the edge function supports `generate` action, but no frontend calls it)
+2. Customer portal payment section doesn't integrate with the new `project_invoices`/`project_payments` tables (uses old `payments` table)
+3. No way to view/pay specific invoices in the customer portal
+4. No portal link generation from Project/Lead details pages
+5. ML training pipeline needs complete rebuild (data wiped from `/tmp`)
 
-### Audit Results -- All Landing Page Links
+### Plan (5 Steps)
 
-| Link | Target | Status | Issue |
-|------|--------|--------|-------|
-| Nav "Features" | `/features` | BROKEN | Blank page (routing bug) |
-| Nav "Pricing" | `/pricing` | BROKEN | Blank page (routing bug) |
-| Nav "Log In" | `/login` | Works | Direct route in App.tsx |
-| Nav "Start Free Trial" | `/signup` | Works | Direct route in App.tsx |
-| Hero "Start Free Trial" | `/signup` | Works | |
-| Hero "Watch Demo" | Modal | Works | |
-| Footer "Features" | `/features` | BROKEN | Same routing bug |
-| Footer "Pricing" | `/pricing` | BROKEN | Same routing bug |
-| Footer "Integration" | `/integration` | BROKEN | No route exists at all |
-| Footer "Request Demo" | `/demo-request` | BROKEN | Same routing bug |
-| Footer "Contact" | `/demo-request` | BROKEN | Same routing bug |
-| Footer "Support" | `/help` | Goes to protected route (requires auth) |
-| Footer "Privacy Policy" | `/legal/privacy` | Works | Has `/*` wildcard in App.tsx |
-| Footer "Terms of Service" | `/legal/terms` | Works | |
-| Footer "Security" | `/legal/security` | Works | |
-| CTA "Schedule Demo" | Nothing | BROKEN | onClick only tracks, no navigation |
+**Step 1 -- Add "Send Customer Portal Link" button to Lead/Project details**
 
-### Plan
+In `src/components/lead-details/` or `ProfitCenterPanel.tsx`, add a button that:
+- Calls `customer-portal-access` with `action: 'generate'`
+- Shows the generated link with copy-to-clipboard
+- Requires a `project_id` and `contact_id` (from the pipeline entry)
 
-**Step 1 -- Fix routing for all public pages**
+This is the critical missing piece -- users can create invoices but can't share a portal link with clients.
 
-In `App.tsx`, the simplest fix: render `Pricing` and `Features` as **direct eager routes** (like `/login`), not through the `PublicRoutes` wrapper. Same for `/demo-request` and `/request-setup-link`. This avoids the nested Routes mismatch entirely.
+**Step 2 -- Update Customer Portal to show invoices + payment links**
 
-```
-<Route path="/pricing" element={<Pricing />} />
-<Route path="/features" element={<Features />} />
-<Route path="/demo-request" element={<DemoRequest />} />
-<Route path="/request-setup-link" element={<RequestSetupLink />} />
-```
+Update `CustomerPortalPublic.tsx` and `customer-portal-access` edge function:
+- Fetch `project_invoices` (not just `payments`) by `pipeline_entry_id`
+- Show each invoice with amount, balance, status, and due date
+- For unpaid invoices, show "Pay Now" buttons that link to existing Stripe/Zelle payment flows
+- Show payment history from `project_payments`
 
-**Step 2 -- Update pricing to $50/user/month**
+**Step 3 -- Wire Stripe payment flow in customer portal**
 
-In `src/pages/Pricing.tsx`, change the plans array:
-- **Starter**: $50/month per user (was $199/month)
-- **Professional**: $99/month per user (scale proportionally, or keep as-is if you prefer -- will use $50 as base)
-- **Enterprise**: Custom (unchanged)
+Update the `customer-portal-access` edge function's `request_payment_link` action:
+- Create Stripe checkout session for a specific invoice (using `project_invoices` amount)
+- Store link in `payment_links` table with `invoice_id`
+- Return URL to client portal so the "Pay Now" button works
 
-Update copy to show "per user" pricing clearly.
+**Step 4 -- ML Training Pipeline Rebuild**
 
-**Step 3 -- Fix remaining broken links**
+- Re-export training dataset from Supabase `training_pairs` to persistent storage (`/mnt/documents/roof-training/`)
+- Apply correct label scaling (area/10000, lengths/500, pitch/12)
+- Apply correct loss weighting (seg=2.0, reg=0.5)
+- Train RoofNetV3 for 5 epochs (CPU, within sandbox limits)
+- Generate sample prediction visualization
+- Split checkpoint for download
 
-- Footer "Integration" link (`/integration`) -- no page exists. Change to link to `#features` section or remove it.
-- Footer "Support" (`/help`) -- goes to protected route. Either make it public or link to external support.
-- CTA "Schedule Demo" button -- add `navigate('/demo-request')` to its onClick.
+**Step 5 -- Verification**
 
-**Step 4 -- Fix footer links to use React Router navigation**
+- Test portal link generation from a lead/project page
+- Test customer portal loads with invoices visible
+- Verify Zelle/Stripe payment link buttons appear for unpaid invoices
+- Verify ML checkpoint is saved and prediction image generated
 
-Footer links use raw `<a href="...">` tags which cause full page reloads. Change to use `navigate()` or `<Link>` from react-router-dom for internal links.
+### Files to Create/Edit
 
-### Files to Edit
-
-| File | Change |
+| File | Action |
 |------|--------|
-| `src/App.tsx` | Add direct routes for `/pricing`, `/features`, `/demo-request` |
-| `src/pages/Pricing.tsx` | Update pricing to $50/user/month base |
-| `src/pages/LandingPage.tsx` | Fix footer links (integration, support, Schedule Demo CTA) |
+| `src/components/lead-details/CustomerPortalButton.tsx` | New -- button + dialog for generating/copying portal links |
+| `src/components/estimates/ProfitCenterPanel.tsx` | Edit -- add CustomerPortalButton |
+| `supabase/functions/customer-portal-access/index.ts` | Edit -- fetch `project_invoices` + `project_payments` in validate action |
+| `src/pages/CustomerPortalPublic.tsx` | Edit -- render invoices, pay buttons, payment history from new tables |
+| `ml/dataset_v2.py` | Edit -- fix scaling constants |
+| `ml/loss_v2.py` | Edit -- fix loss weights |
+| `/tmp/export_training_data.py` | New -- export script to persistent storage |
+| `/tmp/train_and_predict.py` | New -- training + visualization script |
 
