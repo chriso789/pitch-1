@@ -25,6 +25,7 @@ import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
 import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
+import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
