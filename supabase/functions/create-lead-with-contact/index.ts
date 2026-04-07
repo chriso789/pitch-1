@@ -215,16 +215,31 @@ Deno.serve(async (req: Request) => {
     let latitude: number | null = null;
     let longitude: number | null = null;
 
-    // If using an existing contact, update its assigned_to if a rep is selected
-    if (contactId && body.salesReps?.[0]) {
-      console.log("[create-lead-with-contact] Updating existing contact's assigned_to...");
-      const { error: updateError } = await supabase
-        .from("contacts")
-        .update({ assigned_to: body.salesReps[0] })
-        .eq("id", contactId);
-      
-      if (updateError) {
-        console.error("[create-lead-with-contact] Failed to update contact assigned_to:", updateError);
+    // If using an existing contact, update its assigned_to and verified_address if available
+    if (contactId) {
+      const contactUpdate: any = {};
+      if (body.salesReps?.[0]) {
+        contactUpdate.assigned_to = body.salesReps[0];
+      }
+      if (body.selectedAddress) {
+        contactUpdate.verified_address = {
+          formatted_address: body.selectedAddress.formatted_address,
+          place_id: body.selectedAddress.place_id,
+          lat: body.selectedAddress.geometry?.location?.lat || null,
+          lng: body.selectedAddress.geometry?.location?.lng || null,
+          geometry: body.selectedAddress.geometry,
+          address_components: body.selectedAddress.address_components
+        };
+      }
+      if (Object.keys(contactUpdate).length > 0) {
+        console.log("[create-lead-with-contact] Updating existing contact:", Object.keys(contactUpdate));
+        const { error: updateError } = await supabase
+          .from("contacts")
+          .update(contactUpdate)
+          .eq("id", contactId);
+        if (updateError) {
+          console.error("[create-lead-with-contact] Failed to update contact:", updateError);
+        }
       }
     }
 
