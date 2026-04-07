@@ -16,10 +16,10 @@ const EMAIL_CONFIG = {
     secondaryColor: '#3b82f6',
   },
   urls: {
-    app: 'https://pitch-1.lovable.app',
-    login: 'https://pitch-1.lovable.app/login',
-    resetPassword: 'https://pitch-1.lovable.app/reset-password',
-    settings: 'https://pitch-1.lovable.app/settings',
+    app: 'https://pitch-crm.ai',
+    login: 'https://pitch-crm.ai/login',
+    resetPassword: 'https://pitch-crm.ai/reset-password',
+    settings: 'https://pitch-crm.ai/settings',
   },
   linkExpirationHours: 24,
 };

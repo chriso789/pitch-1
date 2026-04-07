@@ -6,7 +6,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const APP_URL = "https://pitch-1.lovable.app";
+const APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
 
 /**
  * Convert Supabase action_link to direct app setup link
@@ -117,7 +117,7 @@ Deno.serve(async (req: Request) => {
 
     const results: { email: string; status: string; error?: string }[] = [];
     // Always use APP_URL with reliable production fallback - never rely on origin header
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
     const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
 
     for (const owner of OWNERS_TO_CREATE) {

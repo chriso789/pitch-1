@@ -83,7 +83,7 @@ export function SignatureStatusDashboard() {
         .from('signature_envelopes')
         .select(`
           *,
-          signature_recipients(id, recipient_name, recipient_email, status, signed_at)
+          signature_recipients(id, recipient_name, recipient_email, status, signed_at, access_token)
         `)
         .eq('tenant_id', currentTenantId)
         .order('created_at', { ascending: false });
@@ -124,13 +124,18 @@ export function SignatureStatusDashboard() {
       );
 
       for (const recipient of pendingRecipients) {
+        const recipientToken = (recipient as any).access_token;
+        if (!recipientToken) {
+          console.warn(`No access_token for recipient ${recipient.id}, skipping reminder`);
+          continue;
+        }
         await supabase.functions.invoke('email-signature-request', {
           body: {
             envelope_id: envelopeId,
             recipient_id: recipient.id,
             recipient_name: recipient.recipient_name,
             recipient_email: recipient.recipient_email,
-            access_token: 'reminder',
+            access_token: recipientToken,
             sender_name: 'Your Company',
             subject: envelope.title || 'Document',
             message: 'This is a reminder to sign the document.',

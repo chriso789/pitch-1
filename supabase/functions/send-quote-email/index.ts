@@ -254,7 +254,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Build tracking URL using APP_URL (published domain)
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const appUrl = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
     const viewQuoteUrl = `${appUrl}/view-quote/${trackingToken}`;
 
     // Email sender config - use verified domain from resolved tenant
