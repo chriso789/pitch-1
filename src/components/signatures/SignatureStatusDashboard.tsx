@@ -83,7 +83,7 @@ export function SignatureStatusDashboard() {
         .from('signature_envelopes')
         .select(`
           *,
-          signature_recipients(id, recipient_name, recipient_email, status, signed_at)
+          signature_recipients(id, recipient_name, recipient_email, status, signed_at, access_token)
         `)
         .eq('tenant_id', currentTenantId)
         .order('created_at', { ascending: false });
