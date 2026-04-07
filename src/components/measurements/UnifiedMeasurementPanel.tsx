@@ -732,7 +732,7 @@ export function UnifiedMeasurementPanel({
                   onOpenChange={setShowAiReport}
                   measurement={{
                     id: ai.id,
-                    property_id: propertyId,
+                    property_id: pipelineEntryId,
                     summary: {
                       total_area_sqft: ai.total_area_adjusted_sqft || 0,
                       total_squares: ai.total_squares || 0,
