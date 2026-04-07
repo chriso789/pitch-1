@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${ANON_KEY}`,
+              'Authorization': `Bearer ${SERVICE_KEY}`,
             },
             body: JSON.stringify({
               lat,
@@ -196,9 +196,12 @@ Deno.serve(async (req) => {
           });
 
           const data = await resp.json();
-          if (data.success || data.trainingPairId) {
+          if (data.stored) {
             success++;
-            results.push({ id: r.id, status: 'ok', pairId: data.trainingPairId, source: geoSource });
+            results.push({ id: r.id, status: 'stored', pairId: data.trainingPairId, source: geoSource });
+          } else if (data.success && !data.stored) {
+            failed++;
+            results.push({ id: r.id, status: 'rejected', reasons: data.rejected, source: geoSource });
           } else {
             failed++;
             results.push({ id: r.id, status: 'fail', error: (data.error || '').substring(0, 100) });
