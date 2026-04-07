@@ -26,15 +26,19 @@ import {
   Loader2,
   Download,
   Image,
+  Banknote,
 } from 'lucide-react';
 
 interface PortalData {
   project: any;
   contact: any;
+  invoices: any[];
+  payments: any[];
   payment_links: any[];
   messages: any[];
   documents: any[];
   company: any;
+  zelle_enabled: boolean;
 }
 
 const CustomerPortalPublic: React.FC = () => {
@@ -44,35 +48,28 @@ const CustomerPortalPublic: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [newMessage, setNewMessage] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
+  const [requestingPayment, setRequestingPayment] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
-    if (token) {
-      validateAndFetch();
-    }
+    if (token) validateAndFetch();
   }, [token]);
 
   const validateAndFetch = async () => {
     try {
       setLoading(true);
       setError(null);
-
       const { data: response, error: invokeError } = await supabase.functions.invoke(
         'customer-portal-access',
-        {
-          body: { action: 'validate', token },
-        }
+        { body: { action: 'validate', token } }
       );
-
       if (invokeError) throw invokeError;
       if (!response.success) {
         setError(response.error || 'Invalid access link');
         return;
       }
-
       setData(response);
     } catch (err: any) {
-      console.error('Portal access error:', err);
       setError(err.message || 'Failed to load portal');
     } finally {
       setLoading(false);
@@ -81,39 +78,39 @@ const CustomerPortalPublic: React.FC = () => {
 
   const sendMessage = async () => {
     if (!newMessage.trim() || !token) return;
-
     try {
       setSendingMessage(true);
-
       const { data: response, error: sendError } = await supabase.functions.invoke(
         'customer-portal-access',
-        {
-          body: { action: 'send_message', token, message: newMessage.trim() },
-        }
+        { body: { action: 'send_message', token, message: newMessage.trim() } }
       );
-
       if (sendError) throw sendError;
       if (!response.success) throw new Error(response.error);
-
-      // Add message to local state
-      setData(prev => prev ? {
-        ...prev,
-        messages: [...prev.messages, response.message],
-      } : null);
-
+      setData(prev => prev ? { ...prev, messages: [...prev.messages, response.message] } : null);
       setNewMessage('');
-      toast({
-        title: 'Message Sent',
-        description: 'Your message has been sent to the team.',
-      });
+      toast({ title: 'Message Sent', description: 'Your message has been sent to the team.' });
     } catch (err: any) {
-      toast({
-        title: 'Error',
-        description: err.message || 'Failed to send message',
-        variant: 'destructive',
-      });
+      toast({ title: 'Error', description: err.message || 'Failed to send message', variant: 'destructive' });
     } finally {
       setSendingMessage(false);
+    }
+  };
+
+  const requestPaymentLink = async (amount: number, invoiceId?: string) => {
+    if (!token) return;
+    try {
+      setRequestingPayment(true);
+      const { data: response, error: payError } = await supabase.functions.invoke(
+        'customer-portal-access',
+        { body: { action: 'request_payment_link', token, amount, invoice_id: invoiceId } }
+      );
+      if (payError) throw payError;
+      if (!response.success) throw new Error(response.error);
+      window.open(response.payment_link_url, '_blank');
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to create payment link', variant: 'destructive' });
+    } finally {
+      setRequestingPayment(false);
     }
   };
 
@@ -133,18 +130,14 @@ const CustomerPortalPublic: React.FC = () => {
     if (!project) return 0;
     if (project.actual_completion_date) return 100;
     if (!project.start_date || !project.estimated_completion_date) return 0;
-
     const start = new Date(project.start_date).getTime();
     const end = new Date(project.estimated_completion_date).getTime();
     const now = Date.now();
-
     if (now < start) return 0;
     if (now > end) return 100;
-
     return Math.round(((now - start) / (end - start)) * 100);
   };
 
-  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -156,7 +149,6 @@ const CustomerPortalPublic: React.FC = () => {
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
@@ -174,10 +166,14 @@ const CustomerPortalPublic: React.FC = () => {
 
   if (!data) return null;
 
-  const { project, contact, payment_links, messages, documents, company } = data;
-  const totalPaid = project?.payments?.reduce((sum: number, p: any) => sum + Number(p.amount), 0) || 0;
+  const { project, contact, invoices, payments, payment_links, messages, documents, company, zelle_enabled } = data;
+  
+  // Calculate totals from invoices and payments
   const contractValue = project?.estimates?.[0]?.selling_price || 0;
+  const totalPaid = payments.reduce((sum: number, p: any) => sum + Number(p.amount || 0), 0);
   const balanceOwed = contractValue - totalPaid;
+
+  const unpaidInvoices = invoices.filter((inv: any) => inv.status !== 'paid');
 
   return (
     <div className="min-h-screen bg-background">
@@ -226,9 +222,9 @@ const CustomerPortalPublic: React.FC = () => {
                   ${balanceOwed.toLocaleString()}
                 </p>
               </div>
-              {payment_links.length > 0 && (
+              {balanceOwed > 0 && payment_links.length > 0 && (
                 <Button asChild className="w-full">
-                  <a href={payment_links[0].stripe_payment_link_url} target="_blank" rel="noopener noreferrer">
+                  <a href={payment_links[0].stripe_payment_link_url || payment_links[0].zelle_payment_url} target="_blank" rel="noopener noreferrer">
                     <CreditCard className="h-4 w-4 mr-2" />
                     Pay Now
                     <ExternalLink className="h-3 w-3 ml-2" />
@@ -339,8 +335,56 @@ const CustomerPortalPublic: React.FC = () => {
 
           {/* Payments Tab */}
           <TabsContent value="payments" className="space-y-4">
-            {/* Pay Now Section */}
-            {balanceOwed > 0 && payment_links.length > 0 && (
+            {/* Unpaid Invoices */}
+            {unpaidInvoices.length > 0 && (
+              <Card className="p-6 bg-primary/5 border-primary/20">
+                <h3 className="text-lg font-semibold mb-4">Outstanding Invoices</h3>
+                <div className="space-y-3">
+                  {unpaidInvoices.map((inv: any) => (
+                    <div key={inv.id} className="flex items-center justify-between p-4 border rounded-lg bg-card">
+                      <div>
+                        <p className="font-medium">{inv.description || `Invoice #${inv.invoice_number || inv.id.slice(0, 8)}`}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {inv.due_date ? `Due: ${format(new Date(inv.due_date), 'MMM d, yyyy')}` : 'Due on receipt'}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Balance: ${Number(inv.balance_due || inv.amount || 0).toLocaleString()}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => requestPaymentLink(Number(inv.balance_due || inv.amount), inv.id)}
+                          disabled={requestingPayment}
+                        >
+                          {requestingPayment ? (
+                            <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                          ) : (
+                            <CreditCard className="h-4 w-4 mr-1" />
+                          )}
+                          Pay with Card
+                        </Button>
+                        {zelle_enabled && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            asChild
+                          >
+                            <a href={`/pay/zelle?amount=${inv.balance_due || inv.amount}&ref=${inv.id}`} target="_blank">
+                              <Banknote className="h-4 w-4 mr-1" />
+                              Zelle
+                            </a>
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {/* Quick Pay for remaining balance */}
+            {balanceOwed > 0 && unpaidInvoices.length === 0 && (
               <Card className="p-6 bg-primary/5 border-primary/20">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
                   <div>
@@ -349,12 +393,13 @@ const CustomerPortalPublic: React.FC = () => {
                       Securely pay your balance of ${balanceOwed.toLocaleString()} online
                     </p>
                   </div>
-                  <Button size="lg" asChild>
-                    <a href={payment_links[0].stripe_payment_link_url} target="_blank" rel="noopener noreferrer">
+                  <Button size="lg" onClick={() => requestPaymentLink(balanceOwed)} disabled={requestingPayment}>
+                    {requestingPayment ? (
+                      <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                    ) : (
                       <CreditCard className="h-5 w-5 mr-2" />
-                      Pay ${balanceOwed.toLocaleString()}
-                      <ExternalLink className="h-4 w-4 ml-2" />
-                    </a>
+                    )}
+                    Pay ${balanceOwed.toLocaleString()}
                   </Button>
                 </div>
               </Card>
@@ -363,20 +408,22 @@ const CustomerPortalPublic: React.FC = () => {
             {/* Payment History */}
             <Card className="p-4">
               <h3 className="font-semibold mb-4">Payment History</h3>
-              {project?.payments?.length === 0 ? (
+              {payments.length === 0 ? (
                 <p className="text-muted-foreground text-center py-8">No payments recorded yet</p>
               ) : (
                 <div className="space-y-3">
-                  {project?.payments?.map((payment: any) => (
+                  {payments.map((payment: any) => (
                     <div key={payment.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex items-center gap-3">
                         <div className="p-2 rounded-full bg-green-500/10">
                           <CheckCircle className="h-4 w-4 text-green-600" />
                         </div>
                         <div>
-                          <p className="font-medium">{payment.description || 'Payment'}</p>
+                          <p className="font-medium">{payment.description || payment.method || 'Payment'}</p>
                           <p className="text-sm text-muted-foreground">
-                            {formatDistanceToNow(new Date(payment.created_at), { addSuffix: true })}
+                            {payment.payment_date
+                              ? format(new Date(payment.payment_date), 'MMM d, yyyy')
+                              : formatDistanceToNow(new Date(payment.created_at), { addSuffix: true })}
                           </p>
                         </div>
                       </div>
@@ -384,8 +431,8 @@ const CustomerPortalPublic: React.FC = () => {
                         <p className="text-lg font-bold text-green-600">
                           ${Number(payment.amount).toLocaleString()}
                         </p>
-                        <Badge variant="outline" className="text-green-600 border-green-600/20">
-                          {payment.status}
+                        <Badge variant="outline" className="text-green-600 border-green-600/20 text-xs">
+                          {payment.method || 'paid'}
                         </Badge>
                       </div>
                     </div>
@@ -436,7 +483,6 @@ const CustomerPortalPublic: React.FC = () => {
           <TabsContent value="messages">
             <Card className="p-4">
               <h3 className="font-semibold mb-4">Messages</h3>
-              
               <ScrollArea className="h-[300px] mb-4 pr-4">
                 {messages.length === 0 ? (
                   <p className="text-muted-foreground text-center py-8">No messages yet. Start a conversation!</p>
@@ -465,7 +511,6 @@ const CustomerPortalPublic: React.FC = () => {
                   </div>
                 )}
               </ScrollArea>
-
               <div className="flex gap-2">
                 <Textarea
                   placeholder="Type your message..."

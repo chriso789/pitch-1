@@ -16,11 +16,13 @@ import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
+import { CustomerPortalButton } from '@/components/lead-details/CustomerPortalButton';
 import { format } from 'date-fns';
 
 interface ProfitCenterPanelProps {
   pipelineEntryId: string;
   projectId?: string;
+  contactId?: string;
   className?: string;
 }
 
@@ -48,6 +50,7 @@ interface InvoiceData {
 const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   pipelineEntryId,
   projectId,
+  contactId,
   className
 }) => {
   const queryClient = useQueryClient();
@@ -263,10 +266,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             </Badge>
           )}
         </div>
-        {repName && (
+          {repName && (
           <p className="text-sm text-muted-foreground">
             Commission calculation for {repName}
           </p>
+        )}
+        {projectId && contactId && (
+          <div className="mt-2">
+            <CustomerPortalButton projectId={projectId} contactId={contactId} />
+          </div>
         )}
       </CardHeader>
 

@@ -749,7 +749,7 @@ const LeadDetails = () => {
           <OverheadTab pipelineEntryId={id!} />
         );
       case 'profit':
-        return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} />;
+        return <ProfitCenterPanel pipelineEntryId={id!} projectId={projectData?.project?.id} contactId={lead?.contact?.id} />;
       case 'total':
         return <TotalsTab pipelineEntryId={id!} />;
       default:
