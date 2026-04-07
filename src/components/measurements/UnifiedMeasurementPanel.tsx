@@ -311,7 +311,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -600,6 +600,16 @@ export function UnifiedMeasurementPanel({
                   {format(new Date(latestUnapprovedAI.created_at), 'MMM d, yyyy')}
                 </span>
               </div>
+              {/* Satellite Property Overview */}
+              {(latestUnapprovedAI as any).google_maps_image_url && (
+                <div className="rounded-lg overflow-hidden border border-border">
+                  <img 
+                    src={(latestUnapprovedAI as any).google_maps_image_url} 
+                    alt="Satellite view of property"
+                    className="w-full h-40 object-cover"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-3 gap-3 text-sm">
                 <div>
                   <span className="text-muted-foreground text-xs">Squares</span>
