@@ -610,19 +610,42 @@ export function SchematicRoofDiagram({
       const focusMinLng = Math.min(...overlayFocusCoords.map(c => c.lng));
       const focusMaxLng = Math.max(...overlayFocusCoords.map(c => c.lng));
 
+      // Tight padding - just enough for label readability
       const latSpan = Math.max(focusMaxLat - focusMinLat, 0.00001);
       const lngSpan = Math.max(focusMaxLng - focusMinLng, 0.00001);
-      const minLatPadding = imageBounds ? (imageBounds.topLeft.lat - imageBounds.bottomLeft.lat) * 0.015 : 0;
-      const minLngPadding = imageBounds ? (imageBounds.topRight.lng - imageBounds.topLeft.lng) * 0.015 : 0;
-      const padLat = Math.max(latSpan * 0.05, minLatPadding);
-      const padLng = Math.max(lngSpan * 0.05, minLngPadding);
+      const padLat = latSpan * 0.02;
+      const padLng = lngSpan * 0.02;
 
-      const expanded = {
-        minLat: focusMinLat - padLat,
-        maxLat: focusMaxLat + padLat,
-        minLng: focusMinLng - padLng,
-        maxLng: focusMaxLng + padLng,
-      };
+      // Expand by padding
+      let vpMinLat = focusMinLat - padLat;
+      let vpMaxLat = focusMaxLat + padLat;
+      let vpMinLng = focusMinLng - padLng;
+      let vpMaxLng = focusMaxLng + padLng;
+
+      // Enforce aspect ratio matching the SVG container to prevent distortion
+      const containerAspect = width / height;
+      let vpLatRange = vpMaxLat - vpMinLat;
+      let vpLngRange = vpMaxLng - vpMinLng;
+      // Convert lng range to approximate pixel-equivalent using cos(lat)
+      const cosLat = Math.cos(((vpMinLat + vpMaxLat) / 2) * Math.PI / 180);
+      const effectiveLngRange = vpLngRange * cosLat;
+      const currentAspect = effectiveLngRange / vpLatRange;
+
+      if (currentAspect > containerAspect) {
+        // Too wide — expand lat range
+        const neededLatRange = effectiveLngRange / containerAspect;
+        const extraLat = (neededLatRange - vpLatRange) / 2;
+        vpMinLat -= extraLat;
+        vpMaxLat += extraLat;
+      } else {
+        // Too tall — expand lng range
+        const neededLngRange = vpLatRange * containerAspect;
+        const extraLng = (neededLngRange / cosLat - vpLngRange) / 2;
+        vpMinLng -= extraLng;
+        vpMaxLng += extraLng;
+      }
+
+      const expanded = { minLat: vpMinLat, maxLat: vpMaxLat, minLng: vpMinLng, maxLng: vpMaxLng };
 
       if (!imageBounds) return expanded;
 
