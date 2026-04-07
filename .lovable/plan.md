@@ -1,59 +1,61 @@
 
-Fix broken proposal/signature links and standardize every customer-facing URL on https://pitch-crm.ai
+Problem found
+- The AI measurement did complete for this lead, but far too slowly: the latest `analyze-roof-aerial` run took about 126 seconds and saved `roof_measurements.id = 7b2ffeaa-6604-44ad-94f9-6dad269a1784`.
+- No `measurement_approvals` row was created, so “Saved Measurements” still shows empty.
+- The current UI waits synchronously for the full edge function to finish, so users only see `AI Analyzing...` for a long time and it feels broken.
 
-1. Standardize the public app domain
-- Add one shared edge-function helper for public URL resolution with this priority: `FRONTEND_URL` → `APP_URL` → `PUBLIC_APP_URL` → fallback `https://pitch-crm.ai`
-- Replace scattered hardcoded fallbacks in the signature/share/quote flows so nothing ever falls back to `pitchcrm.app` or `pitch-1.lovable.app`
+Plan
 
-2. Repair the signature-request flow end to end
-- Update all signing-link generators to always produce `https://pitch-crm.ai/sign/:token`
-- Fix the legacy signature send path so it no longer relies on the older broken flow if that UI is still active
-- Fix reminder emails to use each recipient’s real `access_token` instead of the current hardcoded `"reminder"` placeholder, which creates invalid links
+1. Ship the immediate UX fix first
+- Update the lead measurement panel to show completed AI results from `roof_measurements` prominently, not only from `measurement_approvals`.
+- If an AI result exists but is not yet approved, show it as “Latest AI Measurement” with clear actions like `Review`, `Apply`, and `Save`.
+- Replace the empty state with a smarter state:
+  - `analysis in progress`
+  - `result ready but not saved`
+  - `saved measurement available`
 
-3. Harden the public customer pages
-- Keep `src/App.tsx` direct public routes as the source of truth for `/sign/:token` and `/view-quote/:token`
-- Improve `PublicSignatureCapture` failure handling so customers get a branded error state instead of a blank white screen if the token or document fails to load
-- Verify `signer-open` consistently returns a fresh signed PDF URL for sent envelopes
+2. Stop making users wait on one long request
+- Move AI measurement generation to an async job flow.
+- Add a `measurement_jobs` table with fields like `status`, `progress_message`, `measurement_id`, `error`, `pipeline_entry_id`, and timestamps.
+- Split the flow into:
+  - `start-ai-measurement` → creates a job and returns immediately
+  - background processor → runs the current analysis logic and updates the job row as it progresses
 
-4. Prevent stale published builds from breaking customer links
-- Review `public/sw.js` caching behavior on the published site
-- Bump cache keys and remove risky cache-first behavior for app JS/CSS/HTML that can leave customers on stale bundles after deploys
-- Make sure `pitch-crm.ai` serves the newest customer flow immediately after publish
+3. Make progress visible and persistent
+- Update `PullMeasurementsButton` to start a job instead of blocking on the full analysis.
+- Show status like `Fetching imagery`, `Detecting outline`, `Calculating facets`, `Saving measurement`.
+- Subscribe/poll job status so the user can leave and return without losing visibility into the run.
 
-5. Sweep remaining public URLs
-- Replace remaining user-facing `pitchcrm.app` and `pitch-1.lovable.app` references in:
-  - signature emails
-  - share links
-  - quote emails
-  - onboarding/setup/invite links
-  - other public app links that customers or staff click from emails
+4. Remove the “hidden result” trap
+- Right now the result is effectively hidden behind manual confirmation or collapsed history.
+- Auto-surface the completed measurement when the job finishes:
+  - open the review panel automatically, or
+  - insert a visible unsaved measurement card at the top of the section
+- Keep `measurement_approvals` for approved/saved measurements, but do not use it as the only signal that AI succeeded.
 
-Files to update
-- `src/App.tsx`
-- `src/pages/PublicSignatureCapture.tsx`
-- `src/components/signatures/SignatureStatusDashboard.tsx`
-- `public/sw.js`
-- `supabase/functions/email-signature-request/index.ts`
-- `supabase/functions/send-signature-envelope/index.ts`
-- `supabase/functions/create-share-link/index.ts`
-- `supabase/functions/send-quote-email/index.ts`
-- `supabase/functions/_shared/email-config.ts`
-- `supabase/functions/_shared/setup-tokens.ts`
-- `supabase/functions/initialize-company/index.ts`
-- `supabase/functions/send-user-invitation/index.ts`
-- `supabase/functions/provision-tenant-owner/index.ts`
-- `supabase/functions/admin-create-user/index.ts`
-- `supabase/functions/seed-company-owners/index.ts`
+5. Harden completion behavior
+- Ensure loading state clears from job completion, timeout, or failure state consistently.
+- If the review dialog is closed, the result must still remain accessible on the lead screen.
+- Add clearer completion toasts tied to the job/result, not just the dialog flow.
+
+Files likely involved
+- `src/components/measurements/PullMeasurementsButton.tsx`
+- `src/components/measurements/UnifiedMeasurementPanel.tsx`
+- `src/components/measurements/RoofrStyleReportPreview.tsx`
+- `supabase/functions/analyze-roof-aerial/index.ts`
+- new migration for `measurement_jobs`
+- new edge function(s) for async measurement start/status processing
 
 Technical details
-- I found three active signature/share functions still pointing at `pitchcrm.app`
-- I found several onboarding/invite/setup functions still pointing at `pitch-1.lovable.app`
-- I found the reminder flow currently sending `access_token: "reminder"` instead of the real recipient token
-- The public routes already exist for `/sign/:token` and `/view-quote/:token`, so the remaining risk is bad link generation, stale published bundles, and weak public-page failure handling
+- Verified in DB: the lead already has a fresh `roof_measurements` record.
+- Verified in DB: the lead has no `measurement_approvals` records.
+- So the core issue is not “no measurement was produced”; it is:
+  1. the run takes too long synchronously, and
+  2. the completed result is not surfaced clearly unless it is manually saved.
 
 Validation after implementation
-- Send a fresh quote email and confirm “Review Your Proposal” opens `https://pitch-crm.ai/view-quote/:token`
-- From that quote page, click Accept Quote and confirm redirect to `https://pitch-crm.ai/sign/:token` with the PDF visible
-- Send a direct signature request email and confirm its button opens `https://pitch-crm.ai/sign/:token`
-- Send a reminder email and confirm it reuses the recipient’s real token
-- Test on the published domain in an incognito window and on mobile to confirm cached clients no longer get the blank page
+- Start AI measurement and confirm the UI returns immediately with visible progress
+- Confirm a completed result appears on the lead even before manual save
+- Confirm saved measurements populate correctly after apply/save
+- Test leaving and returning mid-run
+- Test the full flow on desktop and mobile with a slow 2+ minute analysis
