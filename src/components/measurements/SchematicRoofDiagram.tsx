@@ -586,7 +586,7 @@ export function SchematicRoofDiagram({
     const minLng = perimLngs.length > 0 ? Math.min(...perimLngs) : Math.min(...allLatLngs.map(c => c.lng));
     const maxLng = perimLngs.length > 0 ? Math.max(...perimLngs) : Math.max(...allLatLngs.map(c => c.lng));
     
-    // Calculate eave-specific bounds for debug
+    // Calculate eave/rake-focused bounds for debug and overlay zoom
     const eavesRaw = linearFeaturesData.filter(f => f.type === 'eave');
     const eaveCoords = eavesRaw.flatMap(e => e.coords);
     const eaveBounds = eaveCoords.length > 0 ? {
@@ -595,59 +595,93 @@ export function SchematicRoofDiagram({
       minLng: Math.min(...eaveCoords.map(c => c.lng)),
       maxLng: Math.max(...eaveCoords.map(c => c.lng)),
     } : null;
+
+    const focusFeatureCoords = plausibleLinearFeatures
+      .filter(f => f.type === 'eave' || f.type === 'rake')
+      .flatMap(f => f.coords);
+
+    const overlayFocusCoords = focusFeatureCoords.length > 0
+      ? focusFeatureCoords
+      : (perimCoords.length > 0 ? perimCoords : allLatLngs);
+
+    const overlayViewport = overlayFocusCoords.length > 0 ? (() => {
+      const focusMinLat = Math.min(...overlayFocusCoords.map(c => c.lat));
+      const focusMaxLat = Math.max(...overlayFocusCoords.map(c => c.lat));
+      const focusMinLng = Math.min(...overlayFocusCoords.map(c => c.lng));
+      const focusMaxLng = Math.max(...overlayFocusCoords.map(c => c.lng));
+
+      const latSpan = Math.max(focusMaxLat - focusMinLat, 0.00001);
+      const lngSpan = Math.max(focusMaxLng - focusMinLng, 0.00001);
+      const minLatPadding = imageBounds ? (imageBounds.topLeft.lat - imageBounds.bottomLeft.lat) * 0.03 : 0;
+      const minLngPadding = imageBounds ? (imageBounds.topRight.lng - imageBounds.topLeft.lng) * 0.03 : 0;
+      const padLat = Math.max(latSpan * 0.14, minLatPadding);
+      const padLng = Math.max(lngSpan * 0.14, minLngPadding);
+
+      const expanded = {
+        minLat: focusMinLat - padLat,
+        maxLat: focusMaxLat + padLat,
+        minLng: focusMinLng - padLng,
+        maxLng: focusMaxLng + padLng,
+      };
+
+      if (!imageBounds) return expanded;
+
+      return {
+        minLat: Math.max(expanded.minLat, imageBounds.bottomLeft.lat),
+        maxLat: Math.min(expanded.maxLat, imageBounds.topLeft.lat),
+        minLng: Math.max(expanded.minLng, imageBounds.topLeft.lng),
+        maxLng: Math.min(expanded.maxLng, imageBounds.topRight.lng),
+      };
+    })() : null;
     
-    // Debug info for coordinate alignment
     const dbgInfo = {
       perimeterBounds: { minLat, maxLat, minLng, maxLng },
       eaveBounds,
+      overlayViewport,
       perimeterPoints: perimCoords.length,
       eaveCount: eavesRaw.length,
       rakeCount: linearFeaturesData.filter(f => f.type === 'rake').length,
       hipCount: linearFeaturesData.filter(f => f.type === 'hip').length,
       valleyCount: linearFeaturesData.filter(f => f.type === 'valley').length,
       ridgeCount: linearFeaturesData.filter(f => f.type === 'ridge').length,
-      transformMode: 'bounds-fit',
+      transformMode: localShowOverlay && overlayViewport ? 'satellite-cropped' : (localShowOverlay && imageBounds ? 'satellite-full' : 'bounds-fit'),
     };
     
     console.log('🗺️ Coordinate bounds verification:', dbgInfo);
     
-    // Project lat/lng to local planar meters to fix aspect ratio distortion
-    // 1 degree latitude ≈ 111,320 meters everywhere
-    // 1 degree longitude ≈ 111,320 * cos(latitude) meters
     const centerLat = (minLat + maxLat) / 2;
     const metersPerDegreeLat = 111320;
     const metersPerDegreeLng = 111320 * Math.cos(centerLat * Math.PI / 180);
     
-    // Convert bounds to meters
     const boundsWidthMeters = (maxLng - minLng) * metersPerDegreeLng;
     const boundsHeightMeters = (maxLat - minLat) * metersPerDegreeLat;
     
-    // Coordinate transformation function
-    // When satellite overlay is enabled, use image-based GPS-to-pixel transformation
-    // Otherwise use bounds-fit transformation for schematic view
     const toSvg = (coord: { lat: number; lng: number }) => {
-      // SATELLITE OVERLAY MODE: Use imageBounds for accurate alignment
+      if (localShowOverlay && overlayViewport) {
+        const overlayLatRange = Math.max(overlayViewport.maxLat - overlayViewport.minLat, 0.0000001);
+        const overlayLngRange = Math.max(overlayViewport.maxLng - overlayViewport.minLng, 0.0000001);
+
+        return {
+          x: ((coord.lng - overlayViewport.minLng) / overlayLngRange) * width,
+          y: ((overlayViewport.maxLat - coord.lat) / overlayLatRange) * height,
+        };
+      }
+
       if (localShowOverlay && imageBounds) {
         return gpsToPixel(coord, imageBounds, { width, height });
       }
       
-      // SCHEMATIC MODE: Use bounds-fit transformation (meters-based for correct proportions)
-      // Convert to meters from origin (minLng, minLat)
       const xMeters = (coord.lng - minLng) * metersPerDegreeLng;
       const yMeters = (coord.lat - minLat) * metersPerDegreeLat;
-      
-      // Calculate uniform scale to fit in canvas
       const scaleX = (width - padding * 2) / (boundsWidthMeters || 0.0001);
       const scaleY = (height - padding * 2) / (boundsHeightMeters || 0.0001);
       const scale = Math.min(scaleX, scaleY);
-      
-      // Center the diagram
       const offsetX = (width - boundsWidthMeters * scale) / 2;
       const offsetY = (height - boundsHeightMeters * scale) / 2;
       
       return {
         x: offsetX + xMeters * scale,
-        y: offsetY + (boundsHeightMeters - yMeters) * scale, // Flip Y (SVG y grows down)
+        y: offsetY + (boundsHeightMeters - yMeters) * scale,
       };
     };
     
@@ -815,6 +849,37 @@ export function SchematicRoofDiagram({
     const result = { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths };
     return (result as any).qaData as GeometryQA | undefined;
   }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
+
+  const overlayImageStyle = useMemo(() => {
+    const overlayViewport = debugInfo && 'overlayViewport' in debugInfo ? debugInfo.overlayViewport : undefined;
+
+    if (!localShowOverlay || !satelliteImageUrl || !imageBounds || !overlayViewport) {
+      return undefined;
+    }
+
+    const imageSize = measurement?.analysis_image_size || { width: 640, height: 640 };
+    const sourceWidth = typeof imageSize === 'object' ? imageSize.width || 640 : 640;
+    const sourceHeight = typeof imageSize === 'object' ? imageSize.height || 640 : 640;
+    const fullLatRange = Math.max(imageBounds.topLeft.lat - imageBounds.bottomLeft.lat, 0.0000001);
+    const fullLngRange = Math.max(imageBounds.topRight.lng - imageBounds.topLeft.lng, 0.0000001);
+
+    const rawCropX = ((overlayViewport.minLng - imageBounds.topLeft.lng) / fullLngRange) * sourceWidth;
+    const rawCropY = ((imageBounds.topLeft.lat - overlayViewport.maxLat) / fullLatRange) * sourceHeight;
+    const rawCropWidth = ((overlayViewport.maxLng - overlayViewport.minLng) / fullLngRange) * sourceWidth;
+    const rawCropHeight = ((overlayViewport.maxLat - overlayViewport.minLat) / fullLatRange) * sourceHeight;
+
+    const cropX = Math.min(Math.max(rawCropX, 0), sourceWidth - 1);
+    const cropY = Math.min(Math.max(rawCropY, 0), sourceHeight - 1);
+    const cropWidth = Math.min(Math.max(rawCropWidth, 1), sourceWidth - cropX);
+    const cropHeight = Math.min(Math.max(rawCropHeight, 1), sourceHeight - cropY);
+
+    return {
+      left: -(cropX * width) / cropWidth,
+      top: -(cropY * height) / cropHeight,
+      width: (sourceWidth * width) / cropWidth,
+      height: (sourceHeight * height) / cropHeight,
+    };
+  }, [debugInfo, height, imageBounds, localShowOverlay, measurement, satelliteImageUrl, width]);
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
@@ -984,8 +1049,18 @@ export function SchematicRoofDiagram({
         <img 
           src={satelliteImageUrl}
           alt="Satellite view"
-          className="absolute inset-0 w-full h-full object-cover"
-          style={{ opacity: satelliteOpacity }}
+          loading="lazy"
+          className="absolute max-w-none select-none"
+          draggable={false}
+          style={{
+            opacity: satelliteOpacity,
+            left: 0,
+            top: 0,
+            width,
+            height,
+            objectFit: 'cover',
+            ...(overlayImageStyle || {}),
+          }}
         />
       )}
       
