@@ -131,11 +131,26 @@ Deno.serve(async (req) => {
             *,
             contacts(*)
           ),
-          estimates(*),
-          payments(*)
+          estimates(*)
         `)
         .eq('id', tokenRecord.project_id)
         .single();
+
+      // Get invoices from project_invoices table
+      const pipelineEntryId = project?.pipeline_entries?.[0]?.id || project?.pipeline_entry_id;
+      
+      const { data: invoices } = await supabase
+        .from('project_invoices')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+
+      // Get payments from project_payments table
+      const { data: projectPayments } = await supabase
+        .from('project_payments')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('payment_date', { ascending: false });
 
       // Get payment links
       const { data: paymentLinks } = await supabase
@@ -156,9 +171,16 @@ Deno.serve(async (req) => {
       const { data: documents } = await supabase
         .from('documents')
         .select('*')
-        .eq('pipeline_entry_id', project?.pipeline_entry_id)
+        .eq('pipeline_entry_id', pipelineEntryId)
         .not('document_type', 'ilike', '%internal%')
         .order('created_at', { ascending: false });
+
+      // Get tenant settings for Zelle config
+      const { data: tenantSettings } = await supabase
+        .from('tenant_settings')
+        .select('zelle_enabled, zelle_email, zelle_phone, zelle_display_name')
+        .eq('tenant_id', tokenRecord.tenant_id)
+        .single();
 
       // Get company info
       const { data: tenant } = await supabase
@@ -171,10 +193,13 @@ Deno.serve(async (req) => {
         success: true,
         project,
         contact: tokenRecord.contacts,
+        invoices: invoices || [],
+        payments: projectPayments || [],
         payment_links: paymentLinks || [],
         messages: messages || [],
         documents: documents || [],
         company: tenant,
+        zelle_enabled: tenantSettings?.zelle_enabled || false,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
