@@ -171,6 +171,15 @@ export function StructureSelectionMap({
       map.current.on('load', () => {
         console.log('✅ Mapbox map loaded successfully');
         setLoading(false);
+        // Force resize after dialog animation settles to ensure tiles render
+        setTimeout(() => {
+          map.current?.resize();
+        }, 300);
+      });
+
+      // Also resize on idle to catch late rendering
+      map.current.on('idle', () => {
+        map.current?.resize();
       });
 
       // Timeout fallback in case load event never fires
@@ -178,6 +187,8 @@ export function StructureSelectionMap({
         setLoading(prev => {
           if (prev) {
             console.warn('⚠️ Map load timeout - forcing completion');
+            // Force resize even on timeout
+            map.current?.resize();
           }
           return false;
         });
