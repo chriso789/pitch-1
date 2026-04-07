@@ -37,14 +37,32 @@ import Features from "./pages/Features";
 import DemoRequest from "./pages/DemoRequest";
 import RequestSetupLink from "./pages/auth/RequestSetupLink";
 
-// Route section wrappers – imported normally (they are small files that
-// only declare React.lazy() for each page inside them, so no heavy
-// code is pulled in at boot).
-import PublicRoutes from "./routes/publicRoutes";
+// Route section wrappers
 import MobileRoutes from "./routes/mobileRoutes";
 import ProtectedRoutes from "./routes/protectedRoutes";
 import AdminRoutes from "./routes/adminRoutes";
 import SettingsRoutes from "./routes/settingsRoutes";
+
+// Lazy-loaded public page components (customer-facing, no auth required)
+const ViewQuote = React.lazy(() => import("@/pages/ViewQuote"));
+const PublicSignatureCapture = React.lazy(() => import("@/pages/PublicSignatureCapture"));
+const PublicProposalView = React.lazy(() => import("@/pages/PublicProposalView"));
+const PublicDocumentView = React.lazy(() => import("@/pages/PublicDocumentView"));
+const PublicReportViewer = React.lazy(() => import("@/pages/PublicReportViewer"));
+const ZellePaymentPage = React.lazy(() => import("@/pages/ZellePaymentPage"));
+const PublicPortalView = React.lazy(() => import("@/pages/PublicPortalView"));
+const CustomerPortalPublic = React.lazy(() => import("@/pages/CustomerPortalPublic"));
+const CrewPortalPage = React.lazy(() => import("@/pages/CrewPortalPage"));
+const HomeownerPortalPage = React.lazy(() => import("@/pages/HomeownerPortalPage"));
+const HomeownerSetupAccount = React.lazy(() => import("@/pages/HomeownerSetupAccount"));
+const PortalLoginPage = React.lazy(() => import("@/pages/PortalLoginPage"));
+const OnboardingWalkthrough = React.lazy(() => import("@/pages/onboarding/OnboardingWalkthrough"));
+const QuickBooksCallback = React.lazy(() => import("@/pages/QuickBooksCallback"));
+const GoogleCalendarCallback = React.lazy(() => import("@/pages/GoogleCalendarCallback"));
+const Privacy = React.lazy(() => import("@/pages/legal/Privacy"));
+const Terms = React.lazy(() => import("@/pages/legal/Terms"));
+const Security = React.lazy(() => import("@/pages/legal/Security"));
+const HomeownerProtectedRoute = React.lazy(() => import("@/components/auth/HomeownerProtectedRoute").then(m => ({ default: m.HomeownerProtectedRoute })));
 
 // Route-level loading fallback
 const PageLoader = () => (
