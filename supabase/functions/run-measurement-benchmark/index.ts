@@ -1,19 +1,60 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1';
-import { corsHeaders } from '../_shared/cors.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
-interface BenchmarkResult {
-  caseId: string;
-  areaAccuracyPct: number;
-  ridgeAccuracyPct: number;
-  hipAccuracyPct: number;
-  valleyAccuracyPct: number;
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+interface VendorReport {
+  id: string;
+  address: string;
+  geocoded_lat: number;
+  geocoded_lng: number;
+  parsed: {
+    total_area_sqft?: number;
+    predominant_pitch?: string;
+    ridges_ft?: number;
+    hips_ft?: number;
+    valleys_ft?: number;
+    eaves_ft?: number;
+    rakes_ft?: number;
+    facet_count?: number;
+    pitches?: Array<{ pitch: string; area_sqft: number }>;
+  };
+  provider: string;
+}
+
+interface ComparisonResult {
+  vendorReportId: string;
+  address: string;
+  provider: string;
+  vendorArea: number;
+  aiArea: number;
+  areaErrorPct: number;
+  vendorRidge: number;
+  aiRidge: number;
+  ridgeErrorPct: number;
+  vendorHip: number;
+  aiHip: number;
+  hipErrorPct: number;
+  vendorValley: number;
+  aiValley: number;
+  valleyErrorPct: number;
+  vendorPitch: string;
+  aiPitch: string;
+  pitchMatch: boolean;
   overallAccuracyPct: number;
-  topologyValid: boolean;
   processingTimeMs: number;
   error?: string;
+}
+
+function pctError(vendor: number, ai: number): number {
+  if (vendor === 0 && ai === 0) return 0;
+  if (vendor === 0) return 100;
+  return Math.abs((ai - vendor) / vendor) * 100;
 }
 
 Deno.serve(async (req) => {
@@ -23,115 +64,176 @@ Deno.serve(async (req) => {
 
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { run_type = 'manual', case_ids } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const { limit = 20, provider_filter, min_area } = body;
     const startTime = Date.now();
 
-    // Create benchmark run record
-    const { data: run, error: runError } = await supabase
-      .from('measurement_benchmark_runs')
-      .insert({ run_type, started_at: new Date().toISOString() })
-      .select()
-      .single();
+    // Fetch vendor reports with parsed data and geocoded coordinates
+    let query = supabase
+      .from('roof_vendor_reports')
+      .select('id, address, geocoded_lat, geocoded_lng, parsed, provider')
+      .not('parsed', 'is', null)
+      .not('geocoded_lat', 'is', null)
+      .not('geocoded_lng', 'is', null)
+      .limit(limit);
 
-    if (runError) throw runError;
+    if (provider_filter) {
+      query = query.eq('provider', provider_filter);
+    }
 
-    // Get benchmark cases
-    let query = supabase.from('measurement_benchmark_cases').select('*').eq('is_active', true);
-    if (case_ids?.length) query = query.in('id', case_ids);
+    const { data: vendorReports, error: vError } = await query;
+    if (vError) throw vError;
+
+    const reports = (vendorReports || []) as VendorReport[];
     
-    const { data: cases, error: casesError } = await query;
-    if (casesError) throw casesError;
+    // Filter to reports that have total_area_sqft in parsed
+    const validReports = reports.filter(r => {
+      const area = r.parsed?.total_area_sqft;
+      return area && area > 0 && (!min_area || area >= min_area);
+    });
 
-    const results: BenchmarkResult[] = [];
+    console.log(`🏠 Benchmarking ${validReports.length} vendor reports (of ${reports.length} fetched)`);
 
-    for (const testCase of cases || []) {
+    const results: ComparisonResult[] = [];
+
+    for (const report of validReports) {
       const caseStart = Date.now();
       
       try {
-        // Simulate measurement analysis (in production, call analyze-roof-aerial)
-        const mockMeasurement = {
-          totalAreaSqft: testCase.expected_area_sqft * (0.98 + Math.random() * 0.04),
-          ridgeTotalFt: (testCase.expected_ridge_ft || 0) * (0.97 + Math.random() * 0.06),
-          hipTotalFt: (testCase.expected_hip_ft || 0) * (0.96 + Math.random() * 0.08),
-          valleyTotalFt: (testCase.expected_valley_ft || 0) * (0.95 + Math.random() * 0.10),
-        };
-
-        const areaAccuracy = 100 - Math.abs((mockMeasurement.totalAreaSqft - testCase.expected_area_sqft) / testCase.expected_area_sqft * 100);
-        const ridgeAccuracy = testCase.expected_ridge_ft ? 100 - Math.abs((mockMeasurement.ridgeTotalFt - testCase.expected_ridge_ft) / testCase.expected_ridge_ft * 100) : 100;
-        const hipAccuracy = testCase.expected_hip_ft ? 100 - Math.abs((mockMeasurement.hipTotalFt - testCase.expected_hip_ft) / testCase.expected_hip_ft * 100) : 100;
-        const valleyAccuracy = testCase.expected_valley_ft ? 100 - Math.abs((mockMeasurement.valleyTotalFt - testCase.expected_valley_ft) / testCase.expected_valley_ft * 100) : 100;
-
-        const result: BenchmarkResult = {
-          caseId: testCase.id,
-          areaAccuracyPct: Math.max(0, areaAccuracy),
-          ridgeAccuracyPct: Math.max(0, ridgeAccuracy),
-          hipAccuracyPct: Math.max(0, hipAccuracy),
-          valleyAccuracyPct: Math.max(0, valleyAccuracy),
-          overallAccuracyPct: Math.max(0, (areaAccuracy + ridgeAccuracy + hipAccuracy + valleyAccuracy) / 4),
-          topologyValid: Math.random() > 0.1,
-          processingTimeMs: Date.now() - caseStart
-        };
-
-        results.push(result);
-
-        await supabase.from('measurement_benchmark_results').insert({
-          benchmark_run_id: run.id,
-          case_id: testCase.id,
-          area_accuracy_pct: result.areaAccuracyPct,
-          ridge_accuracy_pct: result.ridgeAccuracyPct,
-          hip_accuracy_pct: result.hipAccuracyPct,
-          valley_accuracy_pct: result.valleyAccuracyPct,
-          overall_accuracy_pct: result.overallAccuracyPct,
-          topology_valid: result.topologyValid,
-          processing_time_ms: result.processingTimeMs
+        // Call measure edge function for this property
+        const { data: measData, error: measError } = await supabase.functions.invoke('measure', {
+          body: {
+            action: 'pull',
+            propertyId: `benchmark-${report.id}`,
+            lat: report.geocoded_lat,
+            lng: report.geocoded_lng,
+            engine: 'skeleton'
+          }
         });
 
-      } catch (error) {
+        if (measError || !measData?.ok) {
+          results.push({
+            vendorReportId: report.id,
+            address: report.address || '',
+            provider: report.provider || '',
+            vendorArea: report.parsed.total_area_sqft || 0,
+            aiArea: 0, areaErrorPct: 100,
+            vendorRidge: report.parsed.ridges_ft || 0,
+            aiRidge: 0, ridgeErrorPct: 100,
+            vendorHip: report.parsed.hips_ft || 0,
+            aiHip: 0, hipErrorPct: 100,
+            vendorValley: report.parsed.valleys_ft || 0,
+            aiValley: 0, valleyErrorPct: 100,
+            vendorPitch: report.parsed.predominant_pitch || '',
+            aiPitch: '', pitchMatch: false,
+            overallAccuracyPct: 0,
+            processingTimeMs: Date.now() - caseStart,
+            error: measError?.message || measData?.error || 'Measure failed'
+          });
+          continue;
+        }
+
+        const measurement = measData.data?.measurement;
+        const summary = measurement?.summary || measurement?.measurement_data?.summary || {};
+
+        const aiArea = summary.total_area_sqft || 0;
+        const aiRidge = summary.ridge_ft || 0;
+        const aiHip = summary.hip_ft || 0;
+        const aiValley = summary.valley_ft || 0;
+        const aiPitch = summary.pitch || summary.pitch_method || '';
+
+        const vendorArea = report.parsed.total_area_sqft || 0;
+        const vendorRidge = report.parsed.ridges_ft || 0;
+        const vendorHip = report.parsed.hips_ft || 0;
+        const vendorValley = report.parsed.valleys_ft || 0;
+        const vendorPitch = report.parsed.predominant_pitch || '';
+
+        const areaErr = pctError(vendorArea, aiArea);
+        const ridgeErr = pctError(vendorRidge, aiRidge);
+        const hipErr = pctError(vendorHip, aiHip);
+        const valleyErr = pctError(vendorValley, aiValley);
+
+        // Weighted overall: area 40%, ridge 20%, hip 20%, valley 20%
+        const overallError = (areaErr * 0.4) + (ridgeErr * 0.2) + (hipErr * 0.2) + (valleyErr * 0.2);
+        const overallAccuracy = Math.max(0, 100 - overallError);
+
         results.push({
-          caseId: testCase.id,
-          areaAccuracyPct: 0,
-          ridgeAccuracyPct: 0,
-          hipAccuracyPct: 0,
-          valleyAccuracyPct: 0,
-          overallAccuracyPct: 0,
-          topologyValid: false,
+          vendorReportId: report.id,
+          address: report.address || '',
+          provider: report.provider || '',
+          vendorArea, aiArea, areaErrorPct: areaErr,
+          vendorRidge, aiRidge, ridgeErrorPct: ridgeErr,
+          vendorHip, aiHip, hipErrorPct: hipErr,
+          vendorValley, aiValley, valleyErrorPct: valleyErr,
+          vendorPitch, aiPitch, pitchMatch: vendorPitch === aiPitch,
+          overallAccuracyPct: overallAccuracy,
           processingTimeMs: Date.now() - caseStart,
-          error: error.message
+        });
+
+        console.log(`  ✅ ${report.address}: area=${areaErr.toFixed(1)}% err, overall=${overallAccuracy.toFixed(1)}%`);
+
+      } catch (err: any) {
+        results.push({
+          vendorReportId: report.id,
+          address: report.address || '',
+          provider: report.provider || '',
+          vendorArea: report.parsed.total_area_sqft || 0,
+          aiArea: 0, areaErrorPct: 100,
+          vendorRidge: 0, aiRidge: 0, ridgeErrorPct: 100,
+          vendorHip: 0, aiHip: 0, hipErrorPct: 100,
+          vendorValley: 0, aiValley: 0, valleyErrorPct: 100,
+          vendorPitch: '', aiPitch: '', pitchMatch: false,
+          overallAccuracyPct: 0,
+          processingTimeMs: Date.now() - caseStart,
+          error: err.message
         });
       }
     }
 
-    // Calculate summary statistics
-    const passed = results.filter(r => r.overallAccuracyPct >= 95);
-    const avgOverall = results.reduce((sum, r) => sum + r.overallAccuracyPct, 0) / results.length;
+    // Summary stats
+    const successful = results.filter(r => !r.error);
+    const avgAreaError = successful.length > 0 ? successful.reduce((s, r) => s + r.areaErrorPct, 0) / successful.length : 0;
+    const avgOverall = successful.length > 0 ? successful.reduce((s, r) => s + r.overallAccuracyPct, 0) / successful.length : 0;
+    const passed = successful.filter(r => r.overallAccuracyPct >= 95);
+    const areaWithin2Pct = successful.filter(r => r.areaErrorPct <= 2);
+    const areaWithin5Pct = successful.filter(r => r.areaErrorPct <= 5);
 
-    await supabase
-      .from('measurement_benchmark_runs')
-      .update({
-        total_cases: results.length,
-        passed_cases: passed.length,
-        failed_cases: results.length - passed.length,
-        avg_overall_accuracy: avgOverall,
-        min_accuracy: Math.min(...results.map(r => r.overallAccuracyPct)),
-        max_accuracy: Math.max(...results.map(r => r.overallAccuracyPct)),
-        regression_detected: avgOverall < 95,
-        run_duration_ms: Date.now() - startTime,
-        completed_at: new Date().toISOString()
-      })
-      .eq('id', run.id);
+    // Worst cases for investigation
+    const worst5 = [...successful].sort((a, b) => a.overallAccuracyPct - b.overallAccuracyPct).slice(0, 5);
+
+    const summary = {
+      totalReports: validReports.length,
+      successfulComparisons: successful.length,
+      errors: results.length - successful.length,
+      avgAreaErrorPct: avgAreaError.toFixed(2),
+      avgOverallAccuracyPct: avgOverall.toFixed(2),
+      passed95Pct: passed.length,
+      areaWithin2Pct: areaWithin2Pct.length,
+      areaWithin5Pct: areaWithin5Pct.length,
+      pitchMatchRate: successful.length > 0 
+        ? (successful.filter(r => r.pitchMatch).length / successful.length * 100).toFixed(1) + '%'
+        : '0%',
+      durationMs: Date.now() - startTime,
+      worst5: worst5.map(r => ({
+        address: r.address,
+        areaError: r.areaErrorPct.toFixed(1) + '%',
+        overall: r.overallAccuracyPct.toFixed(1) + '%'
+      }))
+    };
+
+    console.log(`\n📊 BENCHMARK SUMMARY:`);
+    console.log(`   Avg area error: ${summary.avgAreaErrorPct}%`);
+    console.log(`   Avg overall accuracy: ${summary.avgOverallAccuracyPct}%`);
+    console.log(`   Passed (≥95%): ${passed.length}/${successful.length}`);
+    console.log(`   Area within ±2%: ${areaWithin2Pct.length}/${successful.length}`);
 
     return new Response(JSON.stringify({
       success: true,
-      runId: run.id,
-      summary: {
-        totalCases: results.length,
-        passed: passed.length,
-        avgAccuracy: avgOverall.toFixed(2),
-        duration: Date.now() - startTime
-      }
+      summary,
+      results
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Benchmark error:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,

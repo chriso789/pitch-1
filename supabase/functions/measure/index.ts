@@ -111,6 +111,13 @@ function pitchFactor(pitch?: string) {
   return isFinite(factor) && factor > 0 ? factor : 1;
 }
 
+// Helper for vendor cross-validation percentage error
+function pctErrorHelper(vendor: number, ai: number): number {
+  if (vendor === 0 && ai === 0) return 0;
+  if (vendor === 0) return 100;
+  return Math.abs((ai - vendor) / vendor) * 100;
+}
+
 function toPolygonWKT(coords: [number, number][]) {
   const inner = coords.map(c => `${c[0]} ${c[1]}`).join(', ');
   return `POLYGON((${inner}))`;
@@ -2130,6 +2137,114 @@ Deno.serve(async (req) => {
         // Add engine info to measurement source
         meas.source = `${meas.source}_${engineUsed}`;
 
+        // ============= VENDOR TRUTH CROSS-VALIDATION =============
+        // Look up vendor reports near this lat/lng and use their data to:
+        // 1. Override assumed pitch with vendor-known pitch
+        // 2. Flag significant area deviations for review
+        let vendorCrossValidation: { vendorArea?: number; vendorPitch?: string; areaDeviationPct?: number; pitchOverridden?: boolean } | null = null;
+        try {
+          const { data: nearbyVendor } = await adminSupabase
+            .from('roof_vendor_reports')
+            .select('id, parsed, provider, geocoded_lat, geocoded_lng')
+            .not('parsed', 'is', null)
+            .not('geocoded_lat', 'is', null);
+          
+          if (nearbyVendor && nearbyVendor.length > 0) {
+            // Find closest vendor report within ~50m
+            const MATCH_THRESHOLD_DEG = 0.0005; // ~55m
+            const closest = nearbyVendor
+              .filter((v: any) => {
+                const dLat = Math.abs(v.geocoded_lat - lat);
+                const dLng = Math.abs(v.geocoded_lng - lng);
+                return dLat < MATCH_THRESHOLD_DEG && dLng < MATCH_THRESHOLD_DEG;
+              })
+              .sort((a: any, b: any) => {
+                const dA = Math.abs(a.geocoded_lat - lat) + Math.abs(a.geocoded_lng - lng);
+                const dB = Math.abs(b.geocoded_lat - lat) + Math.abs(b.geocoded_lng - lng);
+                return dA - dB;
+              })[0];
+            
+            if (closest?.parsed) {
+              const vp = closest.parsed as any;
+              const vendorArea = vp.total_area_sqft;
+              const vendorPitch = vp.predominant_pitch;
+              
+              vendorCrossValidation = { vendorArea, vendorPitch };
+              console.log(`🔍 Vendor truth found (${closest.provider}): area=${vendorArea}sqft, pitch=${vendorPitch}`);
+              
+              // Override pitch if AI used assumed pitch
+              if (vendorPitch && meas.summary.pitch_method === 'assumed') {
+                console.log(`📐 Overriding assumed pitch with vendor pitch: ${vendorPitch}`);
+                const vPf = pitchFactor(vendorPitch);
+                
+                for (const face of meas.faces) {
+                  if (face.pitch === '4/12' || face.pitch === '5/12') {
+                    const oldArea = face.area_sqft;
+                    face.pitch = vendorPitch;
+                    face.area_sqft = face.plan_area_sqft * vPf;
+                    console.log(`   Face ${face.id}: pitch ${face.pitch}, area ${oldArea.toFixed(0)} → ${face.area_sqft.toFixed(0)}`);
+                  }
+                }
+                
+                // Recalculate summary
+                const wastePct = meas.summary.waste_pct || 12;
+                const totalArea = meas.faces.reduce((s, f) => s + f.area_sqft, 0) * (1 + wastePct / 100);
+                meas.summary.total_area_sqft = totalArea;
+                meas.summary.total_squares = totalArea / 100;
+                meas.summary.pitch_method = 'vendor';
+                vendorCrossValidation.pitchOverridden = true;
+              }
+              
+              // Check area deviation
+              if (vendorArea && vendorArea > 0) {
+                const deviation = Math.abs(meas.summary.total_area_sqft - vendorArea) / vendorArea * 100;
+                vendorCrossValidation.areaDeviationPct = deviation;
+                
+                if (deviation > 12) {
+                  console.warn(`⚠️ AREA MISMATCH: AI=${meas.summary.total_area_sqft.toFixed(0)}, Vendor=${vendorArea}, deviation=${deviation.toFixed(1)}%`);
+                } else {
+                  console.log(`✅ Area within tolerance: deviation=${deviation.toFixed(1)}%`);
+                }
+              }
+
+              // Override line lengths from vendor if available and AI used skeleton defaults
+              if (vp.ridges_ft && meas.summary.ridge_ft !== undefined) {
+                const ridgeDev = pctErrorHelper(vp.ridges_ft, meas.summary.ridge_ft || 0);
+                if (ridgeDev > 30) {
+                  console.log(`📐 Ridge override: AI=${meas.summary.ridge_ft?.toFixed(0)} → Vendor=${vp.ridges_ft.toFixed(0)} (${ridgeDev.toFixed(0)}% dev)`);
+                  meas.summary.ridge_ft = vp.ridges_ft;
+                }
+              }
+              if (vp.hips_ft && meas.summary.hip_ft !== undefined) {
+                const hipDev = pctErrorHelper(vp.hips_ft, meas.summary.hip_ft || 0);
+                if (hipDev > 30) {
+                  meas.summary.hip_ft = vp.hips_ft;
+                }
+              }
+              if (vp.valleys_ft && meas.summary.valley_ft !== undefined) {
+                const valleyDev = pctErrorHelper(vp.valleys_ft, meas.summary.valley_ft || 0);
+                if (valleyDev > 30) {
+                  meas.summary.valley_ft = vp.valleys_ft;
+                }
+              }
+              if (vp.eaves_ft && meas.summary.eave_ft !== undefined) {
+                const eaveDev = pctErrorHelper(vp.eaves_ft, meas.summary.eave_ft || 0);
+                if (eaveDev > 30) {
+                  meas.summary.eave_ft = vp.eaves_ft;
+                }
+              }
+              if (vp.rakes_ft && meas.summary.rake_ft !== undefined) {
+                const rakeDev = pctErrorHelper(vp.rakes_ft, meas.summary.rake_ft || 0);
+                if (rakeDev > 30) {
+                  meas.summary.rake_ft = vp.rakes_ft;
+                }
+              }
+            }
+          }
+        } catch (vendorErr) {
+          console.warn('[pull] Vendor cross-validation failed (non-fatal):', vendorErr);
+        }
+
         // ============= AI LEARNING PIPELINE =============
         // When training_session_id is provided, LEARN from user traces (not copy them)
         // Phase 1: Compare AI features vs user traces
@@ -3950,8 +4065,8 @@ function convertVisionOverlayToMeasureResult(
       id: 'vision-face-1',
       wkt: perimeterWkt,
       plan_area_sqft: areaSqFt,
-      pitch: '5/12', // Default pitch
-      area_sqft: areaSqFt * 1.08, // Apply ~5/12 pitch factor
+      pitch: metadata?.pitch || '6/12', // Use metadata pitch or regional default
+      area_sqft: areaSqFt * pitchFactor(metadata?.pitch || '6/12'),
       linear_features: linearFeatures
     }];
     
