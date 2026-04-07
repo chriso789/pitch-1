@@ -266,10 +266,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             </Badge>
           )}
         </div>
-        {repName && (
+          {repName && (
           <p className="text-sm text-muted-foreground">
             Commission calculation for {repName}
           </p>
+        )}
+        {projectId && contactId && (
+          <div className="mt-2">
+            <CustomerPortalButton projectId={projectId} contactId={contactId} />
+          </div>
         )}
       </CardHeader>
 
