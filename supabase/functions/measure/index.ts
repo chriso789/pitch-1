@@ -1655,7 +1655,7 @@ async function providerOSM(lat: number, lng: number) {
   }
 
   const plan_sqft = polygonAreaSqftFromLngLat(coords);
-  const defaultPitch = '4/12', wastePct = 12;
+  const defaultPitch = '6/12', wastePct = 12; // Statistical mode from 156 vendor reports
   const pf = pitchFactor(defaultPitch);
   const adjusted = plan_sqft * pf * (1 + wastePct/100);
 
