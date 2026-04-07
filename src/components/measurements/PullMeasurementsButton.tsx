@@ -199,13 +199,9 @@ export function PullMeasurementsButton({
       return;
     }
 
-    // Check if coordinates are from verified source
+    // Log coordinate source for debugging (no longer prompting for re-verification)
     if (freshCoords.source !== 'contact_verified_address' && freshCoords.source !== 'user_pin_selection') {
-      toast({
-        title: "Address Verification Recommended",
-        description: `Using ${freshCoords.source} coordinates. For best accuracy, verify the address via Google Places first.`,
-        variant: "default"
-      });
+      console.log(`📍 Using ${freshCoords.source} coordinates — address was verified at lead creation.`);
     }
 
     console.log('📍 Opening structure selector with fresh coords:', { 
