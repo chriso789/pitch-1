@@ -142,11 +142,13 @@ const AppContent = () => {
         <Route path="/admin/*" element={<AdminRoutes />} />
         <Route path="/settings/*" element={<SettingsRoutes />} />
 
+        {/* Direct public marketing routes (not through PublicRoutes wrapper) */}
+        <Route path="/pricing" element={<Pricing />} />
+        <Route path="/features" element={<Features />} />
+        <Route path="/demo-request" element={<DemoRequest />} />
+        <Route path="/request-setup-link" element={<RequestSetupLink />} />
+
         {/* Public routes (portals, reports, legal, etc.) */}
-        <Route path="/demo-request" element={<PublicRoutes />} />
-        <Route path="/request-setup-link" element={<PublicRoutes />} />
-        <Route path="/pricing" element={<PublicRoutes />} />
-        <Route path="/features" element={<PublicRoutes />} />
         <Route path="/legal/*" element={<PublicRoutes />} />
         <Route path="/quickbooks/*" element={<PublicRoutes />} />
         <Route path="/google-calendar/*" element={<PublicRoutes />} />

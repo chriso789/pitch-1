@@ -7,13 +7,13 @@ import { useNavigate } from "react-router-dom";
 const plans = [
   {
     name: "Starter",
-    price: "$199",
-    period: "/month",
+    price: "$50",
+    period: "/user/month",
     description: "Perfect for small teams getting started",
     icon: Zap,
     features: [
-      "500 contacts",
-      "2 team members",
+      "Unlimited contacts",
+      "Power dialer access",
       "500 dialer minutes/mo",
       "3 email sequences",
       "Basic AI features",
@@ -26,13 +26,12 @@ const plans = [
   },
   {
     name: "Professional",
-    price: "$499",
-    period: "/month",
+    price: "$99",
+    period: "/user/month",
     description: "For growing teams that need more power",
     icon: Rocket,
     features: [
-      "5,000 contacts",
-      "10 team members",
+      "Everything in Starter",
       "2,500 dialer minutes/mo",
       "Unlimited email sequences",
       "Advanced AI features",
@@ -52,10 +51,8 @@ const plans = [
     description: "For large organizations with custom needs",
     icon: Building2,
     features: [
-      "Unlimited contacts",
-      "Unlimited team members",
+      "Everything in Professional",
       "Unlimited dialer minutes",
-      "Unlimited everything",
       "Full AI suite",
       "Dedicated support",
       "Custom reporting",

@@ -478,25 +478,25 @@ const LandingPage = () => {
             <div>
               <h4 className="font-bold mb-4">Product</h4>
               <ul className="space-y-2 text-slate-400 text-sm">
-                <li><a href="/features" className="hover:text-white transition-colors">Features</a></li>
-                <li><a href="/pricing" className="hover:text-white transition-colors">Pricing</a></li>
-                <li><a href="/integration" className="hover:text-white transition-colors">Integration</a></li>
-                <li><a href="/demo-request" className="hover:text-white transition-colors">Request Demo</a></li>
+                <li><button onClick={() => navigate('/features')} className="hover:text-white transition-colors">Features</button></li>
+                <li><button onClick={() => navigate('/pricing')} className="hover:text-white transition-colors">Pricing</button></li>
+                <li><button onClick={() => { document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-white transition-colors">Integrations</button></li>
+                <li><button onClick={() => navigate('/demo-request')} className="hover:text-white transition-colors">Request Demo</button></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold mb-4">Company</h4>
               <ul className="space-y-2 text-slate-400 text-sm">
-                <li><a href="/demo-request" className="hover:text-white transition-colors">Contact</a></li>
-                <li><a href="/help" className="hover:text-white transition-colors">Support</a></li>
+                <li><button onClick={() => navigate('/demo-request')} className="hover:text-white transition-colors">Contact</button></li>
+                <li><button onClick={() => navigate('/demo-request')} className="hover:text-white transition-colors">Support</button></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold mb-4">Legal</h4>
               <ul className="space-y-2 text-slate-400 text-sm">
-                <li><a href="/legal/privacy" className="hover:text-white transition-colors">Privacy Policy</a></li>
-                <li><a href="/legal/terms" className="hover:text-white transition-colors">Terms of Service</a></li>
-                <li><a href="/legal/security" className="hover:text-white transition-colors">Security</a></li>
+                <li><button onClick={() => navigate('/legal/privacy')} className="hover:text-white transition-colors">Privacy Policy</button></li>
+                <li><button onClick={() => navigate('/legal/terms')} className="hover:text-white transition-colors">Terms of Service</button></li>
+                <li><button onClick={() => navigate('/legal/security')} className="hover:text-white transition-colors">Security</button></li>
               </ul>
             </div>
           </div>
