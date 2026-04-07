@@ -1329,7 +1329,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     });
   } else {
     // No segment data, use building footprint with assumed pitch
-    const defaultPitch = '4/12';
+    const defaultPitch = '6/12'; // Statistical mode from 156 vendor reports
     const pf = pitchFactor(defaultPitch);
     faces.push({
       id: 'A',
