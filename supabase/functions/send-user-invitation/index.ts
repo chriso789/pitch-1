@@ -17,8 +17,8 @@ const EMAIL_CONFIG = {
     secondaryColor: '#3b82f6',
   },
   urls: {
-    app: 'https://pitch-1.lovable.app',
-    login: 'https://pitch-1.lovable.app/login',
+    app: 'https://pitch-crm.ai',
+    login: 'https://pitch-crm.ai/login',
   },
   linkExpirationHours: 24,
 };

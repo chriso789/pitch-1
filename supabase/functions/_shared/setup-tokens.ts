@@ -4,7 +4,7 @@
  * Tokens are valid for 24 hours by default
  */
 
-const APP_URL = "https://pitch-1.lovable.app";
+const APP_URL = Deno.env.get("FRONTEND_URL") || Deno.env.get("APP_URL") || "https://pitch-crm.ai";
 
 /**
  * Generate a cryptographically random setup token, store it in the

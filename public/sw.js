@@ -65,18 +65,13 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Cache-first strategy for static assets
-  if (request.destination === 'image' || 
-      request.destination === 'font' ||
-      url.pathname.startsWith('/assets/') ||
-      url.pathname.endsWith('.js') ||
-      url.pathname.endsWith('.css')) {
-    
+  // Network-first for JS/CSS (ensures fresh code after deploys)
+  // Cache-first only for images and fonts (stable assets)
+  if (request.destination === 'image' || request.destination === 'font') {
     event.respondWith(
       caches.match(request)
         .then((cachedResponse) => {
           if (cachedResponse) {
-            // Return cached response and update cache in background
             event.waitUntil(
               fetch(request)
                 .then((networkResponse) => {
@@ -85,12 +80,10 @@ self.addEventListener('fetch', (event) => {
                       .then((cache) => cache.put(request, networkResponse));
                   }
                 })
-                .catch(() => {}) // Ignore network errors
+                .catch(() => {})
             );
             return cachedResponse;
           }
-          
-          // Not in cache - fetch and cache
           return fetch(request)
             .then((networkResponse) => {
               if (networkResponse.ok) {
@@ -101,6 +94,25 @@ self.addEventListener('fetch', (event) => {
               return networkResponse;
             });
         })
+    );
+    return;
+  }
+  
+  // Network-first for JS, CSS, and other assets
+  if (url.pathname.startsWith('/assets/') ||
+      url.pathname.endsWith('.js') ||
+      url.pathname.endsWith('.css')) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          if (response.ok) {
+            const responseToCache = response.clone();
+            caches.open(CACHE_NAME)
+              .then((cache) => cache.put(request, responseToCache));
+          }
+          return response;
+        })
+        .catch(() => caches.match(request).then((r) => r || new Response('', { status: 503 })))
     );
     return;
   }

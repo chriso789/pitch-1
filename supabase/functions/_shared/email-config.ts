@@ -27,7 +27,7 @@ export const EMAIL_CONFIG = {
     tagline: 'The #1 Construction Sales Platform',
     primaryColor: '#2563eb',
     secondaryColor: '#3b82f6',
-    logo: 'https://pitch-1.lovable.app/lovable-uploads/pitch-logo.png',
+    logo: 'https://pitch-crm.ai/lovable-uploads/pitch-logo.png',
   },
   
   // Link expiration (in hours) — custom setup tokens use 24h
@@ -38,10 +38,10 @@ export const EMAIL_CONFIG = {
   
   // App URLs
   urls: {
-    app: 'https://pitch-1.lovable.app',
-    login: 'https://pitch-1.lovable.app/login',
-    resetPassword: 'https://pitch-1.lovable.app/reset-password',
-    settings: 'https://pitch-1.lovable.app/settings',
+    app: 'https://pitch-crm.ai',
+    login: 'https://pitch-crm.ai/login',
+    resetPassword: 'https://pitch-crm.ai/reset-password',
+    settings: 'https://pitch-crm.ai/settings',
   }
 };
 
