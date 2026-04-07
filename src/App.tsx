@@ -166,22 +166,26 @@ const AppContent = () => {
         <Route path="/demo-request" element={<DemoRequest />} />
         <Route path="/request-setup-link" element={<RequestSetupLink />} />
 
-        {/* Public routes (portals, reports, legal, etc.) */}
-        <Route path="/legal/*" element={<PublicRoutes />} />
-        <Route path="/quickbooks/*" element={<PublicRoutes />} />
-        <Route path="/google-calendar/*" element={<PublicRoutes />} />
-        <Route path="/reports/*" element={<PublicRoutes />} />
-        <Route path="/r/*" element={<PublicRoutes />} />
-        <Route path="/onboarding/*" element={<PublicRoutes />} />
-        <Route path="/customer/*" element={<PublicRoutes />} />
-        <Route path="/sign/*" element={<PublicRoutes />} />
-        <Route path="/portal/*" element={<PublicRoutes />} />
-        <Route path="/crew" element={<PublicRoutes />} />
-        <Route path="/homeowner" element={<PublicRoutes />} />
-        <Route path="/view-quote/*" element={<PublicRoutes />} />
-        <Route path="/proposal/*" element={<PublicRoutes />} />
-        <Route path="/v/*" element={<PublicRoutes />} />
-        <Route path="/pay/*" element={<PublicRoutes />} />
+        {/* Public routes – directly defined to avoid nested Routes matching issues */}
+        <Route path="/legal/privacy" element={<Suspense fallback={<PageLoader />}><Privacy /></Suspense>} />
+        <Route path="/legal/terms" element={<Suspense fallback={<PageLoader />}><Terms /></Suspense>} />
+        <Route path="/legal/security" element={<Suspense fallback={<PageLoader />}><Security /></Suspense>} />
+        <Route path="/quickbooks/callback" element={<Suspense fallback={<PageLoader />}><QuickBooksCallback /></Suspense>} />
+        <Route path="/google-calendar/callback" element={<Suspense fallback={<PageLoader />}><GoogleCalendarCallback /></Suspense>} />
+        <Route path="/reports/:token" element={<Suspense fallback={<PageLoader />}><PublicReportViewer /></Suspense>} />
+        <Route path="/r/:token" element={<Suspense fallback={<PageLoader />}><PublicReportViewer /></Suspense>} />
+        <Route path="/onboarding/:token" element={<Suspense fallback={<PageLoader />}><OnboardingWalkthrough /></Suspense>} />
+        <Route path="/customer/:token" element={<Suspense fallback={<PageLoader />}><CustomerPortalPublic /></Suspense>} />
+        <Route path="/sign/:token" element={<Suspense fallback={<PageLoader />}><PublicSignatureCapture /></Suspense>} />
+        <Route path="/portal/login" element={<Suspense fallback={<PageLoader />}><PortalLoginPage /></Suspense>} />
+        <Route path="/portal/setup" element={<Suspense fallback={<PageLoader />}><HomeownerSetupAccount /></Suspense>} />
+        <Route path="/portal/:shareToken" element={<Suspense fallback={<PageLoader />}><PublicPortalView /></Suspense>} />
+        <Route path="/crew" element={<Suspense fallback={<PageLoader />}><CrewPortalPage /></Suspense>} />
+        <Route path="/homeowner" element={<Suspense fallback={<PageLoader />}><HomeownerProtectedRoute><HomeownerPortalPage /></HomeownerProtectedRoute></Suspense>} />
+        <Route path="/view-quote/:token" element={<Suspense fallback={<PageLoader />}><ViewQuote /></Suspense>} />
+        <Route path="/proposal/:token" element={<Suspense fallback={<PageLoader />}><PublicProposalView /></Suspense>} />
+        <Route path="/v/:token" element={<Suspense fallback={<PageLoader />}><PublicDocumentView /></Suspense>} />
+        <Route path="/pay/:token" element={<Suspense fallback={<PageLoader />}><ZellePaymentPage /></Suspense>} />
 
         {/* All other paths → protected app routes */}
         <Route path="/*" element={<ProtectedRoutes />} />
