@@ -31,6 +31,12 @@ import SetupAccount from "./pages/SetupAccount";
 import ConfirmEmail from "./pages/ConfirmEmail";
 import NotFound from "./pages/NotFound";
 
+// Eager imports for public marketing pages (fix nested Routes issue)
+import Pricing from "./pages/Pricing";
+import Features from "./pages/Features";
+import DemoRequest from "./pages/DemoRequest";
+import RequestSetupLink from "./pages/auth/RequestSetupLink";
+
 // Route section wrappers – imported normally (they are small files that
 // only declare React.lazy() for each page inside them, so no heavy
 // code is pulled in at boot).
