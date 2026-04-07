@@ -176,11 +176,6 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
     }
   };
 
-  const handleMeasurementChange = (updatedMeasurement: any, updatedTags: any) => {
-    if (onMeasurementUpdate) {
-      onMeasurementUpdate(updatedMeasurement, updatedTags);
-    }
-  };
 
   const summary = measurement.summary;
   const confidence = measurement.confidence || 0.85;

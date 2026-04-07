@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { MousePointer2, Trash2, Plus, Link2 } from 'lucide-react';
-import { cn } from '@/lib/utils';
+
 
 type EdgeType = 'eave' | 'rake' | 'ridge' | 'hip' | 'valley';
 
