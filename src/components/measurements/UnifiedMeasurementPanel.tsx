@@ -701,19 +701,55 @@ export function UnifiedMeasurementPanel({
                   </div>
                 </div>
 
-                <Button 
-                  size="sm" 
-                  className="w-full"
-                  onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
-                  disabled={isSavingDirect}
-                >
-                  {isSavingDirect ? (
-                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                  ) : (
-                    <ArrowRight className="h-4 w-4 mr-1.5" />
-                  )}
-                  Save to Estimates
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowAiReport(true)}
+                  >
+                    <Eye className="h-4 w-4 mr-1.5" />
+                    View Report
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    className="flex-1"
+                    onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
+                    disabled={isSavingDirect}
+                  >
+                    {isSavingDirect ? (
+                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <ArrowRight className="h-4 w-4 mr-1.5" />
+                    )}
+                    Save to Estimates
+                  </Button>
+                </div>
+
+                <MeasurementReportDialog
+                  open={showAiReport}
+                  onOpenChange={setShowAiReport}
+                  measurement={{
+                    id: ai.id,
+                    property_id: propertyId,
+                    summary: {
+                      total_area_sqft: ai.total_area_adjusted_sqft || 0,
+                      total_squares: ai.total_squares || 0,
+                      waste_pct: ai.waste_factor_pct || 10,
+                      ridge_ft: ai.total_ridge_length || 0,
+                      hip_ft: ai.total_hip_length || 0,
+                      valley_ft: ai.total_valley_length || 0,
+                      eave_ft: ai.total_eave_length || 0,
+                      rake_ft: ai.total_rake_length || 0,
+                    },
+                    linear_features: ai.linear_features_wkt || [],
+                    faces: ai.faces_wkt || [],
+                    center_lat: ai.target_lat,
+                    center_lng: ai.target_lng,
+                  }}
+                  tags={diagramTags}
+                  address={address}
+                />
               </div>
             );
           })()}
