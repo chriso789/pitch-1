@@ -851,7 +851,7 @@ export function SchematicRoofDiagram({
   }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
 
   const overlayImageStyle = useMemo(() => {
-    const overlayViewport = debugInfo?.overlayViewport;
+    const overlayViewport = debugInfo && 'overlayViewport' in debugInfo ? debugInfo.overlayViewport : undefined;
 
     if (!localShowOverlay || !satelliteImageUrl || !imageBounds || !overlayViewport) {
       return undefined;
@@ -872,14 +872,12 @@ export function SchematicRoofDiagram({
     const cropY = Math.min(Math.max(rawCropY, 0), sourceHeight - 1);
     const cropWidth = Math.min(Math.max(rawCropWidth, 1), sourceWidth - cropX);
     const cropHeight = Math.min(Math.max(rawCropHeight, 1), sourceHeight - cropY);
-    const scaleX = width / cropWidth;
-    const scaleY = height / cropHeight;
 
     return {
-      left: -cropX * scaleX,
-      top: -cropY * scaleY,
-      width: sourceWidth * scaleX,
-      height: sourceHeight * scaleY,
+      left: -(cropX * width) / cropWidth,
+      top: -(cropY * height) / cropHeight,
+      width: (sourceWidth * width) / cropWidth,
+      height: (sourceHeight * height) / cropHeight,
     };
   }, [debugInfo, height, imageBounds, localShowOverlay, measurement, satelliteImageUrl, width]);
 
