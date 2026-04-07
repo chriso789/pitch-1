@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -11,6 +11,7 @@ import { StructureSelectionMap } from './StructureSelectionMap';
 import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
 import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
+import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -215,12 +216,14 @@ export function PullMeasurementsButton({
     setShowStructureSelector(true);
   }, [loadCoordinates, toast]);
 
-  // Run AI analysis with the confirmed coordinates from PIN selection
+  // Use measurement job hook for async processing
+  const { job, isActive: jobIsActive, startJob } = useMeasurementJob(propertyId);
+
+  // Run AI analysis with the confirmed coordinates from PIN selection — now ASYNC
   async function handlePull(confirmedLat: number, confirmedLng: number, pitchOverride?: string) {
     const pullLat = confirmedLat;
     const pullLng = confirmedLng;
 
-    // Validate coordinates before attempting pull
     if (!pullLat || !pullLng || (pullLat === 0 && pullLng === 0)) {
       toast({
         title: "Missing Location",
@@ -233,262 +236,74 @@ export function PullMeasurementsButton({
     setLoading(true);
     setSuccess(false);
 
-    // 📊 Performance Monitoring: Start timing
-    const pullStartTime = Date.now();
-    const REQUEST_TIMEOUT_MS = 300000; // 300 second frontend timeout (matches backend wall_clock_limit)
-    console.log('⏱️ AI Measurement analysis started:', { 
-      propertyId, 
-      pullLat, 
-      pullLng, 
-      timestamp: new Date().toISOString() 
-    });
-
-    // Create abort controller for timeout
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.warn('⏱️ Frontend timeout triggered after', REQUEST_TIMEOUT_MS, 'ms');
-      abortController.abort();
-    }, REQUEST_TIMEOUT_MS);
-
     try {
-      // Get current user for the request
       const { data: { user } } = await supabase.auth.getUser();
-
-      // User has already confirmed the PIN location, so we use those coordinates directly
-      console.log('📍 Using user-selected PIN coordinates:', { pullLat, pullLng });
-
-      toast({
-        title: "Measuring Roof",
-        description: "Analyzing with Solar data...",
-      });
-
-      // 🚀 Call the analyze-roof-aerial edge function with abort signal
-      // NEW: Enable unified pipeline for enhanced facet detection & QA
-      const invokePromise = supabase.functions.invoke('analyze-roof-aerial', {
-        body: {
-          address: address || 'Unknown Address',
-          coordinates: { lat: pullLat, lng: pullLng },
-          customerId: propertyId,
-          userId: user?.id,
-          pitchOverride: pitchOverride || undefined,
-          useUnifiedPipeline: true  // Phase 5: Enable unified AI pipeline
-        }
-      });
-      
-      // Race against timeout
-      const { data, error } = await Promise.race([
-        invokePromise,
-        new Promise<never>((_, reject) => {
-          abortController.signal.addEventListener('abort', () => {
-            reject(new Error('Request timeout - AI analysis took too long'));
-          });
-        })
-      ]);
-
-      if (error) {
-        console.error('Edge function error:', error);
-        throw error;
-      }
-      
-      if (!data?.success) {
-        // Check for specific error types
-        if (data?.error?.includes('OPENAI') || data?.error?.includes('API key')) {
-          toast({
-            title: "API Key Missing",
-            description: "OpenAI API key not configured. Contact your administrator.",
-            variant: "destructive"
-          });
-          setLoading(false);
-          return;
-        }
-        throw new Error(data?.error || 'AI analysis failed');
-      }
-      
-      // 📊 Performance Monitoring: Record pull time
-      const pullEndTime = Date.now();
-      const pullDuration = pullEndTime - pullStartTime;
-      console.log(`⏱️ AI analysis completed in ${pullDuration}ms`, {
-        propertyId,
-        duration: pullDuration,
-        target: 15000,
-        status: pullDuration < 15000 ? 'PASS' : 'SLOW',
-        confidence: data.data?.confidence?.score
-      });
-
-      // Transform new format to legacy format for backward compatibility
-      const { measurement, tags } = transformNewMeasurementToLegacyFormat(data.data);
-      measurement.id = data.measurementId;
-
-      // Get satellite image URL from the new system
-      let satelliteImageUrl: string | undefined = 
-        data.data?.images?.mapbox?.url || 
-        data.data?.images?.google?.url;
-
-      // If no satellite image from the new system, try Google Maps fallback
-      if (!satelliteImageUrl) {
-        console.log('No satellite image from AI system, using Google Maps fallback');
-        
-        const cacheKey = `gmaps_sat_${pullLat.toFixed(6)}_${pullLng.toFixed(6)}_z20`;
-        const cachedImageUrl = imageCache.getImage(cacheKey);
-        
-        if (cachedImageUrl) {
-          satelliteImageUrl = cachedImageUrl;
-          console.log('[Image Cache] ✅ Cache HIT');
-        } else {
-          try {
-            const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
-              body: { 
-                endpoint: 'satellite',
-                params: {
-                  center: `${pullLat},${pullLng}`,
-                  zoom: '21',
-                  size: '1280x1280',
-                  maptype: 'satellite',
-                  scale: '2'
-                }
-              }
-            });
-
-            if (!imageError && imageData?.image_url) {
-              satelliteImageUrl = imageData.image_url;
-              imageCache.setImage(cacheKey, satelliteImageUrl);
-            } else if (!imageError && imageData?.image) {
-              satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
-              imageCache.setImage(cacheKey, satelliteImageUrl);
-            }
-          } catch (imgError) {
-            console.error('Failed to fetch satellite image:', imgError);
-          }
-        }
-      }
-
-      // Store final coords for report preview
-      const finalCoords = { lat: pullLat, lng: pullLng };
-
-      // Fetch company info for report branding
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
-      if (currentUser) {
-        const { data: profileData } = await supabase
+      let tenantId = 'unknown';
+      if (user) {
+        const { data: profile } = await supabase
           .from('profiles')
           .select('tenant_id')
-          .eq('id', currentUser.id)
+          .eq('id', user.id)
           .single();
-        
-        if (profileData?.tenant_id) {
-          const { data: tenantData } = await supabase
-            .from('tenants')
-            .select('name, logo_url, phone, email, license_number')
-            .eq('id', profileData.tenant_id)
-            .single();
-          
-          if (tenantData) {
-            setCompanyInfo({
-              name: tenantData.name,
-              logo: tenantData.logo_url || undefined,
-              phone: tenantData.phone || undefined,
-              email: tenantData.email || undefined,
-              license: tenantData.license_number || undefined,
-            });
-          }
-        }
+        tenantId = profile?.tenant_id || 'unknown';
       }
 
-      // Show full report preview (instead of verification dialog)
-      setVerificationData({ measurement, tags, satelliteImageUrl, finalCoords });
-      setShowReportPreview(true);
-      
-      // CRITICAL: Reset loading state immediately when showing preview
-      // This prevents "stuck spinner" bug where loading persists
-      setLoading(false);
-      
-      // CRITICAL: Invalidate ALL measurement caches immediately so UI refreshes
-      // This ensures diagram, summary panel, and estimate builder all update
-      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
-      queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
-      queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
-      queryClient.invalidateQueries({ queryKey: ['roof-measurement'] });
-      queryClient.invalidateQueries({ queryKey: ['roof-measurement-edges'] });
-      queryClient.invalidateQueries({ queryKey: ['measurement-facets'] });
-      queryClient.invalidateQueries({ queryKey: ['active-measurement', propertyId] });
-      
-      // Enhanced confidence display with accuracy tier badges
-      const confidenceScore = data.data?.confidence?.score || 0;
-      const confidenceRating = data.data?.confidence?.rating || 'unknown';
-      const performanceData = data.data?.performance;
-      const footprintData = data.data?.footprint;
-      const qaResult = data.data?.qaResult;
-      
-      // Calculate accuracy tier (Phase 13: Automation integration)
-      let accuracyTier = 'bronze';
-      let tierEmoji = '🥉';
-      if (confidenceScore >= 98) { accuracyTier = 'diamond'; tierEmoji = '💎'; }
-      else if (confidenceScore >= 95) { accuracyTier = 'platinum'; tierEmoji = '🏆'; }
-      else if (confidenceScore >= 90) { accuracyTier = 'gold'; tierEmoji = '🥇'; }
-      else if (confidenceScore >= 85) { accuracyTier = 'silver'; tierEmoji = '🥈'; }
-      
-      // Format path and timing info
-      const pathUsed = performanceData?.path_used === 'solar_fast_path' ? '⚡ Fast Path' : '🔍 AI Analysis';
-      const totalTimeSeconds = performanceData?.timings_ms?.total 
-        ? (performanceData.timings_ms.total / 1000).toFixed(1) 
-        : (pullDuration / 1000).toFixed(1);
-      const footprintSource = footprintData?.source || performanceData?.footprint_source || 'unknown';
-      
-      // Format footprint source for display
-      const footprintLabel = {
-        'mapbox_vector': '📍 Mapbox Vector',
-        'google_solar_api': '🌞 Solar API',
-        'regrid_parcel': '🗺️ Regrid',
-        'solar_bbox_fallback': '⚠️ Solar BBox',
-        'ai_detection': '🤖 AI Detection'
-      }[footprintSource] || footprintSource;
-      
-      // Show confidence toast with accuracy tier
-      toast({
-        title: `${tierEmoji} ${accuracyTier.charAt(0).toUpperCase() + accuracyTier.slice(1)} Measurement`,
-        description: (
-          <div className="space-y-1">
-            <p>{data.data?.facets?.length || measurement.faces?.length || 0} facets • {confidenceScore}% confidence{qaResult?.overallPass ? ' ✓ QA' : ''}</p>
-            <p className="text-muted-foreground text-xs">
-              {measurement.summary?.total_squares?.toFixed(1)} squares • {pathUsed} • {totalTimeSeconds}s
-            </p>
-            <p className="text-xs text-muted-foreground">
-              {footprintLabel}
-            </p>
-          </div>
-        ),
+      // Start async job — returns immediately
+      await startJob({
+        lat: pullLat,
+        lng: pullLng,
+        address: address || undefined,
+        pitchOverride: pitchOverride || undefined,
+        tenantId,
+        userId: user?.id,
       });
+
+      toast({
+        title: "🚀 Measurement Started",
+        description: "AI analysis is running in the background. You'll see results when it's done.",
+      });
+
+      // Reset loading — the job status will drive the UI now
+      setLoading(false);
 
     } catch (err: any) {
-      console.error('AI measurement analysis error:', err);
-      
-      // Determine user-friendly error message based on error type
-      let title = "Analysis Failed";
-      let description = err.message || "Could not analyze roof. Try manual mode.";
-      
-      if (err.message?.includes('RATE_LIMIT') || err.message?.includes('429')) {
-        title = "Rate Limit Reached";
-        description = "Too many requests. Please wait a moment and try again.";
-      } else if (err.message?.includes('PAYMENT_REQUIRED') || err.message?.includes('402')) {
-        title = "Credits Exhausted";
-        description = "AI credits are depleted. Please contact your administrator.";
-      } else if (err.message?.includes('timeout') || err.message?.includes('aborted')) {
-        title = "Request Timeout";
-        description = "Analysis took too long. Please try again.";
-      } else if (err.message?.includes('Failed to fetch') || err.message?.includes('network')) {
-        title = "Connection Error";
-        description = "Could not connect to AI service. Check your internet connection.";
-      }
-      
+      console.error('Failed to start measurement job:', err);
       toast({
-        title,
-        description,
+        title: "Failed to Start",
+        description: err.message || "Could not start AI measurement. Try again.",
         variant: "destructive",
       });
-    } finally {
-      clearTimeout(timeoutId);
       setLoading(false);
     }
   }
+
+  // Track job status changes to show toasts
+  const [prevJobStatus, setPrevJobStatus] = useState<string | null>(null);
+  
+  useEffect(() => {
+    if (!job) return;
+    if (job.status === prevJobStatus) return;
+    
+    if (job.status === 'completed' && prevJobStatus !== 'completed') {
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 5000);
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+      toast({
+        title: "✅ Measurement Complete",
+        description: "AI analysis finished. Check the results below.",
+      });
+    } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
+      toast({
+        title: "Analysis Failed",
+        description: job.error || "AI measurement could not complete.",
+        variant: "destructive",
+      });
+    }
+    
+    setPrevJobStatus(job.status);
+  }, [job?.status, job?.error, prevJobStatus, propertyId, queryClient, toast]);
 
   const handleAcceptMeasurements = async (adjustedMeasurement?: any) => {
     if (!verificationData) return;
@@ -646,13 +461,17 @@ export function PullMeasurementsButton({
   const hasVerifiedCoords = verifiedCoords?.isValid && 
     (coordSource === 'contact_verified_address' || coordSource === 'user_pin_selection');
 
+  // Determine button state from job status
+  const isJobRunning = job?.status === 'queued' || job?.status === 'processing';
+  const buttonDisabled = loading || loadingCoords || isJobRunning;
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
         {/* Main AI Measurements button - opens structure selector first */}
         <Button
           onClick={handleOpenStructureSelector}
-          disabled={loading || loadingCoords}
+          disabled={buttonDisabled}
           variant="outline"
           size="sm"
         >
@@ -661,14 +480,19 @@ export function PullMeasurementsButton({
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Loading...
             </>
+          ) : isJobRunning ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {job?.progress_message || 'AI Analyzing...'}
+            </>
           ) : loading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              AI Analyzing...
+              Starting...
             </>
           ) : success ? (
             <>
-              <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
+              <CheckCircle2 className="h-4 w-4 mr-2 text-primary" />
               Measurements Ready
             </>
           ) : (
@@ -680,10 +504,10 @@ export function PullMeasurementsButton({
         </Button>
 
         {/* Re-analyze button - only shows when verified coordinates exist */}
-        {hasVerifiedCoords && !loading && !success && (
+        {hasVerifiedCoords && !loading && !success && !isJobRunning && (
           <Button
             onClick={handleReanalyze}
-            disabled={loading || loadingCoords}
+            disabled={buttonDisabled}
             variant="ghost"
             size="sm"
             title="Re-run analysis using stored verified coordinates"

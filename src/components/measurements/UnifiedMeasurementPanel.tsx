@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SegmentHoverProvider } from '@/contexts/SegmentHoverContext';
+import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -137,6 +138,9 @@ export function UnifiedMeasurementPanel({
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
+
+  // Track async measurement jobs
+  const { job: activeJob, isActive: jobIsActive } = useMeasurementJob(pipelineEntryId);
 
   // Build initialValues from saved_tags for edit mode
   const getInitialValuesFromTags = (tags: Record<string, any>): MeasurementFormData => {
@@ -442,10 +446,80 @@ export function UnifiedMeasurementPanel({
     setAddOptionsOpen(false);
   };
 
+  // Quick save an AI measurement directly from the banner
+  const [isSavingDirect, setIsSavingDirect] = useState(false);
+  const handleSaveAiMeasurementDirect = async (measurement: any) => {
+    setIsSavingDirect(true);
+    try {
+      const { data: entry } = await supabase
+        .from('pipeline_entries')
+        .select('tenant_id')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (!entry?.tenant_id) throw new Error('No tenant found');
+
+      const totalSquares = measurement.total_squares || (measurement.total_area_adjusted_sqft ? measurement.total_area_adjusted_sqft / 100 : 0);
+      const eaveLength = measurement.total_eave_length || 0;
+      const rakeLength = measurement.total_rake_length || 0;
+
+      const savedTags = {
+        'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+        'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
+        'roof.faces_count': measurement.facet_count || 0,
+        'lf.ridge': measurement.total_ridge_length || 0,
+        'lf.hip': measurement.total_hip_length || 0,
+        'lf.valley': measurement.total_valley_length || 0,
+        'lf.eave': eaveLength,
+        'lf.rake': rakeLength,
+        'lf.perimeter': eaveLength + rakeLength,
+        'source': 'ai_pulled',
+        'imported_at': measurement.created_at,
+      };
+
+      await supabase.from('measurement_approvals').insert({
+        tenant_id: entry.tenant_id,
+        pipeline_entry_id: pipelineEntryId,
+        approved_at: new Date().toISOString(),
+        saved_tags: savedTags,
+        approval_notes: `AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
+      });
+
+      toast({ title: 'Measurement Saved', description: 'AI measurement added to saved list' });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+      onMeasurementChange?.();
+    } catch (error: any) {
+      toast({ title: 'Save Failed', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsSavingDirect(false);
+    }
+  };
+
   // Separate active from other measurements
   const activeMeasurement = approvals?.find(a => a.id === activeApprovalId);
   const otherMeasurements = approvals?.filter(a => a.id !== activeApprovalId) || [];
   const hasAnyMeasurements = approvals && approvals.length > 0;
+
+  // Find the latest AI measurement that hasn't been saved as an approval yet
+  const latestUnapprovedAI = useMemo(() => {
+    if (!aiMeasurements?.length) return null;
+    // The latest AI measurement that hasn't been saved
+    const latest = aiMeasurements[0]; // already sorted desc
+    // Check if this measurement's created_at matches any approval
+    const isSaved = (approvals || []).some(a => {
+      const tags = a.saved_tags as any;
+      return tags?.imported_at === latest.created_at || tags?.source === 'ai_pulled';
+    });
+    // Show if not saved AND has valid data
+    if (!isSaved && latest.total_area_adjusted_sqft && latest.total_area_adjusted_sqft > 0) {
+      return latest;
+    }
+    return null;
+  }, [aiMeasurements, approvals]);
 
   if (isLoading) {
     return (
@@ -496,6 +570,64 @@ export function UnifiedMeasurementPanel({
               onEdit={() => handleEditMeasurement(activeMeasurement)}
               isSettingActive={false}
             />
+          )}
+
+          {/* Job Progress Banner */}
+          {jobIsActive && activeJob && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5 animate-pulse">
+              <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium text-sm">AI Measurement in Progress</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {activeJob.progress_message || 'Processing...'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Latest Unapproved AI Result — prominent card */}
+          {!jobIsActive && latestUnapprovedAI && (
+            <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-sm">Latest AI Measurement</span>
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                    Unsaved
+                  </Badge>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {format(new Date(latestUnapprovedAI.created_at), 'MMM d, yyyy')}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Squares</span>
+                  <p className="font-semibold">{formatValue(latestUnapprovedAI.total_squares)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Sq Ft</span>
+                  <p className="font-semibold">{formatValue(latestUnapprovedAI.total_area_adjusted_sqft)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Pitch</span>
+                  <p className="font-semibold">{latestUnapprovedAI.predominant_pitch || '—'}</p>
+                </div>
+              </div>
+              <Button 
+                size="sm" 
+                className="w-full"
+                onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
+                disabled={isSavingDirect}
+              >
+                {isSavingDirect ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4 mr-1.5" />
+                )}
+                Save to Estimates
+              </Button>
+            </div>
           )}
 
           {/* Other Measurements */}

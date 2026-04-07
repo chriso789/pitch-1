@@ -20043,6 +20043,63 @@ export type Database = {
           },
         ]
       }
+      measurement_jobs: {
+        Row: {
+          address: string | null
+          completed_at: string | null
+          created_at: string
+          error: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          measurement_id: string | null
+          pipeline_entry_id: string
+          pitch_override: string | null
+          progress_message: string | null
+          started_at: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          address?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          measurement_id?: string | null
+          pipeline_entry_id: string
+          pitch_override?: string | null
+          progress_message?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          address?: string | null
+          completed_at?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          measurement_id?: string | null
+          pipeline_entry_id?: string
+          pitch_override?: string | null
+          progress_message?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       measurement_qa_queue: {
         Row: {
           assigned_at: string | null
