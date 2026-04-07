@@ -461,13 +461,17 @@ export function PullMeasurementsButton({
   const hasVerifiedCoords = verifiedCoords?.isValid && 
     (coordSource === 'contact_verified_address' || coordSource === 'user_pin_selection');
 
+  // Determine button state from job status
+  const isJobRunning = job?.status === 'queued' || job?.status === 'processing';
+  const buttonDisabled = loading || loadingCoords || isJobRunning;
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
         {/* Main AI Measurements button - opens structure selector first */}
         <Button
           onClick={handleOpenStructureSelector}
-          disabled={loading || loadingCoords}
+          disabled={buttonDisabled}
           variant="outline"
           size="sm"
         >
@@ -476,14 +480,19 @@ export function PullMeasurementsButton({
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               Loading...
             </>
+          ) : isJobRunning ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              {job?.progress_message || 'AI Analyzing...'}
+            </>
           ) : loading ? (
             <>
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              AI Analyzing...
+              Starting...
             </>
           ) : success ? (
             <>
-              <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
+              <CheckCircle2 className="h-4 w-4 mr-2 text-primary" />
               Measurements Ready
             </>
           ) : (
