@@ -22,11 +22,9 @@ import {
   X, 
   RotateCcw,
   Trash2,
-  Receipt,
   Plus,
   StickyNote,
-  GripVertical,
-  Wrench
+  GripVertical
 } from 'lucide-react';
 import {
   DndContext,
