@@ -108,6 +108,7 @@ Deno.serve(async (req) => {
         .select('id, address, parsed, diagram_geometry, geocoded_lat, geocoded_lng')
         .not('geocoded_lat', 'is', null)
         .not('geocoded_lng', 'is', null)
+        .not('diagram_geometry', 'is', null)
         .limit(300);
       if (error) throw error;
 
