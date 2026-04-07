@@ -343,6 +343,8 @@ Deno.serve(async (req: Request) => {
           verified_address: body.selectedAddress ? {
             formatted_address: body.selectedAddress.formatted_address,
             place_id: body.selectedAddress.place_id,
+            lat: body.selectedAddress.geometry?.location?.lat || latitude,
+            lng: body.selectedAddress.geometry?.location?.lng || longitude,
             geometry: body.selectedAddress.geometry,
             address_components: body.selectedAddress.address_components
           } : null,
