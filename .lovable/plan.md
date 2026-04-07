@@ -1,46 +1,49 @@
 
 
-## Fix Pipeline Status Transition + Add AR Action Buttons
+## Fix Three Issues: Blank Signing Page, AR Actions, and GitHub Secrets
 
-### Root Cause: All Edge Functions Are Broken
+### Issue 1: "Review Your Proposal" Button Leads to Blank Page
 
-**Every single edge function (240 files)** has `Deno.Deno.serve` instead of `Deno.serve`. This is why the "Error updating status - Failed to send a request to the Edge Function" error appears when moving a lead to a project. The function literally cannot start.
+**Root Cause**: The signing URL in emails points to the wrong domain. There are **three different hardcoded URLs** across edge functions, none pointing to the actual published app:
 
-This affects the `pipeline-status` function specifically, but also every other edge function in the system.
+| Edge Function | Current URL | Should Be |
+|---|---|---|
+| `email-signature-request/index.ts` (line 116) | `https://pitchcrm.app` | `https://pitch-1.lovable.app` |
+| `create-share-link/index.ts` (line 134) | `https://pitch-crm.ai` | `https://pitch-1.lovable.app` |
+| `generate-proposal/index.ts` (line 529) | Uses `shareUrl` from `create-share-link` | Inherits the wrong URL |
 
-### Plan
+The email screenshot shows `pitch-crm.ai/sign/...` which is not where the app is hosted. The signing page component (`PublicSignatureCapture.tsx`) exists and works -- it just can't be reached because the URL is wrong.
 
-**Step 1 -- Fix `Deno.Deno.serve` in `pipeline-status/index.ts`**
+**Fix**: Update both `email-signature-request` and `create-share-link` to use `FRONTEND_URL` env var with fallback to `https://pitch-1.lovable.app`. Set `FRONTEND_URL` as a Supabase secret. Redeploy both functions.
 
-Change line 7 from `Deno.Deno.serve(...)` to `Deno.serve(...)`. Deploy and verify the pipeline transition works.
+### Issue 2: AR Action Buttons Not Showing
 
-**Step 2 -- Batch-fix `Deno.Deno.serve` across all 240 edge functions**
+The dropdown menu code exists in `AccountsReceivable.tsx` (lines 345-418) with the three-dot menu button. The user may be seeing the page without data, or the dropdown trigger may not be visible. I will verify the page renders correctly and ensure the action buttons are visible and accessible.
 
-Run a find-and-replace across `supabase/functions/` to fix every occurrence. This unblocks every edge function in the system (payments, measurements, approvals, webhooks, etc.).
+**Fix**: Check if the issue is data-related (no items loading) or if the trigger button styling makes it invisible. May need to make the action button more prominent.
 
-**Step 3 -- Add action buttons to Accounts Receivable project rows**
+### Issue 3: GitHub Actions Secrets Are Empty
 
-Currently each AR row only shows name, address, contract/paid amounts, and a "No Invoice" badge. Add a dropdown action menu per row with:
+**This is expected.** The screenshot shows the GitHub repository settings page with "This repository has no secrets." The GitHub Actions workflows (`claude-bug-detection.yml`, `claude-code-review.yml`, `claude-documentation.yml`) require secrets to authenticate with APIs.
 
-- **Create Invoice** -- navigates to `/lead/:id?tab=total` with invoice creation focus (for items with no invoice)
-- **Send Payment Link** -- calls `stripe-create-payment-link` for the latest unpaid invoice
-- **Send Zelle Info** -- generates Zelle payment instruction link
-- **View Details** -- navigates to the lead/project detail page
-- **Mark Paid** -- quick manual payment recording
+**Required secrets to add manually in GitHub Settings > Secrets:**
 
-Uses a `DropdownMenu` from shadcn/ui on each row, replacing the current click-only navigation.
+| Secret Name | Purpose |
+|---|---|
+| `SUPABASE_URL` | Your Supabase project URL |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for edge function auth |
+| `ANTHROPIC_API_KEY` | Claude API key for the bug detection/docs workflows |
+
+**This cannot be done programmatically** -- you must add these in the GitHub UI at Settings > Secrets > "New repository secret".
 
 ### Files to Edit
 
 | File | Change |
-|------|--------|
-| `supabase/functions/pipeline-status/index.ts` | Fix `Deno.Deno.serve` to `Deno.serve` |
-| All 240 edge function `index.ts` files | Same fix via batch script |
-| `src/pages/AccountsReceivable.tsx` | Add `DropdownMenu` with action buttons per project row |
+|---|---|
+| `supabase/functions/email-signature-request/index.ts` | Fix APP_URL fallback to `https://pitch-1.lovable.app` |
+| `supabase/functions/create-share-link/index.ts` | Fix FRONTEND_URL fallback to `https://pitch-1.lovable.app` |
+| `src/pages/AccountsReceivable.tsx` | Verify and fix action button visibility |
 
-### Technical Notes
-
-- The `Deno.Deno.serve` bug was likely introduced by an automated refactor. `Deno.serve` is the correct Deno 2.x API.
-- The batch fix will use a shell `sed` command across all files in `supabase/functions/`.
-- AR action buttons will reuse existing edge functions (`stripe-create-payment-link`, `zelle-payment-page`) once they're unblocked by the Deno fix.
+### Deployments
+- Redeploy `email-signature-request`, `create-share-link`, `signer-open`
 
