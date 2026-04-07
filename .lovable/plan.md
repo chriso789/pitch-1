@@ -1,45 +1,68 @@
 
 
-# Fix Measurement Report: Add Roof Diagram + Interactive Edit Mode
+# Reorder Estimate Line Items: Tear Off → Materials → Install
 
 ## Problem
-The Measurement Report dialog shows "No visualization available" because it references a non-existent `mapbox_visualization_url` column. There is no roof diagram drawn. The "Edit Mode" is not functional for manual pin-drop measurements.
+Currently, the estimate PDF and builder display items grouped as **Materials** then **Labor**. Real roofing workflow is: tear off the old roof, install materials, then install the new roof product. The ordering should reflect this: **Labor (Tear Off) → Materials → Labor (Install)**.
+
+## Approach
+Add a `labor_phase` field to `LineItem` that distinguishes tear-off labor from installation labor. Use this field to reorder sections in both the PDF renderer and the live builder table.
 
 ## Changes
 
-### 1. Replace "Satellite Visualization" with SchematicRoofDiagram (View Mode)
-**File: `src/components/measurements/ComprehensiveMeasurementReport.tsx`**
-- Import `SchematicRoofDiagram` and `SegmentHoverProvider` from existing components.
-- In **View Mode**, render `SchematicRoofDiagram` with the measurement data instead of checking for `mapbox_visualization_url`. The diagram draws the roof outline with color-coded edges (ridge=green, hip=purple, valley=red, eave=dark green, rake=teal) and length labels — matching EagleView/Roofr style reports.
-- Use `google_maps_image_url` or `satellite_overlay_url` as the satellite background for the diagram.
-- Rename section title from "Satellite Visualization" to "Roof Diagram".
+### 1. Add `labor_phase` to LineItem interface
+**File: `src/hooks/useEstimatePricing.ts`**
+- Add `labor_phase?: 'tear_off' | 'install'` to the `LineItem` interface (defaults to `'install'` when unset).
 
-### 2. Build Interactive Pin-Drop Edit Mode
-**File: `src/components/measurements/ComprehensiveMeasurementReport.tsx`**
-- In **Edit Mode**, render an interactive canvas over the satellite image where users can:
-  - Click to drop pins on roof corners/vertices
-  - Connect pins to form edges (ridge, hip, valley, eave, rake)
-  - Select edge type from a toolbar
-  - See real-time length calculations between pins (GPS-based)
-- This replaces the current `ComprehensiveMeasurementOverlay` which just displays static geometry.
+### 2. Update `buildRenderBlocks` ordering in PDF
+**File: `src/components/estimates/EstimatePDFDocument.tsx`**
+- Change the `buildRenderBlocks` function to split labor items into two groups based on `labor_phase`:
+  - **Tear Off** labor items (`labor_phase === 'tear_off'`)
+  - **Materials** (all material items)
+  - **Install** labor items (`labor_phase === 'install'` or unset)
+- Render sub-headers: "TEAR OFF" → "MATERIALS" → "INSTALLATION"
 
-**New File: `src/components/measurements/ManualPinDropEditor.tsx`**
-- SVG-based editor rendered over a satellite image
-- Tools: Add Point, Connect Points, Select Edge Type, Delete
-- Edge type selector (Ridge/Hip/Valley/Eave/Rake) with matching colors
-- Real-time distance calculation using haversine formula
-- Save capability that writes manual edges back to the measurement
+### 3. Update `SectionedLineItemsTable` section ordering
+**File: `src/components/estimates/SectionedLineItemsTable.tsx`**
+- Display three sections instead of two: Tear Off, Materials, Installation.
+- Each section gets its own header row and "Add item" button.
 
-### 3. Pass correct satellite URL to report
-**File: `src/components/measurements/UnifiedMeasurementPanel.tsx`**
-- When constructing the measurement object for the report dialog, map `google_maps_image_url` or `satellite_overlay_url` to a `satelliteImageUrl` field so the diagram and editor have a background image.
+### 4. Add labor phase selector when adding/editing labor items
+**File: `src/components/estimates/SectionedLineItemsTable.tsx`**
+- When adding a labor item, show a toggle or dropdown for "Tear Off" vs "Install" phase.
+- Default new labor items to "Install" unless the item name contains "tear" (auto-detect).
 
-### 4. Wire up data flow
-- The `SchematicRoofDiagram` already parses `linear_features_wkt` and `perimeter_wkt` from the measurement object — these fields are already being fetched and passed through.
-- Ensure `center_lat`, `center_lng` are passed for coordinate transformations.
+### 5. Update default template items with correct phases
+**File: `src/components/estimates/TemplateSectionSelector.tsx`**
+- Tag default "Tear Off" labor items with `labor_phase: 'tear_off'`.
+- Tag "Shingle Install" and other install labor with `labor_phase: 'install'`.
 
-## Technical Details
-- `SchematicRoofDiagram` is a 1900-line component that already handles GPS-to-SVG projection, edge coloring, length labels, facet fills, compass rose, and legend. It just needs to be wired into the report.
-- The `ManualPinDropEditor` will use the same `calculateImageBounds` + `gpsToPixel` utilities for coordinate conversion.
-- Edge type colors match Roofr conventions already defined in `FEATURE_COLORS`.
+### 6. Preserve backward compatibility
+- Existing estimates without `labor_phase` will render labor items in the "Installation" section by default (no migration needed).
+- The `labor_phase` field is stored in the `line_items` JSONB column alongside other line item properties.
+
+## Section Order (PDF and Builder)
+```text
+┌─────────────────────────────┐
+│  TEAR OFF                   │
+│  - Tear Off          32 SQ  │
+│  - Haul Away          1 EA  │
+├─────────────────────────────┤
+│  MATERIALS                  │
+│  - OC Duration       40 SQ  │
+│  - Drip Edge         19 EA  │
+│  - Ridge Cap          7 BDL │
+│  - Ice & Water       19 RL  │
+│  - ...                      │
+├─────────────────────────────┤
+│  INSTALLATION               │
+│  - Shingle Install   36 SQ  │
+│  - Flashing Work      3 EA  │
+└─────────────────────────────┘
+```
+
+## Technical Notes
+- `labor_phase` is optional on LineItem — old data gracefully falls into "Installation"
+- Auto-detection: items with names matching `/tear|removal|strip|dispose|haul/i` default to `tear_off`
+- The `sort_order` within each phase section is preserved per existing standards
 
