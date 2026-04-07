@@ -50,6 +50,7 @@ interface InvoiceData {
 const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   pipelineEntryId,
   projectId,
+  contactId,
   className
 }) => {
   const queryClient = useQueryClient();
