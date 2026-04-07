@@ -1,61 +1,36 @@
 
-Problem found
-- The AI measurement did complete for this lead, but far too slowly: the latest `analyze-roof-aerial` run took about 126 seconds and saved `roof_measurements.id = 7b2ffeaa-6604-44ad-94f9-6dad269a1784`.
-- No `measurement_approvals` row was created, so “Saved Measurements” still shows empty.
-- The current UI waits synchronously for the full edge function to finish, so users only see `AI Analyzing...` for a long time and it feels broken.
 
-Plan
+# Show Full Measurement Report with Roof Diagram for AI Results
 
-1. Ship the immediate UX fix first
-- Update the lead measurement panel to show completed AI results from `roof_measurements` prominently, not only from `measurement_approvals`.
-- If an AI result exists but is not yet approved, show it as “Latest AI Measurement” with clear actions like `Review`, `Apply`, and `Save`.
-- Replace the empty state with a smarter state:
-  - `analysis in progress`
-  - `result ready but not saved`
-  - `saved measurement available`
+## Problem
+When AI measurements are pulled, the "Latest AI Measurement" card only shows basic stats (squares, sqft, pitch) and a satellite thumbnail. It does not display a roof diagram with ridge, hip, valley, eave, and rake measurements drawn on the actual roof shape.
 
-2. Stop making users wait on one long request
-- Move AI measurement generation to an async job flow.
-- Add a `measurement_jobs` table with fields like `status`, `progress_message`, `measurement_id`, `error`, `pipeline_entry_id`, and timestamps.
-- Split the flow into:
-  - `start-ai-measurement` → creates a job and returns immediately
-  - background processor → runs the current analysis logic and updates the job row as it progresses
+## Solution
+Embed the existing `SchematicRoofDiagram` component directly into the "Latest AI Measurement" card, and expand the linear measurement summary. The diagram already supports rendering all edge types from `linear_features_wkt` data.
 
-3. Make progress visible and persistent
-- Update `PullMeasurementsButton` to start a job instead of blocking on the full analysis.
-- Show status like `Fetching imagery`, `Detecting outline`, `Calculating facets`, `Saving measurement`.
-- Subscribe/poll job status so the user can leave and return without losing visibility into the run.
+## Changes
 
-4. Remove the “hidden result” trap
-- Right now the result is effectively hidden behind manual confirmation or collapsed history.
-- Auto-surface the completed measurement when the job finishes:
-  - open the review panel automatically, or
-  - insert a visible unsaved measurement card at the top of the section
-- Keep `measurement_approvals` for approved/saved measurements, but do not use it as the only signal that AI succeeded.
+### 1. Update AI measurement query to fetch diagram data
+**File: `src/components/measurements/UnifiedMeasurementPanel.tsx`**
+- Add `linear_features_wkt`, `perimeter_wkt`, `target_lat`, `target_lng`, `footprint_vertices_geo`, `footprint_confidence`, `google_maps_image_url`, `satellite_overlay_url` to the `select()` call in the `aiMeasurements` query (line ~314).
 
-5. Harden completion behavior
-- Ensure loading state clears from job completion, timeout, or failure state consistently.
-- If the review dialog is closed, the result must still remain accessible on the lead screen.
-- Add clearer completion toasts tied to the job/result, not just the dialog flow.
+### 2. Add SchematicRoofDiagram to the Latest AI Measurement card
+**File: `src/components/measurements/UnifiedMeasurementPanel.tsx`**
+- Import `SchematicRoofDiagram` from `@/components/measurements/SchematicRoofDiagram`.
+- Inside the `latestUnapprovedAI` card (line ~588-641), replace the static satellite image with:
+  - A `SchematicRoofDiagram` rendered with the AI measurement data, satellite overlay, and length labels enabled.
+  - Show legend for edge types (ridge, hip, valley, eave, rake).
+- Below the diagram, add a linear measurements summary grid showing: Ridge, Hip, Valley, Eave, Rake totals (already available as `total_ridge_length`, `total_hip_length`, etc.).
 
-Files likely involved
-- `src/components/measurements/PullMeasurementsButton.tsx`
-- `src/components/measurements/UnifiedMeasurementPanel.tsx`
-- `src/components/measurements/RoofrStyleReportPreview.tsx`
-- `supabase/functions/analyze-roof-aerial/index.ts`
-- new migration for `measurement_jobs`
-- new edge function(s) for async measurement start/status processing
+### 3. Build tags object for the diagram
+- Construct a `tags` record from the AI measurement's linear length totals (`linear.ridge_ft`, `linear.hip_ft`, etc.) so the diagram renders correctly, similar to how `TrainingSchematicWrapper` does it.
 
-Technical details
-- Verified in DB: the lead already has a fresh `roof_measurements` record.
-- Verified in DB: the lead has no `measurement_approvals` records.
-- So the core issue is not “no measurement was produced”; it is:
-  1. the run takes too long synchronously, and
-  2. the completed result is not surfaced clearly unless it is manually saved.
+### 4. Also show diagram on saved MeasurementCards
+- When a saved measurement has `source: 'ai_pulled'`, add a collapsible "View Report" section that renders the same `SchematicRoofDiagram` by fetching the linked `roof_measurements` record.
 
-Validation after implementation
-- Start AI measurement and confirm the UI returns immediately with visible progress
-- Confirm a completed result appears on the lead even before manual save
-- Confirm saved measurements populate correctly after apply/save
-- Test leaving and returning mid-run
-- Test the full flow on desktop and mobile with a slow 2+ minute analysis
+## Technical Details
+- `SchematicRoofDiagram` accepts a `measurement` prop with `linear_features_wkt` (array of `{type, wkt, length_ft}`) and `perimeter_wkt` — both stored in `roof_measurements`.
+- The component handles GPS-to-pixel projection, edge coloring by type, and length label rendering internally.
+- Satellite overlay uses `google_maps_image_url` or `satellite_overlay_url`.
+- No new components needed — reusing existing `SchematicRoofDiagram`.
+
