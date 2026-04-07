@@ -3950,8 +3950,8 @@ function convertVisionOverlayToMeasureResult(
       id: 'vision-face-1',
       wkt: perimeterWkt,
       plan_area_sqft: areaSqFt,
-      pitch: '5/12', // Default pitch
-      area_sqft: areaSqFt * 1.08, // Apply ~5/12 pitch factor
+      pitch: metadata?.pitch || '6/12', // Use metadata pitch or regional default
+      area_sqft: areaSqFt * pitchFactor(metadata?.pitch || '6/12'),
       linear_features: linearFeatures
     }];
     

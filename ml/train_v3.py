@@ -6,7 +6,7 @@ from ml.dataset_v2 import RoofDatasetV2
 from ml.model_v3 import RoofNetV3
 from ml.loss_v2 import RoofLossV2
 
-def train(data_dir='/tmp/training_data', epochs=15, batch_size=4, lr=2e-4, save_path='/mnt/documents/roofnet_v3.pth'):
+def train(data_dir='/mnt/documents/roof-training', epochs=80, batch_size=4, lr=2e-4, save_path='/mnt/documents/roofnet_v3.pth'):
     ds = RoofDatasetV2(data_dir)
     n_val = max(1, len(ds) // 5)
     n_train = len(ds) - n_val
