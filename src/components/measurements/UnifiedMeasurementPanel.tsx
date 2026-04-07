@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { SegmentHoverProvider } from '@/contexts/SegmentHoverContext';
@@ -24,6 +24,7 @@ import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
+import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
 import {
@@ -311,7 +312,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -585,60 +586,136 @@ export function UnifiedMeasurementPanel({
             </div>
           )}
 
-          {/* Latest Unapproved AI Result — prominent card */}
-          {!jobIsActive && latestUnapprovedAI && (
-            <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="h-4 w-4 text-primary" />
-                  <span className="font-semibold text-sm">Latest AI Measurement</span>
-                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
-                    Unsaved
-                  </Badge>
+          {/* Latest Unapproved AI Result — prominent card with roof diagram */}
+          {!jobIsActive && latestUnapprovedAI && (() => {
+            const ai = latestUnapprovedAI as any;
+            const diagramTags: Record<string, any> = {
+              'linear.ridge_ft': ai.total_ridge_length || 0,
+              'linear.hip_ft': ai.total_hip_length || 0,
+              'linear.valley_ft': ai.total_valley_length || 0,
+              'linear.eave_ft': ai.total_eave_length || 0,
+              'linear.rake_ft': ai.total_rake_length || 0,
+            };
+            const diagramMeasurement = {
+              id: ai.id,
+              target_lat: ai.target_lat,
+              target_lng: ai.target_lng,
+              linear_features_wkt: ai.linear_features_wkt,
+              perimeter_wkt: ai.perimeter_wkt,
+              footprint_vertices_geo: ai.footprint_vertices_geo,
+              footprint_confidence: ai.footprint_confidence,
+              footprint_source: ai.footprint_source,
+              detection_method: ai.detection_method,
+              total_adjusted_area: ai.total_area_adjusted_sqft || 0,
+            };
+            const hasGeometry = ai.linear_features_wkt && (Array.isArray(ai.linear_features_wkt) ? ai.linear_features_wkt.length > 0 : true);
+            const satUrl = ai.satellite_overlay_url || ai.google_maps_image_url;
+
+            return (
+              <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="h-4 w-4 text-primary" />
+                    <span className="font-semibold text-sm">Latest AI Measurement</span>
+                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                      Unsaved
+                    </Badge>
+                  </div>
+                  <span className="text-xs text-muted-foreground">
+                    {format(new Date(ai.created_at), 'MMM d, yyyy')}
+                  </span>
                 </div>
-                <span className="text-xs text-muted-foreground">
-                  {format(new Date(latestUnapprovedAI.created_at), 'MMM d, yyyy')}
-                </span>
+
+                {/* Roof Schematic Diagram */}
+                {hasGeometry ? (
+                  <div className="rounded-lg overflow-hidden border border-border bg-background">
+                    <SegmentHoverProvider>
+                      <SchematicRoofDiagram
+                        measurement={diagramMeasurement}
+                        tags={diagramTags}
+                        measurementId={ai.id}
+                        width={400}
+                        height={280}
+                        showLengthLabels={true}
+                        showLegend={true}
+                        showCompass={false}
+                        showTotals={false}
+                        showFacets={false}
+                        showQAPanel={false}
+                        satelliteImageUrl={satUrl}
+                        showSatelliteOverlay={!!satUrl}
+                        satelliteOpacity={0.5}
+                        showDebugMarkers={false}
+                        showDebugPanel={false}
+                      />
+                    </SegmentHoverProvider>
+                  </div>
+                ) : ai.google_maps_image_url ? (
+                  <div className="rounded-lg overflow-hidden border border-border">
+                    <img 
+                      src={ai.google_maps_image_url} 
+                      alt="Satellite view of property"
+                      className="w-full h-40 object-cover"
+                    />
+                  </div>
+                ) : null}
+
+                {/* Key Stats */}
+                <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div>
+                    <span className="text-muted-foreground text-xs">Squares</span>
+                    <p className="font-semibold">{formatValue(ai.total_squares)}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Sq Ft</span>
+                    <p className="font-semibold">{formatValue(ai.total_area_adjusted_sqft)}</p>
+                  </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Pitch</span>
+                    <p className="font-semibold">{ai.predominant_pitch || '—'}</p>
+                  </div>
+                </div>
+
+                {/* Linear Measurements Grid */}
+                <div className="grid grid-cols-5 gap-2 text-xs border-t border-border pt-2">
+                  <div className="text-center">
+                    <span className="block font-medium" style={{ color: '#90EE90' }}>Ridge</span>
+                    <span className="text-foreground">{formatValue(ai.total_ridge_length)} ft</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block font-medium" style={{ color: '#9B59B6' }}>Hip</span>
+                    <span className="text-foreground">{formatValue(ai.total_hip_length)} ft</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block font-medium" style={{ color: '#DC3545' }}>Valley</span>
+                    <span className="text-foreground">{formatValue(ai.total_valley_length)} ft</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block font-medium" style={{ color: '#006400' }}>Eave</span>
+                    <span className="text-foreground">{formatValue(ai.total_eave_length)} ft</span>
+                  </div>
+                  <div className="text-center">
+                    <span className="block font-medium" style={{ color: '#17A2B8' }}>Rake</span>
+                    <span className="text-foreground">{formatValue(ai.total_rake_length)} ft</span>
+                  </div>
+                </div>
+
+                <Button 
+                  size="sm" 
+                  className="w-full"
+                  onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
+                  disabled={isSavingDirect}
+                >
+                  {isSavingDirect ? (
+                    <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                  ) : (
+                    <ArrowRight className="h-4 w-4 mr-1.5" />
+                  )}
+                  Save to Estimates
+                </Button>
               </div>
-              {/* Satellite Property Overview */}
-              {(latestUnapprovedAI as any).google_maps_image_url && (
-                <div className="rounded-lg overflow-hidden border border-border">
-                  <img 
-                    src={(latestUnapprovedAI as any).google_maps_image_url} 
-                    alt="Satellite view of property"
-                    className="w-full h-40 object-cover"
-                  />
-                </div>
-              )}
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div>
-                  <span className="text-muted-foreground text-xs">Squares</span>
-                  <p className="font-semibold">{formatValue(latestUnapprovedAI.total_squares)}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground text-xs">Sq Ft</span>
-                  <p className="font-semibold">{formatValue(latestUnapprovedAI.total_area_adjusted_sqft)}</p>
-                </div>
-                <div>
-                  <span className="text-muted-foreground text-xs">Pitch</span>
-                  <p className="font-semibold">{latestUnapprovedAI.predominant_pitch || '—'}</p>
-                </div>
-              </div>
-              <Button 
-                size="sm" 
-                className="w-full"
-                onClick={() => handleSaveAiMeasurementDirect(latestUnapprovedAI)}
-                disabled={isSavingDirect}
-              >
-                {isSavingDirect ? (
-                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                ) : (
-                  <ArrowRight className="h-4 w-4 mr-1.5" />
-                )}
-                Save to Estimates
-              </Button>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Other Measurements */}
           {otherMeasurements.length > 0 && (
