@@ -524,6 +524,56 @@ export function UnifiedMeasurementPanel({
             />
           )}
 
+          {/* Job Progress Banner */}
+          {jobIsActive && activeJob && (
+            <div className="flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5 animate-pulse">
+              <Loader2 className="h-5 w-5 animate-spin text-primary shrink-0" />
+              <div className="min-w-0">
+                <p className="font-medium text-sm">AI Measurement in Progress</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {activeJob.progress_message || 'Processing...'}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Latest Unapproved AI Result — prominent card */}
+          {!jobIsActive && latestUnapprovedAI && (
+            <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  <span className="font-semibold text-sm">Latest AI Measurement</span>
+                  <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                    Unsaved
+                  </Badge>
+                </div>
+                <span className="text-xs text-muted-foreground">
+                  {format(new Date(latestUnapprovedAI.created_at), 'MMM d, yyyy')}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div>
+                  <span className="text-muted-foreground text-xs">Squares</span>
+                  <p className="font-semibold">{formatValue(latestUnapprovedAI.total_squares)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Sq Ft</span>
+                  <p className="font-semibold">{formatValue(latestUnapprovedAI.total_area_adjusted_sqft)}</p>
+                </div>
+                <div>
+                  <span className="text-muted-foreground text-xs">Pitch</span>
+                  <p className="font-semibold">{latestUnapprovedAI.predominant_pitch || '—'}</p>
+                </div>
+              </div>
+              <MeasurementHistorySaveButton
+                measurement={latestUnapprovedAI}
+                pipelineEntryId={pipelineEntryId}
+                onSuccess={handleMeasurementSuccess}
+              />
+            </div>
+          )}
+
           {/* Other Measurements */}
           {otherMeasurements.length > 0 && (
             <div className="space-y-2">
