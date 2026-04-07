@@ -404,7 +404,11 @@ Deno.serve(async (req: Request) => {
       notes: body.description || null,
       created_by: user.id,
       metadata: {
-        verified_address: body.selectedAddress || null,
+        verified_address: body.selectedAddress ? {
+          ...body.selectedAddress,
+          lat: body.selectedAddress.geometry?.location?.lat || latitude,
+          lng: body.selectedAddress.geometry?.location?.lng || longitude,
+        } : null,
         secondary_reps: body.salesReps?.slice(1) || [],
         roof_age_years: parseInt(body.roofAge) || null,
         roof_type: body.roofType,
