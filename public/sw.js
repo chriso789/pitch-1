@@ -6,7 +6,7 @@
  * Critical for field workers with intermittent connectivity.
  */
 
-const CACHE_NAME = 'pitch-crm-v1';
+const CACHE_NAME = 'pitch-crm-v2';
 
 // Static assets to cache on install
 const STATIC_ASSETS = [
