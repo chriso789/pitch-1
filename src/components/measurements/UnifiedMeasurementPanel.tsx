@@ -446,6 +446,59 @@ export function UnifiedMeasurementPanel({
     setAddOptionsOpen(false);
   };
 
+  // Quick save an AI measurement directly from the banner
+  const [isSavingDirect, setIsSavingDirect] = useState(false);
+  const handleSaveAiMeasurementDirect = async (measurement: any) => {
+    setIsSavingDirect(true);
+    try {
+      const { data: entry } = await supabase
+        .from('pipeline_entries')
+        .select('tenant_id')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (!entry?.tenant_id) throw new Error('No tenant found');
+
+      const totalSquares = measurement.total_squares || (measurement.total_area_adjusted_sqft ? measurement.total_area_adjusted_sqft / 100 : 0);
+      const eaveLength = measurement.total_eave_length || 0;
+      const rakeLength = measurement.total_rake_length || 0;
+
+      const savedTags = {
+        'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+        'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
+        'roof.squares': totalSquares,
+        'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
+        'roof.faces_count': measurement.facet_count || 0,
+        'lf.ridge': measurement.total_ridge_length || 0,
+        'lf.hip': measurement.total_hip_length || 0,
+        'lf.valley': measurement.total_valley_length || 0,
+        'lf.eave': eaveLength,
+        'lf.rake': rakeLength,
+        'lf.perimeter': eaveLength + rakeLength,
+        'source': 'ai_pulled',
+        'imported_at': measurement.created_at,
+      };
+
+      await supabase.from('measurement_approvals').insert({
+        tenant_id: entry.tenant_id,
+        pipeline_entry_id: pipelineEntryId,
+        approved_at: new Date().toISOString(),
+        saved_tags: savedTags,
+        approval_notes: `AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
+      });
+
+      toast({ title: 'Measurement Saved', description: 'AI measurement added to saved list' });
+      await refetch();
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+      onMeasurementChange?.();
+    } catch (error: any) {
+      toast({ title: 'Save Failed', description: error.message, variant: 'destructive' });
+    } finally {
+      setIsSavingDirect(false);
+    }
+  };
+
   // Separate active from other measurements
   const activeMeasurement = approvals?.find(a => a.id === activeApprovalId);
   const otherMeasurements = approvals?.filter(a => a.id !== activeApprovalId) || [];
