@@ -906,7 +906,7 @@ export function EstimatePreviewPanel({
       onChange={handlePhotoFilesSelected}
     />
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:hidden">
+      <DialogContent className="max-w-7xl w-full max-h-[95vh] h-[95vh] md:h-auto p-0 overflow-hidden [&>button:last-child]:hidden sm:max-w-[95vw] md:max-w-7xl">
         <DialogHeader className="px-6 py-4 border-b relative z-10">
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
@@ -922,10 +922,10 @@ export function EstimatePreviewPanel({
           </button>
         </DialogHeader>
 
-        <div className="flex h-[calc(95vh-120px)] min-h-0">
-          {/* Left Panel - Toggle Controls */}
-          <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden min-h-0">
-            {/* Native scroll container - avoids Radix ScrollArea overlay clipping issues */}
+        <div className="flex flex-col md:flex-row h-[calc(95vh-120px)] min-h-0">
+          {/* Left Panel - Toggle Controls (full width on mobile, sidebar on desktop) */}
+          <div className="w-full md:w-80 md:shrink-0 border-b md:border-b-0 md:border-r flex flex-col bg-muted/30 overflow-hidden min-h-0 flex-1 md:flex-initial">
+            {/* Native scroll container */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
               <div className="p-4 pr-5 pb-32 space-y-4">
               {/* View Mode Tabs */}
@@ -1339,7 +1339,7 @@ export function EstimatePreviewPanel({
             </div>
 
             {/* Bottom Actions */}
-            <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
+            <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
               {/* Row 1: Reset + Save */}
               <div className="flex gap-2">
                 <Button
@@ -1415,7 +1415,7 @@ export function EstimatePreviewPanel({
           </div>
 
           {/* Right Panel - Live Preview */}
-          <div className="flex-1 bg-muted/50 overflow-auto p-6">
+          <div className="hidden md:block flex-1 bg-muted/50 overflow-auto p-6">
             <div className="flex justify-center">
               <div
                 ref={previewRef}
