@@ -982,7 +982,7 @@ const LeadDetails = () => {
                   </Button>
                 )}
               </div>
-              <span className="text-muted-foreground">|</span>
+              <span className="text-muted-foreground hidden sm:inline">|</span>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Split Rep:</span>
                 {isEditingSecondaryRep ? (
