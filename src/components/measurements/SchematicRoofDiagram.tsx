@@ -449,41 +449,39 @@ export function SchematicRoofDiagram({
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
-    // OSM FOOTPRINT AREA CORRECTION: When footprint confidence is low and Solar API
-    // area is available, scale the perimeter inward if the OSM polygon is oversized.
-    // This fixes the top/bottom eave overshoot caused by OSM polygons being slightly
-    // too tall in the north-south direction.
+    // OSM FOOTPRINT CORRECTION: When footprint confidence is low and Solar API
+    // area is available, shrink the footprint in the north/south axis only.
+    // This preserves the left/right fit while pulling the top/bottom eaves back
+    // onto the visible roof line when OSM is vertically oversized.
     const solarFootprintSqft = measurement?.solar_building_footprint_sqft || measurement?.solar_api_response?.buildingFootprintSqft;
     const footprintNeedsCorrection = isLowQualityFootprint && solarFootprintSqft > 0 && perimCoords.length >= 4;
-    let areaScaleFactor = 1;
+    let northSouthScaleFactor = 1;
+    let correctionCentroid: { lat: number; lng: number } | null = null;
     
     if (footprintNeedsCorrection) {
-      // Calculate the area of the current perimeter polygon (in sqft)
-      const osmAreaSqft = calculateGPSPolygonArea(perimCoords.filter((_, i) => i < perimCoords.length - 1)); // exclude closing point
+      const nonClosing = perimCoords.slice(0, -1);
+      const osmAreaSqft = calculateGPSPolygonArea(nonClosing);
       
       if (osmAreaSqft > 0 && solarFootprintSqft > 0) {
         const areaRatio = solarFootprintSqft / osmAreaSqft;
         
         // Only correct if OSM is >5% larger than Solar API area
         if (areaRatio < 0.95) {
-          areaScaleFactor = Math.sqrt(areaRatio);
-          
-          // Compute centroid
-          const nonClosing = perimCoords.slice(0, -1);
-          const centroid = {
+          northSouthScaleFactor = areaRatio;
+          correctionCentroid = {
             lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
             lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
           };
           
-          // Scale each vertex toward centroid
+          // Scale latitude only so east/west placement stays locked to the roof edges
           perimCoords = nonClosing.map(v => ({
-            lat: centroid.lat + (v.lat - centroid.lat) * areaScaleFactor,
-            lng: centroid.lng + (v.lng - centroid.lng) * areaScaleFactor,
+            lat: correctionCentroid.lat + (v.lat - correctionCentroid.lat) * northSouthScaleFactor,
+            lng: v.lng,
           }));
           // Re-close polygon
           perimCoords.push({ ...perimCoords[0] });
           
-          console.log(`📏 OSM area correction: OSM=${osmAreaSqft.toFixed(0)} sqft, Solar=${solarFootprintSqft.toFixed(0)} sqft, scale=${areaScaleFactor.toFixed(3)}`);
+          console.log(`📏 OSM north/south correction: OSM=${osmAreaSqft.toFixed(0)} sqft, Solar=${solarFootprintSqft.toFixed(0)} sqft, yScale=${northSouthScaleFactor.toFixed(3)}`);
         }
       }
     }
@@ -532,28 +530,18 @@ export function SchematicRoofDiagram({
         geometrySource = 'database';
       }
       
-      // Apply the same area correction to eave/rake linear feature coordinates
-      // This ensures eaves/rakes shrink inward to match the corrected perimeter
-      if (areaScaleFactor < 1 && footprintNeedsCorrection) {
-        const nonClosing = perimCoords.slice(0, -1);
-        const centroid = {
-          lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
-          lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
-        };
-        
+      // Apply the same north/south correction to all segments so corners stay connected
+      if (northSouthScaleFactor < 1 && correctionCentroid) {
         linearFeaturesData = linearFeaturesData.map(f => {
-          if (f.type === 'eave' || f.type === 'rake') {
-            return {
-              ...f,
-              coords: f.coords.map(c => ({
-                lat: centroid.lat + (c.lat - centroid.lat) * areaScaleFactor,
-                lng: centroid.lng + (c.lng - centroid.lng) * areaScaleFactor,
-              })),
-            };
-          }
-          return f;
+          return {
+            ...f,
+            coords: f.coords.map(c => ({
+              lat: correctionCentroid!.lat + (c.lat - correctionCentroid!.lat) * northSouthScaleFactor,
+              lng: c.lng,
+            })),
+          };
         });
-        console.log(`📏 Applied area correction (${areaScaleFactor.toFixed(3)}) to eave/rake linear features`);
+        console.log(`📏 Applied north/south correction (${northSouthScaleFactor.toFixed(3)}) to linear features`);
       }
     }
     
@@ -930,7 +918,7 @@ export function SchematicRoofDiagram({
       facetPaths: facetPathsData,
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
-      debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata, areaScaleFactor },
+      debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata, areaScaleFactor: northSouthScaleFactor, northSouthScaleFactor },
       solarSegmentPolygons: [],
       qaData,
       geometrySource,
