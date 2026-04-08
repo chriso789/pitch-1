@@ -1108,7 +1108,6 @@ const LeadDetails = () => {
             </CardContent>
           </Card>
         )}
-      </div>
 
       {/* Internal Team Notes - Above Approval Requirements */}
       {lead?.tenant_id && (
