@@ -7,6 +7,7 @@ import {
   handleCors,
   getClientInfo,
 } from '../_shared/utils.ts';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 
 // ============================================================================
 // SIGNER OPEN - Validate recipient token and start signing session
