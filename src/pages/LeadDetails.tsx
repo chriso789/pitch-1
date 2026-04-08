@@ -907,7 +907,7 @@ const LeadDetails = () => {
             )}
             
             {/* Stats bar */}
-            <div className="flex items-center gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2 flex-wrap">
+            <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-1">
                 <span className="text-muted-foreground">Priority:</span>
                 <span className="capitalize font-medium">{lead.priority || 'Not set'}</span>
