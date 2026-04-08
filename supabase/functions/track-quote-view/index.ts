@@ -266,6 +266,32 @@ Deno.serve(async (req: Request) => {
       console.error("Failed to insert quote_viewed notification:", notifError);
     }
 
+    // Send instant broadcast for real-time UI update (bypasses Postgres change polling delay)
+    try {
+      const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
+      const broadcastSupa = createBroadcastClient(supabaseUrl, anonKey);
+      await broadcastSupa
+        .channel(`broadcast:${trackingLink.tenant_id}:${trackingLink.sent_by}`)
+        .send({
+          type: 'broadcast',
+          event: 'notification',
+          payload: {
+            id: crypto.randomUUID(),
+            type: 'quote_viewed',
+            title: 'Quote Viewed! 👀',
+            message: `${contactName} just opened your quote #${trackingLink.enhanced_estimates?.estimate_number || 'N/A'}`,
+            metadata: {
+              tracking_link_id: trackingLink.id,
+              estimate_id: trackingLink.estimate_id,
+              contact_id: trackingLink.contact_id,
+              viewer_device: device,
+            },
+          },
+        });
+    } catch (broadcastErr) {
+      console.warn('Broadcast failed (non-blocking):', broadcastErr);
+    }
+
     // Send SMS notification to rep on EVERY view
     try {
       const { data: repProfile } = await supabase
