@@ -37,7 +37,8 @@ import {
   X,
   CheckSquare,
   Square,
-  Building2
+  Building2,
+  ChevronDown
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
