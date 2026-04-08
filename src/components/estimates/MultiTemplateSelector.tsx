@@ -279,6 +279,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     lineItems,
     materialItems,
     laborItems,
+    changeOrderItems,
     breakdown,
     config,
     isFixedPrice,
