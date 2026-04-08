@@ -592,7 +592,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
             return (
               <React.Fragment key={step.key}>
                 {/* Bubble */}
-                <div className="flex flex-col items-center space-y-1 sm:space-y-2 relative">
+                <div className="flex flex-col items-center space-y-0.5 sm:space-y-1 relative">
                   {/* Circular Bubble */}
                   {step.key === 'contract' && !isComplete ? (
                     <Popover open={openPopover} onOpenChange={setOpenPopover}>
