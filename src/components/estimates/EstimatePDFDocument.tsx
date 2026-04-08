@@ -12,19 +12,19 @@ import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
-const HEADER_HEIGHT = 140;
-const FOOTER_HEIGHT = 160;
-const PAGE_PADDING = 48; // 24px on each side
+const HEADER_HEIGHT = 90;
+const FOOTER_HEIGHT = 80;
+const PAGE_PADDING = 24;
 const CONTENT_HEIGHT = PAGE_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - PAGE_PADDING;
 
 // Approximate row height for table items
-const ROW_HEIGHT = 36;
-const TABLE_HEADER_HEIGHT = 40;
-const SECTION_HEADER_HEIGHT = 48;
+const ROW_HEIGHT = 28;
+const TABLE_HEADER_HEIGHT = 28;
+const SECTION_HEADER_HEIGHT = 30;
 
-// Max rows per page (conservative to prevent overflow)
-const MAX_ROWS_FIRST_PAGE = 12;
-const MAX_ROWS_CONTINUATION = 16;
+// Max rows per page (fit more items per page)
+const MAX_ROWS_FIRST_PAGE = 16;
+const MAX_ROWS_CONTINUATION = 22;
 
 interface CompanyInfo {
   name: string;
