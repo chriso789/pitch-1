@@ -7,7 +7,7 @@ export interface LineItem {
   item_name: string;
   description?: string;           // Product description for consumer-facing PDFs
   notes?: string;                 // Color/specs for supplier orders
-  item_type: 'material' | 'labor';
+  item_type: 'material' | 'labor' | 'change_order';
   labor_phase?: 'tear_off' | 'install'; // For labor items: tear_off runs before materials, install after
   qty: number;
   qty_original?: number;
