@@ -1,50 +1,93 @@
 
+Goal: make the AI measurement preview place eaves/rakes exactly on top of the roof edges in the satellite image instead of just “zooming tighter.”
 
-# Fix Roof Diagram Alignment and Zoom
+What’s causing the mismatch
+1. The preview is using a cropped geographic viewport in `SchematicRoofDiagram`, but that crop is still an approximation built from lat/lng min/max bounds.
+2. The background image and the SVG lines are being aligned with simple linear lat/lng math, while the imagery pipeline supports higher-fidelity image-space metadata and even 2D registration tools in the measurement system.
+3. The current preview favors “show something” behavior even for low-confidence geometry, which is why users can still see green eaves that visibly miss the roof.
 
-## Problem
-Two issues cause the diagram to not align with the satellite image and not zoom in enough:
+Implementation plan
 
-1. **Coordinate field mismatch**: The `diagramMeasurement` object passes `target_lat`/`target_lng`, but `SchematicRoofDiagram` looks for `gps_coordinates.lat`, `measurement.lat`, or `measurement.center_lat`. None match, so `imageBounds` returns `null` and the GPS-to-pixel transform fails silently — lines are drawn using bounds-fit math that doesn't align with the satellite image underneath.
+1. Upgrade the preview transform from “bounds crop” to “exact image-space fit”
+- File: `src/components/measurements/SchematicRoofDiagram.tsx`
+- Replace the current `overlayViewport`-based transform as the primary overlay mode.
+- Compute SVG positions from the original analysis image pixel space first, then scale/crop that pixel-space rectangle into the preview.
+- Use the same transform for both:
+  - the satellite `<img>`
+  - all eave/rake SVG coordinates
+- This removes drift caused by separate geographic approximation paths.
 
-2. **Missing metadata fields**: `analysis_zoom` and `analysis_image_size` are not passed to the diagram, though the defaults (zoom=20, 640x640) happen to match what the edge function stores. Still needs explicit pass-through for correctness.
+2. Use authoritative roof extents for the crop box
+- Prioritize crop bounds in this order:
+  1. eave + rake endpoints
+  2. `footprint_vertices_geo`
+  3. `perimeter_wkt`
+  4. full analysis image
+- Build the crop rectangle from the actual roof outline, not just loose min/max of arbitrary features.
+- Add a very small safety margin only for labels, with a stricter default than today.
 
-## Changes
+3. Match the analysis image dimensions correctly
+- The imagery pipeline supports scaled images (`@2x` / effective dimensions), but the diagram currently assumes the stored size directly.
+- Normalize `analysis_image_size` handling so the overlay math uses the true source image dimensions consistently.
+- Ensure the preview uses the exact same image-space width/height assumptions as the image fetch pipeline.
 
-### 1. Fix coordinate mapping in `diagramMeasurement`
-**File: `src/components/measurements/UnifiedMeasurementPanel.tsx` (~line 601)**
+4. Add a strict “eave-first verification mode”
+- In the AI preview card, render only:
+  - satellite image
+  - perimeter
+  - eaves
+  - rakes
+- Temporarily suppress hips/ridges/valleys when alignment confidence is not yet proven.
+- This matches the user request to start with eaves/rakes and verify them first before layering in the rest.
 
-Add the fields that `SchematicRoofDiagram` needs for satellite alignment:
+5. Stop showing exact-looking overlays when geometry is only estimated
+- Tighten the confidence gating in `SchematicRoofDiagram` using existing geometry confidence logic.
+- If the geometry source is estimated/low-confidence, either:
+  - show perimeter-only, or
+  - show an explicit “alignment not yet verified” state instead of misleading exact eaves.
+- This is important because the current UI can imply precision that the data does not actually have.
 
-```typescript
-const diagramMeasurement = {
-  id: ai.id,
-  target_lat: ai.target_lat,
-  target_lng: ai.target_lng,
-  // ADD THESE for imageBounds calculation:
-  gps_coordinates: { lat: ai.target_lat, lng: ai.target_lng },
-  analysis_zoom: 20,
-  analysis_image_size: { width: 640, height: 640 },
-  // existing fields...
-  linear_features_wkt: ai.linear_features_wkt,
-  perimeter_wkt: ai.perimeter_wkt,
-  footprint_vertices_geo: ai.footprint_vertices_geo,
-  footprint_confidence: ai.footprint_confidence,
-  footprint_source: ai.footprint_source,
-  detection_method: ai.detection_method,
-  total_adjusted_area: ai.total_area_adjusted_sqft || 0,
-};
-```
+6. Pass through any available alignment metadata
+- File: `src/components/measurements/UnifiedMeasurementPanel.tsx`
+- Expand the measurement object sent into the preview/report so `SchematicRoofDiagram` has all available overlay fields, including:
+  - `footprint_vertices_geo`
+  - `bounding_box`
+  - `gps_coordinates`
+  - `analysis_zoom`
+  - `analysis_image_size`
+  - any existing alignment/calibration fields already stored on the measurement
+- This prepares the component to use stronger alignment data without fallback loss.
 
-### 2. Same fix for the MeasurementReportDialog data
-**File: `src/components/measurements/UnifiedMeasurementPanel.tsx` (~line 733)**
+7. Add debug instrumentation for exact verification
+- File: `src/components/measurements/SchematicRoofDiagram.tsx`
+- Expand the debug panel to show:
+  - crop source used (`eaves+rakes`, `footprint_vertices_geo`, `perimeter_wkt`, fallback)
+  - source image dimensions
+  - crop rectangle in image pixels
+  - edge coverage %
+  - whether the render is image-space exact vs geographic fallback
+- This will make future alignment problems diagnosable instead of guesswork.
 
-Add `gps_coordinates`, `analysis_zoom`, and `analysis_image_size` to the measurement object passed to `MeasurementReportDialog` so the report's diagram also aligns correctly.
+8. Optional next-step enhancement if residual mismatch remains
+- If eaves still miss after exact image-space fitting, the remaining issue is upstream geometry, not preview zoom.
+- Then the next implementation should use the project’s existing spatial alignment/registration pipeline to store a per-measurement transform and render through that transform in the preview.
+- That would be the true “exact” path when AI geometry and aerial imagery are not naturally aligned.
 
-### 3. Increase diagram size for better roof visibility
-**File: `src/components/measurements/UnifiedMeasurementPanel.tsx` (~line 639)**
+Expected result
+- The roof fills the preview much more tightly.
+- Eaves and rakes render directly on the visible roof edges instead of outside the structure.
+- Users can visually confirm edge placement before adding hips/ridges/valleys.
+- Low-confidence measurements stop pretending to be exact.
 
-Increase the `SchematicRoofDiagram` rendering height from 280 to 350 to give the roof more visual space in the card.
-
-These three changes will make the ridge/hip/valley/eave lines align precisely with the satellite imagery, matching the roof structure visible in the photo.
-
+Technical notes
+- Main issue is not just zoom; it is transform fidelity.
+- Current code mixes:
+  - geographic bounds fitting
+  - cropped overlay viewport math
+  - CSS image cropping
+- The fix is to unify everything around one image-space transform.
+- Relevant files:
+  - `src/components/measurements/SchematicRoofDiagram.tsx`
+  - `src/components/measurements/UnifiedMeasurementPanel.tsx`
+  - `src/utils/gpsCalculations.ts`
+- Existing system context suggests the measurement pipeline already has stronger alignment concepts available, so the preview should be built to consume them rather than relying on loose viewport fitting.
