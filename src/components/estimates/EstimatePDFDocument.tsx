@@ -743,16 +743,16 @@ const FirstPage: React.FC<{
       )}
       {/* Customer Info */}
       {(opts.showCustomerName || opts.showCustomerAddress) && (
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
+        <div className="p-2 bg-gray-50 rounded">
+          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Prepared For</h3>
           {opts.showCustomerName && (
-            <p className="font-semibold text-base text-gray-900">{customerName || 'Customer'}</p>
+            <p className="font-semibold text-sm text-gray-900">{customerName || 'Customer'}</p>
           )}
           {opts.showCustomerAddress && (
-            <p className="text-gray-600 text-sm">{customerAddress || 'Address not specified'}</p>
+            <p className="text-gray-600 text-xs">{customerAddress || 'Address not specified'}</p>
           )}
           {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="mt-1 text-sm text-gray-500">
+            <div className="text-xs text-gray-500">
               {customerPhone && <span>{customerPhone}</span>}
               {customerPhone && customerEmail && <span> • </span>}
               {customerEmail && <span>{customerEmail}</span>}
