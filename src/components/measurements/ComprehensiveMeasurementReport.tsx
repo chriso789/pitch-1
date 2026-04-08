@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Edit, Save, Share2, MapPin, Loader2 } from 'lucide-react';
+import { Eye, Edit, Save, Share2, MapPin, Loader2, Pencil } from 'lucide-react';
 import { MeasurementShareDialog } from './MeasurementShareDialog';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 import { SegmentHoverProvider } from '@/contexts/SegmentHoverContext';
@@ -94,6 +94,7 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
   const [isSaving, setIsSaving] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [savedReportUrl, setSavedReportUrl] = useState<string | null>(null);
+  const [editKey, setEditKey] = useState(0); // Force re-mount editor on re-enter
 
   const handleSaveReport = async () => {
     setIsSaving(true);
@@ -225,18 +226,23 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
 
       {/* Mode Toggle & Actions */}
       <div className="flex items-center justify-between">
-        <Tabs value={mode} onValueChange={(v) => setMode(v as 'view' | 'edit')}>
-          <TabsList>
-            <TabsTrigger value="view">
-              <Eye className="h-4 w-4 mr-2" />
-              View Mode
-            </TabsTrigger>
-            <TabsTrigger value="edit">
-              <Edit className="h-4 w-4 mr-2" />
-              Edit Mode
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        <div className="flex items-center gap-2">
+          {mode === 'view' ? (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => { setMode('edit'); setEditKey(k => k + 1); }}
+            >
+              <Pencil className="h-4 w-4 mr-2" />
+              Edit Edges Manually
+            </Button>
+          ) : (
+            <Badge variant="secondary" className="text-sm py-1 px-3">
+              <Edit className="h-3.5 w-3.5 mr-1.5" />
+              Editing Mode — use Save Edits when done
+            </Badge>
+          )}
+        </div>
 
         <div className="flex gap-2">
           <Button 
@@ -314,11 +320,13 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
             </SegmentHoverProvider>
           ) : (
             <ManualPinDropEditor
+              key={editKey}
               satelliteImageUrl={satelliteImageUrl || ''}
               centerLat={measurement.gps_coordinates?.lat || measurement.center_lat || 0}
               centerLng={measurement.gps_coordinates?.lng || measurement.center_lng || 0}
               zoom={measurement.analysis_zoom || measurement.visualization_metadata?.zoom || 20}
               existingFeatures={measurement.linear_features}
+              measurementId={measurement.id}
               onFeaturesChange={(features) => {
                 if (onMeasurementUpdate) {
                   onMeasurementUpdate(
@@ -326,6 +334,12 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
                     tags
                   );
                 }
+              }}
+              onSaveComplete={() => {
+                setMode('view');
+              }}
+              onCancel={() => {
+                setMode('view');
               }}
             />
           )}
