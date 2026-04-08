@@ -43,8 +43,8 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
       <main className="flex-1 overflow-auto">
         <div className="border-b glass-heavy sticky top-0 z-40 shadow-[0_1px_3px_hsl(214_100%_25%/0.06),0_4px_12px_hsl(214_100%_25%/0.04)]">
           {isMobile ? (
-            /* Mobile: Two-row header */
-            <div className="flex flex-col">
+            /* Mobile: Two-row header with safe area padding for notch/status bar */
+            <div className="flex flex-col pt-[env(safe-area-inset-top,0px)]">
               {/* Row 1: Menu button, location switcher, dashboard, notifications, company */}
               <div className="flex h-12 items-center gap-1 justify-between px-2">
                 <div className="flex items-center gap-1">
