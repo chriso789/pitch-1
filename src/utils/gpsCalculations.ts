@@ -180,24 +180,33 @@ export function pixelToGPS(
 }
 
 /**
- * Convert GPS coordinates to pixel coordinates
+ * Convert GPS coordinates to pixel coordinates using Web Mercator projection
+ * This avoids vertical drift from linear lat approximation
  */
 export function gpsToPixel(
   coord: GPSCoord,
   imageBounds: ImageBounds,
   imageSize: { width: number; height: number }
 ): { x: number; y: number } {
-  const latRange = imageBounds.topLeft.lat - imageBounds.bottomLeft.lat;
   const lngRange = imageBounds.topRight.lng - imageBounds.topLeft.lng;
   
+  // Use Mercator Y for vertical axis to eliminate latitude compression drift
+  const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + toRad(lat) / 2));
+  
+  const mercTop = mercY(imageBounds.topLeft.lat);
+  const mercBottom = mercY(imageBounds.bottomLeft.lat);
+  const mercCoord = mercY(coord.lat);
+  const mercRange = mercTop - mercBottom;
+  
   const x = ((coord.lng - imageBounds.topLeft.lng) / lngRange) * imageSize.width;
-  const y = ((imageBounds.topLeft.lat - coord.lat) / latRange) * imageSize.height;
+  const y = ((mercTop - mercCoord) / mercRange) * imageSize.height;
   
   return { x, y };
 }
 
 /**
  * Calculate image bounds from center coordinates and zoom level
+ * Uses proper Web Mercator projection for accurate bounds
  */
 export function calculateImageBounds(
   centerLat: number,
@@ -206,21 +215,29 @@ export function calculateImageBounds(
   imageWidth: number,
   imageHeight: number
 ): ImageBounds {
-  // Calculate meters per pixel at this zoom level using Web Mercator projection
+  // Web Mercator: meters per pixel at this zoom level
   const metersPerPixel = (156543.03392 * Math.cos(toRad(centerLat))) / Math.pow(2, zoom);
   
-  // Calculate degrees per pixel
-  const degreesPerPixelLat = metersPerPixel / 111111; // ~111km per degree latitude
+  // Longitude is linear in Mercator
   const degreesPerPixelLng = metersPerPixel / (111111 * Math.cos(toRad(centerLat)));
-  
   const halfWidth = (imageWidth / 2) * degreesPerPixelLng;
-  const halfHeight = (imageHeight / 2) * degreesPerPixelLat;
+  
+  // Latitude uses inverse Mercator for accurate bounds
+  // Convert center to Mercator Y, offset by pixel count, convert back
+  const mercY = Math.log(Math.tan(Math.PI / 4 + toRad(centerLat) / 2));
+  const mercPerPixel = metersPerPixel / EARTH_RADIUS_METERS; // radians per pixel in Mercator
+  
+  const mercTop = mercY + (imageHeight / 2) * mercPerPixel;
+  const mercBottom = mercY - (imageHeight / 2) * mercPerPixel;
+  
+  const topLat = (2 * Math.atan(Math.exp(mercTop)) - Math.PI / 2) * 180 / Math.PI;
+  const bottomLat = (2 * Math.atan(Math.exp(mercBottom)) - Math.PI / 2) * 180 / Math.PI;
   
   return {
-    topLeft: { lat: centerLat + halfHeight, lng: centerLng - halfWidth },
-    topRight: { lat: centerLat + halfHeight, lng: centerLng + halfWidth },
-    bottomLeft: { lat: centerLat - halfHeight, lng: centerLng - halfWidth },
-    bottomRight: { lat: centerLat - halfHeight, lng: centerLng + halfWidth },
+    topLeft: { lat: topLat, lng: centerLng - halfWidth },
+    topRight: { lat: topLat, lng: centerLng + halfWidth },
+    bottomLeft: { lat: bottomLat, lng: centerLng - halfWidth },
+    bottomRight: { lat: bottomLat, lng: centerLng + halfWidth },
     centerLat,
     centerLng,
     zoom,
