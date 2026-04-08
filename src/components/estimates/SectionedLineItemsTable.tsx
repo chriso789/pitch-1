@@ -96,6 +96,7 @@ interface EditableCell {
 export function SectionedLineItemsTable({
   materialItems,
   laborItems,
+  changeOrderItems = [],
   materialsTotal,
   laborTotal,
   onUpdateItem,
