@@ -734,11 +734,11 @@ const FirstPage: React.FC<{
   estimateName,
 }) => {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Estimate Name Banner */}
       {estimateName && (
-        <div className="text-center py-2 mb-1">
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
+        <div className="text-center py-1">
+          <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
         </div>
       )}
       {/* Customer Info */}
