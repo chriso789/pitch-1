@@ -2439,6 +2439,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             <SectionedLineItemsTable
               materialItems={materialItems}
               laborItems={laborItems}
+              changeOrderItems={changeOrderItems}
               materialsTotal={breakdown.materialsTotal}
               laborTotal={breakdown.laborTotal}
               onUpdateItem={handleUpdateLineItem}
