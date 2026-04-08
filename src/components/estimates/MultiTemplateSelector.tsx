@@ -801,8 +801,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       trade_label: tradeLabel,
     };
     
-    // Add to the correct per-trade bucket so merge logic picks it up
-    if (targetTradeSection) {
+    // Change order items go directly to lineItems (not trade buckets)
+    if (newItemType === 'change_order') {
+      setLineItems([...lineItems, item]);
+    } else if (targetTradeSection) {
       setTradeLineItems(prev => ({
         ...prev,
         [targetTradeSection.id]: [...(prev[targetTradeSection.id] || []), item]
