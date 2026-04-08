@@ -697,7 +697,7 @@ export function SectionedLineItemsTable({
             </>
           ) : (
             <>
-              {/* Single-trade layout: Tear Off → Materials → Installation */}
+              {/* Single-trade layout: Materials → Tear Off → Installation */}
               
               {/* Tear Off Section */}
               {renderSectionHeader(
