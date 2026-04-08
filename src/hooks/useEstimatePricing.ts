@@ -116,6 +116,14 @@ export function useEstimatePricing(
     [lineItems]
   );
 
+  // Change order items are excluded from all cost/pricing calculations
+  const changeOrderItems = useMemo(() => 
+    lineItems
+      .filter(item => item.item_type === 'change_order')
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+    [lineItems]
+  );
+
   // Calculate pricing breakdown
   // Overhead and Profit are both percentages of SELLING PRICE
   // Formula: Selling Price = Direct Cost / (1 - OH% - Profit%)
