@@ -37,7 +37,8 @@ import {
   X,
   CheckSquare,
   Square,
-  Building2
+  Building2,
+  ChevronDown
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -1012,33 +1013,38 @@ const Pipeline = () => {
     };
   };
 
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const hasActiveFilters = filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc';
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-xl sm:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
               Job Pipeline
             </h1>
             {currentLocation && (
-              <Badge variant="outline" className="flex items-center gap-1">
+              <Badge variant="outline" className="flex items-center gap-1 text-[11px] sm:text-xs">
                 <Building2 className="h-3 w-3" />
                 {currentLocation.name}
               </Badge>
             )}
           </div>
-          <p className="text-muted-foreground">
+          <p className="text-xs sm:text-sm text-muted-foreground hidden sm:block">
             Track and manage jobs through their lifecycle
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 sm:gap-2 shrink-0">
           <Button
             variant="outline"
+            size="sm"
             onClick={() => navigate('/job-analytics')}
+            className="h-8 px-2 sm:px-3 text-xs sm:text-sm"
           >
-            <TrendingUp className="h-4 w-4 mr-2" />
-            View Analytics
+            <TrendingUp className="h-3.5 w-3.5 sm:mr-2" />
+            <span className="hidden sm:inline">View Analytics</span>
           </Button>
           <EnhancedLeadCreationDialog 
             onLeadCreated={() => {
@@ -1052,70 +1058,94 @@ const Pipeline = () => {
         </div>
       </div>
 
-      {/* Filters */}
+      {/* Filters - Collapsible on mobile */}
       <Card className="shadow-soft border-0">
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block">Sales Rep</label>
-              <Select value={filters.salesRep} onValueChange={(value) => setFilters(prev => ({ ...prev, salesRep: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Reps" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Reps</SelectItem>
-                  {salesReps.map(rep => (
-                    <SelectItem key={rep.id} value={rep.id}>{rep.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            
-            <div>
-              <label className="text-sm font-medium mb-2 block">Date From</label>
-              <Input
-                type="date"
-                value={filters.dateFrom}
-                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
-              />
-            </div>
-            
-            <div>
-              <label className="text-sm font-medium mb-2 block">Date To</label>
-              <Input
-                type="date"
-                value={filters.dateTo}
-                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium mb-2 block">Sort Order</label>
-              <Select value={filters.sortOrder} onValueChange={(value: 'asc' | 'desc') => setFilters(prev => ({ ...prev, sortOrder: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Sort order" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="desc">Newest First</SelectItem>
-                  <SelectItem value="asc">Oldest First</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+        <CardContent className="p-3 sm:p-4">
+          {/* Mobile: toggle button */}
+          <div className="sm:hidden">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full justify-between h-8 text-xs"
+              onClick={() => setFiltersOpen(!filtersOpen)}
+            >
+              <span className="flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5" />
+                Filters
+                {hasActiveFilters && (
+                  <Badge variant="secondary" className="h-4 px-1 text-[10px]">Active</Badge>
+                )}
+              </span>
+              <ChevronDown className={`h-3.5 w-3.5 transition-transform ${filtersOpen ? 'rotate-180' : ''}`} />
+            </Button>
           </div>
-          
-          {(filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo || filters.sortOrder !== 'desc') && (
-            <div className="mt-4">
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc' })}
-              >
-                <Filter className="h-4 w-4 mr-2" />
-                Clear Filters
-              </Button>
+
+          {/* Filter fields - always visible on desktop, collapsible on mobile */}
+          <div className={`${filtersOpen ? 'mt-3' : 'hidden'} sm:block`}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-4">
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">Sales Rep</label>
+                <Select value={filters.salesRep} onValueChange={(value) => setFilters(prev => ({ ...prev, salesRep: value }))}>
+                  <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm">
+                    <SelectValue placeholder="All Reps" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Reps</SelectItem>
+                    {salesReps.map(rep => (
+                      <SelectItem key={rep.id} value={rep.id}>{rep.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">Date From</label>
+                <Input
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+              
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">Date To</label>
+                <Input
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+                  className="h-8 sm:h-9 text-xs sm:text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] sm:text-sm font-medium mb-1 block text-muted-foreground">Sort Order</label>
+                <Select value={filters.sortOrder} onValueChange={(value: 'asc' | 'desc') => setFilters(prev => ({ ...prev, sortOrder: value }))}>
+                  <SelectTrigger className="h-8 sm:h-9 text-xs sm:text-sm">
+                    <SelectValue placeholder="Sort order" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="desc">Newest First</SelectItem>
+                    <SelectItem value="asc">Oldest First</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
-          )}
+            
+            {hasActiveFilters && (
+              <div className="mt-2 sm:mt-4">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-7 text-xs"
+                  onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '', sortOrder: 'desc' })}
+                >
+                  <Filter className="h-3 w-3 mr-1.5" />
+                  Clear Filters
+                </Button>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
