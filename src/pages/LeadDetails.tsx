@@ -851,11 +851,11 @@ const LeadDetails = () => {
               )}
             </div>
             
-            {/* Property Address - compact single line */}
+            {/* Property Address - wrapping on mobile */}
             {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
-              <div className="flex items-center gap-2 mt-2 text-sm">
-                <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
-                <p className="text-foreground">
+              <div className="flex flex-wrap items-start gap-1.5 mt-2 text-sm">
+                <MapPin className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                <p className="text-foreground break-words min-w-0">
                   {lead.verified_address?.formatted_address || 
                    `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
                 </p>
