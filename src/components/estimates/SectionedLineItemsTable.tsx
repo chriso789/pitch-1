@@ -72,7 +72,7 @@ interface SectionedLineItemsTableProps {
   className?: string;
   // Inline add item form props
   isAddingItem?: boolean;
-  addingItemType?: 'material' | 'labor';
+  addingItemType?: 'material' | 'labor' | 'change_order';
   addingTradeType?: string;
   newItem?: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string };
   onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number; notes?: string; material_id?: string }) => void;
