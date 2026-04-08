@@ -937,7 +937,7 @@ const LeadDetails = () => {
             </div>
 
             {/* Sales Reps - combined row */}
-            <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Rep:</span>
                 {isEditingSalesRep ? (
