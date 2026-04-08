@@ -130,6 +130,64 @@ Deno.serve(async (req: Request) => {
           recipient_email: recipient.recipient_email,
         },
       });
+
+      // Send instant broadcast notification for real-time UI update
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
+      try {
+        // Use Realtime broadcast for instant delivery (bypasses Postgres change polling delay)
+        const broadcastClient = createClient(supabaseUrl, supabaseAnonKey);
+        await broadcastClient
+          .channel(`broadcast:${envelope.tenant_id}:${envelope.created_by}`)
+          .send({
+            type: 'broadcast',
+            event: 'notification',
+            payload: {
+              id: crypto.randomUUID(),
+              type: 'envelope_viewed',
+              title: 'Envelope Opened 🔔',
+              message: `${recipient.recipient_name} (${recipient.recipient_email}) opened "${envelope.title}"`,
+              metadata: {
+                envelope_id: envelope.id,
+                recipient_id: recipient.id,
+                recipient_name: recipient.recipient_name,
+                action_url: `/signature-envelopes/${envelope.id}`,
+              },
+            },
+          });
+      } catch (broadcastErr) {
+        console.warn('Broadcast notification failed (non-blocking):', broadcastErr);
+      }
+
+      // Send SMS notification to envelope creator
+      try {
+        const { data: creatorProfile } = await supabase
+          .from('profiles')
+          .select('phone, first_name')
+          .eq('id', envelope.created_by)
+          .single();
+
+        if (creatorProfile?.phone) {
+          const smsMessage = `🔔 ${recipient.recipient_name} just opened your signature request for "${envelope.title}"!`;
+          
+          await fetch(`${supabaseUrl}/functions/v1/telnyx-send-sms`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              to: creatorProfile.phone,
+              message: smsMessage,
+              tenant_id: envelope.tenant_id,
+              sent_by: envelope.created_by,
+            }),
+          });
+          console.log(`SMS sent to ${creatorProfile.first_name} at ${creatorProfile.phone}`);
+        }
+      } catch (smsErr) {
+        console.warn('SMS notification failed (non-blocking):', smsErr);
+      }
     }
 
     // Log audit event
