@@ -1,7 +1,9 @@
-import React, { useState, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MousePointer2, Trash2, Plus, Link2 } from 'lucide-react';
+import { MousePointer2, Trash2, Plus, Link2, Save, X, Undo2, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 
 
 type EdgeType = 'eave' | 'rake' | 'ridge' | 'hip' | 'valley';
@@ -36,6 +38,9 @@ interface ManualPinDropEditorProps {
   zoom: number;
   existingFeatures?: LinearFeature[];
   onFeaturesChange?: (features: LinearFeature[]) => void;
+  measurementId?: string;
+  onSaveComplete?: () => void;
+  onCancel?: () => void;
 }
 
 const EDGE_COLORS: Record<EdgeType, string> = {
@@ -75,6 +80,9 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
   zoom,
   existingFeatures,
   onFeaturesChange,
+  measurementId,
+  onSaveComplete,
+  onCancel,
 }) => {
   const [pins, setPins] = useState<Pin[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
@@ -82,6 +90,8 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
   const [tool, setTool] = useState<'add' | 'connect' | 'delete'>('add');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [hasChanges, setHasChanges] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
 
   // Convert pixel to GPS
@@ -93,6 +103,77 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
     const lng = centerLng + dx / (111320 * Math.cos(centerLat * Math.PI / 180));
     return { lat, lng };
   }, [centerLat, centerLng, zoom]);
+
+  // Inverse: GPS to pixel
+  const gpsToPixel = useCallback((lat: number, lng: number) => {
+    const metersPerPx = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
+    const dx = (lng - centerLng) * 111320 * Math.cos(centerLat * Math.PI / 180);
+    const dy = (lat - centerLat) * 111320;
+    const px = SVG_WIDTH / 2 + dx / metersPerPx;
+    const py = SVG_HEIGHT / 2 - dy / metersPerPx;
+    return { x: px, y: py };
+  }, [centerLat, centerLng, zoom]);
+
+  // Load existing features as initial pins & edges
+  useEffect(() => {
+    if (!existingFeatures || existingFeatures.length === 0) return;
+
+    const loadedPins: Pin[] = [];
+    const loadedEdges: Edge[] = [];
+    let pinCounter = 0;
+
+    // Deduplicate helper
+    const findOrCreatePin = (lat: number, lng: number): string => {
+      const existing = loadedPins.find(
+        p => Math.abs(p.lat - lat) < 0.000005 && Math.abs(p.lng - lng) < 0.000005
+      );
+      if (existing) return existing.id;
+
+      const { x, y } = gpsToPixel(lat, lng);
+      const pin: Pin = { id: `pin-init-${pinCounter++}`, x, y, lat, lng };
+      loadedPins.push(pin);
+      return pin.id;
+    };
+
+    existingFeatures.forEach((feature, idx) => {
+      if (!feature.wkt) return;
+      // Parse "LINESTRING(lng1 lat1, lng2 lat2)"
+      const match = feature.wkt.match(/LINESTRING\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*,\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
+      if (!match) return;
+
+      const lng1 = parseFloat(match[1]);
+      const lat1 = parseFloat(match[2]);
+      const lng2 = parseFloat(match[3]);
+      const lat2 = parseFloat(match[4]);
+
+      const fromId = findOrCreatePin(lat1, lng1);
+      const toId = findOrCreatePin(lat2, lng2);
+      const edgeType = (feature.type?.toLowerCase() || 'eave') as EdgeType;
+
+      loadedEdges.push({
+        id: `edge-init-${idx}`,
+        from: fromId,
+        to: toId,
+        type: edgeType,
+        lengthFt: feature.length_ft || haversineFt(lat1, lng1, lat2, lng2),
+      });
+    });
+
+    if (loadedPins.length > 0) {
+      setPins(loadedPins);
+      setEdges(loadedEdges);
+    }
+  }, []); // Only on mount
+
+  // Mark changes whenever pins or edges change after initial load
+  const initializedRef = useRef(false);
+  useEffect(() => {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      return;
+    }
+    setHasChanges(true);
+  }, [pins, edges]);
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (tool !== 'add') return;
@@ -148,8 +229,124 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
     return summary;
   }, [edges]);
 
+  // Convert edges to WKT linear features for saving
+  const edgesToLinearFeatures = useCallback((): LinearFeature[] => {
+    return edges.map((edge, idx) => {
+      const fromPin = pins.find(p => p.id === edge.from);
+      const toPin = pins.find(p => p.id === edge.to);
+      if (!fromPin || !toPin) return null;
+
+      return {
+        id: `manual-${idx}`,
+        wkt: `LINESTRING(${fromPin.lng} ${fromPin.lat}, ${toPin.lng} ${toPin.lat})`,
+        length_ft: edge.lengthFt,
+        type: edge.type,
+      };
+    }).filter(Boolean) as LinearFeature[];
+  }, [edges, pins]);
+
+  // Save manual edits to roof_measurements table
+  const handleSave = useCallback(async () => {
+    if (edges.length === 0) {
+      toast.error('No edges to save', { description: 'Draw at least one edge before saving.' });
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const features = edgesToLinearFeatures();
+
+      // Calculate totals
+      const totals: Record<string, number> = { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 };
+      features.forEach(f => {
+        const t = f.type.toLowerCase();
+        if (t in totals) totals[t] += f.length_ft;
+      });
+
+      // Notify parent of changes
+      onFeaturesChange?.(features);
+
+      // Persist to database if we have a measurement ID
+      if (measurementId) {
+        const { error } = await supabase
+          .from('roof_measurements')
+          .update({
+            linear_features_wkt: features as any,
+            total_ridge_length: totals.ridge,
+            total_hip_length: totals.hip,
+            total_valley_length: totals.valley,
+            total_eave_length: totals.eave,
+            total_rake_length: totals.rake,
+          })
+          .eq('id', measurementId);
+
+        if (error) throw error;
+
+        toast.success('Manual edits saved', {
+          description: `${features.length} edges saved to measurement`,
+        });
+      } else {
+        toast.success('Edits applied', {
+          description: 'Edge data updated in report',
+        });
+      }
+
+      setHasChanges(false);
+      onSaveComplete?.();
+    } catch (err: any) {
+      console.error('Failed to save manual edits:', err);
+      toast.error('Save failed', { description: err.message || 'Unknown error' });
+    } finally {
+      setIsSaving(false);
+    }
+  }, [edges, edgesToLinearFeatures, measurementId, onFeaturesChange, onSaveComplete]);
+
+  const handleClearAll = useCallback(() => {
+    setPins([]);
+    setEdges([]);
+    setConnectFrom(null);
+  }, []);
+
   return (
     <div className="space-y-4">
+      {/* Save/Cancel bar */}
+      <div className="flex items-center justify-between p-3 rounded-lg border-2 border-primary/30 bg-primary/5">
+        <div className="flex items-center gap-2">
+          {hasChanges ? (
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          ) : edges.length > 0 ? (
+            <CheckCircle className="h-4 w-4 text-emerald-500" />
+          ) : null}
+          <span className="text-sm font-medium">
+            {hasChanges ? 'Unsaved changes' : edges.length > 0 ? 'Edges loaded' : 'Manual Edit Mode'}
+          </span>
+          <Badge variant="secondary" className="text-xs">
+            {pins.length} pins · {edges.length} edges
+          </Badge>
+        </div>
+        <div className="flex items-center gap-2">
+          {onCancel && (
+            <Button size="sm" variant="ghost" onClick={onCancel} disabled={isSaving}>
+              <X className="h-3.5 w-3.5 mr-1" />
+              Cancel
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="default"
+            onClick={handleSave}
+            disabled={isSaving || edges.length === 0}
+          >
+            {isSaving ? (
+              <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5 mr-1" />
+            )}
+            {isSaving ? 'Saving…' : 'Save Edits'}
+          </Button>
+        </div>
+      </div>
+
       {/* Toolbar */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1 border rounded-md p-0.5">
@@ -194,6 +391,19 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
             </Button>
           ))}
         </div>
+
+        <div className="h-6 w-px bg-border" />
+
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-7 px-2 text-xs text-destructive"
+          onClick={handleClearAll}
+          disabled={pins.length === 0}
+        >
+          <Undo2 className="h-3 w-3 mr-1" />
+          Clear All
+        </Button>
       </div>
 
       {/* SVG Canvas */}
@@ -293,14 +503,12 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs text-muted-foreground">
-        <span>{pins.length} pins · {edges.length} edges</span>
-        {connectFrom && (
-          <Badge variant="secondary" className="text-xs">
-            Select second point to connect
-          </Badge>
-        )}
-      </div>
+      {connectFrom && (
+        <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5">
+          <Link2 className="h-3.5 w-3.5" />
+          Click a second pin to create a <strong>{EDGE_LABELS[selectedEdgeType]}</strong> edge
+        </div>
+      )}
     </div>
   );
 };
