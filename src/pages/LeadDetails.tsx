@@ -1,3 +1,4 @@
+// Lead Details Page - Unified Lead/Project lifecycle view
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
