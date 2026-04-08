@@ -3,6 +3,7 @@ import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, calculateGPSPolygonArea, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
+import { autoFitEasternEave, type SvgLineSegment } from '@/lib/measurements/edgeAutoFit';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 import { Badge } from '@/components/ui/badge';
@@ -230,6 +231,7 @@ export function SchematicRoofDiagram({
   const [reconstructedGeometry, setReconstructedGeometry] = useState<ReconstructedRoof | null>(null);
   // Default to minimized (badge) state - user can expand if needed
   const [showWarningBanner, setShowWarningBanner] = useState(false);
+  const [fittedEastEaveSegments, setFittedEastEaveSegments] = useState<SvgLineSegment[] | null>(null);
   
   // Calculate geometry source and confidence for conditional rendering
   const geometrySourceInfo: GeometrySourceResult = useMemo(() => 
@@ -966,6 +968,64 @@ export function SchematicRoofDiagram({
     };
   }, [localShowOverlay, satelliteImageUrl, computedImageCrop, width, height]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const shouldFitEasternEave =
+      localShowOverlay &&
+      isLowConfidenceEdges &&
+      measurement?.footprint_source === 'solar_bbox_fallback' &&
+      !!satelliteImageUrl &&
+      !!overlayImageStyle &&
+      eaveSegments.length > 0;
+
+    if (!shouldFitEasternEave || !overlayImageStyle) {
+      setFittedEastEaveSegments(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    autoFitEasternEave({
+      imageUrl: satelliteImageUrl,
+      imagePlacement: {
+        left: overlayImageStyle.left,
+        top: overlayImageStyle.top,
+        width: overlayImageStyle.width,
+        height: overlayImageStyle.height,
+      },
+      canvasWidth: width,
+      canvasHeight: height,
+      eaveSegments,
+    })
+      .then(adjustedSegments => {
+        if (!cancelled) {
+          setFittedEastEaveSegments(adjustedSegments);
+        }
+      })
+      .catch(error => {
+        console.warn('East eave auto-fit skipped:', error);
+        if (!cancelled) {
+          setFittedEastEaveSegments(null);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    eaveSegments,
+    height,
+    isLowConfidenceEdges,
+    localShowOverlay,
+    measurement?.footprint_source,
+    overlayImageStyle,
+    satelliteImageUrl,
+    width,
+  ]);
+
+  const renderedEaveSegments = fittedEastEaveSegments ?? eaveSegments;
+
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
     // Sum linear feature lengths from the ACTUAL rendered geometry (linearFeatures array)
@@ -1130,7 +1190,7 @@ export function SchematicRoofDiagram({
   return (
     <div className="relative rounded-lg overflow-hidden border" style={{ width, height, backgroundColor }}>
       {/* Low-confidence edges badge */}
-      {isLowConfidenceEdges && (eaveSegments.length > 0 || rakeSegments.length > 0) && (
+      {isLowConfidenceEdges && (renderedEaveSegments.length > 0 || rakeSegments.length > 0) && (
         <div className="absolute top-2 left-2 z-20">
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
             <AlertTriangle className="w-3 h-3 mr-1" />
@@ -1258,9 +1318,9 @@ export function SchematicRoofDiagram({
         
         {/* Eave segments - thick dark green straight lines with indexed labels */}
         {(() => {
-          const needsIndex = eaveSegments.length > 1;
+          const needsIndex = renderedEaveSegments.length > 1;
           
-          return eaveSegments.map((seg, i) => {
+          return renderedEaveSegments.map((seg, i) => {
             const midX = (seg.start.x + seg.end.x) / 2;
             const midY = (seg.start.y + seg.end.y) / 2;
             const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
@@ -1518,7 +1578,7 @@ export function SchematicRoofDiagram({
         ))}
         
         {/* Debug: Eave endpoint markers */}
-        {localShowMarkers && eaveSegments.map((seg: any, i: number) => (
+        {localShowMarkers && renderedEaveSegments.map((seg: any, i: number) => (
           <g key={`eave-marker-${i}`}>
             <circle cx={seg.start.x} cy={seg.start.y} r={3} fill="#006400" />
             <circle cx={seg.end.x} cy={seg.end.y} r={3} fill="#006400" />
