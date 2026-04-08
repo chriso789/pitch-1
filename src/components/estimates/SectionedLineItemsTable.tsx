@@ -909,6 +909,110 @@ export function SectionedLineItemsTable({
               </TableRow>
             </>
           )}
+
+          {/* Potential Change Orders Section - NOT included in totals */}
+          {renderSectionHeader(
+            'POTENTIAL CHANGE ORDERS',
+            <AlertTriangle className="h-4 w-4" />,
+            changeOrderItems.length,
+          )}
+          {changeOrderItems.length > 0 ? (
+            <>
+              {renderSortableItems(changeOrderItems)}
+              {renderSectionSubtotal(
+                'Change Order Total (not included above)',
+                changeOrderItems.reduce((sum, i) => sum + i.line_total, 0)
+              )}
+            </>
+          ) : (
+            <TableRow>
+              <TableCell colSpan={totalCols} className="text-center py-4 text-muted-foreground text-sm italic">
+                No potential change orders. Add items that may arise during the project.
+              </TableCell>
+            </TableRow>
+          )}
+          {editable && onAddItem && (
+            <TableRow className="hover:bg-muted/30">
+              <TableCell colSpan={totalCols} className="py-2">
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => onAddItem('change_order')}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Change Order Item
+                </Button>
+              </TableCell>
+            </TableRow>
+          )}
+          {/* Inline Add Change Order Form */}
+          {isAddingItem && addingItemType === 'change_order' && newItem && onNewItemChange && (
+            <TableRow className="bg-primary/5 border-2 border-primary/30">
+              <TableCell colSpan={totalCols} className="py-3">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[180px]">
+                    <Label className="text-xs">Item Name</Label>
+                    <MaterialAutocomplete
+                      value={newItem.item_name}
+                      onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                      onSelectMaterial={(material) => {
+                        onNewItemChange({
+                          ...newItem,
+                          item_name: material.name,
+                          unit: material.uom,
+                          unit_cost: material.base_cost,
+                          material_id: material.id,
+                        });
+                      }}
+                      placeholder="Search items..."
+                      autoFocus
+                    />
+                  </div>
+                  <div className="w-32">
+                    <Label className="text-xs">Notes</Label>
+                    <Input
+                      value={newItem.notes || ''}
+                      onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                      placeholder="e.g. if needed"
+                    />
+                  </div>
+                  <div className="w-20">
+                    <Label className="text-xs">Qty</Label>
+                    <Input
+                      type="number"
+                      value={newItem.qty}
+                      onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="w-16">
+                    <Label className="text-xs">Unit</Label>
+                    <Input
+                      value={newItem.unit}
+                      onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                      placeholder="ea"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <Label className="text-xs">Unit Cost</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={newItem.unit_cost}
+                      onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <Button onClick={onSaveNewItem} size="sm">
+                    <Check className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          )}
         </TableBody>
       </Table>
     </div>
