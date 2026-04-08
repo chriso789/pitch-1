@@ -1141,6 +1141,15 @@ export function SchematicRoofDiagram({
 
   return (
     <div className="relative rounded-lg overflow-hidden border" style={{ width, height, backgroundColor }}>
+      {/* Low-confidence edges badge */}
+      {isLowConfidenceEdges && (eaveSegments.length > 0 || rakeSegments.length > 0) && (
+        <div className="absolute top-2 left-2 z-20">
+          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Edges approximate
+          </Badge>
+        </div>
+      )}
       {/* Satellite image background (when overlay is enabled) */}
       {localShowOverlay && satelliteImageUrl && (
         <img 
