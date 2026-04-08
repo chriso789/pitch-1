@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
-import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
+import { calculateImageBounds, gpsToPixel, calculateGPSPolygonArea, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 import { Badge } from '@/components/ui/badge';
@@ -371,6 +371,7 @@ export function SchematicRoofDiagram({
     solarSegmentPolygons,
     geometrySource: memoGeometrySource,
     imageCrop: computedImageCrop,
+    isLowConfidenceEdges,
   } = useMemo(() => {
     const padding = localShowOverlay ? 0 : 60; // No padding when using satellite overlay
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
@@ -448,6 +449,45 @@ export function SchematicRoofDiagram({
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
+    // OSM FOOTPRINT AREA CORRECTION: When footprint confidence is low and Solar API
+    // area is available, scale the perimeter inward if the OSM polygon is oversized.
+    // This fixes the top/bottom eave overshoot caused by OSM polygons being slightly
+    // too tall in the north-south direction.
+    const solarFootprintSqft = measurement?.solar_building_footprint_sqft || measurement?.solar_api_response?.buildingFootprintSqft;
+    const footprintNeedsCorrection = isLowQualityFootprint && solarFootprintSqft > 0 && perimCoords.length >= 4;
+    let areaScaleFactor = 1;
+    
+    if (footprintNeedsCorrection) {
+      // Calculate the area of the current perimeter polygon (in sqft)
+      const osmAreaSqft = calculateGPSPolygonArea(perimCoords.filter((_, i) => i < perimCoords.length - 1)); // exclude closing point
+      
+      if (osmAreaSqft > 0 && solarFootprintSqft > 0) {
+        const areaRatio = solarFootprintSqft / osmAreaSqft;
+        
+        // Only correct if OSM is >5% larger than Solar API area
+        if (areaRatio < 0.95) {
+          areaScaleFactor = Math.sqrt(areaRatio);
+          
+          // Compute centroid
+          const nonClosing = perimCoords.slice(0, -1);
+          const centroid = {
+            lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
+            lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
+          };
+          
+          // Scale each vertex toward centroid
+          perimCoords = nonClosing.map(v => ({
+            lat: centroid.lat + (v.lat - centroid.lat) * areaScaleFactor,
+            lng: centroid.lng + (v.lng - centroid.lng) * areaScaleFactor,
+          }));
+          // Re-close polygon
+          perimCoords.push({ ...perimCoords[0] });
+          
+          console.log(`📏 OSM area correction: OSM=${osmAreaSqft.toFixed(0)} sqft, Solar=${solarFootprintSqft.toFixed(0)} sqft, scale=${areaScaleFactor.toFixed(3)}`);
+        }
+      }
+    }
+
     if (perimCoords.length > 0) {
       allLatLngs = [...perimCoords];
     }
@@ -490,6 +530,30 @@ export function SchematicRoofDiagram({
       
       if (linearFeaturesData.length > 0) {
         geometrySource = 'database';
+      }
+      
+      // Apply the same area correction to eave/rake linear feature coordinates
+      // This ensures eaves/rakes shrink inward to match the corrected perimeter
+      if (areaScaleFactor < 1 && footprintNeedsCorrection) {
+        const nonClosing = perimCoords.slice(0, -1);
+        const centroid = {
+          lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
+          lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
+        };
+        
+        linearFeaturesData = linearFeaturesData.map(f => {
+          if (f.type === 'eave' || f.type === 'rake') {
+            return {
+              ...f,
+              coords: f.coords.map(c => ({
+                lat: centroid.lat + (c.lat - centroid.lat) * areaScaleFactor,
+                lng: centroid.lng + (c.lng - centroid.lng) * areaScaleFactor,
+              })),
+            };
+          }
+          return f;
+        });
+        console.log(`📏 Applied area correction (${areaScaleFactor.toFixed(3)}) to eave/rake linear features`);
       }
     }
     
@@ -866,11 +930,12 @@ export function SchematicRoofDiagram({
       facetPaths: facetPathsData,
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
-      debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata },
+      debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata, areaScaleFactor },
       solarSegmentPolygons: [],
       qaData,
       geometrySource,
       imageCrop: imgCrop,
+      isLowConfidenceEdges: isLowQualityFootprint,
     };
   }, [measurement, width, height, facets, localShowOverlay, imageBounds]);
   
@@ -1076,6 +1141,15 @@ export function SchematicRoofDiagram({
 
   return (
     <div className="relative rounded-lg overflow-hidden border" style={{ width, height, backgroundColor }}>
+      {/* Low-confidence edges badge */}
+      {isLowConfidenceEdges && (eaveSegments.length > 0 || rakeSegments.length > 0) && (
+        <div className="absolute top-2 left-2 z-20">
+          <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
+            <AlertTriangle className="w-3 h-3 mr-1" />
+            Edges approximate
+          </Badge>
+        </div>
+      )}
       {/* Satellite image background (when overlay is enabled) */}
       {localShowOverlay && satelliteImageUrl && (
         <img 
@@ -1230,6 +1304,7 @@ export function SchematicRoofDiagram({
                   stroke={FEATURE_COLORS.eave}
                   strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  strokeDasharray={isLowConfidenceEdges ? '8 4' : undefined}
                   filter={isHighlighted ? 'url(#segment-glow)' : undefined}
                   className={isHighlighted ? 'transition-all duration-150' : ''}
                 />
@@ -1303,6 +1378,7 @@ export function SchematicRoofDiagram({
                   stroke={FEATURE_COLORS.rake}
                   strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  strokeDasharray={isLowConfidenceEdges ? '8 4' : undefined}
                   filter={isHighlighted ? 'url(#segment-glow)' : undefined}
                   className={isHighlighted ? 'transition-all duration-150' : ''}
                 />

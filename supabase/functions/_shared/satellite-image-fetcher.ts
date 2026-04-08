@@ -208,7 +208,7 @@ async function fetchGoogleStaticMap(
 
   const imageBuffer = await response.arrayBuffer();
   const imageBase64 = base64FromBytes(new Uint8Array(imageBuffer));
-  const bounds = calculateBounds(lat, lng, size * scale, zoom);
+  const bounds = calculateBounds(lat, lng, size, zoom);
   
   // Estimate quality based on response size
   const qualityScore = estimateImageQuality(imageBuffer.byteLength, size * scale);
@@ -260,7 +260,7 @@ async function fetchMapboxStaticImage(
 
   const imageBuffer = await response.arrayBuffer();
   const imageBase64 = base64FromBytes(new Uint8Array(imageBuffer));
-  const bounds = calculateBounds(lat, lng, size * 2, zoom);  // @2x = 2x size
+  const bounds = calculateBounds(lat, lng, size, zoom);  // Geographic area is logical size, not pixel size
   const qualityScore = estimateImageQuality(imageBuffer.byteLength, size * 2);
 
   console.log(`✅ Mapbox image fetched: ${imageBuffer.byteLength} bytes, quality score: ${qualityScore.toFixed(2)}`);
@@ -289,7 +289,8 @@ async function fetchMapboxStaticImage(
 
 /**
  * Calculate geospatial bounds for the satellite image
- * Uses Web Mercator projection math
+ * Uses proper Web Mercator projection (inverse Mercator for latitude)
+ * to eliminate vertical drift at non-equatorial latitudes.
  */
 export function calculateBounds(
   centerLat: number,
@@ -297,23 +298,28 @@ export function calculateBounds(
   pixelSize: number,
   zoom: number
 ): GeospatialBounds {
+  const EARTH_RADIUS = 6371000; // meters
   // Meters per pixel at this zoom and latitude
   const metersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
   
-  // Total span in meters
-  const widthMeters = pixelSize * metersPerPixel;
-  const heightMeters = pixelSize * metersPerPixel;
-  
-  // Convert to degrees
-  const metersPerDegreeLat = 111320;  // Approximately constant
+  // Longitude is linear in Mercator
   const metersPerDegreeLng = 111320 * Math.cos(centerLat * Math.PI / 180);
+  const lngSpan = (pixelSize * metersPerPixel) / metersPerDegreeLng / 2;
   
-  const latSpan = heightMeters / metersPerDegreeLat / 2;
-  const lngSpan = widthMeters / metersPerDegreeLng / 2;
+  // Latitude uses inverse Mercator to avoid ~5% error at mid-latitudes
+  const toRad = (d: number) => d * Math.PI / 180;
+  const mercY = Math.log(Math.tan(Math.PI / 4 + toRad(centerLat) / 2));
+  const mercPerPixel = metersPerPixel / EARTH_RADIUS; // radians per pixel in Mercator space
+  
+  const mercTop = mercY + (pixelSize / 2) * mercPerPixel;
+  const mercBottom = mercY - (pixelSize / 2) * mercPerPixel;
+  
+  const northLat = (2 * Math.atan(Math.exp(mercTop)) - Math.PI / 2) * 180 / Math.PI;
+  const southLat = (2 * Math.atan(Math.exp(mercBottom)) - Math.PI / 2) * 180 / Math.PI;
   
   return {
-    north: centerLat + latSpan,
-    south: centerLat - latSpan,
+    north: northLat,
+    south: southLat,
     east: centerLng + lngSpan,
     west: centerLng - lngSpan,
     center: { lat: centerLat, lng: centerLng },
