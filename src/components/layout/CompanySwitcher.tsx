@@ -52,17 +52,17 @@ export const CompanySwitcher = () => {
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-1.5 max-w-[140px] sm:max-w-[220px] px-2 sm:px-3">
-          <Avatar className="h-6 w-6">
+        <Button variant="outline" className="gap-1.5 max-w-[48px] sm:max-w-[220px] px-1.5 sm:px-3 overflow-hidden">
+          <Avatar className="h-6 w-6 shrink-0">
             <AvatarImage src={activeCompany?.logo_url || undefined} alt={activeCompany?.tenant_name} />
             <AvatarFallback className="text-xs bg-primary text-primary-foreground">
               {activeCompany?.tenant_name ? getInitials(activeCompany.tenant_name) : <Building2 className="h-3 w-3" />}
             </AvatarFallback>
           </Avatar>
-          <span className="font-medium truncate max-w-[120px]">
+          <span className="font-medium truncate max-w-[120px] hidden sm:inline">
             {activeCompany?.tenant_name || 'Select Company'}
           </span>
-          <ChevronDown className="h-4 w-4 opacity-50 shrink-0" />
+          <ChevronDown className="h-4 w-4 opacity-50 shrink-0 hidden sm:inline" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-80">
