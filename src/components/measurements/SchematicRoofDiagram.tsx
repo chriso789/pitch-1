@@ -530,6 +530,30 @@ export function SchematicRoofDiagram({
       if (linearFeaturesData.length > 0) {
         geometrySource = 'database';
       }
+      
+      // Apply the same area correction to eave/rake linear feature coordinates
+      // This ensures eaves/rakes shrink inward to match the corrected perimeter
+      if (areaScaleFactor < 1 && footprintNeedsCorrection) {
+        const nonClosing = perimCoords.slice(0, -1);
+        const centroid = {
+          lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
+          lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
+        };
+        
+        linearFeaturesData = linearFeaturesData.map(f => {
+          if (f.type === 'eave' || f.type === 'rake') {
+            return {
+              ...f,
+              coords: f.coords.map(c => ({
+                lat: centroid.lat + (c.lat - centroid.lat) * areaScaleFactor,
+                lng: centroid.lng + (c.lng - centroid.lng) * areaScaleFactor,
+              })),
+            };
+          }
+          return f;
+        });
+        console.log(`📏 Applied area correction (${areaScaleFactor.toFixed(3)}) to eave/rake linear features`);
+      }
     }
     
     // FALLBACK: If no WKT features, use client-side reconstruction
