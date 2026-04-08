@@ -549,336 +549,195 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       .map(step => step.label);
   };
 
-  return (
-    <div className="space-y-2">
-      {/* Header with Progress and Action Button */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex-1">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium">Progress</span>
-            <span className="text-[11px] text-muted-foreground">
-              {completedCount}/{totalCount}
-            </span>
+  // Helper to render a bubble icon (shared across all states)
+  const renderBubbleIcon = (step: typeof bubbleSteps[0], isComplete: boolean) => {
+    const Icon = getIcon(step.icon);
+    if (isComplete) {
+      return (
+        <div
+          className={cn(
+            "relative w-9 h-9 rounded-full flex items-center justify-center",
+            "border-2 cursor-pointer",
+            `bg-gradient-to-br ${step.color} border-white shadow-md hover:scale-105`
+          )}
+        >
+          <Icon className="h-4 w-4 text-white" />
+          <div className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-success rounded-full flex items-center justify-center border border-background">
+            <CheckCircle className="h-2.5 w-2.5 text-success-foreground" />
           </div>
-          <Progress value={progressPercentage} className="h-1.5" />
         </div>
-        
+      );
+    }
+    return (
+      <div
+        className={cn(
+          "relative w-9 h-9 rounded-full flex items-center justify-center",
+          "border-2 cursor-pointer",
+          "bg-muted border-border opacity-60 hover:opacity-100 hover:border-primary"
+        )}
+      >
+        <Icon className="h-4 w-4 text-muted-foreground" />
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-2.5">
+      {/* Progress bar */}
+      <div className="flex items-center gap-3">
+        <Progress value={progressPercentage} className="h-1.5 flex-1" />
+        <span className="text-[11px] text-muted-foreground font-medium shrink-0">
+          {completedCount}/{totalCount}
+        </span>
+      </div>
+
+      {/* Requirements grid - 2x2 on mobile, row on desktop */}
+      <div className="grid grid-cols-4 gap-x-1 gap-y-2">
+        {bubbleSteps.map((step) => {
+          const isComplete = step.isComplete;
+
+          // Wrap bubble in appropriate popover
+          const bubbleElement = step.key === 'contract' && !isComplete ? (
+            <Popover open={openPopover} onOpenChange={setOpenPopover}>
+              <PopoverTrigger asChild>
+                {renderBubbleIcon(step, isComplete)}
+              </PopoverTrigger>
+              <PopoverContent className="w-52 p-2">
+                <div className="space-y-1">
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => { setScanningDocType('contract'); setScanningDocLabel('Contract'); setScannerOpen(true); setOpenPopover(false); }} disabled={uploadingContract}>
+                    <Camera className="h-3.5 w-3.5 mr-2" />Scan with Camera
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => fileInputRef.current?.click()} disabled={uploadingContract}>
+                    <Upload className="h-3.5 w-3.5 mr-2" />Upload from Device
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : step.key === 'estimate' && !isComplete ? (
+            <Popover open={openEstimatePopover} onOpenChange={setOpenEstimatePopover}>
+              <PopoverTrigger asChild>
+                {renderBubbleIcon(step, isComplete)}
+              </PopoverTrigger>
+              <PopoverContent className="w-80 p-3">
+                <div className="space-y-3">
+                  <div>
+                    <h4 className="font-semibold text-sm mb-0.5">Select Estimate</h4>
+                    <p className="text-xs text-muted-foreground">Choose estimate for budget</p>
+                  </div>
+                  {estimatesLoading ? (
+                    <p className="text-xs text-muted-foreground">Loading...</p>
+                  ) : !availableEstimates || availableEstimates.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">No estimates available.</p>
+                  ) : (
+                    <RadioGroup value={selectedEstimateId || ''} onValueChange={handleEstimateSelect}>
+                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                        {availableEstimates.map((estimate) => (
+                          <div key={estimate.id} className="flex items-start space-x-2 border rounded-lg p-2 hover:bg-accent/50">
+                            <RadioGroupItem value={estimate.id} id={estimate.id} className="mt-0.5" />
+                            <Label htmlFor={estimate.id} className="flex-1 cursor-pointer text-xs">
+                              <div className="font-medium">{estimate.estimate_number || 'Estimate'}</div>
+                              <div className="text-muted-foreground">${estimate.selling_price?.toLocaleString() || '0'}</div>
+                            </Label>
+                          </div>
+                        ))}
+                      </div>
+                    </RadioGroup>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : (step.validationType === 'photos' || step.validationType === 'document') && !isComplete && step.key !== 'contract' && step.key !== 'estimate' ? (
+            <Popover open={openGenericPopover === step.key} onOpenChange={(open) => setOpenGenericPopover(open ? step.key : null)}>
+              <PopoverTrigger asChild>
+                {renderBubbleIcon(step, isComplete)}
+              </PopoverTrigger>
+              <PopoverContent className="w-52 p-2">
+                <div className="space-y-1">
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => { setScanningDocType(step.key); setScanningDocLabel(step.label); setScannerOpen(true); setOpenGenericPopover(null); }} disabled={uploadingGeneric}>
+                    <Camera className="h-3.5 w-3.5 mr-2" />{step.validationType === 'photos' ? 'Take Photo' : 'Scan Document'}
+                  </Button>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => genericFileInputRef.current?.click()} disabled={uploadingGeneric}>
+                    <Upload className="h-3.5 w-3.5 mr-2" />Upload from Device
+                  </Button>
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : isComplete ? (
+            <Popover>
+              <PopoverTrigger asChild>
+                {renderBubbleIcon(step, isComplete)}
+              </PopoverTrigger>
+              <PopoverContent className="w-52 p-2">
+                <div className="space-y-1">
+                  {step.key !== 'estimate' && (
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => { const doc = getDocumentForRequirement(step.key); if (doc) setViewingDocument(doc); }} disabled={!getDocumentForRequirement(step.key)}>
+                      <Eye className="h-3.5 w-3.5 mr-2" />View
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs" onClick={() => { if (step.key === 'estimate') { setOpenEstimatePopover(true); } else { setScanningDocType(step.key); setScanningDocLabel(step.label); setScannerOpen(true); } }}>
+                    <Camera className="h-3.5 w-3.5 mr-2" />{step.key === 'estimate' ? 'Change' : 'Replace'}
+                  </Button>
+                  {step.key !== 'estimate' && (
+                    <Button variant="ghost" size="sm" className="w-full justify-start text-xs text-destructive hover:text-destructive" onClick={() => { const doc = getDocumentForRequirement(step.key); if (doc) { setDeletingDocId(doc.id); setDeletingDocKey(step.label); setDeleteConfirmOpen(true); } }} disabled={!getDocumentForRequirement(step.key)}>
+                      <Trash2 className="h-3.5 w-3.5 mr-2" />Delete
+                    </Button>
+                  )}
+                </div>
+              </PopoverContent>
+            </Popover>
+          ) : (
+            renderBubbleIcon(step, isComplete)
+          );
+
+          return (
+            <div key={step.key} className="flex flex-col items-center gap-0.5">
+              {bubbleElement}
+              <span className={cn(
+                "text-[10px] font-medium text-center leading-tight line-clamp-2",
+                isComplete ? "text-foreground" : "text-muted-foreground"
+              )}>
+                {step.label}
+              </span>
+              <span className={cn(
+                "text-[9px] px-1.5 py-px rounded-full leading-none",
+                isComplete ? "bg-success/10 text-success" : "bg-muted text-muted-foreground"
+              )}>
+                {isComplete ? "Complete" : "Pending"}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Action buttons row */}
+      <div className="flex items-center gap-2">
         {requirements.allComplete ? (
-          <Button 
-            onClick={onApprove} 
-            disabled={disabled}
-            size="sm"
-            className="gradient-primary whitespace-nowrap text-xs h-7 px-3"
-          >
+          <Button onClick={onApprove} disabled={disabled} size="sm" className="gradient-primary text-xs h-7 px-3 flex-1">
             Approve to Project
           </Button>
         ) : (
-          <Button disabled variant="outline" size="sm" className="whitespace-nowrap text-xs h-7 px-3">
+          <Button disabled variant="outline" size="sm" className="text-xs h-7 px-3 flex-1">
             Complete Requirements
           </Button>
         )}
-      </div>
-
-      {/* Floating Bubbles Timeline with Manager Approval */}
-      <div className="relative">
-        <div className="flex items-start justify-between gap-2">
-          {/* Bubbles Section - Left Side */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-start gap-1 sm:gap-3 flex-wrap">
-          {bubbleSteps.map((step, index) => {
-            const isComplete = step.isComplete;
-            const Icon = getIcon(step.icon);
-            
-            return (
-              <React.Fragment key={step.key}>
-                {/* Bubble */}
-                <div className="flex flex-col items-center space-y-0.5 sm:space-y-1 relative">
-                  {/* Circular Bubble */}
-                  {step.key === 'contract' && !isComplete ? (
-                    <Popover open={openPopover} onOpenChange={setOpenPopover}>
-                      <PopoverTrigger asChild>
-                        <div
-                          className={cn(
-                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                            "border-2 sm:border-4 cursor-pointer",
-                            "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
-                          )}
-                        >
-                          <Icon 
-                            className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground"
-                          />
-                        </div>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-56 p-2">
-                        <div className="space-y-1">
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start"
-                            onClick={() => {
-                              setScanningDocType('contract');
-                              setScanningDocLabel('Contract');
-                              setScannerOpen(true);
-                              setOpenPopover(false);
-                            }}
-                            disabled={uploadingContract}
-                          >
-                            <Camera className="h-4 w-4 mr-2" />
-                            Scan with Camera
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start"
-                            onClick={() => fileInputRef.current?.click()}
-                            disabled={uploadingContract}
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Upload from Device
-                          </Button>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ) : step.key === 'estimate' && !isComplete ? (
-                    <Popover open={openEstimatePopover} onOpenChange={setOpenEstimatePopover}>
-                      <PopoverTrigger asChild>
-                        <div
-                          className={cn(
-                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                            "border-2 sm:border-4 cursor-pointer",
-                            "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
-                          )}
-                        >
-                          <Icon 
-                            className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground"
-                          />
-                        </div>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-96 p-4">
-                        <div className="space-y-4">
-                          <div>
-                            <h4 className="font-semibold mb-1">Select Estimate for Budget</h4>
-                            <p className="text-sm text-muted-foreground">
-                              Choose which estimate to use for materials and labor budget
-                            </p>
-                          </div>
-                          
-                          {estimatesLoading ? (
-                            <p className="text-sm text-muted-foreground">Loading estimates...</p>
-                          ) : !availableEstimates || availableEstimates.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">No estimates available. Create an estimate first.</p>
-                          ) : (
-                            <RadioGroup value={selectedEstimateId || ''} onValueChange={handleEstimateSelect}>
-                              <div className="space-y-3 max-h-64 overflow-y-auto">
-                                {availableEstimates.map((estimate) => (
-                                  <div key={estimate.id} className="flex items-start space-x-3 border rounded-lg p-3 hover:bg-accent/50 transition-colors">
-                                    <RadioGroupItem value={estimate.id} id={estimate.id} className="mt-1" />
-                                    <Label htmlFor={estimate.id} className="flex-1 cursor-pointer">
-                                      <div className="font-medium">
-                                        {estimate.estimate_number || 'Estimate'}
-                                      </div>
-                                      <div className="text-sm text-muted-foreground mt-1">
-                                        Total: ${estimate.selling_price?.toLocaleString() || '0'}
-                                      </div>
-                                      <div className="text-xs text-muted-foreground mt-0.5">
-                                        Materials: ${estimate.material_cost?.toLocaleString() || '0'} | 
-                                        Labor: ${estimate.labor_cost?.toLocaleString() || '0'}
-                                      </div>
-                                    </Label>
-                                  </div>
-                                ))}
-                              </div>
-                            </RadioGroup>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ) : (step.validationType === 'photos' || step.validationType === 'document') && !isComplete && step.key !== 'contract' && step.key !== 'estimate' ? (
-                    // Generic photo/document upload popover for non-contract, non-estimate requirements
-                    <Popover open={openGenericPopover === step.key} onOpenChange={(open) => setOpenGenericPopover(open ? step.key : null)}>
-                      <PopoverTrigger asChild>
-                        <div
-                          className={cn(
-                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                            "border-2 sm:border-4 cursor-pointer",
-                            "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
-                          )}
-                        >
-                          <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground" />
-                        </div>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-56 p-2">
-                        <div className="space-y-1">
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start"
-                            onClick={() => {
-                              setScanningDocType(step.key);
-                              setScanningDocLabel(step.label);
-                              setScannerOpen(true);
-                              setOpenGenericPopover(null);
-                            }}
-                            disabled={uploadingGeneric}
-                          >
-                            <Camera className="h-4 w-4 mr-2" />
-                            {step.validationType === 'photos' ? 'Take Photo' : 'Scan Document'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start"
-                            onClick={() => genericFileInputRef.current?.click()}
-                            disabled={uploadingGeneric}
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            Upload from Device
-                          </Button>
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ) : isComplete ? (
-                    // Completed bubble - now interactive with review/delete options
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <div
-                          className={cn(
-                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                            "border-2 sm:border-4 cursor-pointer",
-                            `bg-gradient-to-br ${step.color} border-white shadow-lg hover:scale-110 hover:-translate-y-1 hover:shadow-xl`
-                          )}
-                        >
-                          <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-white" />
-                          {/* Checkmark Badge */}
-                          <div className="absolute -top-1 -right-1 w-5 h-5 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md">
-                            <CheckCircle className="h-3 w-3 text-success-foreground" />
-                          </div>
-                        </div>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-56 p-2">
-                        <div className="space-y-1">
-                          {/* View Document - only for document-based steps, not estimate */}
-                          {step.key !== 'estimate' && (
-                            <Button
-                              variant="ghost"
-                              className="w-full justify-start"
-                              onClick={() => {
-                                const doc = getDocumentForRequirement(step.key);
-                                if (doc) setViewingDocument(doc);
-                              }}
-                              disabled={!getDocumentForRequirement(step.key)}
-                            >
-                              <Eye className="h-4 w-4 mr-2" />
-                              View Document
-                            </Button>
-                          )}
-                          
-                          {/* Replace Document */}
-                          <Button
-                            variant="ghost"
-                            className="w-full justify-start"
-                            onClick={() => {
-                              if (step.key === 'estimate') {
-                                setOpenEstimatePopover(true);
-                              } else {
-                                setScanningDocType(step.key);
-                                setScanningDocLabel(step.label);
-                                setScannerOpen(true);
-                              }
-                            }}
-                          >
-                            <Camera className="h-4 w-4 mr-2" />
-                            {step.key === 'estimate' ? 'Change Estimate' : 'Replace Document'}
-                          </Button>
-                          
-                          {/* Delete Document - only for document-based steps, not estimate */}
-                          {step.key !== 'estimate' && (
-                            <Button
-                              variant="ghost"
-                              className="w-full justify-start text-destructive hover:text-destructive"
-                              onClick={() => {
-                                const doc = getDocumentForRequirement(step.key);
-                                if (doc) {
-                                  setDeletingDocId(doc.id);
-                                  setDeletingDocKey(step.label);
-                                  setDeleteConfirmOpen(true);
-                                }
-                              }}
-                              disabled={!getDocumentForRequirement(step.key)}
-                            >
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Delete Document
-                            </Button>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
-                  ) : (
-                    // Incomplete non-interactive bubble (fallback for steps without upload handling)
-                    <div
-                      className={cn(
-                        "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                        "border-2 sm:border-4",
-                        "bg-muted border-border opacity-50"
-                      )}
-                    >
-                      <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground" />
-                    </div>
-                  )}
-                  
-                  {/* Label */}
-                  <span className={cn(
-                    "text-[10px] sm:text-xs font-medium text-center max-w-[55px] sm:max-w-none leading-tight",
-                    isComplete ? "text-foreground" : "text-muted-foreground"
-                  )}>
-                    {step.label}
-                  </span>
-                  
-                  {/* Status Badge */}
-                  <span className={cn(
-                    "text-[10px] px-1.5 py-px rounded-full",
-                    isComplete 
-                      ? "bg-success/10 text-success" 
-                      : "bg-muted text-muted-foreground"
-                  )}>
-                    {isComplete ? "Complete" : "Pending"}
-                  </span>
-                </div>
-                
-                {/* Arrow Connector */}
-                {index < bubbleSteps.length - 1 && (
-                  <div className="flex items-center">
-                    <ArrowRight 
-                      className={cn(
-                        "h-5 w-5 transition-all duration-300",
-                        isComplete ? "text-primary opacity-100" : "text-muted-foreground/20"
-                      )}
-                    />
-                  </div>
-                )}
-              </React.Fragment>
-            );
-          })}
-            </div>
-          </div>
-
-          {/* Manager Approval Button - Right Side */}
-          {isManager && (
-            <div className="flex flex-col items-center gap-1.5 pt-1 shrink-0">
-              <Button
-                onClick={handleManagerApprove}
-                disabled={disabled || approvingJob}
-                size="sm"
-                className="gradient-primary whitespace-nowrap text-xs h-8 px-3"
-              >
-                <Shield className="h-3.5 w-3.5 mr-1.5" />
-                {approvingJob ? 'Approving...' : 'Manager Approve'}
-              </Button>
-              {!requirements.allComplete && (
-                <div className="flex items-center gap-1 text-[10px] text-warning">
-                  <AlertCircle className="h-3 w-3" />
-                  <span>Override available</span>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+        {isManager && (
+          <>
+            <Button
+              onClick={handleManagerApprove}
+              disabled={disabled || approvingJob}
+              size="sm"
+              className="gradient-primary text-xs h-7 px-3 flex-1"
+            >
+              <Shield className="h-3 w-3 mr-1" />
+              {approvingJob ? 'Approving...' : 'Manager Approve'}
+            </Button>
+            {!requirements.allComplete && (
+              <span className="text-[9px] text-warning flex items-center gap-0.5 shrink-0">
+                <AlertCircle className="h-2.5 w-2.5" />Override
+              </span>
+            )}
+          </>
+        )}
       </div>
 
       {/* Override Confirmation Dialog */}
