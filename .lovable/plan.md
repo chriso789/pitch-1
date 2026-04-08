@@ -1,97 +1,51 @@
 
-Goal
-- Make the lead-page AI measurement preview place eaves/rakes directly on the same roof edges visible in the aerial image, not just zoom closer.
 
-What is still wrong
-1. `UnifiedMeasurementPanel` is not fetching the alignment fields the preview needs (`gps_coordinates`, `analysis_zoom`, `analysis_image_size`, `image_bounds`, `selected_image_source`, `mapbox_image_url`, etc.), so the card falls back to synthetic center/zoom values.
-2. The preview image is chosen as `satellite_overlay_url || google_maps_image_url`, but the measurement row stores multiple imagery sources plus `selected_image_source`; the diagram can be rendering on a different image than the one used during analysis.
-3. `SchematicRoofDiagram` still rebuilds image bounds with `calculateImageBounds()` and linear `gpsToPixel()` math, while the table already has fields like `image_bounds` and the project has Mercator-aware utilities. That keeps vertical drift in the overlay.
-4. Low-confidence geometry still renders because `shouldShowLinearFeatures` is not being enforced, so users see exact-looking eaves even when the data is marked approximate.
+# Fix Top/Bottom Eave Misalignment with Satellite Image
 
-Implementation plan
+## Root Cause (confirmed by data inspection)
 
-1. Fix the lead-page measurement query
-- File: `src/components/measurements/UnifiedMeasurementPanel.tsx`
-- Expand the `roof_measurements` select to include:
-  - `gps_coordinates`
-  - `analysis_zoom`
-  - `analysis_image_size`
-  - `image_bounds`
-  - `bounding_box`
-  - `mapbox_image_url`
-  - `selected_image_source`
-  - `image_source`
-  - `measurement_confidence`
-  - `requires_manual_review`
-  - `overlay_schema`
-- Pass those real values into the preview instead of rebuilding them from `target_lat/target_lng` and defaults.
+The eave coordinates come from the OSM footprint (`footprint_source: osm_overpass`, `footprint_confidence: 0.8`). For this property, the OSM polygon is slightly taller in the north-south direction than the actual roof visible in the satellite image. The left/right rakes align because the east-west dimension of the OSM polygon happens to be accurate; the top/bottom eaves overshoot because the north-south dimension is slightly too large.
 
-2. Use the exact imagery source the AI measured against
-- File: `src/components/measurements/UnifiedMeasurementPanel.tsx`
-- Add one helper for image selection:
-  1. image matching `selected_image_source`
-  2. `satellite_overlay_url`
-  3. remaining Google/Mapbox fallback
-- Use that same helper for both the card preview and `MeasurementReportDialog` so they cannot drift apart.
+This is a **data accuracy** issue, not a rendering/transform bug. The coordinate transforms are mathematically correct.
 
-3. Make `SchematicRoofDiagram` prefer authoritative image-space metadata
-- Files:
-  - `src/components/measurements/SchematicRoofDiagram.tsx`
-  - `src/utils/gpsCalculations.ts` or `src/utils/geoCoordinates.ts`
-- First use stored `measurement.image_bounds` when available.
-- Only fall back to computed bounds if no stored bounds exist.
-- Replace the current linear lat/lng projection path with a single Mercator-correct image-to-SVG transform.
+## Implementation Plan
 
-4. Tighten the crop around roof edges, not loose bounds
-- File: `src/components/measurements/SchematicRoofDiagram.tsx`
-- Build crop extents in this order:
-  1. eave/rake endpoints
-  2. `footprint_vertices_geo`
-  3. `perimeter_wkt`
-  4. full image
-- Keep only a minimal margin so the roof fills the preview enough for verification.
+### 1. Fix backend bounds calculation bug (satellite-image-fetcher.ts)
 
-5. Add an eave-first verification mode to the lead-page card
-- Files:
-  - `src/components/measurements/UnifiedMeasurementPanel.tsx`
-  - `src/components/measurements/SchematicRoofDiagram.tsx`
-- In the “Latest AI Measurement” card, show only:
-  - satellite image
-  - perimeter
-  - eaves
-  - rakes
-- Hold ridges/hips/valleys back there until edge alignment is proven.
+The `calculateBounds` function on line 211 passes `size * scale` (1280) instead of `size` (640). Google Static Maps with `scale=2` returns more pixels but covers the same geographic area. This bug doesn't currently affect the frontend (since `image_bounds` is null), but fixing it is prerequisite for step 2.
 
-6. Enforce confidence gating
-- File: `src/components/measurements/SchematicRoofDiagram.tsx`
-- Respect `geometrySourceInfo.shouldShowLinearFeatures`, `requires_manual_review`, and low-confidence sources.
-- If exact alignment metadata is missing or confidence is low, render perimeter-only plus the warning state instead of misaligned edge lines.
+Also fix the `calculateBounds` function itself to use Mercator Y math instead of linear latitude approximation. At latitude 26°, the linear approximation introduces ~5% vertical error.
 
-7. Add focused debug output for this specific issue
-- File: `src/components/measurements/SchematicRoofDiagram.tsx`
-- Show:
-  - actual image source used
-  - whether stored `image_bounds` or fallback math was used
-  - analysis zoom/size
-  - crop source (`eaves/rakes`, footprint, perimeter, fallback)
-  - transform mode (`exact image-space` vs fallback)
-- This will make future alignment failures obvious on the lead page.
+**File:** `supabase/functions/_shared/satellite-image-fetcher.ts`
 
-Expected result
-- The lead-page preview uses the same image and same transform the measurement used.
-- The roof fills the preview tightly enough to verify edges.
-- Eaves/rakes either align to the visible roof edges or are hidden when the system cannot prove accuracy.
-- The report dialog and card preview stay visually consistent.
+### 2. Store correct image_bounds in the DB during measurement
 
-Technical details
-- The remaining misalignment is not just “needs more zoom.”
-- It is caused by four concrete gaps:
-  - missing alignment metadata in the lead-page query,
-  - wrong image source selection,
-  - fallback projection math in `SchematicRoofDiagram`,
-  - and no enforcement of low-confidence line hiding.
-- Main files to update:
-  - `src/components/measurements/UnifiedMeasurementPanel.tsx`
-  - `src/components/measurements/SchematicRoofDiagram.tsx`
-  - `src/utils/gpsCalculations.ts`
-  - optionally `src/utils/geoCoordinates.ts`
+After fetching the satellite image, persist the corrected bounds into the `image_bounds` column so the frontend uses authoritative bounds instead of recomputing. This eliminates any potential mismatch between how the backend fetched the image and how the frontend interprets it.
+
+**File:** The measure edge function that calls `satellite-image-fetcher` — update it to write `image_bounds` on the measurement row.
+
+### 3. Apply footprint area correction when OSM confidence is low
+
+When `footprint_confidence < 0.85` and Solar API area is available, compute a scale correction:
+- Calculate the area of the OSM perimeter polygon
+- Compare to `solar_building_footprint_sqft`
+- If OSM is >5% larger, scale the perimeter inward toward its centroid by the ratio
+- Apply the same correction to eave/rake endpoints
+
+This corrects oversized OSM polygons to better match the actual building footprint.
+
+**File:** `src/components/measurements/SchematicRoofDiagram.tsx` (in the perimeter/eave coordinate preparation section, lines ~390-450)
+
+### 4. Add visual indicator for low-confidence footprint alignment
+
+When the eave coordinates come from a low-confidence source (OSM with < 0.85 confidence), render eave/rake lines with a dashed stroke instead of solid, communicating to the user that edge placement is approximate. Add a small badge: "Edges approximate — tap to adjust."
+
+**File:** `src/components/measurements/SchematicRoofDiagram.tsx` (in the SVG rendering section)
+
+## Technical Details
+
+- Backend bounds bug: line 211 of `satellite-image-fetcher.ts` — change `size * scale` to `size`
+- Backend Mercator fix: replace linear `111320` approximation with proper `Math.log(Math.tan(...))` Mercator Y math in `calculateBounds`
+- Frontend area correction: use `calculateGPSPolygonArea()` from existing `gpsCalculations.ts` to compute OSM polygon area, compare with `solar_building_footprint_sqft`, and apply centroid-based scaling if deviation > 5%
+- The scaling transform: for each vertex, `new_coord = centroid + (vertex - centroid) * sqrt(solarArea / osmArea)`
+
