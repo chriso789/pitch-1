@@ -260,7 +260,7 @@ async function fetchMapboxStaticImage(
 
   const imageBuffer = await response.arrayBuffer();
   const imageBase64 = base64FromBytes(new Uint8Array(imageBuffer));
-  const bounds = calculateBounds(lat, lng, size * 2, zoom);  // @2x = 2x size
+  const bounds = calculateBounds(lat, lng, size, zoom);  // Geographic area is logical size, not pixel size
   const qualityScore = estimateImageQuality(imageBuffer.byteLength, size * 2);
 
   console.log(`✅ Mapbox image fetched: ${imageBuffer.byteLength} bytes, quality score: ${qualityScore.toFixed(2)}`);
