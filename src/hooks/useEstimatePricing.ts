@@ -287,6 +287,7 @@ export function useEstimatePricing(
     lineItems,
     materialItems,
     laborItems,
+    changeOrderItems,
     breakdown,
     config,
     isFixedPrice,
