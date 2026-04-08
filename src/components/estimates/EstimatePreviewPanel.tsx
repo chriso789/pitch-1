@@ -906,7 +906,7 @@ export function EstimatePreviewPanel({
       onChange={handlePhotoFilesSelected}
     />
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-7xl w-full max-h-[95vh] h-[95vh] md:h-auto p-0 overflow-hidden [&>button:last-child]:hidden sm:max-w-[95vw] md:max-w-7xl">
+      <DialogContent className="max-w-7xl w-[95vw] md:w-full max-h-[95vh] p-0 overflow-hidden [&>button:last-child]:hidden sm:rounded-lg">
         <DialogHeader className="px-6 py-4 border-b relative z-10">
           <DialogTitle className="flex items-center gap-2">
             <Eye className="h-5 w-5" />
