@@ -339,29 +339,29 @@ const PageFooter: React.FC<{
       }];
 
   return (
-    <div className="border-t border-gray-200 bg-gray-50 px-6 py-2">
-      <div className="flex items-center gap-3">
+    <div className="border-t border-gray-200 bg-gray-50 px-5 py-1.5">
+      <div className="flex items-center gap-2">
         {/* Logo + Company */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {(companyLogo || companyInfo?.logo_url) && (
             <img 
               src={companyLogo || companyInfo?.logo_url || ''} 
               alt={companyInfo?.name || 'Company Logo'} 
-              className="h-5 object-contain" 
+              className="h-4 object-contain" 
             />
           )}
           <div>
-            <p className="font-semibold text-gray-800 text-xs">
+            <p className="font-semibold text-gray-800 text-[10px] leading-tight">
               {companyInfo?.name || companyName}
             </p>
             {companyInfo?.license_number && (
-              <p className="text-[8px] text-gray-500">License #{companyInfo.license_number}</p>
+              <p className="text-[7px] text-gray-500">License #{companyInfo.license_number}</p>
             )}
           </div>
         </div>
         
         {/* Locations - inline compact format */}
-        <div className="flex-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[9px] text-gray-600">
+        <div className="flex-1 flex flex-wrap gap-x-3 gap-y-0 text-[8px] text-gray-600">
           {locations.slice(0, 2).map((location, idx) => (
             <span key={location.id || idx}>
               <span className="font-medium text-gray-700">{location.name}:</span>{' '}
@@ -374,7 +374,7 @@ const PageFooter: React.FC<{
         </div>
       </div>
       
-      <div className="flex justify-between items-center text-[8px] text-gray-400 mt-1 pt-1 border-t border-gray-100">
+      <div className="flex justify-between items-center text-[7px] text-gray-400 pt-0.5 border-t border-gray-100">
         <span>© {currentYear} {companyInfo?.name || companyName}. All rights reserved.</span>
         <span>Page {pageNumber} of {totalPages}</span>
       </div>
