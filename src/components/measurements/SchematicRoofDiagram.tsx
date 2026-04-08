@@ -448,6 +448,45 @@ export function SchematicRoofDiagram({
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
+    // OSM FOOTPRINT AREA CORRECTION: When footprint confidence is low and Solar API
+    // area is available, scale the perimeter inward if the OSM polygon is oversized.
+    // This fixes the top/bottom eave overshoot caused by OSM polygons being slightly
+    // too tall in the north-south direction.
+    const solarFootprintSqft = measurement?.solar_building_footprint_sqft || measurement?.solar_api_response?.buildingFootprintSqft;
+    const footprintNeedsCorrection = isLowQualityFootprint && solarFootprintSqft > 0 && perimCoords.length >= 4;
+    let areaScaleFactor = 1;
+    
+    if (footprintNeedsCorrection) {
+      // Calculate the area of the current perimeter polygon (in sqft)
+      const osmAreaSqft = calculateGPSPolygonArea(perimCoords.filter((_, i) => i < perimCoords.length - 1)); // exclude closing point
+      
+      if (osmAreaSqft > 0 && solarFootprintSqft > 0) {
+        const areaRatio = solarFootprintSqft / osmAreaSqft;
+        
+        // Only correct if OSM is >5% larger than Solar API area
+        if (areaRatio < 0.95) {
+          areaScaleFactor = Math.sqrt(areaRatio);
+          
+          // Compute centroid
+          const nonClosing = perimCoords.slice(0, -1);
+          const centroid = {
+            lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
+            lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
+          };
+          
+          // Scale each vertex toward centroid
+          perimCoords = nonClosing.map(v => ({
+            lat: centroid.lat + (v.lat - centroid.lat) * areaScaleFactor,
+            lng: centroid.lng + (v.lng - centroid.lng) * areaScaleFactor,
+          }));
+          // Re-close polygon
+          perimCoords.push({ ...perimCoords[0] });
+          
+          console.log(`📏 OSM area correction: OSM=${osmAreaSqft.toFixed(0)} sqft, Solar=${solarFootprintSqft.toFixed(0)} sqft, scale=${areaScaleFactor.toFixed(3)}`);
+        }
+      }
+    }
+
     if (perimCoords.length > 0) {
       allLatLngs = [...perimCoords];
     }
