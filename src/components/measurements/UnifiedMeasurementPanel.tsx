@@ -540,14 +540,14 @@ export function UnifiedMeasurementPanel({
   return (
     <>
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2 pt-4 px-4">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Ruler className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-1.5 text-base">
+                <Ruler className="h-4 w-4" />
                 Saved Measurements
               </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Select which measurement to use for estimates
               </p>
             </div>
