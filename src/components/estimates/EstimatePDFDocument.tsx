@@ -430,7 +430,7 @@ const PageShell: React.FC<{
     >
       {/* Header */}
       {showHeader && opts.showPageHeader && (
-        <div className="px-6 pt-4 pb-2">
+        <div className="px-5 pt-3 pb-1">
           <PageHeader
             companyLogo={companyLogo}
             companyInfo={companyInfo}
@@ -444,7 +444,7 @@ const PageShell: React.FC<{
       )}
       
       {/* Content */}
-      <div className="flex-1 px-6 py-3 overflow-hidden">
+      <div className="flex-1 px-5 py-2 overflow-hidden">
         {children}
       </div>
       
