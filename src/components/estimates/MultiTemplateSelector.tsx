@@ -747,7 +747,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   // Handle adding a new line item
-  const handleAddLineItem = (type: 'material' | 'labor') => {
+  const handleAddLineItem = (type: 'material' | 'labor' | 'change_order') => {
     setNewItemType(type);
     setActiveAddTradeType(null);
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
