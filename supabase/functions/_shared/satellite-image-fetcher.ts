@@ -208,7 +208,7 @@ async function fetchGoogleStaticMap(
 
   const imageBuffer = await response.arrayBuffer();
   const imageBase64 = base64FromBytes(new Uint8Array(imageBuffer));
-  const bounds = calculateBounds(lat, lng, size * scale, zoom);
+  const bounds = calculateBounds(lat, lng, size, zoom);
   
   // Estimate quality based on response size
   const qualityScore = estimateImageQuality(imageBuffer.byteLength, size * scale);
