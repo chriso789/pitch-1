@@ -1339,7 +1339,7 @@ export function EstimatePreviewPanel({
             </div>
 
             {/* Bottom Actions */}
-            <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
+            <div className="sticky bottom-0 z-20 shrink-0 border-t bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 p-3 md:p-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2 relative pointer-events-auto">
               {/* Row 1: Reset + Save */}
               <div className="flex gap-2">
                 <Button
