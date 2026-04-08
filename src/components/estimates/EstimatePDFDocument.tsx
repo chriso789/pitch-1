@@ -12,19 +12,19 @@ import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
-const HEADER_HEIGHT = 140;
-const FOOTER_HEIGHT = 160;
-const PAGE_PADDING = 48; // 24px on each side
+const HEADER_HEIGHT = 90;
+const FOOTER_HEIGHT = 80;
+const PAGE_PADDING = 24;
 const CONTENT_HEIGHT = PAGE_HEIGHT - HEADER_HEIGHT - FOOTER_HEIGHT - PAGE_PADDING;
 
 // Approximate row height for table items
-const ROW_HEIGHT = 36;
-const TABLE_HEADER_HEIGHT = 40;
-const SECTION_HEADER_HEIGHT = 48;
+const ROW_HEIGHT = 28;
+const TABLE_HEADER_HEIGHT = 28;
+const SECTION_HEADER_HEIGHT = 30;
 
-// Max rows per page (conservative to prevent overflow)
-const MAX_ROWS_FIRST_PAGE = 12;
-const MAX_ROWS_CONTINUATION = 16;
+// Max rows per page (fit more items per page)
+const MAX_ROWS_FIRST_PAGE = 16;
+const MAX_ROWS_CONTINUATION = 22;
 
 interface CompanyInfo {
   name: string;
@@ -275,24 +275,24 @@ const PageHeader: React.FC<{
   const companyAddressStr = companyAddressParts.join(' ');
 
   return (
-    <div className="flex justify-between items-start pb-3 border-b border-gray-200">
-      <div className="flex items-start gap-3">
+    <div className="flex justify-between items-start pb-2 border-b border-gray-200">
+      <div className="flex items-start gap-2">
         {opts.showCompanyLogo && (companyLogo || companyInfo?.logo_url) && (
           <img 
             src={companyLogo || companyInfo?.logo_url || ''} 
             alt={companyInfo?.name || 'Company Logo'} 
-            className="h-12 object-contain" 
+            className="h-10 object-contain" 
           />
         )}
         {opts.showCompanyInfo && (
           <div>
-            <h1 className="text-xl font-bold text-gray-900">
+            <h1 className="text-lg font-bold text-gray-900 leading-tight">
               {companyInfo?.name || companyName}
             </h1>
             {companyAddressStr && (
-              <p className="text-sm text-gray-600">{companyAddressStr}</p>
+              <p className="text-xs text-gray-600">{companyAddressStr}</p>
             )}
-            <div className="text-sm text-gray-600">
+            <div className="text-xs text-gray-600">
               {companyInfo?.phone && <span>{companyInfo.phone}</span>}
               {companyInfo?.phone && companyInfo?.email && <span> • </span>}
               {companyInfo?.email && <span>{companyInfo.email}</span>}
@@ -302,12 +302,12 @@ const PageHeader: React.FC<{
       </div>
       
       <div className="text-right">
-        <p className="text-xs text-gray-500 uppercase tracking-wide">Estimate</p>
+        <p className="text-[10px] text-gray-500 uppercase tracking-wide">Estimate</p>
         {opts.showEstimateNumber && (
-          <h2 className="text-lg font-bold text-gray-900">{estimateNumber}</h2>
+          <h2 className="text-base font-bold text-gray-900">{estimateNumber}</h2>
         )}
         {opts.showDate && (
-          <p className="text-sm text-gray-500">{dateStr}</p>
+          <p className="text-xs text-gray-500">{dateStr}</p>
         )}
       </div>
     </div>
@@ -339,29 +339,29 @@ const PageFooter: React.FC<{
       }];
 
   return (
-    <div className="border-t border-gray-200 bg-gray-50 px-6 py-2">
-      <div className="flex items-center gap-3">
+    <div className="border-t border-gray-200 bg-gray-50 px-5 py-1.5">
+      <div className="flex items-center gap-2">
         {/* Logo + Company */}
-        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {(companyLogo || companyInfo?.logo_url) && (
             <img 
               src={companyLogo || companyInfo?.logo_url || ''} 
               alt={companyInfo?.name || 'Company Logo'} 
-              className="h-5 object-contain" 
+              className="h-4 object-contain" 
             />
           )}
           <div>
-            <p className="font-semibold text-gray-800 text-xs">
+            <p className="font-semibold text-gray-800 text-[10px] leading-tight">
               {companyInfo?.name || companyName}
             </p>
             {companyInfo?.license_number && (
-              <p className="text-[8px] text-gray-500">License #{companyInfo.license_number}</p>
+              <p className="text-[7px] text-gray-500">License #{companyInfo.license_number}</p>
             )}
           </div>
         </div>
         
         {/* Locations - inline compact format */}
-        <div className="flex-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[9px] text-gray-600">
+        <div className="flex-1 flex flex-wrap gap-x-3 gap-y-0 text-[8px] text-gray-600">
           {locations.slice(0, 2).map((location, idx) => (
             <span key={location.id || idx}>
               <span className="font-medium text-gray-700">{location.name}:</span>{' '}
@@ -374,7 +374,7 @@ const PageFooter: React.FC<{
         </div>
       </div>
       
-      <div className="flex justify-between items-center text-[8px] text-gray-400 mt-1 pt-1 border-t border-gray-100">
+      <div className="flex justify-between items-center text-[7px] text-gray-400 pt-0.5 border-t border-gray-100">
         <span>© {currentYear} {companyInfo?.name || companyName}. All rights reserved.</span>
         <span>Page {pageNumber} of {totalPages}</span>
       </div>
@@ -430,7 +430,7 @@ const PageShell: React.FC<{
     >
       {/* Header */}
       {showHeader && opts.showPageHeader && (
-        <div className="px-6 pt-4 pb-2">
+        <div className="px-5 pt-3 pb-1">
           <PageHeader
             companyLogo={companyLogo}
             companyInfo={companyInfo}
@@ -444,7 +444,7 @@ const PageShell: React.FC<{
       )}
       
       {/* Content */}
-      <div className="flex-1 px-6 py-3 overflow-hidden">
+      <div className="flex-1 px-5 py-2 overflow-hidden">
         {children}
       </div>
       
@@ -734,25 +734,25 @@ const FirstPage: React.FC<{
   estimateName,
 }) => {
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Estimate Name Banner */}
       {estimateName && (
-        <div className="text-center py-2 mb-1">
-          <h2 className="text-2xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
+        <div className="text-center py-1">
+          <h2 className="text-xl font-bold text-gray-900 tracking-tight">{estimateName}</h2>
         </div>
       )}
       {/* Customer Info */}
       {(opts.showCustomerName || opts.showCustomerAddress) && (
-        <div className="p-3 bg-gray-50 rounded-lg">
-          <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
+        <div className="p-2 bg-gray-50 rounded">
+          <h3 className="text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">Prepared For</h3>
           {opts.showCustomerName && (
-            <p className="font-semibold text-base text-gray-900">{customerName || 'Customer'}</p>
+            <p className="font-semibold text-sm text-gray-900">{customerName || 'Customer'}</p>
           )}
           {opts.showCustomerAddress && (
-            <p className="text-gray-600 text-sm">{customerAddress || 'Address not specified'}</p>
+            <p className="text-gray-600 text-xs">{customerAddress || 'Address not specified'}</p>
           )}
           {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="mt-1 text-sm text-gray-500">
+            <div className="text-xs text-gray-500">
               {customerPhone && <span>{customerPhone}</span>}
               {customerPhone && customerEmail && <span> • </span>}
               {customerEmail && <span>{customerEmail}</span>}
@@ -823,23 +823,23 @@ const ItemsContinuationPage: React.FC<{
 const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; continued?: boolean }> = ({ blocks, opts, continued = false }) => {
   const renderItem = (item: LineItem, idx: number) => (
     <tr key={item.id || `item-${idx}`} className="border-b border-gray-100">
-      <td className="py-1.5">
-        <div className="font-medium text-sm text-gray-900">{item.item_name}</div>
+      <td className="py-1">
+        <div className="font-medium text-xs text-gray-900">{item.item_name}</div>
         {opts.showItemDescriptions && item.description && (
-          <div className="text-xs text-gray-500 mt-0.5 leading-snug">
+          <div className="text-[10px] text-gray-500 leading-snug">
             {item.description}
           </div>
         )}
         {item.notes && (
-          <div className="text-xs text-gray-500 mt-0.5 leading-snug italic">
+          <div className="text-[10px] text-gray-500 leading-snug italic">
             {item.notes}
           </div>
         )}
       </td>
       {opts.showLineItemQuantities && (
         <>
-          <td className="py-1.5 text-right text-sm text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-          <td className="py-1.5 text-right text-sm text-gray-500 align-top">{item.unit}</td>
+          <td className="py-1 text-right text-xs text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+          <td className="py-1 text-right text-xs text-gray-500 align-top">{item.unit}</td>
         </>
       )}
     </tr>
@@ -847,18 +847,18 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
 
   return (
     <div>
-      <h3 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+      <h3 className="text-sm font-semibold text-gray-900 mb-1.5 flex items-center gap-1.5">
         <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
         {continued ? 'Project Scope (continued)' : 'Project Scope'}
       </h3>
-      <table className="w-full text-sm items-table">
+      <table className="w-full text-xs items-table">
         <thead>
           <tr className="border-b border-gray-200">
-            <th className="text-left py-1.5 text-gray-700 font-semibold">Description</th>
+            <th className="text-left py-1 text-gray-700 font-semibold text-xs">Description</th>
             {opts.showLineItemQuantities && (
               <>
-                <th className="text-right py-1.5 text-gray-700 font-semibold w-12">Qty</th>
-                <th className="text-right py-1.5 text-gray-700 font-semibold w-12">Unit</th>
+                <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Qty</th>
+                <th className="text-right py-1 text-gray-700 font-semibold w-10 text-xs">Unit</th>
               </>
             )}
           </tr>
@@ -870,9 +870,9 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
                 <tr key={`trade-${block.tradeType}-${idx}`}>
                   <td 
                     colSpan={opts.showLineItemQuantities ? 3 : 1} 
-                    className="pt-3 pb-1"
+                    className="pt-2 pb-0.5"
                   >
-                    <div className="text-sm font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
+                    <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-300 pb-0.5">
                       {block.label}
                     </div>
                   </td>
@@ -882,8 +882,8 @@ const ItemsTable: React.FC<{ blocks: RenderBlock[]; opts: PDFComponentOptions; c
             if (block.type === 'sub-header') {
               return (
                 <tr key={`sub-${block.label}-${idx}`}>
-                  <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-2 pb-0.5">
-                    <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider pl-1">
+                  <td colSpan={opts.showLineItemQuantities ? 3 : 1} className="pt-1.5 pb-0.5">
+                    <div className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider pl-1">
                       {block.label}
                     </div>
                   </td>
@@ -908,12 +908,12 @@ const PricingSummary: React.FC<{
   opts: PDFComponentOptions;
 }> = ({ breakdown, config, opts }) => {
   return (
-    <div className="bg-gray-50 rounded-lg p-3">
+    <div className="bg-gray-50 rounded p-2">
       {(opts.showCostBreakdown || opts.showProfitInfo) && (
-        <h3 className="text-base font-semibold text-gray-900 mb-2">Estimate Summary</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Estimate Summary</h3>
       )}
       
-      <div className="space-y-1.5 text-sm">
+      <div className="space-y-1 text-xs">
         {opts.showCostBreakdown && (
           <>
             <div className="flex justify-between">
@@ -924,7 +924,7 @@ const PricingSummary: React.FC<{
               <span className="text-gray-600">Overhead ({config.overheadPercent}%)</span>
               <span className="font-medium">{formatCurrency(breakdown.overheadAmount)}</span>
             </div>
-            <div className="flex justify-between border-t border-gray-200 pt-1.5 mt-1.5">
+            <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
               <span className="text-gray-700 font-medium">Total Cost</span>
               <span className="font-semibold">{formatCurrency(breakdown.totalCost)}</span>
             </div>
@@ -941,27 +941,27 @@ const PricingSummary: React.FC<{
       
       {/* Sales Tax - ONLY show for internal view (showCostBreakdown = internal) */}
       {opts.showCostBreakdown && config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
-        <div className="flex justify-between text-sm border-t border-gray-200 pt-1.5 mt-1.5">
+        <div className="flex justify-between text-xs border-t border-gray-200 pt-1 mt-1">
           <span className="text-gray-600">Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
           <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount || 0)}</span>
         </div>
       )}
       
-      {/* Consumer-Friendly Total - Tax is now INCLUDED in sellingPrice */}
+      {/* Consumer-Friendly Total */}
       {!opts.showCostBreakdown && !opts.showProfitInfo ? (
-        <div className="text-center py-2">
-          <p className="text-sm text-gray-500 mb-1">Your Investment</p>
-          <div className="text-xl font-bold text-blue-600">
+        <div className="text-center py-1.5">
+          <p className="text-xs text-gray-500 mb-0.5">Your Investment</p>
+          <div className="text-lg font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
           {config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
-            <p className="text-[9px] text-gray-400 mt-0.5">Price includes applicable sales tax</p>
+            <p className="text-[8px] text-gray-400">Price includes applicable sales tax</p>
           )}
         </div>
       ) : (
-        <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
-          <span className="text-gray-900 font-bold">Total Investment</span>
-          <span className="text-lg font-bold text-blue-600">
+        <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-1.5">
+          <span className="text-gray-900 font-bold text-sm">Total Investment</span>
+          <span className="text-base font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </span>
         </div>
