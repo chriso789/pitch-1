@@ -49,6 +49,7 @@ import { MaterialAutocomplete } from './MaterialAutocomplete';
 interface SectionedLineItemsTableProps {
   materialItems: LineItem[];
   laborItems: LineItem[];
+  changeOrderItems?: LineItem[];
   materialsTotal: number;
   laborTotal: number;
   onUpdateItem: (id: string, updates: Partial<LineItem>) => void;
