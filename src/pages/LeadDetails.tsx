@@ -792,149 +792,132 @@ const LeadDetails = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 p-2 md:p-6 pb-32 md:pb-16">
-      {/* Header with Contact Card */}
-      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
-        <div className="flex items-start gap-2 md:gap-4 flex-1 min-w-0">
-          <BackButton 
-            fallbackPath="/pipeline"
-            label="Back"
-            respectHistory={true}
-          />
-          <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-xl md:text-3xl font-bold break-words">
-                  {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
-                </h1>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="h-7 px-2 gap-1 shrink-0"
-                  onClick={() => setShowEditProjectDialog(true)}
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                  Edit
-                </Button>
-              <Select 
-                value={lead.status} 
-                onValueChange={handleStatusUpdateWithCheck}
-              >
-                <SelectTrigger className="h-auto w-auto shrink-0 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer hover:bg-muted transition-colors [&>svg:last-child]:hidden">
-                  <div className={`w-2 h-2 rounded-full ${stages.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
-                  <span className="text-sm font-medium capitalize whitespace-nowrap">
-                    {stages.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
-                  </span>
-                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
-                </SelectTrigger>
-                <SelectContent>
-                  {(() => {
-                    const availableStatuses = getAvailableStatuses(lead.status);
-                    const filteredStages = stages.filter(stage => 
-                      availableStatuses.includes(stage.key) || stage.key === lead.status
-                    );
-                    
-                    return filteredStages.map((stage) => (
-                      <SelectItem key={stage.key} value={stage.key}>
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${stage.color}`} />
-                          {stage.name}
-                        </div>
-                      </SelectItem>
-                    ));
-                  })()}
-                </SelectContent>
-              </Select>
-              {lead.status === 'project' && productionStage && (
-                <Badge variant="outline" className="border-primary text-primary">
-                  Production: {productionStage.replace('_', ' ')}
-                </Badge>
-              )}
-            </div>
-            
-            {/* Property Address - wrapping on mobile */}
-            {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
-              <div className="flex flex-wrap items-start gap-1.5 mt-2 text-sm">
-                <MapPin className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
-                <p className="text-foreground break-words min-w-0">
-                  {lead.verified_address?.formatted_address || 
-                   `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
-                </p>
-                {lead.contact?.id && (
-                  <AddressReverificationButton
-                    contactId={lead.contact.id}
-                    currentAddress={
-                      lead.verified_address?.formatted_address || 
-                      `${lead.contact?.address_street || ''}, ${lead.contact?.address_city || ''}, ${lead.contact?.address_state || ''} ${lead.contact?.address_zip || ''}`.trim()
-                    }
-                    onReverified={(newCoords) => {
-                      toast({
-                        title: "Coordinates Updated",
-                        description: "The property location has been re-verified. Measurements will now use the correct location.",
-                      });
-                      refetchLead();
-                    }}
-                    size="sm"
-                    variant="ghost"
-                    className="h-6 px-2 text-xs"
-                  />
-                )}
-              </div>
-            )}
+    <div className="max-w-7xl mx-auto space-y-3 md:space-y-6 p-2 md:p-6 pb-32 md:pb-16">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <BackButton 
+          fallbackPath="/pipeline"
+          label="Back"
+          respectHistory={true}
+        />
+        <div className="flex flex-wrap items-center gap-1.5 flex-1 min-w-0">
+          <h1 className="text-lg md:text-3xl font-bold truncate">
+            {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
+          </h1>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            className="h-6 px-1.5 gap-1 shrink-0 text-xs"
+            onClick={() => setShowEditProjectDialog(true)}
+          >
+            <Edit2 className="h-3 w-3" />
+            Edit
+          </Button>
+          <Select 
+            value={lead.status} 
+            onValueChange={handleStatusUpdateWithCheck}
+          >
+            <SelectTrigger className="h-auto w-auto shrink-0 inline-flex items-center gap-1.5 px-2 py-1 rounded-full border cursor-pointer hover:bg-muted transition-colors [&>svg:last-child]:hidden text-xs">
+              <div className={`w-1.5 h-1.5 rounded-full ${stages.find(s => s.key === lead.status)?.color || 'bg-gray-500'}`} />
+              <span className="font-medium capitalize whitespace-nowrap">
+                {stages.find(s => s.key === lead.status)?.name || lead.status.replace('_', ' ')}
+              </span>
+              <ChevronDown className="h-3 w-3 text-muted-foreground" />
+            </SelectTrigger>
+            <SelectContent>
+              {(() => {
+                const availableStatuses = getAvailableStatuses(lead.status);
+                const filteredStages = stages.filter(stage => 
+                  availableStatuses.includes(stage.key) || stage.key === lead.status
+                );
+                return filteredStages.map((stage) => (
+                  <SelectItem key={stage.key} value={stage.key}>
+                    <div className="flex items-center gap-2">
+                      <div className={`w-2 h-2 rounded-full ${stage.color}`} />
+                      {stage.name}
+                    </div>
+                  </SelectItem>
+                ));
+              })()}
+            </SelectContent>
+          </Select>
+          {lead.status === 'project' && productionStage && (
+            <Badge variant="outline" className="border-primary text-primary text-xs">
+              {productionStage.replace('_', ' ')}
+            </Badge>
+          )}
+        </div>
+      </div>
 
-            {/* Contact info - compact inline */}
-            {lead.contact && (lead.contact.phone || lead.contact.email) && (
-              <div className="flex items-center gap-3 mt-1 text-sm">
-                {lead.contact.phone && (
-                  <div className="flex items-center gap-1.5">
-                    <Phone className="h-3.5 w-3.5 text-muted-foreground" />
-                    <a href={`tel:${lead.contact.phone}`} className="text-foreground hover:text-primary transition-colors">
-                      {lead.contact.phone}
-                    </a>
-                  </div>
-                )}
-                {lead.contact.phone && lead.contact.email && (
-                  <span className="text-muted-foreground">|</span>
-                )}
-                {lead.contact.email && (
-                  <div className="flex items-center gap-1.5">
-                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
-                    <a href={`mailto:${lead.contact.email}`} className="text-foreground hover:text-primary transition-colors">
-                      {lead.contact.email}
-                    </a>
-                  </div>
-                )}
-              </div>
-            )}
-            
-            {/* Stats bar */}
-            <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2">
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Priority:</span>
-                <span className="capitalize font-medium">{lead.priority || 'Not set'}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Roof:</span>
-                <span className="capitalize font-medium">{lead.roof_type ? lead.roof_type.replace('_', ' ') : 'Not set'}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Roof Age:</span>
-                <span className="font-medium">{lead.metadata?.roof_age_years ? `${lead.metadata.roof_age_years} years` : 'Not set'}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="text-muted-foreground">Est. Value:</span>
-                <span className="font-medium">{lead.estimated_value ? `$${lead.estimated_value.toLocaleString()}` : 'Not set'}</span>
-              </div>
-            </div>
-
-            {/* Inline Lead Notes - compact one-liner */}
-            <div className="flex items-center gap-2 mt-2">
-              <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-              <LeadNotesSection 
-                pipelineEntryId={id!}
-                initialNotes={lead.notes}
-                onNotesUpdate={refetchLead}
+      {/* Compact Info Card */}
+      <div className="bg-muted/30 rounded-lg px-3 py-2 space-y-1.5 text-xs md:text-sm">
+        {/* Address row */}
+        {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
+          <div className="flex items-center gap-1.5">
+            <MapPin className="h-3 w-3 md:h-4 md:w-4 text-primary shrink-0" />
+            <span className="text-foreground truncate">
+              {lead.verified_address?.formatted_address || 
+               `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
+            </span>
+            {lead.contact?.id && (
+              <AddressReverificationButton
+                contactId={lead.contact.id}
+                currentAddress={
+                  lead.verified_address?.formatted_address || 
+                  `${lead.contact?.address_street || ''}, ${lead.contact?.address_city || ''}, ${lead.contact?.address_state || ''} ${lead.contact?.address_zip || ''}`.trim()
+                }
+                onReverified={(newCoords) => {
+                  toast({
+                    title: "Coordinates Updated",
+                    description: "The property location has been re-verified.",
+                  });
+                  refetchLead();
+                }}
+                size="sm"
+                variant="ghost"
+                className="h-5 px-1.5 text-[10px] shrink-0"
               />
-            </div>
+            )}
+          </div>
+        )}
+
+        {/* Phone & email inline */}
+        {lead.contact && (lead.contact.phone || lead.contact.email) && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {lead.contact.phone && (
+              <a href={`tel:${lead.contact.phone}`} className="flex items-center gap-1 text-foreground hover:text-primary">
+                <Phone className="h-3 w-3 text-muted-foreground" />
+                {lead.contact.phone}
+              </a>
+            )}
+            {lead.contact.email && (
+              <a href={`mailto:${lead.contact.email}`} className="flex items-center gap-1 text-foreground hover:text-primary truncate">
+                <Mail className="h-3 w-3 text-muted-foreground" />
+                {lead.contact.email}
+              </a>
+            )}
+          </div>
+        )}
+
+        {/* Stats grid - single compact row */}
+        <div className="flex items-center gap-3 flex-wrap text-[11px] md:text-xs text-muted-foreground">
+          <span><b className="text-foreground">{lead.priority || '—'}</b> priority</span>
+          <span><b className="text-foreground">{lead.roof_type ? lead.roof_type.replace('_', ' ') : '—'}</b> roof</span>
+          <span><b className="text-foreground">{lead.metadata?.roof_age_years ? `${lead.metadata.roof_age_years}yr` : '—'}</b> age</span>
+          <span><b className="text-foreground">{lead.estimated_value ? `$${lead.estimated_value.toLocaleString()}` : '—'}</b> est.</span>
+        </div>
+      </div>
+
+      {/* Notes & Reps - compact */}
+      <div className="space-y-1.5 text-xs md:text-sm">
+        <div className="flex items-center gap-1.5">
+          <FileText className="h-3 w-3 text-muted-foreground shrink-0" />
+          <LeadNotesSection 
+            pipelineEntryId={id!}
+            initialNotes={lead.notes}
+            onNotesUpdate={refetchLead}
+          />
+        </div>
 
             {/* Sales Reps - combined row */}
             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-sm">
@@ -1057,8 +1040,6 @@ const LeadDetails = () => {
               </div>
             </div>
           </div>
-        </div>
-
         {/* Inspection Row */}
         <div className="flex items-center gap-2 px-1">
           <ClipboardCheck className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
@@ -1127,7 +1108,6 @@ const LeadDetails = () => {
             </CardContent>
           </Card>
         )}
-      </div>
 
       {/* Internal Team Notes - Above Approval Requirements */}
       {lead?.tenant_id && (
