@@ -824,7 +824,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   
                   {/* Label */}
                   <span className={cn(
-                    "text-xs sm:text-sm font-medium text-center max-w-[60px] sm:max-w-none leading-tight",
+                    "text-[10px] sm:text-xs font-medium text-center max-w-[55px] sm:max-w-none leading-tight",
                     isComplete ? "text-foreground" : "text-muted-foreground"
                   )}>
                     {step.label}
@@ -832,7 +832,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   
                   {/* Status Badge */}
                   <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full",
+                    "text-[10px] px-1.5 py-px rounded-full",
                     isComplete 
                       ? "bg-success/10 text-success" 
                       : "bg-muted text-muted-foreground"
