@@ -790,13 +790,13 @@ export function SectionedLineItemsTable({
               )}
               {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
 
-              {/* Tear Off Section */}
+              {/* Labor Section (Tear Off + Installation combined) */}
               {renderSectionHeader(
-                'TEAR OFF',
+                'LABOR',
                 <Hammer className="h-4 w-4" />,
-                tearOffItems.length
+                laborItems.length
               )}
-              {renderSortableItems(tearOffItems)}
+              {renderSortableItems([...tearOffItems, ...installItems])}
               {editable && onAddItem && (
                 <TableRow className="hover:bg-muted/30">
                   <TableCell colSpan={totalCols} className="py-2">
@@ -807,12 +807,12 @@ export function SectionedLineItemsTable({
                       className="text-muted-foreground hover:text-foreground"
                     >
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Tear Off Item
+                      Add Labor Item
                     </Button>
                   </TableCell>
                 </TableRow>
               )}
-              {/* Inline Add Tear Off Form */}
+              {/* Inline Add Labor Form */}
               {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
                 <TableRow className="bg-primary/5 border-2 border-primary/30">
                   <TableCell colSpan={totalCols} className="py-3">
@@ -879,31 +879,7 @@ export function SectionedLineItemsTable({
                   </TableCell>
                 </TableRow>
               )}
-              {tearOffItems.length > 0 && renderSectionSubtotal('Tear Off Subtotal', tearOffItems.reduce((sum, i) => sum + i.line_total, 0))}
-
-              {/* Installation Section */}
-              {renderSectionHeader(
-                'INSTALLATION',
-                <Hammer className="h-4 w-4" />,
-                installItems.length
-              )}
-              {renderSortableItems(installItems)}
-              {editable && onAddItem && (
-                <TableRow className="hover:bg-muted/30">
-                  <TableCell colSpan={totalCols} className="py-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => onAddItem('labor')}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Install Item
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              )}
-              {installItems.length > 0 && renderSectionSubtotal('Installation Subtotal', installItems.reduce((sum, i) => sum + i.line_total, 0))}
+              {laborItems.length > 0 && renderSectionSubtotal('Labor Subtotal', laborTotal)}
             </>
           )}
 
