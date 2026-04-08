@@ -313,7 +313,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -616,13 +616,15 @@ export function UnifiedMeasurementPanel({
               measurement_confidence: ai.measurement_confidence,
               requires_manual_review: ai.requires_manual_review,
               selected_image_source: ai.selected_image_source,
+              image_source: ai.image_source,
+              solar_building_footprint_sqft: ai.solar_building_footprint_sqft,
             };
             const hasGeometry = ai.linear_features_wkt && (Array.isArray(ai.linear_features_wkt) ? ai.linear_features_wkt.length > 0 : true);
             // Prefer the image source matching what was used for analysis
             const satUrl = (() => {
-              const src = ai.selected_image_source;
-              if (src === 'mapbox' && ai.mapbox_image_url) return ai.mapbox_image_url;
-              if (src === 'google_maps' && ai.google_maps_image_url) return ai.google_maps_image_url;
+              const src = (ai.selected_image_source || ai.image_source || '').toLowerCase();
+              if (src.includes('mapbox') && ai.mapbox_image_url) return ai.mapbox_image_url;
+              if (src.includes('google') && ai.google_maps_image_url) return ai.google_maps_image_url;
               return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url;
             })();
 
@@ -768,8 +770,13 @@ export function UnifiedMeasurementPanel({
                     satellite_overlay_url: ai.satellite_overlay_url,
                     mapbox_image_url: ai.mapbox_image_url,
                     selected_image_source: ai.selected_image_source,
+                    image_source: ai.image_source,
                     perimeter_wkt: ai.perimeter_wkt,
                     footprint_vertices_geo: ai.footprint_vertices_geo,
+                    footprint_source: ai.footprint_source,
+                    footprint_confidence: ai.footprint_confidence,
+                    detection_method: ai.detection_method,
+                    solar_building_footprint_sqft: ai.solar_building_footprint_sqft,
                     measurement_confidence: ai.measurement_confidence,
                   }}
                   tags={diagramTags}

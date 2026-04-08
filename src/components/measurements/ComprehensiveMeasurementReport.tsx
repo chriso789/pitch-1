@@ -47,12 +47,24 @@ interface MeasurementData {
   linear_features?: LinearFeature[];
   summary: MeasurementSummary;
   mapbox_visualization_url?: string;
+  mapbox_image_url?: string;
   google_maps_image_url?: string;
   satellite_overlay_url?: string;
+  selected_image_source?: string;
+  image_source?: string;
   center_lat?: number;
   center_lng?: number;
+  gps_coordinates?: { lat?: number; lng?: number };
+  analysis_zoom?: number;
+  analysis_image_size?: { width?: number; height?: number } | number;
+  image_bounds?: any;
+  footprint_source?: string;
+  footprint_confidence?: number;
+  detection_method?: string;
+  solar_building_footprint_sqft?: number;
   visualization_metadata?: any;
   confidence?: number;
+  measurement_confidence?: number;
   perimeter_wkt?: string;
 }
 
@@ -178,7 +190,13 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
 
 
   const summary = measurement.summary;
-  const confidence = measurement.confidence || 0.85;
+  const confidence = measurement.measurement_confidence || measurement.confidence || 0.85;
+  const satelliteImageUrl = (() => {
+    const selectedSource = (measurement.selected_image_source || measurement.image_source || '').toLowerCase();
+    if (selectedSource.includes('mapbox') && measurement.mapbox_image_url) return measurement.mapbox_image_url;
+    if (selectedSource.includes('google') && measurement.google_maps_image_url) return measurement.google_maps_image_url;
+    return measurement.satellite_overlay_url || measurement.google_maps_image_url || measurement.mapbox_image_url || measurement.mapbox_visualization_url;
+  })();
 
   // Generate a shareable URL (use saved URL or current page)
   const shareUrl = savedReportUrl || (typeof window !== 'undefined' ? window.location.href : '');
@@ -290,16 +308,16 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
                 showCompass={true}
                 showTotals={true}
                 showFacets={true}
-                satelliteImageUrl={measurement.google_maps_image_url || measurement.satellite_overlay_url}
-                showSatelliteOverlay={!!(measurement.google_maps_image_url || measurement.satellite_overlay_url)}
+                satelliteImageUrl={satelliteImageUrl}
+                showSatelliteOverlay={!!satelliteImageUrl}
               />
             </SegmentHoverProvider>
           ) : (
             <ManualPinDropEditor
-              satelliteImageUrl={measurement.google_maps_image_url || measurement.satellite_overlay_url || ''}
-              centerLat={measurement.center_lat || 0}
-              centerLng={measurement.center_lng || 0}
-              zoom={measurement.visualization_metadata?.zoom || 20}
+              satelliteImageUrl={satelliteImageUrl || ''}
+              centerLat={measurement.gps_coordinates?.lat || measurement.center_lat || 0}
+              centerLng={measurement.gps_coordinates?.lng || measurement.center_lng || 0}
+              zoom={measurement.analysis_zoom || measurement.visualization_metadata?.zoom || 20}
               existingFeatures={measurement.linear_features}
               onFeaturesChange={(features) => {
                 if (onMeasurementUpdate) {
