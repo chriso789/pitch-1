@@ -860,17 +860,18 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
           {/* Manager Approval Button - Right Side */}
           {isManager && (
-            <div className="flex flex-col items-center gap-3 pt-2">
+            <div className="flex flex-col items-center gap-1.5 pt-1 shrink-0">
               <Button
                 onClick={handleManagerApprove}
                 disabled={disabled || approvingJob}
-                className="gradient-primary whitespace-nowrap min-w-[160px]"
+                size="sm"
+                className="gradient-primary whitespace-nowrap text-xs h-8 px-3"
               >
-                <Shield className="h-4 w-4 mr-2" />
+                <Shield className="h-3.5 w-3.5 mr-1.5" />
                 {approvingJob ? 'Approving...' : 'Manager Approve'}
               </Button>
               {!requirements.allComplete && (
-                <div className="flex items-center gap-1 text-xs text-warning">
+                <div className="flex items-center gap-1 text-[10px] text-warning">
                   <AlertCircle className="h-3 w-3" />
                   <span>Override available</span>
                 </div>

@@ -629,7 +629,7 @@ export function UnifiedMeasurementPanel({
             })();
 
             return (
-              <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
+              <div className="p-3 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
