@@ -52,7 +52,7 @@ export const CompanySwitcher = () => {
   return (
     <DropdownMenu open={open} onOpenChange={handleOpenChange}>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className="gap-2 max-w-[220px]">
+        <Button variant="outline" className="gap-1.5 max-w-[140px] sm:max-w-[220px] px-2 sm:px-3">
           <Avatar className="h-6 w-6">
             <AvatarImage src={activeCompany?.logo_url || undefined} alt={activeCompany?.tenant_name} />
             <AvatarFallback className="text-xs bg-primary text-primary-foreground">
