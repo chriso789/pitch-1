@@ -908,12 +908,12 @@ const PricingSummary: React.FC<{
   opts: PDFComponentOptions;
 }> = ({ breakdown, config, opts }) => {
   return (
-    <div className="bg-gray-50 rounded-lg p-3">
+    <div className="bg-gray-50 rounded p-2">
       {(opts.showCostBreakdown || opts.showProfitInfo) && (
-        <h3 className="text-base font-semibold text-gray-900 mb-2">Estimate Summary</h3>
+        <h3 className="text-sm font-semibold text-gray-900 mb-1">Estimate Summary</h3>
       )}
       
-      <div className="space-y-1.5 text-sm">
+      <div className="space-y-1 text-xs">
         {opts.showCostBreakdown && (
           <>
             <div className="flex justify-between">
@@ -924,7 +924,7 @@ const PricingSummary: React.FC<{
               <span className="text-gray-600">Overhead ({config.overheadPercent}%)</span>
               <span className="font-medium">{formatCurrency(breakdown.overheadAmount)}</span>
             </div>
-            <div className="flex justify-between border-t border-gray-200 pt-1.5 mt-1.5">
+            <div className="flex justify-between border-t border-gray-200 pt-1 mt-1">
               <span className="text-gray-700 font-medium">Total Cost</span>
               <span className="font-semibold">{formatCurrency(breakdown.totalCost)}</span>
             </div>
@@ -941,27 +941,27 @@ const PricingSummary: React.FC<{
       
       {/* Sales Tax - ONLY show for internal view (showCostBreakdown = internal) */}
       {opts.showCostBreakdown && config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
-        <div className="flex justify-between text-sm border-t border-gray-200 pt-1.5 mt-1.5">
+        <div className="flex justify-between text-xs border-t border-gray-200 pt-1 mt-1">
           <span className="text-gray-600">Sales Tax ({config.salesTaxRate.toFixed(2)}%)</span>
           <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount || 0)}</span>
         </div>
       )}
       
-      {/* Consumer-Friendly Total - Tax is now INCLUDED in sellingPrice */}
+      {/* Consumer-Friendly Total */}
       {!opts.showCostBreakdown && !opts.showProfitInfo ? (
-        <div className="text-center py-2">
-          <p className="text-sm text-gray-500 mb-1">Your Investment</p>
-          <div className="text-xl font-bold text-blue-600">
+        <div className="text-center py-1.5">
+          <p className="text-xs text-gray-500 mb-0.5">Your Investment</p>
+          <div className="text-lg font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
           {config.salesTaxEnabled && config.salesTaxRate && config.salesTaxRate > 0 && (
-            <p className="text-[9px] text-gray-400 mt-0.5">Price includes applicable sales tax</p>
+            <p className="text-[8px] text-gray-400">Price includes applicable sales tax</p>
           )}
         </div>
       ) : (
-        <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
-          <span className="text-gray-900 font-bold">Total Investment</span>
-          <span className="text-lg font-bold text-blue-600">
+        <div className="flex justify-between items-center border-t border-gray-300 pt-1.5 mt-1.5">
+          <span className="text-gray-900 font-bold text-sm">Total Investment</span>
+          <span className="text-base font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </span>
         </div>
