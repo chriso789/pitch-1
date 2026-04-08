@@ -792,24 +792,24 @@ const LeadDetails = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 p-3 md:p-6 pb-32 md:pb-16">
+    <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 p-2 md:p-6 pb-32 md:pb-16">
       {/* Header with Contact Card */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center space-x-4 flex-1">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div className="flex items-start gap-2 md:gap-4 flex-1 min-w-0">
           <BackButton 
             fallbackPath="/pipeline"
             label="Back"
             respectHistory={true}
           />
-          <div className="flex-1">
-              <div className="flex items-center space-x-3">
-                <h1 className="text-3xl font-bold">
+          <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl md:text-3xl font-bold break-words">
                   {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
                 </h1>
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="h-7 px-2 gap-1"
+                  className="h-7 px-2 gap-1 shrink-0"
                   onClick={() => setShowEditProjectDialog(true)}
                 >
                   <Edit2 className="h-3.5 w-3.5" />
@@ -851,11 +851,11 @@ const LeadDetails = () => {
               )}
             </div>
             
-            {/* Property Address - compact single line */}
+            {/* Property Address - wrapping on mobile */}
             {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
-              <div className="flex items-center gap-2 mt-2 text-sm">
-                <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
-                <p className="text-foreground">
+              <div className="flex flex-wrap items-start gap-1.5 mt-2 text-sm">
+                <MapPin className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
+                <p className="text-foreground break-words min-w-0">
                   {lead.verified_address?.formatted_address || 
                    `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
                 </p>
@@ -907,7 +907,7 @@ const LeadDetails = () => {
             )}
             
             {/* Stats bar */}
-            <div className="flex items-center gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2 flex-wrap">
+            <div className="grid grid-cols-2 md:flex md:items-center gap-2 md:gap-4 mt-3 text-sm bg-muted/50 rounded-lg px-3 py-2">
               <div className="flex items-center gap-1">
                 <span className="text-muted-foreground">Priority:</span>
                 <span className="capitalize font-medium">{lead.priority || 'Not set'}</span>
@@ -937,7 +937,7 @@ const LeadDetails = () => {
             </div>
 
             {/* Sales Reps - combined row */}
-            <div className="flex items-center gap-4 mt-2 text-sm flex-wrap">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Rep:</span>
                 {isEditingSalesRep ? (
@@ -982,7 +982,7 @@ const LeadDetails = () => {
                   </Button>
                 )}
               </div>
-              <span className="text-muted-foreground">|</span>
+              <span className="text-muted-foreground hidden sm:inline">|</span>
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Split Rep:</span>
                 {isEditingSecondaryRep ? (
