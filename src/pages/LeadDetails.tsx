@@ -1120,13 +1120,13 @@ const LeadDetails = () => {
       {/* Approval Requirements Progress - hidden once lead reaches project/terminal status */}
       {lead && !['project', 'completed', 'closed', 'lost', 'canceled', 'duplicate'].includes(lead.status) && (
         <Card className="border-primary/20">
-          <CardHeader className="p-4">
-            <CardTitle className="flex items-center space-x-2 text-base">
-              <CheckCircle className="h-4 w-4 text-primary" />
+          <CardHeader className="px-3 py-2.5 pb-1">
+            <CardTitle className="flex items-center space-x-1.5 text-sm">
+              <CheckCircle className="h-3.5 w-3.5 text-primary" />
               <span>Approval Requirements</span>
             </CardTitle>
           </CardHeader>
-          <CardContent className="p-4 pt-0">
+          <CardContent className="px-3 pb-3 pt-0">
             <ApprovalRequirementsBubbles 
               requirements={requirements}
               dynamicRequirements={dynamicRequirements}
