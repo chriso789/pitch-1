@@ -55,7 +55,7 @@ interface SectionedLineItemsTableProps {
   onUpdateItem: (id: string, updates: Partial<LineItem>) => void;
   onDeleteItem?: (id: string) => void;
   onResetItem?: (id: string) => void;
-  onAddItem?: (type: 'material' | 'labor') => void;
+  onAddItem?: (type: 'material' | 'labor' | 'change_order') => void;
   onAddTradeItem?: (tradeType: string, type: 'material' | 'labor') => void;
   onReorderItems?: (reorderedIds: string[]) => void;
   /** Active trade types declared by the parent — ensures multi-trade layout even for trades with zero items */
