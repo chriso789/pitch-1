@@ -359,7 +359,8 @@ export function SchematicRoofDiagram({
     rakeSegments,
     debugInfo,
     solarSegmentPolygons,
-    geometrySource: memoGeometrySource
+    geometrySource: memoGeometrySource,
+    imageCrop: computedImageCrop,
   } = useMemo(() => {
     const padding = localShowOverlay ? 0 : 60; // No padding when using satellite overlay
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
