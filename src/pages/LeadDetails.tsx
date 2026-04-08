@@ -792,24 +792,24 @@ const LeadDetails = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6 p-3 md:p-6 pb-32 md:pb-16">
+    <div className="max-w-7xl mx-auto space-y-4 md:space-y-6 p-2 md:p-6 pb-32 md:pb-16">
       {/* Header with Contact Card */}
-      <div className="flex items-start justify-between">
-        <div className="flex items-center space-x-4 flex-1">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3">
+        <div className="flex items-start gap-2 md:gap-4 flex-1 min-w-0">
           <BackButton 
             fallbackPath="/pipeline"
             label="Back"
             respectHistory={true}
           />
-          <div className="flex-1">
-              <div className="flex items-center space-x-3">
-                <h1 className="text-3xl font-bold">
+          <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl md:text-3xl font-bold break-words">
                   {(lead as any).lead_name || (lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : 'Lead')}
                 </h1>
                 <Button 
                   variant="outline" 
                   size="sm" 
-                  className="h-7 px-2 gap-1"
+                  className="h-7 px-2 gap-1 shrink-0"
                   onClick={() => setShowEditProjectDialog(true)}
                 >
                   <Edit2 className="h-3.5 w-3.5" />
