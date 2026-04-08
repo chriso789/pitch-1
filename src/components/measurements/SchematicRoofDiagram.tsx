@@ -1369,6 +1369,7 @@ export function SchematicRoofDiagram({
                   stroke={FEATURE_COLORS.rake}
                   strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  strokeDasharray={isLowConfidenceEdges ? '8 4' : undefined}
                   filter={isHighlighted ? 'url(#segment-glow)' : undefined}
                   className={isHighlighted ? 'transition-all duration-150' : ''}
                 />
