@@ -581,10 +581,10 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
       {/* Floating Bubbles Timeline with Manager Approval */}
       <div className="relative">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-2">
           {/* Bubbles Section - Left Side */}
-          <div className="flex-1">
-            <div className="flex items-center justify-start gap-2 sm:gap-4 md:gap-5 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-start gap-1 sm:gap-3 flex-wrap">
           {bubbleSteps.map((step, index) => {
             const isComplete = step.isComplete;
             const Icon = getIcon(step.icon);
