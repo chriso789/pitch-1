@@ -139,8 +139,10 @@ interface RenderBlock {
 }
 
 /**
- * Build render blocks from items: Trade Header → Tear Off → Materials → Installation
- * Labor items are split by labor_phase: 'tear_off' comes before materials, 'install' (default) after.
+ * Build render blocks from items: Trade Header → Labor → Materials
+ * For the client preview, all labor (tear-off + installation) is combined into one "Labor" section,
+ * and materials are shown in a separate section.
+ * The template builder UI keeps the 3-section split internally.
  */
 function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
   if (items.length === 0) return [];
@@ -169,34 +171,30 @@ function buildRenderBlocks(items: LineItem[]): RenderBlock[] {
     const allLabor = group.items.filter(i => (i as any).item_type === 'labor').sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0));
     const otherItems = group.items.filter(i => !(i as any).item_type || !['material', 'labor'].includes((i as any).item_type));
 
-    // Split labor into tear-off vs install phases
+    // Order labor: tear-off items first, then installation items
     const tearOffLabor = allLabor.filter(i => 
       (i as any).labor_phase === 'tear_off' || 
       (!(i as any).labor_phase && TEAR_OFF_PATTERN.test(i.item_name))
     );
     const installLabor = allLabor.filter(i => !tearOffLabor.includes(i));
+    const combinedLabor = [...tearOffLabor, ...installLabor];
 
-    const hasSections = tearOffLabor.length > 0 || materialItems.length > 0 || installLabor.length > 0;
+    const hasSections = combinedLabor.length > 0 || materialItems.length > 0;
 
     if (hasMultipleTrades) {
       blocks.push({ type: 'trade-header', label: group.label, tradeType });
     }
 
     if (hasSections) {
-      // 1. Tear Off labor
-      if (tearOffLabor.length > 0) {
-        blocks.push({ type: 'sub-header', label: 'Tear Off' });
-        tearOffLabor.forEach(item => blocks.push({ type: 'item', item }));
+      // 1. Labor (combined tear-off + installation)
+      if (combinedLabor.length > 0) {
+        blocks.push({ type: 'sub-header', label: 'Labor' });
+        combinedLabor.forEach(item => blocks.push({ type: 'item', item }));
       }
       // 2. Materials
       if (materialItems.length > 0) {
         blocks.push({ type: 'sub-header', label: 'Materials' });
         materialItems.forEach(item => blocks.push({ type: 'item', item }));
-      }
-      // 3. Installation labor
-      if (installLabor.length > 0) {
-        blocks.push({ type: 'sub-header', label: 'Installation' });
-        installLabor.forEach(item => blocks.push({ type: 'item', item }));
       }
     } else {
       materialItems.forEach(item => blocks.push({ type: 'item', item }));
