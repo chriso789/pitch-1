@@ -163,18 +163,23 @@ export function calculateGPSPolygonPerimeter(coords: GPSCoord[]): number {
 }
 
 /**
- * Convert pixel coordinates to GPS coordinates
+ * Convert pixel coordinates to GPS coordinates using Web Mercator
  */
 export function pixelToGPS(
   pixel: { x: number; y: number },
   imageBounds: ImageBounds,
   imageSize: { width: number; height: number }
 ): GPSCoord {
-  const latRange = imageBounds.topLeft.lat - imageBounds.bottomLeft.lat;
   const lngRange = imageBounds.topRight.lng - imageBounds.topLeft.lng;
   
-  const lat = imageBounds.topLeft.lat - (pixel.y / imageSize.height) * latRange;
+  const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + toRad(lat) / 2));
+  const mercTop = mercY(imageBounds.topLeft.lat);
+  const mercBottom = mercY(imageBounds.bottomLeft.lat);
+  const mercRange = mercTop - mercBottom;
+  
   const lng = imageBounds.topLeft.lng + (pixel.x / imageSize.width) * lngRange;
+  const mercCoord = mercTop - (pixel.y / imageSize.height) * mercRange;
+  const lat = (2 * Math.atan(Math.exp(mercCoord)) - Math.PI / 2) * 180 / Math.PI;
   
   return { lat, lng };
 }

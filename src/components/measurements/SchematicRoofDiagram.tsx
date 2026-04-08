@@ -326,13 +326,22 @@ export function SchematicRoofDiagram({
   const effectiveFacets = facets.length > 0 ? facets : parsedFacetsFromJson;
   
   // Calculate image bounds for satellite overlay mode
+  // PRIORITY: Use stored image_bounds from measurement if available (authoritative)
+  // FALLBACK: Compute from center/zoom using Mercator projection
   const imageBounds = useMemo<ImageBounds | null>(() => {
     if (!measurement) return null;
     
-    // Get center coordinates from measurement
+    // Priority 1: Stored image_bounds from the measurement pipeline
+    const storedBounds = measurement.image_bounds;
+    if (storedBounds && storedBounds.topLeft && storedBounds.bottomLeft) {
+      console.log('🗺️ Using stored image_bounds from measurement');
+      return storedBounds as ImageBounds;
+    }
+    
+    // Priority 2: Compute from center + zoom using Mercator projection
     const gpsCoords = measurement.gps_coordinates || {};
-    const centerLat = gpsCoords.lat || measurement.lat || measurement.center_lat;
-    const centerLng = gpsCoords.lng || measurement.lng || measurement.center_lng;
+    const centerLat = gpsCoords.lat || measurement.lat || measurement.center_lat || measurement.target_lat;
+    const centerLng = gpsCoords.lng || measurement.lng || measurement.center_lng || measurement.target_lng;
     
     if (!centerLat || !centerLng) return null;
     
@@ -341,6 +350,7 @@ export function SchematicRoofDiagram({
     const imgWidth = typeof imageSize === 'object' ? imageSize.width : 640;
     const imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
     
+    console.log(`🗺️ Computing image_bounds from center (${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}) zoom=${zoom} size=${imgWidth}x${imgHeight}`);
     return calculateImageBounds(centerLat, centerLng, zoom, imgWidth, imgHeight);
   }, [measurement]);
   
