@@ -24,7 +24,8 @@ import {
   Trash2,
   Plus,
   StickyNote,
-  GripVertical
+  GripVertical,
+  AlertTriangle
 } from 'lucide-react';
 import {
   DndContext,
