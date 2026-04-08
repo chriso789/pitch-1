@@ -550,29 +550,30 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header with Progress and Action Button */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1 mr-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Progress</span>
-            <span className="text-sm text-muted-foreground">
-              {completedCount} / {totalCount} complete
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium">Progress</span>
+            <span className="text-[11px] text-muted-foreground">
+              {completedCount}/{totalCount}
             </span>
           </div>
-          <Progress value={progressPercentage} className="h-2" />
+          <Progress value={progressPercentage} className="h-1.5" />
         </div>
         
         {requirements.allComplete ? (
           <Button 
             onClick={onApprove} 
             disabled={disabled}
-            className="gradient-primary whitespace-nowrap"
+            size="sm"
+            className="gradient-primary whitespace-nowrap text-xs h-7 px-3"
           >
             Approve to Project
           </Button>
         ) : (
-          <Button disabled variant="outline" className="whitespace-nowrap">
+          <Button disabled variant="outline" size="sm" className="whitespace-nowrap text-xs h-7 px-3">
             Complete Requirements
           </Button>
         )}
@@ -580,10 +581,10 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
       {/* Floating Bubbles Timeline with Manager Approval */}
       <div className="relative">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start justify-between gap-2">
           {/* Bubbles Section - Left Side */}
-          <div className="flex-1">
-            <div className="flex items-center justify-start gap-2 sm:gap-4 md:gap-5 flex-wrap">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center justify-start gap-1 sm:gap-3 flex-wrap">
           {bubbleSteps.map((step, index) => {
             const isComplete = step.isComplete;
             const Icon = getIcon(step.icon);
@@ -591,7 +592,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
             return (
               <React.Fragment key={step.key}>
                 {/* Bubble */}
-                <div className="flex flex-col items-center space-y-1 sm:space-y-2 relative">
+                <div className="flex flex-col items-center space-y-0.5 sm:space-y-1 relative">
                   {/* Circular Bubble */}
                   {step.key === 'contract' && !isComplete ? (
                     <Popover open={openPopover} onOpenChange={setOpenPopover}>
@@ -823,7 +824,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   
                   {/* Label */}
                   <span className={cn(
-                    "text-xs sm:text-sm font-medium text-center max-w-[60px] sm:max-w-none leading-tight",
+                    "text-[10px] sm:text-xs font-medium text-center max-w-[55px] sm:max-w-none leading-tight",
                     isComplete ? "text-foreground" : "text-muted-foreground"
                   )}>
                     {step.label}
@@ -831,7 +832,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   
                   {/* Status Badge */}
                   <span className={cn(
-                    "text-xs px-2 py-0.5 rounded-full",
+                    "text-[10px] px-1.5 py-px rounded-full",
                     isComplete 
                       ? "bg-success/10 text-success" 
                       : "bg-muted text-muted-foreground"
@@ -859,17 +860,18 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
           {/* Manager Approval Button - Right Side */}
           {isManager && (
-            <div className="flex flex-col items-center gap-3 pt-2">
+            <div className="flex flex-col items-center gap-1.5 pt-1 shrink-0">
               <Button
                 onClick={handleManagerApprove}
                 disabled={disabled || approvingJob}
-                className="gradient-primary whitespace-nowrap min-w-[160px]"
+                size="sm"
+                className="gradient-primary whitespace-nowrap text-xs h-8 px-3"
               >
-                <Shield className="h-4 w-4 mr-2" />
+                <Shield className="h-3.5 w-3.5 mr-1.5" />
                 {approvingJob ? 'Approving...' : 'Manager Approve'}
               </Button>
               {!requirements.allComplete && (
-                <div className="flex items-center gap-1 text-xs text-warning">
+                <div className="flex items-center gap-1 text-[10px] text-warning">
                   <AlertCircle className="h-3 w-3" />
                   <span>Override available</span>
                 </div>

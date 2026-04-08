@@ -540,14 +540,14 @@ export function UnifiedMeasurementPanel({
   return (
     <>
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-2 pt-4 px-4">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="flex items-center gap-2">
-                <Ruler className="h-5 w-5" />
+              <CardTitle className="flex items-center gap-1.5 text-base">
+                <Ruler className="h-4 w-4" />
                 Saved Measurements
               </CardTitle>
-              <p className="text-sm text-muted-foreground mt-1">
+              <p className="text-xs text-muted-foreground mt-0.5">
                 Select which measurement to use for estimates
               </p>
             </div>
@@ -561,7 +561,7 @@ export function UnifiedMeasurementPanel({
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 px-4 pb-4">
           {/* Active Measurement - Highlighted */}
           {activeMeasurement && (
             <MeasurementCard
@@ -629,7 +629,7 @@ export function UnifiedMeasurementPanel({
             })();
 
             return (
-              <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
+              <div className="p-3 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-2">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />

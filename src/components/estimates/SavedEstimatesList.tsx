@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, FileText, ExternalLink, Percent, Check, Pencil, Trash2, FileSignature } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -402,139 +403,133 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           )}
         </div>
       </CardHeader>
-      <CardContent className="space-y-2">
+      <CardContent className="space-y-1.5">
         {estimates.map((estimate) => {
           const isSelected = currentSelectedId === estimate.id;
           return (
             <div
               key={estimate.id}
-              className={`flex items-center gap-3 p-3 rounded-lg border transition-colors ${
+              className={`rounded-lg border p-2.5 transition-colors ${
                 isSelected 
                   ? 'bg-primary/10 border-primary' 
                   : 'bg-card hover:bg-accent/50'
               }`}
             >
-              <Checkbox
-                checked={isSelected}
-                onCheckedChange={() => handleSelectEstimate(estimate.id)}
-                className="h-5 w-5"
-              />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  <span className="font-medium text-sm">{estimate.display_name || estimate.estimate_number}</span>
-                  {isSelected && (
-                    <Badge variant="default" className="bg-primary text-primary-foreground text-xs">
-                      <Check className="h-3 w-3 mr-1" />
-                      Active
-                    </Badge>
-                  )}
-                  {estimate.pricing_tier && (
-                    <Badge 
-                      variant="outline" 
-                      className={
-                        estimate.pricing_tier === 'best' 
-                          ? 'border-amber-500 text-amber-600 bg-amber-50' 
-                          : estimate.pricing_tier === 'better' 
-                            ? 'border-blue-500 text-blue-600 bg-blue-50'
-                            : 'border-gray-400 text-gray-600 bg-gray-50'
-                      }
-                    >
-                      {estimate.pricing_tier.charAt(0).toUpperCase() + estimate.pricing_tier.slice(1)}
-                    </Badge>
-                  )}
-                  <span className="text-muted-foreground">•</span>
-                  <span className="text-sm text-muted-foreground truncate">
-                    {estimate.short_description || estimate.template_name}
-                  </span>
+              {/* Top row: checkbox, name, badges, price */}
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={() => handleSelectEstimate(estimate.id)}
+                  className="h-4 w-4 shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="font-medium text-xs truncate">{estimate.display_name || estimate.estimate_number}</span>
+                    {isSelected && (
+                      <Badge variant="default" className="bg-primary text-primary-foreground text-[10px] h-4 px-1">
+                        <Check className="h-2.5 w-2.5 mr-0.5" />
+                        Active
+                      </Badge>
+                    )}
+                    {estimate.pricing_tier && (
+                      <Badge 
+                        variant="outline" 
+                        className={cn(
+                          "text-[10px] h-4 px-1",
+                          estimate.pricing_tier === 'best' 
+                            ? 'border-amber-500 text-amber-600 bg-amber-50' 
+                            : estimate.pricing_tier === 'better' 
+                              ? 'border-blue-500 text-blue-600 bg-blue-50'
+                              : 'border-gray-400 text-gray-600 bg-gray-50'
+                        )}
+                      >
+                        {estimate.pricing_tier.charAt(0).toUpperCase() + estimate.pricing_tier.slice(1)}
+                      </Badge>
+                    )}
+                  </div>
                 </div>
-                {estimate.created_by_name && (
-                  <span className="text-xs text-muted-foreground">
-                    Created by {estimate.created_by_name}
-                  </span>
-                )}
-                <div className="flex items-center gap-3 text-xs flex-wrap">
-                  <Badge className={getStatusBadge(estimate.status)} variant="secondary">
+                <span className="text-sm font-bold shrink-0">
+                  {formatCurrency(estimate.selling_price || 0)}
+                </span>
+              </div>
+              
+              {/* Bottom row: status, margin, actions */}
+              <div className="flex items-center justify-between mt-1.5 pl-6">
+                <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                  <Badge className={cn(getStatusBadge(estimate.status), "text-[10px] h-4 px-1")} variant="secondary">
                     {estimate.status}
                   </Badge>
                   {signatureEnvelopes?.[estimate.id] && (
                     <Badge 
                       variant="outline"
-                      className={
+                      className={cn(
+                        "text-[10px] h-4 px-1",
                         signatureEnvelopes[estimate.id] === 'completed'
                           ? 'border-green-500 text-green-600 bg-green-50 dark:bg-green-950/30'
                           : 'border-amber-500 text-amber-600 bg-amber-50 dark:bg-amber-950/30'
-                      }
+                      )}
                     >
-                      <FileSignature className="h-3 w-3 mr-1" />
+                      <FileSignature className="h-2.5 w-2.5 mr-0.5" />
                       {signatureEnvelopes[estimate.id] === 'completed' ? 'Signed' : 'Awaiting Signature'}
                     </Badge>
                   )}
-                  <span className={`flex items-center gap-1 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
-                    <Percent className="h-3 w-3" />
-                    {(estimate.actual_profit_percent || 0).toFixed(1)}% Margin
+                  <span className={`flex items-center gap-0.5 ${getProfitColor(estimate.actual_profit_percent || 0)}`}>
+                    <Percent className="h-2.5 w-2.5" />
+                    {(estimate.actual_profit_percent || 0).toFixed(1)}%
                   </span>
+                  {estimate.created_by_name && (
+                    <span className="text-muted-foreground hidden sm:inline">by {estimate.created_by_name}</span>
+                  )}
                 </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-lg font-bold">
-                  {formatCurrency(estimate.selling_price || 0)}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    
-                    // If clicking on the same estimate, do nothing
-                    if (effectiveEditingId === estimate.id) {
-                      return;
-                    }
-                    
-                    // If there's an active estimate with unsaved changes, show confirmation
-                    if (effectiveEditingId && effectiveEditingId !== estimate.id && hasUnsavedChanges) {
-                      setPendingEditId(estimate.id);
-                      setShowUnsavedWarning(true);
-                      return;
-                    }
-                    
-                    // Otherwise proceed directly
-                    onEditEstimate?.(estimate.id);
-                  }}
-                  className="h-8 px-2"
-                  title="Edit Estimate"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setEstimateToDelete(estimate);
-                    // Check if this is the only estimate
-                    if (estimates && estimates.length === 1) {
-                      setShowCannotDeleteDialog(true);
-                    } else {
-                      setDeleteDialogOpen(true);
-                    }
-                  }}
-                  className="h-8 px-2 text-muted-foreground hover:text-destructive"
-                  title="Delete Estimate"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onShareEstimate?.(estimate.id);
-                  }}
-                  className="h-8 px-2"
-                  title="Share Estimate"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                </Button>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (effectiveEditingId === estimate.id) return;
+                      if (effectiveEditingId && effectiveEditingId !== estimate.id && hasUnsavedChanges) {
+                        setPendingEditId(estimate.id);
+                        setShowUnsavedWarning(true);
+                        return;
+                      }
+                      onEditEstimate?.(estimate.id);
+                    }}
+                    className="h-6 w-6 p-0"
+                    title="Edit"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEstimateToDelete(estimate);
+                      if (estimates && estimates.length === 1) {
+                        setShowCannotDeleteDialog(true);
+                      } else {
+                        setDeleteDialogOpen(true);
+                      }
+                    }}
+                    className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onShareEstimate?.(estimate.id);
+                    }}
+                    className="h-6 w-6 p-0"
+                    title="Share"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Button>
+                </div>
               </div>
             </div>
           );
