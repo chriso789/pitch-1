@@ -221,7 +221,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
    
   // Add line item state
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newItemType, setNewItemType] = useState<'material' | 'labor'>('material');
+  const [newItemType, setNewItemType] = useState<'material' | 'labor' | 'change_order'>('material');
   const [activeAddTradeType, setActiveAddTradeType] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
     item_name: '',
