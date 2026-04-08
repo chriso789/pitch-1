@@ -699,97 +699,6 @@ export function SectionedLineItemsTable({
             <>
               {/* Single-trade layout: Materials → Tear Off → Installation */}
               
-              {/* Tear Off Section */}
-              {renderSectionHeader(
-                'TEAR OFF',
-                <Hammer className="h-4 w-4" />,
-                tearOffItems.length
-              )}
-              {renderSortableItems(tearOffItems)}
-              {editable && onAddItem && (
-                <TableRow className="hover:bg-muted/30">
-                  <TableCell colSpan={totalCols} className="py-2">
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      onClick={() => onAddItem('labor')}
-                      className="text-muted-foreground hover:text-foreground"
-                    >
-                      <Plus className="h-4 w-4 mr-2" />
-                      Add Tear Off Item
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              )}
-              {/* Inline Add Tear Off Form */}
-              {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
-                <TableRow className="bg-primary/5 border-2 border-primary/30">
-                  <TableCell colSpan={totalCols} className="py-3">
-                    <div className="flex items-end gap-2 flex-wrap">
-                      <div className="flex-1 min-w-[180px]">
-                        <Label className="text-xs">Item Name (Labor)</Label>
-                        <MaterialAutocomplete
-                          value={newItem.item_name}
-                          onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
-                          onSelectMaterial={(material) => {
-                            onNewItemChange({
-                              ...newItem,
-                              item_name: material.name,
-                              unit: material.uom,
-                              unit_cost: material.base_cost,
-                              material_id: material.id,
-                            });
-                          }}
-                          placeholder="Search items..."
-                          autoFocus
-                        />
-                      </div>
-                      <div className="w-32">
-                        <Label className="text-xs">Notes</Label>
-                        <Input
-                          value={newItem.notes || ''}
-                          onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
-                          placeholder="e.g. details"
-                        />
-                      </div>
-                      <div className="w-20">
-                        <Label className="text-xs">Qty</Label>
-                        <Input
-                          type="number"
-                          value={newItem.qty}
-                          onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
-                        />
-                      </div>
-                      <div className="w-16">
-                        <Label className="text-xs">Unit</Label>
-                        <Input
-                          value={newItem.unit}
-                          onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
-                          placeholder="ea"
-                        />
-                      </div>
-                      <div className="w-24">
-                        <Label className="text-xs">Unit Cost</Label>
-                        <Input
-                          type="number"
-                          step="0.01"
-                          value={newItem.unit_cost}
-                          onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
-                        />
-                      </div>
-                      <Button onClick={onSaveNewItem} size="sm">
-                        <Check className="h-4 w-4 mr-1" />
-                        Add
-                      </Button>
-                      <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-              {tearOffItems.length > 0 && renderSectionSubtotal('Tear Off Subtotal', tearOffItems.reduce((sum, i) => sum + i.line_total, 0))}
-
               {/* Materials Section */}
               {renderSectionHeader(
                 'MATERIALS',
@@ -880,6 +789,97 @@ export function SectionedLineItemsTable({
                 </TableRow>
               )}
               {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
+
+              {/* Tear Off Section */}
+              {renderSectionHeader(
+                'TEAR OFF',
+                <Hammer className="h-4 w-4" />,
+                tearOffItems.length
+              )}
+              {renderSortableItems(tearOffItems)}
+              {editable && onAddItem && (
+                <TableRow className="hover:bg-muted/30">
+                  <TableCell colSpan={totalCols} className="py-2">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => onAddItem('labor')}
+                      className="text-muted-foreground hover:text-foreground"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Tear Off Item
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              )}
+              {/* Inline Add Tear Off Form */}
+              {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
+                <TableRow className="bg-primary/5 border-2 border-primary/30">
+                  <TableCell colSpan={totalCols} className="py-3">
+                    <div className="flex items-end gap-2 flex-wrap">
+                      <div className="flex-1 min-w-[180px]">
+                        <Label className="text-xs">Item Name (Labor)</Label>
+                        <MaterialAutocomplete
+                          value={newItem.item_name}
+                          onChange={(value) => onNewItemChange({ ...newItem, item_name: value })}
+                          onSelectMaterial={(material) => {
+                            onNewItemChange({
+                              ...newItem,
+                              item_name: material.name,
+                              unit: material.uom,
+                              unit_cost: material.base_cost,
+                              material_id: material.id,
+                            });
+                          }}
+                          placeholder="Search items..."
+                          autoFocus
+                        />
+                      </div>
+                      <div className="w-32">
+                        <Label className="text-xs">Notes</Label>
+                        <Input
+                          value={newItem.notes || ''}
+                          onChange={(e) => onNewItemChange({ ...newItem, notes: e.target.value })}
+                          placeholder="e.g. details"
+                        />
+                      </div>
+                      <div className="w-20">
+                        <Label className="text-xs">Qty</Label>
+                        <Input
+                          type="number"
+                          value={newItem.qty}
+                          onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <div className="w-16">
+                        <Label className="text-xs">Unit</Label>
+                        <Input
+                          value={newItem.unit}
+                          onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                          placeholder="ea"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-xs">Unit Cost</Label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={newItem.unit_cost}
+                          onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                        />
+                      </div>
+                      <Button onClick={onSaveNewItem} size="sm">
+                        <Check className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+              {tearOffItems.length > 0 && renderSectionSubtotal('Tear Off Subtotal', tearOffItems.reduce((sum, i) => sum + i.line_total, 0))}
 
               {/* Installation Section */}
               {renderSectionHeader(
