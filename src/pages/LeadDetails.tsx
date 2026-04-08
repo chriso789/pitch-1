@@ -855,10 +855,18 @@ const LeadDetails = () => {
         {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
           <div className="flex items-center gap-1.5">
             <MapPin className="h-3 w-3 md:h-4 md:w-4 text-primary shrink-0" />
-            <span className="text-foreground truncate">
+            <a
+              href={`https://maps.google.com/?q=${encodeURIComponent(
+                lead.verified_address?.formatted_address || 
+                `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-primary underline underline-offset-2 truncate"
+            >
               {lead.verified_address?.formatted_address || 
                `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
-            </span>
+            </a>
             {lead.contact?.id && (
               <AddressReverificationButton
                 contactId={lead.contact.id}
