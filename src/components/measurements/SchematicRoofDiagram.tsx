@@ -950,11 +950,11 @@ export function SchematicRoofDiagram({
   // Calculate measurement verification metrics
   const verificationMetrics = useMemo(() => {
     // Calculate total eave+rake length from diagram segments
-    const diagramEaveLength = eaveSegments.reduce((sum: number, s) => sum + (s.length || 0), 0);
-    const diagramRakeLength = rakeSegments.reduce((sum: number, s) => sum + (s.length || 0), 0);
+    const diagramEaveLength = eaveSegments.reduce((sum: number, s) => sum + (s.length || 0), 0 as number);
+    const diagramRakeLength = rakeSegments.reduce((sum: number, s) => sum + (s.length || 0), 0 as number);
     
     // Calculate perimeter from perimeter segments
-    const perimeterLength = perimeterSegments.reduce((sum: number, s) => sum + (s.length || 0), 0);
+    const perimeterLength = perimeterSegments.reduce((sum: number, s) => sum + (s.length || 0), 0 as number);
     
     // Edge coverage: eave+rake should be close to perimeter for a valid measurement
     const totalEdgeLength = diagramEaveLength + diagramRakeLength;
