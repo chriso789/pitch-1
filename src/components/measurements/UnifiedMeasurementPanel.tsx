@@ -561,7 +561,7 @@ export function UnifiedMeasurementPanel({
           </div>
         </CardHeader>
 
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 px-4 pb-4">
           {/* Active Measurement - Highlighted */}
           {activeMeasurement && (
             <MeasurementCard
