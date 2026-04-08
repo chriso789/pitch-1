@@ -929,11 +929,12 @@ export function SchematicRoofDiagram({
       facetPaths: facetPathsData,
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
-      debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata },
+      debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata, areaScaleFactor },
       solarSegmentPolygons: [],
       qaData,
       geometrySource,
       imageCrop: imgCrop,
+      isLowConfidenceEdges: isLowQualityFootprint,
     };
   }, [measurement, width, height, facets, localShowOverlay, imageBounds]);
   
