@@ -8,8 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { supabase } from '@/integrations/supabase/client';
+import { MobilePDFViewer } from '@/components/ui/MobilePDFViewer';
 import { toast } from 'sonner';
 import { Check, RotateCcw, Pen, FileText, Shield, AlertCircle, Loader2, Download } from 'lucide-react';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 interface SignatureEnvelope {
   id: string;
@@ -39,6 +41,7 @@ const PublicSignatureCapture = () => {
   const [completed, setCompleted] = useState(false);
   const [signatureMethod, setSignatureMethod] = useState<'draw' | 'type'>('draw');
   const [sheetOpen, setSheetOpen] = useState(false);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (token) {
@@ -48,19 +51,15 @@ const PublicSignatureCapture = () => {
 
   useEffect(() => {
     if (canvasRef.current && signatureMethod === 'draw' && sheetOpen) {
-      // Small delay to let sheet animate open before measuring canvas
-      const timer = setTimeout(() => initCanvas(), 100);
+      const timer = setTimeout(() => initCanvas(), 150);
       return () => clearTimeout(timer);
     }
   }, [signatureMethod, sheetOpen]);
-
-  // notifySignatureOpened is now handled by signer-open edge function
 
   const loadEnvelope = async () => {
     try {
       setLoading(true);
       
-      // Use signer-open edge function to bypass RLS for external recipients
       const { data, error: fnError } = await supabase.functions.invoke('signer-open', {
         body: { access_token: token }
       });
@@ -123,7 +122,6 @@ const PublicSignatureCapture = () => {
       });
       
       setTypedName(recipData.name || '');
-      // Notification is already handled by the signer-open edge function
     } catch (err) {
       console.error('Error loading envelope:', err);
       setError('Failed to load document. Please try again later.');
@@ -255,7 +253,7 @@ const PublicSignatureCapture = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-muted flex items-center justify-center">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md mx-4">
           <CardContent className="flex flex-col items-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
             <p className="text-muted-foreground">Loading document...</p>
@@ -301,64 +299,89 @@ const PublicSignatureCapture = () => {
     );
   }
 
+  // Determine sheet side based on device
+  const sheetSide = isMobile ? 'bottom' : 'right';
+
   return (
     <div className="min-h-screen bg-muted flex flex-col">
       {/* Header bar */}
-      <div className="bg-background border-b px-4 py-3 flex items-center justify-between shrink-0">
+      <div className="bg-background border-b px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between shrink-0 safe-area-top">
         <div className="flex items-center gap-2 min-w-0">
-          <FileText className="h-5 w-5 text-primary shrink-0" />
-          <h1 className="font-semibold text-lg truncate">{envelope?.title || 'Document'}</h1>
+          <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
+          <h1 className="font-semibold text-sm sm:text-lg truncate">{envelope?.title || 'Document'}</h1>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {envelope?.document_url && (
             <a href={envelope.document_url} target="_blank" rel="noopener noreferrer" download>
-              <Button variant="outline" size="sm" className="flex items-center gap-2">
+              <Button variant="outline" size="sm" className="h-8 sm:h-9 px-2 sm:px-3">
                 <Download className="h-4 w-4" />
-                <span className="hidden sm:inline">Download</span>
+                <span className="hidden sm:inline ml-1.5">Download</span>
               </Button>
             </a>
           )}
-          <Button size="sm" onClick={() => setSheetOpen(true)} className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setSheetOpen(true)} className="h-8 sm:h-9 px-2.5 sm:px-3">
             <Pen className="h-4 w-4" />
-            Approve & Sign
+            <span className="ml-1.5">Sign</span>
           </Button>
         </div>
       </div>
 
-      {/* Full-screen PDF viewer */}
-      {envelope?.document_url ? (
-        <div className="flex-1">
-          <iframe
-            src={envelope.document_url}
-            className="w-full h-full border-0"
-            style={{ minHeight: 'calc(100vh - 57px)' }}
-            title="Estimate Preview"
+      {/* PDF viewer - uses MobilePDFViewer for cross-browser/device support */}
+      <div className="flex-1 min-h-0">
+        {envelope?.document_url ? (
+          <MobilePDFViewer
+            url={envelope.document_url}
+            title={envelope.title || 'Document'}
+            filename={`${envelope.title || 'document'}.pdf`}
+            className="h-full w-full"
+            showControls={true}
           />
-        </div>
-      ) : (
-        <div className="flex-1 flex items-center justify-center">
-          <p className="text-muted-foreground">No document preview available</p>
+        ) : (
+          <div className="flex-1 flex items-center justify-center p-6">
+            <p className="text-muted-foreground">No document preview available</p>
+          </div>
+        )}
+      </div>
+
+      {/* Sticky mobile CTA bar */}
+      {isMobile && !sheetOpen && (
+        <div className="shrink-0 bg-background border-t p-3 safe-area-bottom">
+          <Button
+            size="lg"
+            className="w-full h-12 text-base font-semibold"
+            onClick={() => setSheetOpen(true)}
+          >
+            <Pen className="h-5 w-5 mr-2" />
+            Approve & Sign Document
+          </Button>
         </div>
       )}
 
-      {/* Signature drawer */}
+      {/* Signature drawer - bottom on mobile, right on desktop */}
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetContent
+          side={sheetSide}
+          className={
+            isMobile
+              ? 'w-full max-h-[85vh] overflow-y-auto rounded-t-2xl'
+              : 'w-full sm:max-w-md overflow-y-auto'
+          }
+        >
           <SheetHeader>
-            <SheetTitle>Sign Document</SheetTitle>
-            <SheetDescription>
+            <SheetTitle className="text-base sm:text-lg">Sign Document</SheetTitle>
+            <SheetDescription className="text-xs sm:text-sm">
               Review the document, then sign below to complete.
             </SheetDescription>
           </SheetHeader>
 
-          <div className="mt-6 space-y-5">
+          <div className="mt-4 sm:mt-6 space-y-4 sm:space-y-5">
             {/* Signer info */}
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Badge variant="secondary">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+              <Badge variant="secondary" className="text-xs">
                 {envelope?.signature_recipients[0]?.name}
               </Badge>
               <span>•</span>
-              <span className="truncate">{envelope?.signature_recipients[0]?.email}</span>
+              <span className="truncate text-xs">{envelope?.signature_recipients[0]?.email}</span>
             </div>
 
             {/* Signature method toggle */}
@@ -366,12 +389,13 @@ const PublicSignatureCapture = () => {
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Pen className="h-4 w-4" />
-                  <span className="font-semibold">Your Signature</span>
+                  <span className="font-semibold text-sm sm:text-base">Your Signature</span>
                 </div>
                 <div className="flex gap-1">
                   <Button
                     variant={signatureMethod === 'draw' ? 'default' : 'outline'}
                     size="sm"
+                    className="h-8 text-xs"
                     onClick={() => setSignatureMethod('draw')}
                   >
                     Draw
@@ -379,13 +403,14 @@ const PublicSignatureCapture = () => {
                   <Button
                     variant={signatureMethod === 'type' ? 'default' : 'outline'}
                     size="sm"
+                    className="h-8 text-xs"
                     onClick={() => setSignatureMethod('type')}
                   >
                     Type
                   </Button>
                 </div>
               </div>
-              <p className="text-xs text-muted-foreground mb-3">
+              <p className="text-xs text-muted-foreground mb-2">
                 {signatureMethod === 'draw'
                   ? 'Draw your signature in the box below'
                   : 'Type your full legal name'}
@@ -393,10 +418,10 @@ const PublicSignatureCapture = () => {
 
               {signatureMethod === 'draw' ? (
                 <>
-                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-3 bg-white">
+                  <div className="border-2 border-dashed border-muted-foreground/25 rounded-lg p-2 sm:p-3 bg-white">
                     <canvas
                       ref={canvasRef}
-                      className="w-full h-32 cursor-crosshair touch-none"
+                      className="w-full h-28 sm:h-32 cursor-crosshair touch-none"
                       style={{ touchAction: 'none' }}
                       onMouseDown={startDrawing}
                       onMouseMove={draw}
@@ -412,7 +437,7 @@ const PublicSignatureCapture = () => {
                       variant="outline"
                       size="sm"
                       onClick={clearCanvas}
-                      className="flex items-center gap-2 mt-2"
+                      className="flex items-center gap-2 mt-2 h-8"
                     >
                       <RotateCcw className="h-3 w-3" />
                       Clear
@@ -422,12 +447,13 @@ const PublicSignatureCapture = () => {
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <Label htmlFor="typedName">Full Legal Name</Label>
+                    <Label htmlFor="typedName" className="text-xs">Full Legal Name</Label>
                     <Input
                       id="typedName"
                       value={typedName}
                       onChange={(e) => setTypedName(e.target.value)}
                       placeholder="Enter your full name"
+                      className="h-10"
                     />
                   </div>
                   {typedName && (
@@ -448,13 +474,14 @@ const PublicSignatureCapture = () => {
             <Separator />
 
             {/* Printed name */}
-            <div className="space-y-2">
-              <Label htmlFor="printedName">Printed Name</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="printedName" className="text-xs">Printed Name</Label>
               <Input
                 id="printedName"
                 value={typedName}
                 onChange={(e) => setTypedName(e.target.value)}
                 placeholder="Enter your printed name"
+                className="h-10"
               />
             </div>
 
@@ -469,7 +496,7 @@ const PublicSignatureCapture = () => {
             {/* Submit */}
             <Button
               size="lg"
-              className="w-full flex items-center gap-2"
+              className="w-full flex items-center gap-2 h-12 text-base"
               onClick={handleSubmit}
               disabled={submitting || (signatureMethod === 'draw' && !hasSignature) || (signatureMethod === 'type' && !typedName.trim())}
             >
