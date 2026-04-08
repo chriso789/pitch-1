@@ -885,36 +885,23 @@ export function SchematicRoofDiagram({
     return (result as any).qaData as GeometryQA | undefined;
   }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
 
+  // Image-space CSS positioning: uses the same imageCrop rect as toSvg
+  // This guarantees the background image and SVG lines share the exact same transform
   const overlayImageStyle = useMemo(() => {
-    const overlayViewport = debugInfo && 'overlayViewport' in debugInfo ? debugInfo.overlayViewport : undefined;
-
-    if (!localShowOverlay || !satelliteImageUrl || !imageBounds || !overlayViewport) {
+    if (!localShowOverlay || !satelliteImageUrl || !computedImageCrop) {
       return undefined;
     }
 
-    const imageSize = measurement?.analysis_image_size || { width: 640, height: 640 };
-    const sourceWidth = typeof imageSize === 'object' ? imageSize.width || 640 : 640;
-    const sourceHeight = typeof imageSize === 'object' ? imageSize.height || 640 : 640;
-    const fullLatRange = Math.max(imageBounds.topLeft.lat - imageBounds.bottomLeft.lat, 0.0000001);
-    const fullLngRange = Math.max(imageBounds.topRight.lng - imageBounds.topLeft.lng, 0.0000001);
-
-    const rawCropX = ((overlayViewport.minLng - imageBounds.topLeft.lng) / fullLngRange) * sourceWidth;
-    const rawCropY = ((imageBounds.topLeft.lat - overlayViewport.maxLat) / fullLatRange) * sourceHeight;
-    const rawCropWidth = ((overlayViewport.maxLng - overlayViewport.minLng) / fullLngRange) * sourceWidth;
-    const rawCropHeight = ((overlayViewport.maxLat - overlayViewport.minLat) / fullLatRange) * sourceHeight;
-
-    const cropX = Math.min(Math.max(rawCropX, 0), sourceWidth - 1);
-    const cropY = Math.min(Math.max(rawCropY, 0), sourceHeight - 1);
-    const cropWidth = Math.min(Math.max(rawCropWidth, 1), sourceWidth - cropX);
-    const cropHeight = Math.min(Math.max(rawCropHeight, 1), sourceHeight - cropY);
+    const cropW = Math.max(computedImageCrop.maxX - computedImageCrop.minX, 0.001);
+    const cropH = Math.max(computedImageCrop.maxY - computedImageCrop.minY, 0.001);
 
     return {
-      left: -(cropX * width) / cropWidth,
-      top: -(cropY * height) / cropHeight,
-      width: (sourceWidth * width) / cropWidth,
-      height: (sourceHeight * height) / cropHeight,
+      left: -(computedImageCrop.minX * width) / cropW,
+      top: -(computedImageCrop.minY * height) / cropH,
+      width: (computedImageCrop.srcW * width) / cropW,
+      height: (computedImageCrop.srcH * height) / cropH,
     };
-  }, [debugInfo, height, imageBounds, localShowOverlay, measurement, satelliteImageUrl, width]);
+  }, [localShowOverlay, satelliteImageUrl, computedImageCrop, width, height]);
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
