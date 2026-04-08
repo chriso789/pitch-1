@@ -760,12 +760,17 @@ export function UnifiedMeasurementPanel({
                     faces: ai.faces_wkt || [],
                     center_lat: ai.target_lat,
                     center_lng: ai.target_lng,
-                    gps_coordinates: { lat: ai.target_lat, lng: ai.target_lng },
+                    gps_coordinates: ai.gps_coordinates || { lat: ai.target_lat, lng: ai.target_lng },
                     analysis_zoom: ai.analysis_zoom || 20,
                     analysis_image_size: ai.analysis_image_size || { width: 640, height: 640 },
+                    image_bounds: ai.image_bounds,
                     google_maps_image_url: ai.google_maps_image_url,
                     satellite_overlay_url: ai.satellite_overlay_url,
+                    mapbox_image_url: ai.mapbox_image_url,
+                    selected_image_source: ai.selected_image_source,
                     perimeter_wkt: ai.perimeter_wkt,
+                    footprint_vertices_geo: ai.footprint_vertices_geo,
+                    measurement_confidence: ai.measurement_confidence,
                   }}
                   tags={diagramTags}
                   address={address}
