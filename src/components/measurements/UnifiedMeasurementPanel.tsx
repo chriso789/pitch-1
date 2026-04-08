@@ -602,9 +602,10 @@ export function UnifiedMeasurementPanel({
               id: ai.id,
               target_lat: ai.target_lat,
               target_lng: ai.target_lng,
-              gps_coordinates: { lat: ai.target_lat, lng: ai.target_lng },
+              gps_coordinates: ai.gps_coordinates || { lat: ai.target_lat, lng: ai.target_lng },
               analysis_zoom: ai.analysis_zoom || 20,
               analysis_image_size: ai.analysis_image_size || { width: 640, height: 640 },
+              image_bounds: ai.image_bounds,
               linear_features_wkt: ai.linear_features_wkt,
               perimeter_wkt: ai.perimeter_wkt,
               footprint_vertices_geo: ai.footprint_vertices_geo,
@@ -612,9 +613,18 @@ export function UnifiedMeasurementPanel({
               footprint_source: ai.footprint_source,
               detection_method: ai.detection_method,
               total_adjusted_area: ai.total_area_adjusted_sqft || 0,
+              measurement_confidence: ai.measurement_confidence,
+              requires_manual_review: ai.requires_manual_review,
+              selected_image_source: ai.selected_image_source,
             };
             const hasGeometry = ai.linear_features_wkt && (Array.isArray(ai.linear_features_wkt) ? ai.linear_features_wkt.length > 0 : true);
-            const satUrl = ai.satellite_overlay_url || ai.google_maps_image_url;
+            // Prefer the image source matching what was used for analysis
+            const satUrl = (() => {
+              const src = ai.selected_image_source;
+              if (src === 'mapbox' && ai.mapbox_image_url) return ai.mapbox_image_url;
+              if (src === 'google_maps' && ai.google_maps_image_url) return ai.google_maps_image_url;
+              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url;
+            })();
 
             return (
               <div className="p-4 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-3">
