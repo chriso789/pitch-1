@@ -221,7 +221,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
    
   // Add line item state
   const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newItemType, setNewItemType] = useState<'material' | 'labor'>('material');
+  const [newItemType, setNewItemType] = useState<'material' | 'labor' | 'change_order'>('material');
   const [activeAddTradeType, setActiveAddTradeType] = useState<string | null>(null);
   const [newItem, setNewItem] = useState({
     item_name: '',
@@ -279,6 +279,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     lineItems,
     materialItems,
     laborItems,
+    changeOrderItems,
     breakdown,
     config,
     isFixedPrice,
@@ -746,7 +747,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   // Handle adding a new line item
-  const handleAddLineItem = (type: 'material' | 'labor') => {
+  const handleAddLineItem = (type: 'material' | 'labor' | 'change_order') => {
     setNewItemType(type);
     setActiveAddTradeType(null);
     setNewItem({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
@@ -800,8 +801,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       trade_label: tradeLabel,
     };
     
-    // Add to the correct per-trade bucket so merge logic picks it up
-    if (targetTradeSection) {
+    // Change order items go directly to lineItems (not trade buckets)
+    if (newItemType === 'change_order') {
+      setLineItems([...lineItems, item]);
+    } else if (targetTradeSection) {
       setTradeLineItems(prev => ({
         ...prev,
         [targetTradeSection.id]: [...(prev[targetTradeSection.id] || []), item]
@@ -2438,6 +2441,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             <SectionedLineItemsTable
               materialItems={materialItems}
               laborItems={laborItems}
+              changeOrderItems={changeOrderItems}
               materialsTotal={breakdown.materialsTotal}
               laborTotal={breakdown.laborTotal}
               onUpdateItem={handleUpdateLineItem}

@@ -7,7 +7,7 @@ export interface LineItem {
   item_name: string;
   description?: string;           // Product description for consumer-facing PDFs
   notes?: string;                 // Color/specs for supplier orders
-  item_type: 'material' | 'labor';
+  item_type: 'material' | 'labor' | 'change_order';
   labor_phase?: 'tear_off' | 'install'; // For labor items: tear_off runs before materials, install after
   qty: number;
   qty_original?: number;
@@ -53,6 +53,7 @@ export interface UseEstimatePricingReturn {
   lineItems: LineItem[];
   materialItems: LineItem[];
   laborItems: LineItem[];
+  changeOrderItems: LineItem[];
   breakdown: PricingBreakdown;
   config: PricingConfig;
   isFixedPrice: boolean;
@@ -112,6 +113,14 @@ export function useEstimatePricing(
   const laborItems = useMemo(() => 
     lineItems
       .filter(item => item.item_type === 'labor')
+      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
+    [lineItems]
+  );
+
+  // Change order items are excluded from all cost/pricing calculations
+  const changeOrderItems = useMemo(() => 
+    lineItems
+      .filter(item => item.item_type === 'change_order')
       .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0)),
     [lineItems]
   );
@@ -278,6 +287,7 @@ export function useEstimatePricing(
     lineItems,
     materialItems,
     laborItems,
+    changeOrderItems,
     breakdown,
     config,
     isFixedPrice,
