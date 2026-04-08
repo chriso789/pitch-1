@@ -1040,8 +1040,6 @@ const LeadDetails = () => {
               </div>
             </div>
           </div>
-        </div>
-
         {/* Inspection Row */}
         <div className="flex items-center gap-2 px-1">
           <ClipboardCheck className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
