@@ -922,10 +922,10 @@ export function EstimatePreviewPanel({
           </button>
         </DialogHeader>
 
-        <div className="flex h-[calc(95vh-120px)] min-h-0">
-          {/* Left Panel - Toggle Controls */}
-          <div className="w-80 shrink-0 border-r flex flex-col bg-muted/30 overflow-hidden min-h-0">
-            {/* Native scroll container - avoids Radix ScrollArea overlay clipping issues */}
+        <div className="flex flex-col md:flex-row h-[calc(95vh-120px)] min-h-0">
+          {/* Left Panel - Toggle Controls (full width on mobile, sidebar on desktop) */}
+          <div className="w-full md:w-80 md:shrink-0 border-b md:border-b-0 md:border-r flex flex-col bg-muted/30 overflow-hidden min-h-0 flex-1 md:flex-initial">
+            {/* Native scroll container */}
             <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0">
               <div className="p-4 pr-5 pb-32 space-y-4">
               {/* View Mode Tabs */}
