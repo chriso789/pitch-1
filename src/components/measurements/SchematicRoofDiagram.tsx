@@ -605,70 +605,77 @@ export function SchematicRoofDiagram({
       ? focusFeatureCoords
       : (perimCoords.length > 0 ? perimCoords : allLatLngs);
 
+    // IMAGE-SPACE CROP: Compute crop rectangle in source image pixel space
+    // This ensures the satellite image and SVG lines use the exact same transform
+    const imgCrop = (() => {
+      if (!localShowOverlay || !imageBounds || overlayFocusCoords.length === 0) return null;
+
+      const sourceSize = measurement?.analysis_image_size || { width: 640, height: 640 };
+      const srcW = typeof sourceSize === 'object' ? sourceSize.width || 640 : 640;
+      const srcH = typeof sourceSize === 'object' ? sourceSize.height || 640 : 640;
+
+      // Map ALL focus coordinates to source image pixel space
+      const focusPixels = overlayFocusCoords.map(c =>
+        gpsToPixel(c, imageBounds, { width: srcW, height: srcH })
+      );
+
+      let cMinX = Math.min(...focusPixels.map(p => p.x));
+      let cMaxX = Math.max(...focusPixels.map(p => p.x));
+      let cMinY = Math.min(...focusPixels.map(p => p.y));
+      let cMaxY = Math.max(...focusPixels.map(p => p.y));
+
+      // Add small padding (2% of feature extent)
+      const padX = Math.max((cMaxX - cMinX) * 0.02, 2);
+      const padY = Math.max((cMaxY - cMinY) * 0.02, 2);
+      cMinX -= padX; cMaxX += padX;
+      cMinY -= padY; cMaxY += padY;
+
+      // Enforce aspect ratio to match SVG container
+      const containerAspect = width / height;
+      let cropW = cMaxX - cMinX;
+      let cropH = cMaxY - cMinY;
+      const cropAspect = cropW / cropH;
+
+      if (cropAspect > containerAspect) {
+        const newH = cropW / containerAspect;
+        const extra = (newH - cropH) / 2;
+        cMinY -= extra; cMaxY += extra;
+      } else {
+        const newW = cropH * containerAspect;
+        const extra = (newW - cropW) / 2;
+        cMinX -= extra; cMaxX += extra;
+      }
+
+      // Clamp to source image bounds
+      cMinX = Math.max(0, cMinX);
+      cMinY = Math.max(0, cMinY);
+      cMaxX = Math.min(srcW, cMaxX);
+      cMaxY = Math.min(srcH, cMaxY);
+
+      return { minX: cMinX, minY: cMinY, maxX: cMaxX, maxY: cMaxY, srcW, srcH };
+    })();
+
+    // Legacy geographic viewport for debug info only
     const overlayViewport = overlayFocusCoords.length > 0 ? (() => {
       const focusMinLat = Math.min(...overlayFocusCoords.map(c => c.lat));
       const focusMaxLat = Math.max(...overlayFocusCoords.map(c => c.lat));
       const focusMinLng = Math.min(...overlayFocusCoords.map(c => c.lng));
       const focusMaxLng = Math.max(...overlayFocusCoords.map(c => c.lng));
-
-      // Tight padding - just enough for label readability
-      const latSpan = Math.max(focusMaxLat - focusMinLat, 0.00001);
-      const lngSpan = Math.max(focusMaxLng - focusMinLng, 0.00001);
-      const padLat = latSpan * 0.02;
-      const padLng = lngSpan * 0.02;
-
-      // Expand by padding
-      let vpMinLat = focusMinLat - padLat;
-      let vpMaxLat = focusMaxLat + padLat;
-      let vpMinLng = focusMinLng - padLng;
-      let vpMaxLng = focusMaxLng + padLng;
-
-      // Enforce aspect ratio matching the SVG container to prevent distortion
-      const containerAspect = width / height;
-      let vpLatRange = vpMaxLat - vpMinLat;
-      let vpLngRange = vpMaxLng - vpMinLng;
-      // Convert lng range to approximate pixel-equivalent using cos(lat)
-      const cosLat = Math.cos(((vpMinLat + vpMaxLat) / 2) * Math.PI / 180);
-      const effectiveLngRange = vpLngRange * cosLat;
-      const currentAspect = effectiveLngRange / vpLatRange;
-
-      if (currentAspect > containerAspect) {
-        // Too wide — expand lat range
-        const neededLatRange = effectiveLngRange / containerAspect;
-        const extraLat = (neededLatRange - vpLatRange) / 2;
-        vpMinLat -= extraLat;
-        vpMaxLat += extraLat;
-      } else {
-        // Too tall — expand lng range
-        const neededLngRange = vpLatRange * containerAspect;
-        const extraLng = (neededLngRange / cosLat - vpLngRange) / 2;
-        vpMinLng -= extraLng;
-        vpMaxLng += extraLng;
-      }
-
-      const expanded = { minLat: vpMinLat, maxLat: vpMaxLat, minLng: vpMinLng, maxLng: vpMaxLng };
-
-      if (!imageBounds) return expanded;
-
-      return {
-        minLat: Math.max(expanded.minLat, imageBounds.bottomLeft.lat),
-        maxLat: Math.min(expanded.maxLat, imageBounds.topLeft.lat),
-        minLng: Math.max(expanded.minLng, imageBounds.topLeft.lng),
-        maxLng: Math.min(expanded.maxLng, imageBounds.topRight.lng),
-      };
+      return { minLat: focusMinLat, maxLat: focusMaxLat, minLng: focusMinLng, maxLng: focusMaxLng };
     })() : null;
     
     const dbgInfo = {
       perimeterBounds: { minLat, maxLat, minLng, maxLng },
       eaveBounds,
       overlayViewport,
+      imageCrop: imgCrop,
       perimeterPoints: perimCoords.length,
       eaveCount: eavesRaw.length,
       rakeCount: linearFeaturesData.filter(f => f.type === 'rake').length,
       hipCount: linearFeaturesData.filter(f => f.type === 'hip').length,
       valleyCount: linearFeaturesData.filter(f => f.type === 'valley').length,
       ridgeCount: linearFeaturesData.filter(f => f.type === 'ridge').length,
-      transformMode: localShowOverlay && overlayViewport ? 'satellite-cropped' : (localShowOverlay && imageBounds ? 'satellite-full' : 'bounds-fit'),
+      transformMode: localShowOverlay && imgCrop ? 'image-space-exact' : (localShowOverlay && imageBounds ? 'satellite-full' : 'bounds-fit'),
     };
     
     console.log('🗺️ Coordinate bounds verification:', dbgInfo);
@@ -681,20 +688,23 @@ export function SchematicRoofDiagram({
     const boundsHeightMeters = (maxLat - minLat) * metersPerDegreeLat;
     
     const toSvg = (coord: { lat: number; lng: number }) => {
-      if (localShowOverlay && overlayViewport) {
-        const overlayLatRange = Math.max(overlayViewport.maxLat - overlayViewport.minLat, 0.0000001);
-        const overlayLngRange = Math.max(overlayViewport.maxLng - overlayViewport.minLng, 0.0000001);
-
+      // PRIMARY: Image-space exact transform (satellite overlay mode)
+      if (localShowOverlay && imgCrop && imageBounds) {
+        const px = gpsToPixel(coord, imageBounds, { width: imgCrop.srcW, height: imgCrop.srcH });
+        const cropW = Math.max(imgCrop.maxX - imgCrop.minX, 0.001);
+        const cropH = Math.max(imgCrop.maxY - imgCrop.minY, 0.001);
         return {
-          x: ((coord.lng - overlayViewport.minLng) / overlayLngRange) * width,
-          y: ((overlayViewport.maxLat - coord.lat) / overlayLatRange) * height,
+          x: ((px.x - imgCrop.minX) / cropW) * width,
+          y: ((px.y - imgCrop.minY) / cropH) * height,
         };
       }
 
+      // FALLBACK: Full image bounds
       if (localShowOverlay && imageBounds) {
         return gpsToPixel(coord, imageBounds, { width, height });
       }
       
+      // FALLBACK: Pure geographic bounds-fit (no satellite)
       const xMeters = (coord.lng - minLng) * metersPerDegreeLng;
       const yMeters = (coord.lat - minLat) * metersPerDegreeLat;
       const scaleX = (width - padding * 2) / (boundsWidthMeters || 0.0001);
