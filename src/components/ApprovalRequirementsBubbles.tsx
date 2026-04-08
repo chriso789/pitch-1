@@ -550,29 +550,30 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Header with Progress and Action Button */}
-      <div className="flex items-center justify-between">
-        <div className="flex-1 mr-4">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-sm font-medium">Progress</span>
-            <span className="text-sm text-muted-foreground">
-              {completedCount} / {totalCount} complete
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex-1">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs font-medium">Progress</span>
+            <span className="text-[11px] text-muted-foreground">
+              {completedCount}/{totalCount}
             </span>
           </div>
-          <Progress value={progressPercentage} className="h-2" />
+          <Progress value={progressPercentage} className="h-1.5" />
         </div>
         
         {requirements.allComplete ? (
           <Button 
             onClick={onApprove} 
             disabled={disabled}
-            className="gradient-primary whitespace-nowrap"
+            size="sm"
+            className="gradient-primary whitespace-nowrap text-xs h-7 px-3"
           >
             Approve to Project
           </Button>
         ) : (
-          <Button disabled variant="outline" className="whitespace-nowrap">
+          <Button disabled variant="outline" size="sm" className="whitespace-nowrap text-xs h-7 px-3">
             Complete Requirements
           </Button>
         )}
