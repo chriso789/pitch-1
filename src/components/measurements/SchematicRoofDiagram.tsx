@@ -857,9 +857,10 @@ export function SchematicRoofDiagram({
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
       debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata },
-      solarSegmentPolygons: [], // No longer using Solar API for geometry
+      solarSegmentPolygons: [],
       qaData,
-      geometrySource, // Pass geometry source for conditional rendering
+      geometrySource,
+      imageCrop: imgCrop,
     };
   }, [measurement, width, height, facets, localShowOverlay, imageBounds]);
   
