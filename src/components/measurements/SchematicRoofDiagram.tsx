@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { useSegmentHover } from '@/contexts/SegmentHoverContext';
 import { getGeometrySource, getSourceLabel, getSourceBadgeColor, type GeometrySourceResult } from '@/lib/measurements/geometryConfidenceScorer';
 import { mergeAllPitchSources, getPredominantPitch, applyPitchToFacets } from '@/lib/measurements/pitchMerger';
+import { validateTopology } from '@/lib/measurements/topologyValidator';
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
   eave: '#006400',    // Dark green - Eaves
