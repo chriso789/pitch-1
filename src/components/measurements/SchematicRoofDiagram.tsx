@@ -231,7 +231,7 @@ export function SchematicRoofDiagram({
   const [reconstructedGeometry, setReconstructedGeometry] = useState<ReconstructedRoof | null>(null);
   // Default to minimized (badge) state - user can expand if needed
   const [showWarningBanner, setShowWarningBanner] = useState(false);
-  const [fittedEastEaveSegments, setFittedEastEaveSegments] = useState<SvgLineSegment[] | null>(null);
+  const [fittedEdges, setFittedEdges] = useState<AutoFitAllEdgesResult | null>(null);
   
   // Calculate geometry source and confidence for conditional rendering
   const geometrySourceInfo: GeometrySourceResult = useMemo(() => 
