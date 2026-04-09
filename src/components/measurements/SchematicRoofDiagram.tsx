@@ -1391,9 +1391,9 @@ export function SchematicRoofDiagram({
         
         {/* Rake segments - thick cyan straight lines with indexed labels */}
         {(() => {
-          const needsIndex = rakeSegments.length > 1;
+          const needsIndex = renderedRakeSegments.length > 1;
           
-          return rakeSegments.map((seg, i) => {
+          return renderedRakeSegments.map((seg, i) => {
             const midX = (seg.start.x + seg.end.x) / 2;
             const midY = (seg.start.y + seg.end.y) / 2;
             const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
