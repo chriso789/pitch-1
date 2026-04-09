@@ -110,7 +110,7 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
              >
                {companyInfo?.name || companyName} Estimate
              </h2>
-             <div className="h-1 w-full bg-gray-900 mt-1" />
+             <div className="h-1 w-full bg-primary mt-1" />
            </div>
          </div>
  
