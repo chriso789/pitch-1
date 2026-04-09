@@ -608,9 +608,17 @@ export function SchematicRoofDiagram({
     console.log('📊 Linear features by type (raw):', featureCounts);
     
     // Apply plausibility filter (eaves/rakes bypass the strict filtering)
-    const { plausible: plausibleLinearFeatures, implausibleCount, starburstDetected } = filterPlausibleLines(linearFeaturesData);
+    const { plausible: plausibleRaw, implausibleCount, starburstDetected } = filterPlausibleLines(linearFeaturesData);
     
-    console.log(`📐 Plausible features: ${plausibleLinearFeatures.length}, Filtered: ${implausibleCount}${starburstDetected ? ' (STARBURST HIDDEN)' : ''}`);
+    // Apply topology validation: fix hip/valley misclassification based on perimeter shape
+    const perimForValidation = perimCoords.length >= 3 ? perimCoords : [];
+    const { features: plausibleLinearFeatures, corrections: topologyCorrections, reclassifiedCount } = validateTopology(plausibleRaw, perimForValidation);
+    
+    if (reclassifiedCount > 0) {
+      console.log(`🔧 Topology validation reclassified ${reclassifiedCount} features:`, topologyCorrections);
+    }
+    
+    console.log(`📐 Plausible features: ${plausibleLinearFeatures.length}, Filtered: ${implausibleCount}, Reclassified: ${reclassifiedCount}${starburstDetected ? ' (STARBURST HIDDEN)' : ''}`);
     
     // Update diagram source if starburst was detected
     if (starburstDetected) {
