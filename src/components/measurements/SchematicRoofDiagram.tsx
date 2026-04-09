@@ -234,6 +234,10 @@ export function SchematicRoofDiagram({
   const [showWarningBanner, setShowWarningBanner] = useState(false);
   const [fittedEdges, setFittedEdges] = useState<AutoFitAllEdgesResult | null>(null);
   
+  // Manual segment correction state
+  const [segmentOverrides, setSegmentOverrides] = useState<Record<string, string>>({}); // key: "featureIndex" → new type
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; featureIdx: number; currentType: string } | null>(null);
+  
   // Calculate geometry source and confidence for conditional rendering
   const geometrySourceInfo: GeometrySourceResult = useMemo(() => 
     getGeometrySource(measurement), [measurement]);
