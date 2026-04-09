@@ -971,22 +971,20 @@ export function SchematicRoofDiagram({
   useEffect(() => {
     let cancelled = false;
 
-    const shouldFitEasternEave =
+    const shouldFitEdges =
       localShowOverlay &&
-      isLowConfidenceEdges &&
-      measurement?.footprint_source === 'solar_bbox_fallback' &&
       !!satelliteImageUrl &&
       !!overlayImageStyle &&
-      eaveSegments.length > 0;
+      (eaveSegments.length > 0 || rakeSegments.length > 0);
 
-    if (!shouldFitEasternEave || !overlayImageStyle) {
-      setFittedEastEaveSegments(null);
+    if (!shouldFitEdges || !overlayImageStyle) {
+      setFittedEdges(null);
       return () => {
         cancelled = true;
       };
     }
 
-    autoFitEasternEave({
+    autoFitAllEdges({
       imageUrl: satelliteImageUrl,
       imagePlacement: {
         left: overlayImageStyle.left,
@@ -997,16 +995,17 @@ export function SchematicRoofDiagram({
       canvasWidth: width,
       canvasHeight: height,
       eaveSegments,
+      rakeSegments,
     })
-      .then(adjustedSegments => {
+      .then(result => {
         if (!cancelled) {
-          setFittedEastEaveSegments(adjustedSegments);
+          setFittedEdges(result);
         }
       })
       .catch(error => {
-        console.warn('East eave auto-fit skipped:', error);
+        console.warn('Edge auto-fit skipped:', error);
         if (!cancelled) {
-          setFittedEastEaveSegments(null);
+          setFittedEdges(null);
         }
       });
 
@@ -1015,16 +1014,16 @@ export function SchematicRoofDiagram({
     };
   }, [
     eaveSegments,
+    rakeSegments,
     height,
-    isLowConfidenceEdges,
     localShowOverlay,
-    measurement?.footprint_source,
     overlayImageStyle,
     satelliteImageUrl,
     width,
   ]);
 
-  const renderedEaveSegments = fittedEastEaveSegments ?? eaveSegments;
+  const renderedEaveSegments = fittedEdges?.eaveSegments ?? eaveSegments;
+  const renderedRakeSegments = fittedEdges?.rakeSegments ?? rakeSegments;
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
