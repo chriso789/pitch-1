@@ -1496,6 +1496,10 @@ export function SchematicRoofDiagram({
             // Apply manual overrides
             const overrideType = segmentOverrides[`interior-${i}`];
             const effectiveType = overrideType || feature.type;
+            
+            // Skip hidden segments
+            if (effectiveType === 'hidden') return null;
+            
             const effectiveColor = FEATURE_COLORS[effectiveType as keyof typeof FEATURE_COLORS] || feature.color;
             
             const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
