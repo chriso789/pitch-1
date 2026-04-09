@@ -1492,35 +1492,79 @@ export function SchematicRoofDiagram({
           
           return interiorFeatures.map((feature, i) => {
             if (feature.points.length < 2) return null;
+            
+            // Apply manual overrides
+            const overrideType = segmentOverrides[`interior-${i}`];
+            const effectiveType = overrideType || feature.type;
+            const effectiveColor = FEATURE_COLORS[effectiveType as keyof typeof FEATURE_COLORS] || feature.color;
+            
             const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
-            const isDashed = feature.type === 'step';
+            const isDashed = effectiveType === 'step';
             
             // Set stroke width based on feature type
-            const strokeWidth = feature.type === 'hip' ? 4 : feature.type === 'valley' ? 4 : 4;
+            const strokeWidth = 4;
             
             // Track index for this feature type
-            currentIndex[feature.type] = (currentIndex[feature.type] || 0) + 1;
-            const idx = currentIndex[feature.type];
-            const needsIndex = featureCountsByType[feature.type] > 1;
+            currentIndex[effectiveType] = (currentIndex[effectiveType] || 0) + 1;
+            const idx = currentIndex[effectiveType];
+            const needsIndex = (featureCountsByType[effectiveType] || 0) > 1;
             
-            // Generate indexed label (e.g., "Hip-A 27'" or "Ridge 24'" if only one)
-            const typeLabel = feature.type.charAt(0).toUpperCase() + feature.type.slice(1);
-            const indexLabel = needsIndex ? String.fromCharCode(64 + idx) : ''; // A, B, C, D...
+            // Generate indexed label
+            const typeLabel = effectiveType.charAt(0).toUpperCase() + effectiveType.slice(1);
+            const indexLabel = needsIndex ? String.fromCharCode(64 + idx) : '';
             const labelText = needsIndex 
               ? `${typeLabel}-${indexLabel} ${Math.round(feature.length)}'`
               : `${typeLabel} ${Math.round(feature.length)}'`;
             const labelWidth = labelText.length * 6 + 10;
             
+            // Click handler for reclassification
+            const handleContextMenu = (e: React.MouseEvent) => {
+              e.preventDefault();
+              e.stopPropagation();
+              const svgRect = (e.currentTarget as Element).closest('svg')?.getBoundingClientRect();
+              if (svgRect) {
+                setContextMenu({
+                  x: e.clientX - svgRect.left,
+                  y: e.clientY - svgRect.top,
+                  featureIdx: i,
+                  currentType: effectiveType,
+                });
+              }
+            };
+            
             return (
-              <g key={`${feature.type}-${i}`}>
+              <g key={`${feature.type}-${i}`} 
+                 onContextMenu={handleContextMenu}
+                 style={{ cursor: 'context-menu' }}
+              >
+                {/* Wider invisible hit area for easier clicking */}
                 <path
                   d={pathD}
                   fill="none"
-                  stroke={feature.color}
+                  stroke="transparent"
+                  strokeWidth={14}
+                  strokeLinecap="round"
+                  onContextMenu={handleContextMenu}
+                />
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={effectiveColor}
                   strokeWidth={strokeWidth}
                   strokeLinecap="round"
                   strokeDasharray={isDashed ? '10,5' : undefined}
                 />
+                {/* Override indicator */}
+                {overrideType && (
+                  <circle
+                    cx={feature.points[0].x}
+                    cy={feature.points[0].y}
+                    r={4}
+                    fill="#FFF"
+                    stroke={effectiveColor}
+                    strokeWidth={2}
+                  />
+                )}
                 
                 {/* Length label at midpoint with type and index */}
                 {showLengthLabels && feature.length > 0 && feature.points.length >= 2 && (
@@ -1531,7 +1575,6 @@ export function SchematicRoofDiagram({
                     const midX = (p1.x + p2.x) / 2;
                     const midY = (p1.y + p2.y) / 2;
                     const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-                    // Keep text upright
                     const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
                     
                     return (
@@ -1542,7 +1585,7 @@ export function SchematicRoofDiagram({
                           width={labelWidth}
                           height={16}
                           fill="white"
-                          stroke={feature.color}
+                          stroke={effectiveColor}
                           strokeWidth={1.5}
                           rx={3}
                         />
@@ -1552,7 +1595,7 @@ export function SchematicRoofDiagram({
                           textAnchor="middle"
                           fontSize={10}
                           fontWeight="bold"
-                          fill={feature.color}
+                          fill={effectiveColor}
                         >
                           {labelText}
                         </text>
@@ -1564,6 +1607,64 @@ export function SchematicRoofDiagram({
             );
           });
         })()}
+        
+        {/* Context menu for segment reclassification */}
+        {contextMenu && (
+          <g>
+            {/* Backdrop to close menu */}
+            <rect x={0} y={0} width={width} height={height} fill="transparent" 
+              onClick={() => setContextMenu(null)} />
+            {/* Menu panel */}
+            <foreignObject x={contextMenu.x} y={contextMenu.y} width={140} height={150}>
+              <div className="bg-background border rounded-md shadow-lg p-1 text-xs" onClick={e => e.stopPropagation()}>
+                <div className="px-2 py-1 text-muted-foreground font-medium border-b mb-1">Reclassify as:</div>
+                {['ridge', 'hip', 'valley'].filter(t => t !== contextMenu.currentType).map(newType => (
+                  <button
+                    key={newType}
+                    className="w-full text-left px-2 py-1.5 hover:bg-accent rounded flex items-center gap-2"
+                    onClick={() => {
+                      setSegmentOverrides(prev => ({
+                        ...prev,
+                        [`interior-${contextMenu.featureIdx}`]: newType,
+                      }));
+                      setContextMenu(null);
+                    }}
+                  >
+                    <span className="w-3 h-0.5 inline-block" style={{ backgroundColor: FEATURE_COLORS[newType as keyof typeof FEATURE_COLORS] }} />
+                    {newType.charAt(0).toUpperCase() + newType.slice(1)}
+                  </button>
+                ))}
+                <button
+                  className="w-full text-left px-2 py-1.5 hover:bg-destructive/10 text-destructive rounded mt-1"
+                  onClick={() => {
+                    setSegmentOverrides(prev => ({
+                      ...prev,
+                      [`interior-${contextMenu.featureIdx}`]: 'hidden',
+                    }));
+                    setContextMenu(null);
+                  }}
+                >
+                  Remove segment
+                </button>
+                {segmentOverrides[`interior-${contextMenu.featureIdx}`] && (
+                  <button
+                    className="w-full text-left px-2 py-1.5 hover:bg-accent rounded text-muted-foreground"
+                    onClick={() => {
+                      setSegmentOverrides(prev => {
+                        const next = { ...prev };
+                        delete next[`interior-${contextMenu.featureIdx}`];
+                        return next;
+                      });
+                      setContextMenu(null);
+                    }}
+                  >
+                    Reset to original
+                  </button>
+                )}
+              </div>
+            </foreignObject>
+          </g>
+        )}
         
         {/* Debug: Numbered perimeter vertex markers */}
         {localShowMarkers && perimeterCoords && perimeterCoords.map((coord: any, i: number) => (
