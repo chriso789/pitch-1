@@ -3,7 +3,7 @@ import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, calculateGPSPolygonArea, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
-import { autoFitEasternEave, type SvgLineSegment } from '@/lib/measurements/edgeAutoFit';
+import { autoFitAllEdges, type SvgLineSegment, type AutoFitAllEdgesResult } from '@/lib/measurements/edgeAutoFit';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 import { Badge } from '@/components/ui/badge';
