@@ -18,15 +18,29 @@ export interface ImagePlacement {
   height: number;
 }
 
-interface AutoFitEasternEaveOptions {
+interface AutoFitOptions {
   canvasWidth: number;
   canvasHeight: number;
-  eaveSegments: SvgLineSegment[];
   imagePlacement: ImagePlacement;
   imageUrl: string;
   inwardSearchPx?: number;
   outwardSearchPx?: number;
   sampleGapPx?: number;
+}
+
+interface AutoFitEasternEaveOptions extends AutoFitOptions {
+  eaveSegments: SvgLineSegment[];
+}
+
+export interface AutoFitAllEdgesOptions extends AutoFitOptions {
+  eaveSegments: SvgLineSegment[];
+  rakeSegments: SvgLineSegment[];
+}
+
+export interface AutoFitAllEdgesResult {
+  eaveSegments: SvgLineSegment[];
+  rakeSegments: SvgLineSegment[];
+  adjustedCount: number;
 }
 
 interface LocalFit {
@@ -171,6 +185,89 @@ async function createImageData(
   return ctx.getImageData(0, 0, canvasWidth, canvasHeight);
 }
 
+/**
+ * Calculate the inward normal for a segment, pointing toward the roof center
+ */
+function calculateInwardNormal(
+  segment: SvgLineSegment,
+  roofCenter: SvgPoint
+): SvgPoint {
+  const dx = segment.end.x - segment.start.x;
+  const dy = segment.end.y - segment.start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return { x: 0, y: -1 };
+
+  const baseNormal = { x: -dy / len, y: dx / len };
+  const segMid = {
+    x: (segment.start.x + segment.end.x) / 2,
+    y: (segment.start.y + segment.end.y) / 2,
+  };
+  const toCenter = { x: roofCenter.x - segMid.x, y: roofCenter.y - segMid.y };
+
+  // Ensure normal points inward (toward roof center)
+  if (baseNormal.x * toCenter.x + baseNormal.y * toCenter.y >= 0) {
+    return baseNormal;
+  }
+  return { x: -baseNormal.x, y: -baseNormal.y };
+}
+
+/**
+ * Fit a single segment to the satellite image using luminance contrast detection.
+ * Returns the adjusted segment, or null if no improvement found.
+ */
+function fitSingleSegment(
+  imageData: ImageData,
+  segment: SvgLineSegment,
+  roofCenter: SvgPoint,
+  inwardSearchPx: number,
+  outwardSearchPx: number,
+  sampleGapPx: number
+): SvgLineSegment | null {
+  const dx = segment.end.x - segment.start.x;
+  const dy = segment.end.y - segment.start.y;
+  const segmentLengthPx = Math.hypot(dx, dy);
+  if (segmentLengthPx < 20) return null;
+
+  const inwardNormal = calculateInwardNormal(segment, roofCenter);
+
+  const sampleTs = [0.12, 0.22, 0.32, 0.42, 0.58, 0.68, 0.78, 0.88];
+  const fits = sampleTs.map(t =>
+    fitLocalOffset(imageData, segment, inwardNormal, t, inwardSearchPx, outwardSearchPx, sampleGapPx)
+  );
+
+  const baseScore = average(fits.map(fit => fit.baseScore));
+  const fittedScore = average(fits.map(fit => fit.bestScore));
+  const startOffset = average(fits.slice(0, 4).map(fit => fit.bestOffset));
+  const endOffset = average(fits.slice(-4).map(fit => fit.bestOffset));
+
+  // Only apply if there's a meaningful improvement
+  if (fittedScore < baseScore * 1.04 && fittedScore - baseScore < 12) {
+    return null;
+  }
+
+  const limitedStartOffset = clamp(startOffset, -outwardSearchPx, inwardSearchPx);
+  const limitedEndOffset = clamp(endOffset, limitedStartOffset - 8, limitedStartOffset + 8);
+
+  if (Math.abs(limitedStartOffset) < 0.75 && Math.abs(limitedEndOffset) < 0.75) {
+    return null;
+  }
+
+  return {
+    ...segment,
+    start: {
+      x: segment.start.x + inwardNormal.x * limitedStartOffset,
+      y: segment.start.y + inwardNormal.y * limitedStartOffset,
+    },
+    end: {
+      x: segment.end.x + inwardNormal.x * limitedEndOffset,
+      y: segment.end.y + inwardNormal.y * limitedEndOffset,
+    },
+  };
+}
+
+/**
+ * Legacy: auto-fit only the eastern-most eave segment.
+ */
 export async function autoFitEasternEave({
   canvasWidth,
   canvasHeight,
@@ -183,17 +280,8 @@ export async function autoFitEasternEave({
 }: AutoFitEasternEaveOptions): Promise<SvgLineSegment[] | null> {
   if (typeof window === 'undefined' || eaveSegments.length === 0) return null;
 
-  const eastIndex = eaveSegments.reduce((bestIndex, segment, index, segments) => {
-    const bestMidX = (segments[bestIndex].start.x + segments[bestIndex].end.x) / 2;
-    const currentMidX = (segment.start.x + segment.end.x) / 2;
-    return currentMidX > bestMidX ? index : bestIndex;
-  }, 0);
-
-  const eastSegment = eaveSegments[eastIndex];
-  const dx = eastSegment.end.x - eastSegment.start.x;
-  const dy = eastSegment.end.y - eastSegment.start.y;
-  const segmentLengthPx = Math.hypot(dx, dy);
-  if (segmentLengthPx < 24) return null;
+  const imageData = await createImageData(imageUrl, imagePlacement, canvasWidth, canvasHeight);
+  if (!imageData) return null;
 
   const roofCenter = eaveSegments.reduce(
     (acc, segment) => ({
@@ -205,52 +293,92 @@ export async function autoFitEasternEave({
   roofCenter.x /= eaveSegments.length;
   roofCenter.y /= eaveSegments.length;
 
-  const baseNormal = { x: -dy / segmentLengthPx, y: dx / segmentLengthPx };
-  const segmentMidpoint = {
-    x: (eastSegment.start.x + eastSegment.end.x) / 2,
-    y: (eastSegment.start.y + eastSegment.end.y) / 2,
-  };
-  const toCenter = { x: roofCenter.x - segmentMidpoint.x, y: roofCenter.y - segmentMidpoint.y };
-  const inwardNormal =
-    baseNormal.x * toCenter.x + baseNormal.y * toCenter.y >= 0
-      ? baseNormal
-      : { x: -baseNormal.x, y: -baseNormal.y };
+  // Find the eastern-most eave
+  const eastIndex = eaveSegments.reduce((bestIndex, segment, index, segments) => {
+    const bestMidX = (segments[bestIndex].start.x + segments[bestIndex].end.x) / 2;
+    const currentMidX = (segment.start.x + segment.end.x) / 2;
+    return currentMidX > bestMidX ? index : bestIndex;
+  }, 0);
+
+  const adjusted = fitSingleSegment(
+    imageData, eaveSegments[eastIndex], roofCenter,
+    inwardSearchPx, outwardSearchPx, sampleGapPx
+  );
+
+  if (!adjusted) return null;
+
+  return eaveSegments.map((seg, i) => (i === eastIndex ? adjusted : seg));
+}
+
+/**
+ * Auto-fit ALL eave and rake segments to the satellite image using
+ * luminance-based contrast detection along each edge's normal.
+ * This snaps each boundary edge to the nearest visible roof boundary.
+ */
+export async function autoFitAllEdges({
+  canvasWidth,
+  canvasHeight,
+  eaveSegments,
+  rakeSegments,
+  imagePlacement,
+  imageUrl,
+  inwardSearchPx = 18,
+  outwardSearchPx = 8,
+  sampleGapPx = 2.5,
+}: AutoFitAllEdgesOptions): Promise<AutoFitAllEdgesResult | null> {
+  if (typeof window === 'undefined') return null;
+  if (eaveSegments.length === 0 && rakeSegments.length === 0) return null;
 
   const imageData = await createImageData(imageUrl, imagePlacement, canvasWidth, canvasHeight);
   if (!imageData) return null;
 
-  const sampleTs = [0.12, 0.22, 0.32, 0.42, 0.58, 0.68, 0.78, 0.88];
-  const fits = sampleTs.map(t =>
-    fitLocalOffset(imageData, eastSegment, inwardNormal, t, inwardSearchPx, outwardSearchPx, sampleGapPx)
+  // Calculate roof center from all boundary segments
+  const allSegments = [...eaveSegments, ...rakeSegments];
+  const roofCenter = allSegments.reduce(
+    (acc, segment) => ({
+      x: acc.x + (segment.start.x + segment.end.x) / 2,
+      y: acc.y + (segment.start.y + segment.end.y) / 2,
+    }),
+    { x: 0, y: 0 }
   );
+  roofCenter.x /= allSegments.length;
+  roofCenter.y /= allSegments.length;
 
-  const baseScore = average(fits.map(fit => fit.baseScore));
-  const fittedScore = average(fits.map(fit => fit.bestScore));
-  const startOffset = average(fits.slice(0, 4).map(fit => fit.bestOffset));
-  const endOffset = average(fits.slice(-4).map(fit => fit.bestOffset));
+  let adjustedCount = 0;
 
-  if (fittedScore < baseScore * 1.04 && fittedScore - baseScore < 12) {
-    return null;
-  }
+  // Fit each eave segment
+  const fittedEaves = eaveSegments.map(seg => {
+    const adjusted = fitSingleSegment(
+      imageData, seg, roofCenter,
+      inwardSearchPx, outwardSearchPx, sampleGapPx
+    );
+    if (adjusted) {
+      adjustedCount++;
+      return adjusted;
+    }
+    return seg;
+  });
 
-  const limitedStartOffset = clamp(startOffset, -outwardSearchPx, inwardSearchPx);
-  const limitedEndOffset = clamp(endOffset, limitedStartOffset - 8, limitedStartOffset + 8);
+  // Fit each rake segment
+  const fittedRakes = rakeSegments.map(seg => {
+    const adjusted = fitSingleSegment(
+      imageData, seg, roofCenter,
+      inwardSearchPx, outwardSearchPx, sampleGapPx
+    );
+    if (adjusted) {
+      adjustedCount++;
+      return adjusted;
+    }
+    return seg;
+  });
 
-  if (Math.abs(limitedStartOffset) < 0.75 && Math.abs(limitedEndOffset) < 0.75) {
-    return null;
-  }
+  if (adjustedCount === 0) return null;
 
-  const adjustedSegment: SvgLineSegment = {
-    ...eastSegment,
-    start: {
-      x: eastSegment.start.x + inwardNormal.x * limitedStartOffset,
-      y: eastSegment.start.y + inwardNormal.y * limitedStartOffset,
-    },
-    end: {
-      x: eastSegment.end.x + inwardNormal.x * limitedEndOffset,
-      y: eastSegment.end.y + inwardNormal.y * limitedEndOffset,
-    },
+  console.log(`🎯 Auto-fit: adjusted ${adjustedCount}/${allSegments.length} boundary edges to satellite imagery`);
+
+  return {
+    eaveSegments: fittedEaves,
+    rakeSegments: fittedRakes,
+    adjustedCount,
   };
-
-  return eaveSegments.map((segment, index) => (index === eastIndex ? adjustedSegment : segment));
 }
