@@ -3,7 +3,7 @@ import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, calculateGPSPolygonArea, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
-import { autoFitEasternEave, type SvgLineSegment } from '@/lib/measurements/edgeAutoFit';
+import { autoFitAllEdges, type SvgLineSegment, type AutoFitAllEdgesResult } from '@/lib/measurements/edgeAutoFit';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 import { Badge } from '@/components/ui/badge';
@@ -231,7 +231,7 @@ export function SchematicRoofDiagram({
   const [reconstructedGeometry, setReconstructedGeometry] = useState<ReconstructedRoof | null>(null);
   // Default to minimized (badge) state - user can expand if needed
   const [showWarningBanner, setShowWarningBanner] = useState(false);
-  const [fittedEastEaveSegments, setFittedEastEaveSegments] = useState<SvgLineSegment[] | null>(null);
+  const [fittedEdges, setFittedEdges] = useState<AutoFitAllEdgesResult | null>(null);
   
   // Calculate geometry source and confidence for conditional rendering
   const geometrySourceInfo: GeometrySourceResult = useMemo(() => 
@@ -971,22 +971,20 @@ export function SchematicRoofDiagram({
   useEffect(() => {
     let cancelled = false;
 
-    const shouldFitEasternEave =
+    const shouldFitEdges =
       localShowOverlay &&
-      isLowConfidenceEdges &&
-      measurement?.footprint_source === 'solar_bbox_fallback' &&
       !!satelliteImageUrl &&
       !!overlayImageStyle &&
-      eaveSegments.length > 0;
+      (eaveSegments.length > 0 || rakeSegments.length > 0);
 
-    if (!shouldFitEasternEave || !overlayImageStyle) {
-      setFittedEastEaveSegments(null);
+    if (!shouldFitEdges || !overlayImageStyle) {
+      setFittedEdges(null);
       return () => {
         cancelled = true;
       };
     }
 
-    autoFitEasternEave({
+    autoFitAllEdges({
       imageUrl: satelliteImageUrl,
       imagePlacement: {
         left: overlayImageStyle.left,
@@ -997,16 +995,17 @@ export function SchematicRoofDiagram({
       canvasWidth: width,
       canvasHeight: height,
       eaveSegments,
+      rakeSegments,
     })
-      .then(adjustedSegments => {
+      .then(result => {
         if (!cancelled) {
-          setFittedEastEaveSegments(adjustedSegments);
+          setFittedEdges(result);
         }
       })
       .catch(error => {
-        console.warn('East eave auto-fit skipped:', error);
+        console.warn('Edge auto-fit skipped:', error);
         if (!cancelled) {
-          setFittedEastEaveSegments(null);
+          setFittedEdges(null);
         }
       });
 
@@ -1015,16 +1014,16 @@ export function SchematicRoofDiagram({
     };
   }, [
     eaveSegments,
+    rakeSegments,
     height,
-    isLowConfidenceEdges,
     localShowOverlay,
-    measurement?.footprint_source,
     overlayImageStyle,
     satelliteImageUrl,
     width,
   ]);
 
-  const renderedEaveSegments = fittedEastEaveSegments ?? eaveSegments;
+  const renderedEaveSegments = fittedEdges?.eaveSegments ?? eaveSegments;
+  const renderedRakeSegments = fittedEdges?.rakeSegments ?? rakeSegments;
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
@@ -1190,7 +1189,7 @@ export function SchematicRoofDiagram({
   return (
     <div className="relative rounded-lg overflow-hidden border" style={{ width, height, backgroundColor }}>
       {/* Low-confidence edges badge */}
-      {isLowConfidenceEdges && (renderedEaveSegments.length > 0 || rakeSegments.length > 0) && (
+      {isLowConfidenceEdges && (renderedEaveSegments.length > 0 || renderedRakeSegments.length > 0) && (
         <div className="absolute top-2 left-2 z-20">
           <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-300 text-xs">
             <AlertTriangle className="w-3 h-3 mr-1" />
@@ -1392,9 +1391,9 @@ export function SchematicRoofDiagram({
         
         {/* Rake segments - thick cyan straight lines with indexed labels */}
         {(() => {
-          const needsIndex = rakeSegments.length > 1;
+          const needsIndex = renderedRakeSegments.length > 1;
           
-          return rakeSegments.map((seg, i) => {
+          return renderedRakeSegments.map((seg, i) => {
             const midX = (seg.start.x + seg.end.x) / 2;
             const midY = (seg.start.y + seg.end.y) / 2;
             const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
