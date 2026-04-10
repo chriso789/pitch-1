@@ -598,10 +598,10 @@ function calculatePolygonArea(perimeter: [number, number][]): number {
 // Apply learned corrections from database
 async function applyLearnedCorrections(
   supabase: any,
-  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] },
+  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; [key: string]: any },
   perimeter: [number, number][],
   tenantId?: string
-): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] }> {
+): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; [key: string]: any }> {
   
   if (!tenantId) return features
 
