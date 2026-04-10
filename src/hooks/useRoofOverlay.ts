@@ -9,6 +9,9 @@ export interface RoofOverlayOutput {
   ridges: RoofOverlayLine[];
   hips: RoofOverlayLine[];
   valleys: RoofOverlayLine[];
+  eaves: RoofOverlayLine[];
+  rakes: RoofOverlayLine[];
+  detectedPerimeter?: [number, number][]; // AI-traced actual roof drip-line
   metadata: {
     roofType: string;
     qualityScore: number;
@@ -16,7 +19,8 @@ export interface RoofOverlayOutput {
     requiresManualReview: boolean;
     totalAreaSqft?: number;
     processedAt: string;
-    alignmentAttempts?: number; // Phase 4: How many iterations to reach alignment
+    alignmentAttempts?: number;
+    perimeterSource?: string;
   };
 }
 
