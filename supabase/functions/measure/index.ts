@@ -3964,10 +3964,15 @@ function convertVisionOverlayToMeasureResult(
     ridges: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
     hips: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
     valleys: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    eaves?: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    rakes?: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    detectedPerimeter?: [number, number][];
     metadata: {
       roofType?: string;
       qualityScore?: number;
       totalAreaSqft?: number;
+      perimeterSource?: string;
+    };
     };
   },
   propertyId: string,
@@ -4055,7 +4060,48 @@ function convertVisionOverlayToMeasureResult(
       });
     }
     
-    // Calculate eave/rake from perimeter (simplified - assume all edges are eave)
+    // Add eaves from AI vision detection (instead of fake 70/30 split from perimeter)
+    let eaveTotalFt = 0;
+    let rakeTotalFt = 0;
+    
+    if (overlay.eaves && overlay.eaves.length > 0) {
+      for (const eave of overlay.eaves) {
+        const lengthFt = calcLengthFt(eave.start, eave.end);
+        eaveTotalFt += lengthFt;
+        linearFeatures.push({
+          id: `vision-eave-${featureId++}`,
+          type: 'eave',
+          wkt: `LINESTRING(${eave.start[0]} ${eave.start[1]}, ${eave.end[0]} ${eave.end[1]})`,
+          length_ft: lengthFt,
+          label: `Eave ${featureId - 1} (vision)`
+        });
+      }
+    }
+    
+    if (overlay.rakes && overlay.rakes.length > 0) {
+      for (const rake of overlay.rakes) {
+        const lengthFt = calcLengthFt(rake.start, rake.end);
+        rakeTotalFt += lengthFt;
+        linearFeatures.push({
+          id: `vision-rake-${featureId++}`,
+          type: 'rake',
+          wkt: `LINESTRING(${rake.start[0]} ${rake.start[1]}, ${rake.end[0]} ${rake.end[1]})`,
+          length_ft: lengthFt,
+          label: `Rake ${featureId - 1} (vision)`
+        });
+      }
+    }
+    
+    // Fallback: derive eaves/rakes from perimeter if AI didn't classify them
+    if (eaveTotalFt === 0 && rakeTotalFt === 0) {
+      let perimeterTotalFt = 0;
+      for (let i = 0; i < perimeter.length - 1; i++) {
+        perimeterTotalFt += calcLengthFt(perimeter[i], perimeter[i + 1]);
+      }
+      eaveTotalFt = perimeterTotalFt * 0.7;
+      rakeTotalFt = perimeterTotalFt * 0.3;
+    }
+    
     let perimeterTotalFt = 0;
     for (let i = 0; i < perimeter.length - 1; i++) {
       perimeterTotalFt += calcLengthFt(perimeter[i], perimeter[i + 1]);
@@ -4086,8 +4132,8 @@ function convertVisionOverlayToMeasureResult(
         ridge_ft: ridgeTotalFt,
         hip_ft: hipTotalFt,
         valley_ft: valleyTotalFt,
-        eave_ft: perimeterTotalFt * 0.7, // Rough split
-        rake_ft: perimeterTotalFt * 0.3,
+        eave_ft: eaveTotalFt,
+        rake_ft: rakeTotalFt,
       },
       geom_wkt: ensureMultiPolygon(perimeterWkt)
     };

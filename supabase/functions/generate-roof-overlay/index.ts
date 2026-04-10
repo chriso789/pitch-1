@@ -20,6 +20,9 @@ interface RoofOverlayOutput {
   ridges: RoofLine[];
   hips: RoofLine[];
   valleys: RoofLine[];
+  eaves: RoofLine[];
+  rakes: RoofLine[];
+  detectedPerimeter?: [number, number][]; // AI-traced actual roof drip-line
   metadata: {
     roofType: string;
     qualityScore: number;
@@ -28,6 +31,7 @@ interface RoofOverlayOutput {
     totalAreaSqft?: number;
     processedAt: string;
     alignmentAttempts?: number;
+    perimeterSource?: string; // 'ai_vision' | 'osm' | 'solar'
   };
 }
 
@@ -121,33 +125,40 @@ Deno.serve(async (req) => {
     const perimeter = extractPerimeter(analysisResult.data)
     console.log(`📐 Perimeter: ${perimeter.length} vertices`)
 
-    // Step 4: PHASE 1 - Enhanced AI Vision Detection with shadow analysis
+    // Step 4: PHASE 1 - Enhanced AI Vision Detection with perimeter tracing + eave/rake classification
     const detectedFeatures = await detectAllFeaturesFromImage(
       mapboxUrl,
       perimeter,
       coordinates
     )
-    console.log(`🔍 Detected: ${detectedFeatures.ridges.length} ridges, ${detectedFeatures.hips.length} hips, ${detectedFeatures.valleys.length} valleys`)
+    console.log(`🔍 Detected: ${detectedFeatures.ridges.length} ridges, ${detectedFeatures.hips.length} hips, ${detectedFeatures.valleys.length} valleys, ${detectedFeatures.eaves.length} eaves, ${detectedFeatures.rakes.length} rakes`)
+
+    // Use AI-traced perimeter if available (more accurate than OSM), otherwise fall back
+    const effectivePerimeter = (detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4)
+      ? detectedFeatures.aiTracedPerimeter
+      : perimeter
+    
+    if (detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4) {
+      console.log(`🏠 Using AI-traced perimeter (${effectivePerimeter.length} vertices) instead of footprint source (${perimeter.length} vertices)`)
+    }
 
     // Step 5: Apply learned corrections from measurement_corrections table
     const correctedFeatures = await applyLearnedCorrections(
       supabase,
       detectedFeatures,
-      perimeter,
+      effectivePerimeter,
       tenantId
     )
 
-    // Step 6: PHASE 3 - Strict endpoint snapping with validation
-    const snappedFeatures = snapLinesToCorners(correctedFeatures, perimeter)
+    // Step 6: PHASE 3 - Strict endpoint snapping with validation (interior lines only)
+    const snappedFeatures = snapLinesToCorners(correctedFeatures, effectivePerimeter)
 
     // Step 6.5: PHASE 3 - Validate no floating lines
-    const floatingValidation = validateNoFloatingLines(snappedFeatures, perimeter)
+    const floatingValidation = validateNoFloatingLines(snappedFeatures, effectivePerimeter)
     if (!floatingValidation.valid) {
       console.warn(`⚠️ ${floatingValidation.floatingEndpoints.length} floating endpoint(s) detected - attempting retry`)
-      // Re-run AI Vision with feedback about floating lines
-      const retryFeatures = await retryWithFeedback(mapboxUrl, floatingValidation.floatingEndpoints, perimeter, coordinates)
+      const retryFeatures = await retryWithFeedback(mapboxUrl, floatingValidation.floatingEndpoints, effectivePerimeter, coordinates)
       if (retryFeatures) {
-        // Merge retry results with original
         snappedFeatures.ridges = mergeFeatures(snappedFeatures.ridges, retryFeatures.ridges)
         snappedFeatures.hips = mergeFeatures(snappedFeatures.hips, retryFeatures.hips)
         snappedFeatures.valleys = mergeFeatures(snappedFeatures.valleys, retryFeatures.valleys)
@@ -163,7 +174,7 @@ Deno.serve(async (req) => {
       const verification = await verifyVisualAlignment(
         mapboxUrl,
         verifiedFeatures,
-        perimeter,
+        effectivePerimeter,
         coordinates
       )
       
@@ -171,7 +182,6 @@ Deno.serve(async (req) => {
       console.log(`📊 Alignment attempt ${attempts + 1}: score = ${alignmentScore}%`)
       
       if (alignmentScore < MIN_ALIGNMENT_SCORE && attempts < MAX_ALIGNMENT_ATTEMPTS - 1) {
-        // Apply suggested adjustments for next iteration
         verifiedFeatures = applyAlignmentAdjustments(verifiedFeatures, verification.adjustments)
       } else {
         verifiedFeatures = verification.features
@@ -179,9 +189,11 @@ Deno.serve(async (req) => {
       attempts++
     }
 
-    // Step 8: PHASE 5 - Build final output with requiresReview flags and visual evidence
+    // Step 8: PHASE 5 - Build final output with eaves/rakes and AI-traced perimeter
     const output: RoofOverlayOutput = {
-      perimeter,
+      perimeter: effectivePerimeter,
+      detectedPerimeter: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
+        ? detectedFeatures.aiTracedPerimeter : undefined,
       ridges: verifiedFeatures.ridges.map(r => ({
         ...r,
         requiresReview: r.confidence < 80 || !r.snappedToTarget
@@ -194,6 +206,8 @@ Deno.serve(async (req) => {
         ...v,
         requiresReview: v.confidence < 80 || !v.snappedToTarget
       })),
+      eaves: detectedFeatures.eaves,
+      rakes: detectedFeatures.rakes,
       metadata: {
         roofType: analysisResult.data?.aiAnalysis?.roofType || 'complex',
         qualityScore: calculateQualityScore(verifiedFeatures),
@@ -201,7 +215,9 @@ Deno.serve(async (req) => {
         requiresManualReview: checkIfRequiresReview(verifiedFeatures),
         totalAreaSqft: analysisResult.data?.measurements?.totalAreaSqft,
         processedAt: new Date().toISOString(),
-        alignmentAttempts: attempts
+        alignmentAttempts: attempts,
+        perimeterSource: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
+          ? 'ai_vision' : 'footprint_source'
       }
     }
 
@@ -299,7 +315,7 @@ async function detectAllFeaturesFromImage(
   imageUrl: string,
   perimeter: [number, number][],
   coordinates: { lat: number; lng: number }
-): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] }> {
+): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; eaves: RoofLine[]; rakes: RoofLine[]; aiTracedPerimeter: [number, number][] }> {
   
   // Classify perimeter corners for better snapping hints
   const classifiedCorners = classifyPerimeterCorners(perimeter)
@@ -308,50 +324,61 @@ async function detectAllFeaturesFromImage(
   
   console.log(`📐 Corner analysis: ${convexCorners.length} convex (hip targets), ${reflexCorners.length} reflex (valley origins)`)
 
-  // ENHANCED PROMPT with shadow detection, corner classification, and strict topology rules
-  const prompt = `You are analyzing a satellite roof image. Your goal is to trace roof topology lines EXACTLY as they appear.
+  // ENHANCED PROMPT with perimeter tracing, eave/rake classification, and topology rules
+  const prompt = `You are analyzing a satellite roof image. Your goal is to trace the EXACT roof outline and interior topology lines as they appear.
 
 BUILDING SHAPE ANALYSIS:
-- This building has ${perimeter.length} perimeter corners
+- The footprint source has ${perimeter.length} perimeter corners
 - ${convexCorners.length} CONVEX corners (outward-pointing, where hips terminate at eaves)
 - ${reflexCorners.length} REFLEX/CONCAVE corners (inward-pointing, L/T/U shaped junctions where valleys originate)
 
-DETECTION PRIORITIES (in order):
+**IMPORTANT: The footprint may be INACCURATE (simplified rectangle from OSM). You MUST trace the ACTUAL roof drip-line edge visible in the satellite image.**
 
-1. RIDGES: The highest lines where two roof planes meet at the peak
-   - Look for: BRIGHT LINEAR HIGHLIGHTS running along roof peaks
-   - Usually run HORIZONTALLY or along the longest building axis
-   - Ridge ENDPOINTS are where HIPS connect to them
-   - A simple hip roof has 1 ridge with 4 hips (one to each corner)
-   
-2. HIPS: Diagonal lines from ridge endpoints DOWN to building corners
-   - Look for: SHADOW LINES angling diagonally from ridge to corners
-   - TOPOLOGY RULE: Every hip STARTS at a ridge endpoint and ENDS at a convex perimeter corner
-   - A standard hip roof has 4 hips connecting the 2 ridge endpoints to 4 building corners
-   - Hips should be roughly equal length on opposite sides
-   
-3. VALLEYS: Internal troughs where two roof wings meet
-   - Look for: DARK V-SHAPED SHADOWS forming linear troughs
-   - TOPOLOGY RULE: Valleys START at REFLEX corners (L/T/U junctions) and END at a ridge
-   - Only present in L-shaped, T-shaped, or complex buildings
-   - If building is rectangular with no inward corners, there are NO valleys
+STEP 1 - TRACE THE ACTUAL ROOF PERIMETER (most critical):
+- Trace the EXACT visible roof edge (drip line / gutter line) as seen in the satellite image
+- Include ALL corners: kickouts, extensions, L-shapes, T-shapes, bump-outs
+- The real roof is almost NEVER a perfect rectangle - look for setbacks, porches, garage extensions
+- Provide vertices as [x%, y%] pairs going clockwise around the roof
+- Include enough vertices to capture EVERY corner and direction change
+- A simple rectangular roof needs 4 vertices; an L-shape needs 6+; a T-shape needs 8+
 
-CRITICAL TOPOLOGY RULES - MUST FOLLOW:
-1. Ridges: endpoints connect to hip intersections, usually near building center
-2. Hips: ALWAYS start at ridge endpoint, ALWAYS end at a convex building corner
-3. Valleys: ONLY exist if building has reflex (inward) corners
-4. Every convex corner should have exactly ONE hip connecting to it
-5. NO floating lines - every endpoint must connect to something
+STEP 2 - CLASSIFY PERIMETER EDGES:
+For each edge of your traced perimeter, classify it as "eave" or "rake":
+- EAVE: Horizontal roof edge along the gutter/drip line (parallel to ridge, faces outward)
+- RAKE: Sloped edge along gable ends (perpendicular to ridge, runs up to peak)
+- Provide start and end vertex indices from your perimeter
 
-For each feature, provide:
-- startX, startY, endX, endY (as percentages 0-100 from image top-left)
-- confidence (0-100)
-- description: what visual evidence you see
+STEP 3 - DETECT INTERIOR LINES:
+1. RIDGES: Bright highlights at roof peaks, usually horizontal
+2. HIPS: Diagonal shadow lines from ridge endpoints to convex perimeter corners
+3. VALLEYS: Dark V-shaped shadows from reflex corners to ridges (only in L/T/U shapes)
 
-Return ONLY valid JSON in this format:
+TOPOLOGY RULES:
+1. Every hip STARTS at a ridge endpoint and ENDS at a convex perimeter corner
+2. Valleys ONLY exist if building has reflex (inward) corners
+3. NO floating lines - every endpoint must connect to perimeter corner or ridge endpoint
+4. Every convex corner should have exactly ONE hip
+
+Return ONLY valid JSON:
 {
+  "tracedPerimeter": [
+    {"x": 5, "y": 10, "description": "NW corner"},
+    {"x": 85, "y": 10, "description": "NE corner"},
+    {"x": 85, "y": 50, "description": "east kickout corner"},
+    {"x": 95, "y": 50, "description": "east extension corner"},
+    {"x": 95, "y": 90, "description": "SE corner"},
+    {"x": 5, "y": 90, "description": "SW corner"}
+  ],
+  "perimeterEdges": [
+    {"startIdx": 0, "endIdx": 1, "type": "eave", "description": "north eave"},
+    {"startIdx": 1, "endIdx": 2, "type": "rake", "description": "east upper rake"},
+    {"startIdx": 2, "endIdx": 3, "type": "eave", "description": "kickout eave"},
+    {"startIdx": 3, "endIdx": 4, "type": "rake", "description": "east lower rake"},
+    {"startIdx": 4, "endIdx": 5, "type": "eave", "description": "south eave"},
+    {"startIdx": 5, "endIdx": 0, "type": "rake", "description": "west rake"}
+  ],
   "ridges": [{"startX": 25, "startY": 45, "endX": 75, "endY": 45, "confidence": 92, "description": "bright horizontal highlight at roof peak"}],
-  "hips": [{"startX": 25, "startY": 45, "endX": 5, "endY": 10, "confidence": 88, "description": "diagonal shadow from ridge to NW corner"}, {"startX": 25, "startY": 45, "endX": 5, "endY": 90, "confidence": 87, "description": "diagonal shadow from ridge to SW corner"}],
+  "hips": [{"startX": 25, "startY": 45, "endX": 5, "endY": 10, "confidence": 88, "description": "diagonal shadow from ridge to NW corner"}],
   "valleys": []
 }`
 
@@ -380,7 +407,7 @@ Return ONLY valid JSON in this format:
 
     if (!response.ok) {
       console.error('AI vision detection failed:', response.status)
-      return { ridges: [], hips: [], valleys: [] }
+      return { ridges: [], hips: [], valleys: [], eaves: [], rakes: [], aiTracedPerimeter: [] }
     }
 
     const data = await response.json()
@@ -390,7 +417,7 @@ Return ONLY valid JSON in this format:
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       console.warn('No JSON found in AI response')
-      return { ridges: [], hips: [], valleys: [] }
+      return { ridges: [], hips: [], valleys: [], eaves: [], rakes: [], aiTracedPerimeter: [] }
     }
 
     const parsed = JSON.parse(jsonMatch[0])
@@ -398,6 +425,49 @@ Return ONLY valid JSON in this format:
     // Convert pixel percentages to geo coordinates
     const toGeo = (x: number, y: number): [number, number] => {
       return pixelPctToGeo(x, y, coordinates, IMAGE_SIZE, IMAGE_ZOOM)
+    }
+
+    // Parse AI-traced perimeter (the actual visible roof drip-line)
+    let aiTracedPerimeter: [number, number][] = []
+    if (parsed.tracedPerimeter && Array.isArray(parsed.tracedPerimeter) && parsed.tracedPerimeter.length >= 3) {
+      aiTracedPerimeter = parsed.tracedPerimeter.map((v: any) => toGeo(v.x, v.y))
+      // Close the polygon
+      if (aiTracedPerimeter.length >= 3) {
+        const first = aiTracedPerimeter[0]
+        const last = aiTracedPerimeter[aiTracedPerimeter.length - 1]
+        if (Math.abs(first[0] - last[0]) > 0.000001 || Math.abs(first[1] - last[1]) > 0.000001) {
+          aiTracedPerimeter.push([...first] as [number, number])
+        }
+      }
+      console.log(`🏠 AI traced perimeter: ${aiTracedPerimeter.length} vertices (including kickouts/extensions)`)
+    }
+
+    // Parse eave and rake edges from perimeter classification
+    const eaves: RoofLine[] = []
+    const rakes: RoofLine[] = []
+    if (parsed.perimeterEdges && Array.isArray(parsed.perimeterEdges) && aiTracedPerimeter.length >= 3) {
+      const perimVerts = aiTracedPerimeter.slice(0, -1) // exclude closing vertex
+      for (const edge of parsed.perimeterEdges) {
+        const startIdx = edge.startIdx
+        const endIdx = edge.endIdx
+        if (startIdx >= 0 && startIdx < perimVerts.length && endIdx >= 0 && endIdx < perimVerts.length) {
+          const line: RoofLine = {
+            start: perimVerts[startIdx],
+            end: perimVerts[endIdx],
+            confidence: 85,
+            requiresReview: false,
+            source: 'ai_vision_perimeter',
+            visualEvidence: edge.description || undefined,
+            snappedToTarget: true // these ARE the perimeter
+          }
+          if (edge.type === 'eave') {
+            eaves.push(line)
+          } else if (edge.type === 'rake') {
+            rakes.push(line)
+          }
+        }
+      }
+      console.log(`📏 AI classified edges: ${eaves.length} eaves, ${rakes.length} rakes`)
     }
 
     const ridges: RoofLine[] = (parsed.ridges || []).map((r: DetectedFeature) => ({
@@ -430,11 +500,11 @@ Return ONLY valid JSON in this format:
       snappedToTarget: false
     }))
 
-    return { ridges, hips, valleys }
+    return { ridges, hips, valleys, eaves, rakes, aiTracedPerimeter }
 
   } catch (error) {
     console.error('AI vision detection error:', error)
-    return { ridges: [], hips: [], valleys: [] }
+    return { ridges: [], hips: [], valleys: [], eaves: [], rakes: [], aiTracedPerimeter: [] }
   }
 }
 
@@ -528,10 +598,10 @@ function calculatePolygonArea(perimeter: [number, number][]): number {
 // Apply learned corrections from database
 async function applyLearnedCorrections(
   supabase: any,
-  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] },
+  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; [key: string]: any },
   perimeter: [number, number][],
   tenantId?: string
-): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] }> {
+): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; [key: string]: any }> {
   
   if (!tenantId) return features
 
@@ -568,6 +638,7 @@ async function applyLearnedCorrections(
     }
 
     return {
+      ...features,
       ridges: features.ridges.map(r => applyCorrection(r, ridgeCorrections)),
       hips: features.hips.map(h => applyCorrection(h, hipCorrections)),
       valleys: features.valleys.map(v => applyCorrection(v, valleyCorrections))
@@ -581,9 +652,9 @@ async function applyLearnedCorrections(
 
 // PHASE 3: Snap all line endpoints to nearest corners or intersections with validation
 function snapLinesToCorners(
-  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] },
+  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; eaves?: RoofLine[]; rakes?: RoofLine[]; [key: string]: any },
   perimeter: [number, number][]
-): { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] } {
+): { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; eaves: RoofLine[]; rakes: RoofLine[]; [key: string]: any } {
   
   const snapThresholdDeg = SNAP_THRESHOLD_FT * FT_TO_DEG
 
@@ -650,9 +721,12 @@ function snapLinesToCorners(
   const snappedValleys = features.valleys.map(snapLine)
 
   return {
+    ...features,
     ridges: snappedRidges,
     hips: snappedHips,
-    valleys: snappedValleys
+    valleys: snappedValleys,
+    eaves: features.eaves || [],
+    rakes: features.rakes || [],
   }
 }
 
