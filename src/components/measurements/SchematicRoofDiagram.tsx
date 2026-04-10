@@ -635,7 +635,47 @@ export function SchematicRoofDiagram({
         });
         console.log(`📏 Applied north/south correction (${northSouthScaleFactor.toFixed(3)}) to linear features`);
       }
-    }
+
+      // CLIENT-SIDE SNAP: Force eave/rake endpoints to nearest perimeter vertex
+      // This ensures green lines always connect to the building outline corners,
+      // even when AI geometry is inaccurate (low confidence)
+      if (perimCoords.length >= 3) {
+        const perimVertices = perimCoords.slice(0, -1); // Remove closing duplicate
+        const SNAP_TOLERANCE_DEG = 0.0003; // ~30m — generous for low confidence
+        
+        const snapToNearestPerimVertex = (pt: { lat: number; lng: number }) => {
+          let bestDist = Infinity;
+          let bestVertex = pt;
+          for (const v of perimVertices) {
+            const d = Math.sqrt((pt.lat - v.lat) ** 2 + (pt.lng - v.lng) ** 2);
+            if (d < bestDist) {
+              bestDist = d;
+              bestVertex = v;
+            }
+          }
+          return bestDist < SNAP_TOLERANCE_DEG ? bestVertex : pt;
+        };
+        
+        let snappedCount = 0;
+        linearFeaturesData = linearFeaturesData.map(f => {
+          if (f.type !== 'eave' && f.type !== 'rake') return f;
+          
+          const newCoords = f.coords.map((c, i) => {
+            if (i === 0 || i === f.coords.length - 1) {
+              const snapped = snapToNearestPerimVertex(c);
+              if (snapped !== c) snappedCount++;
+              return snapped;
+            }
+            return c;
+          });
+          
+          return { ...f, coords: newCoords };
+        });
+        
+        if (snappedCount > 0) {
+          console.log(`📎 Client-side snap: ${snappedCount} eave/rake endpoints snapped to perimeter vertices`);
+        }
+      }
     
     // FALLBACK: If no WKT features, use client-side reconstruction
     // BUT: Skip reconstruction if footprint is a bounding box fallback (4-point rectangle)
