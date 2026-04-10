@@ -721,9 +721,12 @@ function snapLinesToCorners(
   const snappedValleys = features.valleys.map(snapLine)
 
   return {
+    ...features,
     ridges: snappedRidges,
     hips: snappedHips,
-    valleys: snappedValleys
+    valleys: snappedValleys,
+    eaves: features.eaves || [],
+    rakes: features.rakes || [],
   }
 }
 
