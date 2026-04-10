@@ -1,51 +1,70 @@
 
 
-# Fix Top/Bottom Eave Misalignment with Satellite Image
+# Plan: Use Authoritative Footprint to Drive Eave/Rake Lines
 
-## Root Cause (confirmed by data inspection)
+## Problem
+The eave lines don't follow kickouts, L-shapes, or any non-rectangular features of the roof. This happens because:
+1. The system already fetches high-quality building footprints (Mapbox Vector, Microsoft Buildings, OSM, Regrid) with accurate corners and kickouts
+2. But eave/rake lines are generated **independently** by AI vision or straight-skeleton, ignoring the footprint
+3. The client-side "snap" logic only moves endpoints to the nearest perimeter vertex — it can't add missing corners or create multi-segment eaves
 
-The eave coordinates come from the OSM footprint (`footprint_source: osm_overpass`, `footprint_confidence: 0.8`). For this property, the OSM polygon is slightly taller in the north-south direction than the actual roof visible in the satellite image. The left/right rakes align because the east-west dimension of the OSM polygon happens to be accurate; the top/bottom eaves overshoot because the north-south dimension is slightly too large.
+The footprint IS the eave/rake geometry. Every edge of the building outline is either an eave or a rake. We need to derive eaves/rakes directly from the footprint edges instead of generating them independently.
 
-This is a **data accuracy** issue, not a rendering/transform bug. The coordinate transforms are mathematically correct.
+## Solution
 
-## Implementation Plan
+### Step 1: Generate eaves/rakes from footprint edges in `analyze-roof-aerial`
 
-### 1. Fix backend bounds calculation bug (satellite-image-fetcher.ts)
+In `supabase/functions/analyze-roof-aerial/index.ts`, after the authoritative footprint is resolved and the ridge direction is known:
 
-The `calculateBounds` function on line 211 passes `size * scale` (1280) instead of `size` (640). Google Static Maps with `scale=2` returns more pixels but covers the same geographic area. This bug doesn't currently affect the frontend (since `image_bounds` is null), but fixing it is prerequisite for step 2.
+- Walk the footprint polygon edge-by-edge
+- Classify each edge as **eave** (perpendicular to ridge) or **rake** (parallel to ridge) based on the ridge azimuth from Solar API or AI analysis
+- Store these as `linear_features_wkt` entries with type `eave` or `rake`
+- Each footprint edge becomes exactly one WKT LINESTRING — preserving every corner and kickout
 
-Also fix the `calculateBounds` function itself to use Mercator Y math instead of linear latitude approximation. At latitude 26°, the linear approximation introduces ~5% vertical error.
+This replaces the current approach where eaves/rakes come from the AI vision model or the 70/30 heuristic split.
 
-**File:** `supabase/functions/_shared/satellite-image-fetcher.ts`
+### Step 2: Same fix in `generate-roof-overlay` vision engine
 
-### 2. Store correct image_bounds in the DB during measurement
+In `supabase/functions/generate-roof-overlay/index.ts`:
 
-After fetching the satellite image, persist the corrected bounds into the `image_bounds` column so the frontend uses authoritative bounds instead of recomputing. This eliminates any potential mismatch between how the backend fetched the image and how the frontend interprets it.
+- After detecting ridges/hips/valleys from the satellite image, derive eaves and rakes from the `effectivePerimeter` (which is already resolved from Mapbox/OSM/Regrid)
+- Classify perimeter edges using the detected ridge direction
+- Replace the current AI-traced `perimeterEdges` classification (which often fails for complex shapes)
 
-**File:** The measure edge function that calls `satellite-image-fetcher` — update it to write `image_bounds` on the measurement row.
+### Step 3: Remove broken client-side perimeter reconstruction
 
-### 3. Apply footprint area correction when OSM confidence is low
+In `src/components/measurements/SchematicRoofDiagram.tsx`:
 
-When `footprint_confidence < 0.85` and Solar API area is available, compute a scale correction:
-- Calculate the area of the OSM perimeter polygon
-- Compare to `solar_building_footprint_sqft`
-- If OSM is >5% larger, scale the perimeter inward toward its centroid by the ratio
-- Apply the same correction to eave/rake endpoints
+- Remove the convex hull fallback (lines ~491-522) — convex hull strips kickouts by definition
+- Remove the chain-segments-into-perimeter logic (lines ~432-488) — this tries to reconstruct the footprint from eave/rake segments, but now the eave/rake segments ARE the footprint edges
+- Instead, always use `perimeter_wkt` or `footprint_vertices_geo` from the database as the single source of truth for the building outline
+- Keep the luminance-based `edgeAutoFit` as a fine-tuning step (hybrid approach per user preference), but limit its adjustment range to prevent it from drifting away from the footprint
 
-This corrects oversized OSM polygons to better match the actual building footprint.
+### Step 4: Ensure footprint vertices flow through the full pipeline
 
-**File:** `src/components/measurements/SchematicRoofDiagram.tsx` (in the perimeter/eave coordinate preparation section, lines ~390-450)
-
-### 4. Add visual indicator for low-confidence footprint alignment
-
-When the eave coordinates come from a low-confidence source (OSM with < 0.85 confidence), render eave/rake lines with a dashed stroke instead of solid, communicating to the user that edge placement is approximate. Add a small badge: "Edges approximate — tap to adjust."
-
-**File:** `src/components/measurements/SchematicRoofDiagram.tsx` (in the SVG rendering section)
+- In `saveMeasurementToDatabase`: Already stores `footprint_vertices_geo` — verified
+- In `SchematicRoofDiagram`: Use `footprint_vertices_geo` (the actual authoritative polygon) as the primary perimeter source instead of reconstructing from eave/rake endpoints
+- Ensure eave/rake WKT segments are multi-vertex when the footprint edge has intermediate vertices (e.g., an L-shaped kickout produces two eave segments meeting at the kickout corner)
 
 ## Technical Details
 
-- Backend bounds bug: line 211 of `satellite-image-fetcher.ts` — change `size * scale` to `size`
-- Backend Mercator fix: replace linear `111320` approximation with proper `Math.log(Math.tan(...))` Mercator Y math in `calculateBounds`
-- Frontend area correction: use `calculateGPSPolygonArea()` from existing `gpsCalculations.ts` to compute OSM polygon area, compare with `solar_building_footprint_sqft`, and apply centroid-based scaling if deviation > 5%
-- The scaling transform: for each vertex, `new_coord = centroid + (vertex - centroid) * sqrt(solarArea / osmArea)`
+**Edge classification algorithm:**
+```
+For each edge (v[i] → v[i+1]) of the footprint polygon:
+  - Calculate edge bearing (angle from north)
+  - Compare to ridge bearing (from Solar API azimuth or AI detection)
+  - If edge is within ±30° of perpendicular to ridge → eave
+  - Otherwise → rake
+```
+
+**Files changed:**
+1. `supabase/functions/analyze-roof-aerial/index.ts` — Add `deriveEavesRakesFromFootprint()` function, call it in both full-analysis and Solar Fast Path, inject results into `linearFeatures`
+2. `supabase/functions/generate-roof-overlay/index.ts` — Same derivation using `effectivePerimeter` + detected ridge direction
+3. `src/components/measurements/SchematicRoofDiagram.tsx` — Simplify perimeter logic: prefer `footprint_vertices_geo` directly, remove convex hull fallback, keep `edgeAutoFit` with tighter bounds
+
+**What stays the same:**
+- Ridge, hip, valley detection (AI vision or straight-skeleton) — unchanged
+- Footprint resolution priority chain (Mapbox > Microsoft > OSM > Regrid > Solar bbox) — unchanged
+- Manual pin editor and drag-to-move — unchanged
+- All existing API keys and data sources — unchanged
 
