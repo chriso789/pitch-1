@@ -652,9 +652,9 @@ async function applyLearnedCorrections(
 
 // PHASE 3: Snap all line endpoints to nearest corners or intersections with validation
 function snapLinesToCorners(
-  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] },
+  features: { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; eaves?: RoofLine[]; rakes?: RoofLine[]; [key: string]: any },
   perimeter: [number, number][]
-): { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] } {
+): { ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; eaves: RoofLine[]; rakes: RoofLine[]; [key: string]: any } {
   
   const snapThresholdDeg = SNAP_THRESHOLD_FT * FT_TO_DEG
 
