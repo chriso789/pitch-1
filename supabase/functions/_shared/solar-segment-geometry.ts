@@ -66,7 +66,8 @@ const FACET_COLORS = [
  */
 export function reconstructFromSolarSegments(
   perimeterVertices: XY[],
-  solarSegments: SolarSegment[]
+  solarSegments: SolarSegment[],
+  roofType?: string
 ): SolarReconstructedGeometry {
   const warnings: string[] = [];
   
@@ -90,7 +91,7 @@ export function reconstructFromSolarSegments(
   const facets = generateFacetPolygons(perimeterVertices, solarSegments, facetGroups);
   
   // Step 3: Derive linear features from facet adjacencies
-  const { ridges, hips, valleys } = deriveLinearFeatures(perimeterVertices, facets, solarSegments);
+  const { ridges, hips, valleys } = deriveLinearFeatures(perimeterVertices, facets, solarSegments, roofType);
   
   // Determine quality
   const quality = facets.length >= 2 && ridges.length > 0 ? 'excellent' : 
