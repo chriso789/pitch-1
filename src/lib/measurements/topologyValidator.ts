@@ -125,6 +125,13 @@ export function validateTopology(
     }
 
     if (f.type === 'hip') {
+      // Gable roofs should have NO hips at all
+      if (isGable) {
+        corrections.push(`Hip (${f.length.toFixed(0)}') removed: gable roofs have no hips`);
+        reclassifiedCount++;
+        return { ...f, type: 'ridge' }; // Reclassify as ridge segment
+      }
+      
       // Rule: hips should NOT originate at reflex vertices
       const nearReflex = reflexCoords.some(rv =>
         isNearPoint(startCoord, rv, SNAP_TOLERANCE) || isNearPoint(endCoord, rv, SNAP_TOLERANCE)
