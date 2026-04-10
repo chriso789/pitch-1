@@ -131,27 +131,23 @@ export function overlayToLinearFeatures(overlay: RoofOverlayOutput): Array<{
   }
 
   overlay.ridges.forEach(ridge => {
-    features.push({
-      type: 'ridge',
-      wkt: lineToWKT(ridge),
-      lengthFt: calculateLengthFt(ridge)
-    })
+    features.push({ type: 'ridge', wkt: lineToWKT(ridge), lengthFt: calculateLengthFt(ridge) })
   })
 
   overlay.hips.forEach(hip => {
-    features.push({
-      type: 'hip',
-      wkt: lineToWKT(hip),
-      lengthFt: calculateLengthFt(hip)
-    })
+    features.push({ type: 'hip', wkt: lineToWKT(hip), lengthFt: calculateLengthFt(hip) })
   })
 
   overlay.valleys.forEach(valley => {
-    features.push({
-      type: 'valley',
-      wkt: lineToWKT(valley),
-      lengthFt: calculateLengthFt(valley)
-    })
+    features.push({ type: 'valley', wkt: lineToWKT(valley), lengthFt: calculateLengthFt(valley) })
+  })
+
+  ;(overlay.eaves || []).forEach(eave => {
+    features.push({ type: 'eave', wkt: lineToWKT(eave), lengthFt: calculateLengthFt(eave) })
+  })
+
+  ;(overlay.rakes || []).forEach(rake => {
+    features.push({ type: 'rake', wkt: lineToWKT(rake), lengthFt: calculateLengthFt(rake) })
   })
 
   return features
