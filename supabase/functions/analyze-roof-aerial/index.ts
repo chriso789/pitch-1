@@ -5034,11 +5034,13 @@ async function processSolarFastPath(
   const hasW = directions.includes('W')
   const hasNSandEW = hasN && hasS && hasE && hasW
   
-  // L-shape detection: 4+ segments with opposing N/S AND E/W pairs but only 4-5 vertex footprint
-  const isLikelyLShape = (segmentCount >= 4 && hasNSandEW && footprintVertexCount <= 5)
+  // Complexity detection: ANY roof with 3+ segments and only 4-5 vertex footprint likely has
+  // kickouts, dormers, or L-shapes that the simplified footprint missed
+  const isLikelyComplex = (segmentCount >= 3 && footprintVertexCount <= 5) || 
+                           (segmentCount >= 4 && hasNSandEW && footprintVertexCount <= 6)
   
-  if (isLikelyLShape) {
-    console.log(`⚠️ L-SHAPE MISMATCH DETECTED: ${segmentCount} Solar segments with N/S AND E/W azimuths, but footprint has only ${footprintVertexCount} vertices`)
+  if (isLikelyComplex) {
+    console.log(`⚠️ DETAIL GATE: ${segmentCount} Solar segments suggest complex roof, but footprint has only ${footprintVertexCount} vertices`)
     console.log(`   Segments by direction: N=${hasN}, S=${hasS}, E=${hasE}, W=${hasW}`)
     
     // Try AI Vision detection to capture the actual L-shape
