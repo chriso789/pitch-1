@@ -421,7 +421,11 @@ export function SchematicRoofDiagram({
     }
     
     const footprintConfidence = measurement?.footprint_confidence || 0;
-    const isLowQualityFootprint = footprintConfidence < 0.85 || measurement?.footprint_source === 'osm_overpass';
+    const footprintVertexCount = perimCoords.length > 0 ? perimCoords.length - 1 : 0; // exclude closing dup
+    const isLowQualityFootprint = footprintConfidence < 0.85 
+      || measurement?.footprint_source === 'osm_overpass'
+      || measurement?.footprint_source === 'solar_bbox_fallback'
+      || (footprintVertexCount > 0 && footprintVertexCount <= 5); // simple rectangle/pentagon = low detail
     
     
     // Fallback priority 1: perimeter_wkt from measurement
