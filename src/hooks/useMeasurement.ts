@@ -70,13 +70,14 @@ export function useLatestMeasurement(propertyId: string | undefined, enabled = t
 }
 
 export function usePullMeasurement() {
-  return async (propertyId: string, lat: number, lng: number) => {
+  return async (propertyId: string, lat: number, lng: number, engine: 'vision' | 'skeleton' = 'vision') => {
     const { data, error } = await supabase.functions.invoke('measure', {
       body: { 
         action: 'pull',
         propertyId,
         lat,
-        lng
+        lng,
+        engine
       }
     });
 
@@ -104,6 +105,7 @@ export function useRepullMeasurement() {
           propertyId,
           lat,
           lng,
+          engine: 'vision',
           forceRefresh: true // Signal to bypass cache
         }
       });

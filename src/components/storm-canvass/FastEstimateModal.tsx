@@ -70,6 +70,7 @@ export default function FastEstimateModal({
           lat: property.lat,
           lng: property.lng,
           address: property.address,
+          engine: 'vision',
         }
       });
 
