@@ -3972,7 +3972,7 @@ function convertVisionOverlayToMeasureResult(
       qualityScore?: number;
       totalAreaSqft?: number;
       perimeterSource?: string;
-    };
+      pitch?: string;
     };
   },
   propertyId: string,
