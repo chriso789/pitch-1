@@ -20,6 +20,9 @@ interface RoofOverlayOutput {
   ridges: RoofLine[];
   hips: RoofLine[];
   valleys: RoofLine[];
+  eaves: RoofLine[];
+  rakes: RoofLine[];
+  detectedPerimeter?: [number, number][]; // AI-traced actual roof drip-line
   metadata: {
     roofType: string;
     qualityScore: number;
@@ -28,6 +31,7 @@ interface RoofOverlayOutput {
     totalAreaSqft?: number;
     processedAt: string;
     alignmentAttempts?: number;
+    perimeterSource?: string; // 'ai_vision' | 'osm' | 'solar'
   };
 }
 
