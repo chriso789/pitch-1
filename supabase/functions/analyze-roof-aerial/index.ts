@@ -3088,6 +3088,123 @@ function addPerimeterEdges(lines: DerivedLine[], perimeterVertices: any[]): void
   }
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏠 FOOTPRINT-DRIVEN EAVE/RAKE DERIVATION
+// Walks the authoritative footprint polygon edge-by-edge, classifying each
+// edge as eave or rake based on the ridge azimuth. This preserves kickouts,
+// L-shapes, and all building corners that would be lost with AI guessing.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract the predominant ridge azimuth from detected ridge lines or Solar API data.
+ * Returns azimuth in degrees from north (0-180 range, since ridges are bidirectional).
+ */
+function extractRidgeAzimuth(linearFeatures: any[], solarData: any): number {
+  // Try to determine ridge bearing from existing ridge WKT lines
+  const ridgeFeatures = linearFeatures.filter(f => f.type === 'ridge');
+  
+  if (ridgeFeatures.length > 0) {
+    // Find the longest ridge and calculate its bearing
+    let longestRidge = ridgeFeatures[0];
+    for (const r of ridgeFeatures) {
+      if ((r.length_ft || 0) > (longestRidge.length_ft || 0)) longestRidge = r;
+    }
+    
+    // Parse WKT LINESTRING to get endpoints
+    const match = longestRidge.wkt?.match(/LINESTRING\(([^ ]+) ([^ ]+),\s*([^ ]+) ([^ ]+)\)/);
+    if (match) {
+      const lng1 = parseFloat(match[1]), lat1 = parseFloat(match[2]);
+      const lng2 = parseFloat(match[3]), lat2 = parseFloat(match[4]);
+      
+      const dLng = lng2 - lng1;
+      const dLat = lat2 - lat1;
+      let bearing = Math.atan2(dLng, dLat) * 180 / Math.PI;
+      if (bearing < 0) bearing += 360;
+      // Normalize to 0-180 range (ridges are bidirectional)
+      if (bearing >= 180) bearing -= 180;
+      return bearing;
+    }
+  }
+  
+  // Fallback: Use Solar API segment azimuths to infer ridge direction
+  // Ridge is perpendicular to the predominant slope direction
+  if (solarData?.roofSegments?.length > 0) {
+    const largestSegment = solarData.roofSegments.reduce((best: any, seg: any) => 
+      (seg.areaMeters2 || 0) > (best.areaMeters2 || 0) ? seg : best
+    , solarData.roofSegments[0]);
+    
+    const slopeAzimuth = largestSegment.azimuthDegrees || 0;
+    // Ridge is perpendicular to slope direction
+    let ridgeAzimuth = (slopeAzimuth + 90) % 360;
+    if (ridgeAzimuth >= 180) ridgeAzimuth -= 180;
+    return ridgeAzimuth;
+  }
+  
+  // Default: assume east-west ridge (most common in US residential)
+  return 90;
+}
+
+/**
+ * Derive eave and rake linear features directly from the authoritative footprint polygon.
+ * Each edge of the footprint becomes exactly one WKT LINESTRING.
+ * Classification uses the ridge azimuth: edges perpendicular to ridge = eave, parallel = rake.
+ */
+function deriveEavesRakesFromFootprint(
+  footprintVertices: Array<{ lat: number; lng: number }>,
+  ridgeAzimuth: number
+): any[] {
+  const features: any[] = [];
+  const n = footprintVertices.length;
+  if (n < 3) return features;
+  
+  const metersPerDegLat = 111320;
+  const avgLat = footprintVertices.reduce((s, v) => s + v.lat, 0) / n;
+  const metersPerDegLng = 111320 * Math.cos(avgLat * Math.PI / 180);
+  
+  for (let i = 0; i < n; i++) {
+    const v1 = footprintVertices[i];
+    const v2 = footprintVertices[(i + 1) % n];
+    
+    // Calculate edge bearing (degrees from north)
+    const dLng = v2.lng - v1.lng;
+    const dLat = v2.lat - v1.lat;
+    let edgeBearing = Math.atan2(dLng * metersPerDegLng, dLat * metersPerDegLat) * 180 / Math.PI;
+    if (edgeBearing < 0) edgeBearing += 360;
+    // Normalize to 0-180 (edges are bidirectional)
+    if (edgeBearing >= 180) edgeBearing -= 180;
+    
+    // Calculate angular difference between edge and ridge
+    let angleDiff = Math.abs(edgeBearing - ridgeAzimuth);
+    if (angleDiff > 90) angleDiff = 180 - angleDiff;
+    
+    // Edge perpendicular to ridge (within ±30°) = eave
+    // Edge parallel to ridge (within ±30°) = rake
+    const isEave = angleDiff > 60; // >60° from ridge = perpendicular = eave
+    
+    // Calculate length in feet
+    const dx = dLng * metersPerDegLng;
+    const dy = dLat * metersPerDegLat;
+    const lengthFt = Math.sqrt(dx * dx + dy * dy) * 3.28084;
+    
+    if (lengthFt < 1) continue; // Skip degenerate edges
+    
+    features.push({
+      type: isEave ? 'eave' : 'rake',
+      wkt: `LINESTRING(${v1.lng.toFixed(8)} ${v1.lat.toFixed(8)}, ${v2.lng.toFixed(8)} ${v2.lat.toFixed(8)})`,
+      length_ft: Math.round(lengthFt * 10) / 10,
+      plan_length_ft: Math.round(lengthFt * 10) / 10,
+      surface_length_ft: Math.round(lengthFt * 10) / 10,
+      source: 'footprint_derived'
+    });
+  }
+  
+  const eaveCount = features.filter(f => f.type === 'eave').length;
+  const rakeCount = features.filter(f => f.type === 'rake').length;
+  console.log(`📐 Footprint edge classification: ${eaveCount} eaves, ${rakeCount} rakes from ${n} vertices (ridge azimuth: ${ridgeAzimuth.toFixed(0)}°)`);
+  
+  return features;
+}
+
 // distance is now imported from roof-analysis-helpers.ts
 
 // Convert derived lines to WKT format with plan/surface length calculations
