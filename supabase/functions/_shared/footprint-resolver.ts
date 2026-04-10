@@ -317,6 +317,7 @@ function createSolarBboxFallback(solarData: SolarAPIData): ResolvedFootprint | n
 }
 
 // Select best candidate from multiple footprint sources
+// Strongly prefers higher vertex counts to capture kickouts and L-shapes
 function selectBestCandidate(
   candidates: Array<{
     vertices: FootprintVertex[];
@@ -345,8 +346,11 @@ function selectBestCandidate(
       else if (areaDiff > 0.2) score -= 0.15;
     }
     
-    // Prefer higher vertex counts (more detail)
-    if (qaMetrics.vertexCount >= 6) score += 0.05;
+    // STRONG vertex-count preference: each vertex above 4 adds 0.08 to score
+    // A 12-vertex polygon beats a 5-vertex one by +0.56, easily outweighing
+    // a ~0.1 confidence difference between sources
+    const extraVertices = Math.max(0, qaMetrics.vertexCount - 4);
+    score += extraVertices * 0.08;
     
     return {
       ...candidate,
@@ -517,8 +521,9 @@ async function tryRegridParcel(options: FootprintResolverOptions): Promise<{
 }
 
 /**
- * Main footprint resolver - tries sources in priority order
- * Priority: Mapbox Vector > Microsoft/Esri > OSM > Regrid (paid) > Solar bbox
+ * Main footprint resolver - PARALLEL fetch from all sources, pick best
+ * Ranks by vertex count (detail) + confidence + area sanity
+ * Priority is no longer waterfall; all free sources run simultaneously.
  */
 export async function resolveFootprint(options: FootprintResolverOptions): Promise<ResolvedFootprint | null> {
   const candidates: Array<{
@@ -527,40 +532,31 @@ export async function resolveFootprint(options: FootprintResolverOptions): Promi
     confidence: number;
   }> = [];
   
-  console.log(`📍 Resolving footprint for ${options.lat.toFixed(6)}, ${options.lng.toFixed(6)}`);
+  console.log(`📍 Resolving footprint (parallel) for ${options.lat.toFixed(6)}, ${options.lng.toFixed(6)}`);
   
-  // 1. Mapbox Vector (highest fidelity, included with subscription)
-  const mapbox = await tryMapboxVector(options);
-  if (mapbox) {
-    console.log(`✓ Mapbox Vector: ${mapbox.vertices.length} vertices, ${(mapbox.confidence * 100).toFixed(0)}% confidence`);
-    candidates.push(mapbox);
-  }
+  // Fire ALL free sources in parallel with an 8s timeout
+  const results = await Promise.race([
+    Promise.allSettled([
+      tryMapboxVector(options),
+      tryMicrosoftBuildings(options),
+      tryOSMBuildings(options),
+      // Also try Regrid if key is available (it's fast)
+      (options.regridApiKey || Deno.env.get('REGRID_API_KEY')) ? tryRegridParcel(options) : Promise.resolve(null),
+    ]),
+    new Promise<PromiseSettledResult<any>[]>(resolve => setTimeout(() => resolve([]), 8000))
+  ]);
   
-  // 2. Microsoft/Esri Buildings (FREE, 92% accuracy)
-  const microsoft = await tryMicrosoftBuildings(options);
-  if (microsoft) {
-    console.log(`✓ Microsoft Buildings: ${microsoft.vertices.length} vertices, ${(microsoft.confidence * 100).toFixed(0)}% confidence`);
-    candidates.push(microsoft);
-  }
-  
-  // 3. OSM Overpass (FREE)
-  const osm = await tryOSMBuildings(options);
-  if (osm) {
-    console.log(`✓ OSM Buildings: ${osm.vertices.length} vertices, ${(osm.confidence * 100).toFixed(0)}% confidence`);
-    candidates.push(osm);
-  }
-  
-  // 4. Regrid (PAID - only if free sources fail or env key is available)
-  const hasRegridKey = options.regridApiKey || Deno.env.get('REGRID_API_KEY');
-  if (candidates.length === 0 && hasRegridKey) {
-    const regrid = await tryRegridParcel(options);
-    if (regrid) {
-      console.log(`✓ Regrid Parcel: ${regrid.vertices.length} vertices, ${(regrid.confidence * 100).toFixed(0)}% confidence`);
-      candidates.push(regrid);
+  const sourceNames = ['Mapbox Vector', 'Microsoft Buildings', 'OSM Buildings', 'Regrid Parcel'];
+  results.forEach((r, i) => {
+    if (r.status === 'fulfilled' && r.value) {
+      console.log(`✓ ${sourceNames[i]}: ${r.value.vertices.length} vertices, ${(r.value.confidence * 100).toFixed(0)}% confidence`);
+      candidates.push(r.value);
     }
-  }
+  });
   
-  // Select best candidate using PLANIMETER_THRESHOLDS
+  console.log(`📊 ${candidates.length} footprint candidates collected`);
+  
+  // Select best candidate using PLANIMETER_THRESHOLDS + strong vertex preference
   const best = selectBestCandidate(candidates, options.solarData);
   
   if (best) {
@@ -568,7 +564,7 @@ export async function resolveFootprint(options: FootprintResolverOptions): Promi
     return best;
   }
   
-  // 5. Solar bbox as last resort
+  // Solar bbox as last resort
   if (options.solarData?.boundingBox) {
     console.log(`⚠️ Using Solar bounding box fallback`);
     return createSolarBboxFallback(options.solarData);

@@ -2,7 +2,7 @@ import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu, ShieldAlert } from 'lucide-react';
-import { calculateImageBounds, gpsToPixel, calculateGPSPolygonArea, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
+import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
 import { autoFitAllEdges, type SvgLineSegment, type AutoFitAllEdgesResult } from '@/lib/measurements/edgeAutoFit';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
@@ -421,7 +421,11 @@ export function SchematicRoofDiagram({
     }
     
     const footprintConfidence = measurement?.footprint_confidence || 0;
-    const isLowQualityFootprint = footprintConfidence < 0.85 || measurement?.footprint_source === 'osm_overpass';
+    const footprintVertexCount = perimCoords.length > 0 ? perimCoords.length - 1 : 0; // exclude closing dup
+    const isLowQualityFootprint = footprintConfidence < 0.85 
+      || measurement?.footprint_source === 'osm_overpass'
+      || measurement?.footprint_source === 'solar_bbox_fallback'
+      || (footprintVertexCount > 0 && footprintVertexCount <= 5); // simple rectangle/pentagon = low detail
     
     
     // Fallback priority 1: perimeter_wkt from measurement
@@ -437,42 +441,12 @@ export function SchematicRoofDiagram({
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
-    // OSM FOOTPRINT CORRECTION: When footprint confidence is low and Solar API
-    // area is available, shrink the footprint in the north/south axis only.
-    // This preserves the left/right fit while pulling the top/bottom eaves back
-    // onto the visible roof line when OSM is vertically oversized.
-    const solarFootprintSqft = measurement?.solar_building_footprint_sqft || measurement?.solar_api_response?.buildingFootprintSqft;
-    const footprintNeedsCorrection = isLowQualityFootprint && solarFootprintSqft > 0 && perimCoords.length >= 4;
+    // REMOVED: OSM north/south rescaling was hiding the real problem — a low-detail
+    // footprint being stretched to match Solar area. The fix is upstream: the backend
+    // now selects high-fidelity footprints with kickout vertices. If the footprint is
+    // still low-detail, we render it honestly as "approximate" rather than distorting it.
     let northSouthScaleFactor = 1;
     let correctionCentroid: { lat: number; lng: number } | null = null;
-    
-    if (footprintNeedsCorrection) {
-      const nonClosing = perimCoords.slice(0, -1);
-      const osmAreaSqft = calculateGPSPolygonArea(nonClosing);
-      
-      if (osmAreaSqft > 0 && solarFootprintSqft > 0) {
-        const areaRatio = solarFootprintSqft / osmAreaSqft;
-        
-        // Only correct if OSM is >5% larger than Solar API area
-        if (areaRatio < 0.95) {
-          northSouthScaleFactor = areaRatio;
-          correctionCentroid = {
-            lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
-            lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
-          };
-          
-          // Scale latitude only so east/west placement stays locked to the roof edges
-          perimCoords = nonClosing.map(v => ({
-            lat: correctionCentroid.lat + (v.lat - correctionCentroid.lat) * northSouthScaleFactor,
-            lng: v.lng,
-          }));
-          // Re-close polygon
-          perimCoords.push({ ...perimCoords[0] });
-          
-          console.log(`📏 OSM north/south correction: OSM=${osmAreaSqft.toFixed(0)} sqft, Solar=${solarFootprintSqft.toFixed(0)} sqft, yScale=${northSouthScaleFactor.toFixed(3)}`);
-        }
-      }
-    }
 
     if (perimCoords.length > 0) {
       allLatLngs = [...perimCoords];
