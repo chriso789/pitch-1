@@ -38,7 +38,8 @@ interface ValidationResult {
  */
 export function validateTopology(
   features: LinearFeatureData[],
-  perimeterCoords: GPSCoord[]
+  perimeterCoords: GPSCoord[],
+  roofType?: string
 ): ValidationResult {
   const corrections: string[] = [];
   let reclassifiedCount = 0;
@@ -66,8 +67,12 @@ export function validateTopology(
   const convexCoords = vertices.filter((_, i) => !reflexIndices.has(i));
 
   const isSimpleRect = vertices.length <= 5 && reflexIndices.size === 0;
+  const isGable = roofType?.toLowerCase() === 'gable';
+  const isConvexNoValleys = reflexIndices.size === 0;
 
-  if (isSimpleRect) {
+  if (isGable) {
+    corrections.push(`Gable roof type detected - no hips or valleys expected`);
+  } else if (isSimpleRect) {
     corrections.push(`Simple rectangular perimeter (${vertices.length} vertices, 0 reflex) - no valleys expected`);
   } else {
     corrections.push(`Complex perimeter: ${vertices.length} vertices, ${reflexIndices.size} reflex`);
@@ -86,9 +91,14 @@ export function validateTopology(
 
     if (f.type === 'valley') {
       // Rule: valleys only valid near reflex vertices
-      if (isSimpleRect) {
-        // Simple rectangle → no valleys allowed, reclassify as hip
-        corrections.push(`Valley (${f.length.toFixed(0)}') reclassified as hip: no reflex vertices in rectangular perimeter`);
+      if (isGable || isSimpleRect || isConvexNoValleys) {
+        // Gable roof or convex perimeter → no valleys allowed, reclassify as hip (or remove for gable)
+        if (isGable) {
+          corrections.push(`Valley (${f.length.toFixed(0)}') removed: gable roofs have no valleys`);
+          reclassifiedCount++;
+          return { ...f, type: 'ridge' }; // Reclassify as ridge segment rather than hip
+        }
+        corrections.push(`Valley (${f.length.toFixed(0)}') reclassified as hip: no reflex vertices in perimeter`);
         reclassifiedCount++;
         return { ...f, type: 'hip' };
       }
