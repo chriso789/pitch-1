@@ -153,7 +153,8 @@ export function assembleFacetsFromSolarSegments(
   solarSegments: SolarSegment[],
   predominantPitch: string = '6/12',
   structureAnalysis?: StructureAnalysis,
-  aiRidgeOverride?: AIRidgeOverride
+  aiRidgeOverride?: AIRidgeOverride,
+  roofType?: string
 ): AssembledGeometry {
   const warnings: string[] = [];
   
@@ -318,7 +319,7 @@ function assembleFromCenters(
   });
   
   // Derive linear features from facet adjacencies
-  const { ridges, hips, valleys, eaves, rakes } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis);
+  const { ridges, hips, valleys, eaves, rakes } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis, roofType);
   
   // If facet generation failed, use azimuth-based fallback
   if (facets.length < 2 && segments.length >= 2) {
@@ -981,7 +982,8 @@ function deriveLinearFeaturesFromFacets(
   facets: AssembledFacet[],
   perimeter: XY[],
   centroid: XY,
-  structureAnalysis?: StructureAnalysis
+  structureAnalysis?: StructureAnalysis,
+  roofType?: string
 ): { ridges: AssembledLine[]; hips: AssembledLine[]; valleys: AssembledLine[]; eaves: AssembledLine[]; rakes: AssembledLine[] } {
   const ridges: AssembledLine[] = [];
   const hips: AssembledLine[] = [];
@@ -998,17 +1000,19 @@ function deriveLinearFeaturesFromFacets(
       isWider = structureAnalysis.mainStructure.ridgeDirection === 'east-west';
     }
     
-    const inset = isWider 
+    const isGable = roofType?.toLowerCase() === 'gable';
+    
+    // For gable roofs: ridge spans full width (no inset), no hips
+    // For hip roofs: ridge inset ~40%, 4 hips from corners
+    const inset = isGable ? 0 : (isWider 
       ? (bounds.maxY - bounds.minY) * 0.4
-      : (bounds.maxX - bounds.minX) * 0.4;
+      : (bounds.maxX - bounds.minX) * 0.4);
     
     let ridgeStart: XY, ridgeEnd: XY;
     if (isWider) {
-      // Horizontal ridge: ridgeStart is west, ridgeEnd is east
       ridgeStart = [bounds.minX + inset, (bounds.minY + bounds.maxY) / 2];
       ridgeEnd = [bounds.maxX - inset, (bounds.minY + bounds.maxY) / 2];
     } else {
-      // Vertical ridge: ridgeStart is south, ridgeEnd is north
       ridgeStart = [(bounds.minX + bounds.maxX) / 2, bounds.minY + inset];
       ridgeEnd = [(bounds.minX + bounds.maxX) / 2, bounds.maxY - inset];
     }
@@ -1020,29 +1024,30 @@ function deriveLinearFeaturesFromFacets(
       lengthFt: distanceFt(ridgeStart, ridgeEnd)
     });
     
-    // Find corners by position (SW, SE, NE, NW)
-    const sw = perimeter.reduce((best, v) => 
-      (v[1] + v[0] < best[1] + best[0]) ? v : best, perimeter[0]);
-    const ne = perimeter.reduce((best, v) => 
-      (v[1] + v[0] > best[1] + best[0]) ? v : best, perimeter[0]);
-    const se = perimeter.reduce((best, v) => 
-      (v[0] - v[1] > best[0] - best[1]) ? v : best, perimeter[0]);
-    const nw = perimeter.reduce((best, v) => 
-      (v[1] - v[0] > best[1] - best[0]) ? v : best, perimeter[0]);
-    
-    // Connect corners to ridge endpoints based on orientation
-    if (isWider) {
-      // Horizontal ridge: west corners → ridgeStart, east corners → ridgeEnd
-      hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
-      hips.push({ id: 'hip_1', start: nw, end: ridgeStart, lengthFt: distanceFt(nw, ridgeStart) });
-      hips.push({ id: 'hip_2', start: se, end: ridgeEnd, lengthFt: distanceFt(se, ridgeEnd) });
-      hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+    if (!isGable) {
+      // Hip roof: connect corners to ridge endpoints
+      const sw = perimeter.reduce((best, v) => 
+        (v[1] + v[0] < best[1] + best[0]) ? v : best, perimeter[0]);
+      const ne = perimeter.reduce((best, v) => 
+        (v[1] + v[0] > best[1] + best[0]) ? v : best, perimeter[0]);
+      const se = perimeter.reduce((best, v) => 
+        (v[0] - v[1] > best[0] - best[1]) ? v : best, perimeter[0]);
+      const nw = perimeter.reduce((best, v) => 
+        (v[1] - v[0] > best[1] - best[0]) ? v : best, perimeter[0]);
+      
+      if (isWider) {
+        hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
+        hips.push({ id: 'hip_1', start: nw, end: ridgeStart, lengthFt: distanceFt(nw, ridgeStart) });
+        hips.push({ id: 'hip_2', start: se, end: ridgeEnd, lengthFt: distanceFt(se, ridgeEnd) });
+        hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+      } else {
+        hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
+        hips.push({ id: 'hip_1', start: se, end: ridgeStart, lengthFt: distanceFt(se, ridgeStart) });
+        hips.push({ id: 'hip_2', start: nw, end: ridgeEnd, lengthFt: distanceFt(nw, ridgeEnd) });
+        hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+      }
     } else {
-      // Vertical ridge: south corners → ridgeStart, north corners → ridgeEnd
-      hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
-      hips.push({ id: 'hip_1', start: se, end: ridgeStart, lengthFt: distanceFt(se, ridgeStart) });
-      hips.push({ id: 'hip_2', start: nw, end: ridgeEnd, lengthFt: distanceFt(nw, ridgeEnd) });
-      hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+      console.log(`🏠 Gable roof: 1 ridge, 0 hips, 0 valleys`);
     }
     
     // Classify perimeter edges as eaves or rakes based on ridge orientation

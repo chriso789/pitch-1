@@ -991,7 +991,8 @@ Deno.serve(async (req) => {
           solarData.roofSegments as SolarSegment[],
           measurements.predominantPitch,
           undefined, // structureAnalysis
-          aiRidgeOverrideForAssembler
+          aiRidgeOverrideForAssembler,
+          perimeterResult.roofType // pass detected roof type for gable/hip branching
         );
         
         if (assembledGeometry.facets.length >= 2) {
@@ -5176,7 +5177,10 @@ async function processSolarFastPath(
     assembledGeometry = assembleFacetsFromSolarSegments(
       perimeterXY,
       solarData.roofSegments as SolarSegment[],
-      predominantPitch
+      predominantPitch,
+      undefined, // structureAnalysis
+      undefined, // aiRidgeOverride
+      perimeterResult?.roofType // pass detected roof type for gable/hip branching
     )
     console.log(`✅ Solar assembly: ${assembledGeometry.facets.length} facets, quality: ${assembledGeometry.quality}`)
   } catch (err) {
