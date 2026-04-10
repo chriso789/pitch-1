@@ -190,7 +190,15 @@ Deno.serve(async (req) => {
       attempts++
     }
 
-    // Step 8: PHASE 5 - Build final output with eaves/rakes and AI-traced perimeter
+    // Step 8: PHASE 5 - Build final output with eaves/rakes derived from perimeter
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FOOTPRINT-DRIVEN EAVES/RAKES: Derive from effectivePerimeter edges
+    // instead of using AI-traced classifications which miss kickouts
+    // ═══════════════════════════════════════════════════════════════════════════
+    const ridgeAzimuth = extractRidgeAzimuthFromLines(verifiedFeatures.ridges, coordinates);
+    const footprintEavesRakes = deriveEavesRakesFromPerimeter(effectivePerimeter, ridgeAzimuth, coordinates);
+    console.log(`🏠 Footprint-derived: ${footprintEavesRakes.eaves.length} eaves, ${footprintEavesRakes.rakes.length} rakes (ridge azimuth: ${ridgeAzimuth.toFixed(0)}°)`);
+    
     const output: RoofOverlayOutput = {
       perimeter: effectivePerimeter,
       detectedPerimeter: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
@@ -207,18 +215,17 @@ Deno.serve(async (req) => {
         ...v,
         requiresReview: v.confidence < 80 || !v.snappedToTarget
       })),
-      eaves: detectedFeatures.eaves,
-      rakes: detectedFeatures.rakes,
+      eaves: footprintEavesRakes.eaves,
+      rakes: footprintEavesRakes.rakes,
       metadata: {
         roofType: analysisResult.data?.aiAnalysis?.roofType || 'complex',
         qualityScore: calculateQualityScore(verifiedFeatures),
-        dataSourcesPriority: ['mapbox_satellite', 'ai_vision', 'geometry_derived'],
+        dataSourcesPriority: ['mapbox_satellite', 'ai_vision', 'footprint_derived'],
         requiresManualReview: checkIfRequiresReview(verifiedFeatures),
         totalAreaSqft: analysisResult.data?.measurements?.totalAreaSqft,
         processedAt: new Date().toISOString(),
         alignmentAttempts: attempts,
-        perimeterSource: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
-          ? 'ai_vision' : 'footprint_source'
+        perimeterSource: 'footprint_derived'
       }
     }
 
@@ -1154,4 +1161,99 @@ function checkIfRequiresReview(features: { ridges: RoofLine[]; hips: RoofLine[];
   if (avgConfidence < 70) return true
 
   return false
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🏠 FOOTPRINT-DRIVEN EAVE/RAKE DERIVATION for overlay engine
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract ridge azimuth from detected ridge lines.
+ */
+function extractRidgeAzimuthFromLines(
+  ridges: RoofLine[],
+  coordinates: { lat: number; lng: number }
+): number {
+  if (ridges.length === 0) return 90; // Default E-W ridge
+  
+  // Use longest ridge
+  let longest = ridges[0];
+  let maxLen = 0;
+  for (const r of ridges) {
+    const dx = r.end[0] - r.start[0];
+    const dy = r.end[1] - r.start[1];
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > maxLen) { maxLen = len; longest = r; }
+  }
+  
+  const dLng = longest.end[0] - longest.start[0];
+  const dLat = longest.end[1] - longest.start[1];
+  const metersPerDegLng = 111320 * Math.cos(coordinates.lat * Math.PI / 180);
+  const metersPerDegLat = 111320;
+  
+  let bearing = Math.atan2(dLng * metersPerDegLng, dLat * metersPerDegLat) * 180 / Math.PI;
+  if (bearing < 0) bearing += 360;
+  if (bearing >= 180) bearing -= 180;
+  return bearing;
+}
+
+/**
+ * Derive eaves and rakes from perimeter polygon edges using ridge azimuth.
+ */
+function deriveEavesRakesFromPerimeter(
+  perimeter: [number, number][],
+  ridgeAzimuth: number,
+  coordinates: { lat: number; lng: number }
+): { eaves: RoofLine[]; rakes: RoofLine[] } {
+  const eaves: RoofLine[] = [];
+  const rakes: RoofLine[] = [];
+  const n = perimeter.length;
+  if (n < 3) return { eaves, rakes };
+  
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(coordinates.lat * Math.PI / 180);
+  
+  // Skip closing vertex if polygon is closed
+  const lastIdx = (perimeter[0][0] === perimeter[n - 1][0] && perimeter[0][1] === perimeter[n - 1][1])
+    ? n - 1 : n;
+  
+  for (let i = 0; i < lastIdx; i++) {
+    const v1 = perimeter[i];
+    const v2 = perimeter[(i + 1) % n];
+    
+    const dLng = v2[0] - v1[0];
+    const dLat = v2[1] - v1[1];
+    
+    let edgeBearing = Math.atan2(dLng * metersPerDegLng, dLat * metersPerDegLat) * 180 / Math.PI;
+    if (edgeBearing < 0) edgeBearing += 360;
+    if (edgeBearing >= 180) edgeBearing -= 180;
+    
+    let angleDiff = Math.abs(edgeBearing - ridgeAzimuth);
+    if (angleDiff > 90) angleDiff = 180 - angleDiff;
+    
+    const isEave = angleDiff > 60;
+    
+    const dx = dLng * metersPerDegLng;
+    const dy = dLat * metersPerDegLat;
+    const lengthFt = Math.sqrt(dx * dx + dy * dy) * 3.28084;
+    
+    if (lengthFt < 1) continue;
+    
+    const line: RoofLine = {
+      start: v1,
+      end: v2,
+      confidence: 90,
+      requiresReview: false,
+      source: 'footprint_derived',
+      snappedToTarget: true
+    };
+    
+    if (isEave) {
+      eaves.push(line);
+    } else {
+      rakes.push(line);
+    }
+  }
+  
+  return { eaves, rakes };
 }
