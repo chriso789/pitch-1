@@ -1,0 +1,19 @@
+{
+  "segmentation_classes": [
+    "footprint",
+    "ridge",
+    "hip",
+    "valley",
+    "eave",
+    "rake"
+  ],
+  "regression_targets": [
+    "total_area_sqft",
+    "ridge_ft",
+    "hip_ft",
+    "valley_ft",
+    "eave_ft",
+    "rake_ft",
+    "predominant_pitch"
+  ]
+}
