@@ -246,7 +246,8 @@ function createFacet(
 function deriveLinearFeatures(
   perimeter: XY[],
   facets: SolarFacet[],
-  segments: SolarSegment[]
+  segments: SolarSegment[],
+  roofType?: string
 ): { ridges: LinearFeature[]; hips: LinearFeature[]; valleys: LinearFeature[] } {
   const ridges: LinearFeature[] = [];
   const hips: LinearFeature[] = [];
@@ -265,7 +266,10 @@ function deriveLinearFeatures(
   const isHorizontalRidge = avgAzimuth < 45 || avgAzimuth >= 315 || 
                             (avgAzimuth >= 135 && avgAzimuth < 225);
   
-  const inset = (isHorizontalRidge ? height : width) * 0.35;
+  const isGable = roofType?.toLowerCase() === 'gable';
+  
+  // For gable roofs: ridge spans full width (no inset), no hips
+  const inset = isGable ? 0 : (isHorizontalRidge ? height : width) * 0.35;
   
   // Calculate ridge endpoints
   let ridgeStart: XY, ridgeEnd: XY;
@@ -283,81 +287,28 @@ function deriveLinearFeatures(
     wkt: `LINESTRING(${ridgeStart[0]} ${ridgeStart[1]}, ${ridgeEnd[0]} ${ridgeEnd[1]})`,
     lengthFt: distanceFt(ridgeStart, ridgeEnd),
     type: 'ridge',
-    connectedTo: ['hip_0', 'hip_1', 'hip_2', 'hip_3']
+    connectedTo: isGable ? [] : ['hip_0', 'hip_1', 'hip_2', 'hip_3']
   });
   
-  // Create hips from corners to ridge endpoints
-  const corners = identifyCorners(perimeter);
-  if (corners.length >= 4) {
-    const hipEndpoints = [ridgeStart, ridgeEnd, ridgeEnd, ridgeStart];
-    
-    corners.forEach((corner, i) => {
-      const endpoint = hipEndpoints[i];
-      hips.push({
-        id: `hip_${i}`,
-        wkt: `LINESTRING(${corner[0]} ${corner[1]}, ${endpoint[0]} ${endpoint[1]})`,
-        lengthFt: distanceFt(corner, endpoint),
-        type: 'hip',
-        connectedTo: ['ridge_0']
+  // Only create hips for hip roofs (not gable)
+  if (!isGable) {
+    const corners = identifyCorners(perimeter);
+    if (corners.length >= 4) {
+      const hipEndpoints = [ridgeStart, ridgeEnd, ridgeEnd, ridgeStart];
+      
+      corners.forEach((corner, i) => {
+        const endpoint = hipEndpoints[i];
+        hips.push({
+          id: `hip_${i}`,
+          wkt: `LINESTRING(${corner[0]} ${corner[1]}, ${endpoint[0]} ${endpoint[1]})`,
+          lengthFt: distanceFt(corner, endpoint),
+          type: 'hip',
+          connectedTo: ['ridge_0']
+        });
       });
-    });
-  }
-  
-  // Detect valleys at reflex vertices
-  const reflexIndices = findReflexVertices(perimeter);
-  let valleyIdx = 0;
-  reflexIndices.forEach(idx => {
-    const vertex = perimeter[idx];
-    const distToStart = distance(vertex, ridgeStart);
-    const distToEnd = distance(vertex, ridgeEnd);
-    const endpoint = distToStart < distToEnd ? ridgeStart : ridgeEnd;
-    
-    valleys.push({
-      id: `valley_${valleyIdx}`,
-      wkt: `LINESTRING(${vertex[0]} ${vertex[1]}, ${endpoint[0]} ${endpoint[1]})`,
-      lengthFt: distanceFt(vertex, endpoint),
-      type: 'valley',
-      connectedTo: ['ridge_0']
-    });
-    valleyIdx++;
-  });
-  
-  return { ridges, hips, valleys };
-}
-
-/**
- * Convert Solar linear features to WKT format for database storage
- */
-export function solarGeometryToWKT(geometry: SolarReconstructedGeometry): string {
-  const features: { wkt: string; type: string; length_ft: number }[] = [];
-  
-  geometry.ridges.forEach(r => features.push({ wkt: r.wkt, type: 'ridge', length_ft: r.lengthFt }));
-  geometry.hips.forEach(h => features.push({ wkt: h.wkt, type: 'hip', length_ft: h.lengthFt }));
-  geometry.valleys.forEach(v => features.push({ wkt: v.wkt, type: 'valley', length_ft: v.lengthFt }));
-  
-  return JSON.stringify(features);
-}
-
-// ===== Utility Functions =====
-
-function findReflexVertices(vertices: XY[]): Set<number> {
-  const reflex = new Set<number>();
-  const n = vertices.length;
-  
-  for (let i = 0; i < n; i++) {
-    const prev = vertices[(i - 1 + n) % n];
-    const curr = vertices[i];
-    const next = vertices[(i + 1) % n];
-    
-    const ax = prev[0] - curr[0];
-    const ay = prev[1] - curr[1];
-    const bx = next[0] - curr[0];
-    const by = next[1] - curr[1];
-    const cross = ax * by - ay * bx;
-    
-    if (cross < 0) {
-      reflex.add(i);
     }
+  } else {
+    console.log(`🏠 Gable roof (solar-segment-geometry): 1 ridge, 0 hips`);
   }
   
   return reflex;
