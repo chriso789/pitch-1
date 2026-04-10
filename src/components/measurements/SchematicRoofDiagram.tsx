@@ -437,42 +437,12 @@ export function SchematicRoofDiagram({
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
-    // OSM FOOTPRINT CORRECTION: When footprint confidence is low and Solar API
-    // area is available, shrink the footprint in the north/south axis only.
-    // This preserves the left/right fit while pulling the top/bottom eaves back
-    // onto the visible roof line when OSM is vertically oversized.
-    const solarFootprintSqft = measurement?.solar_building_footprint_sqft || measurement?.solar_api_response?.buildingFootprintSqft;
-    const footprintNeedsCorrection = isLowQualityFootprint && solarFootprintSqft > 0 && perimCoords.length >= 4;
+    // REMOVED: OSM north/south rescaling was hiding the real problem — a low-detail
+    // footprint being stretched to match Solar area. The fix is upstream: the backend
+    // now selects high-fidelity footprints with kickout vertices. If the footprint is
+    // still low-detail, we render it honestly as "approximate" rather than distorting it.
     let northSouthScaleFactor = 1;
     let correctionCentroid: { lat: number; lng: number } | null = null;
-    
-    if (footprintNeedsCorrection) {
-      const nonClosing = perimCoords.slice(0, -1);
-      const osmAreaSqft = calculateGPSPolygonArea(nonClosing);
-      
-      if (osmAreaSqft > 0 && solarFootprintSqft > 0) {
-        const areaRatio = solarFootprintSqft / osmAreaSqft;
-        
-        // Only correct if OSM is >5% larger than Solar API area
-        if (areaRatio < 0.95) {
-          northSouthScaleFactor = areaRatio;
-          correctionCentroid = {
-            lat: nonClosing.reduce((s, c) => s + c.lat, 0) / nonClosing.length,
-            lng: nonClosing.reduce((s, c) => s + c.lng, 0) / nonClosing.length,
-          };
-          
-          // Scale latitude only so east/west placement stays locked to the roof edges
-          perimCoords = nonClosing.map(v => ({
-            lat: correctionCentroid.lat + (v.lat - correctionCentroid.lat) * northSouthScaleFactor,
-            lng: v.lng,
-          }));
-          // Re-close polygon
-          perimCoords.push({ ...perimCoords[0] });
-          
-          console.log(`📏 OSM north/south correction: OSM=${osmAreaSqft.toFixed(0)} sqft, Solar=${solarFootprintSqft.toFixed(0)} sqft, yScale=${northSouthScaleFactor.toFixed(3)}`);
-        }
-      }
-    }
 
     if (perimCoords.length > 0) {
       allLatLngs = [...perimCoords];

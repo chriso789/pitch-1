@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
   const startTime = Date.now()
   
   try {
-    const { address, coordinates, customerId, userId, forceFullAnalysis, pitchOverride } = await req.json()
+    const { address, coordinates, customerId, userId, forceFullAnalysis, pitchOverride, useUnifiedPipeline } = await req.json()
     console.log('🏠 Analyzing roof:', address)
     console.log('📍 Coordinates:', coordinates.lat, coordinates.lng)
     if (forceFullAnalysis) {
