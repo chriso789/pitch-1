@@ -125,33 +125,40 @@ Deno.serve(async (req) => {
     const perimeter = extractPerimeter(analysisResult.data)
     console.log(`📐 Perimeter: ${perimeter.length} vertices`)
 
-    // Step 4: PHASE 1 - Enhanced AI Vision Detection with shadow analysis
+    // Step 4: PHASE 1 - Enhanced AI Vision Detection with perimeter tracing + eave/rake classification
     const detectedFeatures = await detectAllFeaturesFromImage(
       mapboxUrl,
       perimeter,
       coordinates
     )
-    console.log(`🔍 Detected: ${detectedFeatures.ridges.length} ridges, ${detectedFeatures.hips.length} hips, ${detectedFeatures.valleys.length} valleys`)
+    console.log(`🔍 Detected: ${detectedFeatures.ridges.length} ridges, ${detectedFeatures.hips.length} hips, ${detectedFeatures.valleys.length} valleys, ${detectedFeatures.eaves.length} eaves, ${detectedFeatures.rakes.length} rakes`)
+
+    // Use AI-traced perimeter if available (more accurate than OSM), otherwise fall back
+    const effectivePerimeter = (detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4)
+      ? detectedFeatures.aiTracedPerimeter
+      : perimeter
+    
+    if (detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4) {
+      console.log(`🏠 Using AI-traced perimeter (${effectivePerimeter.length} vertices) instead of footprint source (${perimeter.length} vertices)`)
+    }
 
     // Step 5: Apply learned corrections from measurement_corrections table
     const correctedFeatures = await applyLearnedCorrections(
       supabase,
       detectedFeatures,
-      perimeter,
+      effectivePerimeter,
       tenantId
     )
 
-    // Step 6: PHASE 3 - Strict endpoint snapping with validation
-    const snappedFeatures = snapLinesToCorners(correctedFeatures, perimeter)
+    // Step 6: PHASE 3 - Strict endpoint snapping with validation (interior lines only)
+    const snappedFeatures = snapLinesToCorners(correctedFeatures, effectivePerimeter)
 
     // Step 6.5: PHASE 3 - Validate no floating lines
-    const floatingValidation = validateNoFloatingLines(snappedFeatures, perimeter)
+    const floatingValidation = validateNoFloatingLines(snappedFeatures, effectivePerimeter)
     if (!floatingValidation.valid) {
       console.warn(`⚠️ ${floatingValidation.floatingEndpoints.length} floating endpoint(s) detected - attempting retry`)
-      // Re-run AI Vision with feedback about floating lines
-      const retryFeatures = await retryWithFeedback(mapboxUrl, floatingValidation.floatingEndpoints, perimeter, coordinates)
+      const retryFeatures = await retryWithFeedback(mapboxUrl, floatingValidation.floatingEndpoints, effectivePerimeter, coordinates)
       if (retryFeatures) {
-        // Merge retry results with original
         snappedFeatures.ridges = mergeFeatures(snappedFeatures.ridges, retryFeatures.ridges)
         snappedFeatures.hips = mergeFeatures(snappedFeatures.hips, retryFeatures.hips)
         snappedFeatures.valleys = mergeFeatures(snappedFeatures.valleys, retryFeatures.valleys)
@@ -167,7 +174,7 @@ Deno.serve(async (req) => {
       const verification = await verifyVisualAlignment(
         mapboxUrl,
         verifiedFeatures,
-        perimeter,
+        effectivePerimeter,
         coordinates
       )
       
@@ -175,7 +182,6 @@ Deno.serve(async (req) => {
       console.log(`📊 Alignment attempt ${attempts + 1}: score = ${alignmentScore}%`)
       
       if (alignmentScore < MIN_ALIGNMENT_SCORE && attempts < MAX_ALIGNMENT_ATTEMPTS - 1) {
-        // Apply suggested adjustments for next iteration
         verifiedFeatures = applyAlignmentAdjustments(verifiedFeatures, verification.adjustments)
       } else {
         verifiedFeatures = verification.features
@@ -183,9 +189,11 @@ Deno.serve(async (req) => {
       attempts++
     }
 
-    // Step 8: PHASE 5 - Build final output with requiresReview flags and visual evidence
+    // Step 8: PHASE 5 - Build final output with eaves/rakes and AI-traced perimeter
     const output: RoofOverlayOutput = {
-      perimeter,
+      perimeter: effectivePerimeter,
+      detectedPerimeter: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
+        ? detectedFeatures.aiTracedPerimeter : undefined,
       ridges: verifiedFeatures.ridges.map(r => ({
         ...r,
         requiresReview: r.confidence < 80 || !r.snappedToTarget
@@ -198,6 +206,8 @@ Deno.serve(async (req) => {
         ...v,
         requiresReview: v.confidence < 80 || !v.snappedToTarget
       })),
+      eaves: detectedFeatures.eaves,
+      rakes: detectedFeatures.rakes,
       metadata: {
         roofType: analysisResult.data?.aiAnalysis?.roofType || 'complex',
         qualityScore: calculateQualityScore(verifiedFeatures),
@@ -205,7 +215,9 @@ Deno.serve(async (req) => {
         requiresManualReview: checkIfRequiresReview(verifiedFeatures),
         totalAreaSqft: analysisResult.data?.measurements?.totalAreaSqft,
         processedAt: new Date().toISOString(),
-        alignmentAttempts: attempts
+        alignmentAttempts: attempts,
+        perimeterSource: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
+          ? 'ai_vision' : 'footprint_source'
       }
     }
 
