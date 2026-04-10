@@ -754,6 +754,41 @@ Deno.serve(async (req) => {
     )
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
+    // ═══════════════════════════════════════════════════════════════════════════
+    // TOPOLOGY VALIDATION: Reclassify valleys→hips on convex (simple) perimeters
+    // A simple rectangular or convex roof has NO valleys. Valleys only exist at 
+    // reflex (concave) vertices where two roof wings meet at an interior angle.
+    // The AI vision sometimes misclassifies hip corners as "valley-entry", which
+    // produces incorrect valley lines. This step corrects that.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const valleyCountBefore = derivedLines.filter(l => l.type === 'valley').length;
+    if (valleyCountBefore > 0) {
+      // Check if perimeter has any reflex (concave) vertices
+      const valleyEntryVertices = perimeterResult.vertices.filter((v: any) => 
+        v.cornerType === 'valley-entry' || v.type === 'valley-entry'
+      );
+      
+      // Also compute convexity geometrically from the perimeter polygon
+      const perimVerts = perimeterResult.vertices.map((v: any) => ({ x: v.x, y: v.y }));
+      const hasReflexVertex = checkForReflexVertices(perimVerts);
+      
+      if (!hasReflexVertex) {
+        // Convex perimeter → no valleys possible, reclassify all as hips
+        let reclassified = 0;
+        derivedLines.forEach(line => {
+          if (line.type === 'valley') {
+            line.type = 'hip';
+            reclassified++;
+          }
+        });
+        if (reclassified > 0) {
+          console.log(`🔧 Topology fix: Reclassified ${reclassified} valleys → hips (convex perimeter, no reflex vertices)`);
+        }
+      } else {
+        console.log(`✅ Perimeter has reflex vertices - ${valleyCountBefore} valleys retained`);
+      }
+    }
+    
     // Calculate actual roof area from perimeter vertices using Shoelace formula
     // CRITICAL: Pass authoritativeFootprint source to prevent Solar override when we have OSM/Mapbox
     const actualAreaSqft = calculateAreaFromPerimeterVertices(
