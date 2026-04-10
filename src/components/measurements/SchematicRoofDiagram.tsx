@@ -225,13 +225,7 @@ export function SchematicRoofDiagram({
 }: SchematicRoofDiagramProps) {
   const [facets, setFacets] = useState<FacetData[]>([]);
   const [geometryQA, setGeometryQA] = useState<GeometryQA | null>(null);
-  // Disable satellite overlay by default for very low confidence - the geometry
-  // doesn't align with the house and the overlay is misleading
-  const footprintConf = measurement?.footprint_confidence || 0;
-  const isVeryLowConfidence = footprintConf > 0 && footprintConf < 0.5;
-  const [localShowOverlay, setLocalShowOverlay] = useState(
-    isVeryLowConfidence ? false : showSatelliteOverlay
-  );
+  const [localShowOverlay, setLocalShowOverlay] = useState(showSatelliteOverlay);
   const [localShowMarkers, setLocalShowMarkers] = useState(showDebugMarkers);
   const [localShowDebugPanel, setLocalShowDebugPanel] = useState(showDebugPanel);
   const [diagramSource, setDiagramSource] = useState<'database' | 'reconstructed' | 'perimeter'>('perimeter');
