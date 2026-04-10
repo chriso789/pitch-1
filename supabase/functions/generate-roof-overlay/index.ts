@@ -638,6 +638,7 @@ async function applyLearnedCorrections(
     }
 
     return {
+      ...features,
       ridges: features.ridges.map(r => applyCorrection(r, ridgeCorrections)),
       hips: features.hips.map(h => applyCorrection(h, hipCorrections)),
       valleys: features.valleys.map(v => applyCorrection(v, valleyCorrections))
