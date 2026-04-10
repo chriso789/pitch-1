@@ -56,7 +56,8 @@ const FACET_COLORS = [
  */
 export function reconstructRoofFromPerimeter(
   perimeterCoords: GPSCoord[],
-  pitch: string = '6/12'
+  pitch: string = '6/12',
+  roofType?: string
 ): ReconstructedRoof {
   const warnings: string[] = [];
   
@@ -84,7 +85,7 @@ export function reconstructRoofFromPerimeter(
   
   // Generate clean geometry based on shape
   if (shapeType === 'rectangle') {
-    return reconstructRectangularRoof(vertices, pitch);
+    return reconstructRectangularRoof(vertices, pitch, roofType);
   } else if (['L-shape', 'T-shape', 'U-shape', 'H-shape', 'multi-wing'].includes(shapeType)) {
     return reconstructMultiWingRoof(vertices, reflexIndices, pitch, shapeType);
   } else {
@@ -139,7 +140,7 @@ function calculateTriangleAreaGPS(a: GPSCoord, b: GPSCoord, c: GPSCoord): number
  *   - West & East facets are triangular gables
  *   - North & South facets are trapezoidal slopes
  */
-function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string): ReconstructedRoof {
+function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string, roofType?: string): ReconstructedRoof {
   
   const bounds = getBounds(vertices);
   const width = bounds.maxLng - bounds.minLng;
