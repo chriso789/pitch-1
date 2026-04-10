@@ -4818,257 +4818,195 @@ async function processSolarFastPath(
   }
   
   // ═══════════════════════════════════════════════════════════════════════════
-  // 🗺️ AUTHORITATIVE FOOTPRINT: Mapbox Vector > Solar BBox > Segment Convex Hull
-  // Mapbox provides sub-meter accuracy with real building geometry (many vertices)
-  // Solar bbox is just a rectangle (4 vertices) - low geometric fidelity
+  // 🗺️ AUTHORITATIVE FOOTPRINT: PARALLEL FETCH + BEST PICK
+  // Fetch ALL footprint sources simultaneously and pick the one with the
+  // most vertices (best geometric detail for kickouts, L-shapes, etc.)
   // ═══════════════════════════════════════════════════════════════════════════
   
   const boundingBox = solarData.boundingBox
   let perimeterXY: [number, number][] = []
-  let footprintSource: 'mapbox_vector' | 'regrid_parcel' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
+  let footprintSource: 'mapbox_vector' | 'regrid_parcel' | 'osm_overpass' | 'microsoft_buildings' | 'ai_vision_detected' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
   let footprintConfidence = 0.75
   let footprintVertexCount = 4
   
-  // STEP 1: Try Mapbox Vector Footprint (highest fidelity)
-  console.log('🗺️ STEP 1: Attempting Mapbox Vector Footprint...')
-  const mapboxResult = await fetchMapboxVectorFootprint(
-    coordinates.lat,
-    coordinates.lng,
-    MAPBOX_PUBLIC_TOKEN,
-    { radius: 50 } // Increased radius for better building detection
+  console.log('🗺️ Fetching ALL footprint sources in parallel for best geometric detail...')
+  
+  const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY')
+  const selectedImage = googleImage.url ? googleImage : mapboxImage
+  
+  interface FootprintCandidate {
+    source: string;
+    coordinates: [number, number][];
+    confidence: number;
+    vertexCount: number;
+    areaSqft?: number;
+  }
+  
+  const footprintCandidates: FootprintCandidate[] = []
+  const footprintPromises: Promise<void>[] = []
+  
+  // 1. Mapbox Vector
+  footprintPromises.push(
+    (async () => {
+      try {
+        const mapboxResult = await fetchMapboxVectorFootprint(
+          coordinates.lat, coordinates.lng, MAPBOX_PUBLIC_TOKEN,
+          { radius: 50 }
+        )
+        if (mapboxResult.footprint && mapboxResult.footprint.vertexCount >= 4) {
+          const selected = selectBestFootprint(mapboxResult.footprint, boundingBox, totalFlatArea)
+          footprintCandidates.push({
+            source: selected.source,
+            coordinates: selected.coordinates,
+            confidence: selected.confidence,
+            vertexCount: selected.vertexCount,
+            areaSqft: (mapboxResult.footprint.areaM2 || 0) * 10.764,
+          })
+          console.log(`✅ Mapbox candidate: ${selected.vertexCount} vertices, confidence ${(selected.confidence * 100).toFixed(0)}%`)
+        } else {
+          console.log(`⚠️ Mapbox: ${mapboxResult.fallbackReason || mapboxResult.error || 'no polygon'}`)
+        }
+      } catch (err) { console.warn('⚠️ Mapbox fetch failed:', err) }
+    })()
   )
   
-  // Enhanced diagnostics for Mapbox result
-  if (mapboxResult.footprint) {
-    console.log(`✅ Mapbox returned footprint: ${mapboxResult.footprint.vertexCount} vertices, ${Math.round(mapboxResult.footprint.areaM2 || 0)}m²`)
-  } else {
-    console.log(`⚠️ Mapbox failed: reason=${mapboxResult.fallbackReason || 'unknown'}, error=${mapboxResult.error || 'none'}`)
-  }
-  
-  if (mapboxResult.footprint && mapboxResult.footprint.vertexCount >= 4) {
-    // Compare with Solar API area to validate we got the right building
-    try {
-      const selected = selectBestFootprint(
-        mapboxResult.footprint,
-        boundingBox,
-        totalFlatArea
-      )
-      
-      perimeterXY = selected.coordinates
-      footprintSource = selected.source
-      footprintConfidence = selected.confidence
-      footprintVertexCount = selected.vertexCount
-      
-      console.log(`🗺️ Footprint selected: ${footprintSource} with ${footprintVertexCount} vertices (${selected.reasoning})`)
-    } catch (err) {
-      console.warn('⚠️ Footprint selection failed:', err)
-    }
-  }
-  
-  // STEP 2: Fallback to Regrid parcel footprint if Mapbox failed
-  const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY')
-  if (perimeterXY.length === 0 && REGRID_API_KEY) {
-    console.log('🗺️ STEP 2: Mapbox unavailable, trying Regrid parcel footprint...')
-    
-    try {
-      const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY)
-      
-      if (regridFootprint && regridFootprint.vertices.length >= 4) {
-        // Convert Regrid vertices {lat, lng} to XY coordinates [lng, lat]
-        perimeterXY = regridFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
-        footprintSource = 'regrid_parcel' as any
-        footprintConfidence = regridFootprint.confidence
-        footprintVertexCount = regridFootprint.vertices.length
-        
-        // Validate area is reasonable compared to Solar
-        const regridAreaSqft = regridFootprint.buildingArea || 0
-        if (regridAreaSqft > 0 && totalFlatArea > 0) {
-          const areaRatio = regridAreaSqft / totalFlatArea
-          if (areaRatio < 0.5 || areaRatio > 2.0) {
-            console.warn(`⚠️ Regrid area mismatch: ${regridAreaSqft}sqft vs Solar ${totalFlatArea}sqft (ratio: ${areaRatio.toFixed(2)})`)
-            // Still use it but reduce confidence
-            footprintConfidence = Math.max(0.6, footprintConfidence - 0.15)
+  // 2. Regrid
+  if (REGRID_API_KEY) {
+    footprintPromises.push(
+      (async () => {
+        try {
+          const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY)
+          if (regridFootprint && regridFootprint.vertices.length >= 4) {
+            const coords = regridFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
+            let conf = regridFootprint.confidence
+            const areaSqft = regridFootprint.buildingArea || 0
+            if (areaSqft > 0 && totalFlatArea > 0) {
+              const ratio = areaSqft / totalFlatArea
+              if (ratio < 0.5 || ratio > 2.0) conf = Math.max(0.6, conf - 0.15)
+            }
+            footprintCandidates.push({ source: 'regrid_parcel', coordinates: coords, confidence: conf, vertexCount: regridFootprint.vertices.length, areaSqft })
+            console.log(`✅ Regrid candidate: ${regridFootprint.vertices.length} vertices, confidence ${(conf * 100).toFixed(0)}%`)
           }
+        } catch (err) { console.warn('⚠️ Regrid fetch failed:', err) }
+      })()
+    )
+  }
+  
+  // 3. OSM Overpass
+  footprintPromises.push(
+    (async () => {
+      try {
+        const osmFootprint = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng)
+        if (osmFootprint && osmFootprint.vertices.length >= 4) {
+          const coords = osmFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
+          footprintCandidates.push({ source: 'osm_overpass', coordinates: coords, confidence: osmFootprint.confidence, vertexCount: osmFootprint.vertices.length })
+          console.log(`✅ OSM candidate: ${osmFootprint.vertices.length} vertices, confidence ${(osmFootprint.confidence * 100).toFixed(0)}%`)
         }
-        
-        console.log(`✅ Regrid footprint: ${footprintVertexCount} vertices, ${regridAreaSqft || 'unknown'}sqft, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
-      } else {
-        console.log(`⚠️ Regrid returned no usable footprint`)
-      }
-    } catch (regridErr) {
-      console.warn('⚠️ Regrid lookup failed:', regridErr)
-    }
-  }
+      } catch (err) { console.warn('⚠️ OSM fetch failed:', err) }
+    })()
+  )
   
-  // STEP 2.5: NEW - OSM Overpass fallback (free, no API key required)
-  if (perimeterXY.length === 0) {
-    console.log('🗺️ STEP 2.5: Trying OpenStreetMap Overpass building footprint...')
-    
-    try {
-      const osmFootprint = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng)
-      
-      if (osmFootprint && osmFootprint.vertices.length >= 4) {
-        perimeterXY = osmFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
-        footprintSource = 'osm_overpass' as any
-        footprintConfidence = osmFootprint.confidence
-        footprintVertexCount = osmFootprint.vertices.length
-        
-        console.log(`✅ OSM Overpass footprint: ${footprintVertexCount} vertices, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
-      } else {
-        console.log(`⚠️ OSM Overpass returned no usable footprint`)
-      }
-    } catch (osmErr) {
-      console.warn('⚠️ OSM Overpass lookup failed:', osmErr)
-    }
-  }
-  
-  // STEP 2.7: NEW - Microsoft/Esri Building Footprints fallback (free, uses Esri ArcGIS service)
-  if (perimeterXY.length === 0) {
-    console.log('🏢 STEP 2.7: Trying Microsoft/Esri Building Footprints (free, no API key)...')
-    
-    try {
-      const msftFootprint = await fetchMicrosoftBuildingFootprint(coordinates.lat, coordinates.lng)
-      
-      if (msftFootprint.footprint && msftFootprint.footprint.vertexCount >= 4) {
-        perimeterXY = msftFootprint.footprint.coordinates
-        footprintSource = 'microsoft_buildings' as any
-        footprintConfidence = msftFootprint.footprint.confidence
-        footprintVertexCount = msftFootprint.footprint.vertexCount
-        
-        // Validate area is reasonable compared to Solar
-        const msftAreaSqft = (msftFootprint.footprint.areaM2 || 0) * 10.764
-        if (msftAreaSqft > 0 && totalFlatArea > 0) {
-          const areaRatio = msftAreaSqft / totalFlatArea
-          if (areaRatio < 0.5 || areaRatio > 2.0) {
-            console.warn(`⚠️ Microsoft area mismatch: ${Math.round(msftAreaSqft)}sqft vs Solar ${Math.round(totalFlatArea)}sqft (ratio: ${areaRatio.toFixed(2)})`)
-            footprintConfidence = Math.max(0.6, footprintConfidence - 0.15)
+  // 4. Microsoft/Esri Buildings
+  footprintPromises.push(
+    (async () => {
+      try {
+        const msftResult = await fetchMicrosoftBuildingFootprint(coordinates.lat, coordinates.lng)
+        if (msftResult.footprint && msftResult.footprint.vertexCount >= 4) {
+          let conf = msftResult.footprint.confidence
+          const areaSqft = (msftResult.footprint.areaM2 || 0) * 10.764
+          if (areaSqft > 0 && totalFlatArea > 0) {
+            const ratio = areaSqft / totalFlatArea
+            if (ratio < 0.5 || ratio > 2.0) conf = Math.max(0.6, conf - 0.15)
           }
+          footprintCandidates.push({ source: 'microsoft_buildings', coordinates: msftResult.footprint.coordinates, confidence: conf, vertexCount: msftResult.footprint.vertexCount, areaSqft })
+          console.log(`✅ Microsoft candidate: ${msftResult.footprint.vertexCount} vertices, confidence ${(conf * 100).toFixed(0)}%`)
         }
-        
-        console.log(`✅ Microsoft footprint: ${footprintVertexCount} vertices, ${Math.round(msftAreaSqft)}sqft, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
-      } else {
-        console.log(`⚠️ Microsoft/Esri returned no usable footprint: ${msftFootprint.fallbackReason || msftFootprint.error || 'unknown'}`)
-      }
-    } catch (msftErr) {
-      console.warn('⚠️ Microsoft/Esri lookup failed:', msftErr)
-    }
+      } catch (err) { console.warn('⚠️ Microsoft fetch failed:', err) }
+    })()
+  )
+  
+  // Wait for all footprint sources (with 8s timeout)
+  await Promise.race([
+    Promise.allSettled(footprintPromises),
+    new Promise(resolve => setTimeout(resolve, 8000))
+  ])
+  
+  console.log(`🗺️ Footprint candidates collected: ${footprintCandidates.length} sources responded`)
+  
+  // Pick BEST candidate: most vertices (captures kickouts) with reasonable confidence
+  if (footprintCandidates.length > 0) {
+    footprintCandidates.sort((a, b) => {
+      if (a.vertexCount !== b.vertexCount) return b.vertexCount - a.vertexCount
+      return b.confidence - a.confidence
+    })
+    
+    footprintCandidates.forEach((c, i) => {
+      console.log(`  ${i === 0 ? '→' : ' '} ${c.source}: ${c.vertexCount} vertices, confidence ${(c.confidence * 100).toFixed(0)}%${c.areaSqft ? `, ${Math.round(c.areaSqft)} sqft` : ''}`)
+    })
+    
+    const best = footprintCandidates[0]
+    perimeterXY = best.coordinates
+    footprintSource = best.source as any
+    footprintConfidence = best.confidence
+    footprintVertexCount = best.vertexCount
+    
+    console.log(`🏆 Selected footprint: ${footprintSource} with ${footprintVertexCount} vertices (best of ${footprintCandidates.length} candidates)`)
   }
   
-  // ═══════════════════════════════════════════════════════════════════════════
-  // STEP 2.9: AI VISION BUILDING DETECTION (BEFORE Solar bbox fallback)
-  // Uses Claude Vision to trace building perimeter from satellite image
-  // This MUST run before falling back to low-fidelity bounding box
-  // ═══════════════════════════════════════════════════════════════════════════
+  // AI Vision fallback
   if (perimeterXY.length === 0 && selectedImage?.url) {
-    console.log('🤖 STEP 2.9: Using AI Vision to detect building footprint (Solar Fast Path)...')
-    
+    console.log('🤖 All footprint APIs failed - using AI Vision...')
     try {
       const detectResponse = await fetch(
         `${SUPABASE_URL}/functions/v1/detect-building-footprint`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-          },
-          body: JSON.stringify({
-            imageUrl: selectedImage.url,
-            coordinates: { lat: coordinates.lat, lng: coordinates.lng },
-            imageSize: 640,
-            zoom: 20
-          })
-        }
+        { method: 'POST', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+          body: JSON.stringify({ imageUrl: selectedImage.url, coordinates: { lat: coordinates.lat, lng: coordinates.lng }, imageSize: 640, zoom: 20 }) }
       )
-
       if (detectResponse.ok) {
         const detectResult = await detectResponse.json()
-        
         if (detectResult.success && detectResult.footprint?.vertices?.length >= 4) {
           const aiVertices = detectResult.footprint.vertices
-          
-          // Convert {lat, lng} to [lng, lat] format for perimeter
           perimeterXY = aiVertices.map((v: any) => [v.lng, v.lat])
           footprintSource = 'ai_vision_detected' as any
           footprintConfidence = (detectResult.footprint.confidence || 0.85) * 0.85
           footprintVertexCount = aiVertices.length
-          
-          console.log(`✅ AI Vision footprint (Solar Fast Path): ${footprintVertexCount} vertices, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
-          console.log(`   Building type: ${detectResult.footprint.building_type || 'residential'}`)
-        } else {
-          console.log(`⚠️ AI Vision returned no usable footprint: ${detectResult.error || 'insufficient vertices'}`)
+          console.log(`✅ AI Vision footprint: ${footprintVertexCount} vertices`)
         }
-      } else {
-        const errorText = await detectResponse.text().catch(() => 'Unknown error')
-        console.warn(`⚠️ AI Vision detection failed (status ${detectResponse.status}): ${errorText}`)
       }
-    } catch (aiVisionErr) {
-      console.warn('⚠️ AI Vision detection error in Solar Fast Path:', aiVisionErr)
-    }
+    } catch (aiVisionErr) { console.warn('⚠️ AI Vision error:', aiVisionErr) }
   }
-  // ═══════════════════════════════════════════════════════════════════════════
   
-  // STEP 3: Fallback to Solar bounding box (rectangle - lowest fidelity)
-  // ⚠️ CRITICAL: Bounding box includes non-roof areas (patios, pools, landscaping)
-  // This WILL overestimate area - mark as low confidence and require review
-  // This should only run if AI Vision also failed
+  // Solar bounding box fallback
   if (perimeterXY.length === 0 && boundingBox?.sw && boundingBox?.ne) {
-    console.log('⚠️ STEP 3: Using Solar API bounding box as perimeter fallback (4 vertices - rectangle)')
-    console.log('⚠️ WARNING: Bounding box includes non-roof areas - area may be significantly overestimated!')
-    console.log('⚠️ All better sources failed: Mapbox, Regrid, OSM, Microsoft, AI Vision')
+    console.log('⚠️ FALLBACK: Solar API bounding box (4 vertices - rectangle)')
     const sw = boundingBox.sw
     const ne = boundingBox.ne
     perimeterXY = [
-      [sw.longitude, sw.latitude],
-      [ne.longitude, sw.latitude],
-      [ne.longitude, ne.latitude],
-      [sw.longitude, ne.latitude],
+      [sw.longitude, sw.latitude], [ne.longitude, sw.latitude],
+      [ne.longitude, ne.latitude], [sw.longitude, ne.latitude],
     ]
-    footprintSource = 'solar_bbox_fallback' // Explicit name to flag low-quality footprint
-    footprintConfidence = 0.60 // Lower confidence - bounding box is unreliable for area
+    footprintSource = 'solar_bbox_fallback'
+    footprintConfidence = 0.60
     footprintVertexCount = 4
-    
-    // Calculate bounding box area vs Solar API area to log the discrepancy
-    const bboxWidthDeg = ne.longitude - sw.longitude
-    const bboxHeightDeg = ne.latitude - sw.latitude
-    const avgLat = (ne.latitude + sw.latitude) / 2
-    const metersPerDegLat = 111320
-    const metersPerDegLng = 111320 * Math.cos(avgLat * Math.PI / 180)
-    const bboxWidthFt = bboxWidthDeg * metersPerDegLng * 3.28084
-    const bboxHeightFt = bboxHeightDeg * metersPerDegLat * 3.28084
-    const bboxAreaSqft = bboxWidthFt * bboxHeightFt
-    
-    console.log(`📐 BBox area: ${Math.round(bboxAreaSqft)}sqft vs Solar API: ${Math.round(totalFlatArea)}sqft (ratio: ${(bboxAreaSqft/totalFlatArea).toFixed(2)}x)`)
-    console.log('📐 Using Solar API buildingFootprintSqft as authoritative area, NOT recalculating from bbox polygon')
   }
   
-  // STEP 4: Last resort - build from segment bounding boxes (convex hull)
-  // ⚠️ CRITICAL: This is even less accurate than bbox - will significantly overestimate area
+  // Last resort: convex hull from segment bounding boxes
   if (perimeterXY.length === 0) {
-    console.log('⚠️ STEP 4: Building perimeter from segment bounding boxes (convex hull - last resort)')
-    console.log('⚠️ WARNING: Convex hull from segment boxes will include gaps and overestimate area significantly!')
+    console.log('⚠️ LAST RESORT: Convex hull from segment bounding boxes')
     const allCorners: [number, number][] = []
     solarData.roofSegments.forEach((seg: any) => {
       if (seg.boundingBox?.sw && seg.boundingBox?.ne) {
         const sw = seg.boundingBox.sw
         const ne = seg.boundingBox.ne
-        allCorners.push([sw.longitude, sw.latitude])
-        allCorners.push([ne.longitude, sw.latitude])
-        allCorners.push([ne.longitude, ne.latitude])
-        allCorners.push([sw.longitude, ne.latitude])
+        allCorners.push([sw.longitude, sw.latitude], [ne.longitude, sw.latitude],
+          [ne.longitude, ne.latitude], [sw.longitude, ne.latitude])
       }
     })
-    
-    if (allCorners.length < 4) {
-      return { success: false, reason: 'No segment bounding boxes available' }
-    }
-    
-    // Compute convex hull from all corners
+    if (allCorners.length < 4) return { success: false, reason: 'No segment bounding boxes available' }
     perimeterXY = computeConvexHull(allCorners)
     footprintSource = 'solar_bbox_fallback'
-    footprintConfidence = 0.55 // Very low confidence - convex hull is unreliable
+    footprintConfidence = 0.55
     footprintVertexCount = perimeterXY.length
-    console.log(`📐 Built perimeter from ${allCorners.length} segment corners -> ${perimeterXY.length} hull vertices`)
-    console.log('📐 Using Solar API buildingFootprintSqft as authoritative area, NOT recalculating from convex hull')
   }
   
   if (perimeterXY.length < 3) {
