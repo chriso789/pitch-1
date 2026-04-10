@@ -354,8 +354,17 @@ export function SchematicRoofDiagram({
     
     const zoom = measurement.analysis_zoom || 20;
     const imageSize = measurement.analysis_image_size || { width: 640, height: 640 };
-    const imgWidth = typeof imageSize === 'object' ? imageSize.width : 640;
-    const imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
+    let imgWidth = typeof imageSize === 'object' ? imageSize.width : 640;
+    let imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
+    
+    // FIX: Correct for @2x retina bug where width*2 was stored instead of tile dimensions.
+    // Mapbox @2x doubles pixel density but covers the SAME geographic area as width x height.
+    // If stored size is suspiciously large (>1280 at zoom 20), it's likely the @2x bug.
+    if (imgWidth > 1280 || imgHeight > 1280) {
+      console.warn(`⚠️ Correcting likely @2x retina bug: ${imgWidth}x${imgHeight} → ${imgWidth / 2}x${imgHeight / 2}`);
+      imgWidth = Math.round(imgWidth / 2);
+      imgHeight = Math.round(imgHeight / 2);
+    }
     
     console.log(`🗺️ Computing image_bounds from center (${centerLat.toFixed(6)}, ${centerLng.toFixed(6)}) zoom=${zoom} size=${imgWidth}x${imgHeight}`);
     return calculateImageBounds(centerLat, centerLng, zoom, imgWidth, imgHeight);
