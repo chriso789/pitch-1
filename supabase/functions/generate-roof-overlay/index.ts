@@ -407,7 +407,7 @@ Return ONLY valid JSON:
 
     if (!response.ok) {
       console.error('AI vision detection failed:', response.status)
-      return { ridges: [], hips: [], valleys: [] }
+      return { ridges: [], hips: [], valleys: [], eaves: [], rakes: [], aiTracedPerimeter: [] }
     }
 
     const data = await response.json()
@@ -417,7 +417,7 @@ Return ONLY valid JSON:
     const jsonMatch = content.match(/\{[\s\S]*\}/)
     if (!jsonMatch) {
       console.warn('No JSON found in AI response')
-      return { ridges: [], hips: [], valleys: [] }
+      return { ridges: [], hips: [], valleys: [], eaves: [], rakes: [], aiTracedPerimeter: [] }
     }
 
     const parsed = JSON.parse(jsonMatch[0])
@@ -504,7 +504,7 @@ Return ONLY valid JSON:
 
   } catch (error) {
     console.error('AI vision detection error:', error)
-    return { ridges: [], hips: [], valleys: [] }
+    return { ridges: [], hips: [], valleys: [], eaves: [], rakes: [], aiTracedPerimeter: [] }
   }
 }
 
