@@ -315,7 +315,7 @@ async function detectAllFeaturesFromImage(
   imageUrl: string,
   perimeter: [number, number][],
   coordinates: { lat: number; lng: number }
-): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] }> {
+): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[]; eaves: RoofLine[]; rakes: RoofLine[]; aiTracedPerimeter: [number, number][] }> {
   
   // Classify perimeter corners for better snapping hints
   const classifiedCorners = classifyPerimeterCorners(perimeter)
