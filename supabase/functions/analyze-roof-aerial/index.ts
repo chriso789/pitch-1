@@ -827,12 +827,30 @@ Deno.serve(async (req) => {
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
     // Convert derived lines to WKT
-    const linearFeatures = convertDerivedLinesToWKT(
+    let linearFeatures = convertDerivedLinesToWKT(
       derivedLines,
       coordinates,
       logicalImageSize,
       IMAGE_ZOOM
     )
+    
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🏠 FOOTPRINT-DRIVEN EAVES/RAKES: Replace AI-generated eave/rake lines
+    // with edges derived directly from the authoritative footprint polygon.
+    // This ensures kickouts, L-shapes, and all corners are preserved.
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (authoritativeFootprint && authoritativeFootprint.vertices.length >= 4) {
+      const ridgeAzimuth = extractRidgeAzimuth(linearFeatures, solarData);
+      const footprintEavesRakes = deriveEavesRakesFromFootprint(
+        authoritativeFootprint.vertices,
+        ridgeAzimuth
+      );
+      
+      // Remove existing eaves/rakes from AI/skeleton and replace with footprint-derived ones
+      const interiorOnly = linearFeatures.filter(f => f.type !== 'eave' && f.type !== 'rake');
+      linearFeatures = [...interiorOnly, ...footprintEavesRakes];
+      console.log(`🏠 Replaced eaves/rakes with ${footprintEavesRakes.length} footprint-derived edges (ridge azimuth: ${ridgeAzimuth.toFixed(0)}°)`);
+    }
     
     // Convert perimeter to WKT polygon
     const perimeterWkt = convertPerimeterToWKT(
