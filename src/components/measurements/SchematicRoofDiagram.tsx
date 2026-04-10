@@ -852,9 +852,9 @@ export function SchematicRoofDiagram({
       }
     }
     
-    // Extract eaves and rakes directly from WKT (these are accurate straight lines)
-    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord }> = [];
-    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord }> = [];
+    // Extract eaves and rakes directly from WKT and preserve all intermediate points.
+    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] }> = [];
+    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] }> = [];
     
     // Build linear feature paths from measurement data
     const linFeatures = plausibleLinearFeatures.map(f => {
@@ -865,20 +865,24 @@ export function SchematicRoofDiagram({
         classifiedEaves.push({
           start: svgCoords[0],
           end: svgCoords[svgCoords.length - 1],
+          points: svgCoords,
           length: f.length,
           gpsStart: f.coords[0],
           gpsEnd: f.coords[f.coords.length - 1],
+          gpsPoints: f.coords,
         });
       } else if (f.type === 'rake' && svgCoords.length >= 2) {
         classifiedRakes.push({
           start: svgCoords[0],
           end: svgCoords[svgCoords.length - 1],
+          points: svgCoords,
           length: f.length,
           gpsStart: f.coords[0],
           gpsEnd: f.coords[f.coords.length - 1],
+          gpsPoints: f.coords,
         });
       }
-      
+
       return {
         type: f.type,
         points: svgCoords,
@@ -1065,8 +1069,18 @@ export function SchematicRoofDiagram({
     width,
   ]);
 
-  const renderedEaveSegments = fittedEdges?.eaveSegments ?? eaveSegments;
-  const renderedRakeSegments = fittedEdges?.rakeSegments ?? rakeSegments;
+  const renderedEaveSegments = (fittedEdges?.eaveSegments ?? eaveSegments).map((seg, index) => ({
+    ...eaveSegments[index],
+    ...seg,
+    points: seg.points && seg.points.length >= 2 ? seg.points : (eaveSegments[index]?.points ?? [seg.start, seg.end]),
+    gpsPoints: seg.gpsPoints && seg.gpsPoints.length >= 2 ? seg.gpsPoints : eaveSegments[index]?.gpsPoints,
+  }));
+  const renderedRakeSegments = (fittedEdges?.rakeSegments ?? rakeSegments).map((seg, index) => ({
+    ...rakeSegments[index],
+    ...seg,
+    points: seg.points && seg.points.length >= 2 ? seg.points : (rakeSegments[index]?.points ?? [seg.start, seg.end]),
+    gpsPoints: seg.gpsPoints && seg.gpsPoints.length >= 2 ? seg.gpsPoints : rakeSegments[index]?.gpsPoints,
+  }));
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
@@ -1358,47 +1372,50 @@ export function SchematicRoofDiagram({
           />
         )}
         
-        {/* Eave segments - thick dark green straight lines with indexed labels */}
+        {/* Eave segments - preserve all footprint points instead of flattening to one line */}
         {(() => {
           const needsIndex = renderedEaveSegments.length > 1;
           
           return renderedEaveSegments.map((seg, i) => {
-            const midX = (seg.start.x + seg.end.x) / 2;
-            const midY = (seg.start.y + seg.end.y) / 2;
-            const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
+            const segmentPoints = seg.points && seg.points.length >= 2 ? seg.points : [seg.start, seg.end];
+            const startPoint = segmentPoints[0];
+            const endPoint = segmentPoints[segmentPoints.length - 1];
+            const midPoint = segmentPoints[Math.floor(segmentPoints.length / 2)] ?? {
+              x: (startPoint.x + endPoint.x) / 2,
+              y: (startPoint.y + endPoint.y) / 2,
+            };
+            const midX = midPoint.x;
+            const midY = midPoint.y;
+            const angle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x) * 180 / Math.PI;
             const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
             const length = seg.length || 0;
+            const pathD = `M ${segmentPoints.map(point => `${point.x},${point.y}`).join(' L ')}`;
             
-            // Calculate cardinal direction from GPS coordinates
-            const dx = seg.end.x - seg.start.x;
-            const dy = seg.end.y - seg.start.y;
+            const dx = endPoint.x - startPoint.x;
+            const dy = endPoint.y - startPoint.y;
             const svgAngleRad = Math.atan2(-dy, dx);
             const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
             const facingBearing = (compassBearing + 90) % 360;
             const direction = getDirectionFromAzimuth(facingBearing);
             
-            // Indexed label (e.g., "N Eave-1 32'" or "N Eave 32'" if only one)
             const indexLabel = needsIndex ? `-${i + 1}` : '';
             const edgeLabel = `${direction} Eave${indexLabel}`;
             const labelWidth = edgeLabel.length * 5 + 35;
-            
             const isHighlighted = isSegmentHighlighted('eave', i);
             
             return (
               <g key={`eave-${i}`}>
-                <line
-                  x1={seg.start.x}
-                  y1={seg.start.y}
-                  x2={seg.end.x}
-                  y2={seg.end.y}
+                <path
+                  d={pathD}
+                  fill="none"
                   stroke={FEATURE_COLORS.eave}
                   strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  strokeLinejoin="miter"
                   strokeDasharray={isLowConfidenceEdges ? '8 4' : undefined}
                   filter={isHighlighted ? 'url(#segment-glow)' : undefined}
                   className={isHighlighted ? 'transition-all duration-150' : ''}
                 />
-                {/* Eave length label - show all segments > 0 */}
                 {showLengthLabels && length > 0 && (
                   <g 
                     transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}
@@ -1432,47 +1449,50 @@ export function SchematicRoofDiagram({
           });
         })()}
         
-        {/* Rake segments - thick cyan straight lines with indexed labels */}
+        {/* Rake segments - preserve all footprint points instead of flattening to one line */}
         {(() => {
           const needsIndex = renderedRakeSegments.length > 1;
           
           return renderedRakeSegments.map((seg, i) => {
-            const midX = (seg.start.x + seg.end.x) / 2;
-            const midY = (seg.start.y + seg.end.y) / 2;
-            const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
+            const segmentPoints = seg.points && seg.points.length >= 2 ? seg.points : [seg.start, seg.end];
+            const startPoint = segmentPoints[0];
+            const endPoint = segmentPoints[segmentPoints.length - 1];
+            const midPoint = segmentPoints[Math.floor(segmentPoints.length / 2)] ?? {
+              x: (startPoint.x + endPoint.x) / 2,
+              y: (startPoint.y + endPoint.y) / 2,
+            };
+            const midX = midPoint.x;
+            const midY = midPoint.y;
+            const angle = Math.atan2(endPoint.y - startPoint.y, endPoint.x - startPoint.x) * 180 / Math.PI;
             const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
             const length = seg.length || 0;
+            const pathD = `M ${segmentPoints.map(point => `${point.x},${point.y}`).join(' L ')}`;
             
-            // Calculate cardinal direction from GPS coordinates
-            const dx = seg.end.x - seg.start.x;
-            const dy = seg.end.y - seg.start.y;
+            const dx = endPoint.x - startPoint.x;
+            const dy = endPoint.y - startPoint.y;
             const svgAngleRad = Math.atan2(-dy, dx);
             const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
             const facingBearing = (compassBearing + 90) % 360;
             const direction = getDirectionFromAzimuth(facingBearing);
             
-            // Indexed label (e.g., "SE Rake-1 28'" or "SE Rake 28'" if only one)
             const indexLabel = needsIndex ? `-${i + 1}` : '';
             const edgeLabel = `${direction} Rake${indexLabel}`;
             const labelWidth = edgeLabel.length * 5 + 35;
-            
             const isHighlighted = isSegmentHighlighted('rake', i);
             
             return (
               <g key={`rake-${i}`}>
-                <line
-                  x1={seg.start.x}
-                  y1={seg.start.y}
-                  x2={seg.end.x}
-                  y2={seg.end.y}
+                <path
+                  d={pathD}
+                  fill="none"
                   stroke={FEATURE_COLORS.rake}
                   strokeWidth={isHighlighted ? 8 : 5}
                   strokeLinecap="square"
+                  strokeLinejoin="miter"
                   strokeDasharray={isLowConfidenceEdges ? '8 4' : undefined}
                   filter={isHighlighted ? 'url(#segment-glow)' : undefined}
                   className={isHighlighted ? 'transition-all duration-150' : ''}
                 />
-                {/* Rake length label - show all segments > 0 */}
                 {showLengthLabels && length > 0 && (
                   <g 
                     transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}
@@ -1505,7 +1525,7 @@ export function SchematicRoofDiagram({
             );
           });
         })()}
-        
+
         {/* Linear features - ridges, hips, valleys with indexed labels (skip eaves/rakes) */}
         {(() => {
           // Build feature counters for indexing (e.g., Hip-A, Hip-B, Valley-1)

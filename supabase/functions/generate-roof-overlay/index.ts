@@ -134,13 +134,16 @@ Deno.serve(async (req) => {
     )
     console.log(`🔍 Detected: ${detectedFeatures.ridges.length} ridges, ${detectedFeatures.hips.length} hips, ${detectedFeatures.valleys.length} valleys, ${detectedFeatures.eaves.length} eaves, ${detectedFeatures.rakes.length} rakes`)
 
-    // Use AI-traced perimeter if available (more accurate than OSM), otherwise fall back
-    const effectivePerimeter = (detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4)
-      ? detectedFeatures.aiTracedPerimeter
-      : perimeter
+    // Keep the authoritative footprint perimeter as the boundary source of truth.
+    // AI-traced perimeter is retained only as a review/debug signal.
+    const effectivePerimeter = perimeter.length >= 4
+      ? perimeter
+      : ((detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4)
+          ? detectedFeatures.aiTracedPerimeter
+          : perimeter)
     
-    if (detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4) {
-      console.log(`🏠 Using AI-traced perimeter (${effectivePerimeter.length} vertices) instead of footprint source (${perimeter.length} vertices)`)
+    if (perimeter.length >= 4 && detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4) {
+      console.log(`🏠 Keeping authoritative footprint perimeter (${perimeter.length} vertices); AI-traced perimeter kept for review only (${detectedFeatures.aiTracedPerimeter.length} vertices)`)
     }
 
     // Step 5: Apply learned corrections from measurement_corrections table
