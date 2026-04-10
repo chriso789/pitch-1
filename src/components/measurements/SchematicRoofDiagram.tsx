@@ -403,127 +403,27 @@ export function SchematicRoofDiagram({
     // Extract perimeter from WKT or faces - this is the ONLY source of truth for building outline
     let perimCoords: { lat: number; lng: number }[] = [];
     
-    // PRIORITY: Derive accurate perimeter from eave/rake vertices when OSM footprint is low quality
-    // This produces the actual building outline instead of a simplified rectangle
-    const linearFeaturesRaw = measurement?.linear_features || measurement?.linear_features_wkt || [];
+    // ═══════════════════════════════════════════════════════════════════════════
+    // PRIORITY 1: Use footprint_vertices_geo directly (authoritative footprint)
+    // This preserves kickouts, L-shapes, and all building corners.
+    // Skip the broken chain/convex hull reconstruction entirely.
+    // ═══════════════════════════════════════════════════════════════════════════
+    const footprintVerticesGeo = measurement?.footprint_vertices_geo;
+    if (Array.isArray(footprintVerticesGeo) && footprintVerticesGeo.length >= 3) {
+      perimCoords = footprintVerticesGeo.map((v: any) => ({ lat: v.lat, lng: v.lng }));
+      // Close the polygon if not already closed
+      const first = perimCoords[0];
+      const last = perimCoords[perimCoords.length - 1];
+      if (Math.abs(first.lat - last.lat) > 0.0000001 || Math.abs(first.lng - last.lng) > 0.0000001) {
+        perimCoords.push({ ...first });
+      }
+      console.log(`🏠 Using authoritative footprint_vertices_geo: ${perimCoords.length - 1} vertices (source: ${measurement?.footprint_source || 'unknown'})`);
+    }
+    
     const footprintConfidence = measurement?.footprint_confidence || 0;
     const isLowQualityFootprint = footprintConfidence < 0.85 || measurement?.footprint_source === 'osm_overpass';
     
-    // Try to derive perimeter by chaining eave/rake segments end-to-end (most accurate)
-    // This avoids the self-intersecting polygon problem of naive angular sorting
-    // BUT: skip for very low confidence (<50%) since the AI geometry is unreliable
-    const isVeryLowConf = footprintConfidence > 0 && footprintConfidence < 0.5;
-    if (isLowQualityFootprint && !isVeryLowConf && Array.isArray(linearFeaturesRaw) && linearFeaturesRaw.length > 0) {
-      const eaveRakeSegments: Array<{ start: { lat: number; lng: number }; end: { lat: number; lng: number } }> = [];
-      
-      linearFeaturesRaw.forEach((f: LinearFeature) => {
-        if (f.wkt && (f.type?.toLowerCase() === 'eave' || f.type?.toLowerCase() === 'rake')) {
-          const coords = wktLineToLatLngs(f.wkt);
-          if (coords.length >= 2) {
-            eaveRakeSegments.push({
-              start: coords[0],
-              end: coords[coords.length - 1],
-            });
-          }
-        }
-      });
-      
-      // Chain segments end-to-end by matching nearest endpoints
-      if (eaveRakeSegments.length >= 3) {
-        const SNAP_DIST = 0.00005; // ~5m tolerance for matching endpoints
-        const nearEnough = (a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
-          Math.abs(a.lat - b.lat) < SNAP_DIST && Math.abs(a.lng - b.lng) < SNAP_DIST;
-        
-        // Build a chain: start with first segment, find next connected segment
-        const chain: { lat: number; lng: number }[] = [eaveRakeSegments[0].start, eaveRakeSegments[0].end];
-        const used = new Set<number>([0]);
-        
-        // Forward chain: extend from the end
-        for (let iter = 0; iter < eaveRakeSegments.length; iter++) {
-          const tip = chain[chain.length - 1];
-          let found = false;
-          for (let i = 0; i < eaveRakeSegments.length; i++) {
-            if (used.has(i)) continue;
-            const seg = eaveRakeSegments[i];
-            if (nearEnough(tip, seg.start)) {
-              chain.push(seg.end);
-              used.add(i);
-              found = true;
-              break;
-            } else if (nearEnough(tip, seg.end)) {
-              chain.push(seg.start);
-              used.add(i);
-              found = true;
-              break;
-            }
-          }
-          if (!found) break;
-        }
-        
-        // Backward chain: extend from the start
-        for (let iter = 0; iter < eaveRakeSegments.length; iter++) {
-          const tip = chain[0];
-          let found = false;
-          for (let i = 0; i < eaveRakeSegments.length; i++) {
-            if (used.has(i)) continue;
-            const seg = eaveRakeSegments[i];
-            if (nearEnough(tip, seg.end)) {
-              chain.unshift(seg.start);
-              used.add(i);
-              found = true;
-              break;
-            } else if (nearEnough(tip, seg.start)) {
-              chain.unshift(seg.end);
-              used.add(i);
-              found = true;
-              break;
-            }
-          }
-          if (!found) break;
-        }
-        
-        // Close the polygon
-        if (chain.length >= 4) {
-          chain.push({ ...chain[0] });
-          perimCoords = chain;
-          console.log(`🏠 Chained ${used.size} eave/rake segments into perimeter with ${chain.length - 1} vertices (was: ${measurement?.footprint_source})`);
-        } else {
-          // Fallback: use convex hull of all eave/rake endpoints
-          const allPts: { lat: number; lng: number }[] = [];
-          eaveRakeSegments.forEach(s => {
-            const isDupStart = allPts.some(p => nearEnough(p, s.start));
-            if (!isDupStart) allPts.push(s.start);
-            const isDupEnd = allPts.some(p => nearEnough(p, s.end));
-            if (!isDupEnd) allPts.push(s.end);
-          });
-          
-          if (allPts.length >= 4) {
-            // Convex hull via gift-wrapping
-            const hull: { lat: number; lng: number }[] = [];
-            let leftmost = allPts.reduce((best, p) => p.lng < best.lng ? p : best, allPts[0]);
-            let current = leftmost;
-            do {
-              hull.push(current);
-              let next = allPts[0];
-              for (const candidate of allPts) {
-                if (next === current || cross(current, next, candidate) < 0) {
-                  next = candidate;
-                }
-              }
-              current = next;
-            } while (current !== leftmost && hull.length < allPts.length + 1);
-            
-            if (hull.length >= 4) {
-              hull.push({ ...hull[0] });
-              perimCoords = hull;
-              console.log(`🏠 Convex hull perimeter from ${hull.length - 1} eave/rake vertices (was: ${measurement?.footprint_source})`);
-            }
-          }
-        }
-      }
-    }
-    
-    // Helper: cross product for convex hull
+    // Helper: cross product for convex hull (kept for edge cases)
     function cross(o: { lat: number; lng: number }, a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
       return (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
     }
