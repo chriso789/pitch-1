@@ -312,50 +312,61 @@ async function detectAllFeaturesFromImage(
   
   console.log(`📐 Corner analysis: ${convexCorners.length} convex (hip targets), ${reflexCorners.length} reflex (valley origins)`)
 
-  // ENHANCED PROMPT with shadow detection, corner classification, and strict topology rules
-  const prompt = `You are analyzing a satellite roof image. Your goal is to trace roof topology lines EXACTLY as they appear.
+  // ENHANCED PROMPT with perimeter tracing, eave/rake classification, and topology rules
+  const prompt = `You are analyzing a satellite roof image. Your goal is to trace the EXACT roof outline and interior topology lines as they appear.
 
 BUILDING SHAPE ANALYSIS:
-- This building has ${perimeter.length} perimeter corners
+- The footprint source has ${perimeter.length} perimeter corners
 - ${convexCorners.length} CONVEX corners (outward-pointing, where hips terminate at eaves)
 - ${reflexCorners.length} REFLEX/CONCAVE corners (inward-pointing, L/T/U shaped junctions where valleys originate)
 
-DETECTION PRIORITIES (in order):
+**IMPORTANT: The footprint may be INACCURATE (simplified rectangle from OSM). You MUST trace the ACTUAL roof drip-line edge visible in the satellite image.**
 
-1. RIDGES: The highest lines where two roof planes meet at the peak
-   - Look for: BRIGHT LINEAR HIGHLIGHTS running along roof peaks
-   - Usually run HORIZONTALLY or along the longest building axis
-   - Ridge ENDPOINTS are where HIPS connect to them
-   - A simple hip roof has 1 ridge with 4 hips (one to each corner)
-   
-2. HIPS: Diagonal lines from ridge endpoints DOWN to building corners
-   - Look for: SHADOW LINES angling diagonally from ridge to corners
-   - TOPOLOGY RULE: Every hip STARTS at a ridge endpoint and ENDS at a convex perimeter corner
-   - A standard hip roof has 4 hips connecting the 2 ridge endpoints to 4 building corners
-   - Hips should be roughly equal length on opposite sides
-   
-3. VALLEYS: Internal troughs where two roof wings meet
-   - Look for: DARK V-SHAPED SHADOWS forming linear troughs
-   - TOPOLOGY RULE: Valleys START at REFLEX corners (L/T/U junctions) and END at a ridge
-   - Only present in L-shaped, T-shaped, or complex buildings
-   - If building is rectangular with no inward corners, there are NO valleys
+STEP 1 - TRACE THE ACTUAL ROOF PERIMETER (most critical):
+- Trace the EXACT visible roof edge (drip line / gutter line) as seen in the satellite image
+- Include ALL corners: kickouts, extensions, L-shapes, T-shapes, bump-outs
+- The real roof is almost NEVER a perfect rectangle - look for setbacks, porches, garage extensions
+- Provide vertices as [x%, y%] pairs going clockwise around the roof
+- Include enough vertices to capture EVERY corner and direction change
+- A simple rectangular roof needs 4 vertices; an L-shape needs 6+; a T-shape needs 8+
 
-CRITICAL TOPOLOGY RULES - MUST FOLLOW:
-1. Ridges: endpoints connect to hip intersections, usually near building center
-2. Hips: ALWAYS start at ridge endpoint, ALWAYS end at a convex building corner
-3. Valleys: ONLY exist if building has reflex (inward) corners
-4. Every convex corner should have exactly ONE hip connecting to it
-5. NO floating lines - every endpoint must connect to something
+STEP 2 - CLASSIFY PERIMETER EDGES:
+For each edge of your traced perimeter, classify it as "eave" or "rake":
+- EAVE: Horizontal roof edge along the gutter/drip line (parallel to ridge, faces outward)
+- RAKE: Sloped edge along gable ends (perpendicular to ridge, runs up to peak)
+- Provide start and end vertex indices from your perimeter
 
-For each feature, provide:
-- startX, startY, endX, endY (as percentages 0-100 from image top-left)
-- confidence (0-100)
-- description: what visual evidence you see
+STEP 3 - DETECT INTERIOR LINES:
+1. RIDGES: Bright highlights at roof peaks, usually horizontal
+2. HIPS: Diagonal shadow lines from ridge endpoints to convex perimeter corners
+3. VALLEYS: Dark V-shaped shadows from reflex corners to ridges (only in L/T/U shapes)
 
-Return ONLY valid JSON in this format:
+TOPOLOGY RULES:
+1. Every hip STARTS at a ridge endpoint and ENDS at a convex perimeter corner
+2. Valleys ONLY exist if building has reflex (inward) corners
+3. NO floating lines - every endpoint must connect to perimeter corner or ridge endpoint
+4. Every convex corner should have exactly ONE hip
+
+Return ONLY valid JSON:
 {
+  "tracedPerimeter": [
+    {"x": 5, "y": 10, "description": "NW corner"},
+    {"x": 85, "y": 10, "description": "NE corner"},
+    {"x": 85, "y": 50, "description": "east kickout corner"},
+    {"x": 95, "y": 50, "description": "east extension corner"},
+    {"x": 95, "y": 90, "description": "SE corner"},
+    {"x": 5, "y": 90, "description": "SW corner"}
+  ],
+  "perimeterEdges": [
+    {"startIdx": 0, "endIdx": 1, "type": "eave", "description": "north eave"},
+    {"startIdx": 1, "endIdx": 2, "type": "rake", "description": "east upper rake"},
+    {"startIdx": 2, "endIdx": 3, "type": "eave", "description": "kickout eave"},
+    {"startIdx": 3, "endIdx": 4, "type": "rake", "description": "east lower rake"},
+    {"startIdx": 4, "endIdx": 5, "type": "eave", "description": "south eave"},
+    {"startIdx": 5, "endIdx": 0, "type": "rake", "description": "west rake"}
+  ],
   "ridges": [{"startX": 25, "startY": 45, "endX": 75, "endY": 45, "confidence": 92, "description": "bright horizontal highlight at roof peak"}],
-  "hips": [{"startX": 25, "startY": 45, "endX": 5, "endY": 10, "confidence": 88, "description": "diagonal shadow from ridge to NW corner"}, {"startX": 25, "startY": 45, "endX": 5, "endY": 90, "confidence": 87, "description": "diagonal shadow from ridge to SW corner"}],
+  "hips": [{"startX": 25, "startY": 45, "endX": 5, "endY": 10, "confidence": 88, "description": "diagonal shadow from ridge to NW corner"}],
   "valleys": []
 }`
 
