@@ -245,10 +245,11 @@ Deno.serve(async (req) => {
   }
 })
 
-// Fetch Mapbox satellite image URL
+// Fetch Mapbox satellite image URL - use zoom 19 for wider context to capture full roof
 async function fetchMapboxSatellite(coordinates: { lat: number; lng: number }): Promise<string> {
   const { lat, lng } = coordinates
-  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${IMAGE_ZOOM},0/${IMAGE_SIZE}x${IMAGE_SIZE}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`
+  // Use zoom 19 (wider view) so we capture full roof + surrounding context for better edge detection
+  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${DETAIL_ZOOM},0/${IMAGE_SIZE}x${IMAGE_SIZE}@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`
 }
 
 // Call the existing analyze-roof-aerial function
