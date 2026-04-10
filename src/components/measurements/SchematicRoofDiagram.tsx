@@ -561,7 +561,7 @@ export function SchematicRoofDiagram({
       try {
         const gpsCoords = perimCoords.map(c => ({ lat: c.lat, lng: c.lng }));
         const pitch = measurement?.predominant_pitch || '6/12';
-        const reconstructed = reconstructRoofFromPerimeter(gpsCoords, pitch);
+        const reconstructed = reconstructRoofFromPerimeter(gpsCoords, pitch, measurement?.roof_type);
         
         // Convert reconstructed geometry to linearFeaturesData format
         reconstructed.ridges.forEach(ridge => {
@@ -612,7 +612,7 @@ export function SchematicRoofDiagram({
     
     // Apply topology validation: fix hip/valley misclassification based on perimeter shape
     const perimForValidation = perimCoords.length >= 3 ? perimCoords : [];
-    const { features: plausibleLinearFeatures, corrections: topologyCorrections, reclassifiedCount } = validateTopology(plausibleRaw, perimForValidation);
+    const { features: plausibleLinearFeatures, corrections: topologyCorrections, reclassifiedCount } = validateTopology(plausibleRaw, perimForValidation, measurement?.roof_type);
     
     if (reclassifiedCount > 0) {
       console.log(`🔧 Topology validation reclassified ${reclassifiedCount} features:`, topologyCorrections);
