@@ -5300,7 +5300,8 @@ async function processSolarFastPath(
   }))
   
   // Select image source
-  const selectedImage = googleImage.url ? googleImage : mapboxImage
+  // selectedImage already declared in footprint resolution block above
+  const finalSelectedImage = selectedImage
   const imageSource = selectedImage.source
   const solarImageYear = new Date().getFullYear() // Renamed to avoid any scope collision
   
