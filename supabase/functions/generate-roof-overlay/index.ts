@@ -433,9 +433,9 @@ Return ONLY valid JSON (no markdown, no explanation):
 
     const parsed = JSON.parse(jsonMatch[0])
     
-    // Convert pixel percentages to geo coordinates
+    // Convert pixel percentages to geo coordinates - use DETAIL_ZOOM since that's the image we send
     const toGeo = (x: number, y: number): [number, number] => {
-      return pixelPctToGeo(x, y, coordinates, IMAGE_SIZE, IMAGE_ZOOM)
+      return pixelPctToGeo(x, y, coordinates, IMAGE_SIZE, DETAIL_ZOOM)
     }
 
     // Parse AI-traced perimeter (the actual visible roof drip-line)

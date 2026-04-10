@@ -3980,12 +3980,21 @@ function convertVisionOverlayToMeasureResult(
   lng: number
 ): MeasureResult | null {
   try {
-    const { perimeter, ridges, hips, valleys, metadata } = overlay;
+    const { ridges, hips, valleys, metadata } = overlay;
+    
+    // Use AI-traced perimeter if available (more accurate), otherwise use footprint perimeter
+    const perimeter = (overlay.detectedPerimeter && overlay.detectedPerimeter.length >= 4) 
+      ? overlay.detectedPerimeter 
+      : overlay.perimeter;
     
     if (!perimeter || perimeter.length < 4) {
       console.error('[convertVisionOverlay] Invalid perimeter');
       return null;
     }
+    
+    const perimeterSource = (overlay.detectedPerimeter && overlay.detectedPerimeter.length >= 4) 
+      ? 'ai_vision' : 'footprint_source';
+    console.log(`[convertVisionOverlay] Using ${perimeterSource} perimeter (${perimeter.length} vertices)`);
     
     // Helper: Calculate line length in feet from geo coordinates
     const calcLengthFt = (start: [number, number], end: [number, number]): number => {
