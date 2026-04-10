@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
       // Store analysis parameters for overlay alignment
       gps_coordinates: { lat: finalCenterLat, lng: finalCenterLng },
       analysis_zoom: Math.round(zoom),
-      analysis_image_size: { width: width * 2, height: height * 2 }, // Account for @2x retina
+      analysis_image_size: { width, height }, // Geographic extent matches tile dimensions, NOT @2x pixel count
     };
 
     const { error: updateError } = await supabase
