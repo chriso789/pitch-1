@@ -5,6 +5,37 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
+  const response = await fetch(documentUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch document: ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") || "application/octet-stream";
+  const arrayBuffer = await response.arrayBuffer();
+  const uint8 = new Uint8Array(arrayBuffer);
+
+  // Manual base64 encoding for Deno compatibility
+  let binary = "";
+  for (let i = 0; i < uint8.length; i++) {
+    binary += String.fromCharCode(uint8[i]);
+  }
+  const base64 = btoa(binary);
+
+  const mimeType = contentType.split(";")[0].trim();
+  return { dataUrl: `data:${mimeType};base64,${base64}`, mimeType };
+}
+
+function isPdf(url: string, mimeType?: string): boolean {
+  if (mimeType?.includes("pdf")) return true;
+  return url.toLowerCase().endsWith(".pdf");
+}
+
+function isImage(url: string): boolean {
+  const lower = url.toLowerCase();
+  return /\.(png|jpe?g|webp|gif)(\?.*)?$/.test(lower);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -26,6 +57,19 @@ Deno.serve(async (req) => {
     }
 
     console.log("[parse-invoice] Extracting data from:", document_url);
+
+    // Determine how to send the document to the vision model
+    let imageContent: { type: string; image_url: { url: string } };
+
+    if (isImage(document_url)) {
+      // Images can be sent directly as URLs
+      imageContent = { type: "image_url", image_url: { url: document_url } };
+    } else {
+      // PDFs and other formats: download and send as base64 data URL
+      console.log("[parse-invoice] Non-image format detected, converting to base64 data URL");
+      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
+      imageContent = { type: "image_url", image_url: { url: dataUrl } };
+    }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -54,10 +98,7 @@ Deno.serve(async (req) => {
                 type: "text",
                 text: "Extract all invoice data from this document: the vendor name, invoice number, invoice date, every line item (description, quantity, unit price, line total), subtotal, tax, and total amount."
               },
-              {
-                type: "image_url",
-                image_url: { url: document_url }
-              }
+              imageContent
             ]
           }
         ],
