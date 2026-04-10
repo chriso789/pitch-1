@@ -190,7 +190,15 @@ Deno.serve(async (req) => {
       attempts++
     }
 
-    // Step 8: PHASE 5 - Build final output with eaves/rakes and AI-traced perimeter
+    // Step 8: PHASE 5 - Build final output with eaves/rakes derived from perimeter
+    // ═══════════════════════════════════════════════════════════════════════════
+    // FOOTPRINT-DRIVEN EAVES/RAKES: Derive from effectivePerimeter edges
+    // instead of using AI-traced classifications which miss kickouts
+    // ═══════════════════════════════════════════════════════════════════════════
+    const ridgeAzimuth = extractRidgeAzimuthFromLines(verifiedFeatures.ridges, coordinates);
+    const footprintEavesRakes = deriveEavesRakesFromPerimeter(effectivePerimeter, ridgeAzimuth, coordinates);
+    console.log(`🏠 Footprint-derived: ${footprintEavesRakes.eaves.length} eaves, ${footprintEavesRakes.rakes.length} rakes (ridge azimuth: ${ridgeAzimuth.toFixed(0)}°)`);
+    
     const output: RoofOverlayOutput = {
       perimeter: effectivePerimeter,
       detectedPerimeter: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
@@ -207,18 +215,17 @@ Deno.serve(async (req) => {
         ...v,
         requiresReview: v.confidence < 80 || !v.snappedToTarget
       })),
-      eaves: detectedFeatures.eaves,
-      rakes: detectedFeatures.rakes,
+      eaves: footprintEavesRakes.eaves,
+      rakes: footprintEavesRakes.rakes,
       metadata: {
         roofType: analysisResult.data?.aiAnalysis?.roofType || 'complex',
         qualityScore: calculateQualityScore(verifiedFeatures),
-        dataSourcesPriority: ['mapbox_satellite', 'ai_vision', 'geometry_derived'],
+        dataSourcesPriority: ['mapbox_satellite', 'ai_vision', 'footprint_derived'],
         requiresManualReview: checkIfRequiresReview(verifiedFeatures),
         totalAreaSqft: analysisResult.data?.measurements?.totalAreaSqft,
         processedAt: new Date().toISOString(),
         alignmentAttempts: attempts,
-        perimeterSource: detectedFeatures.aiTracedPerimeter && detectedFeatures.aiTracedPerimeter.length >= 4
-          ? 'ai_vision' : 'footprint_source'
+        perimeterSource: 'footprint_derived'
       }
     }
 
