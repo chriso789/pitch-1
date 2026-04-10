@@ -676,6 +676,7 @@ export function SchematicRoofDiagram({
           console.log(`📎 Client-side snap: ${snappedCount} eave/rake endpoints snapped to perimeter vertices`);
         }
       }
+    }
     
     // FALLBACK: If no WKT features, use client-side reconstruction
     // BUT: Skip reconstruction if footprint is a bounding box fallback (4-point rectangle)
