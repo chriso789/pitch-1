@@ -417,6 +417,7 @@ export function SimpleMeasurementCanvas({
           propertyId: propertyId || 'temp',
           lat: centerLat,
           lng: centerLng,
+          engine: 'vision',
         },
       });
 
