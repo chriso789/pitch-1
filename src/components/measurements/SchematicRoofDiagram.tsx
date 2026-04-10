@@ -765,16 +765,23 @@ export function SchematicRoofDiagram({
       ? focusFeatureCoords
       : (perimCoords.length > 0 ? perimCoords : allLatLngs);
 
-    // IMAGE-SPACE CROP: Compute crop rectangle in source image pixel space
-    // This ensures the satellite image and SVG lines use the exact same transform
+    // IMAGE-SPACE CROP: only use geometry-driven cropping when the bounds are authoritative.
+    // If the footprint is low confidence and image_bounds were only computed from center/zoom,
+    // cropping to the eave/rake geometry makes the aerial appear stretched around the green box.
     const imgCrop = (() => {
-      if (!localShowOverlay || !imageBounds || overlayFocusCoords.length === 0) return null;
+      const hasStoredImageBounds = !!(measurement?.image_bounds?.topLeft && measurement?.image_bounds?.bottomLeft);
+      const shouldUseGeometryCrop =
+        localShowOverlay &&
+        !!imageBounds &&
+        overlayFocusCoords.length > 0 &&
+        (hasStoredImageBounds || !isLowQualityFootprint);
+
+      if (!shouldUseGeometryCrop) return null;
 
       const sourceSize = measurement?.analysis_image_size || { width: 640, height: 640 };
       const srcW = typeof sourceSize === 'object' ? sourceSize.width || 640 : 640;
       const srcH = typeof sourceSize === 'object' ? sourceSize.height || 640 : 640;
 
-      // Map ALL focus coordinates to source image pixel space
       const focusPixels = overlayFocusCoords.map(c =>
         gpsToPixel(c, imageBounds, { width: srcW, height: srcH })
       );
@@ -784,13 +791,13 @@ export function SchematicRoofDiagram({
       let cMinY = Math.min(...focusPixels.map(p => p.y));
       let cMaxY = Math.max(...focusPixels.map(p => p.y));
 
-      // Add small padding (2% of feature extent)
       const padX = Math.max((cMaxX - cMinX) * 0.02, 2);
       const padY = Math.max((cMaxY - cMinY) * 0.02, 2);
-      cMinX -= padX; cMaxX += padX;
-      cMinY -= padY; cMaxY += padY;
+      cMinX -= padX;
+      cMaxX += padX;
+      cMinY -= padY;
+      cMaxY += padY;
 
-      // Enforce aspect ratio to match SVG container
       const containerAspect = width / height;
       let cropW = cMaxX - cMinX;
       let cropH = cMaxY - cMinY;
@@ -799,14 +806,15 @@ export function SchematicRoofDiagram({
       if (cropAspect > containerAspect) {
         const newH = cropW / containerAspect;
         const extra = (newH - cropH) / 2;
-        cMinY -= extra; cMaxY += extra;
+        cMinY -= extra;
+        cMaxY += extra;
       } else {
         const newW = cropH * containerAspect;
         const extra = (newW - cropW) / 2;
-        cMinX -= extra; cMaxX += extra;
+        cMinX -= extra;
+        cMaxX += extra;
       }
 
-      // Clamp to source image bounds
       cMinX = Math.max(0, cMinX);
       cMinY = Math.max(0, cMinY);
       cMaxX = Math.min(srcW, cMaxX);
