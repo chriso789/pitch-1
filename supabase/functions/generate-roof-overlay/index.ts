@@ -415,6 +415,49 @@ Return ONLY valid JSON:
       return pixelPctToGeo(x, y, coordinates, IMAGE_SIZE, IMAGE_ZOOM)
     }
 
+    // Parse AI-traced perimeter (the actual visible roof drip-line)
+    let aiTracedPerimeter: [number, number][] = []
+    if (parsed.tracedPerimeter && Array.isArray(parsed.tracedPerimeter) && parsed.tracedPerimeter.length >= 3) {
+      aiTracedPerimeter = parsed.tracedPerimeter.map((v: any) => toGeo(v.x, v.y))
+      // Close the polygon
+      if (aiTracedPerimeter.length >= 3) {
+        const first = aiTracedPerimeter[0]
+        const last = aiTracedPerimeter[aiTracedPerimeter.length - 1]
+        if (Math.abs(first[0] - last[0]) > 0.000001 || Math.abs(first[1] - last[1]) > 0.000001) {
+          aiTracedPerimeter.push([...first] as [number, number])
+        }
+      }
+      console.log(`🏠 AI traced perimeter: ${aiTracedPerimeter.length} vertices (including kickouts/extensions)`)
+    }
+
+    // Parse eave and rake edges from perimeter classification
+    const eaves: RoofLine[] = []
+    const rakes: RoofLine[] = []
+    if (parsed.perimeterEdges && Array.isArray(parsed.perimeterEdges) && aiTracedPerimeter.length >= 3) {
+      const perimVerts = aiTracedPerimeter.slice(0, -1) // exclude closing vertex
+      for (const edge of parsed.perimeterEdges) {
+        const startIdx = edge.startIdx
+        const endIdx = edge.endIdx
+        if (startIdx >= 0 && startIdx < perimVerts.length && endIdx >= 0 && endIdx < perimVerts.length) {
+          const line: RoofLine = {
+            start: perimVerts[startIdx],
+            end: perimVerts[endIdx],
+            confidence: 85,
+            requiresReview: false,
+            source: 'ai_vision_perimeter',
+            visualEvidence: edge.description || undefined,
+            snappedToTarget: true // these ARE the perimeter
+          }
+          if (edge.type === 'eave') {
+            eaves.push(line)
+          } else if (edge.type === 'rake') {
+            rakes.push(line)
+          }
+        }
+      }
+      console.log(`📏 AI classified edges: ${eaves.length} eaves, ${rakes.length} rakes`)
+    }
+
     const ridges: RoofLine[] = (parsed.ridges || []).map((r: DetectedFeature) => ({
       start: toGeo(r.startX, r.startY),
       end: toGeo(r.endX, r.endY),
@@ -445,7 +488,7 @@ Return ONLY valid JSON:
       snappedToTarget: false
     }))
 
-    return { ridges, hips, valleys }
+    return { ridges, hips, valleys, eaves, rakes, aiTracedPerimeter }
 
   } catch (error) {
     console.error('AI vision detection error:', error)
