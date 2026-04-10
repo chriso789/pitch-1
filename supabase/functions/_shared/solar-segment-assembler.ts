@@ -153,7 +153,8 @@ export function assembleFacetsFromSolarSegments(
   solarSegments: SolarSegment[],
   predominantPitch: string = '6/12',
   structureAnalysis?: StructureAnalysis,
-  aiRidgeOverride?: AIRidgeOverride
+  aiRidgeOverride?: AIRidgeOverride,
+  roofType?: string
 ): AssembledGeometry {
   const warnings: string[] = [];
   
@@ -318,7 +319,7 @@ function assembleFromCenters(
   });
   
   // Derive linear features from facet adjacencies
-  const { ridges, hips, valleys, eaves, rakes } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis);
+  const { ridges, hips, valleys, eaves, rakes } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis, roofType);
   
   // If facet generation failed, use azimuth-based fallback
   if (facets.length < 2 && segments.length >= 2) {
@@ -981,7 +982,8 @@ function deriveLinearFeaturesFromFacets(
   facets: AssembledFacet[],
   perimeter: XY[],
   centroid: XY,
-  structureAnalysis?: StructureAnalysis
+  structureAnalysis?: StructureAnalysis,
+  roofType?: string
 ): { ridges: AssembledLine[]; hips: AssembledLine[]; valleys: AssembledLine[]; eaves: AssembledLine[]; rakes: AssembledLine[] } {
   const ridges: AssembledLine[] = [];
   const hips: AssembledLine[] = [];
