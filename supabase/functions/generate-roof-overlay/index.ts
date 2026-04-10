@@ -69,6 +69,7 @@ const SNAP_THRESHOLD_FT = 5 // Max snap distance (increased from 3 for better co
 const FT_TO_DEG = 1 / 364000 // Approximate feet to degrees at US latitudes
 const MIN_ALIGNMENT_SCORE = 90 // Target alignment score
 const MAX_ALIGNMENT_ATTEMPTS = 3 // Iterative refinement limit
+const DETAIL_ZOOM = 19 // Slightly zoomed out for better roof context
 
 // Corner classification types
 interface ClassifiedCorner {
