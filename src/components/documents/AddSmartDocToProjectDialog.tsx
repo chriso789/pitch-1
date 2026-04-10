@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import DOMPurify from 'dompurify';
 import { supabase } from '@/integrations/supabase/client';
 import {
   Dialog,
@@ -567,7 +568,7 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
               ) : (
                 <div 
                   className="prose prose-sm dark:prose-invert max-w-none text-sm"
-                  dangerouslySetInnerHTML={{ __html: preview }}
+                  dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(preview) }}
                 />
               )}
             </ScrollArea>

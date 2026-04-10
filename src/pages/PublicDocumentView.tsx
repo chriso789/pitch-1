@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import DOMPurify from 'dompurify';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -252,7 +253,7 @@ const PublicDocumentView = () => {
               <div 
                 className="p-8 bg-background prose prose-sm max-w-none"
                 style={{ transform: `scale(${zoom / 100})`, transformOrigin: 'top left' }}
-                dangerouslySetInnerHTML={{ __html: document.html_content }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(document.html_content, { FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed'], FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover'] }) }}
               />
             ) : (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
