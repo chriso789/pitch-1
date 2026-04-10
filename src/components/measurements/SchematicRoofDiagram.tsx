@@ -423,10 +423,6 @@ export function SchematicRoofDiagram({
     const footprintConfidence = measurement?.footprint_confidence || 0;
     const isLowQualityFootprint = footprintConfidence < 0.85 || measurement?.footprint_source === 'osm_overpass';
     
-    // Helper: cross product for convex hull (kept for edge cases)
-    function cross(o: { lat: number; lng: number }, a: { lat: number; lng: number }, b: { lat: number; lng: number }) {
-      return (a.lng - o.lng) * (b.lat - o.lat) - (a.lat - o.lat) * (b.lng - o.lng);
-    }
     
     // Fallback priority 1: perimeter_wkt from measurement
     if (perimCoords.length === 0 && measurement?.perimeter_wkt) {
