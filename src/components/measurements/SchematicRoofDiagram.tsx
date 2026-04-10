@@ -225,7 +225,13 @@ export function SchematicRoofDiagram({
 }: SchematicRoofDiagramProps) {
   const [facets, setFacets] = useState<FacetData[]>([]);
   const [geometryQA, setGeometryQA] = useState<GeometryQA | null>(null);
-  const [localShowOverlay, setLocalShowOverlay] = useState(showSatelliteOverlay);
+  // Disable satellite overlay by default for very low confidence - the geometry
+  // doesn't align with the house and the overlay is misleading
+  const footprintConf = measurement?.footprint_confidence || 0;
+  const isVeryLowConfidence = footprintConf > 0 && footprintConf < 0.5;
+  const [localShowOverlay, setLocalShowOverlay] = useState(
+    isVeryLowConfidence ? false : showSatelliteOverlay
+  );
   const [localShowMarkers, setLocalShowMarkers] = useState(showDebugMarkers);
   const [localShowDebugPanel, setLocalShowDebugPanel] = useState(showDebugPanel);
   const [diagramSource, setDiagramSource] = useState<'database' | 'reconstructed' | 'perimeter'>('perimeter');
@@ -411,7 +417,9 @@ export function SchematicRoofDiagram({
     
     // Try to derive perimeter by chaining eave/rake segments end-to-end (most accurate)
     // This avoids the self-intersecting polygon problem of naive angular sorting
-    if (isLowQualityFootprint && Array.isArray(linearFeaturesRaw) && linearFeaturesRaw.length > 0) {
+    // BUT: skip for very low confidence (<50%) since the AI geometry is unreliable
+    const isVeryLowConf = footprintConfidence > 0 && footprintConfidence < 0.5;
+    if (isLowQualityFootprint && !isVeryLowConf && Array.isArray(linearFeaturesRaw) && linearFeaturesRaw.length > 0) {
       const eaveRakeSegments: Array<{ start: { lat: number; lng: number }; end: { lat: number; lng: number } }> = [];
       
       linearFeaturesRaw.forEach((f: LinearFeature) => {
