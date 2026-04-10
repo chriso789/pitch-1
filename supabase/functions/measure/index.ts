@@ -3964,10 +3964,15 @@ function convertVisionOverlayToMeasureResult(
     ridges: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
     hips: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
     valleys: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    eaves?: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    rakes?: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    detectedPerimeter?: [number, number][];
     metadata: {
       roofType?: string;
       qualityScore?: number;
       totalAreaSqft?: number;
+      perimeterSource?: string;
+    };
     };
   },
   propertyId: string,
