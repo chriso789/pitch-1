@@ -769,12 +769,10 @@ export function SchematicRoofDiagram({
     // If the footprint is low confidence and image_bounds were only computed from center/zoom,
     // cropping to the eave/rake geometry makes the aerial appear stretched around the green box.
     const imgCrop = (() => {
-      const hasStoredImageBounds = !!(measurement?.image_bounds?.topLeft && measurement?.image_bounds?.bottomLeft);
       const shouldUseGeometryCrop =
         localShowOverlay &&
         !!imageBounds &&
-        overlayFocusCoords.length > 0 &&
-        (hasStoredImageBounds || !isLowQualityFootprint);
+        overlayFocusCoords.length > 0;
 
       if (!shouldUseGeometryCrop) return null;
 
@@ -791,8 +789,10 @@ export function SchematicRoofDiagram({
       let cMinY = Math.min(...focusPixels.map(p => p.y));
       let cMaxY = Math.max(...focusPixels.map(p => p.y));
 
-      const padX = Math.max((cMaxX - cMinX) * 0.02, 2);
-      const padY = Math.max((cMaxY - cMinY) * 0.02, 2);
+      // Use generous padding for low-quality footprints to avoid stretching artifacts
+      const padFactor = isLowQualityFootprint ? 0.25 : 0.02;
+      const padX = Math.max((cMaxX - cMinX) * padFactor, 5);
+      const padY = Math.max((cMaxY - cMinY) * padFactor, 5);
       cMinX -= padX;
       cMaxX += padX;
       cMinY -= padY;
