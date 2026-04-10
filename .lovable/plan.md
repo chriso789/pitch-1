@@ -1,70 +1,47 @@
 
+Why this is still happening:
+- The diagram is not ignoring the footprint anymore; it is using a footprint, but the saved footprint is still too simple.
+- The latest log shows: `Selected footprint: osm_overpass with 5 vertices (best of 1 candidates)`.
+- A 5-vertex OSM polygon cannot create porch kickouts or stepped eaves, so the frontend can only draw straight boundary segments.
+- The hybrid edge auto-fit only nudges existing segments; it cannot invent missing corners.
+- `start-ai-measurement` sends `useUnifiedPipeline: true`, but `analyze-roof-aerial` does not read that flag, so the richer shared resolver/fusion path is being bypassed during async pulls.
+- `SchematicRoofDiagram` also applies a low-quality OSM rescale/correction, which can move straight lines but still cannot create the missing kickout geometry.
 
-# Plan: Use Authoritative Footprint to Drive Eave/Rake Lines
+Implementation plan:
+1. Fix the pipeline entry point
+- Make async measurement pulls actually honor the unified footprint path instead of always staying in `analyze-roof-aerial`’s Solar Fast Path.
+- Reuse the shared footprint resolver/fusion logic that already exists instead of keeping a separate ad hoc selector.
 
-## Problem
-The eave lines don't follow kickouts, L-shapes, or any non-rectangular features of the roof. This happens because:
-1. The system already fetches high-quality building footprints (Mapbox Vector, Microsoft Buildings, OSM, Regrid) with accurate corners and kickouts
-2. But eave/rake lines are generated **independently** by AI vision or straight-skeleton, ignoring the footprint
-3. The client-side "snap" logic only moves endpoints to the nearest perimeter vertex — it can't add missing corners or create multi-segment eaves
+2. Add a “detail gate” before saving any footprint
+- Reject low-detail candidates when they have too few vertices, long straight segments, or mismatch the roof complexity implied by Solar segments/interior topology.
+- If the best returned source is still simplified OSM/Microsoft geometry, automatically escalate to AI footprint detection or full analysis instead of saving that simplified perimeter as authoritative.
 
-The footprint IS the eave/rake geometry. Every edge of the building outline is either an eave or a rake. We need to derive eaves/rakes directly from the footprint edges instead of generating them independently.
+3. Normalize footprint sources and ranking
+- Unify source naming across paths (`osm_overpass` vs `osm_buildings`) so the same quality rules apply everywhere.
+- Rank candidates by detail + confidence + area sanity, not by “first usable footprint.”
+- Keep “best available” behavior, but do not allow a low-detail polygon to win just because it is the only fast result.
 
-## Solution
+4. Stop frontend corrections that hide the real problem
+- Remove or tighten the north/south OSM rescaling in `SchematicRoofDiagram`.
+- If the saved footprint is low-detail, render it honestly as approximate instead of stretching it and making the mismatch look like a drawing bug.
 
-### Step 1: Generate eaves/rakes from footprint edges in `analyze-roof-aerial`
+5. Keep footprint-driven eave/rake generation, but only from vetted geometry
+- Continue deriving eaves/rakes from `footprint_vertices_geo`.
+- Ensure the saved footprint includes every kickout vertex before those edges are generated.
+- Leave hybrid luminance fitting in place only for minor inward/outward refinement.
 
-In `supabase/functions/analyze-roof-aerial/index.ts`, after the authoritative footprint is resolved and the ridge direction is known:
+Files to update:
+- `supabase/functions/start-ai-measurement/index.ts`
+- `supabase/functions/analyze-roof-aerial/index.ts`
+- `supabase/functions/_shared/footprint-resolver.ts` and/or `supabase/functions/footprint-fusion/index.ts`
+- `src/components/measurements/SchematicRoofDiagram.tsx`
 
-- Walk the footprint polygon edge-by-edge
-- Classify each edge as **eave** (perpendicular to ridge) or **rake** (parallel to ridge) based on the ridge azimuth from Solar API or AI analysis
-- Store these as `linear_features_wkt` entries with type `eave` or `rake`
-- Each footprint edge becomes exactly one WKT LINESTRING — preserving every corner and kickout
+Validation after implementation:
+- Re-run the same property and confirm logs do not save a low-detail 5-vertex OSM footprint when better geometry or AI fallback is needed.
+- Confirm `footprint_vertices_geo` contains the kickout vertices.
+- Confirm the green eave/rake lines now follow each perimeter corner.
+- Confirm low-detail fallback cases show “approximate/manual review” instead of pretending to match.
 
-This replaces the current approach where eaves/rakes come from the AI vision model or the 70/30 heuristic split.
-
-### Step 2: Same fix in `generate-roof-overlay` vision engine
-
-In `supabase/functions/generate-roof-overlay/index.ts`:
-
-- After detecting ridges/hips/valleys from the satellite image, derive eaves and rakes from the `effectivePerimeter` (which is already resolved from Mapbox/OSM/Regrid)
-- Classify perimeter edges using the detected ridge direction
-- Replace the current AI-traced `perimeterEdges` classification (which often fails for complex shapes)
-
-### Step 3: Remove broken client-side perimeter reconstruction
-
-In `src/components/measurements/SchematicRoofDiagram.tsx`:
-
-- Remove the convex hull fallback (lines ~491-522) — convex hull strips kickouts by definition
-- Remove the chain-segments-into-perimeter logic (lines ~432-488) — this tries to reconstruct the footprint from eave/rake segments, but now the eave/rake segments ARE the footprint edges
-- Instead, always use `perimeter_wkt` or `footprint_vertices_geo` from the database as the single source of truth for the building outline
-- Keep the luminance-based `edgeAutoFit` as a fine-tuning step (hybrid approach per user preference), but limit its adjustment range to prevent it from drifting away from the footprint
-
-### Step 4: Ensure footprint vertices flow through the full pipeline
-
-- In `saveMeasurementToDatabase`: Already stores `footprint_vertices_geo` — verified
-- In `SchematicRoofDiagram`: Use `footprint_vertices_geo` (the actual authoritative polygon) as the primary perimeter source instead of reconstructing from eave/rake endpoints
-- Ensure eave/rake WKT segments are multi-vertex when the footprint edge has intermediate vertices (e.g., an L-shaped kickout produces two eave segments meeting at the kickout corner)
-
-## Technical Details
-
-**Edge classification algorithm:**
-```
-For each edge (v[i] → v[i+1]) of the footprint polygon:
-  - Calculate edge bearing (angle from north)
-  - Compare to ridge bearing (from Solar API azimuth or AI detection)
-  - If edge is within ±30° of perpendicular to ridge → eave
-  - Otherwise → rake
-```
-
-**Files changed:**
-1. `supabase/functions/analyze-roof-aerial/index.ts` — Add `deriveEavesRakesFromFootprint()` function, call it in both full-analysis and Solar Fast Path, inject results into `linearFeatures`
-2. `supabase/functions/generate-roof-overlay/index.ts` — Same derivation using `effectivePerimeter` + detected ridge direction
-3. `src/components/measurements/SchematicRoofDiagram.tsx` — Simplify perimeter logic: prefer `footprint_vertices_geo` directly, remove convex hull fallback, keep `edgeAutoFit` with tighter bounds
-
-**What stays the same:**
-- Ridge, hip, valley detection (AI vision or straight-skeleton) — unchanged
-- Footprint resolution priority chain (Mapbox > Microsoft > OSM > Regrid > Solar bbox) — unchanged
-- Manual pin editor and drag-to-move — unchanged
-- All existing API keys and data sources — unchanged
-
+Technical note:
+- The renderer is no longer the main blocker; it already supports multi-point edge drawing.
+- The real issue is upstream footprint quality and the async flow bypassing the better resolver path.
