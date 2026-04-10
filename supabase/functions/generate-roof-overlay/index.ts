@@ -326,61 +326,69 @@ async function detectAllFeaturesFromImage(
   
   console.log(`📐 Corner analysis: ${convexCorners.length} convex (hip targets), ${reflexCorners.length} reflex (valley origins)`)
 
-  // ENHANCED PROMPT with perimeter tracing, eave/rake classification, and topology rules
-  const prompt = `You are analyzing a satellite roof image. Your goal is to trace the EXACT roof outline and interior topology lines as they appear.
+  // ENHANCED PROMPT - v2: Focus on pixel-accurate perimeter tracing
+  const prompt = `You are an expert satellite imagery analyst specializing in residential roof geometry extraction.
 
-BUILDING SHAPE ANALYSIS:
-- The footprint source has ${perimeter.length} perimeter corners
-- ${convexCorners.length} CONVEX corners (outward-pointing, where hips terminate at eaves)
-- ${reflexCorners.length} REFLEX/CONCAVE corners (inward-pointing, L/T/U shaped junctions where valleys originate)
+CRITICAL TASK: Trace the EXACT visible roof boundary and interior structural lines.
 
-**IMPORTANT: The footprint may be INACCURATE (simplified rectangle from OSM). You MUST trace the ACTUAL roof drip-line edge visible in the satellite image.**
+## STEP 1 - TRACE THE ROOF PERIMETER (MOST IMPORTANT)
+Carefully trace the visible roof edge (drip-line/gutter line) as it appears in the satellite image.
 
-STEP 1 - TRACE THE ACTUAL ROOF PERIMETER (most critical):
-- Trace the EXACT visible roof edge (drip line / gutter line) as seen in the satellite image
-- Include ALL corners: kickouts, extensions, L-shapes, T-shapes, bump-outs
-- The real roof is almost NEVER a perfect rectangle - look for setbacks, porches, garage extensions
-- Provide vertices as [x%, y%] pairs going clockwise around the roof
-- Include enough vertices to capture EVERY corner and direction change
-- A simple rectangular roof needs 4 vertices; an L-shape needs 6+; a T-shape needs 8+
+CRITICAL RULES FOR PERIMETER:
+- Roofs are almost NEVER perfect rectangles. Look VERY carefully for:
+  * Front porch kickouts (a section of roof that extends forward)
+  * Garage extensions (wider or narrower sections)
+  * L-shaped, T-shaped, or U-shaped layouts
+  * Setbacks where the roofline steps inward or outward
+  * Bay windows or bump-outs
+- Place a vertex at EVERY corner where the roof edge changes direction
+- A simple rectangular roof = 4 vertices
+- An L-shaped roof = 6 vertices minimum
+- A T-shaped roof = 8 vertices minimum
+- A complex roof with porches/extensions = 8-16 vertices
+- Go CLOCKWISE starting from the top-left corner
+- Use [x%, y%] coordinates where (0,0) = top-left, (100,100) = bottom-right of image
 
-STEP 2 - CLASSIFY PERIMETER EDGES:
-For each edge of your traced perimeter, classify it as "eave" or "rake":
-- EAVE: Horizontal roof edge along the gutter/drip line (parallel to ridge, faces outward)
-- RAKE: Sloped edge along gable ends (perpendicular to ridge, runs up to peak)
-- Provide start and end vertex indices from your perimeter
+The footprint source suggests ${perimeter.length} corners but may be WRONG. Trust what you SEE in the image.
+${convexCorners.length} convex corners, ${reflexCorners.length} reflex corners detected in footprint.
 
-STEP 3 - DETECT INTERIOR LINES:
-1. RIDGES: Bright highlights at roof peaks, usually horizontal
-2. HIPS: Diagonal shadow lines from ridge endpoints to convex perimeter corners
-3. VALLEYS: Dark V-shaped shadows from reflex corners to ridges (only in L/T/U shapes)
+## STEP 2 - CLASSIFY EACH PERIMETER EDGE
+For each consecutive pair of perimeter vertices, classify as:
+- "eave": Edge parallel to or near-parallel to the main ridge (horizontal gutter line)
+- "rake": Edge perpendicular to the ridge (sloped gable edge running uphill)
 
-TOPOLOGY RULES:
-1. Every hip STARTS at a ridge endpoint and ENDS at a convex perimeter corner
-2. Valleys ONLY exist if building has reflex (inward) corners
-3. NO floating lines - every endpoint must connect to perimeter corner or ridge endpoint
-4. Every convex corner should have exactly ONE hip
+## STEP 3 - DETECT INTERIOR LINES
+Look for these features in the satellite imagery:
+1. RIDGES: Bright linear highlights at the very top/peak of the roof (usually the highest horizontal line)
+2. HIPS: Diagonal lines running from a ridge endpoint DOWN to an outer corner
+3. VALLEYS: Dark V-shaped shadow lines where two roof planes meet going INWARD (only in L/T/U shapes)
 
-Return ONLY valid JSON:
+TOPOLOGY CONSTRAINTS:
+- Every hip line starts at a ridge endpoint and ends at a perimeter corner
+- Valleys ONLY exist at concave (inward-pointing) corners
+- NO floating lines - every line endpoint connects to either a perimeter vertex or a ridge endpoint
+- Every outer corner should have exactly one hip running to it
+
+Return ONLY valid JSON (no markdown, no explanation):
 {
   "tracedPerimeter": [
-    {"x": 5, "y": 10, "description": "NW corner"},
-    {"x": 85, "y": 10, "description": "NE corner"},
-    {"x": 85, "y": 50, "description": "east kickout corner"},
-    {"x": 95, "y": 50, "description": "east extension corner"},
-    {"x": 95, "y": 90, "description": "SE corner"},
-    {"x": 5, "y": 90, "description": "SW corner"}
+    {"x": 10, "y": 8, "description": "NW corner of main roof"},
+    {"x": 75, "y": 8, "description": "NE corner of main roof"},
+    {"x": 75, "y": 55, "description": "east wall setback"},
+    {"x": 90, "y": 55, "description": "garage extension NE"},
+    {"x": 90, "y": 92, "description": "SE corner garage"},
+    {"x": 10, "y": 92, "description": "SW corner"}
   ],
   "perimeterEdges": [
     {"startIdx": 0, "endIdx": 1, "type": "eave", "description": "north eave"},
-    {"startIdx": 1, "endIdx": 2, "type": "rake", "description": "east upper rake"},
+    {"startIdx": 1, "endIdx": 2, "type": "rake", "description": "east rake upper"},
     {"startIdx": 2, "endIdx": 3, "type": "eave", "description": "kickout eave"},
-    {"startIdx": 3, "endIdx": 4, "type": "rake", "description": "east lower rake"},
+    {"startIdx": 3, "endIdx": 4, "type": "rake", "description": "garage east rake"},
     {"startIdx": 4, "endIdx": 5, "type": "eave", "description": "south eave"},
     {"startIdx": 5, "endIdx": 0, "type": "rake", "description": "west rake"}
   ],
-  "ridges": [{"startX": 25, "startY": 45, "endX": 75, "endY": 45, "confidence": 92, "description": "bright horizontal highlight at roof peak"}],
-  "hips": [{"startX": 25, "startY": 45, "endX": 5, "endY": 10, "confidence": 88, "description": "diagonal shadow from ridge to NW corner"}],
+  "ridges": [{"startX": 25, "startY": 45, "endX": 70, "endY": 45, "confidence": 92, "description": "main ridge peak highlight"}],
+  "hips": [{"startX": 25, "startY": 45, "endX": 10, "endY": 8, "confidence": 88, "description": "NW hip diagonal shadow"}],
   "valleys": []
 }`
 
@@ -394,7 +402,7 @@ Return ONLY valid JSON:
       body: JSON.stringify({
         model: 'google/gemini-2.5-pro',
         messages: [
-          { role: 'system', content: 'You are an expert at analyzing satellite roof imagery. Trace lines EXACTLY as visible. Return only valid JSON.' },
+          { role: 'system', content: 'You are an expert at analyzing satellite roof imagery. You trace roof edges with pixel-level precision. You NEVER assume a roof is rectangular - you always look for the actual visible shape. Return only valid JSON, no markdown code blocks.' },
           {
             role: 'user',
             content: [
@@ -403,7 +411,8 @@ Return ONLY valid JSON:
             ]
           }
         ],
-        max_tokens: 2500
+        max_tokens: 4000,
+        temperature: 0.1
       })
     })
 
