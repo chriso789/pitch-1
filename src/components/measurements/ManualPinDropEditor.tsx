@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MousePointer2, Trash2, Plus, Link2, Save, X, Undo2, Loader2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { MousePointer2, Trash2, Plus, Link2, Save, X, Undo2, Loader2, AlertTriangle, CheckCircle, Move } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
@@ -87,12 +87,16 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
   const [pins, setPins] = useState<Pin[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [selectedEdgeType, setSelectedEdgeType] = useState<EdgeType>('eave');
-  const [tool, setTool] = useState<'add' | 'connect' | 'delete'>('add');
+  const [tool, setTool] = useState<'add' | 'connect' | 'delete' | 'move'>('add');
   const [connectFrom, setConnectFrom] = useState<string | null>(null);
   const [hoveredPin, setHoveredPin] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
   const svgRef = useRef<SVGSVGElement>(null);
+  
+  // Drag state
+  const [draggingPinId, setDraggingPinId] = useState<string | null>(null);
+  const isDraggingRef = useRef(false);
 
   // Convert pixel to GPS
   const pixelToGps = useCallback((px: number, py: number) => {
@@ -113,6 +117,32 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
     const py = SVG_HEIGHT / 2 - dy / metersPerPx;
     return { x: px, y: py };
   }, [centerLat, centerLng, zoom]);
+
+  // Helper: get SVG coordinates from mouse event
+  const getSvgCoords = useCallback((e: React.MouseEvent | MouseEvent) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    const scaleX = SVG_WIDTH / rect.width;
+    const scaleY = SVG_HEIGHT / rect.height;
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleY,
+    };
+  }, []);
+
+  // Recalculate edge lengths when pins move
+  const recalcEdgeLengths = useCallback((currentPins: Pin[], currentEdges: Edge[]): Edge[] => {
+    return currentEdges.map(edge => {
+      const fromPin = currentPins.find(p => p.id === edge.from);
+      const toPin = currentPins.find(p => p.id === edge.to);
+      if (!fromPin || !toPin) return edge;
+      return {
+        ...edge,
+        lengthFt: haversineFt(fromPin.lat, fromPin.lng, toPin.lat, toPin.lng),
+      };
+    });
+  }, []);
 
   // Load existing features as initial pins & edges
   useEffect(() => {
@@ -137,7 +167,6 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
 
     existingFeatures.forEach((feature, idx) => {
       if (!feature.wkt) return;
-      // Parse "LINESTRING(lng1 lat1, lng2 lat2)"
       const match = feature.wkt.match(/LINESTRING\s*\(\s*([-\d.]+)\s+([-\d.]+)\s*,\s*([-\d.]+)\s+([-\d.]+)\s*\)/i);
       if (!match) return;
 
@@ -175,26 +204,70 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
     setHasChanges(true);
   }, [pins, edges]);
 
+  // --- DRAG HANDLERS ---
+  const handlePinPointerDown = useCallback((pinId: string, e: React.PointerEvent) => {
+    if (tool !== 'move') return;
+    e.stopPropagation();
+    e.preventDefault();
+    (e.target as SVGElement).setPointerCapture(e.pointerId);
+    setDraggingPinId(pinId);
+    isDraggingRef.current = false; // Will be set to true on first move
+  }, [tool]);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    if (!draggingPinId || tool !== 'move') return;
+    isDraggingRef.current = true;
+    const coords = getSvgCoords(e as unknown as React.MouseEvent);
+    if (!coords) return;
+    
+    const { lat, lng } = pixelToGps(coords.x, coords.y);
+    
+    setPins(prev => prev.map(p => 
+      p.id === draggingPinId 
+        ? { ...p, x: coords.x, y: coords.y, lat, lng }
+        : p
+    ));
+  }, [draggingPinId, tool, getSvgCoords, pixelToGps]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (!draggingPinId) return;
+    e.stopPropagation();
+    
+    // Recalculate edge lengths after drag
+    setPins(prev => {
+      setEdges(currentEdges => recalcEdgeLengths(prev, currentEdges));
+      return prev;
+    });
+    
+    setDraggingPinId(null);
+  }, [draggingPinId, recalcEdgeLengths]);
+
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     if (tool !== 'add') return;
-    const svg = svgRef.current;
-    if (!svg) return;
-    const rect = svg.getBoundingClientRect();
-    const scaleX = SVG_WIDTH / rect.width;
-    const scaleY = SVG_HEIGHT / rect.height;
-    const x = (e.clientX - rect.left) * scaleX;
-    const y = (e.clientY - rect.top) * scaleY;
-    const { lat, lng } = pixelToGps(x, y);
+    // Don't add pin if we just finished dragging
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      return;
+    }
+    const coords = getSvgCoords(e);
+    if (!coords) return;
+    const { lat, lng } = pixelToGps(coords.x, coords.y);
 
     const newPin: Pin = {
       id: `pin-${Date.now()}`,
-      x, y, lat, lng,
+      x: coords.x, y: coords.y, lat, lng,
     };
     setPins(prev => [...prev, newPin]);
-  }, [tool, pixelToGps]);
+  }, [tool, pixelToGps, getSvgCoords]);
 
   const handlePinClick = useCallback((pinId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    // Ignore clicks after drag
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      return;
+    }
+    if (tool === 'move') return; // Move tool uses drag, not click
     if (tool === 'delete') {
       setPins(prev => prev.filter(p => p.id !== pinId));
       setEdges(prev => prev.filter(edge => edge.from !== pinId && edge.to !== pinId));
@@ -307,6 +380,10 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
     setConnectFrom(null);
   }, []);
 
+  const cursorClass = tool === 'move' 
+    ? (draggingPinId ? 'cursor-grabbing' : 'cursor-grab') 
+    : 'cursor-crosshair';
+
   return (
     <div className="space-y-4">
       {/* Save/Cancel bar */}
@@ -355,6 +432,12 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
             onClick={() => { setTool('add'); setConnectFrom(null); }}
           >
             <Plus className="h-3.5 w-3.5 mr-1" /> Add Point
+          </Button>
+          <Button
+            size="sm" variant={tool === 'move' ? 'default' : 'ghost'}
+            onClick={() => { setTool('move'); setConnectFrom(null); }}
+          >
+            <Move className="h-3.5 w-3.5 mr-1" /> Move
           </Button>
           <Button
             size="sm" variant={tool === 'connect' ? 'default' : 'ghost'}
@@ -411,8 +494,11 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
         <svg
           ref={svgRef}
           viewBox={`0 0 ${SVG_WIDTH} ${SVG_HEIGHT}`}
-          className="w-full h-full cursor-crosshair"
+          className={`w-full h-full ${cursorClass}`}
           onClick={handleSvgClick}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          style={{ touchAction: 'none' }}
         >
           {/* Satellite background */}
           {satelliteImageUrl && (
@@ -461,19 +547,35 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
           })}
 
           {/* Pins */}
-          {pins.map(pin => (
-            <g key={pin.id} onClick={(e) => handlePinClick(pin.id, e)}>
-              <circle
-                cx={pin.x} cy={pin.y} r={hoveredPin === pin.id ? 8 : 6}
-                fill={connectFrom === pin.id ? '#f59e0b' : '#fff'}
-                stroke={tool === 'delete' ? '#ef4444' : '#3b82f6'}
-                strokeWidth={2.5}
-                className="cursor-pointer"
-                onMouseEnter={() => setHoveredPin(pin.id)}
-                onMouseLeave={() => setHoveredPin(null)}
-              />
-            </g>
-          ))}
+          {pins.map(pin => {
+            const isBeingDragged = draggingPinId === pin.id;
+            const isHovered = hoveredPin === pin.id;
+            const radius = isBeingDragged ? 10 : isHovered ? 8 : 6;
+            
+            return (
+              <g 
+                key={pin.id} 
+                onClick={(e) => handlePinClick(pin.id, e)}
+                onPointerDown={(e) => handlePinPointerDown(pin.id, e)}
+                style={{ cursor: tool === 'move' ? (isBeingDragged ? 'grabbing' : 'grab') : 'pointer' }}
+              >
+                {/* Larger invisible hit area for easier grabbing */}
+                <circle
+                  cx={pin.x} cy={pin.y} r={16}
+                  fill="transparent"
+                  onMouseEnter={() => setHoveredPin(pin.id)}
+                  onMouseLeave={() => setHoveredPin(null)}
+                />
+                {/* Visible pin */}
+                <circle
+                  cx={pin.x} cy={pin.y} r={radius}
+                  fill={connectFrom === pin.id ? '#f59e0b' : isBeingDragged ? '#22c55e' : '#fff'}
+                  stroke={tool === 'delete' ? '#ef4444' : tool === 'move' ? '#22c55e' : '#3b82f6'}
+                  strokeWidth={2.5}
+                />
+              </g>
+            );
+          })}
         </svg>
 
         {/* Instructions overlay */}
@@ -482,7 +584,7 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
             <div className="bg-background/80 backdrop-blur-sm rounded-lg px-4 py-3 text-center">
               <MousePointer2 className="h-6 w-6 mx-auto mb-1 text-muted-foreground" />
               <p className="text-sm font-medium">Click to drop pins on roof corners</p>
-              <p className="text-xs text-muted-foreground">Then use Connect to draw edges</p>
+              <p className="text-xs text-muted-foreground">Then use Connect to draw edges, or Move to drag points</p>
             </div>
           </div>
         )}
@@ -500,13 +602,6 @@ const ManualPinDropEditor: React.FC<ManualPinDropEditorProps> = ({
               <span className="text-sm font-bold">{Math.round(edgeSummary[type])} ft</span>
             </div>
           ))}
-        </div>
-      )}
-
-      {connectFrom && (
-        <div className="flex items-center gap-2 text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-1.5">
-          <Link2 className="h-3.5 w-3.5" />
-          Click a second pin to create a <strong>{EDGE_LABELS[selectedEdgeType]}</strong> edge
         </div>
       )}
     </div>
