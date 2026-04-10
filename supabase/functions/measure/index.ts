@@ -4132,8 +4132,8 @@ function convertVisionOverlayToMeasureResult(
         ridge_ft: ridgeTotalFt,
         hip_ft: hipTotalFt,
         valley_ft: valleyTotalFt,
-        eave_ft: perimeterTotalFt * 0.7, // Rough split
-        rake_ft: perimeterTotalFt * 0.3,
+        eave_ft: eaveTotalFt,
+        rake_ft: rakeTotalFt,
       },
       geom_wkt: ensureMultiPolygon(perimeterWkt)
     };
