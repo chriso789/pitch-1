@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DOMPurify from 'dompurify';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -234,7 +235,7 @@ export function ProfessionalTemplatesDialog({ open, onClose, jobId, leadId }: Pr
             </DialogTitle>
           </DialogHeader>
           <ScrollArea className="h-[70vh] border rounded-lg p-6 bg-white">
-            <div dangerouslySetInnerHTML={{ __html: previewHtml }} />
+            <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(previewHtml) }} />
           </ScrollArea>
         </DialogContent>
       </Dialog>

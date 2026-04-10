@@ -1,4 +1,5 @@
 import React from 'react';
+import DOMPurify from 'dompurify';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -185,7 +186,7 @@ export function EmailThreadView({ contactId, onReply, maxHeight = '500px' }: Ema
                       <div 
                         className="text-sm prose prose-sm max-w-none dark:prose-invert"
                         dangerouslySetInnerHTML={{ 
-                          __html: email.content || '<em>No content</em>' 
+                          __html: DOMPurify.sanitize(email.content || '<em>No content</em>', { FORBID_TAGS: ['script', 'style', 'iframe'], FORBID_ATTR: ['onerror', 'onload', 'onclick'] }) 
                         }}
                       />
 

@@ -29887,6 +29887,7 @@ export type Database = {
           target_lat: number | null
           target_lng: number | null
           target_method: string | null
+          tenant_id: string | null
           total_area_adjusted_sqft: number | null
           total_area_flat_sqft: number | null
           total_eave_length: number | null
@@ -30007,6 +30008,7 @@ export type Database = {
           target_lat?: number | null
           target_lng?: number | null
           target_method?: string | null
+          tenant_id?: string | null
           total_area_adjusted_sqft?: number | null
           total_area_flat_sqft?: number | null
           total_eave_length?: number | null
@@ -30127,6 +30129,7 @@ export type Database = {
           target_lat?: number | null
           target_lng?: number | null
           target_method?: string | null
+          tenant_id?: string | null
           total_area_adjusted_sqft?: number | null
           total_area_flat_sqft?: number | null
           total_eave_length?: number | null
@@ -30149,7 +30152,15 @@ export type Database = {
           vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       roof_measurements_truth: {
         Row: {
