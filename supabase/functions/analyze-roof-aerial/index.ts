@@ -5307,33 +5307,13 @@ async function processSolarFastPath(
     })
   }
   
-  // Add eaves and rakes from perimeter edges
-  if (assembledGeometry.eaves) {
-    assembledGeometry.eaves.forEach((e: any) => {
-      linearFeatures.push({
-        type: 'eave',
-        wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`,
-        length_ft: e.lengthFt,
-        plan_length_ft: e.lengthFt,
-        surface_length_ft: e.lengthFt,
-        source: 'solar_assembler'
-      })
-    })
-  }
-  
-  if (assembledGeometry.rakes) {
-    assembledGeometry.rakes.forEach((r: any) => {
-      linearFeatures.push({
-        type: 'rake',
-        wkt: `LINESTRING(${r.start[0]} ${r.start[1]}, ${r.end[0]} ${r.end[1]})`,
-        length_ft: r.lengthFt,
-        plan_length_ft: r.lengthFt,
-        surface_length_ft: r.lengthFt,
-        source: 'solar_assembler'
-      })
-    })
-  }
-  
+  // Derive eaves and rakes directly from the chosen footprint perimeter so every
+  // kickout/corner is preserved instead of being simplified by the solar assembler.
+  const footprintVertices = perimeterXY.map(([lng, lat]) => ({ lat, lng }))
+  const ridgeAzimuth = extractRidgeAzimuth(linearFeatures, solarData)
+  const footprintDerivedEdges = deriveEavesRakesFromFootprint(footprintVertices, ridgeAzimuth)
+  linearFeatures.push(...footprintDerivedEdges)
+
   console.log(`📐 Linear features from assembler: ${linearFeatures.length} (${linearFeatures.filter(f => f.type === 'ridge').length} ridges, ${linearFeatures.filter(f => f.type === 'hip').length} hips, ${linearFeatures.filter(f => f.type === 'valley').length} valleys)`)
   
   // ═══════════════════════════════════════════════════════════════════════════

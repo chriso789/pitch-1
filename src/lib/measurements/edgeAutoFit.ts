@@ -7,8 +7,10 @@ export interface SvgLineSegment {
   start: SvgPoint;
   end: SvgPoint;
   length: number;
+  points?: SvgPoint[];
   gpsStart?: { lat: number; lng: number };
   gpsEnd?: { lat: number; lng: number };
+  gpsPoints?: Array<{ lat: number; lng: number }>;
 }
 
 export interface ImagePlacement {
@@ -223,6 +225,10 @@ function fitSingleSegment(
   outwardSearchPx: number,
   sampleGapPx: number
 ): SvgLineSegment | null {
+  if (segment.points && segment.points.length > 2) {
+    return null;
+  }
+
   const dx = segment.end.x - segment.start.x;
   const dy = segment.end.y - segment.start.y;
   const segmentLengthPx = Math.hypot(dx, dy);
