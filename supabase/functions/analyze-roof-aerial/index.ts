@@ -2937,6 +2937,36 @@ function findConcaveVertices(vertices: any[]): any[] {
   return concave
 }
 
+// Check if a polygon has any reflex (concave) vertices - used for topology validation
+function checkForReflexVertices(vertices: { x: number; y: number }[]): boolean {
+  const n = vertices.length;
+  if (n < 3) return false;
+  
+  // Determine winding direction
+  let windingSum = 0;
+  for (let i = 0; i < n; i++) {
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    windingSum += (next.x - curr.x) * (next.y + curr.y);
+  }
+  const isCW = windingSum > 0;
+  
+  for (let i = 0; i < n; i++) {
+    const prev = vertices[(i - 1 + n) % n];
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    
+    const cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
+    
+    // For CW winding, reflex = cross < 0; for CCW, reflex = cross > 0
+    if ((isCW && cross < -0.5) || (!isCW && cross > 0.5)) {
+      return true; // Found a reflex vertex
+    }
+  }
+  
+  return false; // All convex - simple shape
+}
+
 // Clip line segment to polygon using Cohen-Sutherland variant
 function clipLineToPolygon(
   line: { startX: number; startY: number; endX: number; endY: number },
