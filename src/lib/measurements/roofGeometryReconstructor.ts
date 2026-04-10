@@ -157,28 +157,24 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string, roofTyp
   const nw = vertices.reduce((best, v) => 
     (v.lat - v.lng > best.lat - best.lng) ? v : best, vertices[0]);
   
-  // Calculate ridge endpoints: Use proper hip roof geometry
-  // For a hip roof, the ridge inset should be proportional to the shorter dimension
-  // The standard formula: ridge starts/ends at inset = (shorter_dimension / 2) from the short edges
-  // This ensures hip angles are typically ~45 degrees
+  const isGable = roofType?.toLowerCase() === 'gable';
+  
+  // Calculate ridge endpoints
   const shortDim = isWider ? height : width;
   const longDim = isWider ? width : height;
   
-  // Inset from each end = half of short dimension (creates ~45° hips)
-  // But cap at 40% of long dimension to ensure ridge has reasonable length
-  const insetRatio = Math.min(shortDim / 2, longDim * 0.4);
-  const inset = insetRatio;
+  // For gable: ridge spans full width (no inset)
+  // For hip: ridge inset = half of short dimension (creates ~45° hips)
+  const inset = isGable ? 0 : Math.min(shortDim / 2, longDim * 0.4);
   
   const centerLat = (bounds.minLat + bounds.maxLat) / 2;
   const centerLng = (bounds.minLng + bounds.maxLng) / 2;
   
   let ridgeStart: GPSCoord, ridgeEnd: GPSCoord;
   if (isWider) {
-    // Horizontal ridge (E-W): ridgeStart is west, ridgeEnd is east
     ridgeStart = { lat: centerLat, lng: bounds.minLng + inset };
     ridgeEnd = { lat: centerLat, lng: bounds.maxLng - inset };
   } else {
-    // Vertical ridge (N-S): ridgeStart is south, ridgeEnd is north
     ridgeStart = { lat: bounds.minLat + inset, lng: centerLng };
     ridgeEnd = { lat: bounds.maxLat - inset, lng: centerLng };
   }
@@ -189,83 +185,29 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string, roofTyp
     start: ridgeStart,
     end: ridgeEnd,
     lengthFt: distanceFt(ridgeStart, ridgeEnd),
-    connectedTo: ['hip_0', 'hip_1', 'hip_2', 'hip_3']
+    connectedTo: isGable ? [] : ['hip_0', 'hip_1', 'hip_2', 'hip_3']
   };
   
-  // Create 4 hips: connect corners to CORRECT ridge endpoints based on orientation
+  // Create hips only for hip roofs (not gable)
   const hips: RoofLine[] = [];
   
-  if (isWider) {
-    // Horizontal ridge: west corners → ridgeStart, east corners → ridgeEnd
-    // Hip 0: SW → ridgeStart (west)
-    hips.push({
-      id: 'hip_0',
-      start: sw,
-      end: ridgeStart,
-      lengthFt: distanceFt(sw, ridgeStart),
-      connectedTo: ['ridge_0']
-    });
-    // Hip 1: NW → ridgeStart (west)
-    hips.push({
-      id: 'hip_1',
-      start: nw,
-      end: ridgeStart,
-      lengthFt: distanceFt(nw, ridgeStart),
-      connectedTo: ['ridge_0']
-    });
-    // Hip 2: SE → ridgeEnd (east)
-    hips.push({
-      id: 'hip_2',
-      start: se,
-      end: ridgeEnd,
-      lengthFt: distanceFt(se, ridgeEnd),
-      connectedTo: ['ridge_0']
-    });
-    // Hip 3: NE → ridgeEnd (east)
-    hips.push({
-      id: 'hip_3',
-      start: ne,
-      end: ridgeEnd,
-      lengthFt: distanceFt(ne, ridgeEnd),
-      connectedTo: ['ridge_0']
-    });
+  if (!isGable) {
+    if (isWider) {
+      hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart), connectedTo: ['ridge_0'] });
+      hips.push({ id: 'hip_1', start: nw, end: ridgeStart, lengthFt: distanceFt(nw, ridgeStart), connectedTo: ['ridge_0'] });
+      hips.push({ id: 'hip_2', start: se, end: ridgeEnd, lengthFt: distanceFt(se, ridgeEnd), connectedTo: ['ridge_0'] });
+      hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd), connectedTo: ['ridge_0'] });
+    } else {
+      hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart), connectedTo: ['ridge_0'] });
+      hips.push({ id: 'hip_1', start: se, end: ridgeStart, lengthFt: distanceFt(se, ridgeStart), connectedTo: ['ridge_0'] });
+      hips.push({ id: 'hip_2', start: nw, end: ridgeEnd, lengthFt: distanceFt(nw, ridgeEnd), connectedTo: ['ridge_0'] });
+      hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd), connectedTo: ['ridge_0'] });
+    }
   } else {
-    // Vertical ridge: south corners → ridgeStart, north corners → ridgeEnd
-    // Hip 0: SW → ridgeStart (south)
-    hips.push({
-      id: 'hip_0',
-      start: sw,
-      end: ridgeStart,
-      lengthFt: distanceFt(sw, ridgeStart),
-      connectedTo: ['ridge_0']
-    });
-    // Hip 1: SE → ridgeStart (south)
-    hips.push({
-      id: 'hip_1',
-      start: se,
-      end: ridgeStart,
-      lengthFt: distanceFt(se, ridgeStart),
-      connectedTo: ['ridge_0']
-    });
-    // Hip 2: NW → ridgeEnd (north)
-    hips.push({
-      id: 'hip_2',
-      start: nw,
-      end: ridgeEnd,
-      lengthFt: distanceFt(nw, ridgeEnd),
-      connectedTo: ['ridge_0']
-    });
-    // Hip 3: NE → ridgeEnd (north)
-    hips.push({
-      id: 'hip_3',
-      start: ne,
-      end: ridgeEnd,
-      lengthFt: distanceFt(ne, ridgeEnd),
-      connectedTo: ['ridge_0']
-    });
+    console.log(`🏠 Client gable roof: 1 ridge, 0 hips, 0 valleys`);
   }
   
-  // Create 4 facets with proper polygon shapes - pass actual ridge endpoints
+  // Create facets with proper polygon shapes
   const facets = createRectangularFacets(sw, se, ne, nw, ridgeStart, ridgeEnd, pitch, isWider);
   
   return {
@@ -274,7 +216,7 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string, roofTyp
     valleys: [],
     facets,
     diagramQuality: 'excellent',
-    warnings: []
+    warnings: isGable ? ['Gable roof: ridge spans full building length'] : []
   };
 }
 
