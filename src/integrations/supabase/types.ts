@@ -29802,6 +29802,7 @@ export type Database = {
           api_variance_percent: number | null
           bounding_box: Json | null
           complexity_rating: string | null
+          confidence: number | null
           created_at: string | null
           customer_id: string | null
           detection_confidence: number | null
@@ -29837,8 +29838,10 @@ export type Database = {
           image_year: number | null
           imagery_date: string | null
           imagery_quality: string | null
+          inference_source: string | null
           interior_vertex_count: number | null
           is_archived: boolean | null
+          lead_id: string | null
           linear_features_wkt: Json | null
           manual_perimeter_wkt: string | null
           manual_reference_area_sqft: number | null
@@ -29847,9 +29850,11 @@ export type Database = {
           material_calculations: Json | null
           measured_by: string | null
           measurement_confidence: number | null
+          measurement_data: Json | null
           measurement_method: string | null
           metadata: Json | null
           meters_per_pixel: number | null
+          model_version: string | null
           notes: string | null
           organization_id: string | null
           overlay_schema: Json | null
@@ -29870,6 +29875,7 @@ export type Database = {
           report_generated_at: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
+          review_required: boolean | null
           roof_perimeter: Json | null
           roof_type: string | null
           satellite_overlay_url: string | null
@@ -29905,10 +29911,12 @@ export type Database = {
           validation_status: string | null
           valley_entry_count: number | null
           vector_diagram_svg: string | null
+          vendor_report_id: string | null
           verification_status: string | null
           vertex_count: number | null
           vision_edges: Json | null
           waste_factor_percent: number | null
+          weighted_accuracy_score: number | null
         }
         Insert: {
           accuracy_compared_at?: string | null
@@ -29923,6 +29931,7 @@ export type Database = {
           api_variance_percent?: number | null
           bounding_box?: Json | null
           complexity_rating?: string | null
+          confidence?: number | null
           created_at?: string | null
           customer_id?: string | null
           detection_confidence?: number | null
@@ -29958,8 +29967,10 @@ export type Database = {
           image_year?: number | null
           imagery_date?: string | null
           imagery_quality?: string | null
+          inference_source?: string | null
           interior_vertex_count?: number | null
           is_archived?: boolean | null
+          lead_id?: string | null
           linear_features_wkt?: Json | null
           manual_perimeter_wkt?: string | null
           manual_reference_area_sqft?: number | null
@@ -29968,9 +29979,11 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          measurement_data?: Json | null
           measurement_method?: string | null
           metadata?: Json | null
           meters_per_pixel?: number | null
+          model_version?: string | null
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
@@ -29991,6 +30004,7 @@ export type Database = {
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
+          review_required?: boolean | null
           roof_perimeter?: Json | null
           roof_type?: string | null
           satellite_overlay_url?: string | null
@@ -30026,10 +30040,12 @@ export type Database = {
           validation_status?: string | null
           valley_entry_count?: number | null
           vector_diagram_svg?: string | null
+          vendor_report_id?: string | null
           verification_status?: string | null
           vertex_count?: number | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
+          weighted_accuracy_score?: number | null
         }
         Update: {
           accuracy_compared_at?: string | null
@@ -30044,6 +30060,7 @@ export type Database = {
           api_variance_percent?: number | null
           bounding_box?: Json | null
           complexity_rating?: string | null
+          confidence?: number | null
           created_at?: string | null
           customer_id?: string | null
           detection_confidence?: number | null
@@ -30079,8 +30096,10 @@ export type Database = {
           image_year?: number | null
           imagery_date?: string | null
           imagery_quality?: string | null
+          inference_source?: string | null
           interior_vertex_count?: number | null
           is_archived?: boolean | null
+          lead_id?: string | null
           linear_features_wkt?: Json | null
           manual_perimeter_wkt?: string | null
           manual_reference_area_sqft?: number | null
@@ -30089,9 +30108,11 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          measurement_data?: Json | null
           measurement_method?: string | null
           metadata?: Json | null
           meters_per_pixel?: number | null
+          model_version?: string | null
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
@@ -30112,6 +30133,7 @@ export type Database = {
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
+          review_required?: boolean | null
           roof_perimeter?: Json | null
           roof_type?: string | null
           satellite_overlay_url?: string | null
@@ -30147,10 +30169,12 @@ export type Database = {
           validation_status?: string | null
           valley_entry_count?: number | null
           vector_diagram_svg?: string | null
+          vendor_report_id?: string | null
           verification_status?: string | null
           vertex_count?: number | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
+          weighted_accuracy_score?: number | null
         }
         Relationships: [
           {

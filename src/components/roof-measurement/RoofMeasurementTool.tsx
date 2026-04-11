@@ -136,13 +136,18 @@ export function RoofMeasurementTool({
         formattedAddress = geocodeData.results[0].formatted_address
       }
 
-      // Call analyze-roof-aerial edge function
-      const { data, error: functionError } = await supabase.functions.invoke('analyze-roof-aerial', {
+      // Call the authoritative measure edge function (not analyze-roof-aerial)
+      const userId = (await supabase.auth.getUser()).data.user?.id
+      const { data, error: functionError } = await supabase.functions.invoke('measure', {
         body: {
+          action: 'pull',
+          propertyId: propertyId || customerId,
+          lat: coordinates.lat,
+          lng: coordinates.lng,
           address: formattedAddress,
-          coordinates,
-          customerId,
-          userId: (await supabase.auth.getUser()).data.user?.id
+          lead_id: propertyId,
+          userId,
+          engine: 'vision'
         }
       })
 
