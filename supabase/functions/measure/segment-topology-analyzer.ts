@@ -367,8 +367,13 @@ export function analyzeSegmentTopology(
     }
   }
   
-  // 5. If no hips found for 4+ facet roof, estimate standard hip roof hips
-  if (hips.length === 0 && facets.length >= 4) {
+  // 5. If no hips found, ONLY estimate default hips if facet pattern is consistent with a hip roof.
+  // A true hip roof has exactly 4 facets with all 4 cardinal directions (N, S, E, W).
+  // Gable / cross-gable roofs must NOT get phantom hips.
+  const facetDirs = new Set(facets.map(f => f.direction));
+  const isLikelyHipRoof = facets.length === 4 && facetDirs.has('N') && facetDirs.has('S') && facetDirs.has('E') && facetDirs.has('W');
+  
+  if (hips.length === 0 && isLikelyHipRoof) {
     // Standard hip roof has 4 hips, one from each corner
     const hipLengthFt = (shorterDim / 2) * 1.4;
     const center = buildingCenter 
@@ -405,6 +410,8 @@ export function analyzeSegmentTopology(
     } else {
       console.warn('⚠️ Cannot create default hips: invalid center coordinates');
     }
+  } else if (hips.length === 0 && facets.length >= 4) {
+    console.log(`   Skipping hip estimation: facet pattern (${[...facetDirs].join(',')}) is not a standard hip roof`);
   }
   
   // 6. Determine roof type
