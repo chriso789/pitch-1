@@ -91,6 +91,15 @@ Deno.serve(async (req) => {
         const measurement = measureResult.data.measurement
         const tags = measureResult.data.tags || {}
         const engineUsed = measureResult.data.engine_used || 'skeleton'
+        const requiresManualReview = Boolean(
+          measureResult.data.manualReviewRecommended ??
+          measureResult.data.manual_review_recommended ??
+          measurement.manual_review_recommended ??
+          measurement.requires_manual_review ??
+          tags['meta.manual_review_recommended'] ??
+          false
+        )
+        const validationStatus = requiresManualReview ? 'flagged' : 'validated'
 
         // === BRIDGE STEP: Publish to roof_measurements ===
         // This is the table the lead page UI actually reads
@@ -152,8 +161,8 @@ Deno.serve(async (req) => {
             overlay_schema: measurement.overlay_schema || null,
             // Confidence
             measurement_confidence: 0.85,
-            requires_manual_review: false,
-            validation_status: 'ai_validated',
+            requires_manual_review: requiresManualReview,
+            validation_status: validationStatus,
             // Organization
             tenant_id: tenantId || null,
           })
