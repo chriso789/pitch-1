@@ -167,8 +167,8 @@ const handler = async (req: Request): Promise<Response> => {
     const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
     const existingAuthUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
     
-    let newUser: { user: typeof existingAuthUser } | null = null;
-    let createError: Error | null = null;
+    let newUser: { user: any } | null = null;
+    let createError: any = null;
     
     if (existingAuthUser) {
       // Check if profile exists for this auth user
@@ -439,4 +439,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-serve(handler);
+Deno.serve(handler);
