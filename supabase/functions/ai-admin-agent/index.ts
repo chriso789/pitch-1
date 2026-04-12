@@ -581,7 +581,7 @@ async function executeTool(
       // ─── Backend Inspection ────────────────────────────────
       case "query_table_schema": {
         const tableName = String(args.table_name).replace(/[^a-zA-Z0-9_]/g, "");
-        const { data, error } = await db.rpc("", {}).catch(() => null) as any;
+        let data: any = null, error: any = null;
         // Use information_schema directly via a raw query workaround
         const { data: cols, error: colErr } = await db
           .from("information_schema.columns" as any)

@@ -12,9 +12,12 @@ Deno.serve(async (req) => {
   try {
     const { to, text, business_id } = await req.json();
 
-    // Call your CSP's API (Zendesk, Webex, etc.)
     const CSP_API_KEY = Deno.env.get('AMB_CSP_API_KEY');
     const CSP_ENDPOINT = Deno.env.get('AMB_CSP_ENDPOINT');
+
+    if (!CSP_ENDPOINT) {
+      throw new Error('AMB_CSP_ENDPOINT not configured');
+    }
 
     const response = await fetch(CSP_ENDPOINT, {
       method: 'POST',
@@ -37,10 +40,11 @@ Deno.serve(async (req) => {
       JSON.stringify({ success: true }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('AMB send error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
