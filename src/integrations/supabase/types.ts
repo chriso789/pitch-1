@@ -29813,6 +29813,8 @@ export type Database = {
           edge_count: number | null
           edge_coverage_percent: number | null
           edge_segments: Json | null
+          engine_requested: string | null
+          engine_used: string | null
           facet_closure_score: number | null
           facet_count: number | null
           facets_json: Json | null
@@ -29912,6 +29914,8 @@ export type Database = {
           valley_entry_count: number | null
           vector_diagram_svg: string | null
           vendor_report_id: string | null
+          verification_data: Json | null
+          verification_level: string | null
           verification_status: string | null
           vertex_count: number | null
           vision_edges: Json | null
@@ -29942,6 +29946,8 @@ export type Database = {
           edge_count?: number | null
           edge_coverage_percent?: number | null
           edge_segments?: Json | null
+          engine_requested?: string | null
+          engine_used?: string | null
           facet_closure_score?: number | null
           facet_count?: number | null
           facets_json?: Json | null
@@ -30041,6 +30047,8 @@ export type Database = {
           valley_entry_count?: number | null
           vector_diagram_svg?: string | null
           vendor_report_id?: string | null
+          verification_data?: Json | null
+          verification_level?: string | null
           verification_status?: string | null
           vertex_count?: number | null
           vision_edges?: Json | null
@@ -30071,6 +30079,8 @@ export type Database = {
           edge_count?: number | null
           edge_coverage_percent?: number | null
           edge_segments?: Json | null
+          engine_requested?: string | null
+          engine_used?: string | null
           facet_closure_score?: number | null
           facet_count?: number | null
           facets_json?: Json | null
@@ -30170,6 +30180,8 @@ export type Database = {
           valley_entry_count?: number | null
           vector_diagram_svg?: string | null
           vendor_report_id?: string | null
+          verification_data?: Json | null
+          verification_level?: string | null
           verification_status?: string | null
           vertex_count?: number | null
           vision_edges?: Json | null
