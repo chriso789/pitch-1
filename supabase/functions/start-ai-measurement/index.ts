@@ -134,7 +134,11 @@ Deno.serve(async (req) => {
             // Facets
             facet_count: (measurement.faces || []).length || 2,
             // Geometry
-            footprint_source: measurement.source || 'google_solar_skeleton',
+            footprint_source: (() => {
+              const allowed = ['mapbox_vector','regrid_parcel','osm_overpass','microsoft_buildings','solar_api_footprint','solar_bbox_fallback','manual_trace','manual_entry','imported','user_drawn','ai_detection','esri_buildings','google_solar_api','osm','google_maps','satellite','unknown'];
+              const src = measurement.source || 'google_solar_api';
+              return allowed.includes(src) ? src : 'google_solar_api';
+            })(),
             detection_method: engineUsed,
             target_lat: Number(lat),
             target_lng: Number(lng),
