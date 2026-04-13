@@ -3897,7 +3897,213 @@ Deno.serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, or hydrate-vendor-sessions' }, corsHeaders, 400);
+      // Route: action=batch-verify-vendor-reports (Per-house vendor report verification pipeline)
+      if (action === 'batch-verify-vendor-reports') {
+        console.log('🔍 Starting batch vendor report verification...');
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return json({ ok: false, error: 'Authentication required' }, corsHeaders, 401);
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+
+        if (!profile?.tenant_id) {
+          return json({ ok: false, error: 'No tenant found' }, corsHeaders, 400);
+        }
+
+        const tenantId = profile.tenant_id;
+        const batchSize = body.limit || 5;
+
+        // Find vendor sessions that haven't been verified yet
+        const { data: sessions, error: sessionsError } = await adminSupabase
+          .from('roof_training_sessions')
+          .select('id, traced_totals, ai_totals, lat, lng, property_address, vendor_report_id, ai_measurement_id, original_ai_measurement_id')
+          .eq('tenant_id', tenantId)
+          .eq('ground_truth_source', 'vendor_report')
+          .is('verification_verdict', null)
+          .not('traced_totals', 'is', null)
+          .limit(batchSize);
+
+        if (sessionsError) {
+          console.error('Error fetching sessions:', sessionsError);
+          return json({ ok: false, error: sessionsError.message }, corsHeaders, 500);
+        }
+
+        // Filter to sessions with valid vendor data
+        const validSessions = (sessions || []).filter(s => {
+          const traced = s.traced_totals as Record<string, number>;
+          return traced && Object.keys(traced).length > 0 &&
+            (traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
+        });
+
+        console.log(`📊 Found ${validSessions.length} sessions to verify (batch ${batchSize})`);
+
+        if (validSessions.length === 0) {
+          return json({
+            ok: true,
+            message: 'No pending vendor sessions to verify',
+            processed: 0, confirmed: 0, denied: 0, skipped: 0,
+          }, corsHeaders);
+        }
+
+        const results = { processed: 0, confirmed: 0, denied: 0, skipped: 0, details: [] as any[] };
+        const featureTypes = ['ridge', 'hip', 'valley', 'eave', 'rake'];
+        const featureWeights: Record<string, number> = { ridge: 1.0, hip: 1.0, valley: 1.0, eave: 0.8, rake: 0.8 };
+
+        for (const session of validSessions) {
+          try {
+            const vendorTotals = session.traced_totals as Record<string, number>;
+            let aiTotals = session.ai_totals as Record<string, number> | null;
+
+            // If no AI data, try to find existing measurement at location
+            const hasAiData = aiTotals && Object.keys(aiTotals).length > 0 &&
+              (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
+
+            if (!hasAiData && session.lat && session.lng) {
+              // Look for existing roof_measurements at this location
+              const { data: existingMeasurement } = await adminSupabase
+                .from('roof_measurements')
+                .select('id, summary')
+                .gte('lat', session.lat - 0.0001)
+                .lte('lat', session.lat + 0.0001)
+                .gte('lng', session.lng - 0.0001)
+                .lte('lng', session.lng + 0.0001)
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle();
+
+              if (existingMeasurement?.summary) {
+                const summary = existingMeasurement.summary as any;
+                aiTotals = {
+                  ridge: summary.ridge_ft || summary.total_ridge_length || 0,
+                  hip: summary.hip_ft || summary.total_hip_length || 0,
+                  valley: summary.valley_ft || summary.total_valley_length || 0,
+                  eave: summary.eave_ft || summary.total_eave_length || 0,
+                  rake: summary.rake_ft || summary.total_rake_length || 0,
+                };
+
+                // Also update the session with AI data
+                await adminSupabase
+                  .from('roof_training_sessions')
+                  .update({ ai_totals: aiTotals, ai_measurement_id: existingMeasurement.id })
+                  .eq('id', session.id);
+              }
+            }
+
+            // Still no AI data? Skip
+            if (!aiTotals || !(aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0)) {
+              console.log(`⚠️ Session ${session.id}: No AI data available, skipping`);
+              
+              await adminSupabase
+                .from('roof_training_sessions')
+                .update({
+                  verification_verdict: null,
+                  verification_notes: 'Skipped - no AI measurement data available',
+                  verification_run_at: new Date().toISOString(),
+                })
+                .eq('id', session.id);
+
+              results.skipped++;
+              results.details.push({
+                sessionId: session.id,
+                address: session.property_address,
+                verdict: 'skipped',
+                reason: 'No AI data',
+              });
+              continue;
+            }
+
+            // Calculate per-feature accuracy
+            const featureBreakdown: Record<string, { vendor: number; ai: number; accuracy: number; variance_pct: number }> = {};
+            let weightedAccuracySum = 0;
+            let weightSum = 0;
+
+            for (const type of featureTypes) {
+              const vendorVal = vendorTotals[type] ?? vendorTotals[`${type}_ft`] ?? 0;
+              const aiVal = aiTotals[type] ?? aiTotals[`${type}_ft`] ?? 0;
+
+              if (vendorVal > 0) {
+                const variancePct = ((aiVal - vendorVal) / vendorVal) * 100;
+                const accuracy = Math.max(0, 100 - Math.abs(variancePct));
+                const weight = featureWeights[type] || 1.0;
+
+                featureBreakdown[type] = { vendor: vendorVal, ai: aiVal, accuracy, variance_pct: variancePct };
+                weightedAccuracySum += accuracy * weight;
+                weightSum += weight;
+              } else if (aiVal > 0) {
+                featureBreakdown[type] = { vendor: 0, ai: aiVal, accuracy: 0, variance_pct: 100 };
+              }
+            }
+
+            const overallScore = weightSum > 0 ? weightedAccuracySum / weightSum : 0;
+            const verdict = overallScore >= 85 ? 'confirmed' : 'denied';
+
+            // Build notes
+            const notesParts: string[] = [];
+            for (const [type, data] of Object.entries(featureBreakdown)) {
+              if (data.vendor > 0) {
+                notesParts.push(`${type}: AI=${data.ai.toFixed(1)}ft vs Vendor=${data.vendor.toFixed(1)}ft (${data.variance_pct > 0 ? '+' : ''}${data.variance_pct.toFixed(1)}%)`);
+              }
+            }
+
+            const notes = `Overall accuracy: ${overallScore.toFixed(1)}%. ${notesParts.join('; ')}`;
+
+            // Update session with verification results
+            const { error: updateError } = await adminSupabase
+              .from('roof_training_sessions')
+              .update({
+                verification_verdict: verdict,
+                verification_score: Math.round(overallScore * 100) / 100,
+                verification_notes: notes,
+                verification_run_at: new Date().toISOString(),
+                verification_feature_breakdown: featureBreakdown,
+              })
+              .eq('id', session.id);
+
+            if (updateError) {
+              console.error(`Failed to update session ${session.id}:`, updateError);
+            }
+
+            results.processed++;
+            if (verdict === 'confirmed') results.confirmed++;
+            else results.denied++;
+
+            results.details.push({
+              sessionId: session.id,
+              address: session.property_address,
+              verdict,
+              score: overallScore,
+              featureBreakdown,
+            });
+
+            console.log(`${verdict === 'confirmed' ? '✅' : '❌'} Session ${session.id}: ${verdict} (${overallScore.toFixed(1)}%)`);
+          } catch (err) {
+            console.error(`Error verifying session ${session.id}:`, err);
+            results.skipped++;
+            results.details.push({
+              sessionId: session.id,
+              address: session.property_address,
+              verdict: 'error',
+              reason: err instanceof Error ? err.message : String(err),
+            });
+          }
+        }
+
+        console.log(`✅ Batch verification complete: ${results.processed} processed, ${results.confirmed} confirmed, ${results.denied} denied, ${results.skipped} skipped`);
+
+        return json({
+          ok: true,
+          message: `Verified ${results.processed} sessions: ${results.confirmed} confirmed, ${results.denied} denied, ${results.skipped} skipped`,
+          ...results,
+        }, corsHeaders);
+      }
+
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, or batch-verify-vendor-reports' }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)
