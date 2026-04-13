@@ -3917,8 +3917,28 @@ Deno.serve(async (req) => {
         }
 
         const tenantId = profile.tenant_id;
-        // Process ALL pending sessions — no artificial limit
-        const batchSize = body.limit || 1000;
+        const batchSize = body.limit || 5; // Default 5 to avoid timeouts
+
+        // Reset failed sessions if requested (so they can be retried)
+        if (body.resetFailed) {
+          const { data: resetCount } = await adminSupabase
+            .from('roof_training_sessions')
+            .update({
+              verification_status: null,
+              verification_verdict: null,
+              verification_notes: null,
+              verification_run_at: null,
+              verification_feature_breakdown: null,
+            })
+            .eq('tenant_id', tenantId)
+            .eq('ground_truth_source', 'vendor_report')
+            .eq('verification_status', 'failed')
+            .select('id');
+          console.log(`🔄 Reset ${resetCount?.length || 0} failed sessions for retry`);
+          if (batchSize === 0) {
+            return json({ ok: true, message: `Reset ${resetCount?.length || 0} failed sessions`, processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: 0 }, corsHeaders);
+          }
+        }
 
         // Find vendor sessions that haven't been verified yet
         const { data: sessions, error: sessionsError } = await adminSupabase
@@ -3942,7 +3962,7 @@ Deno.serve(async (req) => {
             (traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
         });
 
-        console.log(`📊 Found ${validSessions.length} sessions to verify (no limit)`);
+        console.log(`📊 Found ${validSessions.length} sessions to verify (batch of ${batchSize})`);
 
         if (validSessions.length === 0) {
           return json({
