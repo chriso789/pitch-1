@@ -101,6 +101,19 @@ export function BulkReportImporter({ onComplete }: BulkReportImporterProps) {
       
       if (!profile?.tenant_id) return false;
 
+      // Check if a training session already exists for this vendor report + tenant
+      const { data: existing } = await supabase
+        .from('roof_training_sessions')
+        .select('id')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('vendor_report_id', reportId)
+        .maybeSingle();
+
+      if (existing) {
+        console.log('Training session already exists for vendor report:', reportId);
+        return true; // Idempotent — already created (likely by roof-report-ingest)
+      }
+
       // Create training session with vendor report as ground truth
       const { error: sessionError } = await supabase
         .from('roof_training_sessions')
@@ -110,7 +123,7 @@ export function BulkReportImporter({ onComplete }: BulkReportImporterProps) {
           status: 'vendor_verified',
           ground_truth_source: 'vendor_report',
           vendor_report_id: reportId,
-          confidence_weight: 3.0, // Vendor reports = 3x weight
+          confidence_weight: 3.0,
           lat: geocode.lat,
           lng: geocode.lng,
           property_address: parsed.address,
