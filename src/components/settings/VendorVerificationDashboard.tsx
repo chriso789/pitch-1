@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, Play, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface VerificationSession {
