@@ -383,6 +383,46 @@ export const CompanyManagement = () => {
                   ))}
                 </div>
               </div>
+
+              {/* Owner Information */}
+              <div className="border-t pt-4 mt-2">
+                <Label className="text-sm font-semibold flex items-center gap-1.5 mb-3">
+                  <User className="h-4 w-4" />
+                  Owner Information
+                </Label>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="owner-name">Owner Name</Label>
+                    <Input
+                      id="owner-name"
+                      placeholder="John Smith"
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="owner-email">Owner Email</Label>
+                    <Input
+                      id="owner-email"
+                      type="email"
+                      placeholder="john@company.com"
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">If provided, a user account will be created and a setup invite sent</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="owner-phone">Owner Phone</Label>
+                    <Input
+                      id="owner-phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      value={ownerPhone}
+                      onChange={(e) => setOwnerPhone(e.target.value)}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
