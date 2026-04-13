@@ -12,7 +12,7 @@ import { TrainingLeadSelector } from './TrainingLeadSelector';
 import { TrainingAnalyticsDashboard } from './TrainingAnalyticsDashboard';
 import { VendorVerificationDashboard } from './VendorVerificationDashboard';
 import { BulkReportImporter } from '@/components/measurements/BulkReportImporter';
-import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { toast } from 'sonner';
 
 export interface TrainingSession {
@@ -35,7 +35,7 @@ export interface TrainingSession {
 }
 
 export function RoofTrainingLab() {
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
   const [showLeadSelector, setShowLeadSelector] = useState(false);
   const [activeTab, setActiveTab] = useState<'sessions' | 'analytics' | 'verification'>('sessions');
