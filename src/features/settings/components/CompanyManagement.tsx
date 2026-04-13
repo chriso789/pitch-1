@@ -174,6 +174,9 @@ export const CompanyManagement = () => {
             domain: websiteData.domain,
           } : {},
           is_active: true,
+          owner_name: ownerName.trim() || null,
+          owner_email: ownerEmail.trim() || null,
+          owner_phone: ownerPhone.trim() || null,
         })
         .select()
         .single();
