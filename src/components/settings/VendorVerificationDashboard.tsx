@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, Play, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Play, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface VerificationSession {
@@ -18,6 +18,7 @@ interface VerificationSession {
   verification_score: number | null;
   verification_notes: string | null;
   verification_run_at: string | null;
+  verification_status: string | null;
   verification_feature_breakdown: Record<string, { vendor: number; ai: number; accuracy: number; variance_pct: number }> | null;
   traced_totals: Record<string, number> | null;
   ai_totals: Record<string, number> | null;
@@ -32,13 +33,14 @@ export function VendorVerificationDashboard() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesText, setNotesText] = useState('');
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ['vendor-verification-sessions', activeCompanyId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_training_sessions')
-        .select('id, property_address, verification_verdict, verification_score, verification_notes, verification_run_at, verification_feature_breakdown, traced_totals, ai_totals, ground_truth_source, vendor_report_id')
+        .select('id, property_address, verification_verdict, verification_score, verification_notes, verification_run_at, verification_status, verification_feature_breakdown, traced_totals, ai_totals, ground_truth_source, vendor_report_id')
         .eq('tenant_id', activeCompanyId!)
         .eq('ground_truth_source', 'vendor_report')
         .not('traced_totals', 'is', null)
@@ -50,25 +52,44 @@ export function VendorVerificationDashboard() {
     enabled: !!activeCompanyId,
   });
 
+  // Poll while running to show live progress
+  useEffect(() => {
+    if (isRunning) {
+      pollRef.current = setInterval(() => {
+        queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
+      }, 5000);
+    } else if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isRunning, queryClient]);
+
   const stats = {
     total: sessions.length,
     confirmed: sessions.filter(s => s.verification_verdict === 'confirmed').length,
     denied: sessions.filter(s => s.verification_verdict === 'denied').length,
-    pending: sessions.filter(s => !s.verification_verdict).length,
+    pending: sessions.filter(s => !s.verification_verdict && s.verification_status !== 'failed').length,
+    failed: sessions.filter(s => s.verification_status === 'failed').length,
+    processing: sessions.filter(s => s.verification_status === 'processing' || s.verification_status === 'queued').length,
   };
+
+  const progressPct = stats.total > 0 ? ((stats.confirmed + stats.denied + stats.failed) / stats.total) * 100 : 0;
 
   const handleRunBatch = async () => {
     setIsRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports', limit: 3 },
+        body: { action: 'batch-verify-vendor-reports' },
       });
 
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Verification failed');
 
-      const msg = `Verified ${data.processed} sessions: ${data.confirmed} confirmed, ${data.denied} denied` +
-        (data.skipped > 0 ? `, ${data.skipped} skipped` : '');
+      const msg = `Verified ${data.processed} of ${data.total}: ${data.confirmed} confirmed, ${data.denied} denied` +
+        (data.failed > 0 ? `, ${data.failed} failed` : '');
       toast.success(msg);
       queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
     } catch (err: any) {
@@ -122,6 +143,22 @@ export function VendorVerificationDashboard() {
     return 'bg-destructive';
   };
 
+  const getStatusIcon = (session: VerificationSession) => {
+    if (session.verification_status === 'processing' || session.verification_status === 'queued') {
+      return <Loader2 className="h-3 w-3 animate-spin text-blue-500" />;
+    }
+    if (session.verification_status === 'failed') {
+      return <XCircle className="h-3 w-3 text-destructive" />;
+    }
+    if (session.verification_verdict === 'confirmed') {
+      return <CheckCircle className="h-3 w-3 text-green-500" />;
+    }
+    if (session.verification_verdict === 'denied') {
+      return <XCircle className="h-3 w-3 text-destructive" />;
+    }
+    return <Clock className="h-3 w-3 text-muted-foreground" />;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -129,24 +166,28 @@ export function VendorVerificationDashboard() {
         <div>
           <h2 className="text-xl font-semibold">Vendor Report Verification</h2>
           <p className="text-sm text-muted-foreground">
-            Compare AI measurements against paid vendor reports (EagleView/Roofr)
+            AI generates diagrams for each house, then verifies against paid vendor reports
           </p>
         </div>
-        <Button onClick={handleRunBatch} disabled={isRunning || stats.pending === 0}>
-          {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
-          {isRunning ? 'Verifying...' : `Verify ${stats.pending} Pending`}
+        <Button onClick={handleRunBatch} disabled={isRunning || stats.pending === 0} size="lg">
+          {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+          {isRunning ? `Verifying ${stats.processing} in progress...` : `Verify All ${stats.pending} Pending`}
         </Button>
       </div>
 
-      {isRunning && (
+      {/* Progress bar */}
+      {(isRunning || stats.processing > 0) && (
         <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">Processing batch verification...</p>
-          <Progress value={undefined} className="h-2" />
+          <div className="flex justify-between text-sm text-muted-foreground">
+            <span>Processing {stats.processing} houses...</span>
+            <span>{Math.round(progressPct)}% complete</span>
+          </div>
+          <Progress value={progressPct} className="h-2" />
         </div>
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
@@ -171,6 +212,12 @@ export function VendorVerificationDashboard() {
             <p className="text-sm text-muted-foreground">Pending</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="text-2xl font-bold text-destructive/70">{stats.failed}</p>
+            <p className="text-sm text-muted-foreground">Failed</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Results Table */}
@@ -193,6 +240,7 @@ export function VendorVerificationDashboard() {
                 <TableRow>
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Address</TableHead>
+                  <TableHead>Status</TableHead>
                   <TableHead>Score</TableHead>
                   <TableHead>Ridge Δ</TableHead>
                   <TableHead>Hip Δ</TableHead>
@@ -220,6 +268,14 @@ export function VendorVerificationDashboard() {
                         </TableCell>
                         <TableCell className="font-medium text-sm">
                           {session.property_address || 'Unknown address'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1">
+                            {getStatusIcon(session)}
+                            <span className="text-xs capitalize text-muted-foreground">
+                              {session.verification_status || 'pending'}
+                            </span>
+                          </div>
                         </TableCell>
                         <TableCell>
                           {session.verification_score != null ? (
@@ -252,9 +308,17 @@ export function VendorVerificationDashboard() {
                               <XCircle className="h-3 w-3 mr-1" /> Denied
                             </Badge>
                           )}
-                          {!session.verification_verdict && (
+                          {session.verification_status === 'failed' && !session.verification_verdict && (
+                            <Badge variant="destructive" className="opacity-70">
+                              <AlertTriangle className="h-3 w-3 mr-1" /> Failed
+                            </Badge>
+                          )}
+                          {!session.verification_verdict && session.verification_status !== 'failed' && (
                             <Badge variant="outline">
-                              <AlertTriangle className="h-3 w-3 mr-1" /> Pending
+                              {session.verification_status === 'processing' || session.verification_status === 'queued'
+                                ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Running</>
+                                : <><AlertTriangle className="h-3 w-3 mr-1" /> Pending</>
+                              }
                             </Badge>
                           )}
                         </TableCell>
@@ -276,7 +340,7 @@ export function VendorVerificationDashboard() {
 
                       {isExpanded && (
                         <TableRow key={`${session.id}-detail`}>
-                          <TableCell colSpan={10} className="bg-muted/30">
+                          <TableCell colSpan={11} className="bg-muted/30">
                             <div className="p-4 space-y-4">
                               {/* Feature breakdown bars */}
                               {fb && Object.entries(fb).map(([type, data]) => (
@@ -295,6 +359,14 @@ export function VendorVerificationDashboard() {
                                   </div>
                                 </div>
                               ))}
+
+                              {/* Failure reason */}
+                              {session.verification_status === 'failed' && session.verification_notes && (
+                                <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
+                                  <p className="text-sm text-destructive font-medium">Failure Reason</p>
+                                  <p className="text-sm text-destructive/80 mt-1">{session.verification_notes}</p>
+                                </div>
+                              )}
 
                               {/* Notes */}
                               <div className="pt-2 border-t">

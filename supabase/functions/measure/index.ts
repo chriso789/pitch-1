@@ -3897,8 +3897,8 @@ Deno.serve(async (req) => {
         }, corsHeaders);
       }
 
-      // Route: action=batch-verify-vendor-reports (Per-house vendor report verification pipeline)
-      if (action === 'batch-verify-vendor-reports') {
+     // Route: action=batch-verify-vendor-reports (Per-house vendor report verification pipeline)
+     if (action === 'batch-verify-vendor-reports') {
         console.log('🔍 Starting batch vendor report verification...');
         
         const { data: { user } } = await supabase.auth.getUser();
@@ -3917,12 +3917,13 @@ Deno.serve(async (req) => {
         }
 
         const tenantId = profile.tenant_id;
-        const batchSize = body.limit || 3;
+        // Process ALL pending sessions — no artificial limit
+        const batchSize = body.limit || 1000;
 
         // Find vendor sessions that haven't been verified yet
         const { data: sessions, error: sessionsError } = await adminSupabase
           .from('roof_training_sessions')
-          .select('id, traced_totals, ai_totals, lat, lng, property_address, vendor_report_id, ai_measurement_id, original_ai_measurement_id')
+          .select('id, traced_totals, ai_totals, lat, lng, property_address, vendor_report_id, ai_measurement_id, original_ai_measurement_id, pipeline_entry_id')
           .eq('tenant_id', tenantId)
           .eq('ground_truth_source', 'vendor_report')
           .is('verification_verdict', null)
@@ -3941,22 +3942,37 @@ Deno.serve(async (req) => {
             (traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
         });
 
-        console.log(`📊 Found ${validSessions.length} sessions to verify (batch ${batchSize})`);
+        console.log(`📊 Found ${validSessions.length} sessions to verify (no limit)`);
 
         if (validSessions.length === 0) {
           return json({
             ok: true,
             message: 'No pending vendor sessions to verify',
-            processed: 0, confirmed: 0, denied: 0, skipped: 0,
+            processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: 0,
           }, corsHeaders);
         }
 
-        const results = { processed: 0, confirmed: 0, denied: 0, skipped: 0, details: [] as any[] };
+        // Mark all as queued first so UI can track progress
+        const sessionIds = validSessions.map(s => s.id);
+        await adminSupabase
+          .from('roof_training_sessions')
+          .update({ verification_status: 'queued' })
+          .in('id', sessionIds);
+
+        const results = { processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: validSessions.length, details: [] as any[] };
         const featureTypes = ['ridge', 'hip', 'valley', 'eave', 'rake'];
         const featureWeights: Record<string, number> = { ridge: 1.0, hip: 1.0, valley: 1.0, eave: 0.8, rake: 0.8 };
+        const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+        const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 
         for (const session of validSessions) {
           try {
+            // Mark as processing
+            await adminSupabase
+              .from('roof_training_sessions')
+              .update({ verification_status: 'processing' })
+              .eq('id', session.id);
+
             const vendorTotals = session.traced_totals as Record<string, number>;
             let aiTotals = session.ai_totals as Record<string, number> | null;
 
@@ -3964,15 +3980,46 @@ Deno.serve(async (req) => {
             const hasAiData = aiTotals && Object.keys(aiTotals).length > 0 &&
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
 
-            if (!hasAiData && session.lat && session.lng) {
-              // First check for existing roof_measurements at this location
+            let sessionLat = session.lat;
+            let sessionLng = session.lng;
+
+            // If no coordinates, geocode from address first
+            if ((!sessionLat || !sessionLng) && session.property_address) {
+              console.log(`📍 Geocoding ${session.property_address}...`);
+              try {
+                const geoResp = await fetch(`${supabaseUrl}/functions/v1/google-address-validation`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${serviceKey}`,
+                  },
+                  body: JSON.stringify({ address: session.property_address }),
+                });
+                const geoData = await geoResp.json();
+                const loc = geoData?.geocode?.location;
+                if (loc?.latitude && loc?.longitude) {
+                  sessionLat = loc.latitude;
+                  sessionLng = loc.longitude;
+                  console.log(`📍 Geocoded to ${sessionLat}, ${sessionLng}`);
+                  await adminSupabase
+                    .from('roof_training_sessions')
+                    .update({ lat: sessionLat, lng: sessionLng })
+                    .eq('id', session.id);
+                }
+              } catch (geoErr) {
+                console.error(`Geocode failed for ${session.property_address}:`, geoErr);
+              }
+            }
+
+            if (!hasAiData && sessionLat && sessionLng) {
+              // Check for existing roof_measurements at this location using target_lat/target_lng
               const { data: existingMeasurement } = await adminSupabase
                 .from('roof_measurements')
                 .select('id, summary')
-                .gte('lat', session.lat - 0.0001)
-                .lte('lat', session.lat + 0.0001)
-                .gte('lng', session.lng - 0.0001)
-                .lte('lng', session.lng + 0.0001)
+                .gte('target_lat', sessionLat - 0.0001)
+                .lte('target_lat', sessionLat + 0.0001)
+                .gte('target_lng', sessionLng - 0.0001)
+                .lte('target_lng', sessionLng + 0.0001)
                 .order('created_at', { ascending: false })
                 .limit(1)
                 .maybeSingle();
@@ -3990,12 +4037,13 @@ Deno.serve(async (req) => {
                   .from('roof_training_sessions')
                   .update({ ai_totals: aiTotals, ai_measurement_id: existingMeasurement.id })
                   .eq('id', session.id);
+                console.log(`📏 Found existing measurement ${existingMeasurement.id} for session ${session.id}`);
               } else {
-                // No existing measurement — run the AI measurement engine via self-call
-                console.log(`🚀 Running AI measurement for session ${session.id} at ${session.lat},${session.lng}...`);
+                // No existing measurement — run the AI measurement engine
+                // Use session.id as propertyId surrogate (required by pull action)
+                const propertyId = session.pipeline_entry_id || session.id;
+                console.log(`🚀 Running AI measurement for session ${session.id} at ${sessionLat},${sessionLng} with propertyId=${propertyId}...`);
                 try {
-                  const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-                  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
                   const pullResp = await fetch(`${supabaseUrl}/functions/v1/measure`, {
                     method: 'POST',
                     headers: {
@@ -4004,19 +4052,21 @@ Deno.serve(async (req) => {
                     },
                     body: JSON.stringify({
                       action: 'pull',
-                      lat: session.lat,
-                      lng: session.lng,
+                      propertyId: propertyId,
+                      lat: sessionLat,
+                      lng: sessionLng,
                       address: session.property_address || '',
                       training_session_id: session.id,
                       engine: 'skeleton',
                     }),
                   });
                   const pullData = await pullResp.json();
-                  console.log(`📏 AI measurement result for ${session.property_address}:`, pullData?.ok ? 'success' : pullData?.error || 'unknown error');
+                  console.log(`📏 AI measurement result for ${session.property_address}: status=${pullResp.status}, ok=${pullData?.ok}`);
 
-                  if (pullData?.ok && pullData?.measurement) {
-                    const m = pullData.measurement;
-                    const mSummary = m.summary || m.measurement_data?.summary || {};
+                  // Pull returns { ok, data: { measurement, tags, engine_used } }
+                  const measurement = pullData?.data?.measurement || pullData?.measurement;
+                  if (pullData?.ok && measurement) {
+                    const mSummary = measurement.summary || measurement.measurement_data?.summary || {};
                     aiTotals = {
                       ridge: mSummary.ridge_ft || mSummary.total_ridge_length || 0,
                       hip: mSummary.hip_ft || mSummary.total_hip_length || 0,
@@ -4028,81 +4078,17 @@ Deno.serve(async (req) => {
                       .from('roof_training_sessions')
                       .update({
                         ai_totals: aiTotals,
-                        ai_measurement_id: m.id || null,
-                        original_ai_measurement_id: m.id || null,
+                        ai_measurement_id: measurement.id || null,
+                        original_ai_measurement_id: measurement.id || null,
                       })
                       .eq('id', session.id);
+                    console.log(`✅ AI measurement stored for session ${session.id}: ridge=${aiTotals.ridge}, hip=${aiTotals.hip}, eave=${aiTotals.eave}`);
+                  } else {
+                    console.error(`❌ AI pull failed for session ${session.id}:`, pullData?.error || 'No measurement in response');
                   }
                 } catch (pullErr) {
                   console.error(`Failed to run AI measurement for session ${session.id}:`, pullErr);
                 }
-              }
-            }
-
-            // If still no AI data after trying everything, try geocoding address then measuring
-            const hasAiDataNow = aiTotals && Object.keys(aiTotals).length > 0 &&
-              (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
-
-            if (!hasAiDataNow && !session.lat && session.property_address) {
-              console.log(`📍 Attempting geocode for ${session.property_address}...`);
-              try {
-                const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
-                const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
-                const geoResp = await fetch(`${supabaseUrl}/functions/v1/google-address-validation`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${serviceKey}`,
-                  },
-                  body: JSON.stringify({ address: session.property_address }),
-                });
-                const geoData = await geoResp.json();
-                const loc = geoData?.geocode?.location;
-                if (loc?.latitude && loc?.longitude) {
-                  console.log(`📍 Geocoded to ${loc.latitude}, ${loc.longitude}`);
-                  await adminSupabase
-                    .from('roof_training_sessions')
-                    .update({ lat: loc.latitude, lng: loc.longitude })
-                    .eq('id', session.id);
-
-                  // Now run AI measurement
-                  const pullResp = await fetch(`${supabaseUrl}/functions/v1/measure`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${serviceKey}`,
-                    },
-                    body: JSON.stringify({
-                      action: 'pull',
-                      lat: loc.latitude,
-                      lng: loc.longitude,
-                      address: session.property_address,
-                      training_session_id: session.id,
-                      engine: 'skeleton',
-                    }),
-                  });
-                  const pullData = await pullResp.json();
-                  if (pullData?.ok && pullData?.measurement) {
-                    const mSummary = pullData.measurement.summary || pullData.measurement.measurement_data?.summary || {};
-                    aiTotals = {
-                      ridge: mSummary.ridge_ft || mSummary.total_ridge_length || 0,
-                      hip: mSummary.hip_ft || mSummary.total_hip_length || 0,
-                      valley: mSummary.valley_ft || mSummary.total_valley_length || 0,
-                      eave: mSummary.eave_ft || mSummary.total_eave_length || 0,
-                      rake: mSummary.rake_ft || mSummary.total_rake_length || 0,
-                    };
-                    await adminSupabase
-                      .from('roof_training_sessions')
-                      .update({
-                        ai_totals: aiTotals,
-                        ai_measurement_id: pullData.measurement.id || null,
-                        original_ai_measurement_id: pullData.measurement.id || null,
-                      })
-                      .eq('id', session.id);
-                  }
-                }
-              } catch (geoErr) {
-                console.error(`Geocode/measure failed for ${session.property_address}:`, geoErr);
               }
             }
 
@@ -4111,23 +4097,39 @@ Deno.serve(async (req) => {
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
 
             if (!finalHasAi) {
-              console.log(`⚠️ Session ${session.id}: No AI data after all attempts, skipping`);
+              const reason = !sessionLat || !sessionLng
+                ? 'No coordinates and geocoding failed'
+                : 'AI measurement engine returned no data';
+              console.log(`⚠️ Session ${session.id}: ${reason}, marking failed`);
               await adminSupabase
                 .from('roof_training_sessions')
                 .update({
-                  verification_verdict: null,
-                  verification_notes: 'Skipped - AI measurement could not be generated',
+                  verification_status: 'failed',
+                  verification_notes: `Failed - ${reason}`,
                   verification_run_at: new Date().toISOString(),
                 })
                 .eq('id', session.id);
-              results.skipped++;
+              results.failed++;
               results.details.push({
                 sessionId: session.id,
                 address: session.property_address,
-                verdict: 'skipped',
-                reason: 'AI measurement failed',
+                verdict: 'failed',
+                reason,
               });
               continue;
+            }
+
+            // === VERIFICATION: Compare AI diagram vs vendor report ===
+            
+            // Load vendor report evidence if available
+            let vendorEvidence: any = null;
+            if (session.vendor_report_id) {
+              const { data: vendorReport } = await adminSupabase
+                .from('roof_vendor_reports')
+                .select('id, provider, diagram_image_url, diagram_geometry, total_area_sqft, predominant_pitch, extracted_text')
+                .eq('id', session.vendor_report_id)
+                .maybeSingle();
+              vendorEvidence = vendorReport;
             }
 
             // Calculate per-feature accuracy
@@ -4155,15 +4157,21 @@ Deno.serve(async (req) => {
             const overallScore = weightSum > 0 ? weightedAccuracySum / weightSum : 0;
             const verdict = overallScore >= 85 ? 'confirmed' : 'denied';
 
-            // Build notes
+            // Build verification notes with evidence references
             const notesParts: string[] = [];
+            notesParts.push(`Overall accuracy: ${overallScore.toFixed(1)}%`);
+            if (vendorEvidence) {
+              notesParts.push(`Provider: ${vendorEvidence.provider || 'unknown'}`);
+              if (vendorEvidence.total_area_sqft) notesParts.push(`Vendor area: ${vendorEvidence.total_area_sqft} sqft`);
+              if (vendorEvidence.diagram_image_url) notesParts.push(`Vendor diagram: available`);
+            }
             for (const [type, data] of Object.entries(featureBreakdown)) {
               if (data.vendor > 0) {
                 notesParts.push(`${type}: AI=${data.ai.toFixed(1)}ft vs Vendor=${data.vendor.toFixed(1)}ft (${data.variance_pct > 0 ? '+' : ''}${data.variance_pct.toFixed(1)}%)`);
               }
             }
 
-            const notes = `Overall accuracy: ${overallScore.toFixed(1)}%. ${notesParts.join('; ')}`;
+            const notes = notesParts.join('. ');
 
             // Update session with verification results
             const { error: updateError } = await adminSupabase
@@ -4174,6 +4182,7 @@ Deno.serve(async (req) => {
                 verification_notes: notes,
                 verification_run_at: new Date().toISOString(),
                 verification_feature_breakdown: featureBreakdown,
+                verification_status: 'completed',
               })
               .eq('id', session.id);
 
@@ -4191,12 +4200,24 @@ Deno.serve(async (req) => {
               verdict,
               score: overallScore,
               featureBreakdown,
+              vendorProvider: vendorEvidence?.provider,
             });
 
-            console.log(`${verdict === 'confirmed' ? '✅' : '❌'} Session ${session.id}: ${verdict} (${overallScore.toFixed(1)}%)`);
+            console.log(`${verdict === 'confirmed' ? '✅' : '❌'} Session ${session.id} (${session.property_address}): ${verdict} (${overallScore.toFixed(1)}%)`);
+
+            // Small delay between houses to avoid rate limits
+            await new Promise(r => setTimeout(r, 1000));
           } catch (err) {
             console.error(`Error verifying session ${session.id}:`, err);
-            results.skipped++;
+            await adminSupabase
+              .from('roof_training_sessions')
+              .update({
+                verification_status: 'failed',
+                verification_notes: `Error: ${err instanceof Error ? err.message : String(err)}`,
+                verification_run_at: new Date().toISOString(),
+              })
+              .eq('id', session.id);
+            results.failed++;
             results.details.push({
               sessionId: session.id,
               address: session.property_address,
@@ -4206,11 +4227,11 @@ Deno.serve(async (req) => {
           }
         }
 
-        console.log(`✅ Batch verification complete: ${results.processed} processed, ${results.confirmed} confirmed, ${results.denied} denied, ${results.skipped} skipped`);
+        console.log(`✅ Batch verification complete: ${results.processed} processed, ${results.confirmed} confirmed, ${results.denied} denied, ${results.failed} failed, ${results.skipped} skipped`);
 
         return json({
           ok: true,
-          message: `Verified ${results.processed} sessions: ${results.confirmed} confirmed, ${results.denied} denied, ${results.skipped} skipped`,
+          message: `Verified ${results.processed} sessions: ${results.confirmed} confirmed, ${results.denied} denied, ${results.failed} failed`,
           ...results,
         }, corsHeaders);
       }
