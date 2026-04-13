@@ -301,16 +301,16 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('Error creating user role:', roleError);
     }
 
-    // Create user_company_access entry
+    // Create user_company_access entry (upsert to avoid duplicate key errors)
     const { error: accessError } = await supabaseAdmin
       .from('user_company_access')
-      .insert({
+      .upsert({
         user_id: newUser.user.id,
         tenant_id: targetTenantId,
         granted_by: user.id,
         access_level: 'full',
         is_active: true
-      });
+      }, { onConflict: 'user_id,tenant_id' });
 
     if (accessError) {
       console.error('Error creating user company access:', accessError);
