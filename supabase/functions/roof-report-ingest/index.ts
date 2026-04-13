@@ -1470,6 +1470,17 @@ If no diagram is found, return: {"diagram_found": false}`;
         let userId = resolvedUserId;
 
         if (userTenantId) {
+          // Idempotency: skip if session already exists for this report + tenant
+          const { data: existingSession } = await supabase
+            .from('roof_training_sessions')
+            .select('id')
+            .eq('tenant_id', userTenantId)
+            .eq('vendor_report_id', reportRow.id)
+            .maybeSingle();
+
+          if (existingSession) {
+            console.log("roof-report-ingest: Training session already exists:", existingSession.id);
+          } else {
           // Build traced_totals from vendor measurements
           const tracedTotals = {
             ridge: parsed.ridges_ft || 0,
