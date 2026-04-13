@@ -1465,24 +1465,9 @@ If no diagram is found, return: {"diagram_found": false}`;
       try {
         console.log("roof-report-ingest: Auto-creating training session from vendor report...");
         
-        // Get authenticated user's tenant
-        const authHeader = req.headers.get('authorization');
-        let userTenantId: string | null = null;
-        let userId: string | null = null;
-        
-        if (authHeader) {
-          const token = authHeader.replace('Bearer ', '');
-          const { data: { user } } = await supabase.auth.getUser(token);
-          if (user) {
-            userId = user.id;
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('tenant_id')
-              .eq('id', user.id)
-              .single();
-            userTenantId = profile?.tenant_id;
-          }
-        }
+        // Use already-resolved tenant from auth header
+        let userTenantId = resolvedTenantId;
+        let userId = resolvedUserId;
 
         if (userTenantId) {
           // Build traced_totals from vendor measurements
