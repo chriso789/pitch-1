@@ -10,6 +10,7 @@ import { TrainingSessionList } from './TrainingSessionList';
 import { TrainingSessionDetail } from './TrainingSessionDetail';
 import { TrainingLeadSelector } from './TrainingLeadSelector';
 import { TrainingAnalyticsDashboard } from './TrainingAnalyticsDashboard';
+import { VendorVerificationDashboard } from './VendorVerificationDashboard';
 import { BulkReportImporter } from '@/components/measurements/BulkReportImporter';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { toast } from 'sonner';
