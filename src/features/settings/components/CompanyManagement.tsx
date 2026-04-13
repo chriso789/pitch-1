@@ -234,8 +234,9 @@ export const CompanyManagement = () => {
       setLocationNames(['']);
       setCreateDialogOpen(false);
 
-      // Refresh lists
+      // Refresh lists - invalidate cache to force fresh fetch
       fetchCompanies();
+      await queryClient.invalidateQueries({ queryKey: ['accessible-companies'] });
       refetchCompanies();
     } catch (error: any) {
       clearTimeout(timeoutId);
