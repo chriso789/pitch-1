@@ -30720,10 +30720,13 @@ export type Database = {
           traced_totals: Json | null
           updated_at: string | null
           vendor_report_id: string | null
+          verification_completed_at: string | null
           verification_feature_breakdown: Json | null
           verification_notes: string | null
           verification_run_at: string | null
           verification_score: number | null
+          verification_started_at: string | null
+          verification_status: string | null
           verification_verdict: string | null
         }
         Insert: {
@@ -30750,10 +30753,13 @@ export type Database = {
           traced_totals?: Json | null
           updated_at?: string | null
           vendor_report_id?: string | null
+          verification_completed_at?: string | null
           verification_feature_breakdown?: Json | null
           verification_notes?: string | null
           verification_run_at?: string | null
           verification_score?: number | null
+          verification_started_at?: string | null
+          verification_status?: string | null
           verification_verdict?: string | null
         }
         Update: {
@@ -30780,10 +30786,13 @@ export type Database = {
           traced_totals?: Json | null
           updated_at?: string | null
           vendor_report_id?: string | null
+          verification_completed_at?: string | null
           verification_feature_breakdown?: Json | null
           verification_notes?: string | null
           verification_run_at?: string | null
           verification_score?: number | null
+          verification_started_at?: string | null
+          verification_status?: string | null
           verification_verdict?: string | null
         }
         Relationships: [

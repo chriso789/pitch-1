@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface VerificationSession {
@@ -24,6 +24,9 @@ interface VerificationSession {
   ai_totals: Record<string, number> | null;
   ground_truth_source: string | null;
   vendor_report_id: string | null;
+  vendor_provider?: string | null;
+  has_source_file?: boolean;
+  has_diagram?: boolean;
 }
 
 export function VendorVerificationDashboard() {
@@ -38,16 +41,54 @@ export function VendorVerificationDashboard() {
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ['vendor-verification-sessions', activeCompanyId],
     queryFn: async () => {
+      // Query sessions with vendor report join for metadata
       const { data, error } = await supabase
         .from('roof_training_sessions')
-        .select('id, property_address, verification_verdict, verification_score, verification_notes, verification_run_at, verification_status, verification_feature_breakdown, traced_totals, ai_totals, ground_truth_source, vendor_report_id')
+        .select(`
+          id, property_address, verification_verdict, verification_score,
+          verification_notes, verification_run_at, verification_status,
+          verification_feature_breakdown, traced_totals, ai_totals,
+          ground_truth_source, vendor_report_id
+        `)
         .eq('tenant_id', activeCompanyId!)
         .eq('ground_truth_source', 'vendor_report')
-        .not('traced_totals', 'is', null)
+        .not('vendor_report_id', 'is', null)
         .order('verification_run_at', { ascending: false, nullsFirst: true });
 
-      if (error) throw error;
-      return (data || []) as unknown as VerificationSession[];
+      if (error) {
+        console.error('Verification sessions query error:', error);
+        throw error;
+      }
+
+      // Fetch vendor report metadata for all sessions
+      const reportIds = (data || [])
+        .map(s => s.vendor_report_id)
+        .filter((id): id is string => !!id);
+
+      let reportMap: Record<string, { provider: string | null; has_file: boolean; has_diagram: boolean }> = {};
+      if (reportIds.length > 0) {
+        const { data: reports } = await supabase
+          .from('roof_vendor_reports')
+          .select('id, provider, file_path, file_url, diagram_image_url')
+          .in('id', reportIds);
+
+        if (reports) {
+          for (const r of reports) {
+            reportMap[r.id] = {
+              provider: r.provider,
+              has_file: !!(r.file_path || r.file_url),
+              has_diagram: !!r.diagram_image_url,
+            };
+          }
+        }
+      }
+
+      return (data || []).map(s => ({
+        ...s,
+        vendor_provider: s.vendor_report_id ? reportMap[s.vendor_report_id]?.provider : null,
+        has_source_file: s.vendor_report_id ? reportMap[s.vendor_report_id]?.has_file ?? false : false,
+        has_diagram: s.vendor_report_id ? reportMap[s.vendor_report_id]?.has_diagram ?? false : false,
+      })) as VerificationSession[];
     },
     enabled: !!activeCompanyId,
   });
@@ -74,6 +115,7 @@ export function VendorVerificationDashboard() {
     pending: sessions.filter(s => !s.verification_verdict && s.verification_status !== 'failed').length,
     failed: sessions.filter(s => s.verification_status === 'failed').length,
     processing: sessions.filter(s => s.verification_status === 'processing' || s.verification_status === 'queued').length,
+    missingSource: sessions.filter(s => !s.has_source_file && !s.has_diagram).length,
   };
 
   const progressPct = stats.total > 0 ? ((stats.confirmed + stats.denied + stats.failed) / stats.total) * 100 : 0;
@@ -187,7 +229,7 @@ export function VendorVerificationDashboard() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-5 gap-4">
+      <div className="grid grid-cols-6 gap-4">
         <Card>
           <CardContent className="pt-6 text-center">
             <p className="text-2xl font-bold">{stats.total}</p>
@@ -218,6 +260,12 @@ export function VendorVerificationDashboard() {
             <p className="text-sm text-muted-foreground">Failed</p>
           </CardContent>
         </Card>
+        <Card>
+          <CardContent className="pt-6 text-center">
+            <p className="text-2xl font-bold text-orange-500">{stats.missingSource}</p>
+            <p className="text-sm text-muted-foreground">No Source</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Results Table */}
@@ -232,7 +280,7 @@ export function VendorVerificationDashboard() {
             </div>
           ) : sessions.length === 0 ? (
             <p className="text-center text-muted-foreground py-8">
-              No vendor report sessions found. Import reports first.
+              No vendor report sessions found. Import reports first via Bulk Import.
             </p>
           ) : (
             <Table>
@@ -240,13 +288,13 @@ export function VendorVerificationDashboard() {
                 <TableRow>
                   <TableHead className="w-8"></TableHead>
                   <TableHead>Address</TableHead>
+                  <TableHead>Provider</TableHead>
+                  <TableHead>Source</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Score</TableHead>
                   <TableHead>Ridge Δ</TableHead>
                   <TableHead>Hip Δ</TableHead>
                   <TableHead>Valley Δ</TableHead>
-                  <TableHead>Eave Δ</TableHead>
-                  <TableHead>Rake Δ</TableHead>
                   <TableHead>Verdict</TableHead>
                   <TableHead className="w-20">Actions</TableHead>
                 </TableRow>
@@ -270,6 +318,22 @@ export function VendorVerificationDashboard() {
                           {session.property_address || 'Unknown address'}
                         </TableCell>
                         <TableCell>
+                          <span className="text-xs text-muted-foreground capitalize">
+                            {session.vendor_provider || '—'}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {session.has_source_file ? (
+                            <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600">PDF</Badge>
+                          ) : session.has_diagram ? (
+                            <Badge variant="outline" className="text-xs bg-blue-500/10 text-blue-600">Diagram</Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-xs bg-orange-500/10 text-orange-600">
+                              <FileWarning className="h-3 w-3 mr-1" />Data only
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
                           <div className="flex items-center gap-1">
                             {getStatusIcon(session)}
                             <span className="text-xs capitalize text-muted-foreground">
@@ -286,7 +350,7 @@ export function VendorVerificationDashboard() {
                             <span className="text-muted-foreground">—</span>
                           )}
                         </TableCell>
-                        {['ridge', 'hip', 'valley', 'eave', 'rake'].map(type => (
+                        {['ridge', 'hip', 'valley'].map(type => (
                           <TableCell key={type}>
                             {fb?.[type] ? (
                               <span className={getVarianceColor(fb[type].variance_pct)}>
@@ -365,6 +429,17 @@ export function VendorVerificationDashboard() {
                                 <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
                                   <p className="text-sm text-destructive font-medium">Failure Reason</p>
                                   <p className="text-sm text-destructive/80 mt-1">{session.verification_notes}</p>
+                                </div>
+                              )}
+
+                              {/* Missing source warning */}
+                              {!session.has_source_file && !session.has_diagram && (
+                                <div className="p-3 bg-orange-500/10 rounded-md border border-orange-500/20">
+                                  <p className="text-sm text-orange-600 font-medium">Missing Source Evidence</p>
+                                  <p className="text-sm text-orange-600/80 mt-1">
+                                    This report has parsed data only — no PDF or diagram was saved during import.
+                                    Re-import this report to enable full page-by-page verification.
+                                  </p>
                                 </div>
                               )}
 

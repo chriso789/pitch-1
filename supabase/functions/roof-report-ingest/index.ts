@@ -1062,6 +1062,24 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRole);
 
+    // Resolve tenant_id from auth header for all insert paths
+    let resolvedTenantId: string | null = null;
+    let resolvedUserId: string | null = null;
+    const authHeader = req.headers.get('authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (user) {
+        resolvedUserId = user.id;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+        resolvedTenantId = profile?.tenant_id || null;
+      }
+    }
+
     // Check if this is an image file (JPEG, PNG, HEIC)
     const fileType: string = body.file_type ?? 'pdf';
     const mimeType: string = body.mime_type ?? 'application/pdf';
@@ -1089,9 +1107,8 @@ Deno.serve(async (req) => {
           pitch: visionResult.predominant_pitch
         });
         
-        // Store in database
         const lead_id = body.lead_id ?? null;
-        const insertPayload = {
+        const insertPayload: Record<string, any> = {
           lead_id,
           provider: visionResult.provider || "image_import",
           address: visionResult.address ?? null,
@@ -1099,6 +1116,7 @@ Deno.serve(async (req) => {
           extracted_text: "Image-based import via Vision AI",
           parsed: visionResult,
         };
+        if (resolvedTenantId) insertPayload.tenant_id = resolvedTenantId;
         
         const { data: reportRow, error: insertErr } = await supabase
           .from("roof_vendor_reports")
@@ -1257,7 +1275,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const insertPayload = {
+    const insertPayload: Record<string, any> = {
       lead_id,
       provider: parsed.provider || provider,
       report_number: parsed.report_number ?? null,
@@ -1269,6 +1287,7 @@ Deno.serve(async (req) => {
       extracted_text: extractedText,
       parsed,
     };
+    if (resolvedTenantId) insertPayload.tenant_id = resolvedTenantId;
 
     console.log("roof-report-ingest: Inserting into roof_vendor_reports...");
     const { data: reportRow, error: insertErr } = await supabase
@@ -1446,26 +1465,22 @@ If no diagram is found, return: {"diagram_found": false}`;
       try {
         console.log("roof-report-ingest: Auto-creating training session from vendor report...");
         
-        // Get authenticated user's tenant
-        const authHeader = req.headers.get('authorization');
-        let userTenantId: string | null = null;
-        let userId: string | null = null;
-        
-        if (authHeader) {
-          const token = authHeader.replace('Bearer ', '');
-          const { data: { user } } = await supabase.auth.getUser(token);
-          if (user) {
-            userId = user.id;
-            const { data: profile } = await supabase
-              .from('profiles')
-              .select('tenant_id')
-              .eq('id', user.id)
-              .single();
-            userTenantId = profile?.tenant_id;
-          }
-        }
+        // Use already-resolved tenant from auth header
+        let userTenantId = resolvedTenantId;
+        let userId = resolvedUserId;
 
         if (userTenantId) {
+          // Idempotency: skip if session already exists for this report + tenant
+          const { data: existingSession } = await supabase
+            .from('roof_training_sessions')
+            .select('id')
+            .eq('tenant_id', userTenantId)
+            .eq('vendor_report_id', reportRow.id)
+            .maybeSingle();
+
+          if (existingSession) {
+            console.log("roof-report-ingest: Training session already exists:", existingSession.id);
+          } else {
           // Build traced_totals from vendor measurements
           const tracedTotals = {
             ridge: parsed.ridges_ft || 0,
@@ -1530,6 +1545,7 @@ If no diagram is found, return: {"diagram_found": false}`;
           } else {
             console.log("roof-report-ingest: Created training session:", trainingSession?.id);
           }
+          } // end else (no existing session)
         }
       } catch (sessionErr) {
         console.warn("roof-report-ingest: Training session auto-creation error:", sessionErr);
