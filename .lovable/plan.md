@@ -1,117 +1,65 @@
+<final-text>Do I know what the issue is? Yes.
 
+Why it is not doing what you asked:
+1. The UI still hardcodes a 3-item run.
+   - `src/components/settings/VendorVerificationDashboard.tsx` sends `limit: 3`.
+   - `supabase/functions/measure/index.ts` also defaults to 3.
+   - That is why the screenshot shows 214 pending but only 3 were attempted.
 
-# Per-House Vendor Report Verification Pipeline
+2. The batch verifier is not actually able to generate the internal AI diagram for pending sessions.
+   - Inside `batch-verify-vendor-reports`, it self-calls `measure` with `action: 'pull'`.
+   - That call does not pass `propertyId`.
+   - But `measure` requires `propertyId` for `pull`, so the generation path fails and the session gets skipped.
 
-## What this does
+3. The fallback lookup for existing measurements is pointed at the wrong columns.
+   - The verifier searches `roof_measurements` using `lat` / `lng`.
+   - The schema uses `target_lat` / `target_lng`.
+   - So it misses existing measurements and falls through to the broken self-call.
 
-A new developer-only tool that processes every imported EagleView/Roofr PDF one by one. For each house it: (1) pulls the aerial satellite image, (2) runs the AI measurement engine to generate a roof diagram, (3) compares the AI diagram against the paid vendor report page by page, and (4) marks the house as **Confirmed** or **Denied** with an accuracy score.
+4. Even when verification runs, it is not verifying off the paid report diagram/pages.
+   - The current code only compares `ai_totals` vs `traced_totals`.
+   - It does not inspect the vendor PDF pages, `diagram_image_url`, or `diagram_geometry`.
+   - So it is not doing the “build diagram, then verify against the report” workflow you asked for.
 
----
+What I will change:
+1. Fix AI generation first
+   - Include `pipeline_entry_id` in the batch query.
+   - Pass a valid `propertyId` into the internal `pull` call.
+   - Normalize the pull response parsing and persist `ai_measurement_id`, `original_ai_measurement_id`, and `ai_totals`.
+   - Look up existing measurements by `target_lat` / `target_lng` instead of `lat` / `lng`.
 
-## Current state
+2. Make it run for all report-backed addresses
+   - Remove the hardcoded `limit: 3` from the dashboard.
+   - Stop trying to process the whole run synchronously in one request.
+   - Convert verification into background processing for all pending vendor sessions.
 
-- **roof_vendor_reports** already stores parsed measurements, extracted text, diagram geometry, and geocoded coordinates for imported PDFs
-- **roof_measurements_truth** stores normalized measurement data per vendor report
-- **roof_training_sessions** links vendor reports to AI measurements with `traced_totals` (vendor) and `ai_totals` (AI), plus `original_ai_measurement_id` and `corrected_ai_measurement_id`
-- The `measure` edge function can run AI measurements via `action: 'pull'`
-- `TrainingComparisonView` already compares AI vs vendor traces with variance percentages
-- `BulkReportImporter` handles batch PDF import with geocoding
+3. Add real processing state
+   - Add `verification_status`, `verification_error`, `verification_started_at`, and `verification_completed_at`.
+   - Use `queued / processing / completed / failed` so nothing silently “skips”.
 
-**What's missing:** No automated batch workflow that runs AI measurement against every vendor report, generates a diagram, compares it to the vendor data, and records a pass/fail verdict.
+4. Verify against the actual paid report evidence
+   - For each house, load vendor evidence from `roof_vendor_reports` (`diagram_image_url`, `diagram_geometry`, PDF/file fallback).
+   - Generate the internal AI roof diagram from the measurement result.
+   - Compare AI diagram + totals against the vendor report evidence, then persist Confirmed / Denied plus notes.
 
----
+5. Update the verification UI
+   - Show real progress across all addresses.
+   - Show per-house failure reasons instead of vague skip messages.
+   - Show side-by-side AI vs vendor evidence on each row.
+   - Keep manual Confirmed / Denied override.
 
-## Implementation steps
+Technical details:
+- Files to patch:
+  - `src/components/settings/VendorVerificationDashboard.tsx`
+  - `supabase/functions/measure/index.ts`
+  - a new migration for verification status/error fields
+- Processing model:
+  - use the same async background pattern already used by `start-ai-measurement` so 214 addresses can run without timing out.
+- QA:
+  - add targeted tests/logging for missing `propertyId`, response parsing, `target_lat/target_lng` lookup, and full-batch background execution.
 
-### Step 1 -- Add verification columns to roof_training_sessions
-
-Migration to add:
-- `verification_verdict` (text, nullable): `'confirmed'` or `'denied'`
-- `verification_score` (numeric, nullable): 0-100 accuracy percentage
-- `verification_notes` (text, nullable): summary of what matched and what didn't
-- `verification_run_at` (timestamptz, nullable): when the verification was executed
-- `verification_feature_breakdown` (jsonb, nullable): per-feature accuracy (ridge, hip, valley, eave, rake)
-
-### Step 2 -- New edge function action: `batch-verify-vendor-reports`
-
-Add a new route in the `measure` edge function (`action: 'batch-verify-vendor-reports'`) that:
-
-1. Queries `roof_training_sessions` where `ground_truth_source = 'vendor_report'` and `verification_verdict IS NULL`
-2. For each session (batched, limit configurable):
-   a. If no `lat/lng`, attempt geocoding via `google-address-validation`
-   b. Fetch satellite image via `google-maps-proxy` (zoom 20, 640x640, scale 2)
-   c. Run AI measurement via the existing `pull` action internally (reuse the measure engine)
-   d. Compare AI results against vendor `traced_totals`:
-      - Per-feature variance: ridge, hip, valley, eave, rake
-      - Overall weighted accuracy score
-      - Auto-verdict: **Confirmed** if overall accuracy >= 85%, **Denied** if < 85%
-   e. Store `verification_verdict`, `verification_score`, `verification_notes`, `verification_feature_breakdown`, and `verification_run_at` on the training session
-   f. Store the AI measurement ID as `original_ai_measurement_id` if not already set
-3. Return summary: total processed, confirmed count, denied count, skipped count
-
-### Step 3 -- New UI: `VendorVerificationDashboard` component
-
-A new component in `src/components/settings/VendorVerificationDashboard.tsx`, accessible from Developer Settings and the Training Lab header. Contains:
-
-**Header section:**
-- "Vendor Report Verification" title
-- "Run Batch Verification" button (calls the new edge function action)
-- Progress bar during batch processing
-- Summary stats: Total | Confirmed | Denied | Pending
-
-**Results table:**
-- Address | Provider | Vendor Area | AI Area | Area Diff% | Ridge Diff% | Hip Diff% | Valley Diff% | Verdict badge (green Confirmed / red Denied)
-- Each row expandable to show:
-  - Side-by-side: vendor measurements vs AI measurements
-  - Per-feature breakdown with color-coded variance bars
-  - Satellite image thumbnail
-  - Link to the full training session detail (existing `TrainingSessionDetail`)
-
-**Manual override:**
-- Click any row to manually flip verdict between Confirmed/Denied
-- Add verification notes
-
-### Step 4 -- Wire into existing views
-
-- Add a `<VendorVerificationDashboard />` tab in the Training Lab (`RoofTrainingLab.tsx`) alongside "Sessions" and "Analytics"
-- Add a verification status badge on the `ReportImportDashboard` table rows
-- Add a "Verify All" button on the Developer Settings bulk import card
-
-### Step 5 -- Diagram generation per house
-
-For each house during verification, the AI measurement already produces `linear_features_wkt` (ridges, hips, valleys, eaves, rakes as WKT geometry). The existing `TrainingSchematicWrapper` and `SchematicRoofDiagram` components can render these. The verification dashboard will:
-- Render the AI-generated diagram inline using `TrainingSchematicWrapper`
-- Show vendor diagram image (from `diagram_image_url` on `roof_vendor_reports`) alongside it
-- Color-code features by accuracy: green (< 5% variance), yellow (5-15%), red (> 15%)
-
----
-
-## Technical details
-
-**Database migration:**
-```sql
-ALTER TABLE roof_training_sessions
-  ADD COLUMN IF NOT EXISTS verification_verdict text,
-  ADD COLUMN IF NOT EXISTS verification_score numeric,
-  ADD COLUMN IF NOT EXISTS verification_notes text,
-  ADD COLUMN IF NOT EXISTS verification_run_at timestamptz,
-  ADD COLUMN IF NOT EXISTS verification_feature_breakdown jsonb;
-```
-
-**Accuracy calculation logic:**
-- Per-feature: `accuracy = max(0, 100 - abs((ai - vendor) / vendor * 100))`
-- Overall: weighted average across features that have vendor data > 0
-- Weights: ridge 1.0, hip 1.0, valley 1.0, eave 0.8, rake 0.8
-
-**Batch processing:**
-- Default batch size: 5 houses per invocation (avoids edge function timeout)
-- Sequential processing with 2s delay between houses
-- Skip houses with no lat/lng and no address (mark as "skipped - no location")
-
-**Files to create/modify:**
-1. `src/components/settings/VendorVerificationDashboard.tsx` -- new component
-2. `src/components/settings/RoofTrainingLab.tsx` -- add Verification tab
-3. `supabase/functions/measure/index.ts` -- add `batch-verify-vendor-reports` action
-4. Migration SQL for new columns
-5. Regenerate types after migration
-
+Expected result:
+- One click queues all imported report-backed addresses.
+- Each address generates an internal AI roof diagram first.
+- Then each one is verified against the paid report evidence.
+- The dashboard shows actual progress and a real fail reason for any house that cannot be verified.</final-text>
