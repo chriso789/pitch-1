@@ -46,6 +46,7 @@ export const CompanyManagement = () => {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const { toast } = useToast();
   const { activeCompanyId, refetch: refetchCompanies } = useCompanySwitcher();
+  const queryClient = useQueryClient();
 
   // Form state for creating new company
   const [newCompanyName, setNewCompanyName] = useState('');
