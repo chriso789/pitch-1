@@ -1062,6 +1062,24 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRole);
 
+    // Resolve tenant_id from auth header for all insert paths
+    let resolvedTenantId: string | null = null;
+    let resolvedUserId: string | null = null;
+    const authHeader = req.headers.get('authorization');
+    if (authHeader) {
+      const token = authHeader.replace('Bearer ', '');
+      const { data: { user } } = await supabase.auth.getUser(token);
+      if (user) {
+        resolvedUserId = user.id;
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+        resolvedTenantId = profile?.tenant_id || null;
+      }
+    }
+
     // Check if this is an image file (JPEG, PNG, HEIC)
     const fileType: string = body.file_type ?? 'pdf';
     const mimeType: string = body.mime_type ?? 'application/pdf';
