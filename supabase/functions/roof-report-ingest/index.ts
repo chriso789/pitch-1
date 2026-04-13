@@ -1107,9 +1107,8 @@ Deno.serve(async (req) => {
           pitch: visionResult.predominant_pitch
         });
         
-        // Store in database
         const lead_id = body.lead_id ?? null;
-        const insertPayload = {
+        const insertPayload: Record<string, any> = {
           lead_id,
           provider: visionResult.provider || "image_import",
           address: visionResult.address ?? null,
@@ -1117,6 +1116,7 @@ Deno.serve(async (req) => {
           extracted_text: "Image-based import via Vision AI",
           parsed: visionResult,
         };
+        if (resolvedTenantId) insertPayload.tenant_id = resolvedTenantId;
         
         const { data: reportRow, error: insertErr } = await supabase
           .from("roof_vendor_reports")
