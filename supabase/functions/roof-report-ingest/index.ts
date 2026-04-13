@@ -1275,7 +1275,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    const insertPayload = {
+    const insertPayload: Record<string, any> = {
       lead_id,
       provider: parsed.provider || provider,
       report_number: parsed.report_number ?? null,
@@ -1287,6 +1287,7 @@ Deno.serve(async (req) => {
       extracted_text: extractedText,
       parsed,
     };
+    if (resolvedTenantId) insertPayload.tenant_id = resolvedTenantId;
 
     console.log("roof-report-ingest: Inserting into roof_vendor_reports...");
     const { data: reportRow, error: insertErr } = await supabase
