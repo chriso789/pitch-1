@@ -61,17 +61,19 @@ export function VendorVerificationDashboard() {
     setIsRunning(true);
     try {
       const { data, error } = await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports', limit: 10 },
+        body: { action: 'batch-verify-vendor-reports', limit: 3 },
       });
 
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Verification failed');
 
-      toast.success(`Verified ${data.processed} sessions: ${data.confirmed} confirmed, ${data.denied} denied`);
+      const msg = `Verified ${data.processed} sessions: ${data.confirmed} confirmed, ${data.denied} denied` +
+        (data.skipped > 0 ? `, ${data.skipped} skipped` : '');
+      toast.success(msg);
       queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
-    } catch (err) {
+    } catch (err: any) {
       console.error('Batch verification error:', err);
-      toast.error('Batch verification failed');
+      toast.error(err?.message || 'Batch verification failed — check edge function logs');
     } finally {
       setIsRunning(false);
     }
