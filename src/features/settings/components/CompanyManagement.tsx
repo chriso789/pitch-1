@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2, Image } from 'lucide-react';
+import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2, Image, User } from 'lucide-react';
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { LogoUploader } from '@/components/settings/LogoUploader';
@@ -54,6 +54,9 @@ export const CompanyManagement = () => {
   const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
   const [locationCount, setLocationCount] = useState('1');
   const [locationNames, setLocationNames] = useState<string[]>(['']);
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('');
 
   useEffect(() => {
     fetchCompanies();
@@ -171,6 +174,9 @@ export const CompanyManagement = () => {
             domain: websiteData.domain,
           } : {},
           is_active: true,
+          owner_name: ownerName.trim() || null,
+          owner_email: ownerEmail.trim() || null,
+          owner_phone: ownerPhone.trim() || null,
         })
         .select()
         .single();
@@ -219,12 +225,44 @@ export const CompanyManagement = () => {
         }
       }
 
+      // Provision owner user if owner email was provided
+      if (ownerEmail.trim()) {
+        console.log('[CompanyManagement] Provisioning owner user...');
+        try {
+          const { data: provisionResult, error: provisionError } = await supabase.functions.invoke('provision-tenant-owner', {
+            body: { tenant_id: tenant.id, send_email: true },
+          });
+          if (provisionError) {
+            console.error('[CompanyManagement] Owner provisioning error:', provisionError);
+            toast({
+              title: "Company Created",
+              description: `${newCompanyName} created, but owner user setup failed. You can retry from company details.`,
+              variant: "default",
+            });
+          } else {
+            console.log('[CompanyManagement] Owner provisioned:', provisionResult);
+            toast({
+              title: "Company Created",
+              description: `${newCompanyName} created with ${locationsToCreate.length} location(s). Owner invite sent to ${ownerEmail.trim()}.`,
+            });
+          }
+        } catch (provErr) {
+          console.error('[CompanyManagement] Owner provisioning exception:', provErr);
+          toast({
+            title: "Company Created",
+            description: `${newCompanyName} created, but owner user setup failed.`,
+            variant: "default",
+          });
+        }
+      } else {
+        clearTimeout(timeoutId);
+        toast({
+          title: "Company Created",
+          description: `${newCompanyName} has been created with ${locationsToCreate.length} location(s)`,
+        });
+      }
+
       clearTimeout(timeoutId);
-      
-      toast({
-        title: "Company Created",
-        description: `${newCompanyName} has been created with ${locationsToCreate.length} location(s)`,
-      });
 
       // Reset form and close dialog
       setNewCompanyName('');
@@ -232,6 +270,9 @@ export const CompanyManagement = () => {
       setWebsiteData(null);
       setLocationCount('1');
       setLocationNames(['']);
+      setOwnerName('');
+      setOwnerEmail('');
+      setOwnerPhone('');
       setCreateDialogOpen(false);
 
       // Refresh lists - invalidate cache to force fresh fetch
@@ -276,7 +317,7 @@ export const CompanyManagement = () => {
               Create Company
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Create New Company</DialogTitle>
             </DialogHeader>
@@ -340,6 +381,46 @@ export const CompanyManagement = () => {
                       />
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Owner Information */}
+              <div className="border-t pt-4 mt-2">
+                <Label className="text-sm font-semibold flex items-center gap-1.5 mb-3">
+                  <User className="h-4 w-4" />
+                  Owner Information
+                </Label>
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="owner-name">Owner Name</Label>
+                    <Input
+                      id="owner-name"
+                      placeholder="John Smith"
+                      value={ownerName}
+                      onChange={(e) => setOwnerName(e.target.value)}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="owner-email">Owner Email</Label>
+                    <Input
+                      id="owner-email"
+                      type="email"
+                      placeholder="john@company.com"
+                      value={ownerEmail}
+                      onChange={(e) => setOwnerEmail(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">If provided, a user account will be created and a setup invite sent</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="owner-phone">Owner Phone</Label>
+                    <Input
+                      id="owner-phone"
+                      type="tel"
+                      placeholder="(555) 123-4567"
+                      value={ownerPhone}
+                      onChange={(e) => setOwnerPhone(e.target.value)}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
