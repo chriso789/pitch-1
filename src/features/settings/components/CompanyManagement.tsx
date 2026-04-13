@@ -225,12 +225,44 @@ export const CompanyManagement = () => {
         }
       }
 
+      // Provision owner user if owner email was provided
+      if (ownerEmail.trim()) {
+        console.log('[CompanyManagement] Provisioning owner user...');
+        try {
+          const { data: provisionResult, error: provisionError } = await supabase.functions.invoke('provision-tenant-owner', {
+            body: { tenant_id: tenant.id, send_email: true },
+          });
+          if (provisionError) {
+            console.error('[CompanyManagement] Owner provisioning error:', provisionError);
+            toast({
+              title: "Company Created",
+              description: `${newCompanyName} created, but owner user setup failed. You can retry from company details.`,
+              variant: "default",
+            });
+          } else {
+            console.log('[CompanyManagement] Owner provisioned:', provisionResult);
+            toast({
+              title: "Company Created",
+              description: `${newCompanyName} created with ${locationsToCreate.length} location(s). Owner invite sent to ${ownerEmail.trim()}.`,
+            });
+          }
+        } catch (provErr) {
+          console.error('[CompanyManagement] Owner provisioning exception:', provErr);
+          toast({
+            title: "Company Created",
+            description: `${newCompanyName} created, but owner user setup failed.`,
+            variant: "default",
+          });
+        }
+      } else {
+        clearTimeout(timeoutId);
+        toast({
+          title: "Company Created",
+          description: `${newCompanyName} has been created with ${locationsToCreate.length} location(s)`,
+        });
+      }
+
       clearTimeout(timeoutId);
-      
-      toast({
-        title: "Company Created",
-        description: `${newCompanyName} has been created with ${locationsToCreate.length} location(s)`,
-      });
 
       // Reset form and close dialog
       setNewCompanyName('');
@@ -238,6 +270,9 @@ export const CompanyManagement = () => {
       setWebsiteData(null);
       setLocationCount('1');
       setLocationNames(['']);
+      setOwnerName('');
+      setOwnerEmail('');
+      setOwnerPhone('');
       setCreateDialogOpen(false);
 
       // Refresh lists - invalidate cache to force fresh fetch
