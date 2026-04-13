@@ -38,7 +38,7 @@ export function RoofTrainingLab() {
   const { activeCompanyId } = useCompanySwitcher();
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
   const [showLeadSelector, setShowLeadSelector] = useState(false);
-  const [activeTab, setActiveTab] = useState<'sessions' | 'analytics'>('sessions');
+  const [activeTab, setActiveTab] = useState<'sessions' | 'analytics' | 'verification'>('sessions');
 
   // Fetch training sessions
   const { data: sessions = [], isLoading, refetch } = useQuery({
@@ -199,10 +199,11 @@ export function RoofTrainingLab() {
       </div>
 
       {/* Main Content */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'sessions' | 'analytics')}>
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'sessions' | 'analytics' | 'verification')}>
         <TabsList>
           <TabsTrigger value="sessions">Training Sessions</TabsTrigger>
           <TabsTrigger value="analytics">Analytics</TabsTrigger>
+          <TabsTrigger value="verification">Verification</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="mt-4">
           <TrainingSessionList
@@ -213,6 +214,9 @@ export function RoofTrainingLab() {
         </TabsContent>
         <TabsContent value="analytics" className="mt-4">
           <TrainingAnalyticsDashboard />
+        </TabsContent>
+        <TabsContent value="verification" className="mt-4">
+          <VendorVerificationDashboard />
         </TabsContent>
       </Tabs>
 
