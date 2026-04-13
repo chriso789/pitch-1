@@ -3917,7 +3917,7 @@ Deno.serve(async (req) => {
         }
 
         const tenantId = profile.tenant_id;
-        const batchSize = body.limit || 5;
+        const batchSize = body.limit || 3;
 
         // Find vendor sessions that haven't been verified yet
         const { data: sessions, error: sessionsError } = await adminSupabase
