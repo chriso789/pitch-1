@@ -122,16 +122,44 @@ export function VendorVerificationDashboard() {
 
   const handleRunBatch = async () => {
     setIsRunning(true);
+    const CHUNK_SIZE = 5;
+    let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0;
+    let hasMore = true;
+
     try {
-      const { data, error } = await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports' },
+      // First reset any previously failed sessions so they get retried
+      await supabase.functions.invoke('measure', {
+        body: { action: 'batch-verify-vendor-reports', resetFailed: true, limit: 0 },
       });
 
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || 'Verification failed');
+      // Process in small chunks to avoid edge function timeouts
+      while (hasMore) {
+        const { data, error } = await supabase.functions.invoke('measure', {
+          body: { action: 'batch-verify-vendor-reports', limit: CHUNK_SIZE },
+        });
 
-      const msg = `Verified ${data.processed} of ${data.total}: ${data.confirmed} confirmed, ${data.denied} denied` +
-        (data.failed > 0 ? `, ${data.failed} failed` : '');
+        if (error) throw error;
+        if (!data?.ok) throw new Error(data?.error || 'Verification failed');
+
+        totalProcessed += (data.processed || 0);
+        totalConfirmed += (data.confirmed || 0);
+        totalDenied += (data.denied || 0);
+        totalFailed += (data.failed || 0);
+
+        // Refresh UI between chunks
+        queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
+
+        // Stop if no more pending
+        hasMore = (data.processed || 0) + (data.failed || 0) > 0 && (data.total || 0) > CHUNK_SIZE;
+
+        if (hasMore) {
+          toast.info(`Chunk done: ${totalProcessed} verified so far... continuing`);
+          await new Promise(r => setTimeout(r, 1000));
+        }
+      }
+
+      const msg = `Verified ${totalProcessed} total: ${totalConfirmed} confirmed, ${totalDenied} denied` +
+        (totalFailed > 0 ? `, ${totalFailed} failed` : '');
       toast.success(msg);
       queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
     } catch (err: any) {
