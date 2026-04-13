@@ -54,6 +54,9 @@ export const CompanyManagement = () => {
   const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
   const [locationCount, setLocationCount] = useState('1');
   const [locationNames, setLocationNames] = useState<string[]>(['']);
+  const [ownerName, setOwnerName] = useState('');
+  const [ownerEmail, setOwnerEmail] = useState('');
+  const [ownerPhone, setOwnerPhone] = useState('');
 
   useEffect(() => {
     fetchCompanies();
