@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2, Image } from 'lucide-react';
+import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2, Image, User } from 'lucide-react';
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { LogoUploader } from '@/components/settings/LogoUploader';
