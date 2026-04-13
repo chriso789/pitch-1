@@ -35,7 +35,7 @@ export interface TrainingSession {
 }
 
 export function RoofTrainingLab() {
-  const { activeCompanyId } = useCompanySwitcher();
+  const activeCompanyId = useEffectiveTenantId();
   const [selectedSession, setSelectedSession] = useState<TrainingSession | null>(null);
   const [showLeadSelector, setShowLeadSelector] = useState(false);
   const [activeTab, setActiveTab] = useState<'sessions' | 'analytics' | 'verification'>('sessions');
