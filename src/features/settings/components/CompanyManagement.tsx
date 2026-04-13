@@ -14,6 +14,7 @@ import { LogoUploader } from '@/components/settings/LogoUploader';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Company {
   id: string;
