@@ -1545,6 +1545,7 @@ If no diagram is found, return: {"diagram_found": false}`;
           } else {
             console.log("roof-report-ingest: Created training session:", trainingSession?.id);
           }
+          } // end else (no existing session)
         }
       } catch (sessionErr) {
         console.warn("roof-report-ingest: Training session auto-creation error:", sessionErr);
