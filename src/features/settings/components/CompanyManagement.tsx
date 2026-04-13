@@ -14,6 +14,7 @@ import { LogoUploader } from '@/components/settings/LogoUploader';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface Company {
   id: string;
@@ -45,6 +46,7 @@ export const CompanyManagement = () => {
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
   const { toast } = useToast();
   const { activeCompanyId, refetch: refetchCompanies } = useCompanySwitcher();
+  const queryClient = useQueryClient();
 
   // Form state for creating new company
   const [newCompanyName, setNewCompanyName] = useState('');
@@ -232,8 +234,9 @@ export const CompanyManagement = () => {
       setLocationNames(['']);
       setCreateDialogOpen(false);
 
-      // Refresh lists
+      // Refresh lists - invalidate cache to force fresh fetch
       fetchCompanies();
+      await queryClient.invalidateQueries({ queryKey: ['accessible-companies'] });
       refetchCompanies();
     } catch (error: any) {
       clearTimeout(timeoutId);
