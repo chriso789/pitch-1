@@ -1,154 +1,117 @@
 
-Issue confirmed. Do I know what the issue is? Yes.
 
-## What is actually wrong
-This is not primarily a “valley logic” problem anymore, and it does not look like a simple RLS visibility problem either.
+# Per-House Vendor Report Verification Pipeline
 
-I checked the live data for lead `0e9e4471-3d47-4e1b-b598-148acfcdafad`:
+## What this does
 
-- `measurement_jobs` rows are genuinely completing.
-- Example completed job: `72449b2b-7443-4570-91b8-193e7bef8de9`
-- It points to measurement id: `a58a31bc-3d04-42e9-96fd-7eecce8d4c7f`
-- That id exists in `public.measurements`
-- That id does **not** exist in `public.roof_measurements`
-- There are **no** `measurement_approvals` rows for this lead
+A new developer-only tool that processes every imported EagleView/Roofr PDF one by one. For each house it: (1) pulls the aerial satellite image, (2) runs the AI measurement engine to generate a roof diagram, (3) compares the AI diagram against the paid vendor report page by page, and (4) marks the house as **Confirmed** or **Denied** with an accuracy score.
 
-So the app is saying “measurement complete” because the backend did save a result — but it saved it into the wrong data model for the screen you are looking at.
+---
 
-I also verified the saved `measurements` row for that exact id already has:
-- `source = google_solar_skeleton`
-- `valley_ft = 0`
+## Current state
 
-So for this specific run, the “fake valleys” are not what prevented display. The result exists, but the lead page is reading different tables.
+- **roof_vendor_reports** already stores parsed measurements, extracted text, diagram geometry, and geocoded coordinates for imported PDFs
+- **roof_measurements_truth** stores normalized measurement data per vendor report
+- **roof_training_sessions** links vendor reports to AI measurements with `traced_totals` (vendor) and `ai_totals` (AI), plus `original_ai_measurement_id` and `corrected_ai_measurement_id`
+- The `measure` edge function can run AI measurements via `action: 'pull'`
+- `TrainingComparisonView` already compares AI vs vendor traces with variance percentages
+- `BulkReportImporter` handles batch PDF import with geocoding
 
-## Current broken sequence
-```text
-AI Measurements button
--> start-ai-measurement job
--> backend produces a row in public.measurements
--> job marked completed
--> Lead page refreshes roof_measurements + measurement_approvals
--> nothing appears in Saved Measurements
+**What's missing:** No automated batch workflow that runs AI measurement against every vendor report, generates a diagram, compares it to the vendor data, and records a pass/fail verdict.
+
+---
+
+## Implementation steps
+
+### Step 1 -- Add verification columns to roof_training_sessions
+
+Migration to add:
+- `verification_verdict` (text, nullable): `'confirmed'` or `'denied'`
+- `verification_score` (numeric, nullable): 0-100 accuracy percentage
+- `verification_notes` (text, nullable): summary of what matched and what didn't
+- `verification_run_at` (timestamptz, nullable): when the verification was executed
+- `verification_feature_breakdown` (jsonb, nullable): per-feature accuracy (ridge, hip, valley, eave, rake)
+
+### Step 2 -- New edge function action: `batch-verify-vendor-reports`
+
+Add a new route in the `measure` edge function (`action: 'batch-verify-vendor-reports'`) that:
+
+1. Queries `roof_training_sessions` where `ground_truth_source = 'vendor_report'` and `verification_verdict IS NULL`
+2. For each session (batched, limit configurable):
+   a. If no `lat/lng`, attempt geocoding via `google-address-validation`
+   b. Fetch satellite image via `google-maps-proxy` (zoom 20, 640x640, scale 2)
+   c. Run AI measurement via the existing `pull` action internally (reuse the measure engine)
+   d. Compare AI results against vendor `traced_totals`:
+      - Per-feature variance: ridge, hip, valley, eave, rake
+      - Overall weighted accuracy score
+      - Auto-verdict: **Confirmed** if overall accuracy >= 85%, **Denied** if < 85%
+   e. Store `verification_verdict`, `verification_score`, `verification_notes`, `verification_feature_breakdown`, and `verification_run_at` on the training session
+   f. Store the AI measurement ID as `original_ai_measurement_id` if not already set
+3. Return summary: total processed, confirmed count, denied count, skipped count
+
+### Step 3 -- New UI: `VendorVerificationDashboard` component
+
+A new component in `src/components/settings/VendorVerificationDashboard.tsx`, accessible from Developer Settings and the Training Lab header. Contains:
+
+**Header section:**
+- "Vendor Report Verification" title
+- "Run Batch Verification" button (calls the new edge function action)
+- Progress bar during batch processing
+- Summary stats: Total | Confirmed | Denied | Pending
+
+**Results table:**
+- Address | Provider | Vendor Area | AI Area | Area Diff% | Ridge Diff% | Hip Diff% | Valley Diff% | Verdict badge (green Confirmed / red Denied)
+- Each row expandable to show:
+  - Side-by-side: vendor measurements vs AI measurements
+  - Per-feature breakdown with color-coded variance bars
+  - Satellite image thumbnail
+  - Link to the full training session detail (existing `TrainingSessionDetail`)
+
+**Manual override:**
+- Click any row to manually flip verdict between Confirmed/Denied
+- Add verification notes
+
+### Step 4 -- Wire into existing views
+
+- Add a `<VendorVerificationDashboard />` tab in the Training Lab (`RoofTrainingLab.tsx`) alongside "Sessions" and "Analytics"
+- Add a verification status badge on the `ReportImportDashboard` table rows
+- Add a "Verify All" button on the Developer Settings bulk import card
+
+### Step 5 -- Diagram generation per house
+
+For each house during verification, the AI measurement already produces `linear_features_wkt` (ridges, hips, valleys, eaves, rakes as WKT geometry). The existing `TrainingSchematicWrapper` and `SchematicRoofDiagram` components can render these. The verification dashboard will:
+- Render the AI-generated diagram inline using `TrainingSchematicWrapper`
+- Show vendor diagram image (from `diagram_image_url` on `roof_vendor_reports`) alongside it
+- Color-code features by accuracy: green (< 5% variance), yellow (5-15%), red (> 15%)
+
+---
+
+## Technical details
+
+**Database migration:**
+```sql
+ALTER TABLE roof_training_sessions
+  ADD COLUMN IF NOT EXISTS verification_verdict text,
+  ADD COLUMN IF NOT EXISTS verification_score numeric,
+  ADD COLUMN IF NOT EXISTS verification_notes text,
+  ADD COLUMN IF NOT EXISTS verification_run_at timestamptz,
+  ADD COLUMN IF NOT EXISTS verification_feature_breakdown jsonb;
 ```
 
-## Important code mismatch I found
-There is a split-brain system right now:
+**Accuracy calculation logic:**
+- Per-feature: `accuracy = max(0, 100 - abs((ai - vendor) / vendor * 100))`
+- Overall: weighted average across features that have vendor data > 0
+- Weights: ridge 1.0, hip 1.0, valley 1.0, eave 0.8, rake 0.8
 
-- The repo version of `start-ai-measurement` still shows a legacy-style handoff
-- The live logs show the `measure` function is involved in completed runs
-- The UI on `LeadDetails` / `UnifiedMeasurementPanel` is still built around:
-  - `roof_measurements`
-  - `measurement_approvals`
+**Batch processing:**
+- Default batch size: 5 houses per invocation (avoids edge function timeout)
+- Sequential processing with 2s delay between houses
+- Skip houses with no lat/lng and no address (mark as "skipped - no location")
 
-So the pipeline is not publishing into the same tables the lead page is using.
+**Files to create/modify:**
+1. `src/components/settings/VendorVerificationDashboard.tsx` -- new component
+2. `src/components/settings/RoofTrainingLab.tsx` -- add Verification tab
+3. `supabase/functions/measure/index.ts` -- add `batch-verify-vendor-reports` action
+4. Migration SQL for new columns
+5. Regenerate types after migration
 
-## Implementation plan
-
-### 1) Unify the AI Measurement button onto one explicit backend path
-I will make the job flow explicit and deterministic so there is only one source of truth for this button:
-
-- `AI Measurements` button
-- `start-ai-measurement`
-- canonical `measure` orchestration
-- publish result into the lead-page-visible store(s)
-- only then mark the job `completed`
-
-This removes the current ambiguity between `analyze-roof-aerial`, `measure`, `measurements`, and `roof_measurements`.
-
-### 2) Publish the completed result into the tables this lead page actually reads
-I will add a publish/bridge step after `measure` succeeds so the lead page can render immediately.
-
-Planned behavior:
-- keep the raw/canonical result from `measure`
-- create or upsert a matching `roof_measurements` row
-- map all needed fields for the existing UI/report/diagram stack:
-  - area totals
-  - ridge/hip/valley/eave/rake totals
-  - imagery URLs
-  - footprint/perimeter geometry
-  - overlay/report fields
-  - confidence / review flags
-- use the same UUID when possible so job ids, reports, and viewers stay aligned instead of drifting across tables
-
-This is the real fix for “completed but nothing shows.”
-
-### 3) Tighten the completion gate so “completed” means published, not merely calculated
-Right now completion is too optimistic.
-
-I will change the job logic so it only sets:
-- `status = completed`
-- `measurement_id = ...`
-
-after the UI-facing record is confirmed written successfully.
-
-If calculation succeeds but publish fails, job should become:
-- `failed`, or
-- a clear partial-publish state via error/progress message
-
-That prevents the false “done” state you’re seeing.
-
-### 4) Fix the lead-page measurement matching bugs
-There are a couple of frontend issues that will still bite us even after publish is fixed:
-
-- `UnifiedMeasurementPanel` currently decides an AI result is “already saved” too loosely:
-  - it treats any approval with `source = ai_pulled` as matching all future AI runs
-- direct save from the AI card is not storing `measurement_id`, which weakens exact matching
-
-I will patch this so:
-- AI runs are matched by exact `measurement_id` and/or exact timestamp
-- each new run can appear as its own result
-- saving to estimates links the saved approval to the correct measurement record
-
-### 5) Preserve the valley/eave fixes in the published row
-Because the live `measurements` row for your latest run already shows `valley_ft = 0`, I’ll make sure the bridge/publish step carries over the corrected geometry/totals exactly as produced by the measurement engine.
-
-That means the lead-page diagram/report will use the corrected:
-- no-valley result when valley is zero
-- footprint-aligned eave/rake geometry
-- updated overlay/report payloads
-
-So we do not lose the geometry fixes while fixing publication.
-
-### 6) Fix the build blockers before shipping this
-Your preview also has a build/runtime failure:
-- dynamic import failure for `LeadDetails.tsx`
-
-That is being caused by TypeScript errors in edge functions. I will clear the current blockers so the measurement fix can actually ship.
-
-Files/errors to clean up:
-- `supabase/functions/admin-update-password/index.ts`
-  - replace `serve(handler)` with `Deno.serve(handler)`
-- `supabase/functions/admin-create-user/index.ts`
-  - same `Deno.serve` fix
-  - narrow `newUser` typing properly
-  - remove nullable access errors around `newUser.user` / `profile`
-- `supabase/functions/admin-delete-user/index.ts`
-  - narrow `error` from `unknown`
-- `supabase/functions/ai-admin-agent/index.ts`
-  - remove invalid `.catch()` chained onto Supabase query builder
-- `supabase/functions/ai-appointment-scheduler/index.ts`
-  - narrow `error`
-- `supabase/functions/ai-measurement-analyzer/index.ts`
-  - narrow `error`
-- `supabase/functions/amb-send/index.ts`
-  - guard missing env vars before `fetch`
-  - narrow `error`
-
-### 7) Verification after patch
-I will verify the exact user path on this lead:
-
-```text
-Click AI Measurements
--> job enters queued/processing
--> measure completes
--> roof_measurements row exists for this lead
--> Saved Measurements panel shows latest AI result immediately
--> report dialog opens from that result
--> Save to Estimates creates/updates linked measurement_approval correctly
--> no phantom valleys when latest result says valley = 0
-```
-
-## Technical notes
-- I do not plan to widen RLS on `roof_measurements`; the live evidence says rows are missing from that table, not merely hidden.
-- The live backend currently saved the latest sample into `public.measurements`, which is why the empty state persists.
-- The most important architectural fix is to stop letting the measurement button finish in one table while the UI reads another.
