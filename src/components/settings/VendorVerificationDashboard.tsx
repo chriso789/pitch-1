@@ -554,23 +554,33 @@ export function VendorVerificationDashboard() {
                         <TableRow key={`${session.id}-detail`}>
                           <TableCell colSpan={11} className="bg-muted/30">
                             <div className="p-4 space-y-4">
-                              {/* Feature breakdown bars */}
-                              {fb && Object.entries(fb).map(([type, data]) => (
-                                <div key={type} className="space-y-1">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="capitalize font-medium">{type}</span>
-                                    <span className="text-muted-foreground">
-                                      AI: {data.ai.toFixed(1)}ft | Vendor: {data.vendor.toFixed(1)}ft | Accuracy: {data.accuracy.toFixed(1)}%
-                                    </span>
-                                  </div>
-                                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full transition-all ${getVarianceBg(data.variance_pct)}`}
-                                      style={{ width: `${Math.min(100, data.accuracy)}%` }}
-                                    />
-                                  </div>
+                              {/* Feature breakdown bars - use fb OR fall back to ai_totals/traced_totals */}
+                              {(fb || (session.ai_totals && session.traced_totals)) && (
+                                <div className="space-y-2">
+                                  <p className="text-sm font-medium">AI vs Vendor Comparison</p>
+                                  {(fb ? Object.entries(fb) : Object.entries(session.traced_totals || {}).map(([type, vendor]) => [type, {
+                                    ai: session.ai_totals?.[type] ?? 0,
+                                    vendor: vendor as number,
+                                    accuracy: vendor ? Math.min(100, ((session.ai_totals?.[type] ?? 0) / (vendor as number)) * 100) : 0,
+                                    variance_pct: vendor ? (((session.ai_totals?.[type] ?? 0) - (vendor as number)) / (vendor as number)) * 100 : 0,
+                                  }])).map(([type, data]) => (
+                                    <div key={type as string} className="space-y-1">
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="capitalize font-medium">{type as string}</span>
+                                        <span className="text-muted-foreground">
+                                          AI: {(data as any).ai.toFixed(1)}ft | Vendor: {(data as any).vendor.toFixed(1)}ft | Accuracy: {(data as any).accuracy.toFixed(1)}%
+                                        </span>
+                                      </div>
+                                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all ${getVarianceBg((data as any).variance_pct)}`}
+                                          style={{ width: `${Math.min(100, (data as any).accuracy)}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
 
                               {/* Failure reason */}
                               {session.verification_status === 'failed' && session.verification_notes && (
@@ -580,19 +590,8 @@ export function VendorVerificationDashboard() {
                                 </div>
                               )}
 
-                              {/* Missing source warning */}
-                              {!session.has_source_file && !session.has_diagram && (
-                                <div className="p-3 bg-orange-500/10 rounded-md border border-orange-500/20">
-                                  <p className="text-sm text-orange-600 font-medium">Missing Source Evidence</p>
-                                  <p className="text-sm text-orange-600/80 mt-1">
-                                    This report has parsed data only — no PDF or diagram was saved during import.
-                                    Re-import this report to enable full page-by-page verification.
-                                  </p>
-                                </div>
-                              )}
-
-                              {(hasAiDrawing || session.vendor_diagram_url || session.source_file_url) && (
-                                <div className="grid gap-4 lg:grid-cols-2">
+                              {/* Side-by-side drawings - always show */}
+                              <div className="grid gap-4 lg:grid-cols-2">
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between gap-2">
                                       <p className="text-sm font-medium">AI drawing</p>
