@@ -4035,7 +4035,7 @@ Deno.serve(async (req) => {
               // Check for existing roof_measurements at this location using target_lat/target_lng
               const { data: existingMeasurement } = await adminSupabase
                 .from('roof_measurements')
-                .select('id, summary')
+                .select('id, summary, perimeter_wkt, linear_features_wkt, vector_diagram_svg')
                 .gte('target_lat', sessionLat - 0.0001)
                 .lte('target_lat', sessionLat + 0.0001)
                 .gte('target_lng', sessionLng - 0.0001)
@@ -4053,6 +4053,13 @@ Deno.serve(async (req) => {
                   eave: summary.eave_ft || summary.total_eave_length || 0,
                   rake: summary.rake_ft || summary.total_rake_length || 0,
                 };
+                // Link the measurement to this vendor report for dashboard lookup
+                if (session.vendor_report_id) {
+                  await adminSupabase
+                    .from('roof_measurements')
+                    .update({ vendor_report_id: session.vendor_report_id })
+                    .eq('id', existingMeasurement.id);
+                }
                 await adminSupabase
                   .from('roof_training_sessions')
                   .update({ ai_totals: aiTotals, ai_measurement_id: existingMeasurement.id })
@@ -4060,7 +4067,6 @@ Deno.serve(async (req) => {
                 console.log(`📏 Found existing measurement ${existingMeasurement.id} for session ${session.id}`);
               } else {
                 // No existing measurement — run the AI measurement engine
-                // Use session.id as propertyId surrogate (required by pull action)
                 const propertyId = session.pipeline_entry_id || session.id;
                 console.log(`🚀 Running AI measurement for session ${session.id} at ${sessionLat},${sessionLng} with propertyId=${propertyId}...`);
                 try {
@@ -4083,7 +4089,6 @@ Deno.serve(async (req) => {
                   const pullData = await pullResp.json();
                   console.log(`📏 AI measurement result for ${session.property_address}: status=${pullResp.status}, ok=${pullData?.ok}`);
 
-                  // Pull returns { ok, data: { measurement, tags, engine_used } }
                   const measurement = pullData?.data?.measurement || pullData?.measurement;
                   if (pullData?.ok && measurement) {
                     const mSummary = measurement.summary || measurement.measurement_data?.summary || {};
@@ -4094,15 +4099,72 @@ Deno.serve(async (req) => {
                       eave: mSummary.eave_ft || mSummary.total_eave_length || 0,
                       rake: mSummary.rake_ft || mSummary.total_rake_length || 0,
                     };
-                    await adminSupabase
-                      .from('roof_training_sessions')
-                      .update({
-                        ai_totals: aiTotals,
-                        ai_measurement_id: measurement.id || null,
-                        original_ai_measurement_id: measurement.id || null,
-                      })
-                      .eq('id', session.id);
-                    console.log(`✅ AI measurement stored for session ${session.id}: ridge=${aiTotals.ridge}, hip=${aiTotals.hip}, eave=${aiTotals.eave}`);
+
+                    // Verify the measurement was actually persisted
+                    const measId = measurement.id;
+                    if (measId) {
+                      const { data: verifyMeas } = await adminSupabase
+                        .from('roof_measurements')
+                        .select('id')
+                        .eq('id', measId)
+                        .maybeSingle();
+
+                      if (verifyMeas) {
+                        // Link vendor_report_id on the measurement for dashboard lookup
+                        if (session.vendor_report_id) {
+                          await adminSupabase
+                            .from('roof_measurements')
+                            .update({ vendor_report_id: session.vendor_report_id })
+                            .eq('id', measId);
+                        }
+                        await adminSupabase
+                          .from('roof_training_sessions')
+                          .update({
+                            ai_totals: aiTotals,
+                            ai_measurement_id: measId,
+                            original_ai_measurement_id: measId,
+                          })
+                          .eq('id', session.id);
+                        console.log(`✅ AI measurement stored & linked: ${measId} for session ${session.id}`);
+                      } else {
+                        // Measurement ID was returned but doesn't exist — search by coords as fallback
+                        console.warn(`⚠️ Measurement ID ${measId} not found in DB, searching by coords...`);
+                        const { data: fallbackMeas } = await adminSupabase
+                          .from('roof_measurements')
+                          .select('id')
+                          .gte('target_lat', sessionLat - 0.0001)
+                          .lte('target_lat', sessionLat + 0.0001)
+                          .gte('target_lng', sessionLng - 0.0001)
+                          .lte('target_lng', sessionLng + 0.0001)
+                          .order('created_at', { ascending: false })
+                          .limit(1)
+                          .maybeSingle();
+
+                        const actualId = fallbackMeas?.id || null;
+                        if (actualId && session.vendor_report_id) {
+                          await adminSupabase
+                            .from('roof_measurements')
+                            .update({ vendor_report_id: session.vendor_report_id })
+                            .eq('id', actualId);
+                        }
+                        await adminSupabase
+                          .from('roof_training_sessions')
+                          .update({
+                            ai_totals: aiTotals,
+                            ai_measurement_id: actualId,
+                            original_ai_measurement_id: actualId,
+                          })
+                          .eq('id', session.id);
+                        console.log(`✅ AI measurement stored (fallback ID ${actualId}) for session ${session.id}`);
+                      }
+                    } else {
+                      // No ID returned at all — just store totals
+                      await adminSupabase
+                        .from('roof_training_sessions')
+                        .update({ ai_totals: aiTotals })
+                        .eq('id', session.id);
+                      console.log(`⚠️ AI totals stored but no measurement ID for session ${session.id}`);
+                    }
                   } else {
                     console.error(`❌ AI pull failed for session ${session.id}:`, pullData?.error || 'No measurement in response');
                   }
