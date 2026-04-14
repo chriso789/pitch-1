@@ -677,7 +677,7 @@ export function VendorVerificationDashboard() {
                                     )}
                                   </div>
                                 </div>
-                              )}
+                              </div>
 
                               {/* Notes */}
                               <div className="pt-2 border-t">
