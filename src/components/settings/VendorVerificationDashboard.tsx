@@ -122,22 +122,63 @@ export function VendorVerificationDashboard() {
       }
 
       let measurementMap: Record<string, AiMeasurementPreview> = {};
-      if (reportIds.length > 0) {
-        const { data: measurements, error: measurementsError } = await supabase
+
+      // Strategy 1: Look up measurements by ai_measurement_id from training sessions
+      const aiMeasIds = (data || [])
+        .map(s => (s as any).ai_measurement_id)
+        .filter((id): id is string => !!id);
+
+      if (aiMeasIds.length > 0) {
+        const { data: measByIds } = await supabase
+          .from('roof_measurements')
+          .select('id, vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .in('id', aiMeasIds);
+
+        if (measByIds) {
+          // Build a reverse map: session's vendor_report_id -> measurement
+          const aiMeasIdToMeas: Record<string, any> = {};
+          for (const m of measByIds) {
+            aiMeasIdToMeas[m.id] = m;
+          }
+          for (const s of (data || [])) {
+            const mid = (s as any).ai_measurement_id;
+            if (mid && aiMeasIdToMeas[mid] && s.vendor_report_id) {
+              measurementMap[s.vendor_report_id] = aiMeasIdToMeas[mid] as AiMeasurementPreview;
+            }
+          }
+        }
+      }
+
+      // Strategy 2: Fallback - look up measurements by vendor_report_id
+      const missingReportIds = reportIds.filter(id => !measurementMap[id]);
+      if (missingReportIds.length > 0) {
+        const { data: measByVendor } = await supabase
           .from('roof_measurements')
           .select('vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
-          .in('vendor_report_id', reportIds)
+          .in('vendor_report_id', missingReportIds)
           .order('created_at', { ascending: false });
 
-        if (measurementsError) {
-          throw measurementsError;
-        }
-
-        if (measurements) {
-          for (const measurement of measurements) {
+        if (measByVendor) {
+          for (const measurement of measByVendor) {
             if (!measurement.vendor_report_id || measurementMap[measurement.vendor_report_id]) continue;
             measurementMap[measurement.vendor_report_id] = measurement as AiMeasurementPreview;
           }
+        }
+      }
+
+      // Strategy 3: Fallback - look up measurements by lat/lng coordinates
+      const sessionsWithoutMeas = (data || []).filter(s => s.vendor_report_id && !measurementMap[s.vendor_report_id!] && (s as any).lat && (s as any).lng);
+      for (const s of sessionsWithoutMeas.slice(0, 20)) {
+        const { data: measByCoords } = await supabase
+          .from('roof_measurements')
+          .select('id, vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .eq('target_lat', (s as any).lat)
+          .eq('target_lng', (s as any).lng)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (measByCoords?.[0] && s.vendor_report_id) {
+          measurementMap[s.vendor_report_id] = measByCoords[0] as AiMeasurementPreview;
         }
       }
 
@@ -156,10 +197,10 @@ export function VendorVerificationDashboard() {
               lat: measurementMap[s.vendor_report_id]!.target_lat!,
               lng: measurementMap[s.vendor_report_id]!.target_lng!,
             }
-          : null,
+          : (s as any).lat && (s as any).lng ? { lat: (s as any).lat, lng: (s as any).lng } : null,
         ai_pitch: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.predominant_pitch ?? null : null,
         ai_total_area: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.total_area_adjusted_sqft ?? null : null,
-      })) as VerificationSession[];
+      })) as unknown as VerificationSession[];
     },
     enabled: !!activeCompanyId,
   });
