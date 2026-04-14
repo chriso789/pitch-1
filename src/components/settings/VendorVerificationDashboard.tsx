@@ -78,7 +78,7 @@ export function VendorVerificationDashboard() {
           id, property_address, verification_verdict, verification_score,
           verification_notes, verification_run_at, verification_status,
           verification_feature_breakdown, traced_totals, ai_totals,
-          ground_truth_source, vendor_report_id
+          ground_truth_source, vendor_report_id, ai_measurement_id, lat, lng
         `)
         .eq('tenant_id', activeCompanyId!)
         .eq('ground_truth_source', 'vendor_report')
@@ -122,22 +122,63 @@ export function VendorVerificationDashboard() {
       }
 
       let measurementMap: Record<string, AiMeasurementPreview> = {};
-      if (reportIds.length > 0) {
-        const { data: measurements, error: measurementsError } = await supabase
+
+      // Strategy 1: Look up measurements by ai_measurement_id from training sessions
+      const aiMeasIds = (data || [])
+        .map(s => (s as any).ai_measurement_id)
+        .filter((id): id is string => !!id);
+
+      if (aiMeasIds.length > 0) {
+        const { data: measByIds } = await supabase
+          .from('roof_measurements')
+          .select('id, vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .in('id', aiMeasIds);
+
+        if (measByIds) {
+          // Build a reverse map: session's vendor_report_id -> measurement
+          const aiMeasIdToMeas: Record<string, any> = {};
+          for (const m of measByIds) {
+            aiMeasIdToMeas[m.id] = m;
+          }
+          for (const s of (data || [])) {
+            const mid = (s as any).ai_measurement_id;
+            if (mid && aiMeasIdToMeas[mid] && s.vendor_report_id) {
+              measurementMap[s.vendor_report_id] = aiMeasIdToMeas[mid] as AiMeasurementPreview;
+            }
+          }
+        }
+      }
+
+      // Strategy 2: Fallback - look up measurements by vendor_report_id
+      const missingReportIds = reportIds.filter(id => !measurementMap[id]);
+      if (missingReportIds.length > 0) {
+        const { data: measByVendor } = await supabase
           .from('roof_measurements')
           .select('vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
-          .in('vendor_report_id', reportIds)
+          .in('vendor_report_id', missingReportIds)
           .order('created_at', { ascending: false });
 
-        if (measurementsError) {
-          throw measurementsError;
-        }
-
-        if (measurements) {
-          for (const measurement of measurements) {
+        if (measByVendor) {
+          for (const measurement of measByVendor) {
             if (!measurement.vendor_report_id || measurementMap[measurement.vendor_report_id]) continue;
             measurementMap[measurement.vendor_report_id] = measurement as AiMeasurementPreview;
           }
+        }
+      }
+
+      // Strategy 3: Fallback - look up measurements by lat/lng coordinates
+      const sessionsWithoutMeas = (data || []).filter(s => s.vendor_report_id && !measurementMap[s.vendor_report_id!] && (s as any).lat && (s as any).lng);
+      for (const s of sessionsWithoutMeas.slice(0, 20)) {
+        const { data: measByCoords } = await supabase
+          .from('roof_measurements')
+          .select('id, vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .eq('target_lat', (s as any).lat)
+          .eq('target_lng', (s as any).lng)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (measByCoords?.[0] && s.vendor_report_id) {
+          measurementMap[s.vendor_report_id] = measByCoords[0] as AiMeasurementPreview;
         }
       }
 
@@ -156,10 +197,10 @@ export function VendorVerificationDashboard() {
               lat: measurementMap[s.vendor_report_id]!.target_lat!,
               lng: measurementMap[s.vendor_report_id]!.target_lng!,
             }
-          : null,
+          : (s as any).lat && (s as any).lng ? { lat: (s as any).lat, lng: (s as any).lng } : null,
         ai_pitch: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.predominant_pitch ?? null : null,
         ai_total_area: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.total_area_adjusted_sqft ?? null : null,
-      })) as VerificationSession[];
+      })) as unknown as VerificationSession[];
     },
     enabled: !!activeCompanyId,
   });
@@ -513,23 +554,33 @@ export function VendorVerificationDashboard() {
                         <TableRow key={`${session.id}-detail`}>
                           <TableCell colSpan={11} className="bg-muted/30">
                             <div className="p-4 space-y-4">
-                              {/* Feature breakdown bars */}
-                              {fb && Object.entries(fb).map(([type, data]) => (
-                                <div key={type} className="space-y-1">
-                                  <div className="flex items-center justify-between text-sm">
-                                    <span className="capitalize font-medium">{type}</span>
-                                    <span className="text-muted-foreground">
-                                      AI: {data.ai.toFixed(1)}ft | Vendor: {data.vendor.toFixed(1)}ft | Accuracy: {data.accuracy.toFixed(1)}%
-                                    </span>
-                                  </div>
-                                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                    <div
-                                      className={`h-full rounded-full transition-all ${getVarianceBg(data.variance_pct)}`}
-                                      style={{ width: `${Math.min(100, data.accuracy)}%` }}
-                                    />
-                                  </div>
+                              {/* Feature breakdown bars - use fb OR fall back to ai_totals/traced_totals */}
+                              {(fb || (session.ai_totals && session.traced_totals)) && (
+                                <div className="space-y-2">
+                                  <p className="text-sm font-medium">AI vs Vendor Comparison</p>
+                                  {(fb ? Object.entries(fb) : Object.entries(session.traced_totals || {}).map(([type, vendor]) => [type, {
+                                    ai: session.ai_totals?.[type] ?? 0,
+                                    vendor: vendor as number,
+                                    accuracy: vendor ? Math.min(100, ((session.ai_totals?.[type] ?? 0) / (vendor as number)) * 100) : 0,
+                                    variance_pct: vendor ? (((session.ai_totals?.[type] ?? 0) - (vendor as number)) / (vendor as number)) * 100 : 0,
+                                  }])).map(([type, data]) => (
+                                    <div key={type as string} className="space-y-1">
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="capitalize font-medium">{type as string}</span>
+                                        <span className="text-muted-foreground">
+                                          AI: {(data as any).ai.toFixed(1)}ft | Vendor: {(data as any).vendor.toFixed(1)}ft | Accuracy: {(data as any).accuracy.toFixed(1)}%
+                                        </span>
+                                      </div>
+                                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                        <div
+                                          className={`h-full rounded-full transition-all ${getVarianceBg((data as any).variance_pct)}`}
+                                          style={{ width: `${Math.min(100, (data as any).accuracy)}%` }}
+                                        />
+                                      </div>
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
 
                               {/* Failure reason */}
                               {session.verification_status === 'failed' && session.verification_notes && (
@@ -539,19 +590,8 @@ export function VendorVerificationDashboard() {
                                 </div>
                               )}
 
-                              {/* Missing source warning */}
-                              {!session.has_source_file && !session.has_diagram && (
-                                <div className="p-3 bg-orange-500/10 rounded-md border border-orange-500/20">
-                                  <p className="text-sm text-orange-600 font-medium">Missing Source Evidence</p>
-                                  <p className="text-sm text-orange-600/80 mt-1">
-                                    This report has parsed data only — no PDF or diagram was saved during import.
-                                    Re-import this report to enable full page-by-page verification.
-                                  </p>
-                                </div>
-                              )}
-
-                              {(hasAiDrawing || session.vendor_diagram_url || session.source_file_url) && (
-                                <div className="grid gap-4 lg:grid-cols-2">
+                              {/* Side-by-side drawings - always show */}
+                              <div className="grid gap-4 lg:grid-cols-2">
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between gap-2">
                                       <p className="text-sm font-medium">AI drawing</p>
@@ -637,7 +677,6 @@ export function VendorVerificationDashboard() {
                                     )}
                                   </div>
                                 </div>
-                              )}
 
                               {/* Notes */}
                               <div className="pt-2 border-t">
