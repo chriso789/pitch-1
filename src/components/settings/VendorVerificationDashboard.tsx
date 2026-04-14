@@ -269,10 +269,11 @@ export function VendorVerificationDashboard() {
   const handleRunBatch = async () => {
     setIsRunning(true);
     const CHUNK_SIZE = 5;
-    const MAX_BATCH_CALLS = 100;
-    let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0;
+    const MAX_BATCH_CALLS = 200; // Allow processing all 110+
+    let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0, totalSkipped = 0;
     let hasMore = true;
     let batchCalls = 0;
+    let consecutiveEmpty = 0;
 
     try {
       // First reset any previously failed sessions so they get retried
@@ -294,21 +295,34 @@ export function VendorVerificationDashboard() {
         totalConfirmed += (data.confirmed || 0);
         totalDenied += (data.denied || 0);
         totalFailed += (data.failed || 0);
+        totalSkipped += (data.skipped || 0);
 
         // Refresh UI between chunks
         await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
 
         const chunkWorkCount = (data.processed || 0) + (data.failed || 0);
-        hasMore = chunkWorkCount > 0 && (data.total || 0) >= CHUNK_SIZE;
+        const remaining = data.remaining ?? -1;
+        
+        // Stop if no remaining or no work done consecutively
+        if (remaining === 0) {
+          hasMore = false;
+        } else if (chunkWorkCount === 0) {
+          consecutiveEmpty++;
+          hasMore = consecutiveEmpty < 3; // Allow a few empty rounds before stopping
+        } else {
+          consecutiveEmpty = 0;
+          hasMore = true;
+        }
 
         if (hasMore) {
-          toast.info(`Chunk done: ${totalProcessed} verified so far... continuing`);
-          await new Promise(r => setTimeout(r, 1000));
+          toast.info(`Batch ${batchCalls}: ${totalProcessed} verified, ${totalFailed} failed, ~${remaining > 0 ? remaining : '?'} remaining...`);
+          await new Promise(r => setTimeout(r, 500));
         }
       }
 
-      const msg = `Verified ${totalProcessed} total: ${totalConfirmed} confirmed, ${totalDenied} denied` +
-        (totalFailed > 0 ? `, ${totalFailed} failed` : '');
+      const msg = `Done! ${totalProcessed} verified: ${totalConfirmed} confirmed, ${totalDenied} denied` +
+        (totalFailed > 0 ? `, ${totalFailed} failed` : '') +
+        (totalSkipped > 0 ? `, ${totalSkipped} skipped (no vendor data)` : '');
       toast.success(msg);
       await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
     } catch (err: any) {

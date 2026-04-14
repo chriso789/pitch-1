@@ -4345,6 +4345,7 @@ Deno.serve(async (req) => {
           ok: true,
           message: `Verified ${results.processed} sessions: ${results.confirmed} confirmed, ${results.denied} denied, ${results.failed} failed`,
           ...results,
+          remaining: Math.max(0, (remainingCount || 0) - results.processed - results.failed),
         }, corsHeaders);
       }
 
