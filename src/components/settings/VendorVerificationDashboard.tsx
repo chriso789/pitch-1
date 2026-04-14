@@ -232,6 +232,40 @@ export function VendorVerificationDashboard() {
 
   const progressPct = stats.total > 0 ? ((stats.confirmed + stats.denied + stats.failed) / stats.total) * 100 : 0;
 
+  const handleRelinkDiagrams = async () => {
+    setIsRunning(true);
+    try {
+      // Reset all confirmed/denied sessions so they re-verify with the new linking logic
+      const { error: resetError } = await supabase
+        .from('roof_training_sessions')
+        .update({
+          verification_status: null,
+          verification_verdict: null,
+          verification_notes: null,
+          verification_run_at: null,
+          verification_feature_breakdown: null,
+          ai_totals: null,
+          ai_measurement_id: null,
+        })
+        .eq('tenant_id', activeCompanyId!)
+        .eq('ground_truth_source', 'vendor_report')
+        .not('vendor_report_id', 'is', null);
+
+      if (resetError) throw resetError;
+
+      toast.info('Reset all sessions — now re-verifying with diagram linking...');
+      await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+
+      // Now run the batch verification which will re-link diagrams
+      setIsRunning(false);
+      await handleRunBatch();
+    } catch (err: any) {
+      console.error('Re-link error:', err);
+      toast.error(err?.message || 'Failed to re-link diagrams');
+      setIsRunning(false);
+    }
+  };
+
   const handleRunBatch = async () => {
     setIsRunning(true);
     const CHUNK_SIZE = 5;
