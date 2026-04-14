@@ -354,10 +354,22 @@ export function VendorVerificationDashboard() {
             AI generates diagrams for each house, then verifies against paid vendor reports
           </p>
         </div>
-        <Button onClick={handleRunBatch} disabled={isRunning || stats.pending === 0} size="lg">
-          {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
-          {isRunning ? `Verifying ${stats.processing} in progress...` : `Verify All ${stats.pending} Pending`}
-        </Button>
+        <div className="flex gap-2">
+          {stats.confirmed > 0 && (
+            <Button
+              variant="outline"
+              onClick={handleRelinkDiagrams}
+              disabled={isRunning}
+            >
+              <Zap className="h-4 w-4 mr-2" />
+              Re-link {stats.confirmed} Diagrams
+            </Button>
+          )}
+          <Button onClick={handleRunBatch} disabled={isRunning || stats.pending === 0} size="lg">
+            {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
+            {isRunning ? `Verifying ${stats.processing} in progress...` : `Verify All ${stats.pending} Pending`}
+          </Button>
+        </div>
       </div>
 
       {/* Progress bar */}
