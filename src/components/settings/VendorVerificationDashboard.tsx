@@ -78,7 +78,7 @@ export function VendorVerificationDashboard() {
           id, property_address, verification_verdict, verification_score,
           verification_notes, verification_run_at, verification_status,
           verification_feature_breakdown, traced_totals, ai_totals,
-          ground_truth_source, vendor_report_id
+          ground_truth_source, vendor_report_id, ai_measurement_id, lat, lng
         `)
         .eq('tenant_id', activeCompanyId!)
         .eq('ground_truth_source', 'vendor_report')
