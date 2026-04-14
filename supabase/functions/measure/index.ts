@@ -3941,6 +3941,8 @@ Deno.serve(async (req) => {
         }
 
         // Find vendor sessions that haven't been verified yet
+        // Over-fetch to handle sessions with zero vendor totals (will be skipped)
+        const overFetchSize = batchSize * 4;
         const { data: sessions, error: sessionsError } = await adminSupabase
           .from('roof_training_sessions')
           .select('id, traced_totals, ai_totals, lat, lng, property_address, vendor_report_id, ai_measurement_id, original_ai_measurement_id, pipeline_entry_id')
@@ -3948,27 +3950,55 @@ Deno.serve(async (req) => {
           .eq('ground_truth_source', 'vendor_report')
           .is('verification_verdict', null)
           .not('traced_totals', 'is', null)
-          .limit(batchSize);
+          .is('verification_status', null)
+          .limit(overFetchSize);
 
         if (sessionsError) {
           console.error('Error fetching sessions:', sessionsError);
           return json({ ok: false, error: sessionsError.message }, corsHeaders, 500);
         }
 
-        // Filter to sessions with valid vendor data
-        const validSessions = (sessions || []).filter(s => {
+        // Filter to sessions with valid vendor data, take only batchSize
+        const allCandidates = sessions || [];
+        const validSessions = allCandidates.filter(s => {
           const traced = s.traced_totals as Record<string, number>;
           return traced && Object.keys(traced).length > 0 &&
             (traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
-        });
+        }).slice(0, batchSize);
 
-        console.log(`📊 Found ${validSessions.length} sessions to verify (batch of ${batchSize})`);
+        // Mark invalid sessions as skipped so they don't block future batches
+        const invalidSessions = allCandidates.filter(s => {
+          const traced = s.traced_totals as Record<string, number>;
+          return !traced || Object.keys(traced).length === 0 ||
+            !(traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
+        });
+        if (invalidSessions.length > 0) {
+          const invalidIds = invalidSessions.map(s => s.id);
+          await adminSupabase
+            .from('roof_training_sessions')
+            .update({ verification_status: 'skipped', verification_notes: 'Skipped - no valid vendor totals' })
+            .in('id', invalidIds);
+          console.log(`⏭️ Skipped ${invalidIds.length} sessions with no valid vendor totals`);
+        }
+
+        // Count remaining unprocessed for the response
+        const { count: remainingCount } = await adminSupabase
+          .from('roof_training_sessions')
+          .select('id', { count: 'exact', head: true })
+          .eq('tenant_id', tenantId)
+          .eq('ground_truth_source', 'vendor_report')
+          .is('verification_verdict', null)
+          .is('verification_status', null)
+          .not('traced_totals', 'is', null);
+
+        console.log(`📊 Found ${validSessions.length} valid sessions to verify (batch of ${batchSize}), ${remainingCount || 0} remaining after this batch`);
 
         if (validSessions.length === 0) {
           return json({
             ok: true,
             message: 'No pending vendor sessions to verify',
-            processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: 0,
+            processed: 0, confirmed: 0, denied: 0, skipped: invalidSessions.length, failed: 0, total: 0,
+            remaining: remainingCount || 0,
           }, corsHeaders);
         }
 
