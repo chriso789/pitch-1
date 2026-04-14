@@ -221,6 +221,20 @@ export function VendorVerificationDashboard() {
     };
   }, [isRunning, queryClient]);
 
+  // Auto-start batch verification when there are pending sessions
+  useEffect(() => {
+    if (!autoStarted.current && !isRunning && sessions.length > 0) {
+      const pendingCount = sessions.filter(s => !s.verification_verdict && s.verification_status !== 'failed' && s.verification_status !== 'skipped').length;
+      if (pendingCount > 0) {
+        autoStarted.current = true;
+        console.log(`🚀 Auto-starting verification for ${pendingCount} pending sessions`);
+        toast.info(`Auto-starting verification for ${pendingCount} pending sessions...`);
+        handleRunBatch();
+      }
+    }
+  }, [sessions, isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
   const stats = {
     total: sessions.length,
     confirmed: sessions.filter(s => s.verification_verdict === 'confirmed').length,
