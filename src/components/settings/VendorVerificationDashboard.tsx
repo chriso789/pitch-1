@@ -239,7 +239,7 @@ export function VendorVerificationDashboard() {
     total: sessions.length,
     confirmed: sessions.filter(s => s.verification_verdict === 'confirmed').length,
     denied: sessions.filter(s => s.verification_verdict === 'denied').length,
-    pending: sessions.filter(s => !s.verification_verdict && s.verification_status !== 'failed').length,
+    pending: sessions.filter(s => !s.verification_verdict && s.verification_status !== 'failed' && s.verification_status !== 'skipped').length,
     failed: sessions.filter(s => s.verification_status === 'failed').length,
     processing: sessions.filter(s => s.verification_status === 'processing' || s.verification_status === 'queued').length,
     missingSource: sessions.filter(s => !s.has_source_file && !s.has_diagram).length,
