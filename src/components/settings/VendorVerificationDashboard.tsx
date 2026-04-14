@@ -10,6 +10,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning } from 'lucide-react';
 import { toast } from 'sonner';
+import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
+
+interface VendorReportMeta {
+  provider: string | null;
+  file_bucket: string | null;
+  file_path: string | null;
+  file_url: string | null;
+  diagram_image_url: string | null;
+  has_file: boolean;
+  has_diagram: boolean;
+}
+
+interface AiMeasurementPreview {
+  vendor_report_id: string | null;
+  vector_diagram_svg: string | null;
+  linear_features_wkt: Array<Record<string, any>> | null;
+  perimeter_wkt: string | null;
+  target_lat: number | null;
+  target_lng: number | null;
+  predominant_pitch: string | null;
+  total_area_adjusted_sqft: number | null;
+}
 
 interface VerificationSession {
   id: string;
@@ -27,6 +49,14 @@ interface VerificationSession {
   vendor_provider?: string | null;
   has_source_file?: boolean;
   has_diagram?: boolean;
+  source_file_url?: string | null;
+  vendor_diagram_url?: string | null;
+  ai_diagram_svg?: string | null;
+  ai_linear_features?: Array<Record<string, any>> | null;
+  ai_perimeter_wkt?: string | null;
+  ai_coordinates?: { lat: number; lng: number } | null;
+  ai_pitch?: string | null;
+  ai_total_area?: number | null;
 }
 
 export function VendorVerificationDashboard() {
@@ -65,20 +95,48 @@ export function VendorVerificationDashboard() {
         .map(s => s.vendor_report_id)
         .filter((id): id is string => !!id);
 
-      let reportMap: Record<string, { provider: string | null; has_file: boolean; has_diagram: boolean }> = {};
+      let reportMap: Record<string, VendorReportMeta> = {};
       if (reportIds.length > 0) {
-        const { data: reports } = await supabase
+        const { data: reports, error: reportsError } = await supabase
           .from('roof_vendor_reports')
-          .select('id, provider, file_path, file_url, diagram_image_url')
+          .select('id, provider, file_bucket, file_path, file_url, diagram_image_url')
           .in('id', reportIds);
+
+        if (reportsError) {
+          throw reportsError;
+        }
 
         if (reports) {
           for (const r of reports) {
             reportMap[r.id] = {
               provider: r.provider,
+              file_bucket: r.file_bucket,
+              file_path: r.file_path,
+              file_url: r.file_url,
+              diagram_image_url: r.diagram_image_url,
               has_file: !!(r.file_path || r.file_url),
               has_diagram: !!r.diagram_image_url,
             };
+          }
+        }
+      }
+
+      let measurementMap: Record<string, AiMeasurementPreview> = {};
+      if (reportIds.length > 0) {
+        const { data: measurements, error: measurementsError } = await supabase
+          .from('roof_measurements')
+          .select('vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .in('vendor_report_id', reportIds)
+          .order('created_at', { ascending: false });
+
+        if (measurementsError) {
+          throw measurementsError;
+        }
+
+        if (measurements) {
+          for (const measurement of measurements) {
+            if (!measurement.vendor_report_id || measurementMap[measurement.vendor_report_id]) continue;
+            measurementMap[measurement.vendor_report_id] = measurement as AiMeasurementPreview;
           }
         }
       }
@@ -88,6 +146,19 @@ export function VendorVerificationDashboard() {
         vendor_provider: s.vendor_report_id ? reportMap[s.vendor_report_id]?.provider : null,
         has_source_file: s.vendor_report_id ? reportMap[s.vendor_report_id]?.has_file ?? false : false,
         has_diagram: s.vendor_report_id ? reportMap[s.vendor_report_id]?.has_diagram ?? false : false,
+        source_file_url: s.vendor_report_id ? reportMap[s.vendor_report_id]?.file_url ?? null : null,
+        vendor_diagram_url: s.vendor_report_id ? reportMap[s.vendor_report_id]?.diagram_image_url ?? null : null,
+        ai_diagram_svg: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.vector_diagram_svg ?? null : null,
+        ai_linear_features: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.linear_features_wkt ?? null : null,
+        ai_perimeter_wkt: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.perimeter_wkt ?? null : null,
+        ai_coordinates: s.vendor_report_id && measurementMap[s.vendor_report_id]?.target_lat != null && measurementMap[s.vendor_report_id]?.target_lng != null
+          ? {
+              lat: measurementMap[s.vendor_report_id]!.target_lat!,
+              lng: measurementMap[s.vendor_report_id]!.target_lng!,
+            }
+          : null,
+        ai_pitch: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.predominant_pitch ?? null : null,
+        ai_total_area: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.total_area_adjusted_sqft ?? null : null,
       })) as VerificationSession[];
     },
     enabled: !!activeCompanyId,
@@ -123,8 +194,10 @@ export function VendorVerificationDashboard() {
   const handleRunBatch = async () => {
     setIsRunning(true);
     const CHUNK_SIZE = 5;
+    const MAX_BATCH_CALLS = 100;
     let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0;
     let hasMore = true;
+    let batchCalls = 0;
 
     try {
       // First reset any previously failed sessions so they get retried
@@ -133,7 +206,8 @@ export function VendorVerificationDashboard() {
       });
 
       // Process in small chunks to avoid edge function timeouts
-      while (hasMore) {
+      while (hasMore && batchCalls < MAX_BATCH_CALLS) {
+        batchCalls += 1;
         const { data, error } = await supabase.functions.invoke('measure', {
           body: { action: 'batch-verify-vendor-reports', limit: CHUNK_SIZE },
         });
@@ -147,10 +221,10 @@ export function VendorVerificationDashboard() {
         totalFailed += (data.failed || 0);
 
         // Refresh UI between chunks
-        queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
+        await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
 
-        // Stop if no more pending
-        hasMore = (data.processed || 0) + (data.failed || 0) > 0 && (data.total || 0) > CHUNK_SIZE;
+        const chunkWorkCount = (data.processed || 0) + (data.failed || 0);
+        hasMore = chunkWorkCount > 0 && (data.total || 0) >= CHUNK_SIZE;
 
         if (hasMore) {
           toast.info(`Chunk done: ${totalProcessed} verified so far... continuing`);
@@ -161,7 +235,7 @@ export function VendorVerificationDashboard() {
       const msg = `Verified ${totalProcessed} total: ${totalConfirmed} confirmed, ${totalDenied} denied` +
         (totalFailed > 0 ? `, ${totalFailed} failed` : '');
       toast.success(msg);
-      queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
+      await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
     } catch (err: any) {
       console.error('Batch verification error:', err);
       toast.error(err?.message || 'Batch verification failed — check edge function logs');
@@ -182,7 +256,7 @@ export function VendorVerificationDashboard() {
       return;
     }
     toast.success(`Verdict changed to ${newVerdict}`);
-    queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
+    queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
   };
 
   const handleSaveNotes = async (sessionId: string) => {
@@ -196,7 +270,7 @@ export function VendorVerificationDashboard() {
       return;
     }
     setEditingNotes(null);
-    queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
+    queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
   };
 
   const getVarianceColor = (pct: number) => {
@@ -331,6 +405,11 @@ export function VendorVerificationDashboard() {
                 {sessions.map(session => {
                   const fb = session.verification_feature_breakdown;
                   const isExpanded = expandedRow === session.id;
+                  const hasAiDrawing = !!(
+                    session.ai_diagram_svg ||
+                    session.ai_perimeter_wkt ||
+                    (session.ai_linear_features && session.ai_linear_features.length > 0)
+                  );
 
                   return (
                     <>
@@ -468,6 +547,95 @@ export function VendorVerificationDashboard() {
                                     This report has parsed data only — no PDF or diagram was saved during import.
                                     Re-import this report to enable full page-by-page verification.
                                   </p>
+                                </div>
+                              )}
+
+                              {(hasAiDrawing || session.vendor_diagram_url || session.source_file_url) && (
+                                <div className="grid gap-4 lg:grid-cols-2">
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-sm font-medium">AI drawing</p>
+                                      {!hasAiDrawing && (
+                                        <span className="text-xs text-muted-foreground">Not generated yet</span>
+                                      )}
+                                    </div>
+
+                                    {session.ai_diagram_svg ? (
+                                      <div className="overflow-hidden rounded-md border bg-background p-2">
+                                        <img
+                                          src={`data:image/svg+xml;utf8,${encodeURIComponent(session.ai_diagram_svg)}`}
+                                          alt={`AI roof drawing for ${session.property_address || 'property'}`}
+                                          className="h-auto w-full"
+                                          loading="lazy"
+                                        />
+                                      </div>
+                                    ) : hasAiDrawing ? (
+                                      <div className="overflow-hidden rounded-md border bg-background p-3">
+                                        <RoofDiagramRenderer
+                                          measurement={{
+                                            perimeter_wkt: session.ai_perimeter_wkt,
+                                            linear_features_wkt: session.ai_linear_features || [],
+                                            summary: session.ai_total_area ? { total_area_sqft: session.ai_total_area } : undefined,
+                                            predominant_pitch: session.ai_pitch,
+                                          }}
+                                          tags={{}}
+                                          width={420}
+                                          height={320}
+                                          showLabels={false}
+                                          showLengthLabels={false}
+                                          showAreaLabels={false}
+                                          showPitchLabels={false}
+                                          showFacetOverlay={false}
+                                        />
+                                      </div>
+                                    ) : (
+                                      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                                        No AI roof drawing is attached to this session yet.
+                                      </div>
+                                    )}
+                                  </div>
+
+                                  <div className="space-y-2">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <p className="text-sm font-medium">Vendor evidence</p>
+                                      <div className="flex items-center gap-2 text-xs">
+                                        {session.vendor_diagram_url && (
+                                          <a
+                                            href={session.vendor_diagram_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-primary underline-offset-4 hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            Open diagram
+                                          </a>
+                                        )}
+                                        {session.source_file_url && (
+                                          <a
+                                            href={session.source_file_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-primary underline-offset-4 hover:underline"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            Open report
+                                          </a>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {session.vendor_diagram_url ? (
+                                      <iframe
+                                        src={session.vendor_diagram_url}
+                                        title={`Vendor evidence for ${session.property_address || session.id}`}
+                                        className="h-80 w-full rounded-md border bg-background"
+                                      />
+                                    ) : (
+                                      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+                                        No vendor diagram preview is saved for this report.
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               )}
 
