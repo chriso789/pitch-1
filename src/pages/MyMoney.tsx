@@ -1,4 +1,3 @@
-import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
@@ -7,13 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DrawTally } from '@/components/commission/DrawTally';
 import { formatCurrency } from '@/lib/commission-calculator';
-import { Wallet, TrendingUp, DollarSign, Clock, ArrowRight } from 'lucide-react';
+import { Wallet, TrendingUp, DollarSign, ArrowRight } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useLocation as useLocationContext } from '@/contexts/LocationContext';
 
 export default function MyMoney() {
   const navigate = useNavigate();
-  const { currentLocationId } = useLocationContext();
 
   // Get current user
   const { data: currentUser } = useQuery({
