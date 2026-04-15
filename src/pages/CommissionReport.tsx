@@ -621,6 +621,22 @@ export default function CommissionReport() {
             )}
           </CardContent>
         </Card>
+        {/* Cap Out Verify Dialog */}
+        {verifyEntry && (
+          <CapOutVerifyDialog
+            open={!!verifyEntry}
+            onOpenChange={(open) => { if (!open) setVerifyEntry(null); }}
+            entryId={verifyEntry.id}
+            currentValues={{
+              sellPrice: verifyEntry.contractValue,
+              materialsCost: verifyEntry.materialCost,
+              laborCost: verifyEntry.laborCost,
+              overheadAmount: verifyEntry.overheadAmount,
+              commissionAmount: verifyEntry.commissionAmount,
+            }}
+            onVerified={() => { setVerifyEntry(null); refetch(); }}
+          />
+        )}
       </div>
     </GlobalLayout>
   );
