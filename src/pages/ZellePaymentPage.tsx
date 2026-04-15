@@ -85,9 +85,7 @@ export default function ZellePaymentPage() {
   };
 
   const handleOpenZelle = () => {
-    // Try mobile deep link first, fallback to web
-    const zelleTarget = data?.zelle_email || data?.zelle_phone || "";
-    // Mobile apps may support zelle:// scheme
+    // Zelle doesn't have a universal deep link - open web fallback
     window.location.href = "https://www.zellepay.com";
   };
 
