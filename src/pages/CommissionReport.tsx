@@ -57,6 +57,7 @@ interface ComputedCommission {
 
 export default function CommissionReport() {
   const navigate = useNavigate();
+  const { currentLocationId } = useLocationContext();
   const [dateRange, setDateRange] = useState({
     start: format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd'),
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
