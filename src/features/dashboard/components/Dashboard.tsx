@@ -540,12 +540,12 @@ const Dashboard = () => {
 
         <Card
           className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer bg-gradient-to-br from-amber-500 to-yellow-600 touch-manipulation active:scale-[0.98]"
-          onClick={() => navigate('/commission-report')}
+          onClick={() => navigate('/my-money')}
         >
           <CardContent className="p-3 md:p-6 text-center text-white">
             <Wallet className="h-5 w-5 md:h-8 md:w-8 mx-auto mb-1 md:mb-2" />
-            <h3 className="font-semibold text-xs md:text-base mb-0.5 md:mb-1">My Commissions</h3>
-            <p className="text-[10px] md:text-sm opacity-90 hidden sm:block">View earnings by project</p>
+            <h3 className="font-semibold text-xs md:text-base mb-0.5 md:mb-1">My Money</h3>
+            <p className="text-[10px] md:text-sm opacity-90 hidden sm:block">Commissions, draws & earnings</p>
           </CardContent>
         </Card>
       </div>

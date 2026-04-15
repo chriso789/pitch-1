@@ -40,7 +40,8 @@ import {
   Search,
   Star,
   Gift,
-  Truck
+  Truck,
+  Wallet
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -254,6 +255,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: Truck,
       description: "Order materials via SRS",
       featureKey: "production"
+    },
+    {
+      name: "My Money",
+      href: "my-money",
+      path: "/my-money",
+      icon: Wallet,
+      description: "Track commissions & draws",
     },
     {
       name: "Accounts Receivable",

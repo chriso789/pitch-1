@@ -22971,6 +22971,9 @@ export type Database = {
           approval_gate_status: string | null
           assigned_to: string | null
           calculation_template_id: string | null
+          capout_adjustments: Json | null
+          capout_verified_at: string | null
+          capout_verified_by: string | null
           clj_formatted_number: string | null
           contact_id: string | null
           contact_number: number | null
@@ -23014,6 +23017,9 @@ export type Database = {
           approval_gate_status?: string | null
           assigned_to?: string | null
           calculation_template_id?: string | null
+          capout_adjustments?: Json | null
+          capout_verified_at?: string | null
+          capout_verified_by?: string | null
           clj_formatted_number?: string | null
           contact_id?: string | null
           contact_number?: number | null
@@ -23057,6 +23063,9 @@ export type Database = {
           approval_gate_status?: string | null
           assigned_to?: string | null
           calculation_template_id?: string | null
+          capout_adjustments?: Json | null
+          capout_verified_at?: string | null
+          capout_verified_by?: string | null
           clj_formatted_number?: string | null
           contact_id?: string | null
           contact_number?: number | null
@@ -23186,6 +23195,7 @@ export type Database = {
       pipeline_stages: {
         Row: {
           auto_actions: Json | null
+          auto_close_days: number | null
           color: string | null
           created_at: string | null
           created_by: string | null
@@ -23202,6 +23212,7 @@ export type Database = {
         }
         Insert: {
           auto_actions?: Json | null
+          auto_close_days?: number | null
           color?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -23218,6 +23229,7 @@ export type Database = {
         }
         Update: {
           auto_actions?: Json | null
+          auto_close_days?: number | null
           color?: string | null
           created_at?: string | null
           created_by?: string | null

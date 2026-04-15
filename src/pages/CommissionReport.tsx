@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { CapOutVerifyDialog } from '@/components/commission/CapOutVerifyDialog';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
@@ -24,7 +25,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown, CheckCircle } from 'lucide-react';
 import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
 import {
   Collapsible,
@@ -68,6 +69,7 @@ export default function CommissionReport() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [verifyEntry, setVerifyEntry] = useState<ComputedCommission | null>(null);
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
   // Minimum stage_order for "project" level
@@ -540,20 +542,38 @@ export default function CommissionReport() {
                                 {formatCurrency(c.commissionAmount)}
                               </TableCell>
                               <TableCell>
-                                {['capped_out', 'completed', 'complete', 'closed'].includes(c.status) && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    title="Print Cap Out Sheet"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      exportCapOutForJob(c.id);
-                                    }}
-                                  >
-                                    <Printer className="h-4 w-4" />
-                                  </Button>
-                                )}
+                                <div className="flex items-center gap-1">
+                                  {['capped_out', 'completed', 'complete', 'closed'].includes(c.status) && (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        title="Print Cap Out Sheet"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          exportCapOutForJob(c.id);
+                                        }}
+                                      >
+                                        <Printer className="h-4 w-4" />
+                                      </Button>
+                                      {isManager && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                          title="Verify / Adjust Cap Out"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setVerifyEntry(c);
+                                          }}
+                                        >
+                                          <CheckCircle className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
 
@@ -601,6 +621,22 @@ export default function CommissionReport() {
             )}
           </CardContent>
         </Card>
+        {/* Cap Out Verify Dialog */}
+        {verifyEntry && (
+          <CapOutVerifyDialog
+            open={!!verifyEntry}
+            onOpenChange={(open) => { if (!open) setVerifyEntry(null); }}
+            entryId={verifyEntry.id}
+            currentValues={{
+              sellPrice: verifyEntry.contractValue,
+              materialsCost: verifyEntry.materialCost,
+              laborCost: verifyEntry.laborCost,
+              overheadAmount: verifyEntry.overheadAmount,
+              commissionAmount: verifyEntry.commissionAmount,
+            }}
+            onVerified={() => { setVerifyEntry(null); refetch(); }}
+          />
+        )}
       </div>
     </GlobalLayout>
   );

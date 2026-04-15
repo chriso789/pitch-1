@@ -85,6 +85,7 @@ const RoofMeasurementTrainer = React.lazy(() => import("@/pages/RoofMeasurementT
 const ReportImportDashboard = React.lazy(() => import("@/pages/ReportImportDashboard"));
 const NotificationsPage = React.lazy(() => import("@/pages/NotificationsPage"));
 const CommissionReport = React.lazy(() => import("@/pages/CommissionReport"));
+const MyMoney = React.lazy(() => import("@/pages/MyMoney"));
 const AIAgentDashboardPage = React.lazy(() => import("@/pages/AIAgentDashboardPage"));
 
 const PageLoader = () => (
@@ -182,6 +183,7 @@ export default function ProtectedRoutes() {
         <Route path="/report-import" element={<ProtectedRoute><ReportImportDashboard /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
+        <Route path="/my-money" element={<ProtectedRoute><MyMoney /></ProtectedRoute>} />
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
       </Routes>
     </Suspense>
