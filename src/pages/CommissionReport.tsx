@@ -417,6 +417,7 @@ export default function CommissionReport() {
                       <TableHead className="text-right">Gross Profit</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead className="text-right">Commission</TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
