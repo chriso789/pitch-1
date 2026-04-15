@@ -1,4 +1,4 @@
-import { supabaseAuth, supabaseService, getAuthUser } from '../_shared/supabase.ts';
+import { supabaseService } from '../_shared/supabase.ts';
 import { corsHeaders } from '../_shared/cors.ts';
 
 // Edge function to auto-close capped-out pipeline entries after X days
