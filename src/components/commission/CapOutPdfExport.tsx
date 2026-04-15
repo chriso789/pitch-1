@@ -31,32 +31,31 @@ export function generateCapOutPdf(data: CapOutPdfData) {
   <title>Cap Out Sheet - ${data.projectName}</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, Helvetica, sans-serif; padding: 40px; color: #1a1a1a; }
-    .header { text-align: center; border-bottom: 3px solid #2563eb; padding-bottom: 16px; margin-bottom: 24px; }
-    .header h1 { font-size: 28px; color: #2563eb; margin-bottom: 4px; }
-    .header p { color: #666; font-size: 14px; }
-    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
-    .info-item { }
-    .info-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
-    .info-value { font-size: 16px; font-weight: 600; margin-top: 2px; }
-    table { width: 100%; border-collapse: collapse; margin-bottom: 24px; }
-    th { background: #f1f5f9; text-align: left; padding: 10px 12px; font-size: 12px; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0; }
-    td { padding: 10px 12px; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
+    body { font-family: Arial, Helvetica, sans-serif; padding: 24px 32px; color: #1a1a1a; }
+    .header { text-align: center; border-bottom: 2px solid #2563eb; padding-bottom: 8px; margin-bottom: 12px; }
+    .header h1 { font-size: 22px; color: #2563eb; margin-bottom: 2px; }
+    .header p { color: #666; font-size: 11px; }
+    .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 16px; margin-bottom: 12px; }
+    .info-label { font-size: 9px; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+    .info-value { font-size: 13px; font-weight: 600; margin-top: 1px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+    th { background: #f1f5f9; text-align: left; padding: 5px 8px; font-size: 10px; text-transform: uppercase; color: #64748b; border-bottom: 2px solid #e2e8f0; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; }
     td.amount { text-align: right; font-family: 'Courier New', monospace; }
     tr.total { background: #f8fafc; font-weight: 700; }
-    tr.total td { border-top: 2px solid #2563eb; border-bottom: 2px solid #2563eb; font-size: 16px; }
-    .profit-section { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
+    tr.total td { border-top: 2px solid #2563eb; border-bottom: 2px solid #2563eb; font-size: 13px; }
+    .profit-section { background: #f0fdf4; border: 2px solid #22c55e; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
     .profit-section.negative { background: #fef2f2; border-color: #ef4444; }
-    .profit-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .profit-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
     .profit-row:last-child { margin-bottom: 0; }
-    .profit-label { font-size: 14px; color: #555; }
-    .profit-value { font-size: 22px; font-weight: 700; color: #16a34a; }
+    .profit-label { font-size: 12px; color: #555; }
+    .profit-value { font-size: 16px; font-weight: 700; color: #16a34a; }
     .profit-value.negative { color: #dc2626; }
-    .commission-section { background: #eff6ff; border: 2px solid #3b82f6; border-radius: 8px; padding: 20px; margin-bottom: 24px; }
-    .signature-section { margin-top: 48px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
-    .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 12px; color: #666; }
-    .footer { margin-top: 48px; text-align: center; color: #aaa; font-size: 11px; }
-    @media print { body { padding: 20px; } }
+    .commission-section { background: #eff6ff; border: 2px solid #3b82f6; border-radius: 6px; padding: 10px 14px; margin-bottom: 10px; }
+    .signature-section { margin-top: 24px; display: grid; grid-template-columns: 1fr 1fr; gap: 48px; }
+    .sig-line { border-top: 1px solid #333; padding-top: 4px; font-size: 10px; color: #666; }
+    .footer { margin-top: 16px; text-align: center; color: #aaa; font-size: 9px; }
+    @media print { body { padding: 16px 24px; } @page { size: letter; margin: 0.4in; } }
   </style>
 </head>
 <body>
