@@ -695,8 +695,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               const hasLineItems = lineItems.length > 0;
               const isExpanded = expandedInvoices.has(inv.id);
               const pendingZelleLink = (zelleLinks || []).find(
-                (zl: any) => zl.invoice_id === inv.id && zl.zelle_confirmation_status === 'pending'
+                (zl: any) => zl.invoice_id === inv.id && ['pending', 'pending_verification'].includes(zl.zelle_confirmation_status)
               );
+              const customerNotified = pendingZelleLink?.zelle_confirmation_status === 'pending_verification';
 
               return (
                 <div key={inv.id} className="bg-muted/30 rounded-lg overflow-hidden">
@@ -723,16 +724,16 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                           {/* Confirm Zelle payment */}
                           {pendingZelleLink && (
                             <Button
-                              variant="outline"
+                              variant={customerNotified ? "default" : "outline"}
                               size="sm"
-                              className="h-7 text-xs"
+                              className={cn("h-7 text-xs", customerNotified && "animate-pulse")}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleConfirmZellePayment(pendingZelleLink, inv);
                               }}
                             >
                               <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Confirm Zelle
+                              {customerNotified ? '⚡ Customer Paid — Confirm' : 'Confirm Zelle'}
                             </Button>
                           )}
                           {/* Payment link dropdown */}

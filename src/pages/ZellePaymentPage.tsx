@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, DollarSign, Mail, Phone, CheckCircle2, AlertCircle } from "lucide-react";
+import { Loader2, DollarSign, Mail, Phone, CheckCircle2, AlertCircle, Copy, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 
 interface ZellePaymentData {
   amount: number;
@@ -21,11 +22,16 @@ interface ZellePaymentData {
 const formatCurrency = (amount: number) =>
   new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(amount);
 
+const getSupabaseUrl = () => {
+  return import.meta.env.VITE_SUPABASE_URL;
+};
+
 export default function ZellePaymentPage() {
   const { token } = useParams<{ token: string }>();
   const [data, setData] = useState<ZellePaymentData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [notifying, setNotifying] = useState(false);
   const [notified, setNotified] = useState(false);
 
   useEffect(() => {
@@ -33,20 +39,24 @@ export default function ZellePaymentPage() {
     const load = async () => {
       try {
         const response = await fetch(
-        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/zelle-payment-page?token=${token}`,
-        {
-          headers: {
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
-          },
+          `${getSupabaseUrl()}/functions/v1/zelle-payment-page?token=${token}`,
+          {
+            headers: {
+              apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+            },
+          }
+        );
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.error || "Payment link not found");
         }
-      );
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || "Payment link not found");
-      }
-
-        setData(await response.json());
+        const result = await response.json();
+        setData(result);
+        if (result.status === "pending_verification") {
+          setNotified(true);
+        }
       } catch (err: any) {
         setError(err.message || "Failed to load payment details");
       } finally {
@@ -55,6 +65,58 @@ export default function ZellePaymentPage() {
     };
     load();
   }, [token]);
+
+  const memoText = data?.invoice_number ? `${data.invoice_number}` : token?.slice(0, 8)?.toUpperCase() || "";
+
+  const copyToClipboard = async (text: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${label} copied!`);
+    } catch {
+      // Fallback for older browsers
+      const textarea = document.createElement("textarea");
+      textarea.value = text;
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textarea);
+      toast.success(`${label} copied!`);
+    }
+  };
+
+  const handleOpenZelle = () => {
+    // Zelle doesn't have a universal deep link - open web fallback
+    window.location.href = "https://www.zellepay.com";
+  };
+
+  const handleNotifyPayment = async () => {
+    if (!token) return;
+    setNotifying(true);
+    try {
+      const response = await fetch(
+        `${getSupabaseUrl()}/functions/v1/zelle-payment-page`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({ token, action: "notify_sent" }),
+        }
+      );
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Failed to notify");
+      }
+
+      setNotified(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send notification");
+    } finally {
+      setNotifying(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -113,7 +175,7 @@ export default function ZellePaymentPage() {
             )}
           </div>
 
-          {/* Zelle Details */}
+          {/* Zelle Details with copy buttons */}
           <div className="space-y-3">
             <h3 className="text-sm font-semibold flex items-center gap-2">
               <DollarSign className="h-4 w-4" />
@@ -128,46 +190,99 @@ export default function ZellePaymentPage() {
             )}
 
             {data.zelle_email && (
-              <div className="bg-muted/30 rounded-lg p-3 flex items-center gap-3">
+              <button
+                onClick={() => copyToClipboard(data.zelle_email!, "Email")}
+                className="w-full bg-muted/30 rounded-lg p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors text-left"
+              >
                 <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Zelle Email</p>
-                  <p className="font-medium text-sm">{data.zelle_email}</p>
+                  <p className="font-medium text-sm truncate">{data.zelle_email}</p>
                 </div>
-              </div>
+                <Copy className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </button>
             )}
 
             {data.zelle_phone && (
-              <div className="bg-muted/30 rounded-lg p-3 flex items-center gap-3">
+              <button
+                onClick={() => copyToClipboard(data.zelle_phone!, "Phone")}
+                className="w-full bg-muted/30 rounded-lg p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors text-left"
+              >
                 <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <p className="text-xs text-muted-foreground">Zelle Phone</p>
                   <p className="font-medium text-sm">{data.zelle_phone}</p>
                 </div>
-              </div>
+                <Copy className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              </button>
             )}
+
+            {/* Memo / Reference */}
+            <button
+              onClick={() => copyToClipboard(memoText, "Memo")}
+              className="w-full bg-primary/5 border border-primary/20 rounded-lg p-3 flex items-center gap-3 hover:bg-primary/10 transition-colors text-left"
+            >
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">Memo (include with payment)</p>
+                <p className="font-semibold text-sm">{memoText}</p>
+              </div>
+              <Copy className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </button>
+
+            {/* Amount copy */}
+            <button
+              onClick={() => copyToClipboard(data.amount.toFixed(2), "Amount")}
+              className="w-full bg-muted/30 rounded-lg p-3 flex items-center gap-3 hover:bg-muted/50 transition-colors text-left"
+            >
+              <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-muted-foreground">Amount to send</p>
+                <p className="font-semibold text-sm">{formatCurrency(data.amount)}</p>
+              </div>
+              <Copy className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+            </button>
           </div>
 
           {/* Instructions */}
-          <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
+          <div className="bg-muted/20 border border-border rounded-lg p-4">
             <h4 className="text-sm font-semibold mb-2">How to Pay</h4>
             {data.zelle_instructions ? (
               <p className="text-sm text-muted-foreground">{data.zelle_instructions}</p>
             ) : (
-              <ol className="text-sm text-muted-foreground space-y-1 list-decimal list-inside">
+              <ol className="text-sm text-muted-foreground space-y-1.5 list-decimal list-inside">
                 <li>Open your banking app</li>
                 <li>Go to <strong>Send Money with Zelle®</strong></li>
-                <li>Search for {data.zelle_email || data.zelle_phone}</li>
+                <li>Search for <strong>{data.zelle_email || data.zelle_phone}</strong></li>
                 <li>Enter <strong>{formatCurrency(data.amount)}</strong> as the amount</li>
+                <li>Add memo: <strong>{memoText}</strong></li>
                 <li>Send the payment</li>
               </ol>
             )}
           </div>
 
-          {/* Notified button */}
+          {/* Open Zelle button */}
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleOpenZelle}
+          >
+            <ExternalLink className="h-4 w-4 mr-2" />
+            Open Zelle
+          </Button>
+
+          {/* Notify button */}
           {!notified ? (
-            <Button className="w-full" size="lg" onClick={() => setNotified(true)}>
-              <CheckCircle2 className="h-4 w-4 mr-2" />
+            <Button
+              className="w-full"
+              size="lg"
+              onClick={handleNotifyPayment}
+              disabled={notifying}
+            >
+              {notifying ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4 mr-2" />
+              )}
               I've Sent the Payment
             </Button>
           ) : (
@@ -175,7 +290,7 @@ export default function ZellePaymentPage() {
               <CheckCircle2 className="h-6 w-6 text-green-600 mx-auto mb-2" />
               <p className="text-sm font-medium text-green-700">Thank you!</p>
               <p className="text-xs text-muted-foreground">
-                The company will confirm your payment shortly.
+                {data.company_name} has been notified and will confirm your payment shortly.
               </p>
             </div>
           )}
