@@ -69,6 +69,7 @@ export default function CommissionReport() {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [verifyEntry, setVerifyEntry] = useState<ComputedCommission | null>(null);
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
   // Minimum stage_order for "project" level
@@ -541,20 +542,38 @@ export default function CommissionReport() {
                                 {formatCurrency(c.commissionAmount)}
                               </TableCell>
                               <TableCell>
-                                {['capped_out', 'completed', 'complete', 'closed'].includes(c.status) && (
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-7 w-7"
-                                    title="Print Cap Out Sheet"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      exportCapOutForJob(c.id);
-                                    }}
-                                  >
-                                    <Printer className="h-4 w-4" />
-                                  </Button>
-                                )}
+                                <div className="flex items-center gap-1">
+                                  {['capped_out', 'completed', 'complete', 'closed'].includes(c.status) && (
+                                    <>
+                                      <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7"
+                                        title="Print Cap Out Sheet"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          exportCapOutForJob(c.id);
+                                        }}
+                                      >
+                                        <Printer className="h-4 w-4" />
+                                      </Button>
+                                      {isManager && (
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="h-7 w-7 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                          title="Verify / Adjust Cap Out"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setVerifyEntry(c);
+                                          }}
+                                        >
+                                          <CheckCircle className="h-4 w-4" />
+                                        </Button>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
                               </TableCell>
                             </TableRow>
 
