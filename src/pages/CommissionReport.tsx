@@ -452,7 +452,7 @@ export default function CommissionReport() {
                 No jobs at project status or beyond found for the selected period
               </div>
             ) : (
-              <div className="rounded-md border">
+              <div className="rounded-md border overflow-x-auto overscroll-x-contain touch-pan-x">
                 <Table>
                   <TableHeader>
                      <TableRow>
