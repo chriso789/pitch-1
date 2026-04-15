@@ -508,8 +508,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             </DropdownMenu>
           </div>
 
-          {/* Row 2: Last Name */}
-          <div className="flex-1 flex items-center justify-center min-h-0">
+          {/* Row 2: Last Name + Created Date */}
+          <div className="flex-1 flex flex-col items-center justify-center min-h-0">
             <div 
               className="text-center w-full min-w-0"
               title={lastName}
@@ -522,6 +522,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               >
                 {lastName}
               </span>
+            </div>
+            <div className="text-[7px] text-muted-foreground/70 leading-none mt-0.5">
+              {format(new Date(entry.created_at), "M/d/yy h:mma").toLowerCase()}
             </div>
           </div>
 
