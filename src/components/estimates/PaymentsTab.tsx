@@ -724,16 +724,16 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                           {/* Confirm Zelle payment */}
                           {pendingZelleLink && (
                             <Button
-                              variant="outline"
+                              variant={customerNotified ? "default" : "outline"}
                               size="sm"
-                              className="h-7 text-xs"
+                              className={cn("h-7 text-xs", customerNotified && "animate-pulse")}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleConfirmZellePayment(pendingZelleLink, inv);
                               }}
                             >
                               <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Confirm Zelle
+                              {customerNotified ? '⚡ Customer Paid — Confirm' : 'Confirm Zelle'}
                             </Button>
                           )}
                           {/* Payment link dropdown */}
