@@ -112,6 +112,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/jobs')) return 'jobs';
     if (path.startsWith('/estimates')) return 'estimates';
     if (path.startsWith('/production')) return 'production';
+    if (path.startsWith('/material-orders')) return 'material-orders';
     if (path.startsWith('/accounts-receivable')) return 'accounts-receivable';
     if (path.startsWith('/calendar')) return 'calendar';
     if (path.startsWith('/storm-canvass')) return 'storm-canvass';
@@ -244,6 +245,14 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/production",
       icon: Target,
       description: "Production workflow",
+      featureKey: "production"
+    },
+    {
+      name: "Material Orders",
+      href: "material-orders",
+      path: "/material-orders",
+      icon: Truck,
+      description: "Order materials via SRS",
       featureKey: "production"
     },
     {
