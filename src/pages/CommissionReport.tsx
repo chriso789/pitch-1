@@ -51,7 +51,7 @@ interface ComputedCommission {
   commissionType: string;
   commissionAmount: number;
   createdAt: string;
-  contactNumber: string | null;
+  contactNumber: string | number | null;
 }
 
 export default function CommissionReport() {
