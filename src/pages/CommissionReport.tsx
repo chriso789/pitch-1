@@ -112,11 +112,30 @@ export default function CommissionReport() {
     enabled: !!currentUser?.tenant_id,
   });
 
-  // Get reps for filter
+  // Get reps for filter — only from selected location
   const { data: reps = [] } = useQuery({
-    queryKey: ['commission-reps', currentUser?.tenant_id],
+    queryKey: ['commission-reps', currentUser?.tenant_id, currentLocationId],
     queryFn: async () => {
       if (!currentUser?.tenant_id) return [];
+
+      if (currentLocationId) {
+        // Get user IDs assigned to this location
+        const { data: assignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', currentLocationId)
+          .eq('is_active', true);
+        const userIds = (assignments || []).map(a => a.user_id);
+        if (userIds.length === 0) return [];
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .eq('tenant_id', currentUser.tenant_id)
+          .in('id', userIds)
+          .order('first_name');
+        return data || [];
+      }
+
       const { data } = await supabase
         .from('profiles')
         .select('id, first_name, last_name')
