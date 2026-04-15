@@ -148,7 +148,7 @@ export default function CommissionReport() {
 
   // Main data query: pipeline entries at project+ stages
   const { data: commissions = [], isLoading, refetch } = useQuery({
-    queryKey: ['commission-live', currentUser?.tenant_id, dateRange, selectedRep, qualifyingStageKeys],
+    queryKey: ['commission-live', currentUser?.tenant_id, dateRange, selectedRep, qualifyingStageKeys, currentLocationId],
     queryFn: async (): Promise<ComputedCommission[]> => {
       if (!currentUser?.tenant_id || qualifyingStageKeys.length === 0) return [];
 
