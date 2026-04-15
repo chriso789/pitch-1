@@ -24,7 +24,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer } from 'lucide-react';
+import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
 import {
   Collapsible,
   CollapsibleContent,
