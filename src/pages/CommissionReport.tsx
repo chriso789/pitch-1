@@ -154,6 +154,19 @@ export default function CommissionReport() {
     queryFn: async (): Promise<ComputedCommission[]> => {
       if (!currentUser?.tenant_id || qualifyingStageKeys.length === 0) return [];
 
+      // If location is selected, get rep IDs for that location first
+      // This handles entries where location_id is NULL
+      let locationRepIds: string[] | null = null;
+      if (currentLocationId) {
+        const { data: assignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', currentLocationId)
+          .eq('is_active', true);
+        locationRepIds = (assignments || []).map(a => a.user_id);
+        if (locationRepIds.length === 0) return [];
+      }
+
       let query = supabase
         .from('pipeline_entries')
         .select(`
@@ -167,8 +180,9 @@ export default function CommissionReport() {
         .lte('created_at', dateRange.end + 'T23:59:59')
         .order('created_at', { ascending: false });
 
-      if (currentLocationId) {
-        query = query.eq('location_id', currentLocationId);
+      // Filter by location: use location_id if set, otherwise filter by rep assignment
+      if (locationRepIds) {
+        query = query.in('assigned_to', locationRepIds);
       }
 
       if (selectedRep !== 'all') {
