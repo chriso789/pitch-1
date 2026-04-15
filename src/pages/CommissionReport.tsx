@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { CommissionSummaryCards } from '@/components/commission/CommissionSummaryCards';
+import { DrawTally } from '@/components/commission/DrawTally';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -23,7 +24,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer } from 'lucide-react';
+import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
 import {
   Collapsible,
   CollapsibleContent,
@@ -32,6 +34,7 @@ import {
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 import { formatCurrency, formatPercent } from '@/lib/commission-calculator';
 import { useNavigate } from 'react-router-dom';
+import { useLocation as useLocationContext } from '@/contexts/LocationContext';
 
 interface ComputedCommission {
   id: string;
@@ -56,6 +59,7 @@ interface ComputedCommission {
 
 export default function CommissionReport() {
   const navigate = useNavigate();
+  const { currentLocationId } = useLocationContext();
   const [dateRange, setDateRange] = useState({
     start: format(startOfMonth(subMonths(new Date(), 3)), 'yyyy-MM-dd'),
     end: format(endOfMonth(new Date()), 'yyyy-MM-dd'),
@@ -110,11 +114,30 @@ export default function CommissionReport() {
     enabled: !!currentUser?.tenant_id,
   });
 
-  // Get reps for filter
+  // Get reps for filter — only from selected location
   const { data: reps = [] } = useQuery({
-    queryKey: ['commission-reps', currentUser?.tenant_id],
+    queryKey: ['commission-reps', currentUser?.tenant_id, currentLocationId],
     queryFn: async () => {
       if (!currentUser?.tenant_id) return [];
+
+      if (currentLocationId) {
+        // Get user IDs assigned to this location
+        const { data: assignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', currentLocationId)
+          .eq('is_active', true);
+        const userIds = (assignments || []).map(a => a.user_id);
+        if (userIds.length === 0) return [];
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .eq('tenant_id', currentUser.tenant_id)
+          .in('id', userIds)
+          .order('first_name');
+        return data || [];
+      }
+
       const { data } = await supabase
         .from('profiles')
         .select('id, first_name, last_name')
@@ -127,7 +150,7 @@ export default function CommissionReport() {
 
   // Main data query: pipeline entries at project+ stages
   const { data: commissions = [], isLoading, refetch } = useQuery({
-    queryKey: ['commission-live', currentUser?.tenant_id, dateRange, selectedRep, qualifyingStageKeys],
+    queryKey: ['commission-live', currentUser?.tenant_id, dateRange, selectedRep, qualifyingStageKeys, currentLocationId],
     queryFn: async (): Promise<ComputedCommission[]> => {
       if (!currentUser?.tenant_id || qualifyingStageKeys.length === 0) return [];
 
@@ -143,6 +166,10 @@ export default function CommissionReport() {
         .gte('created_at', dateRange.start)
         .lte('created_at', dateRange.end + 'T23:59:59')
         .order('created_at', { ascending: false });
+
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
 
       if (selectedRep !== 'all') {
         query = query.eq('assigned_to', selectedRep);
@@ -355,6 +382,16 @@ export default function CommissionReport() {
           paidCommissions={paidCommissions}
         />
 
+        {/* Draw Tally */}
+        {currentUser?.tenant_id && (
+          <DrawTally
+            tenantId={currentUser.tenant_id}
+            totalEarnedCommissions={totalCommissions}
+            selectedRepId={selectedRep}
+            isManager={!!isManager}
+          />
+        )}
+
         {/* Commission Table */}
         <Card>
           <CardHeader>
@@ -380,6 +417,7 @@ export default function CommissionReport() {
                       <TableHead className="text-right">Gross Profit</TableHead>
                       <TableHead>Plan</TableHead>
                       <TableHead className="text-right">Commission</TableHead>
+                      <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -424,6 +462,22 @@ export default function CommissionReport() {
                               </TableCell>
                               <TableCell className="text-right font-bold text-green-600">
                                 {formatCurrency(c.commissionAmount)}
+                              </TableCell>
+                              <TableCell>
+                                {['capped_out', 'completed', 'complete', 'closed'].includes(c.status) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Print Cap Out Sheet"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      exportCapOutForJob(c.id);
+                                    }}
+                                  >
+                                    <Printer className="h-4 w-4" />
+                                  </Button>
+                                )}
                               </TableCell>
                             </TableRow>
 
