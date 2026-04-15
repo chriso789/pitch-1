@@ -10,7 +10,8 @@ import { SLAPolicyManager } from "./SLAPolicyManager";
 import { RoutingRulesManager } from "./RoutingRulesManager";
 import { SmsAutoResponseConfig } from "./SmsAutoResponseConfig";
 import { MetaCAPISettings } from "./MetaCAPISettings";
-import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare, Facebook } from "lucide-react";
+import { SRSConnectionSettings } from "./SRSConnectionSettings";
+import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route, MessageSquare, Facebook, Truck } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -22,8 +23,12 @@ export const IntegrationsSettings = () => {
         </p>
       </div>
 
-      <Tabs defaultValue="api-keys" className="space-y-6">
+      <Tabs defaultValue="srs" className="space-y-6">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="srs" className="flex items-center gap-2">
+            <Truck className="h-4 w-4" />
+            SRS Distribution
+          </TabsTrigger>
           <TabsTrigger value="api-keys" className="flex items-center gap-2">
             <Key className="h-4 w-4" />
             API Keys
@@ -69,6 +74,10 @@ export const IntegrationsSettings = () => {
             AI Corrections
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="srs" className="space-y-6">
+          <SRSConnectionSettings />
+        </TabsContent>
 
         <TabsContent value="api-keys" className="space-y-6">
           <ApiKeyManager />
