@@ -452,7 +452,22 @@ export default function CommissionReport() {
                 No jobs at project status or beyond found for the selected period
               </div>
             ) : (
-              <div className="rounded-md border overflow-x-auto overscroll-x-contain touch-pan-x">
+              <div 
+                className="rounded-md border overflow-x-auto"
+                style={{ overscrollBehaviorX: 'contain', touchAction: 'pan-x pan-y' }}
+                onWheel={(e) => {
+                  const el = e.currentTarget;
+                  if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+                    const atLeft = el.scrollLeft <= 0;
+                    const atRight = el.scrollLeft + el.clientWidth >= el.scrollWidth - 1;
+                    if ((e.deltaX < 0 && atLeft) || (e.deltaX > 0 && atRight)) {
+                      // allow default only at boundaries
+                    } else {
+                      e.stopPropagation();
+                    }
+                  }
+                }}
+              >
                 <Table>
                   <TableHeader>
                      <TableRow>
