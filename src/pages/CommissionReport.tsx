@@ -463,6 +463,22 @@ export default function CommissionReport() {
                               <TableCell className="text-right font-bold text-green-600">
                                 {formatCurrency(c.commissionAmount)}
                               </TableCell>
+                              <TableCell>
+                                {['capped_out', 'completed', 'complete', 'closed'].includes(c.status) && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-7 w-7"
+                                    title="Print Cap Out Sheet"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      exportCapOutForJob(c.id);
+                                    }}
+                                  >
+                                    <Printer className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </TableCell>
                             </TableRow>
 
                             <CollapsibleContent asChild>
