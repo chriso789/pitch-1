@@ -24,7 +24,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer } from 'lucide-react';
+import { Download, Filter, RefreshCw, ChevronDown, ChevronRight, Printer, ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { exportCapOutForJob } from '@/components/commission/CapOutPdfExport';
 import {
   Collapsible,
@@ -66,6 +66,8 @@ export default function CommissionReport() {
   });
   const [selectedRep, setSelectedRep] = useState<string>('all');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [sortColumn, setSortColumn] = useState<string>('commissionAmount');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
 
   const EXCLUDED_STATUSES = ['lost', 'canceled'];
   // Minimum stage_order for "project" level
@@ -287,6 +289,37 @@ export default function CommissionReport() {
   const pendingCommissions = totalCommissions; // All are pending until paid via commission_earnings
   const paidCommissions = 0;
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDir('desc');
+    }
+  };
+
+  const sortedCommissions = [...commissions].sort((a, b) => {
+    let valA: any, valB: any;
+    switch (sortColumn) {
+      case 'leadName': valA = a.leadName?.toLowerCase() || ''; valB = b.leadName?.toLowerCase() || ''; break;
+      case 'repName': valA = a.repName?.toLowerCase() || ''; valB = b.repName?.toLowerCase() || ''; break;
+      case 'status': valA = a.stageName?.toLowerCase() || ''; valB = b.stageName?.toLowerCase() || ''; break;
+      case 'contractValue': valA = a.contractValue; valB = b.contractValue; break;
+      case 'grossProfit': valA = a.grossProfit; valB = b.grossProfit; break;
+      case 'commissionAmount': valA = a.commissionAmount; valB = b.commissionAmount; break;
+      default: valA = a.commissionAmount; valB = b.commissionAmount;
+    }
+    const cmp = valA < valB ? -1 : valA > valB ? 1 : 0;
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortColumn !== column) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
   const toggleRow = (id: string) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
@@ -422,20 +455,34 @@ export default function CommissionReport() {
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                     <TableRow>
                       <TableHead className="w-10"></TableHead>
-                      <TableHead>Project</TableHead>
-                      {isManager && <TableHead>Rep</TableHead>}
-                      <TableHead>Stage</TableHead>
-                      <TableHead className="text-right">Contract</TableHead>
-                      <TableHead className="text-right">Gross Profit</TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('leadName')}>
+                        <div className="flex items-center">Project <SortIcon column="leadName" /></div>
+                      </TableHead>
+                      {isManager && (
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort('repName')}>
+                          <div className="flex items-center">Rep <SortIcon column="repName" /></div>
+                        </TableHead>
+                      )}
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('status')}>
+                        <div className="flex items-center">Stage <SortIcon column="status" /></div>
+                      </TableHead>
+                      <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('contractValue')}>
+                        <div className="flex items-center justify-end">Contract <SortIcon column="contractValue" /></div>
+                      </TableHead>
+                      <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('grossProfit')}>
+                        <div className="flex items-center justify-end">Gross Profit <SortIcon column="grossProfit" /></div>
+                      </TableHead>
                       <TableHead>Plan</TableHead>
-                      <TableHead className="text-right">Commission</TableHead>
+                      <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('commissionAmount')}>
+                        <div className="flex items-center justify-end">Commission <SortIcon column="commissionAmount" /></div>
+                      </TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {commissions.map(c => {
+                    {sortedCommissions.map(c => {
                       const isExpanded = expandedRows.has(c.id);
                       return (
                         <Collapsible key={c.id} asChild open={isExpanded}>
