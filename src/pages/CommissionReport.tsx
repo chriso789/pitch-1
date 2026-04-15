@@ -482,7 +482,7 @@ export default function CommissionReport() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {commissions.map(c => {
+                    {sortedCommissions.map(c => {
                       const isExpanded = expandedRows.has(c.id);
                       return (
                         <Collapsible key={c.id} asChild open={isExpanded}>
