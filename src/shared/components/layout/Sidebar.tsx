@@ -256,6 +256,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       featureKey: "production"
     },
     {
+      name: "My Money",
+      href: "my-money",
+      path: "/my-money",
+      icon: Wallet,
+      description: "Track commissions & draws",
+    },
+    {
       name: "Accounts Receivable",
       href: "accounts-receivable",
       path: "/accounts-receivable",
