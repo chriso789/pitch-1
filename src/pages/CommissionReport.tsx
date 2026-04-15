@@ -165,6 +165,10 @@ export default function CommissionReport() {
         .lte('created_at', dateRange.end + 'T23:59:59')
         .order('created_at', { ascending: false });
 
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
+
       if (selectedRep !== 'all') {
         query = query.eq('assigned_to', selectedRep);
       }
