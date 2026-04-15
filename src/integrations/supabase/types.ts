@@ -33706,6 +33706,277 @@ export type Database = {
           },
         ]
       }
+      srs_branches: {
+        Row: {
+          address: string | null
+          branch_code: string
+          branch_name: string | null
+          cached_at: string
+          city: string | null
+          id: string
+          phone: string | null
+          shipping_methods: Json | null
+          state: string | null
+          tenant_id: string
+          zip: string | null
+        }
+        Insert: {
+          address?: string | null
+          branch_code: string
+          branch_name?: string | null
+          cached_at?: string
+          city?: string | null
+          id?: string
+          phone?: string | null
+          shipping_methods?: Json | null
+          state?: string | null
+          tenant_id: string
+          zip?: string | null
+        }
+        Update: {
+          address?: string | null
+          branch_code?: string
+          branch_name?: string | null
+          cached_at?: string
+          city?: string | null
+          id?: string
+          phone?: string | null
+          shipping_methods?: Json | null
+          state?: string | null
+          tenant_id?: string
+          zip?: string | null
+        }
+        Relationships: []
+      }
+      srs_connections: {
+        Row: {
+          access_token: string | null
+          client_id: string | null
+          client_secret: string | null
+          connection_status: string
+          created_at: string
+          customer_code: string | null
+          default_branch_code: string | null
+          environment: string
+          id: string
+          job_account_number: number | null
+          last_error: string | null
+          last_validated_at: string | null
+          tenant_id: string
+          token_expires_at: string | null
+          updated_at: string
+          valid_indicator: boolean | null
+        }
+        Insert: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          connection_status?: string
+          created_at?: string
+          customer_code?: string | null
+          default_branch_code?: string | null
+          environment?: string
+          id?: string
+          job_account_number?: number | null
+          last_error?: string | null
+          last_validated_at?: string | null
+          tenant_id: string
+          token_expires_at?: string | null
+          updated_at?: string
+          valid_indicator?: boolean | null
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string | null
+          client_secret?: string | null
+          connection_status?: string
+          created_at?: string
+          customer_code?: string | null
+          default_branch_code?: string | null
+          environment?: string
+          id?: string
+          job_account_number?: number | null
+          last_error?: string | null
+          last_validated_at?: string | null
+          tenant_id?: string
+          token_expires_at?: string | null
+          updated_at?: string
+          valid_indicator?: boolean | null
+        }
+        Relationships: []
+      }
+      srs_order_items: {
+        Row: {
+          created_at: string
+          id: string
+          in_stock: boolean | null
+          order_id: string
+          product_description: string | null
+          product_name: string
+          quantity: number
+          srs_product_id: number | null
+          total_price: number | null
+          unit_price: number | null
+          uom: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          in_stock?: boolean | null
+          order_id: string
+          product_description?: string | null
+          product_name: string
+          quantity: number
+          srs_product_id?: number | null
+          total_price?: number | null
+          unit_price?: number | null
+          uom?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          in_stock?: boolean | null
+          order_id?: string
+          product_description?: string | null
+          product_name?: string
+          quantity?: number
+          srs_product_id?: number | null
+          total_price?: number | null
+          unit_price?: number | null
+          uom?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "srs_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      srs_order_status_history: {
+        Row: {
+          created_at: string
+          id: string
+          new_status: string
+          old_status: string | null
+          order_id: string
+          raw_webhook_data: Json | null
+          status_message: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          new_status: string
+          old_status?: string | null
+          order_id: string
+          raw_webhook_data?: Json | null
+          status_message?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          new_status?: string
+          old_status?: string | null
+          order_id?: string
+          raw_webhook_data?: Json | null
+          status_message?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_order_status_history_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "srs_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      srs_orders: {
+        Row: {
+          branch_code: string
+          branch_name: string | null
+          created_at: string
+          delivery_address: string | null
+          delivery_date: string | null
+          delivery_method: string | null
+          estimate_id: string | null
+          id: string
+          notes: string | null
+          order_number: string | null
+          project_id: string | null
+          srs_order_id: string | null
+          srs_response: Json | null
+          srs_transaction_id: string | null
+          status: string
+          submitted_at: string | null
+          submitted_by: string | null
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string
+        }
+        Insert: {
+          branch_code: string
+          branch_name?: string | null
+          created_at?: string
+          delivery_address?: string | null
+          delivery_date?: string | null
+          delivery_method?: string | null
+          estimate_id?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string | null
+          project_id?: string | null
+          srs_order_id?: string | null
+          srs_response?: Json | null
+          srs_transaction_id?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          tenant_id: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Update: {
+          branch_code?: string
+          branch_name?: string | null
+          created_at?: string
+          delivery_address?: string | null
+          delivery_date?: string | null
+          delivery_method?: string | null
+          estimate_id?: string | null
+          id?: string
+          notes?: string | null
+          order_number?: string | null
+          project_id?: string | null
+          srs_order_id?: string | null
+          srs_response?: Json | null
+          srs_transaction_id?: string | null
+          status?: string
+          submitted_at?: string | null
+          submitted_by?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_orders_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "srs_orders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       staff_workload: {
         Row: {
           active_conversations: number | null
