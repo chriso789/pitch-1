@@ -381,6 +381,16 @@ export default function CommissionReport() {
           paidCommissions={paidCommissions}
         />
 
+        {/* Draw Tally */}
+        {currentUser?.tenant_id && (
+          <DrawTally
+            tenantId={currentUser.tenant_id}
+            totalEarnedCommissions={totalCommissions}
+            selectedRepId={selectedRep}
+            isManager={!!isManager}
+          />
+        )}
+
         {/* Commission Table */}
         <Card>
           <CardHeader>
