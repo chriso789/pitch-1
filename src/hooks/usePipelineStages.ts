@@ -68,6 +68,7 @@ export function usePipelineStages() {
         .select('*')
         .eq('tenant_id', tenantId)
         .eq('is_active', true)
+        .or('is_terminal.is.null,is_terminal.eq.false')
         .order('stage_order', { ascending: true });
 
       if (error) {
