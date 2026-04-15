@@ -455,15 +455,29 @@ export default function CommissionReport() {
               <div className="rounded-md border">
                 <Table>
                   <TableHeader>
-                    <TableRow>
+                     <TableRow>
                       <TableHead className="w-10"></TableHead>
-                      <TableHead>Project</TableHead>
-                      {isManager && <TableHead>Rep</TableHead>}
-                      <TableHead>Stage</TableHead>
-                      <TableHead className="text-right">Contract</TableHead>
-                      <TableHead className="text-right">Gross Profit</TableHead>
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('leadName')}>
+                        <div className="flex items-center">Project <SortIcon column="leadName" /></div>
+                      </TableHead>
+                      {isManager && (
+                        <TableHead className="cursor-pointer select-none" onClick={() => handleSort('repName')}>
+                          <div className="flex items-center">Rep <SortIcon column="repName" /></div>
+                        </TableHead>
+                      )}
+                      <TableHead className="cursor-pointer select-none" onClick={() => handleSort('status')}>
+                        <div className="flex items-center">Stage <SortIcon column="status" /></div>
+                      </TableHead>
+                      <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('contractValue')}>
+                        <div className="flex items-center justify-end">Contract <SortIcon column="contractValue" /></div>
+                      </TableHead>
+                      <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('grossProfit')}>
+                        <div className="flex items-center justify-end">Gross Profit <SortIcon column="grossProfit" /></div>
+                      </TableHead>
                       <TableHead>Plan</TableHead>
-                      <TableHead className="text-right">Commission</TableHead>
+                      <TableHead className="text-right cursor-pointer select-none" onClick={() => handleSort('commissionAmount')}>
+                        <div className="flex items-center justify-end">Commission <SortIcon column="commissionAmount" /></div>
+                      </TableHead>
                       <TableHead className="w-10"></TableHead>
                     </TableRow>
                   </TableHeader>
