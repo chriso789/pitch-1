@@ -40,7 +40,8 @@ import {
   Search,
   Star,
   Gift,
-  Truck
+  Truck,
+  Wallet
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
