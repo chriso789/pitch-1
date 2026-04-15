@@ -15,6 +15,59 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+    // POST = customer notifying they sent payment
+    if (req.method === 'POST') {
+      const { token, action } = await req.json();
+
+      if (!token || action !== 'notify_sent') {
+        return new Response(
+          JSON.stringify({ error: 'Invalid request' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Update payment link status to pending_verification
+      const { data: paymentLink, error: linkError } = await supabase
+        .from('payment_links')
+        .update({ 
+          zelle_confirmation_status: 'pending_verification',
+          updated_at: new Date().toISOString()
+        })
+        .eq('shareable_token', token)
+        .eq('payment_type', 'zelle')
+        .eq('status', 'active')
+        .select('id, tenant_id, invoice_id, amount, pipeline_entry_id')
+        .single();
+
+      if (linkError || !paymentLink) {
+        return new Response(
+          JSON.stringify({ error: 'Payment link not found or already processed' }),
+          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Broadcast real-time notification to the tenant
+      const channel = supabase.channel(`zelle-notification-${paymentLink.tenant_id}`);
+      await channel.send({
+        type: 'broadcast',
+        event: 'zelle_payment_sent',
+        payload: {
+          payment_link_id: paymentLink.id,
+          invoice_id: paymentLink.invoice_id,
+          amount: paymentLink.amount,
+          pipeline_entry_id: paymentLink.pipeline_entry_id,
+        },
+      });
+
+      return new Response(
+        JSON.stringify({ success: true }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
+      );
+    }
+
+    // GET = fetch payment details
     const url = new URL(req.url);
     const token = url.searchParams.get('token');
 
@@ -24,8 +77,6 @@ Deno.serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Look up payment link by shareable token
     const { data: paymentLink, error: linkError } = await supabase
@@ -90,7 +141,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 200 }
     );
   } catch (error) {
-    console.error('Error fetching Zelle payment details:', error);
+    console.error('Error in Zelle payment page:', error);
     return new Response(
       JSON.stringify({ error: 'Internal server error' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
