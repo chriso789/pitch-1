@@ -76,6 +76,7 @@ export function EnhancedPipeline() {
         .from('pipeline_stages')
         .select('*')
         .eq('is_active', true)
+        .or('is_terminal.is.null,is_terminal.eq.false')
         .order('stage_order');
 
       if (stagesError) throw stagesError;
