@@ -289,6 +289,37 @@ export default function CommissionReport() {
   const pendingCommissions = totalCommissions; // All are pending until paid via commission_earnings
   const paidCommissions = 0;
 
+  const handleSort = (column: string) => {
+    if (sortColumn === column) {
+      setSortDir(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortColumn(column);
+      setSortDir('desc');
+    }
+  };
+
+  const sortedCommissions = [...commissions].sort((a, b) => {
+    let valA: any, valB: any;
+    switch (sortColumn) {
+      case 'leadName': valA = a.leadName?.toLowerCase() || ''; valB = b.leadName?.toLowerCase() || ''; break;
+      case 'repName': valA = a.repName?.toLowerCase() || ''; valB = b.repName?.toLowerCase() || ''; break;
+      case 'status': valA = a.stageName?.toLowerCase() || ''; valB = b.stageName?.toLowerCase() || ''; break;
+      case 'contractValue': valA = a.contractValue; valB = b.contractValue; break;
+      case 'grossProfit': valA = a.grossProfit; valB = b.grossProfit; break;
+      case 'commissionAmount': valA = a.commissionAmount; valB = b.commissionAmount; break;
+      default: valA = a.commissionAmount; valB = b.commissionAmount;
+    }
+    const cmp = valA < valB ? -1 : valA > valB ? 1 : 0;
+    return sortDir === 'asc' ? cmp : -cmp;
+  });
+
+  const SortIcon = ({ column }: { column: string }) => {
+    if (sortColumn !== column) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+    return sortDir === 'asc'
+      ? <ArrowUp className="h-3 w-3 ml-1" />
+      : <ArrowDown className="h-3 w-3 ml-1" />;
+  };
+
   const toggleRow = (id: string) => {
     setExpandedRows(prev => {
       const next = new Set(prev);
