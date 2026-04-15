@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
     switch (action) {
       case "validate_connection": {
         try {
-          const token = await getAccessToken();
+          await getAccessToken();
 
           // Validate customer
           const validateData = await srsApiCall(
