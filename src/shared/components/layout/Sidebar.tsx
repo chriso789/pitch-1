@@ -212,7 +212,8 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
 
   const { hasFeature } = useFeatureAccess();
 
-  const navigation = [
+  // Items rendered BEFORE Follow Up Hub
+  const topNavigation = [
     {
       name: "Pipeline",
       href: "pipeline",
@@ -222,6 +223,18 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       testId: TEST_IDS.sidebar.pipeline,
       featureKey: "pipeline"
     },
+    {
+      name: "Storm Canvas Pro",
+      href: "storm-canvass",
+      path: "/storm-canvass",
+      icon: CloudRain,
+      description: "Lead generation & canvasing",
+      featureKey: "storm_canvass"
+    },
+  ].filter(item => hasFeature(item.featureKey));
+
+  // Items rendered AFTER Follow Up Hub
+  const navigation = [
     {
       name: "Contacts",
       href: "client-list",
@@ -279,14 +292,6 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       description: "Schedule & appointments",
       testId: TEST_IDS.sidebar.calendar,
       featureKey: "calendar"
-    },
-    {
-      name: "Storm Canvas Pro",
-      href: "storm-canvass",
-      path: "/storm-canvass",
-      icon: CloudRain,
-      description: "Lead generation & canvasing",
-      featureKey: "storm_canvass"
     },
     // Communications is now an expandable section - see communicationsSubNav below
     {
