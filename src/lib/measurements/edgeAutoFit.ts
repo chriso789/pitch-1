@@ -37,11 +37,17 @@ interface AutoFitEasternEaveOptions extends AutoFitOptions {
 export interface AutoFitAllEdgesOptions extends AutoFitOptions {
   eaveSegments: SvgLineSegment[];
   rakeSegments: SvgLineSegment[];
+  ridgeSegments?: SvgLineSegment[];
+  hipSegments?: SvgLineSegment[];
+  valleySegments?: SvgLineSegment[];
 }
 
 export interface AutoFitAllEdgesResult {
   eaveSegments: SvgLineSegment[];
   rakeSegments: SvgLineSegment[];
+  ridgeSegments?: SvgLineSegment[];
+  hipSegments?: SvgLineSegment[];
+  valleySegments?: SvgLineSegment[];
   adjustedCount: number;
 }
 
