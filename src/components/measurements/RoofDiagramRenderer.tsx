@@ -222,7 +222,7 @@ export function RoofDiagramRenderer({
     return [];
   }, [measurement, tags, bounds, width, height, perimeterPath]);
 
-  // Parse linear features from WKT
+  // Parse linear features from WKT — dedupe and filter to interior lines only
   const linearFeatures = useMemo(() => {
     const features: Array<{
       type: string;
@@ -230,29 +230,56 @@ export function RoofDiagramRenderer({
       path: string;
       length?: number;
       dashed?: boolean;
+      coords: Array<{ lat: number; lng: number }>;
     }> = [];
 
     const linearData = measurement?.linear_features_wkt || measurement?.linear_features || [];
-    
-    if (Array.isArray(linearData)) {
-      linearData.forEach((feature: any) => {
-        const type = feature.type?.toLowerCase() || 'ridge';
-        
-        // Only render if we have WKT geometry
-        if (feature.wkt) {
-          const coords = wktLineToLatLngs(feature.wkt);
-          if (coords.length >= 2) {
-            features.push({
-              type,
-              color: FEATURE_COLORS[type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
-              path: lineToSVG(coords, bounds, width, height),
-              length: feature.length_ft || 0,
-              dashed: type === 'step' || type === 'step_flashing',
-            });
-          }
-        }
+    if (!Array.isArray(linearData)) return features;
+
+    // Layering order: perimeter is drawn separately first, then interior structural lines
+    // on top in this order so ridges sit above eaves visually.
+    const TYPE_ORDER: Record<string, number> = {
+      eave: 1, rake: 2, valley: 3, hip: 4, ridge: 5, step: 6, step_flashing: 6,
+    };
+
+    // Dedupe identical segments (start/end within ~1ft tolerance, ~3e-6 deg)
+    const TOL = 0.000003;
+    const seen = new Set<string>();
+    const keyOf = (a: {lat:number;lng:number}, b: {lat:number;lng:number}) => {
+      const r = (n: number) => Math.round(n / TOL);
+      const k1 = `${r(a.lat)},${r(a.lng)}|${r(b.lat)},${r(b.lng)}`;
+      const k2 = `${r(b.lat)},${r(b.lng)}|${r(a.lat)},${r(a.lng)}`;
+      return k1 < k2 ? k1 : k2;
+    };
+
+    const raw = linearData
+      .map((feature: any) => {
+        const type = (feature.type || 'ridge').toLowerCase();
+        if (!feature.wkt) return null;
+        const coords = wktLineToLatLngs(feature.wkt);
+        if (coords.length < 2) return null;
+        // Skip the perimeter — it's drawn from perimeter_wkt below all features
+        if (type === 'perimeter') return null;
+        return { type, coords, length: feature.length_ft || 0 };
+      })
+      .filter(Boolean) as Array<{ type: string; coords: Array<{lat:number;lng:number}>; length: number }>;
+
+    // Sort by layering so ridges/hips end up on top
+    raw.sort((a, b) => (TYPE_ORDER[a.type] || 0) - (TYPE_ORDER[b.type] || 0));
+
+    raw.forEach(({ type, coords, length }) => {
+      const key = keyOf(coords[0], coords[coords.length - 1]);
+      if (seen.has(key)) return;
+      seen.add(key);
+      features.push({
+        type,
+        color: FEATURE_COLORS[type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
+        path: lineToSVG(coords, bounds, width, height),
+        length,
+        dashed: type === 'step' || type === 'step_flashing',
+        coords,
       });
-    }
+    });
 
     return features;
   }, [measurement, bounds, width, height]);
