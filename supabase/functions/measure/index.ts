@@ -1698,9 +1698,16 @@ async function persistMeasurement(
   userId?: string,
   analysisParams?: AnalysisParams
 ) {
-  // NOTE: insert_measurement RPC accepts only 7 params; extra analysis params caused silent
-  // schema-mismatch failures that left batch verification with no persisted row. We pass only
-  // the supported params here and rely on the caller to write analysis metadata separately.
+  // Calls the canonical 10-arg insert_measurement RPC (the duplicate 7-arg overload was
+  // dropped in migration 20260416_drop_duplicate_insert_measurement to fix PostgREST
+  // ambiguous-function 400 errors that silently failed AI persistence.)
+  const gpsCoords = analysisParams?.lat != null && analysisParams?.lng != null
+    ? { lat: analysisParams.lat, lng: analysisParams.lng }
+    : null;
+  const imageSize = analysisParams?.imageSize
+    ? { width: analysisParams.imageSize.width, height: analysisParams.imageSize.height }
+    : null;
+
   const { data, error } = await supabase.rpc('insert_measurement', {
     p_property_id: m.property_id,
     p_source: m.source,
@@ -1709,9 +1716,16 @@ async function persistMeasurement(
     p_summary: m.summary,
     p_created_by: userId || null,
     p_geom_wkt: m.geom_wkt || null,
+    p_gps_coordinates: gpsCoords,
+    p_analysis_zoom: analysisParams?.zoom ?? null,
+    p_analysis_image_size: imageSize,
   });
 
-  if (error) throw new Error(`DB insert failed: ${error.message}`);
+  if (error) {
+    console.error('[persistMeasurement] insert_measurement RPC failed:', error);
+    throw new Error(`DB insert failed: ${error.message}`);
+  }
+  if (!data) throw new Error('DB insert returned no row');
   return data;
 }
 
