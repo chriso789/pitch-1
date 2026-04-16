@@ -390,10 +390,30 @@ export function RoofDiagramRenderer({
             </g>
           ))}
 
-          {/* Linear features */}
+          {/* Perimeter outline — drawn FIRST as the roof boundary */}
+          {perimeterPath && (
+            <path
+              d={perimeterPath}
+              fill={showSatellite ? 'none' : `${FEATURE_COLORS.perimeter}10`}
+              stroke={FEATURE_COLORS.perimeter}
+              strokeWidth={3}
+              strokeLinejoin="round"
+            />
+          )}
+
+          {/* Linear features — ridges, hips, valleys drawn INSIDE the perimeter */}
           {linearFeatures.map((feature, i) => (
             <g key={`${feature.type}-${i}`}>
               <path
+                d={feature.path}
+                fill="none"
+                stroke={feature.color}
+                strokeWidth={feature.type === 'ridge' || feature.type === 'hip' ? 2.5 : 2}
+                strokeDasharray={feature.dashed ? '8,4' : undefined}
+                strokeLinecap="round"
+              />
+              {/* Length label */}
+              {showLengthLabels && feature.length && feature.length > 0 && (
                 d={feature.path}
                 fill="none"
                 stroke={feature.color}
