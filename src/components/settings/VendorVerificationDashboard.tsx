@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
+import { VendorPdfPagePreview } from './VendorPdfPagePreview';
 
 interface VendorReportMeta {
   provider: string | null;
