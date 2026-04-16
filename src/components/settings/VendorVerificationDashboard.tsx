@@ -492,53 +492,57 @@ export function VendorVerificationDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          {stats.confirmed > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleExportTrainingSet}
-              disabled={isExporting || isRunning}
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              Export Training Set ({stats.confirmed})
-            </Button>
-          )}
-          {stats.confirmed > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleRelinkDiagrams}
-              disabled={isRunning}
-            >
-              <Zap className="h-4 w-4 mr-2" />
-              Re-link {stats.confirmed} Diagrams
-            </Button>
-          )}
-          {stats.failed > 0 && !isRunning && (
-            <Button
-              variant="outline"
-              onClick={handleRunBatch}
-              disabled={isRunning}
-            >
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Retry {stats.failed} Failed
-            </Button>
-          )}
           <Button
-            onClick={handleRunBatch}
-            disabled={isRunning || (stats.pending === 0 && stats.processing === 0)}
+            variant="outline"
+            onClick={handleVerifyCoverage}
+            disabled={isCheckingCoverage || isTraining || isRunning}
+          >
+            {isCheckingCoverage ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Verify AI Coverage
+          </Button>
+          <Button
+            onClick={handleCompareAndTrain}
+            disabled={isTraining || isCheckingCoverage || isRunning}
             size="lg"
           >
-            {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
-            {isRunning
-              ? 'Verifying...'
-              : stats.processing > 0
-                ? `Resume Verification (${stats.pending + stats.processing} remaining)`
-                : `Verify All ${stats.pending} Pending`}
+            {isTraining ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 mr-2" />
+            )}
+            {isTraining ? 'Comparing & Training...' : 'Compare & Train from Vendor Reports'}
           </Button>
         </div>
+      </div>
+
+      {coverageReport && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{coverageReport.total}</p>
+                <p className="text-xs text-muted-foreground">Paid Reports</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-500">{coverageReport.withAi}</p>
+                <p className="text-xs text-muted-foreground">With AI Measurement</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-500">{coverageReport.missing}</p>
+                <p className="text-xs text-muted-foreground">Missing AI</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-500">{coverageReport.queued}</p>
+                <p className="text-xs text-muted-foreground">Queued for Generation</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       </div>
 
       {/* Progress bar */}
