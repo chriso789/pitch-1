@@ -1698,6 +1698,9 @@ async function persistMeasurement(
   userId?: string,
   analysisParams?: AnalysisParams
 ) {
+  // NOTE: insert_measurement RPC accepts only 7 params; extra analysis params caused silent
+  // schema-mismatch failures that left batch verification with no persisted row. We pass only
+  // the supported params here and rely on the caller to write analysis metadata separately.
   const { data, error } = await supabase.rpc('insert_measurement', {
     p_property_id: m.property_id,
     p_source: m.source,
@@ -1706,14 +1709,83 @@ async function persistMeasurement(
     p_summary: m.summary,
     p_created_by: userId || null,
     p_geom_wkt: m.geom_wkt || null,
-    // Store analysis parameters for overlay alignment
-    p_gps_coordinates: analysisParams ? { lat: analysisParams.lat, lng: analysisParams.lng } : null,
-    p_analysis_zoom: analysisParams?.zoom || 20,
-    p_analysis_image_size: analysisParams?.imageSize || { width: 640, height: 640 }
   });
 
   if (error) throw new Error(`DB insert failed: ${error.message}`);
   return data;
+}
+
+// ── Inline schematic SVG renderer (used by batch verify so each AI measurement
+//    has a vector_diagram_svg the dashboard can show without re-fetching imagery) ──
+function buildSchematicSvgFromFeatures(
+  geomWkt: string | null | undefined,
+  features: Array<{ type: string; wkt: string }>,
+  width = 480,
+  height = 360,
+): string | null {
+  const FEATURE_COLORS: Record<string, string> = {
+    ridge: '#dc2626',  // red
+    hip: '#f59e0b',    // amber
+    valley: '#2563eb', // blue
+    eave: '#16a34a',   // green
+    rake: '#9333ea',   // purple
+  };
+
+  const parsePoints = (wkt: string): Array<[number, number]> => {
+    if (!wkt) return [];
+    const m = wkt.match(/\(\(?([^)]+)\)?\)/);
+    if (!m) return [];
+    return m[1].split(',').map(p => {
+      const [x, y] = p.trim().split(/\s+/).map(Number);
+      return [x, y] as [number, number];
+    }).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  };
+
+  const footprint = parsePoints(geomWkt || '');
+  const featureLines = features
+    .map(f => ({ type: f.type, pts: parsePoints(f.wkt) }))
+    .filter(f => f.pts.length >= 2);
+
+  const allPts = [...footprint, ...featureLines.flatMap(f => f.pts)];
+  if (allPts.length === 0) return null;
+
+  const xs = allPts.map(p => p[0]);
+  const ys = allPts.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanX = Math.max(maxX - minX, 1e-9);
+  const spanY = Math.max(maxY - minY, 1e-9);
+  const pad = 24;
+  const scale = Math.min((width - 2 * pad) / spanX, (height - 2 * pad) / spanY);
+  const tx = (x: number) => pad + (x - minX) * scale;
+  const ty = (y: number) => height - pad - (y - minY) * scale; // flip Y for SVG
+
+  const parts: string[] = [];
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`);
+  parts.push(`<rect width="${width}" height="${height}" fill="#fafafa"/>`);
+
+  if (footprint.length >= 3) {
+    const d = footprint.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)},${ty(p[1]).toFixed(1)}`).join(' ') + ' Z';
+    parts.push(`<path d="${d}" fill="rgba(0,0,0,0.04)" stroke="#111" stroke-width="1.5"/>`);
+  }
+
+  for (const f of featureLines) {
+    const color = FEATURE_COLORS[f.type.toLowerCase()] || '#6b7280';
+    const d = f.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)},${ty(p[1]).toFixed(1)}`).join(' ');
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>`);
+  }
+
+  // Legend
+  const legendY = height - 14;
+  let lx = 8;
+  for (const [type, color] of Object.entries(FEATURE_COLORS)) {
+    parts.push(`<rect x="${lx}" y="${legendY - 8}" width="10" height="3" fill="${color}"/>`);
+    parts.push(`<text x="${lx + 14}" y="${legendY}" font-family="sans-serif" font-size="9" fill="#333">${type}</text>`);
+    lx += 52;
+  }
+
+  parts.push(`</svg>`);
+  return parts.join('');
 }
 
 async function persistFacets(supabase: any, measurementId: string, faces: RoofFace[]) {
@@ -2848,7 +2920,17 @@ Deno.serve(async (req) => {
 
         return json({ 
           ok: true, 
-          data: { measurement: row, tags, engine_used: engineUsed } 
+          data: {
+            measurement: row,
+            tags,
+            engine_used: engineUsed,
+            // Expose raw geometry so internal callers (batch verify) can persist into roof_measurements
+            meas: {
+              summary: meas.summary,
+              linear_features: meas.linear_features || [],
+              geom_wkt: meas.geom_wkt || null,
+            },
+          },
         }, corsHeaders);
       }
 
@@ -4042,10 +4124,29 @@ Deno.serve(async (req) => {
             const hasAiData = aiTotals && Object.keys(aiTotals).length > 0 &&
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
 
-            let sessionLat = session.lat;
-            let sessionLng = session.lng;
+            let sessionLat: number | null = session.lat;
+            let sessionLng: number | null = session.lng;
 
-            // If no coordinates, geocode from address first
+            // PREFERRED: reuse cached coordinates from the parsed vendor report before
+            // ever calling Google. The report parser already geocoded these at ingest time.
+            if ((!sessionLat || !sessionLng) && session.vendor_report_id) {
+              const { data: vrCoords } = await adminSupabase
+                .from('roof_vendor_reports')
+                .select('geocoded_lat, geocoded_lng, parsed')
+                .eq('id', session.vendor_report_id)
+                .maybeSingle();
+              if (vrCoords?.geocoded_lat && vrCoords?.geocoded_lng) {
+                sessionLat = Number(vrCoords.geocoded_lat);
+                sessionLng = Number(vrCoords.geocoded_lng);
+                console.log(`📍 Using cached vendor-report coords for session ${session.id}: ${sessionLat}, ${sessionLng}`);
+                await adminSupabase
+                  .from('roof_training_sessions')
+                  .update({ lat: sessionLat, lng: sessionLng })
+                  .eq('id', session.id);
+              }
+            }
+
+            // FALLBACK: only call Google if we still have no coords AND we have an address
             if ((!sessionLat || !sessionLng) && session.property_address) {
               console.log(`📍 Geocoding ${session.property_address}...`);
               try {
@@ -4073,11 +4174,15 @@ Deno.serve(async (req) => {
               }
             }
 
+            let lastErrorLog: string | null = null;
+
             if (!hasAiData && sessionLat && sessionLng) {
-              // Check for existing roof_measurements at this location using target_lat/target_lng
+              // Check for an existing roof_measurements row at this location.
+              // NOTE: roof_measurements has NO `summary` column — we read the canonical
+              // total_*_length columns and linear_features_wkt directly.
               const { data: existingMeasurement } = await adminSupabase
                 .from('roof_measurements')
-                .select('id, summary, perimeter_wkt, linear_features_wkt, vector_diagram_svg')
+                .select('id, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, linear_features_wkt, vector_diagram_svg')
                 .gte('target_lat', sessionLat - 0.0001)
                 .lte('target_lat', sessionLat + 0.0001)
                 .gte('target_lng', sessionLng - 0.0001)
@@ -4086,16 +4191,18 @@ Deno.serve(async (req) => {
                 .limit(1)
                 .maybeSingle();
 
-              if (existingMeasurement?.summary) {
-                const summary = existingMeasurement.summary as any;
+              if (existingMeasurement && (
+                (existingMeasurement.total_ridge_length || 0) > 0 ||
+                (existingMeasurement.total_hip_length || 0) > 0 ||
+                (existingMeasurement.total_eave_length || 0) > 0
+              )) {
                 aiTotals = {
-                  ridge: summary.ridge_ft || summary.total_ridge_length || 0,
-                  hip: summary.hip_ft || summary.total_hip_length || 0,
-                  valley: summary.valley_ft || summary.total_valley_length || 0,
-                  eave: summary.eave_ft || summary.total_eave_length || 0,
-                  rake: summary.rake_ft || summary.total_rake_length || 0,
+                  ridge: Number(existingMeasurement.total_ridge_length) || 0,
+                  hip: Number(existingMeasurement.total_hip_length) || 0,
+                  valley: Number(existingMeasurement.total_valley_length) || 0,
+                  eave: Number(existingMeasurement.total_eave_length) || 0,
+                  rake: Number(existingMeasurement.total_rake_length) || 0,
                 };
-                // Link the measurement to this vendor report for dashboard lookup
                 if (session.vendor_report_id) {
                   await adminSupabase
                     .from('roof_measurements')
@@ -4104,13 +4211,13 @@ Deno.serve(async (req) => {
                 }
                 await adminSupabase
                   .from('roof_training_sessions')
-                  .update({ ai_totals: aiTotals, ai_measurement_id: existingMeasurement.id })
+                  .update({ ai_totals: aiTotals, ai_measurement_id: existingMeasurement.id, original_ai_measurement_id: existingMeasurement.id })
                   .eq('id', session.id);
-                console.log(`📏 Found existing measurement ${existingMeasurement.id} for session ${session.id}`);
+                console.log(`📏 Reusing existing measurement ${existingMeasurement.id} for session ${session.id}`);
               } else {
-                // No existing measurement — run the AI measurement engine
+                // Run the AI measurement engine
                 const propertyId = session.pipeline_entry_id || session.id;
-                console.log(`🚀 Running AI measurement for session ${session.id} at ${sessionLat},${sessionLng} with propertyId=${propertyId}...`);
+                console.log(`🚀 Running AI measurement for session ${session.id} at ${sessionLat},${sessionLng}...`);
                 try {
                   const pullResp = await fetch(`${supabaseUrl}/functions/v1/measure`, {
                     method: 'POST',
@@ -4131,86 +4238,81 @@ Deno.serve(async (req) => {
                   const pullData = await pullResp.json();
                   console.log(`📏 AI measurement result for ${session.property_address}: status=${pullResp.status}, ok=${pullData?.ok}`);
 
-                  const measurement = pullData?.data?.measurement || pullData?.measurement;
-                  if (pullData?.ok && measurement) {
-                    const mSummary = measurement.summary || measurement.measurement_data?.summary || {};
+                  if (!pullData?.ok) {
+                    lastErrorLog = `pull failed (${pullResp.status}): ${pullData?.error || 'unknown'}`;
+                    console.error(`❌ AI pull failed for session ${session.id}: ${lastErrorLog}`);
+                  } else {
+                    // The pull endpoint returns raw geometry under data.meas (added so we can
+                    // persist a proper roof_measurements row even when the legacy RPC path fails).
+                    const meas = pullData?.data?.meas || null;
+                    const mSummary = meas?.summary || pullData?.data?.measurement?.summary || {};
+                    const features: Array<{ id?: string; type: string; wkt: string; length_ft?: number }> = meas?.linear_features || [];
+                    const geomWkt: string | null = meas?.geom_wkt || null;
+
                     aiTotals = {
-                      ridge: mSummary.ridge_ft || mSummary.total_ridge_length || 0,
-                      hip: mSummary.hip_ft || mSummary.total_hip_length || 0,
-                      valley: mSummary.valley_ft || mSummary.total_valley_length || 0,
-                      eave: mSummary.eave_ft || mSummary.total_eave_length || 0,
-                      rake: mSummary.rake_ft || mSummary.total_rake_length || 0,
+                      ridge: Number(mSummary.ridge_ft) || 0,
+                      hip: Number(mSummary.hip_ft) || 0,
+                      valley: Number(mSummary.valley_ft) || 0,
+                      eave: Number(mSummary.eave_ft) || 0,
+                      rake: Number(mSummary.rake_ft) || 0,
                     };
 
-                    // Verify the measurement was actually persisted
-                    const measId = measurement.id;
-                    if (measId) {
-                      const { data: verifyMeas } = await adminSupabase
-                        .from('roof_measurements')
-                        .select('id')
-                        .eq('id', measId)
-                        .maybeSingle();
+                    // Render schematic SVG inline so the dashboard can show a diagram.
+                    const svg = buildSchematicSvgFromFeatures(geomWkt, features);
 
-                      if (verifyMeas) {
-                        // Link vendor_report_id on the measurement for dashboard lookup
-                        if (session.vendor_report_id) {
-                          await adminSupabase
-                            .from('roof_measurements')
-                            .update({ vendor_report_id: session.vendor_report_id })
-                            .eq('id', measId);
-                        }
-                        await adminSupabase
-                          .from('roof_training_sessions')
-                          .update({
-                            ai_totals: aiTotals,
-                            ai_measurement_id: measId,
-                            original_ai_measurement_id: measId,
-                          })
-                          .eq('id', session.id);
-                        console.log(`✅ AI measurement stored & linked: ${measId} for session ${session.id}`);
-                      } else {
-                        // Measurement ID was returned but doesn't exist — search by coords as fallback
-                        console.warn(`⚠️ Measurement ID ${measId} not found in DB, searching by coords...`);
-                        const { data: fallbackMeas } = await adminSupabase
-                          .from('roof_measurements')
-                          .select('id')
-                          .gte('target_lat', sessionLat - 0.0001)
-                          .lte('target_lat', sessionLat + 0.0001)
-                          .gte('target_lng', sessionLng - 0.0001)
-                          .lte('target_lng', sessionLng + 0.0001)
-                          .order('created_at', { ascending: false })
-                          .limit(1)
-                          .maybeSingle();
+                    // Persist a fresh roof_measurements row directly (independent of the legacy RPC path).
+                    const insertRow: Record<string, any> = {
+                      tenant_id: tenantId,
+                      target_lat: sessionLat,
+                      target_lng: sessionLng,
+                      gps_coordinates: { lat: sessionLat, lng: sessionLng },
+                      property_address: session.property_address || null,
+                      vendor_report_id: session.vendor_report_id || null,
+                      verification_status: 'pending',
+                      detection_timestamp: new Date().toISOString(),
+                      ai_model_version: 'skeleton-v1',
+                      total_ridge_length: aiTotals.ridge,
+                      total_hip_length: aiTotals.hip,
+                      total_valley_length: aiTotals.valley,
+                      total_eave_length: aiTotals.eave,
+                      total_rake_length: aiTotals.rake,
+                      total_area_flat_sqft: Number(mSummary.total_area_sqft) || null,
+                      total_squares: Number(mSummary.total_squares) || null,
+                      predominant_pitch: mSummary.predominant_pitch || null,
+                      linear_features_wkt: features as any,
+                      perimeter_wkt: geomWkt,
+                      vector_diagram_svg: svg,
+                      ai_detection_data: { summary: mSummary, features_count: features.length },
+                    };
 
-                        const actualId = fallbackMeas?.id || null;
-                        if (actualId && session.vendor_report_id) {
-                          await adminSupabase
-                            .from('roof_measurements')
-                            .update({ vendor_report_id: session.vendor_report_id })
-                            .eq('id', actualId);
-                        }
-                        await adminSupabase
-                          .from('roof_training_sessions')
-                          .update({
-                            ai_totals: aiTotals,
-                            ai_measurement_id: actualId,
-                            original_ai_measurement_id: actualId,
-                          })
-                          .eq('id', session.id);
-                        console.log(`✅ AI measurement stored (fallback ID ${actualId}) for session ${session.id}`);
-                      }
-                    } else {
-                      // No ID returned at all — just store totals
+                    const { data: insertedRow, error: insertErr } = await adminSupabase
+                      .from('roof_measurements')
+                      .insert(insertRow)
+                      .select('id')
+                      .single();
+
+                    if (insertErr || !insertedRow?.id) {
+                      lastErrorLog = `roof_measurements insert failed: ${insertErr?.message || 'no id returned'}`;
+                      console.error(`❌ ${lastErrorLog}`);
+                      // Still record the totals on the session even if the row insert failed
                       await adminSupabase
                         .from('roof_training_sessions')
                         .update({ ai_totals: aiTotals })
                         .eq('id', session.id);
-                      console.log(`⚠️ AI totals stored but no measurement ID for session ${session.id}`);
+                    } else {
+                      await adminSupabase
+                        .from('roof_training_sessions')
+                        .update({
+                          ai_totals: aiTotals,
+                          ai_measurement_id: insertedRow.id,
+                          original_ai_measurement_id: insertedRow.id,
+                        })
+                        .eq('id', session.id);
+                      console.log(`✅ AI measurement stored (${insertedRow.id}) with ${features.length} features${svg ? ' + SVG' : ''} for session ${session.id}`);
                     }
-                  } else {
-                    console.error(`❌ AI pull failed for session ${session.id}:`, pullData?.error || 'No measurement in response');
                   }
-                } catch (pullErr) {
+                } catch (pullErr: any) {
+                  lastErrorLog = `pull threw: ${pullErr?.message || String(pullErr)}`;
                   console.error(`Failed to run AI measurement for session ${session.id}:`, pullErr);
                 }
               }
@@ -4221,9 +4323,11 @@ Deno.serve(async (req) => {
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
 
             if (!finalHasAi) {
-              const reason = !sessionLat || !sessionLng
-                ? 'No coordinates and geocoding failed'
-                : 'AI measurement engine returned no data';
+              const reason = lastErrorLog
+                ? `error_log: ${lastErrorLog}`
+                : (!sessionLat || !sessionLng
+                  ? 'No coordinates and geocoding failed'
+                  : 'AI measurement engine returned no data');
               console.log(`⚠️ Session ${session.id}: ${reason}, marking failed`);
               await adminSupabase
                 .from('roof_training_sessions')
