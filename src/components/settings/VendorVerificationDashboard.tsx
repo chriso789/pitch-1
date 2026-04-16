@@ -69,6 +69,14 @@ export function VendorVerificationDashboard() {
   const [notesText, setNotesText] = useState('');
   const [runningOneId, setRunningOneId] = useState<string | null>(null);
   const [isExporting, setIsExporting] = useState(false);
+  const [isCheckingCoverage, setIsCheckingCoverage] = useState(false);
+  const [isTraining, setIsTraining] = useState(false);
+  const [coverageReport, setCoverageReport] = useState<{
+    total: number;
+    withAi: number;
+    missing: number;
+    queued: number;
+  } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
 
@@ -417,6 +425,142 @@ export function VendorVerificationDashboard() {
     }
   };
 
+  const handleVerifyCoverage = async () => {
+    setIsCheckingCoverage(true);
+    setCoverageReport(null);
+    try {
+      // 1. Pull every paid vendor report for this tenant
+      const { data: reports, error: reportsErr } = await supabase
+        .from('roof_vendor_reports')
+        .select('id')
+        .eq('tenant_id', activeCompanyId!);
+      if (reportsErr) throw reportsErr;
+
+      const allReports = reports || [];
+      const reportIds = allReports.map(r => r.id);
+
+      // 2. Find which ones already have a linked AI measurement
+      let linkedReportIds = new Set<string>();
+      if (reportIds.length > 0) {
+        const { data: linked } = await supabase
+          .from('roof_measurements')
+          .select('vendor_report_id')
+          .in('vendor_report_id', reportIds)
+          .not('vendor_report_id', 'is', null);
+        for (const m of linked || []) {
+          if (m.vendor_report_id) linkedReportIds.add(m.vendor_report_id);
+        }
+      }
+
+      const missing = allReports.filter(r => !linkedReportIds.has(r.id));
+
+      // 3. Queue AI measurements for the missing ones via the measure edge function
+      let queued = 0;
+      if (missing.length > 0) {
+        const { data: queueRes, error: queueErr } = await supabase.functions.invoke('measure', {
+          body: {
+            action: 'queue-missing-ai-measurements',
+            vendor_report_ids: missing.map(r => r.id),
+          },
+        });
+        if (queueErr) {
+          console.warn('Queue missing AI failed:', queueErr);
+          toast.warning(`Coverage checked but queueing failed: ${queueErr.message}`);
+        } else {
+          queued = queueRes?.queued ?? 0;
+        }
+      }
+
+      const report = {
+        total: allReports.length,
+        withAi: linkedReportIds.size,
+        missing: missing.length,
+        queued,
+      };
+      setCoverageReport(report);
+
+      if (missing.length === 0) {
+        toast.success(`All ${report.total} paid reports have an AI measurement linked ✓`);
+      } else {
+        toast.info(`${report.withAi}/${report.total} covered. Queued ${queued} for AI generation.`);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+    } catch (err: any) {
+      console.error('Coverage check error:', err);
+      toast.error(err?.message || 'Coverage check failed');
+    } finally {
+      setIsCheckingCoverage(false);
+    }
+  };
+
+  const handleCompareAndTrain = async () => {
+    setIsTraining(true);
+    const CHUNK_SIZE = 5;
+    const MAX_BATCH_CALLS = 200;
+    let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0;
+    let hasMore = true;
+    let batchCalls = 0;
+    let consecutiveEmpty = 0;
+
+    try {
+      // Reset stale processing/queued and previously failed sessions so they all re-train
+      await supabase.functions.invoke('measure', {
+        body: { action: 'batch-verify-vendor-reports', resetFailed: true, resetStale: true, limit: 0 },
+      });
+
+      while (hasMore && batchCalls < MAX_BATCH_CALLS) {
+        batchCalls += 1;
+        const { data, error } = await supabase.functions.invoke('measure', {
+          body: {
+            action: 'batch-verify-vendor-reports',
+            limit: CHUNK_SIZE,
+            useVendorAsGroundTruth: true,
+            trainingMode: true,
+          },
+        });
+
+        if (error) throw error;
+        if (!data?.ok) throw new Error(data?.error || 'Compare & train failed');
+
+        totalProcessed += (data.processed || 0);
+        totalConfirmed += (data.confirmed || 0);
+        totalDenied += (data.denied || 0);
+        totalFailed += (data.failed || 0);
+
+        await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+
+        const chunkWorkCount = (data.processed || 0) + (data.failed || 0);
+        const remaining = data.remaining ?? -1;
+
+        if (remaining === 0) {
+          hasMore = false;
+        } else if (chunkWorkCount === 0) {
+          consecutiveEmpty++;
+          hasMore = consecutiveEmpty < 5;
+        } else {
+          consecutiveEmpty = 0;
+          hasMore = true;
+        }
+
+        if (hasMore) {
+          toast.info(`Training batch ${batchCalls}: ${totalProcessed} compared, ${totalFailed} failed, ~${remaining > 0 ? remaining : '?'} remaining`);
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      toast.success(
+        `Training complete — ${totalProcessed} compared (${totalConfirmed} matched vendor, ${totalDenied} diverged${totalFailed > 0 ? `, ${totalFailed} failed` : ''})`
+      );
+      await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+    } catch (err: any) {
+      console.error('Compare & train error:', err);
+      toast.error(err?.message || 'Compare & train failed');
+    } finally {
+      setIsTraining(false);
+    }
+  };
+
   const handleExportTrainingSet = async () => {
     setIsExporting(true);
     try {
@@ -484,54 +628,57 @@ export function VendorVerificationDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
-          {stats.confirmed > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleExportTrainingSet}
-              disabled={isExporting || isRunning}
-            >
-              {isExporting ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-4 w-4 mr-2" />
-              )}
-              Export Training Set ({stats.confirmed})
-            </Button>
-          )}
-          {stats.confirmed > 0 && (
-            <Button
-              variant="outline"
-              onClick={handleRelinkDiagrams}
-              disabled={isRunning}
-            >
-              <Zap className="h-4 w-4 mr-2" />
-              Re-link {stats.confirmed} Diagrams
-            </Button>
-          )}
-          {stats.failed > 0 && !isRunning && (
-            <Button
-              variant="outline"
-              onClick={handleRunBatch}
-              disabled={isRunning}
-            >
-              <AlertTriangle className="h-4 w-4 mr-2" />
-              Retry {stats.failed} Failed
-            </Button>
-          )}
           <Button
-            onClick={handleRunBatch}
-            disabled={isRunning || (stats.pending === 0 && stats.processing === 0)}
+            variant="outline"
+            onClick={handleVerifyCoverage}
+            disabled={isCheckingCoverage || isTraining || isRunning}
+          >
+            {isCheckingCoverage ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <CheckCircle className="h-4 w-4 mr-2" />
+            )}
+            Verify AI Coverage
+          </Button>
+          <Button
+            onClick={handleCompareAndTrain}
+            disabled={isTraining || isCheckingCoverage || isRunning}
             size="lg"
           >
-            {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
-            {isRunning
-              ? 'Verifying...'
-              : stats.processing > 0
-                ? `Resume Verification (${stats.pending + stats.processing} remaining)`
-                : `Verify All ${stats.pending} Pending`}
+            {isTraining ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Zap className="h-4 w-4 mr-2" />
+            )}
+            {isTraining ? 'Comparing & Training...' : 'Compare & Train from Vendor Reports'}
           </Button>
         </div>
       </div>
+
+      {coverageReport && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{coverageReport.total}</p>
+                <p className="text-xs text-muted-foreground">Paid Reports</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-500">{coverageReport.withAi}</p>
+                <p className="text-xs text-muted-foreground">With AI Measurement</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-500">{coverageReport.missing}</p>
+                <p className="text-xs text-muted-foreground">Missing AI</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-500">{coverageReport.queued}</p>
+                <p className="text-xs text-muted-foreground">Queued for Generation</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Progress bar */}
       {isRunning && (
