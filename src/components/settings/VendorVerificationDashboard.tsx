@@ -598,21 +598,20 @@ export function VendorVerificationDashboard() {
               No vendor report sessions found. Import reports first via Bulk Import.
             </p>
           ) : (
-            <div className="w-full overflow-x-auto">
-            <Table>
+            <Table className="min-w-[1280px]">
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-8"></TableHead>
-                  <TableHead>Address</TableHead>
-                  <TableHead>Provider</TableHead>
-                  <TableHead>Source</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Ridge Δ</TableHead>
-                  <TableHead>Hip Δ</TableHead>
-                  <TableHead>Valley Δ</TableHead>
-                  <TableHead>Verdict</TableHead>
-                  <TableHead className="w-20">Actions</TableHead>
+                  <TableHead className="w-8 whitespace-nowrap"></TableHead>
+                  <TableHead className="whitespace-nowrap">Address</TableHead>
+                  <TableHead className="whitespace-nowrap">Provider</TableHead>
+                  <TableHead className="whitespace-nowrap">Source</TableHead>
+                  <TableHead className="whitespace-nowrap">Status</TableHead>
+                  <TableHead className="whitespace-nowrap">Score</TableHead>
+                  <TableHead className="whitespace-nowrap">Ridge Δ</TableHead>
+                  <TableHead className="whitespace-nowrap">Hip Δ</TableHead>
+                  <TableHead className="whitespace-nowrap">Valley Δ</TableHead>
+                  <TableHead className="whitespace-nowrap">Verdict</TableHead>
+                  <TableHead className="w-20 whitespace-nowrap">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -745,7 +744,6 @@ export function VendorVerificationDashboard() {
                         <TableRow key={`${session.id}-detail`}>
                           <TableCell colSpan={11} className="bg-muted/30">
                             <div className="p-4 space-y-4">
-                              {/* Feature breakdown bars - use fb OR fall back to ai_totals/traced_totals */}
                               {(fb || (session.ai_totals && session.traced_totals)) && (
                                 <div className="space-y-2">
                                   <p className="text-sm font-medium">AI vs Vendor Comparison</p>
@@ -773,7 +771,6 @@ export function VendorVerificationDashboard() {
                                 </div>
                               )}
 
-                              {/* Failure reason */}
                               {session.verification_status === 'failed' && session.verification_notes && (
                                 <div className="p-3 bg-destructive/10 rounded-md border border-destructive/20">
                                   <p className="text-sm text-destructive font-medium">Failure Reason</p>
@@ -781,7 +778,6 @@ export function VendorVerificationDashboard() {
                                 </div>
                               )}
 
-                              {/* Side-by-side drawings - always show */}
                               <div className="grid gap-4 lg:grid-cols-2">
                                   <div className="space-y-2">
                                     <div className="flex items-center justify-between gap-2">
@@ -869,7 +865,6 @@ export function VendorVerificationDashboard() {
                                   </div>
                                 </div>
 
-                              {/* Notes */}
                               <div className="pt-2 border-t">
                                 {editingNotes === session.id ? (
                                   <div className="space-y-2">
@@ -921,7 +916,6 @@ export function VendorVerificationDashboard() {
                 })}
               </TableBody>
             </Table>
-            </div>
           )}
         </CardContent>
       </Card>
