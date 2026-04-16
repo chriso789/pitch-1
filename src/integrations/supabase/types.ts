@@ -38371,6 +38371,7 @@ export type Database = {
           icon: string
           id: string
           is_read: boolean
+          location_id: string | null
           message: string
           metadata: Json | null
           tenant_id: string
@@ -38384,6 +38385,7 @@ export type Database = {
           icon?: string
           id?: string
           is_read?: boolean
+          location_id?: string | null
           message: string
           metadata?: Json | null
           tenant_id: string
@@ -38397,6 +38399,7 @@ export type Database = {
           icon?: string
           id?: string
           is_read?: boolean
+          location_id?: string | null
           message?: string
           metadata?: Json | null
           tenant_id?: string
@@ -38405,7 +38408,15 @@ export type Database = {
           updated_at?: string
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "user_notifications_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_roles: {
         Row: {
