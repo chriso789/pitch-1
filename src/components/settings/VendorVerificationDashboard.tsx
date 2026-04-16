@@ -272,16 +272,16 @@ export function VendorVerificationDashboard() {
   const handleRunBatch = async () => {
     setIsRunning(true);
     const CHUNK_SIZE = 5;
-    const MAX_BATCH_CALLS = 200; // Allow processing all 110+
+    const MAX_BATCH_CALLS = 200;
     let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0, totalSkipped = 0;
     let hasMore = true;
     let batchCalls = 0;
     let consecutiveEmpty = 0;
 
     try {
-      // First reset any previously failed sessions so they get retried
+      // Reset stale processing/queued AND previously failed sessions so they get retried
       await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports', resetFailed: true, limit: 0 },
+        body: { action: 'batch-verify-vendor-reports', resetFailed: true, resetStale: true, limit: 0 },
       });
 
       // Process in small chunks to avoid edge function timeouts
@@ -311,7 +311,7 @@ export function VendorVerificationDashboard() {
           hasMore = false;
         } else if (chunkWorkCount === 0) {
           consecutiveEmpty++;
-          hasMore = consecutiveEmpty < 3; // Allow a few empty rounds before stopping
+          hasMore = consecutiveEmpty < 5; // More tolerance before stopping
         } else {
           consecutiveEmpty = 0;
           hasMore = true;
