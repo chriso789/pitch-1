@@ -4323,9 +4323,11 @@ Deno.serve(async (req) => {
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
 
             if (!finalHasAi) {
-              const reason = !sessionLat || !sessionLng
-                ? 'No coordinates and geocoding failed'
-                : 'AI measurement engine returned no data';
+              const reason = lastErrorLog
+                ? `error_log: ${lastErrorLog}`
+                : (!sessionLat || !sessionLng
+                  ? 'No coordinates and geocoding failed'
+                  : 'AI measurement engine returned no data');
               console.log(`⚠️ Session ${session.id}: ${reason}, marking failed`);
               await adminSupabase
                 .from('roof_training_sessions')
