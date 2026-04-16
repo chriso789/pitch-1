@@ -598,6 +598,7 @@ export function VendorVerificationDashboard() {
               No vendor report sessions found. Import reports first via Bulk Import.
             </p>
           ) : (
+            <div className="w-full overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
