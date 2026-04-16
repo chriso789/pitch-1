@@ -432,7 +432,7 @@ export function VendorVerificationDashboard() {
       // 1. Pull every paid vendor report for this tenant
       const { data: reports, error: reportsErr } = await supabase
         .from('roof_vendor_reports')
-        .select('id, lat, lng, property_address')
+        .select('id, property_address')
         .eq('tenant_id', activeCompanyId!);
       if (reportsErr) throw reportsErr;
 
