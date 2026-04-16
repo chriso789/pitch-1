@@ -358,10 +358,10 @@ export function SchematicRoofDiagram({
     let imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
     
     // FIX: Correct for @2x retina bug where width*2 was stored instead of tile dimensions.
-    // Mapbox @2x doubles pixel density but covers the SAME geographic area as width x height.
-    // If stored size is suspiciously large (>1280 at zoom 20), it's likely the @2x bug.
-    if (imgWidth > 1280 || imgHeight > 1280) {
-      console.warn(`⚠️ Correcting likely @2x retina bug: ${imgWidth}x${imgHeight} → ${imgWidth / 2}x${imgHeight / 2}`);
+    // Only apply at high zoom levels (>=19) where @2x tiles cover the same geographic area.
+    // At lower zoom levels, larger images genuinely cover more area.
+    if ((imgWidth > 1280 || imgHeight > 1280) && zoom >= 19) {
+      console.warn(`⚠️ Correcting likely @2x retina bug at zoom ${zoom}: ${imgWidth}x${imgHeight} → ${imgWidth / 2}x${imgHeight / 2}`);
       imgWidth = Math.round(imgWidth / 2);
       imgHeight = Math.round(imgHeight / 2);
     }
@@ -383,6 +383,9 @@ export function SchematicRoofDiagram({
     facetPaths, 
     eaveSegments, 
     rakeSegments,
+    ridgeSegments,
+    hipSegments,
+    valleySegments,
     debugInfo,
     solarSegmentPolygons,
     geometrySource: memoGeometrySource,
@@ -511,7 +514,7 @@ export function SchematicRoofDiagram({
       // even when AI geometry is inaccurate (low confidence)
       if (perimCoords.length >= 3) {
         const perimVertices = perimCoords.slice(0, -1); // Remove closing duplicate
-        const SNAP_TOLERANCE_DEG = 0.0003; // ~30m — generous for low confidence
+        const SNAP_TOLERANCE_DEG = 0.00015; // ~15m — tighter to avoid pulling lines to wrong corners
         
         const snapToNearestPerimVertex = (pt: { lat: number; lng: number }) => {
           let bestDist = Infinity;
@@ -637,6 +640,9 @@ export function SchematicRoofDiagram({
         facetPaths: [],
         eaveSegments: [],
         rakeSegments: [],
+        ridgeSegments: [],
+        hipSegments: [],
+        valleySegments: [],
         debugInfo: null,
         solarSegmentPolygons: [],
         geometrySource: 'perimeter' as const,
@@ -826,17 +832,21 @@ export function SchematicRoofDiagram({
       }
     }
     
-    // Extract eaves and rakes directly from WKT and preserve all intermediate points.
-    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] }> = [];
-    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] }> = [];
+    // Extract eaves, rakes, and interior lines (ridges, hips, valleys) for auto-fit
+    type ClassifiedSegment = { start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] };
+    const classifiedEaves: ClassifiedSegment[] = [];
+    const classifiedRakes: ClassifiedSegment[] = [];
+    const classifiedRidges: ClassifiedSegment[] = [];
+    const classifiedHips: ClassifiedSegment[] = [];
+    const classifiedValleys: ClassifiedSegment[] = [];
     
     // Build linear feature paths from measurement data
     const linFeatures = plausibleLinearFeatures.map(f => {
       const svgCoords = f.coords.map(toSvg);
       
-      // If it's an eave or rake, also add to classified segments for thick line rendering
-      if (f.type === 'eave' && svgCoords.length >= 2) {
-        classifiedEaves.push({
+      // Classify segments for auto-fit
+      if (svgCoords.length >= 2) {
+        const segData: ClassifiedSegment = {
           start: svgCoords[0],
           end: svgCoords[svgCoords.length - 1],
           points: svgCoords,
@@ -844,17 +854,15 @@ export function SchematicRoofDiagram({
           gpsStart: f.coords[0],
           gpsEnd: f.coords[f.coords.length - 1],
           gpsPoints: f.coords,
-        });
-      } else if (f.type === 'rake' && svgCoords.length >= 2) {
-        classifiedRakes.push({
-          start: svgCoords[0],
-          end: svgCoords[svgCoords.length - 1],
-          points: svgCoords,
-          length: f.length,
-          gpsStart: f.coords[0],
-          gpsEnd: f.coords[f.coords.length - 1],
-          gpsPoints: f.coords,
-        });
+        };
+        
+        switch (f.type) {
+          case 'eave': classifiedEaves.push(segData); break;
+          case 'rake': classifiedRakes.push(segData); break;
+          case 'ridge': classifiedRidges.push(segData); break;
+          case 'hip': classifiedHips.push(segData); break;
+          case 'valley': classifiedValleys.push(segData); break;
+        }
       }
 
       return {
@@ -941,6 +949,9 @@ export function SchematicRoofDiagram({
       facetPaths: facetPathsData,
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
+      ridgeSegments: classifiedRidges,
+      hipSegments: classifiedHips,
+      valleySegments: classifiedValleys,
       debugInfo: { ...dbgInfo, solarMetadataAvailable: hasSolarMetadata, areaScaleFactor: northSouthScaleFactor, northSouthScaleFactor },
       solarSegmentPolygons: [],
       qaData,
@@ -996,7 +1007,7 @@ export function SchematicRoofDiagram({
       localShowOverlay &&
       !!satelliteImageUrl &&
       !!overlayImageStyle &&
-      (eaveSegments.length > 0 || rakeSegments.length > 0);
+      (eaveSegments.length > 0 || rakeSegments.length > 0 || ridgeSegments.length > 0 || hipSegments.length > 0 || valleySegments.length > 0);
 
     if (!shouldFitEdges || !overlayImageStyle) {
       setFittedEdges(null);
@@ -1017,6 +1028,9 @@ export function SchematicRoofDiagram({
       canvasHeight: height,
       eaveSegments,
       rakeSegments,
+      ridgeSegments,
+      hipSegments,
+      valleySegments,
     })
       .then(result => {
         if (!cancelled) {
@@ -1036,6 +1050,9 @@ export function SchematicRoofDiagram({
   }, [
     eaveSegments,
     rakeSegments,
+    ridgeSegments,
+    hipSegments,
+    valleySegments,
     height,
     localShowOverlay,
     overlayImageStyle,
@@ -1055,6 +1072,16 @@ export function SchematicRoofDiagram({
     points: seg.points && seg.points.length >= 2 ? seg.points : (rakeSegments[index]?.points ?? [seg.start, seg.end]),
     gpsPoints: seg.gpsPoints && seg.gpsPoints.length >= 2 ? seg.gpsPoints : rakeSegments[index]?.gpsPoints,
   }));
+  
+  // Build fitted interior line lookup for rendering
+  const fittedInteriorLookup = useMemo(() => {
+    if (!fittedEdges) return null;
+    return {
+      ridges: fittedEdges.ridgeSegments || [],
+      hips: fittedEdges.hipSegments || [],
+      valleys: fittedEdges.valleySegments || [],
+    };
+  }, [fittedEdges]);
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
@@ -1526,7 +1553,26 @@ export function SchematicRoofDiagram({
             
             const effectiveColor = FEATURE_COLORS[effectiveType as keyof typeof FEATURE_COLORS] || feature.color;
             
-            const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+            // Use fitted interior points if available from auto-fit
+            let renderPoints = feature.points;
+            if (fittedInteriorLookup) {
+              const fittedArray = feature.type === 'ridge' ? fittedInteriorLookup.ridges
+                : feature.type === 'hip' ? fittedInteriorLookup.hips
+                : feature.type === 'valley' ? fittedInteriorLookup.valleys
+                : null;
+              // Find the matching fitted segment by index within its type
+              if (fittedArray) {
+                const typeIndex = interiorFeatures.slice(0, i).filter(f => f.type === feature.type).length;
+                const fitted = fittedArray[typeIndex];
+                if (fitted) {
+                  renderPoints = fitted.points && fitted.points.length >= 2 
+                    ? fitted.points as { x: number; y: number }[]
+                    : [fitted.start as { x: number; y: number }, fitted.end as { x: number; y: number }];
+                }
+              }
+            }
+            
+            const pathD = `M ${renderPoints.map(p => `${p.x},${p.y}`).join(' L ')}`;
             const isDashed = effectiveType === 'step';
             
             // Set stroke width based on feature type
