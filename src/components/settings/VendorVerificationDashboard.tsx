@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
+import { VendorPdfPagePreview } from './VendorPdfPagePreview';
 
 interface VendorReportMeta {
   provider: string | null;
@@ -598,6 +599,7 @@ export function VendorVerificationDashboard() {
               No vendor report sessions found. Import reports first via Bulk Import.
             </p>
           ) : (
+            <div className="w-full overflow-x-auto">
             <Table className="min-w-[1280px]">
               <TableHeader>
                 <TableRow>
@@ -868,23 +870,10 @@ export function VendorVerificationDashboard() {
                                         }
                                         if (isPdf) {
                                           return (
-                                            <object
-                                              data={url}
-                                              type="application/pdf"
-                                              className="h-80 w-full rounded-md border bg-background"
-                                            >
-                                              <div className="flex h-full w-full items-center justify-center p-4 text-sm text-muted-foreground">
-                                                Preview blocked.{' '}
-                                                <a
-                                                  href={url}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  className="ml-1 text-primary underline"
-                                                >
-                                                  Open report
-                                                </a>
-                                              </div>
-                                            </object>
+                                            <VendorPdfPagePreview
+                                              url={url}
+                                              initialPage={1}
+                                            />
                                           );
                                         }
                                         return (
@@ -954,6 +943,7 @@ export function VendorVerificationDashboard() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
