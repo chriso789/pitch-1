@@ -824,69 +824,7 @@ export function VendorVerificationDashboard() {
                                     )}
                                   </div>
 
-                                  <div className="space-y-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-sm font-medium">Vendor evidence</p>
-                                      <div className="flex items-center gap-2 text-xs">
-                                        {session.vendor_diagram_url && (
-                                          <a
-                                            href={session.vendor_diagram_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-primary underline-offset-4 hover:underline"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            Open diagram
-                                          </a>
-                                        )}
-                                        {session.source_file_url && (
-                                          <a
-                                            href={session.source_file_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-primary underline-offset-4 hover:underline"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            Open report
-                                          </a>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {session.vendor_diagram_url ? (
-                                      (() => {
-                                        const url = session.vendor_diagram_url;
-                                        const isImage = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url);
-                                        const isPdf = /\.pdf(\?|$)/i.test(url);
-                                        if (isImage) {
-                                          return (
-                                            <img
-                                              src={url}
-                                              alt={`Vendor diagram for ${session.property_address || session.id}`}
-                                              className="h-80 w-full rounded-md border bg-background object-contain"
-                                              loading="lazy"
-                                            />
-                                          );
-                                        }
-                                        if (isPdf) {
-                                          return (
-                                            <VendorPdfPagePreview url={url} />
-                                          );
-                                        }
-                                        return (
-                                          <iframe
-                                            src={url}
-                                            title={`Vendor evidence for ${session.property_address || session.id}`}
-                                            className="h-80 w-full rounded-md border bg-background"
-                                          />
-                                        );
-                                      })()
-                                    ) : (
-                                      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                                        No vendor diagram preview is saved for this report.
-                                      </div>
-                                    )}
-                                  </div>
+                                  <VendorEvidencePanel session={session} />
                                 </div>
 
                               <div className="pt-2 border-t">
