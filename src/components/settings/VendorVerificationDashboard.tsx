@@ -474,6 +474,20 @@ export function VendorVerificationDashboard() {
           {stats.confirmed > 0 && (
             <Button
               variant="outline"
+              onClick={handleExportTrainingSet}
+              disabled={isExporting || isRunning}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Export Training Set ({stats.confirmed})
+            </Button>
+          )}
+          {stats.confirmed > 0 && (
+            <Button
+              variant="outline"
               onClick={handleRelinkDiagrams}
               disabled={isRunning}
             >
@@ -681,18 +695,36 @@ export function VendorVerificationDashboard() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {session.verification_verdict && (
+                          <div className="flex items-center gap-1">
                             <Button
                               size="sm"
                               variant="ghost"
+                              title="Run AI measurement for this property"
+                              disabled={runningOneId === session.id || isRunning}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleToggleVerdict(session.id, session.verification_verdict);
+                                handleRunOne(session.id);
                               }}
                             >
-                              Flip
+                              {runningOneId === session.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Play className="h-3 w-3" />
+                              )}
                             </Button>
-                          )}
+                            {session.verification_verdict && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleVerdict(session.id, session.verification_verdict);
+                                }}
+                              >
+                                Flip
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
 
