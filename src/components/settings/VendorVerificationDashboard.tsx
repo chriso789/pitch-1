@@ -416,18 +416,36 @@ export function VendorVerificationDashboard() {
               Re-link {stats.confirmed} Diagrams
             </Button>
           )}
-          <Button onClick={handleRunBatch} disabled={isRunning || stats.pending === 0} size="lg">
+          {stats.failed > 0 && !isRunning && (
+            <Button
+              variant="outline"
+              onClick={handleRunBatch}
+              disabled={isRunning}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Retry {stats.failed} Failed
+            </Button>
+          )}
+          <Button
+            onClick={handleRunBatch}
+            disabled={isRunning || (stats.pending === 0 && stats.processing === 0)}
+            size="lg"
+          >
             {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
-            {isRunning ? `Verifying ${stats.processing} in progress...` : `Verify All ${stats.pending} Pending`}
+            {isRunning
+              ? 'Verifying...'
+              : stats.processing > 0
+                ? `Resume Verification (${stats.pending + stats.processing} remaining)`
+                : `Verify All ${stats.pending} Pending`}
           </Button>
         </div>
       </div>
 
       {/* Progress bar */}
-      {(isRunning || stats.processing > 0) && (
+      {isRunning && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm text-muted-foreground">
-            <span>Processing {stats.processing} houses...</span>
+            <span>Processing houses...</span>
             <span>{Math.round(progressPct)}% complete</span>
           </div>
           <Progress value={progressPct} className="h-2" />
