@@ -870,23 +870,10 @@ export function VendorVerificationDashboard() {
                                         }
                                         if (isPdf) {
                                           return (
-                                            <object
-                                              data={url}
-                                              type="application/pdf"
-                                              className="h-80 w-full rounded-md border bg-background"
-                                            >
-                                              <div className="flex h-full w-full items-center justify-center p-4 text-sm text-muted-foreground">
-                                                Preview blocked.{' '}
-                                                <a
-                                                  href={url}
-                                                  target="_blank"
-                                                  rel="noreferrer"
-                                                  className="ml-1 text-primary underline"
-                                                >
-                                                  Open report
-                                                </a>
-                                              </div>
-                                            </object>
+                                            <VendorPdfPagePreview
+                                              url={url}
+                                              initialPage={1}
+                                            />
                                           );
                                         }
                                         return (
@@ -956,6 +943,7 @@ export function VendorVerificationDashboard() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
