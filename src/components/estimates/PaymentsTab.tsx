@@ -89,7 +89,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     queryFn: async () => {
       const { data, error } = await supabase
         .from('estimates')
-        .select('id, line_items, total_price, status')
+        .select('id, line_items, status')
         .eq('pipeline_entry_id', pipelineEntryId)
         .in('status', ['approved', 'sent', 'signed'])
         .order('created_at', { ascending: false })
