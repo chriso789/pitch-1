@@ -514,7 +514,7 @@ export function SchematicRoofDiagram({
       // even when AI geometry is inaccurate (low confidence)
       if (perimCoords.length >= 3) {
         const perimVertices = perimCoords.slice(0, -1); // Remove closing duplicate
-        const SNAP_TOLERANCE_DEG = 0.0003; // ~30m — generous for low confidence
+        const SNAP_TOLERANCE_DEG = 0.00015; // ~15m — tighter to avoid pulling lines to wrong corners
         
         const snapToNearestPerimVertex = (pt: { lat: number; lng: number }) => {
           let bestDist = Infinity;
