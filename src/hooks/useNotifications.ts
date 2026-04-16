@@ -47,13 +47,14 @@ export const useNotifications = () => {
     title: string,
     message: string,
     icon: string,
-    metadata?: any
+    metadata?: any,
+    locationId?: string
   ) => {
     try {
-      // Get tenant_id from user profile
+      // Get tenant_id and location from user profile
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id, active_tenant_id')
+        .select('tenant_id, active_tenant_id, active_location_id')
         .eq('id', userId)
         .single();
 
@@ -71,6 +72,7 @@ export const useNotifications = () => {
           icon,
           metadata,
           is_read: false,
+          location_id: locationId || profile?.active_location_id || null,
         })
         .select()
         .single();
