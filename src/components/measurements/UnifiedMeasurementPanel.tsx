@@ -1148,73 +1148,30 @@ function MeasurementHistorySection({
     );
   };
 
-  const clearLinkedAiApprovals = async (
-    measurementsToDelete: Array<Pick<MeasurementHistorySectionProps['aiMeasurements'][number], 'id' | 'created_at'>>
-  ) => {
-    if (measurementsToDelete.length === 0) return [] as string[];
-
-    const measurementIds = new Set(measurementsToDelete.map((measurement) => measurement.id));
-    const importedAtValues = new Set(
-      measurementsToDelete
-        .map((measurement) => measurement.created_at)
-        .filter((createdAt): createdAt is string => Boolean(createdAt))
-    );
-
-    const { data: approvals, error: approvalsError } = await supabase
-      .from('measurement_approvals')
-      .select('id, measurement_id, saved_tags')
-      .eq('pipeline_entry_id', pipelineEntryId);
-
-    if (approvalsError) throw approvalsError;
-
-    const linkedApprovalIds = (approvals || [])
-      .filter((approval) => {
-        const importedAt = typeof approval.saved_tags === 'object' && approval.saved_tags !== null
-          ? (approval.saved_tags as Record<string, unknown>).imported_at
-          : null;
-
-        return measurementIds.has(approval.measurement_id || '') ||
-          (typeof importedAt === 'string' && importedAtValues.has(importedAt));
-      })
-      .map((approval) => approval.id);
-
-    if (linkedApprovalIds.length === 0) return [] as string[];
-
-    const { data: entry, error: entryError } = await supabase
-      .from('pipeline_entries')
-      .select('metadata')
-      .eq('id', pipelineEntryId)
-      .single();
-
-    if (entryError) throw entryError;
-
-    const metadata = (entry?.metadata as Record<string, any>) || {};
-    if (linkedApprovalIds.includes(metadata.selected_measurement_approval_id)) {
-      const { error: clearActiveError } = await supabase
-        .from('pipeline_entries')
-        .update({
-          metadata: {
-            ...metadata,
-            selected_measurement_approval_id: null,
-          },
-        })
-        .eq('id', pipelineEntryId);
-
-      if (clearActiveError) throw clearActiveError;
+  const deleteAiMeasurementsViaEdge = async (measurementIds: string[]) => {
+    if (measurementIds.length === 0) {
+      return {
+        deletedMeasurementIds: [] as string[],
+        linkedApprovalIds: [] as string[],
+      };
     }
 
-    const { error: deleteApprovalsError } = await supabase
-      .from('measurement_approvals')
-      .delete()
-      .in('id', linkedApprovalIds);
+    const { data, error } = await supabase.functions.invoke('delete-ai-measurements', {
+      body: {
+        pipelineEntryId,
+        measurementIds,
+      },
+    });
 
-    if (deleteApprovalsError) throw deleteApprovalsError;
+    if (error) throw error;
+    if (!data?.success) {
+      throw new Error(data?.error || 'Measurement could not be removed from history');
+    }
 
-    queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
-    queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
-    queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
-
-    return linkedApprovalIds;
+    return {
+      deletedMeasurementIds: Array.isArray(data.deletedMeasurementIds) ? data.deletedMeasurementIds as string[] : [],
+      linkedApprovalIds: Array.isArray(data.linkedApprovalIds) ? data.linkedApprovalIds as string[] : [],
+    };
   };
 
   // Reset selection when closing select mode
@@ -1264,6 +1221,18 @@ function MeasurementHistorySection({
 
       const aiRowsToDelete = aiMeasurements.filter((measurement) => aiIds.includes(measurement.id));
 
+      let linkedApprovalIds: string[] = [];
+      if (aiIds.length > 0) {
+        const deleteResult = await deleteAiMeasurementsViaEdge(aiIds);
+        linkedApprovalIds = deleteResult.linkedApprovalIds;
+
+        if (deleteResult.deletedMeasurementIds.length !== aiIds.length) {
+          throw new Error('Some AI measurements could not be deleted');
+        }
+
+        removeAiMeasurementsFromCache(deleteResult.deletedMeasurementIds);
+      }
+
       if (vendorIds.length > 0) {
         const { data: deletedVendorRows, error: vendorDeleteError } = await supabase
           .from('roof_vendor_reports')
@@ -1276,29 +1245,11 @@ function MeasurementHistorySection({
           throw new Error('Some imported reports could not be deleted');
         }
       }
-      
-      let linkedApprovalIds: string[] = [];
-      if (aiRowsToDelete.length > 0) {
-        linkedApprovalIds = await clearLinkedAiApprovals(aiRowsToDelete);
-
-        const { data: deletedAiRows, error: aiDeleteError } = await supabase
-          .from('roof_measurements')
-          .delete()
-          .in('id', aiIds)
-          .select('id');
-
-        if (aiDeleteError) throw aiDeleteError;
-        if ((deletedAiRows || []).length !== aiIds.length) {
-          throw new Error('Some AI measurements could not be deleted');
-        }
-
-        removeAiMeasurementsFromCache(aiIds);
-      }
 
       toast({
         title: 'Deleted Successfully',
         description: linkedApprovalIds.length > 0
-          ? `Removed ${selectedArray.length} measurement(s) from history and cleared linked saved entries`
+          ? `Removed ${selectedArray.length} measurement(s) from history and preserved linked saved entries`
           : `Removed ${selectedArray.length} measurement(s) from history`,
       });
 
@@ -1306,6 +1257,9 @@ function MeasurementHistorySection({
       setSelectedIds(new Set());
       setSelectMode(false);
       setBulkDeleteDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['vendor-reports-history', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: aiMeasurementsQueryKey });
     } catch (error) {
@@ -1478,23 +1432,12 @@ function MeasurementHistorySection({
   const handleDeleteAiMeasurement = async (measurementId: string) => {
     setIsDeleting(true);
     try {
-      const measurement = aiMeasurements.find((item) => item.id === measurementId);
-      const linkedApprovalIds = await clearLinkedAiApprovals(
-        measurement ? [{ id: measurement.id, created_at: measurement.created_at }] : []
-      );
-
-      const { data: deletedRows, error } = await supabase
-        .from('roof_measurements')
-        .delete()
-        .eq('id', measurementId)
-        .select('id');
-
-      if (error) throw error;
-      if (!(deletedRows || []).length) {
+      const deleteResult = await deleteAiMeasurementsViaEdge([measurementId]);
+      if (!deleteResult.deletedMeasurementIds.length) {
         throw new Error('Measurement could not be removed from history');
       }
 
-      removeAiMeasurementsFromCache([measurementId]);
+      removeAiMeasurementsFromCache(deleteResult.deletedMeasurementIds);
       setSelectedIds((current) => {
         const next = new Set(current);
         next.delete(measurementId);
@@ -1503,10 +1446,13 @@ function MeasurementHistorySection({
 
       toast({
         title: 'Measurement Deleted',
-        description: linkedApprovalIds.length > 0
-          ? 'Removed from history and cleared linked saved entries'
+        description: deleteResult.linkedApprovalIds.length > 0
+          ? 'Removed from history and preserved linked saved entries'
           : 'Removed from history',
       });
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: aiMeasurementsQueryKey });
     } catch (error) {
       console.error('AI measurement delete error:', error);
