@@ -1007,7 +1007,7 @@ export function SchematicRoofDiagram({
       localShowOverlay &&
       !!satelliteImageUrl &&
       !!overlayImageStyle &&
-      (eaveSegments.length > 0 || rakeSegments.length > 0);
+      (eaveSegments.length > 0 || rakeSegments.length > 0 || ridgeSegments.length > 0 || hipSegments.length > 0 || valleySegments.length > 0);
 
     if (!shouldFitEdges || !overlayImageStyle) {
       setFittedEdges(null);
@@ -1028,6 +1028,9 @@ export function SchematicRoofDiagram({
       canvasHeight: height,
       eaveSegments,
       rakeSegments,
+      ridgeSegments,
+      hipSegments,
+      valleySegments,
     })
       .then(result => {
         if (!cancelled) {
@@ -1047,6 +1050,9 @@ export function SchematicRoofDiagram({
   }, [
     eaveSegments,
     rakeSegments,
+    ridgeSegments,
+    hipSegments,
+    valleySegments,
     height,
     localShowOverlay,
     overlayImageStyle,
@@ -1066,6 +1072,16 @@ export function SchematicRoofDiagram({
     points: seg.points && seg.points.length >= 2 ? seg.points : (rakeSegments[index]?.points ?? [seg.start, seg.end]),
     gpsPoints: seg.gpsPoints && seg.gpsPoints.length >= 2 ? seg.gpsPoints : rakeSegments[index]?.gpsPoints,
   }));
+  
+  // Build fitted interior line lookup for rendering
+  const fittedInteriorLookup = useMemo(() => {
+    if (!fittedEdges) return null;
+    return {
+      ridges: fittedEdges.ridgeSegments || [],
+      hips: fittedEdges.hipSegments || [],
+      valleys: fittedEdges.valleySegments || [],
+    };
+  }, [fittedEdges]);
 
   // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
   const totals = useMemo(() => {
