@@ -1,35 +1,33 @@
 
 
-# Zelle Payment Flow — Completion Plan
+# Invoice & Payment Enhancements Plan
 
-## What's Already Done
-- Database: `tenant_settings` has all Zelle columns, `payment_links` has `payment_type`, `shareable_token`, `zelle_confirmation_status`
-- Edge function: `zelle-payment-page` handles GET (fetch details) and POST (notify sent) — deployed and working
-- Public page: `ZellePaymentPage.tsx` at `/pay/:token` — fully built with copy buttons, instructions, notify flow
-- Settings: `ZelleSettings.tsx` — fully built, saves to `tenant_settings`
-- Routes: `/pay/:token` registered in both `App.tsx` and `publicRoutes.tsx`
+## Problem
+1. **Invoice line items show empty** when the estimate was created via the `estimates` table (not `enhanced_estimates`). The current query only checks `enhanced_estimates`. Need to also check the `estimates` table as a fallback.
+2. **Invoice should account for previous payments** — when creating a new invoice, the dialog should show total already paid and remaining balance, and optionally pre-fill the remaining amount.
+3. **Record Payment dialog needs a "Scan" button** and a QuickBooks/bank account selector for matching payments.
 
-## What Needs to Be Built (2 changes)
+## Changes
 
-### 1. PaymentsTab — Add Zelle link generation and confirmation
-**File:** `src/components/estimates/PaymentsTab.tsx`
+### 1. PaymentsTab.tsx — Fix estimate line item lookup (fallback to `estimates` table)
+- Add a second query to the `estimates` table when `enhanced_estimates` returns no results
+- Parse the `estimates` table `line_items` format (may differ slightly)
+- This ensures the invoice dialog always shows line items from the approved estimate regardless of which table stores it
 
-Add:
-- Query for `zelleLinks` from `payment_links` filtered by `pipeline_entry_id` and `payment_type = 'zelle'`
-- Query for `zelleSettings` from `tenant_settings` to check if Zelle is enabled
-- `handleSendZelleLink(invoice)` — inserts a `payment_links` row with `payment_type: 'zelle'`, generates a `shareable_token`, copies the `/pay/{token}` URL to clipboard
-- `handleConfirmZellePayment(paymentLink, invoice)` — inserts a `project_payments` row, updates invoice balance/status, marks the payment link as confirmed
-- Invoice action dropdown gets a "Zelle Payment Link" option (alongside existing Stripe option)
-- Pending Zelle links show a "Confirm Zelle" button on the invoice row
+### 2. PaymentsTab.tsx — Show previous payments context in invoice dialog
+- Display a summary above the line items: "Contract Value", "Already Paid", "Remaining Balance"
+- Add a "Bill Remaining Balance" quick-fill button that sets the invoice total to `sellingPrice - totalPaid`
+- When line items are loaded, if total paid > 0, show an info banner: "Previously paid: $X,XXX.XX"
 
-### 2. CustomerPortalPublic — Fix broken Zelle link
-**File:** `src/pages/CustomerPortalPublic.tsx`
-
-Replace the broken `/pay/zelle?amount=...&ref=...` href with a lookup against existing `payment_links` for that invoice. If a Zelle payment link exists, use `/pay/{shareable_token}`. If none exists, hide the Zelle button (since only the CRM user should generate links, not the customer portal).
+### 3. PaymentsTab.tsx — Add Scan & QuickBooks to Record Payment dialog
+- Add a **"Scan Payment"** button (camera icon) that opens the device camera or file picker to capture a check/receipt image, then uses AI (existing `parse-invoice-document` edge function pattern) to extract amount, date, and reference number
+- Add **"QuickBooks"** and **"Bank Account"** as payment method options in the dropdown
+- When "QuickBooks" is selected, show a sub-selector to pick from QBO payment records (fetches from `qbo_connections` → lists recent unmatched payments via the QBO API)
+- If no QBO connection exists, show a "Connect QuickBooks" link to settings
 
 ### Technical Details
-- Token generation uses `crypto.randomUUID().replace(/-/g, '').slice(0, 16)` for short, URL-safe tokens
-- Zelle confirmation records payment with `payment_method: 'zelle'` and reference `ZELLE-{token}`
-- Invoice balance recalculation: `Math.max(currentBalance - paymentAmount, 0)`, status set to `paid` if zero, `partial` if reduced
-- No migration needed — all columns already exist
+- **Estimate fallback query**: Query `estimates` table with `.eq('pipeline_entry_id', pipelineEntryId).in('status', ['approved','sent','signed'])` when `enhanced_estimates` returns empty
+- **Scan button**: Uses `navigator.mediaDevices.getUserMedia` or file input for image capture, sends to existing `parse-invoice-document` edge function, auto-fills amount/date/reference fields
+- **QBO payment matching**: New edge function `qbo-list-payments` that fetches recent payments from QBO API filtered by customer, returns them for selection in the UI
+- All changes are in `PaymentsTab.tsx` plus one new edge function
 
