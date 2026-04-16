@@ -54,13 +54,24 @@ export default function NotificationsPage() {
       ? notifications.filter(n => !n.read)
       : notifications.filter(n => n.type === filter);
 
+  const getNotificationLink = (notification: any): string | null => {
+    const d = notification.data;
+    if (!d) return null;
+    if (d.link) return d.link;
+    if (d.pipeline_entry_id) return `/lead/${d.pipeline_entry_id}`;
+    if (d.project_id) return `/project/${d.project_id}`;
+    if (d.contact_id) return `/contact/${d.contact_id}`;
+    if (d.job_id) return `/job/${d.job_id}`;
+    if (d.proposal_id) return `/proposals/create/${d.proposal_id}`;
+    if (d.agreement_instance_id) return `/agreements/${d.agreement_instance_id}`;
+    return null;
+  };
+
   const handleNotificationClick = (notification: any) => {
     markAsRead(notification.id);
-    
-    if (notification.data?.contact_id) {
-      navigate(`/contact/${notification.data.contact_id}`);
-    } else if (notification.data?.job_id) {
-      navigate(`/job/${notification.data.job_id}`);
+    const link = getNotificationLink(notification);
+    if (link) {
+      navigate(link);
     }
   };
 

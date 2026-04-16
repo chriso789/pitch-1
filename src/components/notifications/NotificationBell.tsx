@@ -40,21 +40,24 @@ export function NotificationBell() {
     }
   };
 
+  const getNotificationLink = (notification: any): string | null => {
+    const d = notification.data;
+    if (!d) return null;
+    if (d.link) return d.link;
+    if (d.pipeline_entry_id) return `/lead/${d.pipeline_entry_id}`;
+    if (d.project_id) return `/project/${d.project_id}`;
+    if (d.contact_id) return `/contact/${d.contact_id}`;
+    if (d.job_id) return `/job/${d.job_id}`;
+    if (d.proposal_id) return `/proposals/create/${d.proposal_id}`;
+    if (d.agreement_instance_id) return `/agreements/${d.agreement_instance_id}`;
+    return null;
+  };
+
   const handleNotificationClick = (notification: any) => {
     markAsRead(notification.id);
-    
-    // Navigate based on notification data
-    if (notification.data?.pipeline_entry_id) {
-      navigate(`/lead/${notification.data.pipeline_entry_id}`);
-      setOpen(false);
-    } else if (notification.data?.contact_id) {
-      navigate(`/contact/${notification.data.contact_id}`);
-      setOpen(false);
-    } else if (notification.data?.job_id) {
-      navigate(`/job/${notification.data.job_id}`);
-      setOpen(false);
-    } else if (notification.data?.proposal_id) {
-      navigate(`/proposals/create/${notification.data.proposal_id}`);
+    const link = getNotificationLink(notification);
+    if (link) {
+      navigate(link);
       setOpen(false);
     }
   };
@@ -98,11 +101,14 @@ export function NotificationBell() {
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.slice(0, 20).map((notification) => (
+              {notifications.slice(0, 20).map((notification) => {
+                const link = getNotificationLink(notification);
+                return (
                 <div
                   key={notification.id}
                   className={cn(
-                    'p-3 hover:bg-muted/50 cursor-pointer transition-colors relative group',
+                    'p-3 hover:bg-muted/50 transition-colors relative group',
+                    link && 'cursor-pointer',
                     !notification.read && 'bg-primary/5'
                   )}
                   onClick={() => handleNotificationClick(notification)}
@@ -121,9 +127,14 @@ export function NotificationBell() {
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
                         {notification.message}
                       </p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        {formatDistanceToNow(notification.createdAt, { addSuffix: true })}
-                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-muted-foreground">
+                          {formatDistanceToNow(notification.createdAt, { addSuffix: true })}
+                        </p>
+                        {link && (
+                          <span className="text-xs text-primary font-medium">View →</span>
+                        )}
+                      </div>
                     </div>
                     {!notification.read && (
                       <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0 mt-1.5" />
@@ -158,7 +169,8 @@ export function NotificationBell() {
                     </Button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </ScrollArea>
