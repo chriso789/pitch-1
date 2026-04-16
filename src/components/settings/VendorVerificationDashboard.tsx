@@ -921,6 +921,7 @@ export function VendorVerificationDashboard() {
                 })}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>
