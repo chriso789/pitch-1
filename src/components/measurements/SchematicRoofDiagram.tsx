@@ -829,9 +829,13 @@ export function SchematicRoofDiagram({
       }
     }
     
-    // Extract eaves and rakes directly from WKT and preserve all intermediate points.
-    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] }> = [];
-    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] }> = [];
+    // Extract eaves, rakes, and interior lines (ridges, hips, valleys) for auto-fit
+    type ClassifiedSegment = { start: { x: number; y: number }; end: { x: number; y: number }; points: { x: number; y: number }[]; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord; gpsPoints: GPSCoord[] };
+    const classifiedEaves: ClassifiedSegment[] = [];
+    const classifiedRakes: ClassifiedSegment[] = [];
+    const classifiedRidges: ClassifiedSegment[] = [];
+    const classifiedHips: ClassifiedSegment[] = [];
+    const classifiedValleys: ClassifiedSegment[] = [];
     
     // Build linear feature paths from measurement data
     const linFeatures = plausibleLinearFeatures.map(f => {
