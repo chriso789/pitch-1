@@ -747,15 +747,78 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               Record Payment
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Record Payment</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <Label>Amount</Label>
-                <Input type="number" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" />
+            <div className="space-y-4 py-2">
+              {/* Payment context summary */}
+              <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Contract</p>
+                  <p className="text-xs font-bold">{formatCurrency(sellingPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Paid</p>
+                  <p className="text-xs font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Remaining</p>
+                  <p className={cn("text-xs font-bold", contractBalance > 0 ? "text-yellow-600" : "text-green-600")}>
+                    {formatCurrency(contractBalance)}
+                  </p>
+                </div>
               </div>
+
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Label>Amount</Label>
+                  <Input type="number" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" />
+                </div>
+                {contractBalance > 0 && (
+                  <div className="flex items-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 text-xs whitespace-nowrap"
+                      onClick={() => setPaymentAmount(String(contractBalance.toFixed(2)))}
+                    >
+                      Bill Remaining
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Scan button */}
+              <div>
+                <input
+                  ref={scanInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleScanPayment(file);
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={scanningPayment}
+                  onClick={() => scanInputRef.current?.click()}
+                >
+                  {scanningPayment ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4 mr-2" />
+                  )}
+                  {scanningPayment ? 'Scanning...' : 'Scan Check / Receipt'}
+                </Button>
+              </div>
+
               <div>
                 <Label>Payment Method</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -767,10 +830,31 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                     <SelectItem value="zelle">Zelle</SelectItem>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="financing">Financing</SelectItem>
+                    <SelectItem value="quickbooks">QuickBooks</SelectItem>
+                    <SelectItem value="bank_account">Bank Account</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* QuickBooks connection hint */}
+              {paymentMethod === 'quickbooks' && !qboConnection && (
+                <div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded text-xs text-yellow-700">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  <span>
+                    QuickBooks not connected.{' '}
+                    <a href="/settings" className="underline font-medium">Connect in Settings</a>
+                  </span>
+                </div>
+              )}
+
+              {paymentMethod === 'quickbooks' && qboConnection && (
+                <div className="flex items-center gap-2 p-2 bg-green-500/10 rounded text-xs text-green-700">
+                  <Building2 className="h-4 w-4 flex-shrink-0" />
+                  <span>Connected to QuickBooks (Realm: {qboConnection.realm_id})</span>
+                </div>
+              )}
+
               <div>
                 <Label>Date</Label>
                 <Input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
