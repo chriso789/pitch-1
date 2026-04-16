@@ -1698,6 +1698,9 @@ async function persistMeasurement(
   userId?: string,
   analysisParams?: AnalysisParams
 ) {
+  // NOTE: insert_measurement RPC accepts only 7 params; extra analysis params caused silent
+  // schema-mismatch failures that left batch verification with no persisted row. We pass only
+  // the supported params here and rely on the caller to write analysis metadata separately.
   const { data, error } = await supabase.rpc('insert_measurement', {
     p_property_id: m.property_id,
     p_source: m.source,
@@ -1706,14 +1709,83 @@ async function persistMeasurement(
     p_summary: m.summary,
     p_created_by: userId || null,
     p_geom_wkt: m.geom_wkt || null,
-    // Store analysis parameters for overlay alignment
-    p_gps_coordinates: analysisParams ? { lat: analysisParams.lat, lng: analysisParams.lng } : null,
-    p_analysis_zoom: analysisParams?.zoom || 20,
-    p_analysis_image_size: analysisParams?.imageSize || { width: 640, height: 640 }
   });
 
   if (error) throw new Error(`DB insert failed: ${error.message}`);
   return data;
+}
+
+// ── Inline schematic SVG renderer (used by batch verify so each AI measurement
+//    has a vector_diagram_svg the dashboard can show without re-fetching imagery) ──
+function buildSchematicSvgFromFeatures(
+  geomWkt: string | null | undefined,
+  features: Array<{ type: string; wkt: string }>,
+  width = 480,
+  height = 360,
+): string | null {
+  const FEATURE_COLORS: Record<string, string> = {
+    ridge: '#dc2626',  // red
+    hip: '#f59e0b',    // amber
+    valley: '#2563eb', // blue
+    eave: '#16a34a',   // green
+    rake: '#9333ea',   // purple
+  };
+
+  const parsePoints = (wkt: string): Array<[number, number]> => {
+    if (!wkt) return [];
+    const m = wkt.match(/\(\(?([^)]+)\)?\)/);
+    if (!m) return [];
+    return m[1].split(',').map(p => {
+      const [x, y] = p.trim().split(/\s+/).map(Number);
+      return [x, y] as [number, number];
+    }).filter(([x, y]) => Number.isFinite(x) && Number.isFinite(y));
+  };
+
+  const footprint = parsePoints(geomWkt || '');
+  const featureLines = features
+    .map(f => ({ type: f.type, pts: parsePoints(f.wkt) }))
+    .filter(f => f.pts.length >= 2);
+
+  const allPts = [...footprint, ...featureLines.flatMap(f => f.pts)];
+  if (allPts.length === 0) return null;
+
+  const xs = allPts.map(p => p[0]);
+  const ys = allPts.map(p => p[1]);
+  const minX = Math.min(...xs), maxX = Math.max(...xs);
+  const minY = Math.min(...ys), maxY = Math.max(...ys);
+  const spanX = Math.max(maxX - minX, 1e-9);
+  const spanY = Math.max(maxY - minY, 1e-9);
+  const pad = 24;
+  const scale = Math.min((width - 2 * pad) / spanX, (height - 2 * pad) / spanY);
+  const tx = (x: number) => pad + (x - minX) * scale;
+  const ty = (y: number) => height - pad - (y - minY) * scale; // flip Y for SVG
+
+  const parts: string[] = [];
+  parts.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">`);
+  parts.push(`<rect width="${width}" height="${height}" fill="#fafafa"/>`);
+
+  if (footprint.length >= 3) {
+    const d = footprint.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)},${ty(p[1]).toFixed(1)}`).join(' ') + ' Z';
+    parts.push(`<path d="${d}" fill="rgba(0,0,0,0.04)" stroke="#111" stroke-width="1.5"/>`);
+  }
+
+  for (const f of featureLines) {
+    const color = FEATURE_COLORS[f.type.toLowerCase()] || '#6b7280';
+    const d = f.pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${tx(p[0]).toFixed(1)},${ty(p[1]).toFixed(1)}`).join(' ');
+    parts.push(`<path d="${d}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round"/>`);
+  }
+
+  // Legend
+  const legendY = height - 14;
+  let lx = 8;
+  for (const [type, color] of Object.entries(FEATURE_COLORS)) {
+    parts.push(`<rect x="${lx}" y="${legendY - 8}" width="10" height="3" fill="${color}"/>`);
+    parts.push(`<text x="${lx + 14}" y="${legendY}" font-family="sans-serif" font-size="9" fill="#333">${type}</text>`);
+    lx += 52;
+  }
+
+  parts.push(`</svg>`);
+  return parts.join('');
 }
 
 async function persistFacets(supabase: any, measurementId: string, faces: RoofFace[]) {
