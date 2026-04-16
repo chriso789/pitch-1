@@ -367,6 +367,69 @@ export function VendorVerificationDashboard() {
     queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
   };
 
+  const handleRunOne = async (sessionId: string) => {
+    setRunningOneId(sessionId);
+    try {
+      // Reset this single session so the batch picks it up
+      const { error: resetErr } = await supabase
+        .from('roof_training_sessions')
+        .update({
+          verification_status: null,
+          verification_verdict: null,
+          verification_notes: null,
+          verification_run_at: null,
+          verification_feature_breakdown: null,
+        } as any)
+        .eq('id', sessionId);
+      if (resetErr) throw resetErr;
+
+      // Run a tiny batch of 1 — the verifier always picks the next pending
+      const { data, error } = await supabase.functions.invoke('measure', {
+        body: { action: 'batch-verify-vendor-reports', limit: 1 },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Run failed');
+
+      toast.success(
+        `Run complete — ${data.confirmed || 0} confirmed, ${data.denied || 0} denied, ${data.failed || 0} failed`,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ['vendor-verification-sessions', activeCompanyId],
+      });
+    } catch (err: any) {
+      console.error('Run one error:', err);
+      toast.error(err?.message || 'Failed to run AI measurement');
+    } finally {
+      setRunningOneId(null);
+    }
+  };
+
+  const handleExportTrainingSet = async () => {
+    setIsExporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'export-unet-training-set',
+        { body: {} },
+      );
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Export failed');
+
+      toast.success(
+        `Exported ${data.data.included_records} training records (${data.data.skipped} skipped)`,
+      );
+
+      // Open signed URL in a new tab so the user can download the JSONL
+      if (data.data.signed_url) {
+        window.open(data.data.signed_url, '_blank', 'noopener');
+      }
+    } catch (err: any) {
+      console.error('Export training set error:', err);
+      toast.error(err?.message || 'Failed to export training set');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const getVarianceColor = (pct: number) => {
     const abs = Math.abs(pct);
     if (abs < 5) return 'text-green-500';
