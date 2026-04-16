@@ -12,6 +12,7 @@ import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
 import { VendorPdfPagePreview } from './VendorPdfPagePreview';
+import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
 
 interface VendorReportMeta {
   provider: string | null;
