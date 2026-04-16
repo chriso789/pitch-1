@@ -11,7 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
-import { VendorPdfPagePreview } from './VendorPdfPagePreview';
+import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
 
 interface VendorReportMeta {
   provider: string | null;
@@ -823,69 +823,7 @@ export function VendorVerificationDashboard() {
                                     )}
                                   </div>
 
-                                  <div className="space-y-2">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <p className="text-sm font-medium">Vendor evidence</p>
-                                      <div className="flex items-center gap-2 text-xs">
-                                        {session.vendor_diagram_url && (
-                                          <a
-                                            href={session.vendor_diagram_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-primary underline-offset-4 hover:underline"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            Open diagram
-                                          </a>
-                                        )}
-                                        {session.source_file_url && (
-                                          <a
-                                            href={session.source_file_url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="text-primary underline-offset-4 hover:underline"
-                                            onClick={(e) => e.stopPropagation()}
-                                          >
-                                            Open report
-                                          </a>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {session.vendor_diagram_url ? (
-                                      (() => {
-                                        const url = session.vendor_diagram_url;
-                                        const isImage = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url);
-                                        const isPdf = /\.pdf(\?|$)/i.test(url);
-                                        if (isImage) {
-                                          return (
-                                            <img
-                                              src={url}
-                                              alt={`Vendor diagram for ${session.property_address || session.id}`}
-                                              className="h-80 w-full rounded-md border bg-background object-contain"
-                                              loading="lazy"
-                                            />
-                                          );
-                                        }
-                                        if (isPdf) {
-                                          return (
-                                            <VendorPdfPagePreview url={url} />
-                                          );
-                                        }
-                                        return (
-                                          <iframe
-                                            src={url}
-                                            title={`Vendor evidence for ${session.property_address || session.id}`}
-                                            className="h-80 w-full rounded-md border bg-background"
-                                          />
-                                        );
-                                      })()
-                                    ) : (
-                                      <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
-                                        No vendor diagram preview is saved for this report.
-                                      </div>
-                                    )}
-                                  </div>
+                                  <VendorEvidencePanel session={session} />
                                 </div>
 
                               <div className="pt-2 border-t">
@@ -945,3 +883,125 @@ export function VendorVerificationDashboard() {
     </div>
   );
 }
+
+// ────────────────────────────────────────────────────────────────────────────
+// VendorEvidencePanel
+// Renders the parsed vendor diagram (vector segments extracted from the PDF)
+// alongside controls/links. Surfaces the parsed length-totals back via local
+// state so the parent comparison row could consume them in the future.
+// ────────────────────────────────────────────────────────────────────────────
+function VendorEvidencePanel({ session }: { session: VerificationSession }) {
+  const [parsed, setParsed] = useState<ParsedDiagram | null>(null);
+  const url = session.vendor_diagram_url;
+  const isImage = url ? /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url) : false;
+  const isPdf = url ? /\.pdf(\?|$)/i.test(url) : false;
+
+  // Per-edge-type comparison: parsed vendor PDF lengths (relative units) vs
+  // AI totals (real feet). We can only show the AI side in absolute feet —
+  // the vendor parsed lengths are in PDF user units so we display the
+  // *proportion* of total vendor linear footage made up by each type. That's
+  // still useful: it tells us at a glance whether the AI is finding the same
+  // mix of edge types the vendor diagram has.
+  const vendorTotal = parsed
+    ? Object.values(parsed.lengthsByType).reduce((a, b) => a + b, 0)
+    : 0;
+  const aiByType: Record<string, number> = {};
+  for (const f of session.ai_linear_features || []) {
+    const t = ((f as any)?.type || 'unknown').toLowerCase();
+    aiByType[t] = (aiByType[t] || 0) + ((f as any)?.length_ft || 0);
+  }
+  const aiTotal = Object.values(aiByType).reduce((a, b) => a + b, 0);
+
+  const ROWS: Array<{ key: string; label: string }> = [
+    { key: 'ridge', label: 'Ridge' },
+    { key: 'hip', label: 'Hip' },
+    { key: 'valley', label: 'Valley' },
+    { key: 'eave', label: 'Eave / Perimeter' },
+    { key: 'rake', label: 'Rake' },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">Vendor diagram (parsed vectors)</p>
+        <div className="flex items-center gap-2 text-xs">
+          {url && (
+            <a
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Open report
+            </a>
+          )}
+          {session.source_file_url && session.source_file_url !== url && (
+            <a
+              href={session.source_file_url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-primary underline-offset-4 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
+              Source PDF
+            </a>
+          )}
+        </div>
+      </div>
+
+      {url ? (
+        isPdf ? (
+          <VendorDiagramParsedCanvas url={url} width={420} height={320} onParsed={setParsed} />
+        ) : isImage ? (
+          <img
+            src={url}
+            alt={`Vendor diagram for ${session.property_address || session.id}`}
+            className="h-80 w-full rounded-md border bg-background object-contain"
+            loading="lazy"
+          />
+        ) : (
+          <iframe
+            src={url}
+            title={`Vendor evidence for ${session.property_address || session.id}`}
+            className="h-80 w-full rounded-md border bg-background"
+          />
+        )
+      ) : (
+        <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
+          No vendor diagram is attached to this report.
+        </div>
+      )}
+
+      {parsed && vendorTotal > 0 && (
+        <div className="rounded-md border bg-background p-2 text-xs">
+          <p className="mb-1 font-medium text-muted-foreground">
+            Edge-type mix (AI feet vs vendor proportion)
+          </p>
+          <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-0.5">
+            {ROWS.map(({ key, label }) => {
+              const vPct = ((parsed.lengthsByType[key] || 0) / vendorTotal) * 100;
+              const aiFt = aiByType[key] || 0;
+              const aiPct = aiTotal > 0 ? (aiFt / aiTotal) * 100 : 0;
+              const delta = Math.abs(vPct - aiPct);
+              const tone =
+                delta < 5 ? 'text-green-500' : delta < 15 ? 'text-yellow-500' : 'text-destructive';
+              return (
+                <>
+                  <span key={`${key}-l`} className="capitalize">{label}</span>
+                  <span key={`${key}-ai`} className="text-muted-foreground">
+                    AI {aiFt.toFixed(0)}ft ({aiPct.toFixed(0)}%)
+                  </span>
+                  <span key={`${key}-v`} className={tone}>
+                    Vendor {vPct.toFixed(0)}%
+                  </span>
+                </>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
