@@ -358,10 +358,11 @@ export function SchematicRoofDiagram({
     let imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
     
     // FIX: Correct for @2x retina bug where width*2 was stored instead of tile dimensions.
-    // Mapbox @2x doubles pixel density but covers the SAME geographic area as width x height.
-    // If stored size is suspiciously large (>1280 at zoom 20), it's likely the @2x bug.
-    if (imgWidth > 1280 || imgHeight > 1280) {
-      console.warn(`⚠️ Correcting likely @2x retina bug: ${imgWidth}x${imgHeight} → ${imgWidth / 2}x${imgHeight / 2}`);
+    // Only apply at high zoom levels (>=19) where @2x tiles cover the same geographic area.
+    // At lower zoom levels, larger images genuinely cover more area.
+    const zoom = measurement.analysis_zoom || 20;
+    if ((imgWidth > 1280 || imgHeight > 1280) && zoom >= 19) {
+      console.warn(`⚠️ Correcting likely @2x retina bug at zoom ${zoom}: ${imgWidth}x${imgHeight} → ${imgWidth / 2}x${imgHeight / 2}`);
       imgWidth = Math.round(imgWidth / 2);
       imgHeight = Math.round(imgHeight / 2);
     }
