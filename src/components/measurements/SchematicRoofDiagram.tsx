@@ -1553,7 +1553,26 @@ export function SchematicRoofDiagram({
             
             const effectiveColor = FEATURE_COLORS[effectiveType as keyof typeof FEATURE_COLORS] || feature.color;
             
-            const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+            // Use fitted interior points if available from auto-fit
+            let renderPoints = feature.points;
+            if (fittedInteriorLookup) {
+              const fittedArray = feature.type === 'ridge' ? fittedInteriorLookup.ridges
+                : feature.type === 'hip' ? fittedInteriorLookup.hips
+                : feature.type === 'valley' ? fittedInteriorLookup.valleys
+                : null;
+              // Find the matching fitted segment by index within its type
+              if (fittedArray) {
+                const typeIndex = interiorFeatures.slice(0, i).filter(f => f.type === feature.type).length;
+                const fitted = fittedArray[typeIndex];
+                if (fitted) {
+                  renderPoints = fitted.points && fitted.points.length >= 2 
+                    ? fitted.points as { x: number; y: number }[]
+                    : [fitted.start as { x: number; y: number }, fitted.end as { x: number; y: number }];
+                }
+              }
+            }
+            
+            const pathD = `M ${renderPoints.map(p => `${p.x},${p.y}`).join(' L ')}`;
             const isDashed = effectiveType === 'step';
             
             // Set stroke width based on feature type
