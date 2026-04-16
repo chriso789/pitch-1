@@ -67,7 +67,7 @@ export function VendorVerificationDashboard() {
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesText, setNotesText] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoStarted = useRef(false);
+  
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ['vendor-verification-sessions', activeCompanyId],
