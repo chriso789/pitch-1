@@ -364,18 +364,24 @@ const CustomerPortalPublic: React.FC = () => {
                           )}
                           Pay with Card
                         </Button>
-                        {zelle_enabled && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            asChild
-                          >
-                            <a href={`/pay/zelle?amount=${inv.balance_due || inv.amount}&ref=${inv.id}`} target="_blank">
-                              <Banknote className="h-4 w-4 mr-1" />
-                              Zelle
-                            </a>
-                          </Button>
-                        )}
+                        {zelle_enabled && (() => {
+                          const zelleLink = (payment_links || []).find(
+                            (pl: any) => pl.invoice_id === inv.id && pl.payment_type === 'zelle' && pl.zelle_confirmation_status !== 'confirmed'
+                          );
+                          if (!zelleLink?.shareable_token) return null;
+                          return (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              asChild
+                            >
+                              <a href={`/pay/${zelleLink.shareable_token}`} target="_blank" rel="noopener noreferrer">
+                                <Banknote className="h-4 w-4 mr-1" />
+                                Zelle
+                              </a>
+                            </Button>
+                          );
+                        })()}
                       </div>
                     </div>
                   ))}
