@@ -3999,7 +3999,10 @@ Deno.serve(async (req) => {
         }
 
         const tenantId = profile.tenant_id;
-        const batchSize = body.limit || 5; // Default 5 to avoid timeouts
+        const batchSize = typeof body.limit === 'number' ? body.limit : 5;
+        const targetSessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0
+          ? body.sessionId.trim()
+          : null;
 
         // Reset stale processing/queued sessions (orphaned from crashed runs)
         if (body.resetStale) {
@@ -4036,8 +4039,8 @@ Deno.serve(async (req) => {
 
         // Find vendor sessions that haven't been verified yet
         // Over-fetch to handle sessions with zero vendor totals (will be skipped)
-        const overFetchSize = batchSize * 4;
-        const { data: sessions, error: sessionsError } = await adminSupabase
+        const overFetchSize = targetSessionId ? 1 : batchSize * 4;
+        let sessionsQuery = adminSupabase
           .from('roof_training_sessions')
           .select('id, traced_totals, ai_totals, lat, lng, property_address, vendor_report_id, ai_measurement_id, original_ai_measurement_id, pipeline_entry_id')
           .eq('tenant_id', tenantId)
@@ -4045,7 +4048,14 @@ Deno.serve(async (req) => {
           .is('verification_verdict', null)
           .not('traced_totals', 'is', null)
           .is('verification_status', null)
+          .order('created_at', { ascending: true })
           .limit(overFetchSize);
+
+        if (targetSessionId) {
+          sessionsQuery = sessionsQuery.eq('id', targetSessionId);
+        }
+
+        const { data: sessions, error: sessionsError } = await sessionsQuery;
 
         if (sessionsError) {
           console.error('Error fetching sessions:', sessionsError);
@@ -4076,21 +4086,25 @@ Deno.serve(async (req) => {
         }
 
         // Count remaining unprocessed for the response
-        const { count: remainingCount } = await adminSupabase
-          .from('roof_training_sessions')
-          .select('id', { count: 'exact', head: true })
-          .eq('tenant_id', tenantId)
-          .eq('ground_truth_source', 'vendor_report')
-          .is('verification_verdict', null)
-          .is('verification_status', null)
-          .not('traced_totals', 'is', null);
+        let remainingCount = 0;
+        if (!targetSessionId) {
+          const { count } = await adminSupabase
+            .from('roof_training_sessions')
+            .select('id', { count: 'exact', head: true })
+            .eq('tenant_id', tenantId)
+            .eq('ground_truth_source', 'vendor_report')
+            .is('verification_verdict', null)
+            .is('verification_status', null)
+            .not('traced_totals', 'is', null);
+          remainingCount = count || 0;
+        }
 
-        console.log(`📊 Found ${validSessions.length} valid sessions to verify (batch of ${batchSize}), ${remainingCount || 0} remaining after this batch`);
+        console.log(`📊 Found ${validSessions.length} valid sessions to verify (batch of ${batchSize})${targetSessionId ? ` for session ${targetSessionId}` : `, ${remainingCount || 0} remaining after this batch`}`);
 
         if (validSessions.length === 0) {
           return json({
             ok: true,
-            message: 'No pending vendor sessions to verify',
+            message: targetSessionId ? 'Selected session is not pending verification' : 'No pending vendor sessions to verify',
             processed: 0, confirmed: 0, denied: 0, skipped: invalidSessions.length, failed: 0, total: 0,
             remaining: remainingCount || 0,
           }, corsHeaders);
@@ -4119,10 +4133,12 @@ Deno.serve(async (req) => {
 
             const vendorTotals = session.traced_totals as Record<string, number>;
             let aiTotals = session.ai_totals as Record<string, number> | null;
+            let linkedMeasurementId = session.original_ai_measurement_id || session.ai_measurement_id || null;
 
             // If no AI data, try to find existing measurement or run a new one
             const hasAiData = aiTotals && Object.keys(aiTotals).length > 0 &&
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
+            const needsLinkedMeasurement = !linkedMeasurementId;
 
             let sessionLat: number | null = session.lat;
             let sessionLng: number | null = session.lng;
@@ -4176,7 +4192,7 @@ Deno.serve(async (req) => {
 
             let lastErrorLog: string | null = null;
 
-            if (!hasAiData && sessionLat && sessionLng) {
+            if ((!hasAiData || needsLinkedMeasurement) && sessionLat && sessionLng) {
               // Check for an existing roof_measurements row at this location.
               // NOTE: roof_measurements has NO `summary` column — we read the canonical
               // total_*_length columns and linear_features_wkt directly.
@@ -4213,6 +4229,7 @@ Deno.serve(async (req) => {
                   .from('roof_training_sessions')
                   .update({ ai_totals: aiTotals, ai_measurement_id: existingMeasurement.id, original_ai_measurement_id: existingMeasurement.id })
                   .eq('id', session.id);
+                linkedMeasurementId = existingMeasurement.id;
                 console.log(`📏 Reusing existing measurement ${existingMeasurement.id} for session ${session.id}`);
               } else {
                 // Run the AI measurement engine
@@ -4308,6 +4325,7 @@ Deno.serve(async (req) => {
                           original_ai_measurement_id: insertedRow.id,
                         })
                         .eq('id', session.id);
+                      linkedMeasurementId = insertedRow.id;
                       console.log(`✅ AI measurement stored (${insertedRow.id}) with ${features.length} features${svg ? ' + SVG' : ''} for session ${session.id}`);
                     }
                   }
@@ -4319,12 +4337,14 @@ Deno.serve(async (req) => {
             }
 
             // Final check — still no AI data?
-            const finalHasAi = aiTotals && Object.keys(aiTotals).length > 0 &&
+            const finalHasAi = aiTotals && Object.keys(aiTotals).length > 0 && !!linkedMeasurementId &&
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
 
             if (!finalHasAi) {
               const reason = lastErrorLog
                 ? `error_log: ${lastErrorLog}`
+                : !linkedMeasurementId
+                  ? 'AI measurement row was not persisted, so no roof diagram could be attached'
                 : (!sessionLat || !sessionLng
                   ? 'No coordinates and geocoding failed'
                   : 'AI measurement engine returned no data');

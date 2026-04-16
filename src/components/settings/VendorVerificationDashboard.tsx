@@ -370,7 +370,8 @@ export function VendorVerificationDashboard() {
   const handleRunOne = async (sessionId: string) => {
     setRunningOneId(sessionId);
     try {
-      // Reset this single session so the batch picks it up
+      // Reset this single session and clear stale AI links so the clicked row is forced
+      // through a fresh measurement + diagram persistence pass.
       const { error: resetErr } = await supabase
         .from('roof_training_sessions')
         .update({
@@ -379,20 +380,31 @@ export function VendorVerificationDashboard() {
           verification_notes: null,
           verification_run_at: null,
           verification_feature_breakdown: null,
+          ai_totals: null,
+          ai_measurement_id: null,
+          original_ai_measurement_id: null,
         } as any)
         .eq('id', sessionId);
       if (resetErr) throw resetErr;
 
-      // Run a tiny batch of 1 — the verifier always picks the next pending
+      // Run the exact row the user clicked.
       const { data, error } = await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports', limit: 1 },
+        body: { action: 'batch-verify-vendor-reports', limit: 1, sessionId },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Run failed');
 
-      toast.success(
-        `Run complete — ${data.confirmed || 0} confirmed, ${data.denied || 0} denied, ${data.failed || 0} failed`,
-      );
+      const detail = Array.isArray(data.details) ? data.details[0] : null;
+      if ((data.failed || 0) > 0) {
+        toast.error(detail?.reason ? `Run failed — ${detail.reason}` : 'Run failed for this report');
+      } else if ((data.processed || 0) > 0) {
+        toast.success(
+          `Run complete — ${data.confirmed || 0} confirmed, ${data.denied || 0} denied`,
+        );
+      } else {
+        toast.info(data.message || 'This report was not eligible to run');
+      }
+
       await queryClient.invalidateQueries({
         queryKey: ['vendor-verification-sessions', activeCompanyId],
       });
