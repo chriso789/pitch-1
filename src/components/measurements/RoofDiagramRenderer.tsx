@@ -414,15 +414,6 @@ export function RoofDiagramRenderer({
               />
               {/* Length label */}
               {showLengthLabels && feature.length && feature.length > 0 && (
-                d={feature.path}
-                fill="none"
-                stroke={feature.color}
-                strokeWidth={3}
-                strokeDasharray={feature.dashed ? '8,4' : undefined}
-                strokeLinecap="round"
-              />
-              {/* Length label */}
-              {showLengthLabels && feature.length && feature.length > 0 && (
                 <text
                   x={50 + i * 30}
                   y={height - 20}
