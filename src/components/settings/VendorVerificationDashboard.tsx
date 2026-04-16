@@ -543,7 +543,6 @@ export function VendorVerificationDashboard() {
           </CardContent>
         </Card>
       )}
-      </div>
 
       {/* Progress bar */}
       {isRunning && (
