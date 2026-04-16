@@ -2920,7 +2920,17 @@ Deno.serve(async (req) => {
 
         return json({ 
           ok: true, 
-          data: { measurement: row, tags, engine_used: engineUsed } 
+          data: {
+            measurement: row,
+            tags,
+            engine_used: engineUsed,
+            // Expose raw geometry so internal callers (batch verify) can persist into roof_measurements
+            meas: {
+              summary: meas.summary,
+              linear_features: meas.linear_features || [],
+              geom_wkt: meas.geom_wkt || null,
+            },
+          },
         }, corsHeaders);
       }
 
