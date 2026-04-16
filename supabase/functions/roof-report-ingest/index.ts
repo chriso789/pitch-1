@@ -1106,6 +1106,59 @@ Deno.serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRole);
 
+    // ============================================================
+    // ACTION: reparse_existing
+    // Re-runs the (updated) EagleView parser against every existing
+    // roof_vendor_reports.extracted_text and merges new fields into
+    // the parsed jsonb. Use this after parser logic changes.
+    // ============================================================
+    if (body?.action === "reparse_existing") {
+      const onlyMissing = body.only_missing !== false; // default true
+      let query = supabase
+        .from("roof_vendor_reports")
+        .select("id, provider, extracted_text, parsed")
+        .not("extracted_text", "is", null);
+      const { data: rows, error: fetchErr } = await query.limit(1000);
+      if (fetchErr) {
+        return new Response(JSON.stringify({ ok: false, error: fetchErr.message }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500,
+        });
+      }
+      let updated = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+      for (const r of rows ?? []) {
+        try {
+          const provider = (r.provider ?? "").toLowerCase();
+          if (provider !== "eagleview") { skipped++; continue; }
+          const existing = (r.parsed ?? {}) as Record<string, any>;
+          if (onlyMissing && existing.eaves_ft != null && existing.rakes_ft != null) {
+            skipped++; continue;
+          }
+          const reparsed = parseEagleView(r.extracted_text as string);
+          const merged = { ...existing };
+          // Only fill nulls so we never overwrite a real value
+          for (const [k, v] of Object.entries(reparsed)) {
+            if (v != null && (merged[k] == null || merged[k] === 0 && k.endsWith("_ft"))) {
+              merged[k] = v;
+            }
+          }
+          const { error: upErr } = await supabase
+            .from("roof_vendor_reports")
+            .update({ parsed: merged })
+            .eq("id", r.id);
+          if (upErr) { errors.push(`${r.id}: ${upErr.message}`); continue; }
+          updated++;
+        } catch (e) {
+          errors.push(`${r.id}: ${(e as Error).message}`);
+        }
+      }
+      return new Response(
+        JSON.stringify({ ok: true, scanned: rows?.length ?? 0, updated, skipped, errors: errors.slice(0, 10) }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+      );
+    }
+
     // Resolve tenant_id from auth header for all insert paths
     let resolvedTenantId: string | null = null;
     let resolvedUserId: string | null = null;
