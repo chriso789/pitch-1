@@ -841,9 +841,9 @@ export function SchematicRoofDiagram({
     const linFeatures = plausibleLinearFeatures.map(f => {
       const svgCoords = f.coords.map(toSvg);
       
-      // If it's an eave or rake, also add to classified segments for thick line rendering
-      if (f.type === 'eave' && svgCoords.length >= 2) {
-        classifiedEaves.push({
+      // Classify segments for auto-fit
+      if (svgCoords.length >= 2) {
+        const segData: ClassifiedSegment = {
           start: svgCoords[0],
           end: svgCoords[svgCoords.length - 1],
           points: svgCoords,
@@ -851,17 +851,15 @@ export function SchematicRoofDiagram({
           gpsStart: f.coords[0],
           gpsEnd: f.coords[f.coords.length - 1],
           gpsPoints: f.coords,
-        });
-      } else if (f.type === 'rake' && svgCoords.length >= 2) {
-        classifiedRakes.push({
-          start: svgCoords[0],
-          end: svgCoords[svgCoords.length - 1],
-          points: svgCoords,
-          length: f.length,
-          gpsStart: f.coords[0],
-          gpsEnd: f.coords[f.coords.length - 1],
-          gpsPoints: f.coords,
-        });
+        };
+        
+        switch (f.type) {
+          case 'eave': classifiedEaves.push(segData); break;
+          case 'rake': classifiedRakes.push(segData); break;
+          case 'ridge': classifiedRidges.push(segData); break;
+          case 'hip': classifiedHips.push(segData); break;
+          case 'valley': classifiedValleys.push(segData); break;
+        }
       }
 
       return {
