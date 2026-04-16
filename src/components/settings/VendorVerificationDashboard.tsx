@@ -852,11 +852,49 @@ export function VendorVerificationDashboard() {
                                     </div>
 
                                     {session.vendor_diagram_url ? (
-                                      <iframe
-                                        src={session.vendor_diagram_url}
-                                        title={`Vendor evidence for ${session.property_address || session.id}`}
-                                        className="h-80 w-full rounded-md border bg-background"
-                                      />
+                                      (() => {
+                                        const url = session.vendor_diagram_url;
+                                        const isImage = /\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(url);
+                                        const isPdf = /\.pdf(\?|$)/i.test(url);
+                                        if (isImage) {
+                                          return (
+                                            <img
+                                              src={url}
+                                              alt={`Vendor diagram for ${session.property_address || session.id}`}
+                                              className="h-80 w-full rounded-md border bg-background object-contain"
+                                              loading="lazy"
+                                            />
+                                          );
+                                        }
+                                        if (isPdf) {
+                                          return (
+                                            <object
+                                              data={url}
+                                              type="application/pdf"
+                                              className="h-80 w-full rounded-md border bg-background"
+                                            >
+                                              <div className="flex h-full w-full items-center justify-center p-4 text-sm text-muted-foreground">
+                                                Preview blocked.{' '}
+                                                <a
+                                                  href={url}
+                                                  target="_blank"
+                                                  rel="noreferrer"
+                                                  className="ml-1 text-primary underline"
+                                                >
+                                                  Open report
+                                                </a>
+                                              </div>
+                                            </object>
+                                          );
+                                        }
+                                        return (
+                                          <iframe
+                                            src={url}
+                                            title={`Vendor evidence for ${session.property_address || session.id}`}
+                                            className="h-80 w-full rounded-md border bg-background"
+                                          />
+                                        );
+                                      })()
                                     ) : (
                                       <div className="rounded-md border border-dashed p-4 text-sm text-muted-foreground">
                                         No vendor diagram preview is saved for this report.
