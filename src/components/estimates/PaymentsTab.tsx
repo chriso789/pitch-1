@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useActiveTenantId } from '@/hooks/useActiveTenantId';
@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2 
+  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -58,6 +58,8 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [paymentNotes, setPaymentNotes] = useState('');
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(null);
   const [generatingLinkForInvoice, setGeneratingLinkForInvoice] = useState<string | null>(null);
+  const [scanningPayment, setScanningPayment] = useState(false);
+  const scanInputRef = useRef<HTMLInputElement>(null);
 
   // Invoice builder state
   const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
@@ -65,9 +67,9 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
-  // Fetch estimates for this pipeline entry to auto-populate line items
-  const { data: estimates } = useQuery({
-    queryKey: ['estimate-line-items', pipelineEntryId],
+  // Fetch estimates from enhanced_estimates first
+  const { data: enhancedEstimates } = useQuery({
+    queryKey: ['enhanced-estimate-line-items', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('enhanced_estimates')
@@ -81,49 +83,179 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     },
   });
 
+  // Fallback: fetch from legacy estimates table if enhanced_estimates is empty
+  const { data: legacyEstimates } = useQuery({
+    queryKey: ['legacy-estimate-line-items', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('estimates')
+        .select('id, line_items, status')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .in('status', ['approved', 'sent', 'signed'])
+        .order('created_at', { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: (enhancedEstimates || []).length === 0,
+  });
+
+  // Fetch QBO connection status
+  const { data: qboConnection } = useQuery({
+    queryKey: ['qbo-connection', activeTenantId],
+    queryFn: async () => {
+      if (!activeTenantId) return null;
+      const { data, error } = await supabase
+        .from('qbo_connections')
+        .select('id, realm_id')
+        .eq('tenant_id', activeTenantId)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (error) return null;
+      return data;
+    },
+    enabled: !!activeTenantId,
+  });
+
+  // Parse line items from either source
+  const parseLineItems = (estimate: any, source: 'enhanced' | 'legacy'): (InvoiceLineItem & { selected: boolean })[] => {
+    if (!estimate?.line_items) return [];
+    const items: (InvoiceLineItem & { selected: boolean })[] = [];
+    const lineItems = estimate.line_items as any;
+
+    if (source === 'enhanced') {
+      // enhanced_estimates: { materials: [...], labor: [...] }
+      if (Array.isArray(lineItems.materials)) {
+        lineItems.materials.forEach((mat: any) => {
+          items.push({
+            selected: true,
+            description: mat.item_name || mat.description || 'Material',
+            qty: Number(mat.qty) || 1,
+            unit: mat.unit || 'ea',
+            unit_cost: Number(mat.unit_cost) || 0,
+            line_total: Number(mat.line_total) || 0,
+          });
+        });
+      }
+      if (Array.isArray(lineItems.labor)) {
+        lineItems.labor.forEach((lab: any) => {
+          items.push({
+            selected: true,
+            description: lab.item_name || lab.description || 'Labor',
+            qty: Number(lab.qty) || 1,
+            unit: lab.unit || 'ea',
+            unit_cost: Number(lab.unit_cost) || 0,
+            line_total: Number(lab.line_total) || 0,
+          });
+        });
+      }
+    } else {
+      // legacy estimates: could be array of items or { materials, labor }
+      if (Array.isArray(lineItems)) {
+        lineItems.forEach((item: any) => {
+          items.push({
+            selected: true,
+            description: item.item_name || item.description || item.name || 'Item',
+            qty: Number(item.qty || item.quantity) || 1,
+            unit: item.unit || 'ea',
+            unit_cost: Number(item.unit_cost || item.price || item.rate) || 0,
+            line_total: Number(item.line_total || item.total || item.amount) || (Number(item.qty || item.quantity || 1) * Number(item.unit_cost || item.price || item.rate || 0)),
+          });
+        });
+      } else if (typeof lineItems === 'object') {
+        // Same nested format as enhanced
+        ['materials', 'labor', 'items'].forEach(key => {
+          if (Array.isArray(lineItems[key])) {
+            lineItems[key].forEach((item: any) => {
+              items.push({
+                selected: true,
+                description: item.item_name || item.description || item.name || key,
+                qty: Number(item.qty || item.quantity) || 1,
+                unit: item.unit || 'ea',
+                unit_cost: Number(item.unit_cost || item.price || item.rate) || 0,
+                line_total: Number(item.line_total || item.total || item.amount) || (Number(item.qty || item.quantity || 1) * Number(item.unit_cost || item.price || item.rate || 0)),
+              });
+            });
+          }
+        });
+      }
+    }
+    return items;
+  };
+
   // Build line items from estimate when dialog opens
   useEffect(() => {
     if (!showInvoiceDialog) return;
     
-    const estimate = estimates?.[0];
-    if (!estimate?.line_items) {
-      setInvoiceLineItems([]);
+    // Try enhanced estimates first
+    const enhancedEst = (enhancedEstimates || [])[0];
+    if (enhancedEst?.line_items) {
+      setInvoiceLineItems(parseLineItems(enhancedEst, 'enhanced'));
       return;
     }
 
-    const items: (InvoiceLineItem & { selected: boolean })[] = [];
-    const lineItems = estimate.line_items as any;
-
-    // Parse materials
-    if (Array.isArray(lineItems.materials)) {
-      lineItems.materials.forEach((mat: any) => {
-        items.push({
-          selected: true,
-          description: mat.item_name || mat.description || 'Material',
-          qty: Number(mat.qty) || 1,
-          unit: mat.unit || 'ea',
-          unit_cost: Number(mat.unit_cost) || 0,
-          line_total: Number(mat.line_total) || 0,
-        });
-      });
+    // Fallback to legacy estimates
+    const legacyEst = (legacyEstimates || [])[0];
+    if (legacyEst?.line_items) {
+      setInvoiceLineItems(parseLineItems(legacyEst, 'legacy'));
+      return;
     }
 
-    // Parse labor
-    if (Array.isArray(lineItems.labor)) {
-      lineItems.labor.forEach((lab: any) => {
-        items.push({
-          selected: true,
-          description: lab.item_name || lab.description || 'Labor',
-          qty: Number(lab.qty) || 1,
-          unit: lab.unit || 'ea',
-          unit_cost: Number(lab.unit_cost) || 0,
-          line_total: Number(lab.line_total) || 0,
-        });
-      });
-    }
+    setInvoiceLineItems([]);
+  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates]);
 
-    setInvoiceLineItems(items);
-  }, [showInvoiceDialog, estimates]);
+  // Scan payment handler
+  const handleScanPayment = async (file: File) => {
+    setScanningPayment(true);
+    try {
+      // Upload to temp storage
+      const fileName = `scan_${Date.now()}_${file.name}`;
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(`temp/${fileName}`, file);
+      
+      if (uploadError) throw new Error('Failed to upload image');
+
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(`temp/${fileName}`);
+
+      // Call parse-invoice-document edge function
+      const { data, error } = await supabase.functions.invoke('parse-invoice-document', {
+        body: { document_url: urlData.publicUrl },
+      });
+
+      if (error) throw error;
+
+      const parsed = data?.parsed;
+      if (parsed) {
+        if (parsed.total_amount || parsed.amount) {
+          setPaymentAmount(String(parsed.total_amount || parsed.amount));
+        }
+        if (parsed.invoice_date || parsed.date || parsed.payment_date) {
+          const dateStr = parsed.invoice_date || parsed.date || parsed.payment_date;
+          try {
+            const d = new Date(dateStr);
+            if (!isNaN(d.getTime())) setPaymentDate(format(d, 'yyyy-MM-dd'));
+          } catch {}
+        }
+        if (parsed.invoice_number || parsed.reference_number || parsed.check_number) {
+          setPaymentRef(parsed.invoice_number || parsed.reference_number || parsed.check_number || '');
+        }
+        toast.success('Payment details extracted from scan');
+      } else {
+        toast.info('Could not extract payment details. Please enter manually.');
+      }
+
+      // Clean up temp file
+      await supabase.storage.from('documents').remove([`temp/${fileName}`]);
+    } catch (err: any) {
+      console.error('Scan error:', err);
+      toast.error(err.message || 'Failed to scan payment');
+    } finally {
+      setScanningPayment(false);
+    }
+  };
 
   const invoiceSubtotal = useMemo(() => 
     invoiceLineItems.filter(i => i.selected).reduce((sum, i) => sum + i.line_total, 0),
@@ -511,6 +643,26 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               <DialogTitle>Create Invoice</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-2">
+              {/* Previous payments context */}
+              {totalPaid > 0 && (
+                <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-lg">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Contract</p>
+                    <p className="text-xs font-bold">{formatCurrency(sellingPrice)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Already Paid</p>
+                    <p className="text-xs font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-muted-foreground">Remaining</p>
+                    <p className={cn("text-xs font-bold", contractBalance > 0 ? "text-yellow-600" : "text-green-600")}>
+                      {formatCurrency(contractBalance)}
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Line Items Table */}
               <div>
                 <Label className="text-sm font-semibold">Line Items</Label>
@@ -615,15 +767,78 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
               Record Payment
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Record Payment</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 py-4">
-              <div>
-                <Label>Amount</Label>
-                <Input type="number" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" />
+            <div className="space-y-4 py-2">
+              {/* Payment context summary */}
+              <div className="grid grid-cols-3 gap-2 p-3 bg-muted/50 rounded-lg">
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Contract</p>
+                  <p className="text-xs font-bold">{formatCurrency(sellingPrice)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Paid</p>
+                  <p className="text-xs font-bold text-green-600">{formatCurrency(totalPaid)}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] text-muted-foreground">Remaining</p>
+                  <p className={cn("text-xs font-bold", contractBalance > 0 ? "text-yellow-600" : "text-green-600")}>
+                    {formatCurrency(contractBalance)}
+                  </p>
+                </div>
               </div>
+
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Label>Amount</Label>
+                  <Input type="number" step="0.01" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" />
+                </div>
+                {contractBalance > 0 && (
+                  <div className="flex items-end">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-9 text-xs whitespace-nowrap"
+                      onClick={() => setPaymentAmount(String(contractBalance.toFixed(2)))}
+                    >
+                      Bill Remaining
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Scan button */}
+              <div>
+                <input
+                  ref={scanInputRef}
+                  type="file"
+                  accept="image/*,application/pdf"
+                  capture="environment"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleScanPayment(file);
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="w-full"
+                  disabled={scanningPayment}
+                  onClick={() => scanInputRef.current?.click()}
+                >
+                  {scanningPayment ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Camera className="h-4 w-4 mr-2" />
+                  )}
+                  {scanningPayment ? 'Scanning...' : 'Scan Check / Receipt'}
+                </Button>
+              </div>
+
               <div>
                 <Label>Payment Method</Label>
                 <Select value={paymentMethod} onValueChange={setPaymentMethod}>
@@ -635,10 +850,31 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                     <SelectItem value="zelle">Zelle</SelectItem>
                     <SelectItem value="cash">Cash</SelectItem>
                     <SelectItem value="financing">Financing</SelectItem>
+                    <SelectItem value="quickbooks">QuickBooks</SelectItem>
+                    <SelectItem value="bank_account">Bank Account</SelectItem>
                     <SelectItem value="other">Other</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+
+              {/* QuickBooks connection hint */}
+              {paymentMethod === 'quickbooks' && !qboConnection && (
+                <div className="flex items-center gap-2 p-2 bg-yellow-500/10 rounded text-xs text-yellow-700">
+                  <AlertCircle className="h-4 w-4 flex-shrink-0" />
+                  <span>
+                    QuickBooks not connected.{' '}
+                    <a href="/settings" className="underline font-medium">Connect in Settings</a>
+                  </span>
+                </div>
+              )}
+
+              {paymentMethod === 'quickbooks' && qboConnection && (
+                <div className="flex items-center gap-2 p-2 bg-green-500/10 rounded text-xs text-green-700">
+                  <Building2 className="h-4 w-4 flex-shrink-0" />
+                  <span>Connected to QuickBooks (Realm: {qboConnection.realm_id})</span>
+                </div>
+              )}
+
               <div>
                 <Label>Date</Label>
                 <Input type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} />
