@@ -334,6 +334,9 @@ export async function autoFitAllEdges({
   canvasHeight,
   eaveSegments,
   rakeSegments,
+  ridgeSegments = [],
+  hipSegments = [],
+  valleySegments = [],
   imagePlacement,
   imageUrl,
   inwardSearchPx = 18,
@@ -341,13 +344,13 @@ export async function autoFitAllEdges({
   sampleGapPx = 2.5,
 }: AutoFitAllEdgesOptions): Promise<AutoFitAllEdgesResult | null> {
   if (typeof window === 'undefined') return null;
-  if (eaveSegments.length === 0 && rakeSegments.length === 0) return null;
+  if (eaveSegments.length === 0 && rakeSegments.length === 0 && ridgeSegments.length === 0 && hipSegments.length === 0 && valleySegments.length === 0) return null;
 
   const imageData = await createImageData(imageUrl, imagePlacement, canvasWidth, canvasHeight);
   if (!imageData) return null;
 
-  // Calculate roof center from all boundary segments
-  const allSegments = [...eaveSegments, ...rakeSegments];
+  // Calculate roof center from all segments
+  const allSegments = [...eaveSegments, ...rakeSegments, ...ridgeSegments, ...hipSegments, ...valleySegments];
   const roofCenter = allSegments.reduce(
     (acc, segment) => ({
       x: acc.x + (segment.start.x + segment.end.x) / 2,
@@ -360,7 +363,7 @@ export async function autoFitAllEdges({
 
   let adjustedCount = 0;
 
-  // Fit each eave segment
+  // Fit each eave segment (standard threshold)
   const fittedEaves = eaveSegments.map(seg => {
     const adjusted = fitSingleSegment(
       imageData, seg, roofCenter,
@@ -373,7 +376,7 @@ export async function autoFitAllEdges({
     return seg;
   });
 
-  // Fit each rake segment
+  // Fit each rake segment (standard threshold)
   const fittedRakes = rakeSegments.map(seg => {
     const adjusted = fitSingleSegment(
       imageData, seg, roofCenter,
@@ -386,13 +389,64 @@ export async function autoFitAllEdges({
     return seg;
   });
 
+  // Interior lines: tighter search range (±3px) and lower improvement threshold (2% vs 4%)
+  const interiorSearchIn = 3;
+  const interiorSearchOut = 3;
+  const interiorThreshold = 1.02;
+  const interiorMinImprovement = 6;
+
+  // Fit ridges
+  const fittedRidges = ridgeSegments.map(seg => {
+    const adjusted = fitSingleSegment(
+      imageData, seg, roofCenter,
+      interiorSearchIn, interiorSearchOut, sampleGapPx,
+      interiorThreshold, interiorMinImprovement
+    );
+    if (adjusted) {
+      adjustedCount++;
+      return adjusted;
+    }
+    return seg;
+  });
+
+  // Fit hips
+  const fittedHips = hipSegments.map(seg => {
+    const adjusted = fitSingleSegment(
+      imageData, seg, roofCenter,
+      interiorSearchIn, interiorSearchOut, sampleGapPx,
+      interiorThreshold, interiorMinImprovement
+    );
+    if (adjusted) {
+      adjustedCount++;
+      return adjusted;
+    }
+    return seg;
+  });
+
+  // Fit valleys
+  const fittedValleys = valleySegments.map(seg => {
+    const adjusted = fitSingleSegment(
+      imageData, seg, roofCenter,
+      interiorSearchIn, interiorSearchOut, sampleGapPx,
+      interiorThreshold, interiorMinImprovement
+    );
+    if (adjusted) {
+      adjustedCount++;
+      return adjusted;
+    }
+    return seg;
+  });
+
   if (adjustedCount === 0) return null;
 
-  console.log(`🎯 Auto-fit: adjusted ${adjustedCount}/${allSegments.length} boundary edges to satellite imagery`);
+  console.log(`🎯 Auto-fit: adjusted ${adjustedCount}/${allSegments.length} edges to satellite imagery (incl. ${ridgeSegments.length} ridges, ${hipSegments.length} hips, ${valleySegments.length} valleys)`);
 
   return {
     eaveSegments: fittedEaves,
     rakeSegments: fittedRakes,
+    ridgeSegments: fittedRidges.length > 0 ? fittedRidges : undefined,
+    hipSegments: fittedHips.length > 0 ? fittedHips : undefined,
+    valleySegments: fittedValleys.length > 0 ? fittedValleys : undefined,
     adjustedCount,
   };
 }
