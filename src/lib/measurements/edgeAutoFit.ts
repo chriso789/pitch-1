@@ -229,7 +229,9 @@ function fitSingleSegment(
   roofCenter: SvgPoint,
   inwardSearchPx: number,
   outwardSearchPx: number,
-  sampleGapPx: number
+  sampleGapPx: number,
+  improvementThreshold: number = 1.04,
+  minAbsoluteImprovement: number = 12
 ): SvgLineSegment | null {
   if (segment.points && segment.points.length > 2) {
     return null;
@@ -252,8 +254,8 @@ function fitSingleSegment(
   const startOffset = average(fits.slice(0, 4).map(fit => fit.bestOffset));
   const endOffset = average(fits.slice(-4).map(fit => fit.bestOffset));
 
-  // Only apply if there's a meaningful improvement
-  if (fittedScore < baseScore * 1.04 && fittedScore - baseScore < 12) {
+  // Only apply if there's a meaningful improvement (threshold is configurable)
+  if (fittedScore < baseScore * improvementThreshold && fittedScore - baseScore < minAbsoluteImprovement) {
     return null;
   }
 
