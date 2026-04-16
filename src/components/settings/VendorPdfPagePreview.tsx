@@ -52,28 +52,52 @@ export function VendorPdfPagePreview({
         if (cancelled) return;
         docRef.current = doc;
 
-        // 1. Determine which page to render
+        // 1. Determine which page to render.
+        // The actual Length Diagram page contains the header AND many small
+        // numeric edge labels (the lengths drawn on each line). The Table of
+        // Contents page also contains the words "Length Diagram" but has very
+        // few standalone numbers and includes TOC giveaways like "Table of
+        // Contents" or dot leaders ("....").
         let targetPage = initialPage ?? 0;
         if (!targetPage) {
-          // Scan pages for the "LENGTH DIAGRAM" header
+          const candidates: { page: number; score: number }[] = [];
           for (let i = 1; i <= doc.numPages; i++) {
             try {
               const p = await doc.getPage(i);
               const tc = await p.getTextContent();
-              const text = tc.items
+              const items = tc.items
                 .map((it: any) => (typeof it.str === "string" ? it.str : ""))
-                .join(" ")
-                .toLowerCase();
-              if (DIAGRAM_KEYWORDS.some((k) => text.includes(k))) {
-                targetPage = i;
-                break;
-              }
+                .filter(Boolean);
+              const text = items.join(" ").toLowerCase();
+
+              const hasHeader = DIAGRAM_KEYWORDS.some((k) => text.includes(k));
+              if (!hasHeader) continue;
+
+              // Reject obvious table-of-contents pages
+              const isTOC =
+                text.includes("table of contents") ||
+                /\.{4,}/.test(text) ||
+                /length diagram\s*\.+\s*\d+/.test(text);
+              if (isTOC) continue;
+
+              // Score by how many small standalone numeric labels exist
+              // (edge lengths like "15", "32", "142"). The real diagram page
+              // has dozens; summary/TOC pages have very few.
+              const numericLabels = items.filter((s: string) =>
+                /^\s*\d{1,3}\s*$/.test(s)
+              ).length;
+
+              candidates.push({ page: i, score: numericLabels });
             } catch {
-              // Skip page on failure, keep scanning
+              // Skip page on failure
             }
             if (cancelled) return;
           }
-          if (!targetPage) {
+
+          if (candidates.length > 0) {
+            candidates.sort((a, b) => b.score - a.score);
+            targetPage = candidates[0].page;
+          } else {
             targetPage = Math.min(FALLBACK_PAGE, doc.numPages);
           }
         }
