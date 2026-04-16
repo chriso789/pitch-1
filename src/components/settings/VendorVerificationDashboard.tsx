@@ -67,7 +67,7 @@ export function VendorVerificationDashboard() {
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesText, setNotesText] = useState('');
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const autoStarted = useRef(false);
+  
 
   const { data: sessions = [], isLoading } = useQuery({
     queryKey: ['vendor-verification-sessions', activeCompanyId],
@@ -221,18 +221,6 @@ export function VendorVerificationDashboard() {
     };
   }, [isRunning, queryClient]);
 
-  // Auto-start batch verification when there are pending sessions
-  useEffect(() => {
-    if (!autoStarted.current && !isRunning && sessions.length > 0) {
-      const pendingCount = sessions.filter(s => !s.verification_verdict && s.verification_status !== 'failed' && s.verification_status !== 'skipped').length;
-      if (pendingCount > 0) {
-        autoStarted.current = true;
-        console.log(`🚀 Auto-starting verification for ${pendingCount} pending sessions`);
-        toast.info(`Auto-starting verification for ${pendingCount} pending sessions...`);
-        handleRunBatch();
-      }
-    }
-  }, [sessions, isRunning]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const stats = {
@@ -284,16 +272,16 @@ export function VendorVerificationDashboard() {
   const handleRunBatch = async () => {
     setIsRunning(true);
     const CHUNK_SIZE = 5;
-    const MAX_BATCH_CALLS = 200; // Allow processing all 110+
+    const MAX_BATCH_CALLS = 200;
     let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0, totalSkipped = 0;
     let hasMore = true;
     let batchCalls = 0;
     let consecutiveEmpty = 0;
 
     try {
-      // First reset any previously failed sessions so they get retried
+      // Reset stale processing/queued AND previously failed sessions so they get retried
       await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports', resetFailed: true, limit: 0 },
+        body: { action: 'batch-verify-vendor-reports', resetFailed: true, resetStale: true, limit: 0 },
       });
 
       // Process in small chunks to avoid edge function timeouts
@@ -323,7 +311,7 @@ export function VendorVerificationDashboard() {
           hasMore = false;
         } else if (chunkWorkCount === 0) {
           consecutiveEmpty++;
-          hasMore = consecutiveEmpty < 3; // Allow a few empty rounds before stopping
+          hasMore = consecutiveEmpty < 5; // More tolerance before stopping
         } else {
           consecutiveEmpty = 0;
           hasMore = true;
@@ -428,18 +416,36 @@ export function VendorVerificationDashboard() {
               Re-link {stats.confirmed} Diagrams
             </Button>
           )}
-          <Button onClick={handleRunBatch} disabled={isRunning || stats.pending === 0} size="lg">
+          {stats.failed > 0 && !isRunning && (
+            <Button
+              variant="outline"
+              onClick={handleRunBatch}
+              disabled={isRunning}
+            >
+              <AlertTriangle className="h-4 w-4 mr-2" />
+              Retry {stats.failed} Failed
+            </Button>
+          )}
+          <Button
+            onClick={handleRunBatch}
+            disabled={isRunning || (stats.pending === 0 && stats.processing === 0)}
+            size="lg"
+          >
             {isRunning ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Zap className="h-4 w-4 mr-2" />}
-            {isRunning ? `Verifying ${stats.processing} in progress...` : `Verify All ${stats.pending} Pending`}
+            {isRunning
+              ? 'Verifying...'
+              : stats.processing > 0
+                ? `Resume Verification (${stats.pending + stats.processing} remaining)`
+                : `Verify All ${stats.pending} Pending`}
           </Button>
         </div>
       </div>
 
       {/* Progress bar */}
-      {(isRunning || stats.processing > 0) && (
+      {isRunning && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm text-muted-foreground">
-            <span>Processing {stats.processing} houses...</span>
+            <span>Processing houses...</span>
             <span>{Math.round(progressPct)}% complete</span>
           </div>
           <Progress value={progressPct} className="h-2" />

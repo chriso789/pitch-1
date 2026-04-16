@@ -3919,6 +3919,18 @@ Deno.serve(async (req) => {
         const tenantId = profile.tenant_id;
         const batchSize = body.limit || 5; // Default 5 to avoid timeouts
 
+        // Reset stale processing/queued sessions (orphaned from crashed runs)
+        if (body.resetStale) {
+          const { data: staleReset } = await adminSupabase
+            .from('roof_training_sessions')
+            .update({ verification_status: null })
+            .eq('tenant_id', tenantId)
+            .eq('ground_truth_source', 'vendor_report')
+            .in('verification_status', ['processing', 'queued'])
+            .select('id');
+          console.log(`🔄 Reset ${staleReset?.length || 0} stale processing/queued sessions`);
+        }
+
         // Reset failed sessions if requested (so they can be retried)
         if (body.resetFailed) {
           const { data: resetCount } = await adminSupabase
@@ -3936,7 +3948,7 @@ Deno.serve(async (req) => {
             .select('id');
           console.log(`🔄 Reset ${resetCount?.length || 0} failed sessions for retry`);
           if (batchSize === 0) {
-            return json({ ok: true, message: `Reset ${resetCount?.length || 0} failed sessions`, processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: 0 }, corsHeaders);
+            return json({ ok: true, message: `Reset sessions for retry`, processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: 0 }, corsHeaders);
           }
         }
 
