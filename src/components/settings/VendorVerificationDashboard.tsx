@@ -425,6 +425,142 @@ export function VendorVerificationDashboard() {
     }
   };
 
+  const handleVerifyCoverage = async () => {
+    setIsCheckingCoverage(true);
+    setCoverageReport(null);
+    try {
+      // 1. Pull every paid vendor report for this tenant
+      const { data: reports, error: reportsErr } = await supabase
+        .from('roof_vendor_reports')
+        .select('id, lat, lng, property_address')
+        .eq('tenant_id', activeCompanyId!);
+      if (reportsErr) throw reportsErr;
+
+      const allReports = reports || [];
+      const reportIds = allReports.map(r => r.id);
+
+      // 2. Find which ones already have a linked AI measurement
+      let linkedReportIds = new Set<string>();
+      if (reportIds.length > 0) {
+        const { data: linked } = await supabase
+          .from('roof_measurements')
+          .select('vendor_report_id')
+          .in('vendor_report_id', reportIds)
+          .not('vendor_report_id', 'is', null);
+        for (const m of linked || []) {
+          if (m.vendor_report_id) linkedReportIds.add(m.vendor_report_id);
+        }
+      }
+
+      const missing = allReports.filter(r => !linkedReportIds.has(r.id));
+
+      // 3. Queue AI measurements for the missing ones via the measure edge function
+      let queued = 0;
+      if (missing.length > 0) {
+        const { data: queueRes, error: queueErr } = await supabase.functions.invoke('measure', {
+          body: {
+            action: 'queue-missing-ai-measurements',
+            vendor_report_ids: missing.map(r => r.id),
+          },
+        });
+        if (queueErr) {
+          console.warn('Queue missing AI failed:', queueErr);
+          toast.warning(`Coverage checked but queueing failed: ${queueErr.message}`);
+        } else {
+          queued = queueRes?.queued ?? 0;
+        }
+      }
+
+      const report = {
+        total: allReports.length,
+        withAi: linkedReportIds.size,
+        missing: missing.length,
+        queued,
+      };
+      setCoverageReport(report);
+
+      if (missing.length === 0) {
+        toast.success(`All ${report.total} paid reports have an AI measurement linked ✓`);
+      } else {
+        toast.info(`${report.withAi}/${report.total} covered. Queued ${queued} for AI generation.`);
+      }
+
+      await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+    } catch (err: any) {
+      console.error('Coverage check error:', err);
+      toast.error(err?.message || 'Coverage check failed');
+    } finally {
+      setIsCheckingCoverage(false);
+    }
+  };
+
+  const handleCompareAndTrain = async () => {
+    setIsTraining(true);
+    const CHUNK_SIZE = 5;
+    const MAX_BATCH_CALLS = 200;
+    let totalProcessed = 0, totalConfirmed = 0, totalDenied = 0, totalFailed = 0;
+    let hasMore = true;
+    let batchCalls = 0;
+    let consecutiveEmpty = 0;
+
+    try {
+      // Reset stale processing/queued and previously failed sessions so they all re-train
+      await supabase.functions.invoke('measure', {
+        body: { action: 'batch-verify-vendor-reports', resetFailed: true, resetStale: true, limit: 0 },
+      });
+
+      while (hasMore && batchCalls < MAX_BATCH_CALLS) {
+        batchCalls += 1;
+        const { data, error } = await supabase.functions.invoke('measure', {
+          body: {
+            action: 'batch-verify-vendor-reports',
+            limit: CHUNK_SIZE,
+            useVendorAsGroundTruth: true,
+            trainingMode: true,
+          },
+        });
+
+        if (error) throw error;
+        if (!data?.ok) throw new Error(data?.error || 'Compare & train failed');
+
+        totalProcessed += (data.processed || 0);
+        totalConfirmed += (data.confirmed || 0);
+        totalDenied += (data.denied || 0);
+        totalFailed += (data.failed || 0);
+
+        await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+
+        const chunkWorkCount = (data.processed || 0) + (data.failed || 0);
+        const remaining = data.remaining ?? -1;
+
+        if (remaining === 0) {
+          hasMore = false;
+        } else if (chunkWorkCount === 0) {
+          consecutiveEmpty++;
+          hasMore = consecutiveEmpty < 5;
+        } else {
+          consecutiveEmpty = 0;
+          hasMore = true;
+        }
+
+        if (hasMore) {
+          toast.info(`Training batch ${batchCalls}: ${totalProcessed} compared, ${totalFailed} failed, ~${remaining > 0 ? remaining : '?'} remaining`);
+          await new Promise(r => setTimeout(r, 500));
+        }
+      }
+
+      toast.success(
+        `Training complete — ${totalProcessed} compared (${totalConfirmed} matched vendor, ${totalDenied} diverged${totalFailed > 0 ? `, ${totalFailed} failed` : ''})`
+      );
+      await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+    } catch (err: any) {
+      console.error('Compare & train error:', err);
+      toast.error(err?.message || 'Compare & train failed');
+    } finally {
+      setIsTraining(false);
+    }
+  };
+
   const handleExportTrainingSet = async () => {
     setIsExporting(true);
     try {
