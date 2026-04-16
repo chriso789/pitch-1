@@ -176,7 +176,16 @@ export function EstimatePreviewPanel({
   allEstimates = [],
 }: EstimatePreviewPanelProps) {
   const [viewMode, setViewMode] = useState<PDFViewMode>('customer');
-  const [options, setOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
+  // Tenant-aware default overrides (e.g., O'Brien Contracting hides manufacturer warranty)
+  const applyTenantDefaults = (opts: PDFComponentOptions): PDFComponentOptions => {
+    const name = (companyInfo?.name || '').toLowerCase();
+    const isObrien = name.includes("o'brien") || name.includes('obrien');
+    if (isObrien) {
+      return { ...opts, showManufacturerWarranty: false };
+    }
+    return opts;
+  };
+  const [options, setOptions] = useState<PDFComponentOptions>(() => applyTenantDefaults(getDefaultOptions('customer')));
   const [isExporting, setIsExporting] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [additionalAttachments, setAdditionalAttachments] = useState<TemplateAttachment[]>([]);
@@ -625,15 +634,43 @@ export function EstimatePreviewPanel({
 
   const handleViewModeChange = (mode: PDFViewMode) => {
     setViewMode(mode);
-    setOptions(getDefaultOptions(mode));
+    setOptions(applyTenantDefaults(getDefaultOptions(mode)));
   };
 
   const updateOption = (key: keyof PDFComponentOptions, value: boolean) => {
-    setOptions(prev => ({ ...prev, [key]: value }));
+    setOptions(prev => {
+      const next: PDFComponentOptions = { ...prev, [key]: value };
+      // Smart overrides: certain toggles need to flip conflicting unified-view flags
+      // so the change is actually visible in the customer preset.
+      if (key === 'showMaterialsSection' || key === 'showLaborSection') {
+        if (value) {
+          // Turning a section ON → switch out of unified view so the section renders
+          next.showUnifiedItems = false;
+        } else {
+          // If both sections are OFF, fall back to unified view so something renders
+          if (!next.showMaterialsSection && !next.showLaborSection) {
+            next.showUnifiedItems = true;
+          }
+        }
+      }
+      if (key === 'showLineItemPricing' && value) {
+        // Unit pricing lives inside materials/labor tables → must use sectioned view
+        next.showUnifiedItems = false;
+        if (!next.showMaterialsSection && !next.showLaborSection) {
+          next.showMaterialsSection = true;
+          next.showLaborSection = true;
+        }
+      }
+      if (key === 'showSubtotals' && value) {
+        // Subtotals are gated by !hideSectionSubtotals
+        next.hideSectionSubtotals = false;
+      }
+      return next;
+    });
   };
 
   const handleResetToDefaults = () => {
-    setOptions(getDefaultOptions(viewMode));
+    setOptions(applyTenantDefaults(getDefaultOptions(viewMode)));
     // Also restore removed template attachments
     setRemovedTemplateIds(new Set());
   };
