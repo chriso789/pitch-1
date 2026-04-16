@@ -1,43 +1,82 @@
 
+The user wants ONE clear path: actually generate AI measurements first (real ones, not stubs), then use that data as training material for the U-Net. No A/B/C/D — just build it.
 
-# Align Diagram Lines to Satellite Roof — Plan
+Looking at the system:
+- `measure-roof` edge function exists but returns stubs when `PYTHON_INFERENCE_URL` isn't set
+- `measure` edge function has the real pipeline (Solar API + topology + persistence)
+- `start-ai-measurement` queues jobs in `measurement_jobs` table
+- Render U-Net service exists at `https://pitch-internal-unet...` per memory
+- Verification dashboard shows 119 sessions but 0 have linked AI measurements — the AI generation step is silently failing
+- Console confirms diagrams render but with `0 eaves, 0 rakes` — perimeter projection works, but eave/rake classification is broken
 
-## Problem
-The roof diagram overlay shows lines (valleys, ridges, eaves, rakes) that don't match the actual roof edges visible in the satellite image. The lines are close but drift by several pixels, making the diagram look inaccurate.
+The real problem: the `measure` function's "pull" path is producing geometry without classifying eaves/rakes correctly, and the U-Net call is either not happening or failing. We need to make AI measurement generation actually work end-to-end on real properties, then collect those outputs into a labeled training set for the U-Net.
 
-## Root Causes
-1. **image_bounds computed from center/zoom** — When no stored `image_bounds` exist, the system calculates bounds using Mercator math from the satellite image center + zoom. Any mismatch with how Mapbox actually tiles the image causes uniform drift.
-2. **@2x retina correction** — The code halves image dimensions > 1280, but if the actual image IS high-res, this introduces a 2x scaling error in the GPS-to-pixel mapping.
-3. **Edge auto-fit only applies to eaves/rakes** — The existing `edgeAutoFit.ts` uses luminance contrast detection to snap eave/rake lines to visible roof edges, but ridges, hips, and valleys are never auto-fitted.
-4. **Perimeter snap tolerance too generous** — Eave/rake endpoints snap to footprint vertices within ~30m, which can pull lines to wrong corners.
+# Plan: Build Working AI Measurement → Feed U-Net Training
 
-## Plan (3 changes)
+## Goal
+Make AI measurements actually generate (not stub, not fail silently) for every verification session, then export the resulting geometry + satellite imagery as a labeled training dataset for the internal U-Net.
 
-### 1. Extend edge auto-fit to interior lines (ridges, hips, valleys)
-**File:** `src/lib/measurements/edgeAutoFit.ts`
+## Step 1 — Fix the AI measurement generation pipeline
+**File:** `supabase/functions/measure/index.ts`
 
-- Add `ridgeSegments`, `hipSegments`, `valleySegments` to `AutoFitAllEdgesOptions`
-- For interior lines, use a tighter search range (±3px vs ±8px for eaves) since they're usually closer to correct
-- Interior lines have contrast between adjacent facets (different shading angles) — use the same luminance gradient detection
-- Return fitted versions of all line types
+- Trace the `pull` action and ensure it ALWAYS produces:
+  - `footprint_polygon` (from Google Solar API building bounds)
+  - `linear_features_wkt` (ridge/hip/valley/eave/rake classified by topology engine)
+  - `roof_measurements` row with non-null `verification_score`-ready fields
+- Wire eave/rake classification: every footprint edge becomes an eave or rake based on adjacent facet pitch (flat side = eave, sloped end = rake)
+- On failure, write `error_log` to the row instead of leaving NULL — so the dashboard surfaces it
+- Set `verification_verdict` whenever a score is computed
 
-### 2. Pass interior lines to auto-fit in SchematicRoofDiagram
-**File:** `src/components/measurements/SchematicRoofDiagram.tsx`
+## Step 2 — Auto-run AI measurement during verification
+**File:** `supabase/functions/measure/index.ts` (`batch-verify-vendor-reports` action)
 
-- Extract ridge/hip/valley segments in the same format as eave/rake segments (with SVG coords + GPS coords)
-- Pass them to `autoFitAllEdges` alongside eaves/rakes
-- Use the fitted results for rendering instead of raw GPS-projected positions
-- This makes ALL lines snap to the visible roof edges in the satellite image
+- For every session with `status = pending` AND no linked `ai_measurement_id`:
+  1. Geocode the property
+  2. Call internal `pull` with `engine: 'skeleton'` (U-Net) → fall back to `vision` (Solar+topology) if U-Net unavailable
+  3. Insert into `roof_measurements`, link via `ai_measurement_id`
+  4. Compute `verification_score` against vendor totals
+  5. Set `verification_verdict` = `confirmed` (≥85%), `review` (70-85%), or `denied` (<70%)
+- Add a "Run for One" button on each row (so the user can retry a single session and see logs immediately)
 
-### 3. Improve image bounds accuracy with stored bounds preference
-**File:** `src/components/measurements/SchematicRoofDiagram.tsx`
+## Step 3 — Add "Open AI Measurement" button to verification dashboard
+**File:** `src/components/settings/VendorVerificationDashboard.tsx`
 
-- When `image_bounds` is missing and bounds are computed from center/zoom, add a global offset correction: compare where the perimeter centroid lands vs where the roof center appears in the image, and apply a uniform translation to all lines
-- Reduce the `@2x` correction threshold from 1280 to only apply when `analysis_zoom >= 19` (high zoom produces smaller tiles)
-- Log the computed vs stored bounds discrepancy for debugging
+- New action column: when `ai_measurement_id` is present, show "View Diagram" button that opens the schematic roof diagram inline (uses existing `SchematicRoofDiagram`)
+- Show `verification_score` numerically in the table
+- Replace the misleading "Pending" label with the actual state: `Awaiting AI`, `AI Generated · No Verdict`, `Confirmed`, `Denied`, `Failed: <reason>`
+
+## Step 4 — Export training dataset for the U-Net
+**New file:** `supabase/functions/export-unet-training-set/index.ts`
+
+For every `roof_training_sessions` row with `verification_verdict = 'confirmed'`:
+- Pull the satellite image (already cached in `roof_measurements.satellite_image_url`)
+- Pull the ground-truth geometry from the linked vendor report (EagleView WKT)
+- Pull the AI-predicted geometry from the linked `roof_measurements`
+- Emit a JSONL training record per the `roof-training/classes.json` schema:
+  ```json
+  {
+    "image_url": "...",
+    "footprint_mask_wkt": "...",
+    "ridge_mask_wkt": "...",
+    "hip_mask_wkt": "...",
+    "valley_mask_wkt": "...",
+    "eave_mask_wkt": "...",
+    "rake_mask_wkt": "...",
+    "regression_targets": { "total_area_sqft": ..., "ridge_ft": ..., ... }
+  }
+  ```
+- Upload the JSONL to a new storage bucket `unet-training-data/{tenant_id}/dataset_v{N}.jsonl`
+- Return a signed URL the user can hand to the Render U-Net training script (`train_lovable_roofnet.py`)
+
+## Step 5 — Surface "Export Training Set" in the dashboard
+**File:** `src/components/settings/VendorVerificationDashboard.tsx`
+
+- New button at top: "Export Training Set"
+- Shows count of confirmed sessions eligible (currently 58)
+- On click → invokes `export-unet-training-set` → downloads JSONL + shows storage path
 
 ## Technical Details
-- The auto-fit algorithm samples luminance contrast along the perpendicular to each line at 8 points, finding the offset with maximum contrast (= roof edge). This already works well for eaves — extending it to interior lines leverages the same proven approach.
-- Interior lines have weaker contrast (facet-to-facet vs roof-to-ground), so the improvement threshold is lowered from 4% to 2%.
-- No database or edge function changes needed — this is purely client-side rendering improvement.
-
+- All measurement generation goes through ONE path (`measure` edge function) — no more `measure-roof` stub fallback
+- The U-Net Render service URL lives in the `PYTHON_INFERENCE_URL` secret — if missing, vision engine + topology engine still produce valid training samples (they just won't include U-Net mask predictions)
+- Training set uses the **vendor report** (EagleView) as ground-truth labels, not the AI output — this is the supervised learning signal the U-Net needs
+- New storage bucket `unet-training-data` with RLS scoped to `master`/`developer` roles only
