@@ -1,44 +1,43 @@
 
 
-# Vendor Verification — Stuck Sessions Diagnosis & Fix
+# Align Diagram Lines to Satellite Roof — Plan
 
-## Current State (from DB)
-- **69 confirmed** (with scores + diagrams) — working correctly
-- **2 denied** — working correctly  
-- **31 pending** (NULL status/verdict) — stuck, never got picked up
-- **12 skipped** — no valid vendor totals (correct)
-- **7 failed** — geocoding failures or Google Solar 404s
-- **1 processing** — orphaned mid-run
-
-The 31 pending sessions have valid `traced_totals` and coordinates, so they should be eligible. The batch processor IS capable of handling them — it just stopped after earlier runs (the auto-start fires once, processes a chunk, then the `consecutiveEmpty` logic or timeout stops it).
-
-The "Verifying 3 in progress" button text is cosmetic — it shows the count of `processing`/`queued` status rows, which are stale from a previous interrupted run.
+## Problem
+The roof diagram overlay shows lines (valleys, ridges, eaves, rakes) that don't match the actual roof edges visible in the satellite image. The lines are close but drift by several pixels, making the diagram look inaccurate.
 
 ## Root Causes
-
-1. **Auto-start runs once only** — `autoStarted.current` is set to `true` on first load and never resets, so revisiting the page doesn't retry the remaining 31.
-
-2. **The batch loop stops too early** — If the edge function times out or returns 0 processed (e.g., all 5 in a chunk needed AI measurements which timed out), `consecutiveEmpty` hits 3 and the loop exits with 31 still pending.
-
-3. **1 orphaned "processing" session** — A session got marked `processing` but the edge function crashed/timed out before completing it. The batch query filters for `verification_status IS NULL`, so this session is now invisible to future batches.
-
-4. **Failed sessions need better retry** — 3 of the 7 failures are "AI measurement engine returned no data" (Google Solar 404 for that address). These are legitimate — some addresses don't have Solar API coverage. But 2 have no address at all.
+1. **image_bounds computed from center/zoom** — When no stored `image_bounds` exist, the system calculates bounds using Mercator math from the satellite image center + zoom. Any mismatch with how Mapbox actually tiles the image causes uniform drift.
+2. **@2x retina correction** — The code halves image dimensions > 1280, but if the actual image IS high-res, this introduces a 2x scaling error in the GPS-to-pixel mapping.
+3. **Edge auto-fit only applies to eaves/rakes** — The existing `edgeAutoFit.ts` uses luminance contrast detection to snap eave/rake lines to visible roof edges, but ridges, hips, and valleys are never auto-fitted.
+4. **Perimeter snap tolerance too generous** — Eave/rake endpoints snap to footprint vertices within ~30m, which can pull lines to wrong corners.
 
 ## Plan (3 changes)
 
-### 1. Fix orphaned sessions — reset stale "processing"/"queued" statuses
-In `handleRunBatch`, before starting the batch loop, reset any sessions stuck in `processing` or `queued` status (stale from a previous crashed run) back to NULL so they get picked up.
+### 1. Extend edge auto-fit to interior lines (ridges, hips, valleys)
+**File:** `src/lib/measurements/edgeAutoFit.ts`
 
-### 2. Remove auto-start, make the batch loop more resilient
-- Remove the `autoStarted` ref and the auto-start `useEffect` — it causes confusion and runs verification without explicit user action.
-- Increase `consecutiveEmpty` tolerance from 3 to 5.
-- Add a "Retry Failed" button that resets failed sessions and re-runs the batch.
+- Add `ridgeSegments`, `hipSegments`, `valleySegments` to `AutoFitAllEdgesOptions`
+- For interior lines, use a tighter search range (±3px vs ±8px for eaves) since they're usually closer to correct
+- Interior lines have contrast between adjacent facets (different shading angles) — use the same luminance gradient detection
+- Return fitted versions of all line types
 
-### 3. Fix the "in progress" display when nothing is actually running
-The button shows "Verifying X in progress" based on `stats.processing` even when `isRunning` is false. Only show the spinner text when `isRunning` is true. When not running but there are stale processing rows, show "Resume Verification" instead.
+### 2. Pass interior lines to auto-fit in SchematicRoofDiagram
+**File:** `src/components/measurements/SchematicRoofDiagram.tsx`
+
+- Extract ridge/hip/valley segments in the same format as eave/rake segments (with SVG coords + GPS coords)
+- Pass them to `autoFitAllEdges` alongside eaves/rakes
+- Use the fitted results for rendering instead of raw GPS-projected positions
+- This makes ALL lines snap to the visible roof edges in the satellite image
+
+### 3. Improve image bounds accuracy with stored bounds preference
+**File:** `src/components/measurements/SchematicRoofDiagram.tsx`
+
+- When `image_bounds` is missing and bounds are computed from center/zoom, add a global offset correction: compare where the perimeter centroid lands vs where the roof center appears in the image, and apply a uniform translation to all lines
+- Reduce the `@2x` correction threshold from 1280 to only apply when `analysis_zoom >= 19` (high zoom produces smaller tiles)
+- Log the computed vs stored bounds discrepancy for debugging
 
 ## Technical Details
-- All changes in `src/components/settings/VendorVerificationDashboard.tsx`
-- Edge function reset call already exists (`resetFailed: true`) — extend it to also reset `processing`/`queued` statuses
-- Add a pre-batch reset in the edge function's `batch-verify-vendor-reports` action to clear stale `processing`/`queued` rows older than 5 minutes
+- The auto-fit algorithm samples luminance contrast along the perpendicular to each line at 8 points, finding the offset with maximum contrast (= roof edge). This already works well for eaves — extending it to interior lines leverages the same proven approach.
+- Interior lines have weaker contrast (facet-to-facet vs roof-to-ground), so the improvement threshold is lowered from 4% to 2%.
+- No database or edge function changes needed — this is purely client-side rendering improvement.
 
