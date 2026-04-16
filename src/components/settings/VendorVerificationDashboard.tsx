@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
 
@@ -66,6 +66,8 @@ export function VendorVerificationDashboard() {
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
   const [editingNotes, setEditingNotes] = useState<string | null>(null);
   const [notesText, setNotesText] = useState('');
+  const [runningOneId, setRunningOneId] = useState<string | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
 
@@ -365,6 +367,69 @@ export function VendorVerificationDashboard() {
     queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
   };
 
+  const handleRunOne = async (sessionId: string) => {
+    setRunningOneId(sessionId);
+    try {
+      // Reset this single session so the batch picks it up
+      const { error: resetErr } = await supabase
+        .from('roof_training_sessions')
+        .update({
+          verification_status: null,
+          verification_verdict: null,
+          verification_notes: null,
+          verification_run_at: null,
+          verification_feature_breakdown: null,
+        } as any)
+        .eq('id', sessionId);
+      if (resetErr) throw resetErr;
+
+      // Run a tiny batch of 1 — the verifier always picks the next pending
+      const { data, error } = await supabase.functions.invoke('measure', {
+        body: { action: 'batch-verify-vendor-reports', limit: 1 },
+      });
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Run failed');
+
+      toast.success(
+        `Run complete — ${data.confirmed || 0} confirmed, ${data.denied || 0} denied, ${data.failed || 0} failed`,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ['vendor-verification-sessions', activeCompanyId],
+      });
+    } catch (err: any) {
+      console.error('Run one error:', err);
+      toast.error(err?.message || 'Failed to run AI measurement');
+    } finally {
+      setRunningOneId(null);
+    }
+  };
+
+  const handleExportTrainingSet = async () => {
+    setIsExporting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke(
+        'export-unet-training-set',
+        { body: {} },
+      );
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Export failed');
+
+      toast.success(
+        `Exported ${data.data.included_records} training records (${data.data.skipped} skipped)`,
+      );
+
+      // Open signed URL in a new tab so the user can download the JSONL
+      if (data.data.signed_url) {
+        window.open(data.data.signed_url, '_blank', 'noopener');
+      }
+    } catch (err: any) {
+      console.error('Export training set error:', err);
+      toast.error(err?.message || 'Failed to export training set');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const getVarianceColor = (pct: number) => {
     const abs = Math.abs(pct);
     if (abs < 5) return 'text-green-500';
@@ -406,6 +471,20 @@ export function VendorVerificationDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
+          {stats.confirmed > 0 && (
+            <Button
+              variant="outline"
+              onClick={handleExportTrainingSet}
+              disabled={isExporting || isRunning}
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Export Training Set ({stats.confirmed})
+            </Button>
+          )}
           {stats.confirmed > 0 && (
             <Button
               variant="outline"
@@ -616,18 +695,36 @@ export function VendorVerificationDashboard() {
                           )}
                         </TableCell>
                         <TableCell>
-                          {session.verification_verdict && (
+                          <div className="flex items-center gap-1">
                             <Button
                               size="sm"
                               variant="ghost"
+                              title="Run AI measurement for this property"
+                              disabled={runningOneId === session.id || isRunning}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleToggleVerdict(session.id, session.verification_verdict);
+                                handleRunOne(session.id);
                               }}
                             >
-                              Flip
+                              {runningOneId === session.id ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Play className="h-3 w-3" />
+                              )}
                             </Button>
-                          )}
+                            {session.verification_verdict && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleToggleVerdict(session.id, session.verification_verdict);
+                                }}
+                              >
+                                Flip
+                              </Button>
+                            )}
+                          </div>
                         </TableCell>
                       </TableRow>
 
