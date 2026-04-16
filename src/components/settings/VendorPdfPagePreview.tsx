@@ -1,39 +1,41 @@
 /**
- * VendorPdfPagePreview - Renders a single page of a vendor PDF (e.g., a Roofr/EagleView
- * diagram page) as a canvas image so it displays inline even when the host serves
- * the PDF with X-Frame-Options: DENY (which blocks <iframe>/<object> previews).
+ * VendorPdfPagePreview - Renders ONLY the "Length Diagram" page from a vendor PDF
+ * (EagleView/Roofr both use this exact page style with labeled edge lengths).
  *
- * Uses pdfjs-dist (already installed) and a CDN worker. Lazy-loaded only when the
- * row is expanded so it doesn't hurt initial table render.
+ * Strategy:
+ *  1. Load the PDF via pdfjs-dist (works around X-Frame-Options: DENY).
+ *  2. Scan each page's text content for the phrase "LENGTH DIAGRAM"
+ *     (case-insensitive). Both EagleView and Roofr label this page identically.
+ *  3. Render that single page as a canvas. No multi-page navigation UI.
+ *  4. If detection fails, fall back to a sensible default (page 4 for EagleView
+ *     premium reports — that's where the length diagram historically lives).
  */
 import { useEffect, useRef, useState } from "react";
-import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 
 interface VendorPdfPagePreviewProps {
   url: string;
-  /** Initial page to render. Defaults to 1; many vendor reports place the
-   *  diagram on page 2 or 3, so the user can step through. */
+  /** Override auto-detection if caller already knows the diagram page */
   initialPage?: number;
   /** Render scale — higher = sharper but slower */
   scale?: number;
   className?: string;
 }
 
+const DIAGRAM_KEYWORDS = ["length diagram", "lengths diagram"];
+const FALLBACK_PAGE = 4;
+
 export function VendorPdfPagePreview({
   url,
-  initialPage = 1,
-  scale = 1.5,
+  initialPage,
+  scale = 1.6,
   className,
 }: VendorPdfPagePreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [page, setPage] = useState(initialPage);
-  const [numPages, setNumPages] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const docRef = useRef<any>(null);
 
-  // Load the document once
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -41,22 +43,59 @@ export function VendorPdfPagePreview({
 
     (async () => {
       try {
-        // Dynamic import keeps pdfjs out of the initial bundle
         const pdfjs = await import("pdfjs-dist");
-        // Worker via CDN matched to the installed version
         // @ts-ignore - version is exported at runtime
         const version = pdfjs.version || "3.11.174";
         pdfjs.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${version}/build/pdf.worker.min.js`;
 
-        const loadingTask = pdfjs.getDocument({ url, withCredentials: false });
-        const doc = await loadingTask.promise;
+        const doc = await pdfjs.getDocument({ url, withCredentials: false }).promise;
         if (cancelled) return;
         docRef.current = doc;
-        setNumPages(doc.numPages);
+
+        // 1. Determine which page to render
+        let targetPage = initialPage ?? 0;
+        if (!targetPage) {
+          // Scan pages for the "LENGTH DIAGRAM" header
+          for (let i = 1; i <= doc.numPages; i++) {
+            try {
+              const p = await doc.getPage(i);
+              const tc = await p.getTextContent();
+              const text = tc.items
+                .map((it: any) => (typeof it.str === "string" ? it.str : ""))
+                .join(" ")
+                .toLowerCase();
+              if (DIAGRAM_KEYWORDS.some((k) => text.includes(k))) {
+                targetPage = i;
+                break;
+              }
+            } catch {
+              // Skip page on failure, keep scanning
+            }
+            if (cancelled) return;
+          }
+          if (!targetPage) {
+            targetPage = Math.min(FALLBACK_PAGE, doc.numPages);
+          }
+        }
+        targetPage = Math.min(Math.max(1, targetPage), doc.numPages);
+
+        // 2. Render that page
+        const pdfPage = await doc.getPage(targetPage);
+        if (cancelled) return;
+        const viewport = pdfPage.getViewport({ scale });
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
+        if (cancelled) return;
+        setLoading(false);
       } catch (err: any) {
         if (cancelled) return;
-        console.error("[VendorPdfPagePreview] load failed", err);
-        setError(err?.message || "Failed to load PDF");
+        console.error("[VendorPdfPagePreview] failed", err);
+        setError(err?.message || "Failed to load diagram");
         setLoading(false);
       }
     })();
@@ -66,49 +105,12 @@ export function VendorPdfPagePreview({
       if (docRef.current?.destroy) docRef.current.destroy();
       docRef.current = null;
     };
-  }, [url]);
-
-  // Render the requested page whenever doc or page changes
-  useEffect(() => {
-    if (!docRef.current || !numPages) return;
-    let cancelled = false;
-    setLoading(true);
-
-    (async () => {
-      try {
-        const safePage = Math.min(Math.max(1, page), numPages);
-        const pdfPage = await docRef.current.getPage(safePage);
-        if (cancelled) return;
-
-        const viewport = pdfPage.getViewport({ scale });
-        const canvas = canvasRef.current;
-        if (!canvas) return;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-
-        await pdfPage.render({ canvasContext: ctx, viewport }).promise;
-        if (cancelled) return;
-        setLoading(false);
-      } catch (err: any) {
-        if (cancelled) return;
-        console.error("[VendorPdfPagePreview] render failed", err);
-        setError(err?.message || "Failed to render page");
-        setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [numPages, page, scale]);
+  }, [url, initialPage, scale]);
 
   if (error) {
     return (
       <div className={`flex h-80 w-full items-center justify-center rounded-md border bg-background p-4 text-sm text-muted-foreground ${className || ""}`}>
-        Could not render PDF preview.{" "}
+        Could not render diagram preview.{" "}
         <a
           href={url}
           target="_blank"
@@ -124,7 +126,7 @@ export function VendorPdfPagePreview({
 
   return (
     <div className={`relative rounded-md border bg-background ${className || ""}`}>
-      <div className="flex h-80 w-full items-center justify-center overflow-auto p-2">
+      <div className="flex h-[28rem] w-full items-center justify-center overflow-auto p-2">
         <canvas
           ref={canvasRef}
           className="max-h-full"
@@ -132,34 +134,6 @@ export function VendorPdfPagePreview({
         />
         {loading && <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
       </div>
-      {numPages && numPages > 1 && (
-        <div
-          className="absolute bottom-2 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full border bg-background/90 px-2 py-1 shadow-sm"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            disabled={page <= 1 || loading}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </Button>
-          <span className="text-xs tabular-nums text-muted-foreground">
-            Page {page} / {numPages}
-          </span>
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-6 w-6"
-            disabled={page >= numPages || loading}
-            onClick={() => setPage((p) => Math.min(numPages, p + 1))}
-          >
-            <ChevronRight className="h-3 w-3" />
-          </Button>
-        </div>
-      )}
     </div>
   );
 }

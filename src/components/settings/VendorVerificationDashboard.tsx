@@ -869,10 +869,7 @@ export function VendorVerificationDashboard() {
                                         }
                                         if (isPdf) {
                                           return (
-                                            <VendorPdfPagePreview
-                                              url={url}
-                                              initialPage={1}
-                                            />
+                                            <VendorPdfPagePreview url={url} />
                                           );
                                         }
                                         return (
