@@ -128,7 +128,14 @@ export const interceptedFetch: typeof fetch = async (input, init) => {
     const duration = Math.round(performance.now() - start);
 
     // Log non-OK responses (with circuit breaker protection)
-    if (!response.ok && !isLoggingCrash) {
+    // Ignore known-benign endpoints to avoid noisy crash reports
+    const isBenignNoise =
+      // Dev-only scrubber report; 404 expected in production
+      (response.status === 404 && url.includes('/tools/scrubber/')) ||
+      // customer_photos cross-tenant RLS denials surface as 400; not a real crash
+      (response.status === 400 && url.includes('/rest/v1/customer_photos'));
+
+    if (!response.ok && !isLoggingCrash && !isBenignNoise) {
       const errorHash = getErrorHash(url, response.status, method);
       
       // Only log if not deduplicated and under rate limit
