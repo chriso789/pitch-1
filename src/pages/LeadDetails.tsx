@@ -928,7 +928,7 @@ const LeadDetails = () => {
         </div>
 
             {/* Sales Reps - combined row */}
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-sm">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm">
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground">Rep:</span>
                 {isEditingSalesRep ? (
@@ -1055,9 +1055,7 @@ const LeadDetails = () => {
           <Button variant="outline" size="sm" className="h-6 text-xs px-2" onClick={() => setShowInspection(true)}>
             Start Inspection
           </Button>
-          <div className="flex-1 min-w-0">
-            <InspectionHistory leadId={id!} propertyAddress={[lead?.contact?.address_street, lead?.contact?.address_city, lead?.contact?.address_state, lead?.contact?.address_zip].filter(Boolean).join(', ')} />
-          </div>
+          <InspectionHistory leadId={id!} propertyAddress={[lead?.contact?.address_street, lead?.contact?.address_city, lead?.contact?.address_state, lead?.contact?.address_zip].filter(Boolean).join(', ')} />
         </div>
 
         {/* Contact Link - compact inline */}
