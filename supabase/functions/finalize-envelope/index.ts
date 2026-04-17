@@ -136,11 +136,18 @@ Deno.serve(async (req: Request) => {
             const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
             const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
             
+            // PDF coords: y=0 is bottom of page. The "Customer Signature" block in
+            // EstimatePDFDocument renders near the bottom of the last page with the
+            // signature LINE around y≈135pt and a "Date: ___" label just below it.
+            // We want the signature image to sit DIRECTLY ON the signature line
+            // (image baseline = line), and the audit metadata (name/date/IP) to
+            // appear BELOW the line — never overlapping the fine-print paragraph above.
             let sigX = 60;
-            let sigY = 215; // signature block area – aligns with "Customer Signature" line
+            const signatureLineY = 138; // baseline y of the printed signature line
+            let sigY = signatureLineY;  // image baseline sits on the line
             const maxSigWidth = 180;
-            const maxSigHeight = 55;
-            const sigSpacing = 220;
+            const maxSigHeight = 45;    // keep signature compact so it doesn't reach into terms
+            const sigSpacing = 240;
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
@@ -162,6 +169,17 @@ Deno.serve(async (req: Request) => {
                 const drawW = dims.width * scale;
                 const drawH = dims.height * scale;
 
+                // Mask any pre-printed "Date: _____" placeholder beneath the
+                // signature line BEFORE drawing the image, so neither the
+                // signature nor the audit metadata overlaps existing verbiage.
+                lastPage.drawRectangle({
+                  x: sigX - 2,
+                  y: signatureLineY - 40,
+                  width: maxSigWidth + 20,
+                  height: 38,
+                  color: rgb(1, 1, 1),
+                });
+
                 lastPage.drawImage(embeddedImg, {
                   x: sigX,
                   y: sigY,
@@ -169,24 +187,24 @@ Deno.serve(async (req: Request) => {
                   height: drawH,
                 });
 
-                // Draw signer name, date, and IP below the signature line
+                // Draw signer name, date, and IP BELOW the signature line
                 lastPage.drawText(recipientName, {
                   x: sigX,
-                  y: sigY - 65,
+                  y: signatureLineY - 12,
                   size: 9,
                   font: helveticaBoldFont,
                   color: rgb(0, 0, 0),
                 });
                 lastPage.drawText(`Date: ${signedDate}`, {
                   x: sigX,
-                  y: sigY - 77,
+                  y: signatureLineY - 24,
                   size: 8,
                   font: helveticaFont,
                   color: rgb(0.3, 0.3, 0.3),
                 });
                 lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
                   x: sigX,
-                  y: sigY - 88,
+                  y: signatureLineY - 35,
                   size: 7,
                   font: helveticaFont,
                   color: rgb(0.5, 0.5, 0.5),
@@ -196,7 +214,7 @@ Deno.serve(async (req: Request) => {
                 sigX += sigSpacing;
                 if (sigX + maxSigWidth > pageWidth - 40) {
                   sigX = 60;
-                  sigY -= 100;
+                  sigY -= 110;
                 }
               };
 
@@ -222,31 +240,39 @@ Deno.serve(async (req: Request) => {
                   }
                   await embedSigImage(imgBytes);
                 } else if (sig.signature_data) {
-                  // Case 3: Plain text typed signature
+                  // Case 3: Plain text typed signature — render ON the signature line.
+                  // Mask the underlying "Date: ___" placeholder first.
+                  lastPage.drawRectangle({
+                    x: sigX - 2,
+                    y: signatureLineY - 40,
+                    width: maxSigWidth + 20,
+                    height: 38,
+                    color: rgb(1, 1, 1),
+                  });
                   lastPage.drawText(sig.signature_data, {
                     x: sigX,
-                    y: sigY + 10,
+                    y: signatureLineY + 4,
                     size: 18,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0.4),
                   });
                   lastPage.drawText(recipientName, {
                     x: sigX,
-                    y: sigY - 65,
+                    y: signatureLineY - 12,
                     size: 9,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0),
                   });
                   lastPage.drawText(`Date: ${signedDate}`, {
                     x: sigX,
-                    y: sigY - 77,
+                    y: signatureLineY - 24,
                     size: 8,
                     font: helveticaFont,
                     color: rgb(0.3, 0.3, 0.3),
                   });
                   lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
                     x: sigX,
-                    y: sigY - 88,
+                    y: signatureLineY - 35,
                     size: 7,
                     font: helveticaFont,
                     color: rgb(0.5, 0.5, 0.5),
