@@ -4294,15 +4294,19 @@ Deno.serve(async (req) => {
             return json({ ok: false, error: 'Authorization header required for background drain' }, corsHeaders, 401);
           }
 
+          // Kick off the FIRST step of the self-chaining drain. Each step lives
+          // in its own edge function invocation so a slow house can't poison
+          // the whole queue.
           (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil(
             drainVendorVerificationQueueInBackground(authHeader, {
-              chunkSize: batchSize,
+              iteration: 0,
               maxIterations: typeof body.maxIterations === 'number' ? body.maxIterations : 300,
               resetFailed: !!body.resetFailed,
               resetStale: !!body.resetStale,
             }),
           );
 
+          console.log(`🚀 Background vendor drain started by user ${user.id}`);
           return json({
             ok: true,
             started: true,
