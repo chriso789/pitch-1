@@ -269,16 +269,10 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
                     {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                     Upload File
                   </Button>
-                  <Button variant="outline" onClick={() => setSmartDocOpen(true)}>
-                    <FileStack className="h-4 w-4 mr-2" />
-                    Add SmartDoc
-                  </Button>
                   <Button
                     variant="outline"
-                    onClick={handleUploadClick}
-                    disabled={uploading}
-                    className="col-span-2"
-                    title="Upload a document — you'll be prompted to request signature"
+                    onClick={() => setSmartDocOpen(true)}
+                    title="Pick a SmartDoc to send for homeowner signature / fill"
                   >
                     <FileSignature className="h-4 w-4 mr-2" />
                     Request Signature
