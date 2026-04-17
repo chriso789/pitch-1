@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitCenterPanel from '@/components/estimates/ProfitCenterPanel';
@@ -850,44 +851,67 @@ const LeadDetails = () => {
       </div>
 
       {/* Compact Info Card */}
-      <div className="bg-muted/30 rounded-lg px-3 py-2 space-y-1.5 text-xs md:text-sm">
+      <div className="bg-muted/30 rounded-lg px-3 py-1.5 space-y-1 text-xs md:text-sm">
         {/* Address row */}
-        {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
-          <div className="flex items-center gap-1.5">
-            <MapPin className="h-3 w-3 md:h-4 md:w-4 text-primary shrink-0" />
-            <a
-              href={`https://maps.google.com/?q=${encodeURIComponent(
-                lead.verified_address?.formatted_address || 
-                `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary underline underline-offset-2 truncate"
-            >
-              {lead.verified_address?.formatted_address || 
-               `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
-            </a>
-            {lead.contact?.id && (
-              <AddressReverificationButton
-                contactId={lead.contact.id}
-                currentAddress={
-                  lead.verified_address?.formatted_address || 
-                  `${lead.contact?.address_street || ''}, ${lead.contact?.address_city || ''}, ${lead.contact?.address_state || ''} ${lead.contact?.address_zip || ''}`.trim()
-                }
-                onReverified={(newCoords) => {
-                  toast({
-                    title: "Coordinates Updated",
-                    description: "The property location has been re-verified.",
-                  });
-                  refetchLead();
-                }}
-                size="sm"
-                variant="ghost"
-                className="h-5 px-1.5 text-[10px] shrink-0"
-              />
-            )}
-          </div>
-        )}
+        {(() => {
+          const builtAddress = [
+            lead.contact?.address_street,
+            lead.contact?.address_city,
+            lead.contact?.address_state,
+            lead.contact?.address_zip,
+          ]
+            .filter((p) => p && String(p).trim() && String(p).toLowerCase() !== 'null')
+            .join(', ');
+          const displayAddress = lead.verified_address?.formatted_address || builtAddress;
+          if (!displayAddress) return null;
+          const encoded = encodeURIComponent(displayAddress);
+          const isAppleDevice = typeof navigator !== 'undefined' && /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent);
+          return (
+            <div className="flex items-center gap-1.5">
+              <MapPin className="h-3 w-3 md:h-4 md:w-4 text-primary shrink-0" />
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="text-primary underline underline-offset-2 truncate text-left hover:text-primary/80">
+                    {displayAddress}
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="z-50 bg-popover">
+                  <DropdownMenuItem asChild>
+                    <a href={`https://www.google.com/maps/search/?api=1&query=${encoded}`} target="_blank" rel="noopener noreferrer">
+                      Open in Google Maps
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href={isAppleDevice ? `maps://?q=${encoded}` : `https://maps.apple.com/?q=${encoded}`} target="_blank" rel="noopener noreferrer">
+                      Open in Apple Maps
+                    </a>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
+                    <a href={`https://www.waze.com/ul?q=${encoded}&navigate=yes`} target="_blank" rel="noopener noreferrer">
+                      Open in Waze
+                    </a>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {lead.contact?.id && (
+                <AddressReverificationButton
+                  contactId={lead.contact.id}
+                  currentAddress={displayAddress}
+                  onReverified={() => {
+                    toast({
+                      title: "Coordinates Updated",
+                      description: "The property location has been re-verified.",
+                    });
+                    refetchLead();
+                  }}
+                  size="sm"
+                  variant="ghost"
+                  className="h-5 px-1.5 text-[10px] shrink-0"
+                />
+              )}
+            </div>
+          );
+        })()}
 
         {/* Phone & email inline */}
         {lead.contact && (lead.contact.phone || lead.contact.email) && (
