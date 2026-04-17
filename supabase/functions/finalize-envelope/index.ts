@@ -240,7 +240,15 @@ Deno.serve(async (req: Request) => {
                   }
                   await embedSigImage(imgBytes);
                 } else if (sig.signature_data) {
-                  // Case 3: Plain text typed signature — render ON the signature line
+                  // Case 3: Plain text typed signature — render ON the signature line.
+                  // Mask the underlying "Date: ___" placeholder first.
+                  lastPage.drawRectangle({
+                    x: sigX - 2,
+                    y: signatureLineY - 40,
+                    width: maxSigWidth + 20,
+                    height: 38,
+                    color: rgb(1, 1, 1),
+                  });
                   lastPage.drawText(sig.signature_data, {
                     x: sigX,
                     y: signatureLineY + 4,
