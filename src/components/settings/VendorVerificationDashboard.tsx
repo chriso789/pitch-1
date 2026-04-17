@@ -816,6 +816,7 @@ export function VendorVerificationDashboard() {
       let totalFailed = 0;
       let totalSkipped = 0;
       let consecutiveEmpty = 0;
+      let batchErrors = 0;
       let safetyIterations = 0;
       const CHUNK_SIZE = 1; // One house per request avoids Edge Function timeouts
       const MAX_ITERATIONS = 300;
@@ -827,9 +828,18 @@ export function VendorVerificationDashboard() {
         });
         if (batchErr) {
           console.error('Batch error:', batchErr);
-          toast.error(`Batch failed: ${batchErr.message}`);
-          break;
+          batchErrors += 1;
+          await supabase.functions.invoke('measure', {
+            body: { action: 'batch-verify-vendor-reports', resetStale: true, limit: 0 },
+          });
+          if (batchErrors >= 3) {
+            toast.error(`Batch failed after ${batchErrors} retries: ${batchErr.message}`);
+            break;
+          }
+          toast.warning(`One house timed out; skipping ahead (${batchErrors}/3)`);
+          continue;
         }
+        batchErrors = 0;
         const processed = batchData?.processed || 0;
         const confirmed = batchData?.confirmed || 0;
         const denied = batchData?.denied || 0;

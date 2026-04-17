@@ -1956,7 +1956,7 @@ Deno.serve(async (req) => {
         // 'skeleton' = geometric straight-skeleton algorithm (default, fast)
         // 'vision' = AI vision-based detection from satellite imagery (more accurate)
         // 'unified' = NEW: Full multi-source fusion pipeline (opt-in)
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth } = body;
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth, disableVisionFallback = false } = body;
 
         // --- Unified Pipeline Delegation (opt-in) ---
         if (useUnifiedPipeline || engine === 'unified') {
@@ -2212,7 +2212,7 @@ Deno.serve(async (req) => {
         }
 
         // Final fallback: if skeleton found no provider and we haven't tried vision yet, try vision
-        if (!meas && engineUsed === 'skeleton' && engine !== 'vision') {
+        if (!meas && engineUsed === 'skeleton' && engine !== 'vision' && !disableVisionFallback) {
           console.log('[pull] 🔭 Skeleton failed, attempting VISION engine as final fallback');
           try {
             const { data: overlayData, error: overlayError } = await supabase.functions.invoke('generate-roof-overlay', {
@@ -4388,7 +4388,8 @@ Deno.serve(async (req) => {
                       lng: sessionLng,
                       address: session.property_address || '',
                       training_session_id: session.id,
-                      engine: 'vision',
+                      engine: 'skeleton',
+                      disableVisionFallback: true,
                     }),
                   });
                   const pullData = await pullResp.json();
