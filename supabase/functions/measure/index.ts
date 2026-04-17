@@ -4246,7 +4246,7 @@ Deno.serve(async (req) => {
                       lng: sessionLng,
                       address: session.property_address || '',
                       training_session_id: session.id,
-                      engine: 'skeleton',
+                      engine: 'vision',
                     }),
                   });
                   const pullData = await pullResp.json();
