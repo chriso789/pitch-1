@@ -41,6 +41,7 @@ import {
   FileSignature,
   CheckCircle2,
   Loader2,
+  FileStack,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { PortalUser, usePortalActivity, useRevokePortalAccess } from "@/hooks/usePortalAdmin";
@@ -48,6 +49,7 @@ import { PortalPermissionsEditor } from "./PortalPermissionsEditor";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { RequestSignatureDialog } from "@/components/signatures/RequestSignatureDialog";
+import { SmartDocPickerDialog } from "./SmartDocPickerDialog";
 
 interface PortalUserDetailProps {
   user: PortalUser | null;
