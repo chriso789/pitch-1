@@ -4102,7 +4102,7 @@ Deno.serve(async (req) => {
           return json({
             ok: true,
             message: targetSessionId ? 'Selected session is not pending verification' : 'No pending vendor sessions to verify',
-            processed: 0, confirmed: 0, denied: 0, skipped: invalidSessions.length, failed: 0, total: 0,
+            processed: 0, confirmed: 0, denied: 0, skipped: 0, failed: 0, total: 0,
             remaining: remainingCount || 0,
           }, corsHeaders);
         }
