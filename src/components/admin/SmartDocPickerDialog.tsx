@@ -44,11 +44,12 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   const [preparing, setPreparing] = useState<string | null>(null);
 
   const { data: docs, isLoading } = useQuery({
-    queryKey: ["smart-docs-templates"],
+    queryKey: ["smart-doc-templates-picker"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("smart_docs")
-        .select("id, name, description, body, updated_at")
+        .from("smart_doc_templates")
+        .select("id, title, description, content, category, status, updated_at")
+        .eq("status", "active")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return data || [];
@@ -58,8 +59,9 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
 
   const filtered = (docs || []).filter((d) =>
     !search ||
-    d.name?.toLowerCase().includes(search.toLowerCase()) ||
-    d.description?.toLowerCase().includes(search.toLowerCase())
+    d.title?.toLowerCase().includes(search.toLowerCase()) ||
+    d.description?.toLowerCase().includes(search.toLowerCase()) ||
+    d.category?.toLowerCase().includes(search.toLowerCase())
   );
 
   const handlePick = async (doc: { id: string; name: string; description: string | null; body: string | null }) => {
