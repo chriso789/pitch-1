@@ -22,6 +22,14 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
+interface PickerSmartDoc {
+  id: string;
+  title: string;
+  description: string | null;
+  content: string | null;
+  updated_at?: string | null;
+}
+
 interface SmartDocPickerDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -50,13 +58,18 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
     queryFn: async () => {
       if (!tenantId) return [];
       const { data, error } = await supabase
-        .from("smart_doc_templates")
-        .select("id, title, description, content, category, status, updated_at")
+        .from("smart_docs")
+        .select("id, name, description, body, updated_at")
         .eq("tenant_id", tenantId)
-        .eq("status", "active")
         .order("updated_at", { ascending: false });
       if (error) throw error;
-      return data || [];
+      return ((data || []) as Array<{ id: string; name: string; description: string | null; body: string; updated_at: string | null }>).map((doc) => ({
+        id: doc.id,
+        title: doc.name,
+        description: doc.description,
+        content: doc.body,
+        updated_at: doc.updated_at,
+      }));
     },
     enabled: open && !!tenantId,
   });
@@ -64,24 +77,35 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   const filtered = (docs || []).filter((d) =>
     !search ||
     d.title?.toLowerCase().includes(search.toLowerCase()) ||
-    d.description?.toLowerCase().includes(search.toLowerCase()) ||
-    d.category?.toLowerCase().includes(search.toLowerCase())
+    d.description?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handlePick = async (doc: { id: string; title: string; description: string | null; content: string | null }) => {
+  const handlePick = async (doc: PickerSmartDoc) => {
     setPreparing(doc.id);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!tenantId) throw new Error("No tenant");
 
-      // Create a smart_doc instance for this homeowner from the template
+      const { data: renderedDoc, error: renderError } = await supabase.functions.invoke("render-liquid", {
+        body: {
+          smart_doc_id: doc.id,
+          contact_id: contactId,
+          project_id: projectId ?? undefined,
+        },
+      });
+
+      const renderedHtml = renderError
+        ? (doc.content || "")
+        : (renderedDoc?.rendered_text ?? doc.content ?? "");
+
+      // Create a smart_doc instance for this homeowner from the built SmartDoc
       const { data: instance, error } = await supabase
         .from("smart_doc_instances")
         .insert({
           tenant_id: tenantId,
-          template_id: doc.id,
+          template_id: null,
           title: doc.title,
-          rendered_html: doc.content || "",
+          rendered_html: renderedHtml,
           created_by: authUser?.id,
         })
         .select()
