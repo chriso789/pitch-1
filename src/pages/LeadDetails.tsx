@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitCenterPanel from '@/components/estimates/ProfitCenterPanel';
