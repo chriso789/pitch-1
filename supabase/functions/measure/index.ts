@@ -4784,7 +4784,28 @@ Deno.serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: `Invalid action: ${action}. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, queue-missing-ai-measurements, or batch-verify-vendor-reports` }, corsHeaders, 400);
+      // Internal route used by the self-chaining background drain. Each call
+      // processes ONE house and then schedules the next step in a brand-new
+      // edge function invocation. Returns 202 immediately.
+      if (action === 'drain-vendor-step') {
+        const authHeader = req.headers.get('Authorization');
+        if (!authHeader) {
+          return json({ ok: false, error: 'Authorization header required' }, corsHeaders, 401);
+        }
+
+        (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil(
+          drainVendorVerificationQueueInBackground(authHeader, {
+            iteration: typeof body.iteration === 'number' ? body.iteration : 0,
+            maxIterations: typeof body.maxIterations === 'number' ? body.maxIterations : 300,
+            consecutiveEmpty: typeof body.consecutiveEmpty === 'number' ? body.consecutiveEmpty : 0,
+            consecutiveErrors: typeof body.consecutiveErrors === 'number' ? body.consecutiveErrors : 0,
+          }),
+        );
+
+        return json({ ok: true, chained: true, iteration: body.iteration ?? 0 }, corsHeaders, 202);
+      }
+
+      return json({ ok: false, error: `Invalid action: ${action}. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, queue-missing-ai-measurements, batch-verify-vendor-reports, or drain-vendor-step` }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)
