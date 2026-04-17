@@ -14,12 +14,14 @@ import {
   Circle,
   TrendingUp,
   Settings,
+  FileSignature,
 } from "lucide-react";
 import { usePortalStats, usePortalUsers, PortalUser } from "@/hooks/usePortalAdmin";
 import { PortalUsersList } from "@/components/admin/PortalUsersList";
 import { PortalUserDetail } from "@/components/admin/PortalUserDetail";
 import { PortalActivityLog } from "@/components/admin/PortalActivityLog";
 import { PortalGlobalSettings } from "@/components/admin/PortalGlobalSettings";
+import { PortalSignatureTracking } from "@/components/admin/PortalSignatureTracking";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
 export const HomeownerPortalAdmin: React.FC = () => {
@@ -146,6 +148,10 @@ export const HomeownerPortalAdmin: React.FC = () => {
                 )}
               </TabsTrigger>
               <TabsTrigger value="all">All Users</TabsTrigger>
+              <TabsTrigger value="signatures" className="flex items-center gap-2">
+                <FileSignature className="h-4 w-4" />
+                Signature Tracking
+              </TabsTrigger>
               <TabsTrigger value="activity" className="flex items-center gap-2">
                 <Activity className="h-4 w-4" />
                 Activity Log
@@ -170,6 +176,10 @@ export const HomeownerPortalAdmin: React.FC = () => {
                 selectedUserId={selectedUser?.id}
                 filter="all"
               />
+            </TabsContent>
+
+            <TabsContent value="signatures">
+              <PortalSignatureTracking />
             </TabsContent>
 
             <TabsContent value="activity">
