@@ -4032,7 +4032,8 @@ Deno.serve(async (req) => {
         }
 
         const tenantId = profile.tenant_id;
-        const batchSize = typeof body.limit === 'number' ? body.limit : 5;
+        const requestedBatchSize = typeof body.limit === 'number' ? body.limit : 5;
+        const batchSize = requestedBatchSize === 0 ? 0 : Math.min(Math.max(requestedBatchSize, 1), 1);
         const targetSessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0
           ? body.sessionId.trim()
           : null;

@@ -817,12 +817,13 @@ export function VendorVerificationDashboard() {
       let totalSkipped = 0;
       let consecutiveEmpty = 0;
       let safetyIterations = 0;
-      const MAX_ITERATIONS = 60; // 60 batches * 5 = 300 sessions cap
+      const CHUNK_SIZE = 1; // One house per request avoids Edge Function timeouts
+      const MAX_ITERATIONS = 300;
 
       while (safetyIterations < MAX_ITERATIONS) {
         safetyIterations++;
         const { data: batchData, error: batchErr } = await supabase.functions.invoke('measure', {
-          body: { action: 'batch-verify-vendor-reports', limit: 5 },
+          body: { action: 'batch-verify-vendor-reports', limit: CHUNK_SIZE },
         });
         if (batchErr) {
           console.error('Batch error:', batchErr);
@@ -863,6 +864,10 @@ export function VendorVerificationDashboard() {
           if (consecutiveEmpty >= 3) break;
         } else {
           consecutiveEmpty = 0;
+        }
+
+        if (remaining > 0) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
         }
       }
 
