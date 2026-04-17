@@ -1101,6 +1101,33 @@ const LeadDetails = () => {
                 <SelectItem value="not_home">Not Home</SelectItem>
               </SelectContent>
             </Select>
+            <Button
+              variant={lead.contact.portal_access_enabled ? 'default' : 'outline'}
+              size="sm"
+              className="h-6 text-xs px-2 gap-1"
+              onClick={async () => {
+                if (!lead.contact?.id) return;
+                const enabled = !lead.contact.portal_access_enabled;
+                try {
+                  const { error } = await supabase
+                    .from('contacts')
+                    .update({
+                      portal_access_enabled: enabled,
+                      portal_access_granted_at: enabled ? new Date().toISOString() : null,
+                      portal_access_granted_by: enabled ? user?.id : null,
+                    })
+                    .eq('id', lead.contact.id);
+                  if (error) throw error;
+                  toast({ title: enabled ? 'Portal access enabled' : 'Portal access disabled' });
+                  refetchLead();
+                } catch (err: any) {
+                  toast({ title: 'Error updating portal access', description: err.message, variant: 'destructive' });
+                }
+              }}
+            >
+              <Home className="h-3 w-3" />
+              {lead.contact.portal_access_enabled ? 'Portal On' : 'Enable Portal'}
+            </Button>
           </div>
         )}
 
