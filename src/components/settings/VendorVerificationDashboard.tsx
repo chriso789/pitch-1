@@ -72,11 +72,18 @@ export function VendorVerificationDashboard() {
   const [isExporting, setIsExporting] = useState(false);
   const [isCheckingCoverage, setIsCheckingCoverage] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
+  const [isFixingDiagrams, setIsFixingDiagrams] = useState(false);
   const [coverageReport, setCoverageReport] = useState<{
     total: number;
     withAi: number;
     missing: number;
     queued: number;
+  } | null>(null);
+  const [diagramFixReport, setDiagramFixReport] = useState<{
+    scanned: number;
+    cleaned: number;
+    requeued: number;
+    segmentsRemoved: number;
   } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
