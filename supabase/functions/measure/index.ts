@@ -4076,28 +4076,11 @@ Deno.serve(async (req) => {
           return json({ ok: false, error: sessionsError.message }, corsHeaders, 500);
         }
 
-        // Filter to sessions with valid vendor data, take only batchSize
+        // Take ALL candidates up to batchSize. Sessions with empty vendor totals will
+        // still get an AI measurement run (so the diagram renders) — they just can't
+        // be scored against the vendor and will be marked verdict='no_vendor_data'.
         const allCandidates = sessions || [];
-        const validSessions = allCandidates.filter(s => {
-          const traced = s.traced_totals as Record<string, number>;
-          return traced && Object.keys(traced).length > 0 &&
-            (traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
-        }).slice(0, batchSize);
-
-        // Mark invalid sessions as skipped so they don't block future batches
-        const invalidSessions = allCandidates.filter(s => {
-          const traced = s.traced_totals as Record<string, number>;
-          return !traced || Object.keys(traced).length === 0 ||
-            !(traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
-        });
-        if (invalidSessions.length > 0) {
-          const invalidIds = invalidSessions.map(s => s.id);
-          await adminSupabase
-            .from('roof_training_sessions')
-            .update({ verification_status: 'skipped', verification_notes: 'Skipped - no valid vendor totals' })
-            .in('id', invalidIds);
-          console.log(`⏭️ Skipped ${invalidIds.length} sessions with no valid vendor totals`);
-        }
+        const validSessions = allCandidates.slice(0, batchSize);
 
         // Count remaining unprocessed for the response
         let remainingCount = 0;
