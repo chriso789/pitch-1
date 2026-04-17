@@ -204,7 +204,7 @@ Deno.serve(async (req) => {
       const { data: paymentLinks } = await supabase
         .from('payment_links')
         .select('*')
-        .eq('project_id', tokenRecord.project_id)
+        .eq('project_id', resolvedProjectId)
         .eq('status', 'active')
         .order('created_at', { ascending: false });
 
@@ -212,7 +212,7 @@ Deno.serve(async (req) => {
       const { data: messages } = await supabase
         .from('customer_messages')
         .select('*')
-        .eq('project_id', tokenRecord.project_id)
+        .eq('project_id', resolvedProjectId)
         .order('created_at', { ascending: true });
 
       // Get documents (excluding internal)
