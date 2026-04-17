@@ -4054,22 +4054,24 @@ Deno.serve(async (req) => {
          if (s.vendor_report_id) existingByReport.set(s.vendor_report_id, s);
        }
 
-       let queued = 0;
-       let reset = 0;
-       const inserts: any[] = [];
-       const idsToReset: string[] = [];
+        let queued = 0;
+        let reset = 0;
+        let alreadyPending = 0;
+        const inserts: any[] = [];
+        const idsToReset: string[] = [];
 
-       for (const report of reports || []) {
-         const existing = existingByReport.get(report.id);
-         if (existing) {
-           // If verdict already set, skip; otherwise reset status so batch picks it up
-           if (existing.verification_verdict) continue;
-           if (existing.verification_status && existing.verification_status !== 'pending') {
-             idsToReset.push(existing.id);
-             reset++;
-           }
-           continue;
-         }
+        for (const report of reports || []) {
+          const existing = existingByReport.get(report.id);
+          if (existing) {
+            // If verdict already set, skip
+            if (existing.verification_verdict) continue;
+            // Reset ANY existing session without a verdict so the batch processor re-runs it.
+            // This includes 'pending', 'processing', 'failed', and NULL statuses — they're all
+            // stuck and need to be re-queued for AI generation.
+            idsToReset.push(existing.id);
+            reset++;
+            continue;
+          }
 
          // Pull traced_totals from parsed report if available
          const parsed = (report.parsed as any) || {};
