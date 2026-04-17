@@ -4626,7 +4626,7 @@ Deno.serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, or batch-verify-vendor-reports' }, corsHeaders, 400);
+      return json({ ok: false, error: `Invalid action: ${action}. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, queue-missing-ai-measurements, or batch-verify-vendor-reports` }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)
