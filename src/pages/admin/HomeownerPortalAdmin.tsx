@@ -20,6 +20,7 @@ import { PortalUsersList } from "@/components/admin/PortalUsersList";
 import { PortalUserDetail } from "@/components/admin/PortalUserDetail";
 import { PortalActivityLog } from "@/components/admin/PortalActivityLog";
 import { PortalGlobalSettings } from "@/components/admin/PortalGlobalSettings";
+import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
 export const HomeownerPortalAdmin: React.FC = () => {
   const { data: stats, isLoading: statsLoading } = usePortalStats();
@@ -33,7 +34,8 @@ export const HomeownerPortalAdmin: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <GlobalLayout>
+      <div className="space-y-6 p-6">
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
@@ -187,7 +189,8 @@ export const HomeownerPortalAdmin: React.FC = () => {
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />
-    </div>
+      </div>
+    </GlobalLayout>
   );
 };
 
