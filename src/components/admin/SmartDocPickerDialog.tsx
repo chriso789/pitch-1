@@ -64,7 +64,7 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
     d.category?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handlePick = async (doc: { id: string; name: string; description: string | null; body: string | null }) => {
+  const handlePick = async (doc: { id: string; title: string; description: string | null; content: string | null }) => {
     setPreparing(doc.id);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -82,8 +82,8 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
         .insert({
           tenant_id: tenantId,
           template_id: doc.id,
-          title: doc.name,
-          rendered_html: doc.body || "",
+          title: doc.title,
+          rendered_html: doc.content || "",
           created_by: authUser?.id,
         })
         .select()
@@ -92,9 +92,9 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
 
       toast({
         title: "SmartDoc ready",
-        description: `Sending ${doc.name} to ${recipientName} for signature.`,
+        description: `Sending ${doc.title} to ${recipientName} for signature.`,
       });
-      onInstanceReady?.({ id: instance.id, title: doc.name });
+      onInstanceReady?.({ id: instance.id, title: doc.title });
       onOpenChange(false);
     } catch (e: any) {
       toast({ title: "Failed to prepare SmartDoc", description: e.message, variant: "destructive" });
