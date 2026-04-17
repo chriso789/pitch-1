@@ -764,10 +764,11 @@ export function VendorVerificationDashboard() {
         toast.success(`Backfilled ${backfilled} measurement links`);
       }
 
-      // ---------- Stage 1.5: reset previously-skipped sessions so they get retried ----------
-      // Old logic permanently marked rows with empty vendor totals as 'skipped',
-      // which excluded them forever. Clear that so the new pass picks them up
-      // and at least generates an AI diagram (verdict will be 'no_vendor_data').
+      // ---------- Stage 1.5: reset sessions that need (re)processing ----------
+      // (a) Old logic permanently marked rows with empty vendor totals as 'skipped'.
+      // (b) Many "completed" sessions never actually got an ai_measurement_id written
+      //     (legacy bug) — they have a verdict but no diagram. Reset those too so the
+      //     batch picks them up and generates the missing AI measurement.
       const { data: unskipped } = await supabase
         .from('roof_training_sessions')
         .update({ verification_status: null, verification_notes: null } as any)
@@ -777,6 +778,26 @@ export function VendorVerificationDashboard() {
         .select('id');
       if ((unskipped?.length || 0) > 0) {
         toast.success(`Reset ${unskipped!.length} previously-skipped sessions`);
+      }
+
+      // Reset "completed" sessions that have no AI measurement linked — they need a re-run
+      // so an AI diagram actually gets produced.
+      const { data: resetCompleted } = await supabase
+        .from('roof_training_sessions')
+        .update({
+          verification_status: null,
+          verification_verdict: null,
+          verification_notes: null,
+          verification_run_at: null,
+          verification_feature_breakdown: null,
+        } as any)
+        .eq('tenant_id', activeCompanyId)
+        .eq('ground_truth_source', 'vendor_report')
+        .eq('verification_status', 'completed')
+        .is('ai_measurement_id', null)
+        .select('id');
+      if ((resetCompleted?.length || 0) > 0) {
+        toast.success(`Reset ${resetCompleted!.length} completed sessions missing AI diagrams`);
       }
 
       // Also reset stale processing/queued/failed so a full re-drain picks everything up
