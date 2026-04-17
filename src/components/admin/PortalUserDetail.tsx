@@ -451,6 +451,9 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
         contactId={user.contact_id}
         projectId={user.project_id}
         recipientName={`${user.first_name} ${user.last_name}`.trim()}
+        onInstanceReady={({ id, title }) =>
+          setSigDialog({ open: true, documentId: id, documentTitle: title })
+        }
       />
     </>
   );
