@@ -905,7 +905,7 @@ export function VendorVerificationDashboard() {
           <Button
             variant="outline"
             onClick={handleFixAllDiagrams}
-            disabled={isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
+            disabled={isFixingDiagrams || isTraining || isCheckingCoverage || isRunning || isRunningAllAi}
             title="Snap, dedupe, and clip every AI diagram, then re-queue any with accuracy < 80%"
           >
             {isFixingDiagrams ? (
@@ -916,8 +916,23 @@ export function VendorVerificationDashboard() {
             {isFixingDiagrams ? 'Fixing diagrams…' : 'Fix All AI Diagrams'}
           </Button>
           <Button
+            variant="outline"
+            onClick={handleRunAllAiMeasurements}
+            disabled={isRunningAllAi || isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
+            title="Backfill missing measurement links and run AI on every pending vendor report"
+          >
+            {isRunningAllAi ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            {isRunningAllAi
+              ? `Running AI… ${runAllAiProgress?.processed || 0} done, ${runAllAiProgress?.remaining || 0} left`
+              : 'Run AI on All Reports'}
+          </Button>
+          <Button
             onClick={handleCompareAndTrain}
-            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams}
+            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams || isRunningAllAi}
             size="lg"
           >
             {isTraining ? (
@@ -929,6 +944,39 @@ export function VendorVerificationDashboard() {
           </Button>
         </div>
       </div>
+
+      {runAllAiProgress && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-6 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{runAllAiProgress.backfilled}</p>
+                <p className="text-xs text-muted-foreground">Links Backfilled</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{runAllAiProgress.processed}</p>
+                <p className="text-xs text-muted-foreground">Processed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-500">{runAllAiProgress.confirmed}</p>
+                <p className="text-xs text-muted-foreground">Confirmed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-500">{runAllAiProgress.denied}</p>
+                <p className="text-xs text-muted-foreground">Denied</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-500">{runAllAiProgress.failed}</p>
+                <p className="text-xs text-muted-foreground">Failed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-500">{runAllAiProgress.remaining}</p>
+                <p className="text-xs text-muted-foreground">Remaining</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {coverageReport && (
         <Card>
