@@ -41,7 +41,6 @@ import {
   FileSignature,
   CheckCircle2,
   Loader2,
-  FileStack,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { PortalUser, usePortalActivity, useRevokePortalAccess } from "@/hooks/usePortalAdmin";
