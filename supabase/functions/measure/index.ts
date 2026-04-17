@@ -4080,25 +4080,13 @@ Deno.serve(async (req) => {
           .eq('ground_truth_source', 'vendor_report')
           .is('verification_verdict', null)
           .not('traced_totals', 'is', null)
-          .in('verification_status', ['pending'])
           .order('created_at', { ascending: true })
           .limit(overFetchSize);
 
-        if (!targetSessionId) {
-          sessionsQuery = adminSupabase
-            .from('roof_training_sessions')
-            .select('id, traced_totals, ai_totals, lat, lng, property_address, vendor_report_id, ai_measurement_id, original_ai_measurement_id, pipeline_entry_id')
-            .eq('tenant_id', tenantId)
-            .eq('ground_truth_source', 'vendor_report')
-            .is('verification_verdict', null)
-            .not('traced_totals', 'is', null)
-            .or('verification_status.is.null,verification_status.eq.pending')
-            .order('created_at', { ascending: true })
-            .limit(overFetchSize);
-        }
-
         if (targetSessionId) {
           sessionsQuery = sessionsQuery.eq('id', targetSessionId);
+        } else {
+          sessionsQuery = sessionsQuery.or('verification_status.is.null,verification_status.eq.pending');
         }
 
         const { data: sessions, error: sessionsError } = await sessionsQuery;
