@@ -37,6 +37,8 @@ import {
   Search,
   Send,
   AlertCircle,
+  FileText,
+  ExternalLink,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,6 +49,12 @@ type EnvelopeRow = {
   sent_at: string | null;
   completed_at: string | null;
   created_at: string;
+  created_by: string | null;
+  sender_name: string | null;
+  sender_email: string | null;
+  generated_pdf_path: string | null;
+  signed_pdf_path: string | null;
+  document_url: string | null;
   recipients: {
     id: string;
     recipient_name: string;
