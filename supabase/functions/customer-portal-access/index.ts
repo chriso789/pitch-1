@@ -122,22 +122,70 @@ Deno.serve(async (req) => {
         })
         .eq('id', tokenRecord.id);
 
+      // Resolve project_id: token may not have one — fall back to most recent project for the contact
+      let resolvedProjectId = tokenRecord.project_id as string | null;
+      if (!resolvedProjectId && tokenRecord.contact_id) {
+        const { data: pipelineForContact } = await supabase
+          .from('pipeline_entries')
+          .select('id')
+          .eq('contact_id', tokenRecord.contact_id)
+          .order('created_at', { ascending: false });
+        const pipelineIds = (pipelineForContact || []).map((p: any) => p.id);
+        if (pipelineIds.length > 0) {
+          const { data: projectByPipeline } = await supabase
+            .from('projects')
+            .select('id')
+            .in('pipeline_entry_id', pipelineIds)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (projectByPipeline?.id) resolvedProjectId = projectByPipeline.id;
+        }
+      }
+
       // Get project details with related data
-      const { data: project } = await supabase
-        .from('projects')
-        .select(`
-          *,
-          pipeline_entries!inner(
-            *,
-            contacts(*)
-          ),
-          estimates(*)
-        `)
-        .eq('id', tokenRecord.project_id)
-        .single();
+      const { data: project } = resolvedProjectId
+        ? await supabase
+            .from('projects')
+            .select(`
+              *,
+              pipeline_entries!inner(
+                *,
+                contacts(*)
+              ),
+              estimates(*)
+            `)
+            .eq('id', resolvedProjectId)
+            .single()
+        : { data: null as any };
 
       // Get invoices from project_invoices table
       const pipelineEntryId = project?.pipeline_entries?.[0]?.id || project?.pipeline_entry_id;
+
+      // Fall back to enhanced_estimates for selling price (the canonical source) and expose it
+      // on project.estimates[0].selling_price so the frontend keeps working unchanged.
+      if (project && pipelineEntryId) {
+        const { data: enhanced } = await supabase
+          .from('enhanced_estimates')
+          .select('id, selling_price, material_cost, labor_cost, pipeline_entry_id, updated_at')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('updated_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        const existingEstimateSellingPrice = Number(project?.estimates?.[0]?.selling_price || 0);
+        if (!existingEstimateSellingPrice && enhanced?.selling_price) {
+          project.estimates = [
+            {
+              ...(project.estimates?.[0] || {}),
+              id: enhanced.id,
+              selling_price: enhanced.selling_price,
+              material_cost: enhanced.material_cost,
+              labor_cost: enhanced.labor_cost,
+            },
+            ...((project.estimates || []).slice(1)),
+          ];
+        }
+      }
       
       const { data: invoices } = await supabase
         .from('project_invoices')
