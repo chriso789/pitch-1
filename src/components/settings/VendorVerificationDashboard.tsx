@@ -252,6 +252,15 @@ export function VendorVerificationDashboard() {
   useEffect(() => {
     if (!isRunningAllAi) return;
 
+    const confirmedCount = sessions.filter((s) => s.verification_verdict === 'confirmed').length;
+    const deniedCount = sessions.filter((s) => s.verification_verdict === 'denied').length;
+    const failedCount = sessions.filter((s) => s.verification_status === 'failed').length;
+    const pendingCount = sessions.filter(
+      (s) => !s.verification_verdict && s.verification_status !== 'failed' && s.verification_status !== 'skipped',
+    ).length;
+    const processingCount = sessions.filter(
+      (s) => s.verification_status === 'processing' || s.verification_status === 'queued',
+    ).length;
     const completedCount = sessions.filter(
       (s) => !!s.verification_verdict || s.verification_status === 'failed' || s.verification_status === 'skipped',
     ).length;
@@ -259,17 +268,17 @@ export function VendorVerificationDashboard() {
     setRunAllAiProgress((prev) => prev ? {
       ...prev,
       processed: completedCount,
-      confirmed: stats.confirmed,
-      denied: stats.denied,
-      failed: stats.failed,
-      remaining: stats.pending,
+      confirmed: confirmedCount,
+      denied: deniedCount,
+      failed: failedCount,
+      remaining: pendingCount,
     } : prev);
 
-    if (stats.pending === 0 && stats.processing === 0) {
+    if (pendingCount === 0 && processingCount === 0) {
       setIsRunningAllAi(false);
       toast.success('AI measurement batch finished in the background');
     }
-  }, [isRunningAllAi, sessions, stats.confirmed, stats.denied, stats.failed, stats.pending, stats.processing]);
+  }, [isRunningAllAi, sessions]);
 
 
 
