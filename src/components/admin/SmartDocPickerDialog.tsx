@@ -20,6 +20,7 @@ import { FileSignature, Search, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 interface SmartDocPickerDialogProps {
   open: boolean;
@@ -40,21 +41,24 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   onInstanceReady,
 }) => {
   const { toast } = useToast();
+  const tenantId = useEffectiveTenantId();
   const [search, setSearch] = useState("");
   const [preparing, setPreparing] = useState<string | null>(null);
 
   const { data: docs, isLoading } = useQuery({
-    queryKey: ["smart-doc-templates-picker"],
+    queryKey: ["smart-doc-templates-picker", tenantId],
     queryFn: async () => {
+      if (!tenantId) return [];
       const { data, error } = await supabase
         .from("smart_doc_templates")
         .select("id, title, description, content, category, status, updated_at")
+        .eq("tenant_id", tenantId)
         .eq("status", "active")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return data || [];
     },
-    enabled: open,
+    enabled: open && !!tenantId,
   });
 
   const filtered = (docs || []).filter((d) =>
@@ -68,12 +72,6 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
     setPreparing(doc.id);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("tenant_id, active_tenant_id")
-        .eq("id", authUser?.id || "")
-        .single();
-      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error("No tenant");
 
       // Create a smart_doc instance for this homeowner from the template
