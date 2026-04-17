@@ -451,6 +451,14 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
           }}
         />
       )}
+
+      <SmartDocPickerDialog
+        open={smartDocOpen}
+        onOpenChange={setSmartDocOpen}
+        contactId={user.contact_id}
+        projectId={user.project_id}
+        recipientName={`${user.first_name} ${user.last_name}`.trim()}
+      />
     </>
   );
 };
