@@ -31,6 +31,7 @@ interface LaborOrderExportProps {
   companyInfo?: CompanyInfo;
   crewEmail?: string;
   crewName?: string;
+  jobNumber?: string;
 }
 
 export function LaborOrderExport({ 
@@ -41,7 +42,8 @@ export function LaborOrderExport({
   projectAddress,
   companyInfo,
   crewEmail,
-  crewName
+  crewName,
+  jobNumber,
 }: LaborOrderExportProps) {
   const { toast } = useToast();
   const [sending, setSending] = useState(false);
@@ -60,7 +62,13 @@ export function LaborOrderExport({
       doc.setFontSize(24);
       doc.text('LABOR ORDER', margin, 20);
       doc.setFontSize(12);
-      doc.text(`Ref #${estimateId.slice(-8).toUpperCase()}`, margin, 30);
+      doc.text(
+        jobNumber
+          ? `Job #${jobNumber}   |   Ref #${estimateId.slice(-8).toUpperCase()}`
+          : `Ref #${estimateId.slice(-8).toUpperCase()}`,
+        margin,
+        30
+      );
       doc.text(`Date: ${new Date().toLocaleDateString()}`, margin, 38);
       
       // Company Info in Header (Right Side)

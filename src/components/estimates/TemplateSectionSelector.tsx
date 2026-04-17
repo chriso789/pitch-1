@@ -88,6 +88,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .from('pipeline_entries')
         .select(`
           metadata,
+          lead_number,
           contact:contacts(
             first_name,
             last_name,
@@ -604,6 +605,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             const projectAddress = contact?.address_street 
               ? [contact.address_street, contact.address_city, contact.address_state, contact.address_zip].filter(Boolean).join(', ')
               : undefined;
+            const jobNumber = (pipelineData as any)?.lead_number || undefined;
             
             return (
               <>
@@ -615,6 +617,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                     customerName={customerName}
                     projectAddress={projectAddress}
                     companyInfo={companyInfo || undefined}
+                    jobNumber={jobNumber}
                   />
                 )}
                 {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
@@ -625,6 +628,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                     customerName={customerName}
                     projectAddress={projectAddress}
                     companyInfo={companyInfo || undefined}
+                    jobNumber={jobNumber}
                   />
                 )}
               </>
