@@ -4247,6 +4247,29 @@ Deno.serve(async (req) => {
         const targetSessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0
           ? body.sessionId.trim()
           : null;
+        const runToCompletion = body.runToCompletion === true && !targetSessionId;
+
+        if (runToCompletion) {
+          const authHeader = req.headers.get('Authorization');
+          if (!authHeader) {
+            return json({ ok: false, error: 'Authorization header required for background drain' }, corsHeaders, 401);
+          }
+
+          (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime?.waitUntil(
+            drainVendorVerificationQueueInBackground(authHeader, {
+              chunkSize: batchSize,
+              maxIterations: typeof body.maxIterations === 'number' ? body.maxIterations : 300,
+              resetFailed: !!body.resetFailed,
+              resetStale: !!body.resetStale,
+            }),
+          );
+
+          return json({
+            ok: true,
+            started: true,
+            message: 'Background AI verification run started',
+          }, corsHeaders, 202);
+        }
 
         // Reset stale processing/queued/pending sessions (orphaned from crashed runs)
         if (body.resetStale) {

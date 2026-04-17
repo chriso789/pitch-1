@@ -236,7 +236,7 @@ export function VendorVerificationDashboard() {
 
   // Poll while running to show live progress
   useEffect(() => {
-    if (isRunning) {
+    if (isRunning || isRunningAllAi) {
       pollRef.current = setInterval(() => {
         queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions'] });
       }, 5000);
@@ -247,7 +247,29 @@ export function VendorVerificationDashboard() {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
-  }, [isRunning, queryClient]);
+  }, [isRunning, isRunningAllAi, queryClient]);
+
+  useEffect(() => {
+    if (!isRunningAllAi) return;
+
+    const completedCount = sessions.filter(
+      (s) => !!s.verification_verdict || s.verification_status === 'failed' || s.verification_status === 'skipped',
+    ).length;
+
+    setRunAllAiProgress((prev) => prev ? {
+      ...prev,
+      processed: completedCount,
+      confirmed: stats.confirmed,
+      denied: stats.denied,
+      failed: stats.failed,
+      remaining: stats.pending,
+    } : prev);
+
+    if (stats.pending === 0 && stats.processing === 0) {
+      setIsRunningAllAi(false);
+      toast.success('AI measurement batch finished in the background');
+    }
+  }, [isRunningAllAi, sessions, stats.confirmed, stats.denied, stats.failed, stats.pending, stats.processing]);
 
 
 
@@ -809,81 +831,33 @@ export function VendorVerificationDashboard() {
         body: { action: 'batch-verify-vendor-reports', resetFailed: true, resetStale: true, limit: 0 },
       });
 
-      // ---------- Stage 2: drain the pending queue 5 at a time ----------
-      let totalProcessed = 0;
-      let totalConfirmed = 0;
-      let totalDenied = 0;
-      let totalFailed = 0;
-      let totalSkipped = 0;
-      let consecutiveEmpty = 0;
-      let batchErrors = 0;
-      let safetyIterations = 0;
-      const CHUNK_SIZE = 1; // One house per request avoids Edge Function timeouts
-      const MAX_ITERATIONS = 300;
+      const { error: startErr } = await supabase.functions.invoke('measure', {
+        body: {
+          action: 'batch-verify-vendor-reports',
+          runToCompletion: true,
+          resetFailed: true,
+          resetStale: true,
+          limit: 1,
+          maxIterations: 300,
+        },
+      });
 
-      while (safetyIterations < MAX_ITERATIONS) {
-        safetyIterations++;
-        const { data: batchData, error: batchErr } = await supabase.functions.invoke('measure', {
-          body: { action: 'batch-verify-vendor-reports', limit: CHUNK_SIZE },
-        });
-        if (batchErr) {
-          console.error('Batch error:', batchErr);
-          batchErrors += 1;
-          await supabase.functions.invoke('measure', {
-            body: { action: 'batch-verify-vendor-reports', resetStale: true, limit: 0 },
-          });
-          if (batchErrors >= 3) {
-            toast.error(`Batch failed after ${batchErrors} retries: ${batchErr.message}`);
-            break;
-          }
-          toast.warning(`One house timed out; skipping ahead (${batchErrors}/3)`);
-          continue;
-        }
-        batchErrors = 0;
-        const processed = batchData?.processed || 0;
-        const confirmed = batchData?.confirmed || 0;
-        const denied = batchData?.denied || 0;
-        const failed = batchData?.failed || 0;
-        const skipped = batchData?.skipped || 0;
-        const remaining = batchData?.remaining ?? 0;
+      if (startErr) throw startErr;
 
-        totalProcessed += processed;
-        totalConfirmed += confirmed;
-        totalDenied += denied;
-        totalFailed += failed;
-        totalSkipped += skipped;
+      setRunAllAiProgress({
+        backfilled,
+        processed: 0,
+        confirmed: stats.confirmed,
+        denied: stats.denied,
+        failed: stats.failed,
+        remaining: stats.pending,
+      });
 
-        setRunAllAiProgress({
-          backfilled,
-          processed: totalProcessed,
-          confirmed: totalConfirmed,
-          denied: totalDenied,
-          failed: totalFailed,
-          remaining,
-        });
+      await queryClient.invalidateQueries({
+        queryKey: ['vendor-verification-sessions', activeCompanyId],
+      });
 
-        // Refresh the table so rows update live
-        await queryClient.invalidateQueries({
-          queryKey: ['vendor-verification-sessions', activeCompanyId],
-        });
-
-        const batchWorkCount = processed + failed + skipped;
-        if (remaining === 0) break;
-        if (batchWorkCount === 0) {
-          consecutiveEmpty += 1;
-          if (consecutiveEmpty >= 3) break;
-        } else {
-          consecutiveEmpty = 0;
-        }
-
-        if (remaining > 0) {
-          await new Promise((resolve) => setTimeout(resolve, 150));
-        }
-      }
-
-      toast.success(
-        `AI measurements complete: ${totalProcessed} processed (${totalConfirmed} confirmed, ${totalDenied} denied, ${totalFailed} failed${totalSkipped > 0 ? `, ${totalSkipped} no-vendor-data` : ''}). ${backfilled} links backfilled.`,
-      );
+      toast.success('AI run started — it will keep draining in the background on this page.');
     } catch (err: any) {
       console.error('Run all AI error:', err);
       toast.error(err?.message || 'Failed to run AI measurements');
