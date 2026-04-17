@@ -41,7 +41,6 @@ import {
   FileSignature,
   CheckCircle2,
   Loader2,
-  FileStack,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { PortalUser, usePortalActivity, useRevokePortalAccess } from "@/hooks/usePortalAdmin";
@@ -270,16 +269,10 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
                     {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
                     Upload File
                   </Button>
-                  <Button variant="outline" onClick={() => setSmartDocOpen(true)}>
-                    <FileStack className="h-4 w-4 mr-2" />
-                    Add SmartDoc
-                  </Button>
                   <Button
                     variant="outline"
-                    onClick={handleUploadClick}
-                    disabled={uploading}
-                    className="col-span-2"
-                    title="Upload a document — you'll be prompted to request signature"
+                    onClick={() => setSmartDocOpen(true)}
+                    title="Pick a SmartDoc to send for homeowner signature / fill"
                   >
                     <FileSignature className="h-4 w-4 mr-2" />
                     Request Signature
@@ -458,6 +451,9 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
         contactId={user.contact_id}
         projectId={user.project_id}
         recipientName={`${user.first_name} ${user.last_name}`.trim()}
+        onInstanceReady={({ id, title }) =>
+          setSigDialog({ open: true, documentId: id, documentTitle: title })
+        }
       />
     </>
   );
