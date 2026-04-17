@@ -8,10 +8,11 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
 import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
+import { cleanAiDiagram } from './lib/cleanAiDiagram';
 
 interface VendorReportMeta {
   provider: string | null;
