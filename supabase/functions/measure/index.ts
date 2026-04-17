@@ -4037,16 +4037,16 @@ Deno.serve(async (req) => {
           ? body.sessionId.trim()
           : null;
 
-        // Reset stale processing/queued sessions (orphaned from crashed runs)
+        // Reset stale processing/queued/pending sessions (orphaned from crashed runs)
         if (body.resetStale) {
           const { data: staleReset } = await adminSupabase
             .from('roof_training_sessions')
             .update({ verification_status: null })
             .eq('tenant_id', tenantId)
             .eq('ground_truth_source', 'vendor_report')
-            .in('verification_status', ['processing', 'queued'])
+            .in('verification_status', ['processing', 'queued', 'pending'])
             .select('id');
-          console.log(`🔄 Reset ${staleReset?.length || 0} stale processing/queued sessions`);
+          console.log(`🔄 Reset ${staleReset?.length || 0} stale processing/queued/pending sessions`);
         }
 
         // Reset failed sessions if requested (so they can be retried)
@@ -4080,12 +4080,13 @@ Deno.serve(async (req) => {
           .eq('ground_truth_source', 'vendor_report')
           .is('verification_verdict', null)
           .not('traced_totals', 'is', null)
-          .is('verification_status', null)
           .order('created_at', { ascending: true })
           .limit(overFetchSize);
 
         if (targetSessionId) {
           sessionsQuery = sessionsQuery.eq('id', targetSessionId);
+        } else {
+          sessionsQuery = sessionsQuery.or('verification_status.is.null,verification_status.eq.pending');
         }
 
         const { data: sessions, error: sessionsError } = await sessionsQuery;
@@ -4110,7 +4111,7 @@ Deno.serve(async (req) => {
             .eq('tenant_id', tenantId)
             .eq('ground_truth_source', 'vendor_report')
             .is('verification_verdict', null)
-            .is('verification_status', null)
+            .or('verification_status.is.null,verification_status.eq.pending')
             .not('traced_totals', 'is', null);
           remainingCount = count || 0;
         }
