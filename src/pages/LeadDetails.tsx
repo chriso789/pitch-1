@@ -14,7 +14,7 @@ import {
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
   ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus, MessageSquare,
-  Pencil, Crosshair, Ruler, Calculator, Lock, ChevronDown, ClipboardCheck
+  Pencil, Crosshair, Ruler, Calculator, Lock, ChevronDown, ClipboardCheck, Home
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
