@@ -38,7 +38,7 @@ import {
   Send,
   AlertCircle,
   FileText,
-  ExternalLink,
+  
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
