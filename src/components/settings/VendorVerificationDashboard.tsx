@@ -73,6 +73,15 @@ export function VendorVerificationDashboard() {
   const [isCheckingCoverage, setIsCheckingCoverage] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [isFixingDiagrams, setIsFixingDiagrams] = useState(false);
+  const [isRunningAllAi, setIsRunningAllAi] = useState(false);
+  const [runAllAiProgress, setRunAllAiProgress] = useState<{
+    backfilled: number;
+    processed: number;
+    confirmed: number;
+    denied: number;
+    failed: number;
+    remaining: number;
+  } | null>(null);
   const [coverageReport, setCoverageReport] = useState<{
     total: number;
     withAi: number;
