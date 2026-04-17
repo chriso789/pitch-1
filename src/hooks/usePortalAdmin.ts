@@ -88,11 +88,12 @@ export function usePortalStats() {
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const onlineThreshold = new Date(now.getTime() - 5 * 60 * 1000).toISOString(); // 5 min
 
-      // Get total users with portal sessions
+      // Total users = contacts with portal access enabled (not just session count)
       const { count: totalUsers } = await supabase
-        .from('homeowner_portal_sessions')
-        .select('contact_id', { count: 'exact', head: true })
-        .eq('tenant_id', activeCompanyId);
+        .from('contacts')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', activeCompanyId)
+        .eq('portal_access_enabled', true);
 
       // Get active today (sessions active today)
       const { count: activeToday } = await supabase
@@ -124,7 +125,7 @@ export function usePortalStats() {
       };
     },
     enabled: !!activeCompanyId,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    refetchInterval: 30000,
   });
 }
 
@@ -139,103 +140,103 @@ export function usePortalUsers() {
       const now = new Date();
       const onlineThreshold = new Date(now.getTime() - 5 * 60 * 1000).toISOString();
 
-      // Get all contacts with portal sessions
-      const { data: sessions, error: sessionsError } = await supabase
-        .from('homeowner_portal_sessions')
-        .select(`
-          id,
-          contact_id,
-          project_id,
-          expires_at,
-          last_active_at,
-          created_at,
-          contact:contacts!inner(
-            id,
-            first_name,
-            last_name,
-            email,
-            phone
-          )
-        `)
+      // 1) All contacts with portal access enabled (source of truth)
+      const { data: enabledContacts, error: contactsError } = await supabase
+        .from('contacts')
+        .select('id, first_name, last_name, email, phone, portal_last_login_at, portal_access_granted_at')
         .eq('tenant_id', activeCompanyId)
-        .order('last_active_at', { ascending: false });
+        .eq('portal_access_enabled', true);
 
-      if (sessionsError) throw sessionsError;
+      if (contactsError) throw contactsError;
 
-      // Group sessions by contact
-      const contactMap = new Map<string, any>();
-      
-      for (const session of sessions || []) {
-        const contact = session.contact as any;
-        if (!contact) continue;
+      const contactIds = (enabledContacts || []).map(c => c.id);
 
-        const existing = contactMap.get(session.contact_id);
-        if (!existing) {
-          contactMap.set(session.contact_id, {
-            contact_id: session.contact_id,
-            first_name: contact.first_name,
-            last_name: contact.last_name,
-            email: contact.email,
-            phone: contact.phone,
-            project_id: session.project_id,
-            sessions: [session],
-            last_login: session.last_active_at,
-            first_login: session.created_at,
-          });
-        } else {
-          existing.sessions.push(session);
-          if (session.last_active_at > existing.last_login) {
-            existing.last_login = session.last_active_at;
-          }
-          if (session.created_at < existing.first_login) {
-            existing.first_login = session.created_at;
-          }
+      // 2) Sessions for those contacts (for project + online status)
+      const { data: sessions } = contactIds.length
+        ? await supabase
+            .from('homeowner_portal_sessions')
+            .select('id, contact_id, project_id, expires_at, last_active_at, created_at')
+            .eq('tenant_id', activeCompanyId)
+            .in('contact_id', contactIds)
+            .order('last_active_at', { ascending: false })
+        : { data: [] as any[] };
+
+      const sessionsByContact = new Map<string, any[]>();
+      for (const s of sessions || []) {
+        const arr = sessionsByContact.get(s.contact_id) || [];
+        arr.push(s);
+        sessionsByContact.set(s.contact_id, arr);
+      }
+
+      // 3) Latest project per contact (fallback when no session yet)
+      let contactProjects: any[] = [];
+      if (contactIds.length) {
+        const res = await (supabase as any)
+          .from('projects')
+          .select('id, name, contact_id, created_at')
+          .eq('tenant_id', activeCompanyId)
+          .in('contact_id', contactIds)
+          .order('created_at', { ascending: false });
+        contactProjects = res.data || [];
+      }
+
+      const latestProjectByContact = new Map<string, any>();
+      for (const p of contactProjects || []) {
+        if (!latestProjectByContact.has(p.contact_id)) {
+          latestProjectByContact.set(p.contact_id, p);
         }
       }
 
-      // Get project info
-      const projectIds = Array.from(contactMap.values())
-        .map(c => c.project_id)
-        .filter(Boolean);
+      const sessionProjectIds = Array.from(
+        new Set((sessions || []).map(s => s.project_id).filter(Boolean))
+      );
+      const allProjectIds = Array.from(
+        new Set([...sessionProjectIds, ...(contactProjects || []).map(p => p.id)])
+      );
 
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('id, name')
-        .in('id', projectIds.length > 0 ? projectIds : ['00000000-0000-0000-0000-000000000000']);
-
+      const { data: projects } = allProjectIds.length
+        ? await supabase.from('projects').select('id, name').in('id', allProjectIds)
+        : { data: [] as any[] };
       const projectMap = new Map((projects || []).map((p: any) => [p.id, p]));
 
-      // Get permissions
-      const contactIds = Array.from(contactMap.keys());
-      const { data: permissions } = await supabase
-        .from('homeowner_portal_permissions')
-        .select('*')
-        .in('contact_id', contactIds.length > 0 ? contactIds : ['00000000-0000-0000-0000-000000000000']);
-
+      // 4) Permissions
+      const { data: permissions } = contactIds.length
+        ? await supabase
+            .from('homeowner_portal_permissions')
+            .select('*')
+            .in('contact_id', contactIds)
+        : { data: [] as any[] };
       const permissionsMap = new Map((permissions || []).map((p: any) => [p.contact_id, p]));
 
-      // Build final list
-      const users: PortalUser[] = Array.from(contactMap.values()).map(c => {
-        const project = projectMap.get(c.project_id) as any;
-        const isOnline = c.sessions.some(
+      // 5) Build list
+      const users: PortalUser[] = (enabledContacts || []).map((c: any) => {
+        const cSessions = sessionsByContact.get(c.id) || [];
+        const latestSession = cSessions[0];
+        const projectId =
+          latestSession?.project_id || latestProjectByContact.get(c.id)?.id || null;
+        const project = projectId ? (projectMap.get(projectId) as any) : null;
+        const isOnline = cSessions.some(
           (s: any) => s.last_active_at >= onlineThreshold && s.expires_at > now.toISOString()
         );
+        const lastLogin = cSessions[0]?.last_active_at || c.portal_last_login_at || null;
+        const firstLogin =
+          cSessions[cSessions.length - 1]?.created_at || c.portal_access_granted_at || null;
 
         return {
-          id: c.contact_id,
-          contact_id: c.contact_id,
+          id: c.id,
+          contact_id: c.id,
           first_name: c.first_name,
           last_name: c.last_name,
           email: c.email,
           phone: c.phone,
-          project_id: c.project_id,
+          project_id: projectId,
           project_name: project?.name || null,
-          project_address: null, // Address field not available on projects table
-          session_count: c.sessions.length,
-          last_login: c.last_login,
-          first_login: c.first_login,
+          project_address: null,
+          session_count: cSessions.length,
+          last_login: lastLogin,
+          first_login: firstLogin,
           is_online: isOnline,
-          permissions: permissionsMap.get(c.contact_id) || null,
+          permissions: permissionsMap.get(c.id) || null,
         };
       });
 
