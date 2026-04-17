@@ -44,24 +44,84 @@ export function MaterialLineItemsExport({
 }: MaterialLineItemsExportProps) {
   const { toast } = useToast();
 
-  const generatePDF = () => {
+  const loadImageAsDataUrl = async (url: string): Promise<{ dataUrl: string; format: 'PNG' | 'JPEG' } | null> => {
+    try {
+      const res = await fetch(url, { mode: 'cors' });
+      if (!res.ok) return null;
+      const blob = await res.blob();
+      const format: 'PNG' | 'JPEG' = blob.type.includes('jpeg') || blob.type.includes('jpg') ? 'JPEG' : 'PNG';
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      return { dataUrl, format };
+    } catch {
+      return null;
+    }
+  };
+
+  const generatePDF = async () => {
     try {
       const doc = new jsPDF();
       const pageWidth = doc.internal.pageSize.getWidth();
       const margin = 20;
       let yPos = 20;
 
-      // Header - Blue color for materials
-      doc.setFillColor(59, 130, 246); // Blue color for materials
-      doc.rect(0, 0, pageWidth, 40, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(24);
-      doc.text('MATERIAL ORDER', margin, 25);
-      doc.setFontSize(12);
-      doc.text(`Estimate #${estimateId.slice(-8).toUpperCase()}`, margin, 35);
-      doc.text(`Date: ${new Date().toLocaleDateString()}`, pageWidth - margin - 50, 35);
+      // ===== Company Header (logo + contact + license) =====
+      const headerHeight = 38;
+      const logo = companyInfo?.logo_url
+        ? await loadImageAsDataUrl(companyInfo.logo_url)
+        : null;
 
-      yPos = 55;
+      let textX = margin;
+      if (logo) {
+        try {
+          doc.addImage(logo.dataUrl, logo.format, margin, yPos, 28, 28, undefined, 'FAST');
+          textX = margin + 34;
+        } catch (e) {
+          console.warn('Logo render failed', e);
+        }
+      }
+
+      doc.setTextColor(17, 24, 39);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.text(companyInfo?.name || 'Your Company', textX, yPos + 6);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(9);
+      doc.setTextColor(75, 85, 99);
+      let metaY = yPos + 12;
+      const contactLine = [companyInfo?.phone, companyInfo?.email].filter(Boolean).join('  •  ');
+      if (contactLine) { doc.text(contactLine, textX, metaY); metaY += 4.5; }
+      if (companyInfo?.address) { doc.text(companyInfo.address, textX, metaY); metaY += 4.5; }
+      if (companyInfo?.license_number) { doc.text(`License #${companyInfo.license_number}`, textX, metaY); metaY += 4.5; }
+
+      // Divider under header
+      doc.setDrawColor(229, 231, 235);
+      doc.line(margin, yPos + headerHeight - 2, pageWidth - margin, yPos + headerHeight - 2);
+      yPos += headerHeight + 4;
+
+      // Header - Blue color for materials
+      const bannerHeight = 28;
+      doc.setFillColor(59, 130, 246);
+      doc.rect(margin, yPos, pageWidth - margin * 2, bannerHeight, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(18);
+      doc.text('MATERIAL ORDER', margin + 4, yPos + 11);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(10);
+      const jobLine = jobNumber
+        ? `Job #${jobNumber}   |   Estimate #${estimateId.slice(-8).toUpperCase()}`
+        : `Estimate #${estimateId.slice(-8).toUpperCase()}`;
+      doc.text(jobLine, margin + 4, yPos + 20);
+      const dateText = `Date: ${new Date().toLocaleDateString()}`;
+      doc.text(dateText, pageWidth - margin - 4 - doc.getTextWidth(dateText), yPos + 20);
+
+      yPos += bannerHeight + 10;
       doc.setTextColor(0, 0, 0);
       
       // Project Info
@@ -185,10 +245,13 @@ export function MaterialLineItemsExport({
     }
   };
 
-  const handleDownloadPDF = () => {
-    const doc = generatePDF();
+  const handleDownloadPDF = async () => {
+    const doc = await generatePDF();
     if (doc) {
-      doc.save(`Material_Order_${estimateId.slice(-8)}_${new Date().toISOString().split('T')[0]}.pdf`);
+      const fileName = jobNumber
+        ? `Material_Order_${jobNumber}_${new Date().toISOString().split('T')[0]}.pdf`
+        : `Material_Order_${estimateId.slice(-8)}_${new Date().toISOString().split('T')[0]}.pdf`;
+      doc.save(fileName);
       toast({
         title: "PDF Downloaded",
         description: "Material order has been saved."
