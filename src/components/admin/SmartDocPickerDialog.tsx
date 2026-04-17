@@ -22,11 +22,31 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
+interface TaggedDocumentRow {
+  document_id: string;
+  documents: {
+    id: string;
+    filename: string;
+    description: string | null;
+    file_path: string;
+    created_at: string | null;
+    updated_at: string | null;
+  } | {
+    id: string;
+    filename: string;
+    description: string | null;
+    file_path: string;
+    created_at: string | null;
+    updated_at: string | null;
+  }[];
+}
+
 interface PickerSmartDoc {
   id: string;
   title: string;
   description: string | null;
-  content: string | null;
+  filePath: string;
+  tagCount: number;
   updated_at?: string | null;
 }
 
@@ -53,23 +73,48 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   const [search, setSearch] = useState("");
   const [preparing, setPreparing] = useState<string | null>(null);
 
-  const { data: docs, isLoading } = useQuery({
-    queryKey: ["smart-doc-templates-picker", tenantId],
+  const { data: docs, isLoading } = useQuery<PickerSmartDoc[]>({
+    queryKey: ["smart-doc-picker", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
       const { data, error } = await supabase
-        .from("smart_docs")
-        .select("id, name, description, body, updated_at")
-        .eq("tenant_id", tenantId)
-        .order("updated_at", { ascending: false });
+        .from("document_tag_placements")
+        .select(`
+          document_id,
+          documents!inner(id, filename, description, file_path, created_at, updated_at)
+        `)
+        .eq("documents.tenant_id", tenantId)
+        .eq("documents.document_type", "company_resource")
+        .limit(200);
       if (error) throw error;
-      return ((data || []) as Array<{ id: string; name: string; description: string | null; body: string; updated_at: string | null }>).map((doc) => ({
-        id: doc.id,
-        title: doc.name,
-        description: doc.description,
-        content: doc.body,
-        updated_at: doc.updated_at,
-      }));
+
+      const uniqueDocs = new Map<string, PickerSmartDoc>();
+
+      for (const row of (data || []) as TaggedDocumentRow[]) {
+        const document = Array.isArray(row.documents) ? row.documents[0] : row.documents;
+        if (!document) continue;
+
+        const existing = uniqueDocs.get(document.id);
+        if (existing) {
+          existing.tagCount += 1;
+          continue;
+        }
+
+        uniqueDocs.set(document.id, {
+          id: document.id,
+          title: document.filename,
+          description: document.description,
+          filePath: document.file_path,
+          tagCount: 1,
+          updated_at: document.updated_at ?? document.created_at,
+        });
+      }
+
+      return Array.from(uniqueDocs.values()).sort((a, b) => {
+        const aTime = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+        const bTime = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+        return bTime - aTime;
+      });
     },
     enabled: open && !!tenantId,
   });
@@ -86,26 +131,71 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (!tenantId) throw new Error("No tenant");
 
-      const { data: renderedDoc, error: renderError } = await supabase.functions.invoke("render-liquid", {
+      let pipelineEntryId: string | null = null;
+
+      if (projectId) {
+        const { data: project, error: projectError } = await supabase
+          .from("projects")
+          .select("pipeline_entry_id")
+          .eq("id", projectId)
+          .maybeSingle();
+
+        if (projectError) throw projectError;
+        pipelineEntryId = project?.pipeline_entry_id ?? null;
+      }
+
+      if (!pipelineEntryId) {
+        const { data: pipelineEntries, error: pipelineError } = await supabase
+          .from("pipeline_entries")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("contact_id", contactId)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        if (pipelineError) throw pipelineError;
+        pipelineEntryId = pipelineEntries?.[0]?.id ?? null;
+      }
+
+      if (!pipelineEntryId) {
+        throw new Error("No linked lead or project was found for this homeowner");
+      }
+
+      const { data: renderedDoc, error: renderError } = await supabase.functions.invoke("render-tagged-pdf", {
         body: {
-          smart_doc_id: doc.id,
-          contact_id: contactId,
-          project_id: projectId ?? undefined,
+          document_id: doc.id,
+          pipeline_entry_id: pipelineEntryId,
         },
       });
 
-      const renderedHtml = renderError
-        ? (doc.content || "")
-        : (renderedDoc?.rendered_text ?? doc.content ?? "");
+      if (renderError) throw renderError;
+      if (!renderedDoc?.pdfBase64) throw new Error("Failed to render SmartDoc PDF");
 
-      // Create a smart_doc instance for this homeowner from the built SmartDoc
+      const binary = atob(renderedDoc.pdfBase64);
+      const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+      const pdfBlob = new Blob([bytes], { type: "application/pdf" });
+      const safeName = doc.title.replace(/[^\w.-]/g, "_");
+      const storagePath = `${tenantId}/${contactId}/${Date.now()}_${safeName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from("documents")
+        .upload(storagePath, pdfBlob, {
+          contentType: "application/pdf",
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
       const { data: instance, error } = await supabase
         .from("smart_doc_instances")
         .insert({
           tenant_id: tenantId,
           template_id: null,
           title: doc.title,
-          rendered_html: renderedHtml,
+          rendered_html: "",
+          pdf_url: storagePath,
+          storage_path: storagePath,
+          lead_id: pipelineEntryId,
           created_by: authUser?.id,
         })
         .select()
@@ -131,7 +221,7 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
         <DialogHeader>
           <DialogTitle>Choose a SmartDoc to Send</DialogTitle>
           <DialogDescription>
-            Pick a built SmartDoc template. The homeowner will receive a link to open, fill, and sign it.
+            Pick a tagged company document from Smart Docs. It will be auto-filled and sent for signature.
           </DialogDescription>
         </DialogHeader>
 
@@ -154,7 +244,7 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
             </div>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No SmartDocs found. Build one in the SmartDocs section first.
+              No tagged Smart Docs found. Add smart tags to a company document in Smart Docs first.
             </p>
           ) : (
             <div className="space-y-2">
@@ -172,6 +262,9 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
                           {doc.description}
                         </p>
                       )}
+                      <p className="text-xs text-muted-foreground">
+                        {doc.tagCount} smart tag{doc.tagCount === 1 ? "" : "s"}
+                      </p>
                     </div>
                   </div>
                   <Button

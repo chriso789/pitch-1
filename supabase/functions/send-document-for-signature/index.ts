@@ -91,14 +91,32 @@ Deno.serve(async (req) => {
     if (document_type === 'smart_doc_instance') {
       const { data } = await supabase
         .from("smart_doc_instances")
-        .select("id, pdf_url, contact_id, project_id, title")
+        .select("id, pdf_url, storage_path, lead_id, title")
         .eq("id", document_id)
         .single();
       if (data) {
-        pdfPath = data.pdf_url;
-        resolvedContactId = resolvedContactId || data.contact_id;
-        resolvedProjectId = data.project_id;
+        pdfPath = data.pdf_url || data.storage_path;
         documentTitle = email_subject || data.title || 'Document';
+
+        if (data.lead_id) {
+          resolvedPipelineEntryId = resolvedPipelineEntryId || data.lead_id;
+
+          const { data: pipelineEntry } = await supabase
+            .from("pipeline_entries")
+            .select("contact_id")
+            .eq("id", data.lead_id)
+            .maybeSingle();
+
+          resolvedContactId = resolvedContactId || pipelineEntry?.contact_id || null;
+
+          const { data: project } = await supabase
+            .from("projects")
+            .select("id")
+            .eq("pipeline_entry_id", data.lead_id)
+            .maybeSingle();
+
+          resolvedProjectId = resolvedProjectId || project?.id || null;
+        }
       }
     } else if (document_type === 'estimate') {
       const { data, error: estError } = await supabase
