@@ -486,7 +486,7 @@ export function VendorVerificationDashboard() {
           console.warn('Queue missing AI failed:', queueErr);
           toast.warning(`Coverage checked but queueing failed: ${queueErr.message}`);
         } else {
-          queued = queueRes?.queued ?? 0;
+          queued = (queueRes?.queued ?? 0) + (queueRes?.reset ?? 0);
         }
       }
 
@@ -501,7 +501,7 @@ export function VendorVerificationDashboard() {
       if (missing.length === 0) {
         toast.success(`All ${report.total} paid reports have an AI measurement linked ✓`);
       } else {
-        toast.info(`${report.withAi}/${report.total} covered. Queued ${queued} for AI generation.`);
+        toast.info(`${report.withAi}/${report.total} covered. Queued ${queued} for AI generation. Now click "Run AI on All Reports".`);
       }
 
       await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
