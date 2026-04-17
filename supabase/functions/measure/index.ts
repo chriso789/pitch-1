@@ -4286,6 +4286,7 @@ Deno.serve(async (req) => {
         const targetSessionId = typeof body.sessionId === 'string' && body.sessionId.trim().length > 0
           ? body.sessionId.trim()
           : null;
+        const forceRegenerate = body.forceRegenerate === true;
         const runToCompletion = body.runToCompletion === true && !targetSessionId;
 
         if (runToCompletion) {
@@ -4486,11 +4487,10 @@ Deno.serve(async (req) => {
 
             let lastErrorLog: string | null = null;
 
-            if ((!hasAiData || needsLinkedMeasurement) && sessionLat && sessionLng) {
-              // Check for an existing roof_measurements row at this location.
-              // NOTE: roof_measurements has NO `summary` column — we read the canonical
-              // total_*_length columns and linear_features_wkt directly.
-              const { data: existingMeasurement } = await adminSupabase
+            if ((!hasAiData || needsLinkedMeasurement || forceRegenerate) && sessionLat && sessionLng) {
+              // When forceRegenerate is set (e.g., per-row Play button), skip the
+              // "reuse nearby existing measurement" path so we always build a brand-new diagram.
+              const existingMeasurement = forceRegenerate ? null : (await adminSupabase
                 .from('roof_measurements')
                 .select('id, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, linear_features_wkt, vector_diagram_svg')
                 .gte('target_lat', sessionLat - 0.0001)
@@ -4499,7 +4499,7 @@ Deno.serve(async (req) => {
                 .lte('target_lng', sessionLng + 0.0001)
                 .order('created_at', { ascending: false })
                 .limit(1)
-                .maybeSingle();
+                .maybeSingle()).data;
 
               if (existingMeasurement && (
                 (existingMeasurement.total_ridge_length || 0) > 0 ||
