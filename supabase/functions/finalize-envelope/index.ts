@@ -230,31 +230,31 @@ Deno.serve(async (req: Request) => {
                   }
                   await embedSigImage(imgBytes);
                 } else if (sig.signature_data) {
-                  // Case 3: Plain text typed signature
+                  // Case 3: Plain text typed signature — render ON the signature line
                   lastPage.drawText(sig.signature_data, {
                     x: sigX,
-                    y: sigY + 10,
+                    y: signatureLineY + 4,
                     size: 18,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0.4),
                   });
                   lastPage.drawText(recipientName, {
                     x: sigX,
-                    y: sigY - 65,
+                    y: signatureLineY - 12,
                     size: 9,
                     font: helveticaBoldFont,
                     color: rgb(0, 0, 0),
                   });
                   lastPage.drawText(`Date: ${signedDate}`, {
                     x: sigX,
-                    y: sigY - 77,
+                    y: signatureLineY - 24,
                     size: 8,
                     font: helveticaFont,
                     color: rgb(0.3, 0.3, 0.3),
                   });
                   lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
                     x: sigX,
-                    y: sigY - 88,
+                    y: signatureLineY - 35,
                     size: 7,
                     font: helveticaFont,
                     color: rgb(0.5, 0.5, 0.5),
