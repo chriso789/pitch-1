@@ -345,20 +345,32 @@ export const PortalSignatureTracking: React.FC = () => {
                 <TableRow>
                   <TableHead>Document</TableHead>
                   <TableHead>Homeowner</TableHead>
+                  <TableHead>Sent By</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sent</TableHead>
                   <TableHead>Opened</TableHead>
                   <TableHead>Signed</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((row) => {
                   const recipient = row.recipients[0];
+                  const hasDoc =
+                    !!row.signed_pdf_path || !!row.generated_pdf_path || !!row.document_url;
                   return (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium max-w-[260px] truncate">
-                        {row.title || "Untitled document"}
+                      <TableCell className="font-medium max-w-[240px]">
+                        <button
+                          type="button"
+                          onClick={() => hasDoc && handleViewDocument(row)}
+                          className={`text-left truncate block w-full ${
+                            hasDoc ? "hover:text-primary hover:underline cursor-pointer" : "cursor-default"
+                          }`}
+                          title={row.title || "Untitled document"}
+                        >
+                          {row.title || "Untitled document"}
+                        </button>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
@@ -368,6 +380,16 @@ export const PortalSignatureTracking: React.FC = () => {
                           <div className="text-xs text-muted-foreground">
                             {recipient?.recipient_email || ""}
                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div className="font-medium">{row.sender_name || "—"}</div>
+                          {row.sender_email && (
+                            <div className="text-xs text-muted-foreground">
+                              {row.sender_email}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{renderStatus(row)}</TableCell>
@@ -400,17 +422,30 @@ export const PortalSignatureTracking: React.FC = () => {
                           : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right">
-                        {row.status !== "completed" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={resending === row.id}
-                            onClick={() => handleResend(row.id)}
-                          >
-                            <Send className="h-3.5 w-3.5 mr-1" />
-                            Remind
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-2 justify-end">
+                          {hasDoc && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleViewDocument(row)}
+                              title="View document"
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1" />
+                              View
+                            </Button>
+                          )}
+                          {row.status !== "completed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={resending === row.id}
+                              onClick={() => handleResend(row.id)}
+                            >
+                              <Send className="h-3.5 w-3.5 mr-1" />
+                              Remind
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
