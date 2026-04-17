@@ -272,6 +272,7 @@ export function VendorVerificationDashboard() {
         .update({
           verification_status: null,
           verification_verdict: null,
+          verification_score: null,
           verification_notes: null,
           verification_run_at: null,
           verification_feature_breakdown: null,
@@ -403,6 +404,7 @@ export function VendorVerificationDashboard() {
         .update({
           verification_status: null,
           verification_verdict: null,
+          verification_score: null,
           verification_notes: null,
           verification_run_at: null,
           verification_feature_breakdown: null,
@@ -664,6 +666,7 @@ export function VendorVerificationDashboard() {
           .update({
             verification_status: null,
             verification_verdict: null,
+            verification_score: null,
             verification_run_at: null,
             verification_feature_breakdown: null,
             ai_totals: null,
@@ -771,7 +774,7 @@ export function VendorVerificationDashboard() {
       //     batch picks them up and generates the missing AI measurement.
       const { data: unskipped } = await supabase
         .from('roof_training_sessions')
-        .update({ verification_status: null, verification_notes: null } as any)
+        .update({ verification_status: null, verification_score: null, verification_notes: null } as any)
         .eq('tenant_id', activeCompanyId)
         .eq('ground_truth_source', 'vendor_report')
         .eq('verification_status', 'skipped')
@@ -787,6 +790,7 @@ export function VendorVerificationDashboard() {
         .update({
           verification_status: null,
           verification_verdict: null,
+          verification_score: null,
           verification_notes: null,
           verification_run_at: null,
           verification_feature_breakdown: null,
@@ -810,6 +814,8 @@ export function VendorVerificationDashboard() {
       let totalConfirmed = 0;
       let totalDenied = 0;
       let totalFailed = 0;
+      let totalSkipped = 0;
+      let consecutiveEmpty = 0;
       let safetyIterations = 0;
       const MAX_ITERATIONS = 60; // 60 batches * 5 = 300 sessions cap
 
@@ -827,12 +833,14 @@ export function VendorVerificationDashboard() {
         const confirmed = batchData?.confirmed || 0;
         const denied = batchData?.denied || 0;
         const failed = batchData?.failed || 0;
+        const skipped = batchData?.skipped || 0;
         const remaining = batchData?.remaining ?? 0;
 
         totalProcessed += processed;
         totalConfirmed += confirmed;
         totalDenied += denied;
         totalFailed += failed;
+        totalSkipped += skipped;
 
         setRunAllAiProgress({
           backfilled,
@@ -848,12 +856,18 @@ export function VendorVerificationDashboard() {
           queryKey: ['vendor-verification-sessions', activeCompanyId],
         });
 
-        if (processed === 0 && remaining === 0) break;
-        if (processed === 0) break; // nothing got picked up — stop to avoid spinning
+        const batchWorkCount = processed + failed + skipped;
+        if (remaining === 0) break;
+        if (batchWorkCount === 0) {
+          consecutiveEmpty += 1;
+          if (consecutiveEmpty >= 3) break;
+        } else {
+          consecutiveEmpty = 0;
+        }
       }
 
       toast.success(
-        `AI measurements complete: ${totalProcessed} processed (${totalConfirmed} confirmed, ${totalDenied} denied, ${totalFailed} failed). ${backfilled} links backfilled.`,
+        `AI measurements complete: ${totalProcessed} processed (${totalConfirmed} confirmed, ${totalDenied} denied, ${totalFailed} failed${totalSkipped > 0 ? `, ${totalSkipped} no-vendor-data` : ''}). ${backfilled} links backfilled.`,
       );
     } catch (err: any) {
       console.error('Run all AI error:', err);
