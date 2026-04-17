@@ -136,11 +136,18 @@ Deno.serve(async (req: Request) => {
             const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
             const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
             
+            // PDF coords: y=0 is bottom of page. The "Customer Signature" block in
+            // EstimatePDFDocument renders near the bottom of the last page with the
+            // signature LINE around y≈135pt and a "Date: ___" label just below it.
+            // We want the signature image to sit DIRECTLY ON the signature line
+            // (image baseline = line), and the audit metadata (name/date/IP) to
+            // appear BELOW the line — never overlapping the fine-print paragraph above.
             let sigX = 60;
-            let sigY = 215; // signature block area – aligns with "Customer Signature" line
+            const signatureLineY = 138; // baseline y of the printed signature line
+            let sigY = signatureLineY;  // image baseline sits on the line
             const maxSigWidth = 180;
-            const maxSigHeight = 55;
-            const sigSpacing = 220;
+            const maxSigHeight = 45;    // keep signature compact so it doesn't reach into terms
+            const sigSpacing = 240;
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
