@@ -37,6 +37,8 @@ import {
   Search,
   Send,
   AlertCircle,
+  FileText,
+  
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,6 +49,12 @@ type EnvelopeRow = {
   sent_at: string | null;
   completed_at: string | null;
   created_at: string;
+  created_by: string | null;
+  sender_name: string | null;
+  sender_email: string | null;
+  generated_pdf_path: string | null;
+  signed_pdf_path: string | null;
+  document_url: string | null;
   recipients: {
     id: string;
     recipient_name: string;
@@ -80,7 +88,8 @@ export const PortalSignatureTracking: React.FC = () => {
       const { data: envelopes, error } = await supabase
         .from("signature_envelopes")
         .select(
-          `id, title, status, sent_at, completed_at, created_at,
+          `id, title, status, sent_at, completed_at, created_at, created_by,
+           generated_pdf_path, signed_pdf_path, document_url,
            signature_recipients(id, recipient_name, recipient_email, status, signed_at)`
         )
         .eq("tenant_id", tenantId!)
@@ -89,6 +98,25 @@ export const PortalSignatureTracking: React.FC = () => {
       if (error) throw error;
 
       const ids = (envelopes || []).map((e: any) => e.id);
+      const senderIds = Array.from(
+        new Set((envelopes || []).map((e: any) => e.created_by).filter(Boolean))
+      );
+
+      // Sender profiles
+      let senderMap = new Map<string, { name: string; email: string }>();
+      if (senderIds.length) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", senderIds);
+        for (const p of profs || []) {
+          senderMap.set((p as any).id, {
+            name: (p as any).full_name || (p as any).email || "—",
+            email: (p as any).email || "",
+          });
+        }
+      }
+
       let openMap = new Map<string, { opened_at: string | null; open_count: number }>();
       if (ids.length) {
         const { data: events } = await supabase
@@ -116,6 +144,12 @@ export const PortalSignatureTracking: React.FC = () => {
         sent_at: e.sent_at,
         completed_at: e.completed_at,
         created_at: e.created_at,
+        created_by: e.created_by,
+        sender_name: senderMap.get(e.created_by)?.name || null,
+        sender_email: senderMap.get(e.created_by)?.email || null,
+        generated_pdf_path: e.generated_pdf_path,
+        signed_pdf_path: e.signed_pdf_path,
+        document_url: e.document_url,
         recipients: e.signature_recipients || [],
         opened_at: openMap.get(e.id)?.opened_at || null,
         open_count: openMap.get(e.id)?.open_count || 0,
@@ -179,6 +213,36 @@ export const PortalSignatureTracking: React.FC = () => {
       });
     } finally {
       setResending(null);
+    }
+  };
+
+  const handleViewDocument = async (row: EnvelopeRow) => {
+    try {
+      // Prefer signed PDF (final), then generated PDF, then existing document_url
+      const path = row.signed_pdf_path || row.generated_pdf_path;
+      if (path) {
+        const { data, error } = await supabase.storage
+          .from("documents")
+          .createSignedUrl(path, 60 * 60); // 1 hour
+        if (error) throw error;
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      if (row.document_url) {
+        window.open(row.document_url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      toast({
+        title: "No document available",
+        description: "This envelope has no generated PDF yet.",
+        variant: "destructive",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Could not open document",
+        description: e.message || "Storage error",
+        variant: "destructive",
+      });
     }
   };
 
@@ -281,20 +345,32 @@ export const PortalSignatureTracking: React.FC = () => {
                 <TableRow>
                   <TableHead>Document</TableHead>
                   <TableHead>Homeowner</TableHead>
+                  <TableHead>Sent By</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Sent</TableHead>
                   <TableHead>Opened</TableHead>
                   <TableHead>Signed</TableHead>
-                  <TableHead className="text-right">Action</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filtered.map((row) => {
                   const recipient = row.recipients[0];
+                  const hasDoc =
+                    !!row.signed_pdf_path || !!row.generated_pdf_path || !!row.document_url;
                   return (
                     <TableRow key={row.id}>
-                      <TableCell className="font-medium max-w-[260px] truncate">
-                        {row.title || "Untitled document"}
+                      <TableCell className="font-medium max-w-[240px]">
+                        <button
+                          type="button"
+                          onClick={() => hasDoc && handleViewDocument(row)}
+                          className={`text-left truncate block w-full ${
+                            hasDoc ? "hover:text-primary hover:underline cursor-pointer" : "cursor-default"
+                          }`}
+                          title={row.title || "Untitled document"}
+                        >
+                          {row.title || "Untitled document"}
+                        </button>
                       </TableCell>
                       <TableCell>
                         <div className="text-sm">
@@ -304,6 +380,16 @@ export const PortalSignatureTracking: React.FC = () => {
                           <div className="text-xs text-muted-foreground">
                             {recipient?.recipient_email || ""}
                           </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-sm">
+                          <div className="font-medium">{row.sender_name || "—"}</div>
+                          {row.sender_email && (
+                            <div className="text-xs text-muted-foreground">
+                              {row.sender_email}
+                            </div>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>{renderStatus(row)}</TableCell>
@@ -336,17 +422,30 @@ export const PortalSignatureTracking: React.FC = () => {
                           : <span className="text-muted-foreground">—</span>}
                       </TableCell>
                       <TableCell className="text-right">
-                        {row.status !== "completed" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            disabled={resending === row.id}
-                            onClick={() => handleResend(row.id)}
-                          >
-                            <Send className="h-3.5 w-3.5 mr-1" />
-                            Remind
-                          </Button>
-                        )}
+                        <div className="flex items-center gap-2 justify-end">
+                          {hasDoc && (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => handleViewDocument(row)}
+                              title="View document"
+                            >
+                              <FileText className="h-3.5 w-3.5 mr-1" />
+                              View
+                            </Button>
+                          )}
+                          {row.status !== "completed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={resending === row.id}
+                              onClick={() => handleResend(row.id)}
+                            >
+                              <Send className="h-3.5 w-3.5 mr-1" />
+                              Remind
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
