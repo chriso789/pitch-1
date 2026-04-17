@@ -886,6 +886,124 @@ function deduplicateLinearFeatures(features: LinearFeature[]): LinearFeature[] {
   return deduplicated;
 }
 
+function sanitizeLinearFeaturesForPersistence(
+  features: LinearFeature[] | null | undefined,
+  perimeterWkt: string | null | undefined,
+): LinearFeature[] {
+  const original = Array.isArray(features) ? features : [];
+  if (original.length < 2) return original;
+
+  const parseLineString = (wkt: string): [[number, number], [number, number]] | null => {
+    const match = wkt.match(/LINESTRING\(([^)]+)\)/i);
+    if (!match) return null;
+    const coords = match[1]
+      .split(',')
+      .map((pair) => pair.trim().split(/\s+/).map(Number))
+      .filter((pair) => pair.length >= 2 && Number.isFinite(pair[0]) && Number.isFinite(pair[1]));
+    if (coords.length < 2) return null;
+    return [
+      [coords[0][0], coords[0][1]],
+      [coords[coords.length - 1][0], coords[coords.length - 1][1]],
+    ];
+  };
+
+  const parsePolygonBounds = (wkt: string | null | undefined) => {
+    if (!wkt) return null;
+    const match = wkt.match(/POLYGON\s*\(\(([^)]+)\)\)/i);
+    if (!match) return null;
+    const pts = match[1]
+      .split(',')
+      .map((pair) => pair.trim().split(/\s+/).map(Number))
+      .filter((pair) => pair.length >= 2 && Number.isFinite(pair[0]) && Number.isFinite(pair[1]));
+    if (pts.length < 3) return null;
+    return {
+      minLng: Math.min(...pts.map((p) => p[0])),
+      maxLng: Math.max(...pts.map((p) => p[0])),
+      minLat: Math.min(...pts.map((p) => p[1])),
+      maxLat: Math.max(...pts.map((p) => p[1])),
+    };
+  };
+
+  const distanceDeg = (a: [number, number], b: [number, number]) => {
+    const dx = a[0] - b[0];
+    const dy = a[1] - b[1];
+    return Math.hypot(dx, dy);
+  };
+
+  const bounds = parsePolygonBounds(perimeterWkt);
+  const bbox = bounds || (() => {
+    const pts = original.flatMap((feature) => {
+      const line = parseLineString(feature.wkt);
+      return line ? [line[0], line[1]] : [];
+    });
+    if (pts.length === 0) return null;
+    return {
+      minLng: Math.min(...pts.map((p) => p[0])),
+      maxLng: Math.max(...pts.map((p) => p[0])),
+      minLat: Math.min(...pts.map((p) => p[1])),
+      maxLat: Math.max(...pts.map((p) => p[1])),
+    };
+  })();
+
+  const BBOX_BUFFER_RATIO = 0.15;
+  const SNAP_TOL_DEG = 0.000003;
+  const MIN_LENGTH_DEG = 0.0000045;
+  const MAX_FEATURES = 60;
+  const anchors: Array<[number, number]> = [];
+  const buffered = bbox ? {
+    minLng: bbox.minLng - ((bbox.maxLng - bbox.minLng) * BBOX_BUFFER_RATIO),
+    maxLng: bbox.maxLng + ((bbox.maxLng - bbox.minLng) * BBOX_BUFFER_RATIO),
+    minLat: bbox.minLat - ((bbox.maxLat - bbox.minLat) * BBOX_BUFFER_RATIO),
+    maxLat: bbox.maxLat + ((bbox.maxLat - bbox.minLat) * BBOX_BUFFER_RATIO),
+  } : null;
+
+  const snapPoint = (p: [number, number]) => {
+    for (const anchor of anchors) {
+      if (distanceDeg(anchor, p) < SNAP_TOL_DEG) return anchor;
+    }
+    anchors.push(p);
+    return p;
+  };
+
+  const clipped = original.flatMap((feature) => {
+    const line = parseLineString(feature.wkt);
+    if (!line) return [];
+
+    let [start, end] = line;
+    if (buffered) {
+      const startIn = start[0] >= buffered.minLng && start[0] <= buffered.maxLng && start[1] >= buffered.minLat && start[1] <= buffered.maxLat;
+      const endIn = end[0] >= buffered.minLng && end[0] <= buffered.maxLng && end[1] >= buffered.minLat && end[1] <= buffered.maxLat;
+      if (!startIn && !endIn) return [];
+    }
+
+    start = snapPoint(start);
+    end = snapPoint(end);
+    if (distanceDeg(start, end) < MIN_LENGTH_DEG) return [];
+
+    const midLat = (start[1] + end[1]) / 2;
+    const canonical: LinearFeature = {
+      ...feature,
+      wkt: `LINESTRING(${start[0]} ${start[1]}, ${end[0]} ${end[1]})`,
+      length_ft: calculateGeodesicLength(start, end, midLat),
+    };
+    return [canonical];
+  });
+
+  const deduped = deduplicateLinearFeatures(clipped);
+  const byLengthDesc = [...deduped].sort((a, b) => (b.length_ft || 0) - (a.length_ft || 0));
+  const limited = byLengthDesc.slice(0, MAX_FEATURES);
+  const finalFeatures = limited.sort((a, b) => {
+    const order: Record<string, number> = { eave: 1, rake: 2, valley: 3, hip: 4, ridge: 5, step: 6, wall: 7, unknown: 8 };
+    return (order[a.type] || 99) - (order[b.type] || 99);
+  });
+
+  if (finalFeatures.length !== original.length) {
+    console.log(`🧹 Sanitized linear features for persistence: ${original.length} → ${finalFeatures.length}`);
+  }
+
+  return finalFeatures;
+}
+
 // Smart Tags builder - Expanded to 100+ tags
 function buildSmartTags(meas: MeasureResult) {
   const tags: Record<string, number|string> = {};
@@ -4558,16 +4676,32 @@ Deno.serve(async (req) => {
                     // persist a proper roof_measurements row even when the legacy RPC path fails).
                     const meas = pullData?.data?.meas || null;
                     const mSummary = meas?.summary || pullData?.data?.measurement?.summary || {};
-                    const features: Array<{ id?: string; type: string; wkt: string; length_ft?: number }> = meas?.linear_features || [];
                     const geomWkt: string | null = meas?.geom_wkt || null;
+                    const rawFeatures: LinearFeature[] = Array.isArray(meas?.linear_features)
+                      ? meas.linear_features
+                      : [];
+                    const features = sanitizeLinearFeaturesForPersistence(rawFeatures, geomWkt);
 
-                    aiTotals = {
-                      ridge: Number(mSummary.ridge_ft) || 0,
-                      hip: Number(mSummary.hip_ft) || 0,
-                      valley: Number(mSummary.valley_ft) || 0,
-                      eave: Number(mSummary.eave_ft) || 0,
-                      rake: Number(mSummary.rake_ft) || 0,
-                    };
+                    aiTotals = features.reduce<Record<string, number>>((totals, feature) => {
+                      const key = feature.type?.toLowerCase();
+                      const len = Number(feature.length_ft) || 0;
+                      if (key === 'ridge') totals.ridge += len;
+                      else if (key === 'hip') totals.hip += len;
+                      else if (key === 'valley') totals.valley += len;
+                      else if (key === 'eave') totals.eave += len;
+                      else if (key === 'rake') totals.rake += len;
+                      return totals;
+                    }, { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 });
+
+                    if (features.length === 0) {
+                      aiTotals = {
+                        ridge: Number(mSummary.ridge_ft) || 0,
+                        hip: Number(mSummary.hip_ft) || 0,
+                        valley: Number(mSummary.valley_ft) || 0,
+                        eave: Number(mSummary.eave_ft) || 0,
+                        rake: Number(mSummary.rake_ft) || 0,
+                      };
+                    }
 
                     // Render schematic SVG inline so the dashboard can show a diagram.
                     const svg = buildSchematicSvgFromFeatures(geomWkt, features);
