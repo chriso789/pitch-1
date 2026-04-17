@@ -20,6 +20,7 @@ interface CompanyInfo {
   email?: string;
   address?: string;
   license_number?: string;
+  logo_url?: string;
 }
 
 interface MaterialLineItemsExportProps {
@@ -29,6 +30,7 @@ interface MaterialLineItemsExportProps {
   customerName?: string;
   projectAddress?: string;
   companyInfo?: CompanyInfo;
+  jobNumber?: string;
 }
 
 export function MaterialLineItemsExport({ 
@@ -37,7 +39,8 @@ export function MaterialLineItemsExport({
   totalAmount,
   customerName,
   projectAddress,
-  companyInfo
+  companyInfo,
+  jobNumber,
 }: MaterialLineItemsExportProps) {
   const { toast } = useToast();
 
