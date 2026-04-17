@@ -216,6 +216,36 @@ export const PortalSignatureTracking: React.FC = () => {
     }
   };
 
+  const handleViewDocument = async (row: EnvelopeRow) => {
+    try {
+      // Prefer signed PDF (final), then generated PDF, then existing document_url
+      const path = row.signed_pdf_path || row.generated_pdf_path;
+      if (path) {
+        const { data, error } = await supabase.storage
+          .from("documents")
+          .createSignedUrl(path, 60 * 60); // 1 hour
+        if (error) throw error;
+        window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+        return;
+      }
+      if (row.document_url) {
+        window.open(row.document_url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      toast({
+        title: "No document available",
+        description: "This envelope has no generated PDF yet.",
+        variant: "destructive",
+      });
+    } catch (e: any) {
+      toast({
+        title: "Could not open document",
+        description: e.message || "Storage error",
+        variant: "destructive",
+      });
+    }
+  };
+
   const renderStatus = (row: EnvelopeRow) => {
     if (row.status === "completed")
       return (
