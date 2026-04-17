@@ -148,6 +148,10 @@ export const HomeownerPortalAdmin: React.FC = () => {
                 )}
               </TabsTrigger>
               <TabsTrigger value="all">All Users</TabsTrigger>
+              <TabsTrigger value="signatures" className="flex items-center gap-2">
+                <FileSignature className="h-4 w-4" />
+                Signature Tracking
+              </TabsTrigger>
               <TabsTrigger value="activity" className="flex items-center gap-2">
                 <Activity className="h-4 w-4" />
                 Activity Log
@@ -172,6 +176,10 @@ export const HomeownerPortalAdmin: React.FC = () => {
                 selectedUserId={selectedUser?.id}
                 filter="all"
               />
+            </TabsContent>
+
+            <TabsContent value="signatures">
+              <PortalSignatureTracking />
             </TabsContent>
 
             <TabsContent value="activity">
