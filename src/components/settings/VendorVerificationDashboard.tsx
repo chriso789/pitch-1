@@ -569,6 +569,127 @@ export function VendorVerificationDashboard() {
     }
   };
 
+  /**
+   * Fix tangled AI diagrams across every confirmed-or-better session.
+   *
+   *  - Stage 1 (cleanup): pull each session's existing AI linear features +
+   *    perimeter, run cleanAiDiagram() to snap/dedupe/clip, and write the
+   *    sanitized geometry back into roof_measurements. We also null out the
+   *    cached vector_diagram_svg so the renderer regenerates from the now-clean
+   *    feature list. This fixes the "X-shaped chaos" without re-measuring.
+   *  - Stage 2 (re-queue): any session whose verification_score is < 80 (i.e.
+   *    the structural deltas are still bad after cleanup) gets reset and
+   *    requeued through batch-verify-vendor-reports for a full fresh AI run.
+   */
+  const handleFixAllDiagrams = async () => {
+    setIsFixingDiagrams(true);
+    setDiagramFixReport(null);
+
+    let scanned = 0;
+    let cleaned = 0;
+    let segmentsRemoved = 0;
+    let requeued = 0;
+
+    try {
+      // Pull all sessions for this tenant that have a vendor_report_id +
+      // any AI measurement linked. We only need the AI measurement id +
+      // the session's verification score to decide what to do.
+      const { data: rows, error: rowsErr } = await supabase
+        .from('roof_training_sessions')
+        .select('id, verification_score, ai_measurement_id, vendor_report_id')
+        .eq('tenant_id', activeCompanyId!)
+        .eq('ground_truth_source', 'vendor_report')
+        .not('vendor_report_id', 'is', null);
+      if (rowsErr) throw rowsErr;
+
+      const sessionRows = rows || [];
+      scanned = sessionRows.length;
+      if (scanned === 0) {
+        toast.info('No vendor-linked sessions to fix.');
+        return;
+      }
+
+      // Stage 1: cleanup pass on the AI measurement geometry.
+      const aiIds = sessionRows
+        .map((s) => (s as any).ai_measurement_id)
+        .filter((id): id is string => !!id);
+
+      if (aiIds.length > 0) {
+        const { data: measurements } = await supabase
+          .from('roof_measurements')
+          .select('id, perimeter_wkt, linear_features_wkt')
+          .in('id', aiIds);
+
+        for (const m of measurements || []) {
+          const features = Array.isArray(m.linear_features_wkt)
+            ? (m.linear_features_wkt as any[])
+            : [];
+          if (features.length < 2) continue;
+
+          const result = cleanAiDiagram(features as any, m.perimeter_wkt);
+          if (result.removed === 0 && result.snapped === 0) continue;
+
+          const { error: updateErr } = await supabase
+            .from('roof_measurements')
+            .update({
+              linear_features_wkt: result.cleaned as any,
+              vector_diagram_svg: null, // force renderer to redraw from clean features
+            } as any)
+            .eq('id', m.id);
+
+          if (!updateErr) {
+            cleaned++;
+            segmentsRemoved += result.removed;
+          }
+        }
+      }
+
+      // Stage 2: re-queue sessions whose structural accuracy is still poor.
+      const badSessions = sessionRows.filter(
+        (s) => typeof s.verification_score === 'number' && s.verification_score < 80,
+      );
+
+      if (badSessions.length > 0) {
+        const { error: resetErr } = await supabase
+          .from('roof_training_sessions')
+          .update({
+            verification_status: null,
+            verification_verdict: null,
+            verification_run_at: null,
+            verification_feature_breakdown: null,
+            ai_totals: null,
+            ai_measurement_id: null,
+          } as any)
+          .in(
+            'id',
+            badSessions.map((s) => s.id),
+          );
+
+        if (!resetErr) {
+          requeued = badSessions.length;
+          // Kick a single batch run so the worker starts immediately;
+          // the existing Compare & Train button can finish the rest.
+          await supabase.functions.invoke('measure', {
+            body: { action: 'batch-verify-vendor-reports', limit: 5 },
+          });
+        }
+      }
+
+      setDiagramFixReport({ scanned, cleaned, requeued, segmentsRemoved });
+      toast.success(
+        `Fixed ${cleaned}/${scanned} AI diagrams (${segmentsRemoved} bad segments removed). ${requeued} re-queued for full regeneration.`,
+      );
+      await queryClient.invalidateQueries({
+        queryKey: ['vendor-verification-sessions', activeCompanyId],
+      });
+    } catch (err: any) {
+      console.error('Fix diagrams error:', err);
+      toast.error(err?.message || 'Failed to fix diagrams');
+    } finally {
+      setIsFixingDiagrams(false);
+    }
+  };
+
   const handleExportTrainingSet = async () => {
     setIsExporting(true);
     try {
@@ -639,7 +760,7 @@ export function VendorVerificationDashboard() {
           <Button
             variant="outline"
             onClick={handleVerifyCoverage}
-            disabled={isCheckingCoverage || isTraining || isRunning}
+            disabled={isCheckingCoverage || isTraining || isRunning || isFixingDiagrams}
           >
             {isCheckingCoverage ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -649,8 +770,21 @@ export function VendorVerificationDashboard() {
             Verify AI Coverage
           </Button>
           <Button
+            variant="outline"
+            onClick={handleFixAllDiagrams}
+            disabled={isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
+            title="Snap, dedupe, and clip every AI diagram, then re-queue any with accuracy < 80%"
+          >
+            {isFixingDiagrams ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Wand2 className="h-4 w-4 mr-2" />
+            )}
+            {isFixingDiagrams ? 'Fixing diagrams…' : 'Fix All AI Diagrams'}
+          </Button>
+          <Button
             onClick={handleCompareAndTrain}
-            disabled={isTraining || isCheckingCoverage || isRunning}
+            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams}
             size="lg"
           >
             {isTraining ? (
