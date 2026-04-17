@@ -169,14 +169,16 @@ export function usePortalUsers() {
       }
 
       // 3) Latest project per contact (fallback when no session yet)
-      const { data: contactProjects } = contactIds.length
-        ? await supabase
-            .from('projects')
-            .select('id, name, contact_id, created_at')
-            .eq('tenant_id', activeCompanyId)
-            .in('contact_id', contactIds)
-            .order('created_at', { ascending: false })
-        : { data: [] as any[] };
+      let contactProjects: any[] = [];
+      if (contactIds.length) {
+        const res = await (supabase as any)
+          .from('projects')
+          .select('id, name, contact_id, created_at')
+          .eq('tenant_id', activeCompanyId)
+          .in('contact_id', contactIds)
+          .order('created_at', { ascending: false });
+        contactProjects = res.data || [];
+      }
 
       const latestProjectByContact = new Map<string, any>();
       for (const p of contactProjects || []) {
