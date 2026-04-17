@@ -1,6 +1,7 @@
 /**
  * SmartDoc Picker Dialog
- * Lets an admin pick an existing SmartDoc and share it with a homeowner's portal folder.
+ * Lets an admin pick a built SmartDoc template, create an instance for the homeowner,
+ * and hand it off to the signature request flow so the homeowner can sign / fill it.
  */
 import React, { useState } from "react";
 import {
@@ -9,12 +10,13 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, Search, Loader2 } from "lucide-react";
+import { FileSignature, Search, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -25,7 +27,8 @@ interface SmartDocPickerDialogProps {
   contactId: string;
   projectId?: string | null;
   recipientName: string;
-  onShared?: (doc: { id: string; title: string }) => void;
+  /** Called once an instance has been created and is ready for signature. */
+  onInstanceReady?: (instance: { id: string; title: string }) => void;
 }
 
 export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
@@ -34,20 +37,18 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   contactId,
   projectId,
   recipientName,
-  onShared,
+  onInstanceReady,
 }) => {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [sharing, setSharing] = useState<string | null>(null);
+  const [preparing, setPreparing] = useState<string | null>(null);
 
   const { data: docs, isLoading } = useQuery({
-    queryKey: ["smart-docs-picker"],
+    queryKey: ["smart-docs-templates"],
     queryFn: async () => {
-      // SmartDocs = company resource documents (what shows in /smart-docs UI)
       const { data, error } = await supabase
-        .from("documents")
-        .select("id, filename, description, file_path, mime_type, file_size, updated_at")
-        .eq("document_type", "company_resource")
+        .from("smart_docs")
+        .select("id, name, description, body, updated_at")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return data || [];
@@ -57,12 +58,12 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
 
   const filtered = (docs || []).filter((d) =>
     !search ||
-    d.filename?.toLowerCase().includes(search.toLowerCase()) ||
+    d.name?.toLowerCase().includes(search.toLowerCase()) ||
     d.description?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleShare = async (doc: { id: string; filename: string; file_path: string; mime_type: string | null; file_size: number | null; description: string | null }) => {
-    setSharing(doc.id);
+  const handlePick = async (doc: { id: string; name: string; description: string | null; body: string | null }) => {
+    setPreparing(doc.id);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
       const { data: profile } = await supabase
@@ -73,33 +74,30 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error("No tenant");
 
-      // Clone the company resource into a homeowner-visible document linked to this contact/project
-      const { data: inserted, error } = await supabase
-        .from("documents")
+      // Create a smart_doc instance for this homeowner from the template
+      const { data: instance, error } = await supabase
+        .from("smart_doc_instances")
         .insert({
           tenant_id: tenantId,
-          contact_id: contactId,
-          project_id: projectId || null,
-          filename: doc.filename,
-          file_path: doc.file_path,
-          mime_type: doc.mime_type,
-          file_size: doc.file_size,
-          document_type: "smart_doc_shared",
-          is_visible_to_homeowner: true,
-          uploaded_by: authUser?.id,
-          description: `SmartDoc shared with ${recipientName}${doc.description ? ` — ${doc.description}` : ""}`,
+          template_id: doc.id,
+          title: doc.name,
+          rendered_html: doc.body || "",
+          created_by: authUser?.id,
         })
         .select()
         .single();
       if (error) throw error;
 
-      toast({ title: "SmartDoc shared", description: `${doc.filename} added to portal folder.` });
-      onShared?.({ id: inserted.id, title: doc.filename });
+      toast({
+        title: "SmartDoc ready",
+        description: `Sending ${doc.name} to ${recipientName} for signature.`,
+      });
+      onInstanceReady?.({ id: instance.id, title: doc.name });
       onOpenChange(false);
     } catch (e: any) {
-      toast({ title: "Share failed", description: e.message, variant: "destructive" });
+      toast({ title: "Failed to prepare SmartDoc", description: e.message, variant: "destructive" });
     } finally {
-      setSharing(null);
+      setPreparing(null);
     }
   };
 
@@ -107,7 +105,10 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add SmartDoc to Portal Folder</DialogTitle>
+          <DialogTitle>Choose a SmartDoc to Send</DialogTitle>
+          <DialogDescription>
+            Pick a built SmartDoc template. The homeowner will receive a link to open, fill, and sign it.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="relative">
@@ -129,7 +130,7 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
             </div>
           ) : filtered.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No SmartDocs found.
+              No SmartDocs found. Build one in the SmartDocs section first.
             </p>
           ) : (
             <div className="space-y-2">
@@ -139,9 +140,9 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
                   className="flex items-center justify-between gap-3 p-3 border rounded-lg hover:bg-muted/50 transition-colors"
                 >
                   <div className="flex items-start gap-3 min-w-0">
-                    <FileText className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                    <FileSignature className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{doc.filename}</p>
+                      <p className="font-medium text-sm truncate">{doc.name}</p>
                       {doc.description && (
                         <p className="text-xs text-muted-foreground truncate">
                           {doc.description}
@@ -151,13 +152,13 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
                   </div>
                   <Button
                     size="sm"
-                    onClick={() => handleShare(doc)}
-                    disabled={sharing !== null}
+                    onClick={() => handlePick(doc)}
+                    disabled={preparing !== null}
                   >
-                    {sharing === doc.id ? (
+                    {preparing === doc.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      "Add"
+                      "Send"
                     )}
                   </Button>
                 </div>
