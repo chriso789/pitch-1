@@ -169,6 +169,17 @@ Deno.serve(async (req: Request) => {
                 const drawW = dims.width * scale;
                 const drawH = dims.height * scale;
 
+                // Mask any pre-printed "Date: _____" placeholder beneath the
+                // signature line BEFORE drawing the image, so neither the
+                // signature nor the audit metadata overlaps existing verbiage.
+                lastPage.drawRectangle({
+                  x: sigX - 2,
+                  y: signatureLineY - 40,
+                  width: maxSigWidth + 20,
+                  height: 38,
+                  color: rgb(1, 1, 1),
+                });
+
                 lastPage.drawImage(embeddedImg, {
                   x: sigX,
                   y: sigY,
@@ -177,7 +188,6 @@ Deno.serve(async (req: Request) => {
                 });
 
                 // Draw signer name, date, and IP BELOW the signature line
-                // (signatureLineY is the line; stack downward in tight rows).
                 lastPage.drawText(recipientName, {
                   x: sigX,
                   y: signatureLineY - 12,
