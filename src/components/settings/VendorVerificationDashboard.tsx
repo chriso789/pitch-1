@@ -73,6 +73,15 @@ export function VendorVerificationDashboard() {
   const [isCheckingCoverage, setIsCheckingCoverage] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [isFixingDiagrams, setIsFixingDiagrams] = useState(false);
+  const [isRunningAllAi, setIsRunningAllAi] = useState(false);
+  const [runAllAiProgress, setRunAllAiProgress] = useState<{
+    backfilled: number;
+    processed: number;
+    confirmed: number;
+    denied: number;
+    failed: number;
+    remaining: number;
+  } | null>(null);
   const [coverageReport, setCoverageReport] = useState<{
     total: number;
     withAi: number;
@@ -690,6 +699,130 @@ export function VendorVerificationDashboard() {
     }
   };
 
+  /**
+   * Run AI Measurements on EVERY vendor report.
+   * --------------------------------------------
+   * Two stages:
+   *
+   *   1. Backfill: for sessions whose verification already completed but whose
+   *      `ai_measurement_id` is NULL (the actual bug behind "0/118 fixed"),
+   *      find the most recent roof_measurements row near the session's coords
+   *      and link it back. This unblocks the diagram render and the cleanup
+   *      pass without re-running the AI engine.
+   *
+   *   2. Drain queue: loop `batch-verify-vendor-reports` (limit 5 per call so
+   *      we don't time out) until `remaining === 0`. Each iteration generates
+   *      AI measurements for any pending sessions and writes both `ai_totals`
+   *      and `ai_measurement_id` back via the edge function's existing logic.
+   *
+   * Updates a progress toast / state card as it runs so the user sees the
+   * counter tick down from 63 → 0.
+   */
+  const handleRunAllAiMeasurements = async () => {
+    if (!activeCompanyId) {
+      toast.error('No active company selected');
+      return;
+    }
+    setIsRunningAllAi(true);
+    setRunAllAiProgress({ backfilled: 0, processed: 0, confirmed: 0, denied: 0, failed: 0, remaining: 0 });
+
+    try {
+      // ---------- Stage 1: backfill ai_measurement_id by coordinate match ----------
+      const { data: orphanSessions } = await supabase
+        .from('roof_training_sessions')
+        .select('id, lat, lng')
+        .eq('tenant_id', activeCompanyId)
+        .eq('ground_truth_source', 'vendor_report')
+        .not('vendor_report_id', 'is', null)
+        .is('ai_measurement_id', null)
+        .not('lat', 'is', null)
+        .not('lng', 'is', null);
+
+      let backfilled = 0;
+      for (const s of orphanSessions || []) {
+        if (s.lat == null || s.lng == null) continue;
+        const { data: nearby } = await supabase
+          .from('roof_measurements')
+          .select('id')
+          .gte('target_lat', Number(s.lat) - 0.0001)
+          .lte('target_lat', Number(s.lat) + 0.0001)
+          .gte('target_lng', Number(s.lng) - 0.0001)
+          .lte('target_lng', Number(s.lng) + 0.0001)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (nearby?.id) {
+          const { error: linkErr } = await supabase
+            .from('roof_training_sessions')
+            .update({ ai_measurement_id: nearby.id, original_ai_measurement_id: nearby.id } as any)
+            .eq('id', s.id);
+          if (!linkErr) backfilled++;
+        }
+      }
+      setRunAllAiProgress((p) => ({ ...(p || { processed: 0, confirmed: 0, denied: 0, failed: 0, remaining: 0 }), backfilled }));
+      if (backfilled > 0) {
+        toast.success(`Backfilled ${backfilled} measurement links`);
+      }
+
+      // ---------- Stage 2: drain the pending queue 5 at a time ----------
+      let totalProcessed = 0;
+      let totalConfirmed = 0;
+      let totalDenied = 0;
+      let totalFailed = 0;
+      let safetyIterations = 0;
+      const MAX_ITERATIONS = 60; // 60 batches * 5 = 300 sessions cap
+
+      while (safetyIterations < MAX_ITERATIONS) {
+        safetyIterations++;
+        const { data: batchData, error: batchErr } = await supabase.functions.invoke('measure', {
+          body: { action: 'batch-verify-vendor-reports', limit: 5 },
+        });
+        if (batchErr) {
+          console.error('Batch error:', batchErr);
+          toast.error(`Batch failed: ${batchErr.message}`);
+          break;
+        }
+        const processed = batchData?.processed || 0;
+        const confirmed = batchData?.confirmed || 0;
+        const denied = batchData?.denied || 0;
+        const failed = batchData?.failed || 0;
+        const remaining = batchData?.remaining ?? 0;
+
+        totalProcessed += processed;
+        totalConfirmed += confirmed;
+        totalDenied += denied;
+        totalFailed += failed;
+
+        setRunAllAiProgress({
+          backfilled,
+          processed: totalProcessed,
+          confirmed: totalConfirmed,
+          denied: totalDenied,
+          failed: totalFailed,
+          remaining,
+        });
+
+        // Refresh the table so rows update live
+        await queryClient.invalidateQueries({
+          queryKey: ['vendor-verification-sessions', activeCompanyId],
+        });
+
+        if (processed === 0 && remaining === 0) break;
+        if (processed === 0) break; // nothing got picked up — stop to avoid spinning
+      }
+
+      toast.success(
+        `AI measurements complete: ${totalProcessed} processed (${totalConfirmed} confirmed, ${totalDenied} denied, ${totalFailed} failed). ${backfilled} links backfilled.`,
+      );
+    } catch (err: any) {
+      console.error('Run all AI error:', err);
+      toast.error(err?.message || 'Failed to run AI measurements');
+    } finally {
+      setIsRunningAllAi(false);
+    }
+  };
+
+
   const handleExportTrainingSet = async () => {
     setIsExporting(true);
     try {
@@ -772,7 +905,7 @@ export function VendorVerificationDashboard() {
           <Button
             variant="outline"
             onClick={handleFixAllDiagrams}
-            disabled={isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
+            disabled={isFixingDiagrams || isTraining || isCheckingCoverage || isRunning || isRunningAllAi}
             title="Snap, dedupe, and clip every AI diagram, then re-queue any with accuracy < 80%"
           >
             {isFixingDiagrams ? (
@@ -783,8 +916,23 @@ export function VendorVerificationDashboard() {
             {isFixingDiagrams ? 'Fixing diagrams…' : 'Fix All AI Diagrams'}
           </Button>
           <Button
+            variant="outline"
+            onClick={handleRunAllAiMeasurements}
+            disabled={isRunningAllAi || isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
+            title="Backfill missing measurement links and run AI on every pending vendor report"
+          >
+            {isRunningAllAi ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 mr-2" />
+            )}
+            {isRunningAllAi
+              ? `Running AI… ${runAllAiProgress?.processed || 0} done, ${runAllAiProgress?.remaining || 0} left`
+              : 'Run AI on All Reports'}
+          </Button>
+          <Button
             onClick={handleCompareAndTrain}
-            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams}
+            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams || isRunningAllAi}
             size="lg"
           >
             {isTraining ? (
@@ -796,6 +944,39 @@ export function VendorVerificationDashboard() {
           </Button>
         </div>
       </div>
+
+      {runAllAiProgress && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-6 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{runAllAiProgress.backfilled}</p>
+                <p className="text-xs text-muted-foreground">Links Backfilled</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold">{runAllAiProgress.processed}</p>
+                <p className="text-xs text-muted-foreground">Processed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-500">{runAllAiProgress.confirmed}</p>
+                <p className="text-xs text-muted-foreground">Confirmed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-500">{runAllAiProgress.denied}</p>
+                <p className="text-xs text-muted-foreground">Denied</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-500">{runAllAiProgress.failed}</p>
+                <p className="text-xs text-muted-foreground">Failed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-500">{runAllAiProgress.remaining}</p>
+                <p className="text-xs text-muted-foreground">Remaining</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {coverageReport && (
         <Card>
