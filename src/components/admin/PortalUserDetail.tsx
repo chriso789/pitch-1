@@ -70,6 +70,7 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
   const [openingAsUser, setOpeningAsUser] = useState(false);
   const [resending, setResending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [smartDocOpen, setSmartDocOpen] = useState(false);
   const [sigDialog, setSigDialog] = useState<{ open: boolean; documentId: string; documentTitle: string }>({
     open: false,
     documentId: "",
