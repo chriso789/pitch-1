@@ -4676,16 +4676,32 @@ Deno.serve(async (req) => {
                     // persist a proper roof_measurements row even when the legacy RPC path fails).
                     const meas = pullData?.data?.meas || null;
                     const mSummary = meas?.summary || pullData?.data?.measurement?.summary || {};
-                    const features: Array<{ id?: string; type: string; wkt: string; length_ft?: number }> = meas?.linear_features || [];
                     const geomWkt: string | null = meas?.geom_wkt || null;
+                    const rawFeatures: LinearFeature[] = Array.isArray(meas?.linear_features)
+                      ? meas.linear_features
+                      : [];
+                    const features = sanitizeLinearFeaturesForPersistence(rawFeatures, geomWkt);
 
-                    aiTotals = {
-                      ridge: Number(mSummary.ridge_ft) || 0,
-                      hip: Number(mSummary.hip_ft) || 0,
-                      valley: Number(mSummary.valley_ft) || 0,
-                      eave: Number(mSummary.eave_ft) || 0,
-                      rake: Number(mSummary.rake_ft) || 0,
-                    };
+                    aiTotals = features.reduce<Record<string, number>>((totals, feature) => {
+                      const key = feature.type?.toLowerCase();
+                      const len = Number(feature.length_ft) || 0;
+                      if (key === 'ridge') totals.ridge += len;
+                      else if (key === 'hip') totals.hip += len;
+                      else if (key === 'valley') totals.valley += len;
+                      else if (key === 'eave') totals.eave += len;
+                      else if (key === 'rake') totals.rake += len;
+                      return totals;
+                    }, { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 });
+
+                    if (features.length === 0) {
+                      aiTotals = {
+                        ridge: Number(mSummary.ridge_ft) || 0,
+                        hip: Number(mSummary.hip_ft) || 0,
+                        valley: Number(mSummary.valley_ft) || 0,
+                        eave: Number(mSummary.eave_ft) || 0,
+                        rake: Number(mSummary.rake_ft) || 0,
+                      };
+                    }
 
                     // Render schematic SVG inline so the dashboard can show a diagram.
                     const svg = buildSchematicSvgFromFeatures(geomWkt, features);
