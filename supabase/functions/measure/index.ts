@@ -4399,8 +4399,11 @@ Deno.serve(async (req) => {
               }
             }
 
+            const hasVendorData = Object.values(vendorTotals || {}).some((v: any) => Number(v) > 0);
             const overallScore = weightSum > 0 ? weightedAccuracySum / weightSum : 0;
-            const verdict = overallScore >= 85 ? 'confirmed' : 'denied';
+            const verdict = !hasVendorData
+              ? 'no_vendor_data'
+              : overallScore >= 85 ? 'confirmed' : 'denied';
 
             // Build verification notes with evidence references
             const notesParts: string[] = [];
@@ -4437,6 +4440,7 @@ Deno.serve(async (req) => {
 
             results.processed++;
             if (verdict === 'confirmed') results.confirmed++;
+            else if (verdict === 'no_vendor_data') results.skipped++;
             else results.denied++;
 
             results.details.push({
