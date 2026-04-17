@@ -149,6 +149,29 @@ export function HomeownerPortal() {
 
         if (projectData) {
           const pData = projectData as any;
+
+          // Fallback: if no contract value set, use the active estimate's sale price
+          let contractAmount = Number(pData.total_contract_value) || 0;
+          let amountPaid = 0;
+          if (pData.pipeline_entry_id) {
+            try {
+              const { data: barData } = await supabase.rpc('api_estimate_hyperlink_bar', {
+                p_pipeline_entry_id: pData.pipeline_entry_id,
+              });
+              const bar = barData as { sale_price?: number } | null;
+              if (!contractAmount && bar?.sale_price) {
+                contractAmount = Number(bar.sale_price) || 0;
+              }
+              const { data: paymentRows } = await supabase
+                .from('project_payments')
+                .select('amount')
+                .eq('pipeline_entry_id', pData.pipeline_entry_id);
+              amountPaid = (paymentRows || []).reduce((s: number, p: any) => s + Number(p.amount || 0), 0);
+            } catch (e) {
+              console.warn('Estimate/payment fallback failed', e);
+            }
+          }
+
           setProject({
             id: pData.id,
             name: pData.name,
@@ -156,8 +179,8 @@ export function HomeownerPortal() {
             start_date: pData.start_date,
             end_date: pData.actual_completion_date || pData.target_completion_date,
             progress_percentage: pData.progress_percentage || 0,
-            contract_amount: pData.total_contract_value || 0,
-            amount_paid: 0,
+            contract_amount: contractAmount,
+            amount_paid: amountPaid,
             address: pData.property_address || "Address not set"
           });
 
