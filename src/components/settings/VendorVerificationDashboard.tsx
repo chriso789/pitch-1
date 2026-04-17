@@ -446,9 +446,11 @@ export function VendorVerificationDashboard() {
         .eq('id', sessionId);
       if (resetErr) throw resetErr;
 
-      // Run the exact row the user clicked.
+      // Run the exact row the user clicked, forcing a fresh AI measurement
+      // (skip the "reuse existing roof_measurements at these coords" path so
+      // we always get a brand-new diagram instead of relinking the old one).
       const { data, error } = await supabase.functions.invoke('measure', {
-        body: { action: 'batch-verify-vendor-reports', limit: 1, sessionId },
+        body: { action: 'batch-verify-vendor-reports', limit: 1, sessionId, forceRegenerate: true },
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Run failed');
@@ -866,11 +868,12 @@ export function VendorVerificationDashboard() {
         queryKey: ['vendor-verification-sessions', activeCompanyId],
       });
 
-      toast.success('AI run started — it will keep draining in the background on this page.');
+      toast.success('AI run started — counter will tick down as the queue drains.');
+      // NOTE: do NOT clear isRunningAllAi here. The polling effect (which watches
+      // sessions) clears it when pendingCount === 0 && processingCount === 0.
     } catch (err: any) {
       console.error('Run all AI error:', err);
       toast.error(err?.message || 'Failed to run AI measurements');
-    } finally {
       setIsRunningAllAi(false);
     }
   };
