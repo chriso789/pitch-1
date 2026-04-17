@@ -176,24 +176,25 @@ Deno.serve(async (req: Request) => {
                   height: drawH,
                 });
 
-                // Draw signer name, date, and IP below the signature line
+                // Draw signer name, date, and IP BELOW the signature line
+                // (signatureLineY is the line; stack downward in tight rows).
                 lastPage.drawText(recipientName, {
                   x: sigX,
-                  y: sigY - 65,
+                  y: signatureLineY - 12,
                   size: 9,
                   font: helveticaBoldFont,
                   color: rgb(0, 0, 0),
                 });
                 lastPage.drawText(`Date: ${signedDate}`, {
                   x: sigX,
-                  y: sigY - 77,
+                  y: signatureLineY - 24,
                   size: 8,
                   font: helveticaFont,
                   color: rgb(0.3, 0.3, 0.3),
                 });
                 lastPage.drawText(`IP: ${sig.ip_address || 'N/A'}`, {
                   x: sigX,
-                  y: sigY - 88,
+                  y: signatureLineY - 35,
                   size: 7,
                   font: helveticaFont,
                   color: rgb(0.5, 0.5, 0.5),
@@ -203,7 +204,7 @@ Deno.serve(async (req: Request) => {
                 sigX += sigSpacing;
                 if (sigX + maxSigWidth > pageWidth - 40) {
                   sigX = 60;
-                  sigY -= 100;
+                  sigY -= 110;
                 }
               };
 
