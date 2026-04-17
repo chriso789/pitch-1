@@ -764,6 +764,26 @@ export function VendorVerificationDashboard() {
         toast.success(`Backfilled ${backfilled} measurement links`);
       }
 
+      // ---------- Stage 1.5: reset previously-skipped sessions so they get retried ----------
+      // Old logic permanently marked rows with empty vendor totals as 'skipped',
+      // which excluded them forever. Clear that so the new pass picks them up
+      // and at least generates an AI diagram (verdict will be 'no_vendor_data').
+      const { data: unskipped } = await supabase
+        .from('roof_training_sessions')
+        .update({ verification_status: null, verification_notes: null } as any)
+        .eq('tenant_id', activeCompanyId)
+        .eq('ground_truth_source', 'vendor_report')
+        .eq('verification_status', 'skipped')
+        .select('id');
+      if ((unskipped?.length || 0) > 0) {
+        toast.success(`Reset ${unskipped!.length} previously-skipped sessions`);
+      }
+
+      // Also reset stale processing/queued/failed so a full re-drain picks everything up
+      await supabase.functions.invoke('measure', {
+        body: { action: 'batch-verify-vendor-reports', resetFailed: true, resetStale: true, limit: 0 },
+      });
+
       // ---------- Stage 2: drain the pending queue 5 at a time ----------
       let totalProcessed = 0;
       let totalConfirmed = 0;
