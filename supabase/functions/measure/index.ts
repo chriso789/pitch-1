@@ -79,18 +79,37 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+/**
+ * Self-chaining background drain.
+ *
+ * Each invocation processes ONE house, then fires a brand-new HTTP request to
+ * itself (action=drain-vendor-step) and returns. This guarantees:
+ *   - Every house gets its own fresh edge function invocation (no timeout
+ *     accumulation across many houses).
+ *   - A single slow / 504'd house cannot prevent the queue from advancing —
+ *     `batch-verify-vendor-reports` already marks failures and the next chained
+ *     step picks up the NEXT pending session.
+ *   - The chain is bounded by `iteration` so we can never loop forever.
+ */
 async function drainVendorVerificationQueueInBackground(
   authHeader: string,
   options: {
-    chunkSize?: number;
+    iteration?: number;
     maxIterations?: number;
     resetFailed?: boolean;
     resetStale?: boolean;
+    consecutiveEmpty?: number;
+    consecutiveErrors?: number;
   } = {},
 ) {
-  const chunkSize = Math.min(Math.max(options.chunkSize ?? 1, 1), 1);
+  const iteration = options.iteration ?? 0;
   const maxIterations = Math.min(Math.max(options.maxIterations ?? 300, 1), 500);
   const functionUrl = `${SUPABASE_URL}/functions/v1/measure`;
+
+  if (iteration >= maxIterations) {
+    console.log(`⏹️ Background vendor drain stopped after hitting maxIterations=${maxIterations}`);
+    return;
+  }
 
   const invokeBatch = async (body: Record<string, unknown>) => {
     const response = await fetch(functionUrl, {
@@ -106,42 +125,43 @@ async function drainVendorVerificationQueueInBackground(
     return { ok: response.ok, payload };
   };
 
-  let consecutiveEmpty = 0;
-  let consecutiveErrors = 0;
-
-  if (options.resetFailed || options.resetStale) {
+  // Only the FIRST step runs the resets; subsequent chained steps skip them.
+  if (iteration === 0 && (options.resetFailed || options.resetStale)) {
     const resetResult = await invokeBatch({
       action: 'batch-verify-vendor-reports',
       resetFailed: !!options.resetFailed,
       resetStale: !!options.resetStale,
       limit: 0,
     });
-
     if (!resetResult.ok || resetResult.payload?.ok === false) {
       console.error('Background vendor drain reset failed:', resetResult.payload);
     }
   }
 
-  for (let iteration = 0; iteration < maxIterations; iteration++) {
-    const result = await invokeBatch({
-      action: 'batch-verify-vendor-reports',
-      limit: chunkSize,
-    });
+  let consecutiveEmpty = options.consecutiveEmpty ?? 0;
+  let consecutiveErrors = options.consecutiveErrors ?? 0;
 
-    if (!result.ok || result.payload?.ok === false) {
-      consecutiveErrors += 1;
-      console.error(`Background vendor drain batch ${iteration + 1} failed:`, result.payload);
+  const result = await invokeBatch({
+    action: 'batch-verify-vendor-reports',
+    limit: 1,
+  });
 
-      if (consecutiveErrors >= 5) break;
+  if (!result.ok || result.payload?.ok === false) {
+    consecutiveErrors += 1;
+    console.error(`Background vendor drain batch ${iteration + 1} failed (errors=${consecutiveErrors}):`, result.payload);
 
-      await invokeBatch({
-        action: 'batch-verify-vendor-reports',
-        resetStale: true,
-        limit: 0,
-      });
-      continue;
+    if (consecutiveErrors >= 5) {
+      console.log('⏹️ Background vendor drain stopped after 5 consecutive errors');
+      return;
     }
 
+    // Reset stale rows and chain forward.
+    await invokeBatch({
+      action: 'batch-verify-vendor-reports',
+      resetStale: true,
+      limit: 0,
+    });
+  } else {
     consecutiveErrors = 0;
     const processed = Number(result.payload?.processed || 0);
     const failed = Number(result.payload?.failed || 0);
@@ -151,20 +171,39 @@ async function drainVendorVerificationQueueInBackground(
 
     if (remaining === 0) {
       console.log(`✅ Background vendor drain finished after ${iteration + 1} batches`);
-      break;
+      return;
     }
 
     if (workCount === 0) {
       consecutiveEmpty += 1;
       if (consecutiveEmpty >= 5) {
-        console.log('⚠️ Background vendor drain stopped after repeated empty batches');
-        break;
+        console.log('⚠️ Background vendor drain stopped after 5 empty batches');
+        return;
       }
     } else {
       consecutiveEmpty = 0;
     }
+  }
 
-    await new Promise((resolve) => setTimeout(resolve, 150));
+  // Fire-and-forget the next step in a brand-new edge function invocation so
+  // we get a fresh CPU/wall-time budget for every single house.
+  try {
+    await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader,
+      },
+      body: JSON.stringify({
+        action: 'drain-vendor-step',
+        iteration: iteration + 1,
+        maxIterations,
+        consecutiveEmpty,
+        consecutiveErrors,
+      }),
+    });
+  } catch (chainErr) {
+    console.error('Failed to chain next vendor drain step:', chainErr);
   }
 }
 
