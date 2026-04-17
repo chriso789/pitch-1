@@ -88,7 +88,8 @@ export const PortalSignatureTracking: React.FC = () => {
       const { data: envelopes, error } = await supabase
         .from("signature_envelopes")
         .select(
-          `id, title, status, sent_at, completed_at, created_at,
+          `id, title, status, sent_at, completed_at, created_at, created_by,
+           generated_pdf_path, signed_pdf_path, document_url,
            signature_recipients(id, recipient_name, recipient_email, status, signed_at)`
         )
         .eq("tenant_id", tenantId!)
@@ -97,6 +98,25 @@ export const PortalSignatureTracking: React.FC = () => {
       if (error) throw error;
 
       const ids = (envelopes || []).map((e: any) => e.id);
+      const senderIds = Array.from(
+        new Set((envelopes || []).map((e: any) => e.created_by).filter(Boolean))
+      );
+
+      // Sender profiles
+      let senderMap = new Map<string, { name: string; email: string }>();
+      if (senderIds.length) {
+        const { data: profs } = await supabase
+          .from("profiles")
+          .select("id, full_name, email")
+          .in("id", senderIds);
+        for (const p of profs || []) {
+          senderMap.set((p as any).id, {
+            name: (p as any).full_name || (p as any).email || "—",
+            email: (p as any).email || "",
+          });
+        }
+      }
+
       let openMap = new Map<string, { opened_at: string | null; open_count: number }>();
       if (ids.length) {
         const { data: events } = await supabase
@@ -124,6 +144,12 @@ export const PortalSignatureTracking: React.FC = () => {
         sent_at: e.sent_at,
         completed_at: e.completed_at,
         created_at: e.created_at,
+        created_by: e.created_by,
+        sender_name: senderMap.get(e.created_by)?.name || null,
+        sender_email: senderMap.get(e.created_by)?.email || null,
+        generated_pdf_path: e.generated_pdf_path,
+        signed_pdf_path: e.signed_pdf_path,
+        document_url: e.document_url,
         recipients: e.signature_recipients || [],
         opened_at: openMap.get(e.id)?.opened_at || null,
         open_count: openMap.get(e.id)?.open_count || 0,
