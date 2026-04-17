@@ -44,11 +44,12 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   const [preparing, setPreparing] = useState<string | null>(null);
 
   const { data: docs, isLoading } = useQuery({
-    queryKey: ["smart-docs-templates"],
+    queryKey: ["smart-doc-templates-picker"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("smart_docs")
-        .select("id, name, description, body, updated_at")
+        .from("smart_doc_templates")
+        .select("id, title, description, content, category, status, updated_at")
+        .eq("status", "active")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return data || [];
@@ -58,11 +59,12 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
 
   const filtered = (docs || []).filter((d) =>
     !search ||
-    d.name?.toLowerCase().includes(search.toLowerCase()) ||
-    d.description?.toLowerCase().includes(search.toLowerCase())
+    d.title?.toLowerCase().includes(search.toLowerCase()) ||
+    d.description?.toLowerCase().includes(search.toLowerCase()) ||
+    d.category?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handlePick = async (doc: { id: string; name: string; description: string | null; body: string | null }) => {
+  const handlePick = async (doc: { id: string; title: string; description: string | null; content: string | null }) => {
     setPreparing(doc.id);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -80,8 +82,8 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
         .insert({
           tenant_id: tenantId,
           template_id: doc.id,
-          title: doc.name,
-          rendered_html: doc.body || "",
+          title: doc.title,
+          rendered_html: doc.content || "",
           created_by: authUser?.id,
         })
         .select()
@@ -90,9 +92,9 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
 
       toast({
         title: "SmartDoc ready",
-        description: `Sending ${doc.name} to ${recipientName} for signature.`,
+        description: `Sending ${doc.title} to ${recipientName} for signature.`,
       });
-      onInstanceReady?.({ id: instance.id, title: doc.name });
+      onInstanceReady?.({ id: instance.id, title: doc.title });
       onOpenChange(false);
     } catch (e: any) {
       toast({ title: "Failed to prepare SmartDoc", description: e.message, variant: "destructive" });
@@ -142,7 +144,7 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
                   <div className="flex items-start gap-3 min-w-0">
                     <FileSignature className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{doc.name}</p>
+                      <p className="font-medium text-sm truncate">{doc.title}</p>
                       {doc.description && (
                         <p className="text-xs text-muted-foreground truncate">
                           {doc.description}
