@@ -4012,6 +4012,125 @@ Deno.serve(async (req) => {
         }, corsHeaders);
       }
 
+     // Route: action=queue-missing-ai-measurements
+     // For each provided vendor_report_id, ensure a roof_training_sessions row exists
+     // with verification_status=NULL so batch-verify-vendor-reports will pick it up
+     // and generate the missing AI measurement.
+     if (action === 'queue-missing-ai-measurements') {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (!user) return json({ ok: false, error: 'Authentication required' }, corsHeaders, 401);
+
+       const { data: profile } = await supabase
+         .from('profiles')
+         .select('tenant_id')
+         .eq('id', user.id)
+         .single();
+       if (!profile?.tenant_id) return json({ ok: false, error: 'No tenant found' }, corsHeaders, 400);
+
+       const tenantId = profile.tenant_id;
+       const reportIds: string[] = Array.isArray(body.vendor_report_ids) ? body.vendor_report_ids : [];
+       if (reportIds.length === 0) {
+         return json({ ok: true, queued: 0, message: 'No vendor_report_ids provided' }, corsHeaders);
+       }
+
+       // Pull report details for address/coords
+       const { data: reports, error: reportsErr } = await adminSupabase
+         .from('roof_vendor_reports')
+         .select('id, property_address, geocoded_lat, geocoded_lng, parsed, contact_id, pipeline_entry_id, vendor_name')
+         .in('id', reportIds)
+         .eq('tenant_id', tenantId);
+
+       if (reportsErr) return json({ ok: false, error: reportsErr.message }, corsHeaders, 500);
+
+       // Find existing sessions for these reports
+       const { data: existingSessions } = await adminSupabase
+         .from('roof_training_sessions')
+         .select('id, vendor_report_id, verification_status, verification_verdict')
+         .in('vendor_report_id', reportIds)
+         .eq('tenant_id', tenantId);
+
+       const existingByReport = new Map<string, any>();
+       for (const s of existingSessions || []) {
+         if (s.vendor_report_id) existingByReport.set(s.vendor_report_id, s);
+       }
+
+       let queued = 0;
+       let reset = 0;
+       const inserts: any[] = [];
+       const idsToReset: string[] = [];
+
+       for (const report of reports || []) {
+         const existing = existingByReport.get(report.id);
+         if (existing) {
+           // If verdict already set, skip; otherwise reset status so batch picks it up
+           if (existing.verification_verdict) continue;
+           if (existing.verification_status && existing.verification_status !== 'pending') {
+             idsToReset.push(existing.id);
+             reset++;
+           }
+           continue;
+         }
+
+         // Pull traced_totals from parsed report if available
+         const parsed = (report.parsed as any) || {};
+         const tracedTotals = {
+           ridge: Number(parsed.ridge_length_ft ?? parsed.total_ridge_length ?? 0) || 0,
+           hip: Number(parsed.hip_length_ft ?? parsed.total_hip_length ?? 0) || 0,
+           valley: Number(parsed.valley_length_ft ?? parsed.total_valley_length ?? 0) || 0,
+           eave: Number(parsed.eave_length_ft ?? parsed.total_eave_length ?? 0) || 0,
+           rake: Number(parsed.rake_length_ft ?? parsed.total_rake_length ?? 0) || 0,
+         };
+
+         inserts.push({
+           tenant_id: tenantId,
+           created_by: user.id,
+           name: `Vendor verification: ${report.property_address || 'Unknown'}`,
+           property_address: report.property_address || null,
+           lat: report.geocoded_lat ? Number(report.geocoded_lat) : null,
+           lng: report.geocoded_lng ? Number(report.geocoded_lng) : null,
+           ground_truth_source: 'vendor_report',
+           vendor_report_id: report.id,
+           contact_id: report.contact_id || null,
+           pipeline_entry_id: report.pipeline_entry_id || null,
+           traced_totals: tracedTotals,
+           verification_status: null,
+         });
+         queued++;
+       }
+
+       if (inserts.length > 0) {
+         const { error: insertErr } = await adminSupabase
+           .from('roof_training_sessions')
+           .insert(inserts);
+         if (insertErr) {
+           console.error('queue-missing-ai-measurements insert error:', insertErr);
+           return json({ ok: false, error: insertErr.message }, corsHeaders, 500);
+         }
+       }
+
+       if (idsToReset.length > 0) {
+         await adminSupabase
+           .from('roof_training_sessions')
+           .update({
+             verification_status: null,
+             verification_verdict: null,
+             verification_notes: null,
+             verification_run_at: null,
+             verification_feature_breakdown: null,
+           })
+           .in('id', idsToReset);
+       }
+
+       return json({
+         ok: true,
+         queued,
+         reset,
+         skipped: (reports?.length || 0) - queued - reset,
+         total: reports?.length || 0,
+         message: `Queued ${queued} new sessions, reset ${reset} existing for re-run`,
+       }, corsHeaders);
+     }
+
      // Route: action=batch-verify-vendor-reports (Per-house vendor report verification pipeline)
      if (action === 'batch-verify-vendor-reports') {
         console.log('🔍 Starting batch vendor report verification...');
@@ -4507,7 +4626,7 @@ Deno.serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, or batch-verify-vendor-reports' }, corsHeaders, 400);
+      return json({ ok: false, error: `Invalid action: ${action}. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, hydrate-vendor-sessions, queue-missing-ai-measurements, or batch-verify-vendor-reports` }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)
