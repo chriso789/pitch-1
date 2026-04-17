@@ -41,6 +41,7 @@ import {
   FileSignature,
   CheckCircle2,
   Loader2,
+  FileStack,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import { PortalUser, usePortalActivity, useRevokePortalAccess } from "@/hooks/usePortalAdmin";
@@ -48,6 +49,7 @@ import { PortalPermissionsEditor } from "./PortalPermissionsEditor";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { RequestSignatureDialog } from "@/components/signatures/RequestSignatureDialog";
+import { SmartDocPickerDialog } from "./SmartDocPickerDialog";
 
 interface PortalUserDetailProps {
   user: PortalUser | null;
@@ -68,6 +70,7 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
   const [openingAsUser, setOpeningAsUser] = useState(false);
   const [resending, setResending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [smartDocOpen, setSmartDocOpen] = useState(false);
   const [sigDialog, setSigDialog] = useState<{ open: boolean; documentId: string; documentTitle: string }>({
     open: false,
     documentId: "",
@@ -265,12 +268,17 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
                   </Button>
                   <Button variant="outline" onClick={handleUploadClick} disabled={uploading}>
                     {uploading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
-                    Add Document
+                    Upload File
+                  </Button>
+                  <Button variant="outline" onClick={() => setSmartDocOpen(true)}>
+                    <FileStack className="h-4 w-4 mr-2" />
+                    Add SmartDoc
                   </Button>
                   <Button
                     variant="outline"
                     onClick={handleUploadClick}
                     disabled={uploading}
+                    className="col-span-2"
                     title="Upload a document — you'll be prompted to request signature"
                   >
                     <FileSignature className="h-4 w-4 mr-2" />
@@ -443,6 +451,14 @@ export const PortalUserDetail: React.FC<PortalUserDetailProps> = ({
           }}
         />
       )}
+
+      <SmartDocPickerDialog
+        open={smartDocOpen}
+        onOpenChange={setSmartDocOpen}
+        contactId={user.contact_id}
+        projectId={user.project_id}
+        recipientName={`${user.first_name} ${user.last_name}`.trim()}
+      />
     </>
   );
 };
