@@ -14,12 +14,14 @@ import {
   Circle,
   TrendingUp,
   Settings,
+  FileSignature,
 } from "lucide-react";
 import { usePortalStats, usePortalUsers, PortalUser } from "@/hooks/usePortalAdmin";
 import { PortalUsersList } from "@/components/admin/PortalUsersList";
 import { PortalUserDetail } from "@/components/admin/PortalUserDetail";
 import { PortalActivityLog } from "@/components/admin/PortalActivityLog";
 import { PortalGlobalSettings } from "@/components/admin/PortalGlobalSettings";
+import { PortalSignatureTracking } from "@/components/admin/PortalSignatureTracking";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
 export const HomeownerPortalAdmin: React.FC = () => {
