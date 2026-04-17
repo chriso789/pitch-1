@@ -1102,12 +1102,12 @@ const LeadDetails = () => {
               </SelectContent>
             </Select>
             <Button
-              variant={lead.contact.portal_access_enabled ? 'default' : 'outline'}
+              variant={(lead.contact as any).portal_access_enabled ? 'default' : 'outline'}
               size="sm"
               className="h-6 text-xs px-2 gap-1"
               onClick={async () => {
                 if (!lead.contact?.id) return;
-                const enabled = !lead.contact.portal_access_enabled;
+                const enabled = !(lead.contact as any).portal_access_enabled;
                 try {
                   const { error } = await supabase
                     .from('contacts')
@@ -1126,7 +1126,7 @@ const LeadDetails = () => {
               }}
             >
               <Home className="h-3 w-3" />
-              {lead.contact.portal_access_enabled ? 'Portal On' : 'Enable Portal'}
+              {(lead.contact as any).portal_access_enabled ? 'Portal On' : 'Enable Portal'}
             </Button>
           </div>
         )}
