@@ -2211,6 +2211,25 @@ Deno.serve(async (req) => {
           }
         }
 
+        // Final fallback: if skeleton found no provider and we haven't tried vision yet, try vision
+        if (!meas && engineUsed === 'skeleton' && engine !== 'vision') {
+          console.log('[pull] 🔭 Skeleton failed, attempting VISION engine as final fallback');
+          try {
+            const { data: overlayData, error: overlayError } = await supabase.functions.invoke('generate-roof-overlay', {
+              body: { lat, lng, address }
+            });
+            if (!overlayError && overlayData?.success && overlayData?.data) {
+              meas = convertVisionOverlayToMeasureResult(overlayData.data, propertyId, lat, lng);
+              if (meas) {
+                engineUsed = 'vision_fallback';
+                console.log('[pull] Vision fallback succeeded');
+              }
+            }
+          } catch (e) {
+            console.error('[pull] Vision fallback exception:', e);
+          }
+        }
+
         if (!meas) {
           return json({ 
             ok: false, 
