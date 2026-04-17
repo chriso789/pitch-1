@@ -79,6 +79,95 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+async function drainVendorVerificationQueueInBackground(
+  authHeader: string,
+  options: {
+    chunkSize?: number;
+    maxIterations?: number;
+    resetFailed?: boolean;
+    resetStale?: boolean;
+  } = {},
+) {
+  const chunkSize = Math.min(Math.max(options.chunkSize ?? 1, 1), 1);
+  const maxIterations = Math.min(Math.max(options.maxIterations ?? 300, 1), 500);
+  const functionUrl = `${SUPABASE_URL}/functions/v1/measure`;
+
+  const invokeBatch = async (body: Record<string, unknown>) => {
+    const response = await fetch(functionUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const payload = await response.json().catch(() => ({}));
+    return { ok: response.ok, payload };
+  };
+
+  let consecutiveEmpty = 0;
+  let consecutiveErrors = 0;
+
+  if (options.resetFailed || options.resetStale) {
+    const resetResult = await invokeBatch({
+      action: 'batch-verify-vendor-reports',
+      resetFailed: !!options.resetFailed,
+      resetStale: !!options.resetStale,
+      limit: 0,
+    });
+
+    if (!resetResult.ok || resetResult.payload?.ok === false) {
+      console.error('Background vendor drain reset failed:', resetResult.payload);
+    }
+  }
+
+  for (let iteration = 0; iteration < maxIterations; iteration++) {
+    const result = await invokeBatch({
+      action: 'batch-verify-vendor-reports',
+      limit: chunkSize,
+    });
+
+    if (!result.ok || result.payload?.ok === false) {
+      consecutiveErrors += 1;
+      console.error(`Background vendor drain batch ${iteration + 1} failed:`, result.payload);
+
+      if (consecutiveErrors >= 5) break;
+
+      await invokeBatch({
+        action: 'batch-verify-vendor-reports',
+        resetStale: true,
+        limit: 0,
+      });
+      continue;
+    }
+
+    consecutiveErrors = 0;
+    const processed = Number(result.payload?.processed || 0);
+    const failed = Number(result.payload?.failed || 0);
+    const skipped = Number(result.payload?.skipped || 0);
+    const remaining = Number(result.payload?.remaining || 0);
+    const workCount = processed + failed + skipped;
+
+    if (remaining === 0) {
+      console.log(`✅ Background vendor drain finished after ${iteration + 1} batches`);
+      break;
+    }
+
+    if (workCount === 0) {
+      consecutiveEmpty += 1;
+      if (consecutiveEmpty >= 5) {
+        console.log('⚠️ Background vendor drain stopped after repeated empty batches');
+        break;
+      }
+    } else {
+      consecutiveEmpty = 0;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+}
+
 // Geometry utilities
 function degToMeters(latDeg: number) {
   const metersPerDegLat = 111_320;
