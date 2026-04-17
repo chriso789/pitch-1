@@ -43,9 +43,11 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
   const { data: docs, isLoading } = useQuery({
     queryKey: ["smart-docs-picker"],
     queryFn: async () => {
+      // SmartDocs = company resource documents (what shows in /smart-docs UI)
       const { data, error } = await supabase
-        .from("smart_docs")
-        .select("id, name, description, updated_at")
+        .from("documents")
+        .select("id, filename, description, file_path, mime_type, file_size, updated_at")
+        .eq("document_type", "company_resource")
         .order("updated_at", { ascending: false });
       if (error) throw error;
       return data || [];
@@ -55,11 +57,11 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
 
   const filtered = (docs || []).filter((d) =>
     !search ||
-    d.name?.toLowerCase().includes(search.toLowerCase()) ||
+    d.filename?.toLowerCase().includes(search.toLowerCase()) ||
     d.description?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleShare = async (doc: { id: string; name: string }) => {
+  const handleShare = async (doc: { id: string; filename: string; file_path: string; mime_type: string | null; file_size: number | null; description: string | null }) => {
     setSharing(doc.id);
     try {
       const { data: { user: authUser } } = await supabase.auth.getUser();
@@ -71,26 +73,28 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error("No tenant");
 
+      // Clone the company resource into a homeowner-visible document linked to this contact/project
       const { data: inserted, error } = await supabase
         .from("documents")
         .insert({
           tenant_id: tenantId,
           contact_id: contactId,
           project_id: projectId || null,
-          filename: doc.name,
-          file_path: `smart_doc:${doc.id}`,
-          mime_type: "application/smart-doc",
+          filename: doc.filename,
+          file_path: doc.file_path,
+          mime_type: doc.mime_type,
+          file_size: doc.file_size,
           document_type: "smart_doc_shared",
           is_visible_to_homeowner: true,
           uploaded_by: authUser?.id,
-          description: `SmartDoc shared with ${recipientName}`,
+          description: `SmartDoc shared with ${recipientName}${doc.description ? ` — ${doc.description}` : ""}`,
         })
         .select()
         .single();
       if (error) throw error;
 
-      toast({ title: "SmartDoc shared", description: `${doc.name} added to portal folder.` });
-      onShared?.({ id: inserted.id, title: doc.name });
+      toast({ title: "SmartDoc shared", description: `${doc.filename} added to portal folder.` });
+      onShared?.({ id: inserted.id, title: doc.filename });
       onOpenChange(false);
     } catch (e: any) {
       toast({ title: "Share failed", description: e.message, variant: "destructive" });
@@ -137,7 +141,7 @@ export const SmartDocPickerDialog: React.FC<SmartDocPickerDialogProps> = ({
                   <div className="flex items-start gap-3 min-w-0">
                     <FileText className="h-5 w-5 text-primary mt-0.5 shrink-0" />
                     <div className="min-w-0">
-                      <p className="font-medium text-sm truncate">{doc.name}</p>
+                      <p className="font-medium text-sm truncate">{doc.filename}</p>
                       {doc.description && (
                         <p className="text-xs text-muted-foreground truncate">
                           {doc.description}
