@@ -822,7 +822,30 @@ export function VendorVerificationDashboard() {
         </Card>
       )}
 
-      {/* Progress bar */}
+      {diagramFixReport && (
+        <Card>
+          <CardContent className="pt-6">
+            <div className="grid grid-cols-4 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{diagramFixReport.scanned}</p>
+                <p className="text-xs text-muted-foreground">Diagrams scanned</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-500">{diagramFixReport.cleaned}</p>
+                <p className="text-xs text-muted-foreground">Cleaned in place</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-500">{diagramFixReport.segmentsRemoved}</p>
+                <p className="text-xs text-muted-foreground">Bad segments removed</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-500">{diagramFixReport.requeued}</p>
+                <p className="text-xs text-muted-foreground">Re-queued (acc &lt; 80%)</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
       {isRunning && (
         <div className="space-y-2">
           <div className="flex justify-between text-sm text-muted-foreground">
