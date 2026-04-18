@@ -65,27 +65,45 @@ Deno.serve(async (req) => {
     const tenantId = profile?.tenant_id;
     if (!tenantId) return json({ ok: false, error: 'No tenant on profile' }, 400);
 
-    // Pull confirmed verification sessions
+    // Pull confirmed + denied sessions. Denied sessions are included ONLY when
+    // we have human-corrected geometry in ai_feedback_sessions (highest-value
+    // training signals because the AI was wrong and a human fixed it).
     const { data: sessions, error: sessErr } = await admin
       .from('roof_training_sessions')
       .select(
-        'id, property_address, lat, lng, traced_totals, ai_totals, vendor_report_id, ai_measurement_id',
+        'id, property_address, lat, lng, traced_totals, ai_totals, vendor_report_id, ai_measurement_id, verification_verdict',
       )
       .eq('tenant_id', tenantId)
       .eq('ground_truth_source', 'vendor_report')
-      .eq('verification_verdict', 'confirmed');
+      .in('verification_verdict', ['confirmed', 'denied']);
 
     if (sessErr) {
       console.error('Sessions query error:', sessErr);
       return json({ ok: false, error: sessErr.message }, 500);
     }
 
-    const eligible = (sessions ?? []).filter(
-      (s: any) => s.ai_measurement_id || s.vendor_report_id,
-    );
+    const deniedIds = (sessions ?? [])
+      .filter((s: any) => s.verification_verdict === 'denied' && s.ai_measurement_id)
+      .map((s: any) => s.ai_measurement_id);
+    const correctionsByMeasId: Record<string, any> = {};
+    if (deniedIds.length > 0) {
+      const { data: feedback } = await admin
+        .from('ai_feedback_sessions')
+        .select('measurement_id, corrected_geometry, original_geometry, corrections_made')
+        .in('measurement_id', deniedIds)
+        .not('corrected_geometry', 'is', null);
+      for (const f of feedback ?? []) {
+        if (f.measurement_id) correctionsByMeasId[f.measurement_id] = f;
+      }
+    }
+
+    const eligible = (sessions ?? []).filter((s: any) => {
+      if (s.verification_verdict === 'confirmed') return s.ai_measurement_id || s.vendor_report_id;
+      return s.ai_measurement_id && correctionsByMeasId[s.ai_measurement_id];
+    });
 
     if (eligible.length === 0) {
-      return json({ ok: false, error: 'No confirmed sessions to export' }, 400);
+      return json({ ok: false, error: 'No confirmed sessions or denied corrections to export' }, 400);
     }
 
     // Pull linked roof_measurements for AI geometry + satellite imagery
