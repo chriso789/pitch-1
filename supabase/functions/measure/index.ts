@@ -4777,13 +4777,28 @@ Deno.serve(async (req) => {
                 : (!sessionLat || !sessionLng
                   ? 'No coordinates and geocoding failed'
                   : 'AI measurement engine returned no data');
-              console.log(`⚠️ Session ${session.id}: ${reason}, marking failed`);
+
+              // Categorize failure into structured stage/reason for the dashboard.
+              let failureStage = 'ai_segmentation';
+              let failureReason = 'unet_no_output';
+              const lower = (lastErrorLog || reason).toLowerCase();
+              if (!sessionLat || !sessionLng) { failureStage = 'geocode'; failureReason = 'geocode_failed'; }
+              else if (lower.includes('mapbox') && lower.includes('no')) { failureStage = 'imagery'; failureReason = 'mapbox_no_imagery'; }
+              else if (lower.includes('timeout') || lower.includes('504')) { failureStage = 'ai_segmentation'; failureReason = 'unet_timeout'; }
+              else if (lower.includes('footprint')) { failureStage = 'footprint'; failureReason = 'footprint_missing'; }
+              else if (lower.includes('insert failed') || lower.includes('persist')) { failureStage = 'persistence'; failureReason = 'db_insert_failed'; }
+              else if (lower.includes('pull failed')) { failureStage = 'ai_segmentation'; failureReason = 'pull_engine_error'; }
+
+              console.log(`⚠️ Session ${session.id}: [${failureStage}/${failureReason}] ${reason}, marking failed`);
               await adminSupabase
                 .from('roof_training_sessions')
                 .update({
                   verification_status: 'failed',
                   verification_notes: `Failed - ${reason}`,
                   verification_run_at: new Date().toISOString(),
+                  last_failure_reason: failureReason,
+                  last_failure_stage: failureStage,
+                  imagery_sources_attempted: ['mapbox', 'google_satellite'],
                 })
                 .eq('id', session.id);
               results.failed++;
