@@ -146,21 +146,30 @@ Deno.serve(async (req) => {
       const vendor = s.vendor_report_id ? reportMap[s.vendor_report_id] : null;
       const traced = (s.traced_totals ?? {}) as Record<string, number>;
 
+      const correction = meas ? correctionsByMeasId[meas.id] : null;
+
       // Need at least imagery + ground truth perimeter to be useful
       const imageUrl = meas?.satellite_image_url ?? vendor?.diagram_image_url ?? null;
-      const groundTruthPerimeter = vendor?.perimeter_wkt ?? null;
+      const groundTruthPerimeter =
+        correction?.corrected_geometry?.perimeter_wkt ?? vendor?.perimeter_wkt ?? null;
       if (!imageUrl || !groundTruthPerimeter) continue;
 
       const record = {
         session_id: s.id,
         address: s.property_address,
         location: { lat: s.lat, lng: s.lng },
+        verdict: s.verification_verdict,
+        signal_type: correction ? 'human_correction' : 'vendor_match',
         image_url: imageUrl,
         ground_truth: {
-          source: 'vendor_report',
+          source: correction ? 'human_correction' : 'vendor_report',
           vendor_report_id: s.vendor_report_id,
           perimeter_wkt: groundTruthPerimeter,
-          linear_features_wkt: vendor?.linear_features_wkt ?? null,
+          linear_features_wkt:
+            correction?.corrected_geometry?.linear_features_wkt ??
+            vendor?.linear_features_wkt ??
+            null,
+          corrections_made: correction?.corrections_made ?? null,
         },
         ai_prediction: meas
           ? {
@@ -190,7 +199,7 @@ Deno.serve(async (req) => {
         {
           ok: false,
           error:
-            'No confirmed sessions had both imagery and ground-truth geometry available',
+            'No eligible sessions had both imagery and ground-truth (vendor or human-correction) geometry available',
         },
         400,
       );
