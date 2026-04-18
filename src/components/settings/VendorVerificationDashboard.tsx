@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
 import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
 import { cleanAiDiagram } from './lib/cleanAiDiagram';
+import { CoverageGapPanel } from './CoverageGapPanel';
 
 interface VendorReportMeta {
   provider: string | null;
@@ -48,6 +49,10 @@ interface VerificationSession {
   ai_totals: Record<string, number> | null;
   ground_truth_source: string | null;
   vendor_report_id: string | null;
+  ai_measurement_id?: string | null;
+  last_failure_reason?: string | null;
+  last_failure_stage?: string | null;
+  imagery_sources_attempted?: string[] | null;
   vendor_provider?: string | null;
   has_source_file?: boolean;
   has_diagram?: boolean;
@@ -107,7 +112,8 @@ export function VendorVerificationDashboard() {
           id, property_address, verification_verdict, verification_score,
           verification_notes, verification_run_at, verification_status,
           verification_feature_breakdown, traced_totals, ai_totals,
-          ground_truth_source, vendor_report_id, ai_measurement_id, lat, lng
+          ground_truth_source, vendor_report_id, ai_measurement_id, lat, lng,
+          last_failure_reason, last_failure_stage, imagery_sources_attempted
         `)
         .eq('tenant_id', activeCompanyId!)
         .eq('ground_truth_source', 'vendor_report')
