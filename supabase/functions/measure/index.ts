@@ -4905,12 +4905,18 @@ Deno.serve(async (req) => {
             await new Promise(r => setTimeout(r, 1000));
           } catch (err) {
             console.error(`Error verifying session ${session.id}:`, err);
+            const msg = err instanceof Error ? err.message : String(err);
+            const lower = msg.toLowerCase();
+            const failureStage = lower.includes('timeout') || lower.includes('504') ? 'ai_segmentation' : 'verification';
+            const failureReason = lower.includes('timeout') ? 'unet_timeout' : 'verification_exception';
             await adminSupabase
               .from('roof_training_sessions')
               .update({
                 verification_status: 'failed',
-                verification_notes: `Error: ${err instanceof Error ? err.message : String(err)}`,
+                verification_notes: `Error: ${msg}`,
                 verification_run_at: new Date().toISOString(),
+                last_failure_reason: failureReason,
+                last_failure_stage: failureStage,
               })
               .eq('id', session.id);
             results.failed++;
