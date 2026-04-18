@@ -1007,6 +1007,13 @@ export function VendorVerificationDashboard() {
         </div>
       </div>
 
+      {/* Coverage Gap — path to 100% */}
+      <CoverageGapPanel
+        sessions={sessions as any}
+        tenantId={activeCompanyId ?? null}
+        onRefresh={() => queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] })}
+      />
+
       {runAllAiProgress && (
         <Card>
           <CardContent className="pt-6">
