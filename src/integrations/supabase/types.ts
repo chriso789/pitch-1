@@ -29934,9 +29934,12 @@ export type Database = {
           image_year: number | null
           imagery_date: string | null
           imagery_quality: string | null
+          imagery_sources_attempted: string[] | null
           inference_source: string | null
           interior_vertex_count: number | null
           is_archived: boolean | null
+          last_failure_reason: string | null
+          last_failure_stage: string | null
           lead_id: string | null
           linear_features_wkt: Json | null
           manual_perimeter_wkt: string | null
@@ -30067,9 +30070,12 @@ export type Database = {
           image_year?: number | null
           imagery_date?: string | null
           imagery_quality?: string | null
+          imagery_sources_attempted?: string[] | null
           inference_source?: string | null
           interior_vertex_count?: number | null
           is_archived?: boolean | null
+          last_failure_reason?: string | null
+          last_failure_stage?: string | null
           lead_id?: string | null
           linear_features_wkt?: Json | null
           manual_perimeter_wkt?: string | null
@@ -30200,9 +30206,12 @@ export type Database = {
           image_year?: number | null
           imagery_date?: string | null
           imagery_quality?: string | null
+          imagery_sources_attempted?: string[] | null
           inference_source?: string | null
           interior_vertex_count?: number | null
           is_archived?: boolean | null
+          last_failure_reason?: string | null
+          last_failure_stage?: string | null
           lead_id?: string | null
           linear_features_wkt?: Json | null
           manual_perimeter_wkt?: string | null
@@ -30802,6 +30811,9 @@ export type Database = {
           description: string | null
           ground_truth_source: string | null
           id: string
+          imagery_sources_attempted: string[] | null
+          last_failure_reason: string | null
+          last_failure_stage: string | null
           lat: number | null
           lng: number | null
           name: string
@@ -30835,6 +30847,9 @@ export type Database = {
           description?: string | null
           ground_truth_source?: string | null
           id?: string
+          imagery_sources_attempted?: string[] | null
+          last_failure_reason?: string | null
+          last_failure_stage?: string | null
           lat?: number | null
           lng?: number | null
           name: string
@@ -30868,6 +30883,9 @@ export type Database = {
           description?: string | null
           ground_truth_source?: string | null
           id?: string
+          imagery_sources_attempted?: string[] | null
+          last_failure_reason?: string | null
+          last_failure_stage?: string | null
           lat?: number | null
           lng?: number | null
           name?: string
