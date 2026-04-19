@@ -11,6 +11,7 @@ import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, 
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { LogoUploader } from '@/components/settings/LogoUploader';
+import { CompanyEmailDomainsManager } from '@/features/settings/components/CompanyEmailDomainsManager';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
