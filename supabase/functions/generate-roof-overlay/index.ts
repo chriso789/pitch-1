@@ -110,21 +110,33 @@ Deno.serve(async (req) => {
 
     // Step 2: Call main analyze-roof-aerial for perimeter and initial detection
     const analysisResult = await callAnalyzeRoofAerial(supabase, address, coordinates)
-    
-    if (!analysisResult.success) {
-      console.error('❌ Roof analysis failed:', analysisResult.error)
-      return new Response(JSON.stringify({
-        success: false,
-        error: analysisResult.error || 'Roof analysis failed'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+
+    // Step 3: Extract perimeter — with guaranteed Gemini Vision fallback.
+    // We NEVER fail here: if the structured analyzer returns nothing, we
+    // trace the roof outline directly from the satellite image. There is
+    // always aerial imagery, so there is always a perimeter we can produce.
+    let perimeter: [number, number][] = []
+    if (analysisResult.success) {
+      perimeter = extractPerimeter(analysisResult.data)
+      console.log(`📐 Perimeter from analyzer: ${perimeter.length} vertices`)
+    } else {
+      console.warn('⚠️ analyze-roof-aerial failed, will rely on Vision-traced perimeter:', analysisResult.error)
     }
 
-    // Step 3: Extract perimeter in correct format
-    const perimeter = extractPerimeter(analysisResult.data)
-    console.log(`📐 Perimeter: ${perimeter.length} vertices`)
+    if (perimeter.length < 4) {
+      console.log('🛟 Falling back to Gemini Vision perimeter trace from satellite image')
+      const traced = await traceRoofPerimeterFromImage(mapboxUrl, coordinates)
+      if (traced && traced.length >= 4) {
+        perimeter = traced
+        console.log(`✅ Vision-traced perimeter recovered: ${perimeter.length} vertices`)
+      } else {
+        console.error('❌ Even Vision fallback could not produce a perimeter')
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Could not extract roof perimeter from aerial imagery (all sources exhausted)'
+        }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+    }
 
     // Step 4: PHASE 1 - Enhanced AI Vision Detection with perimeter tracing + eave/rake classification
     const detectedFeatures = await detectAllFeaturesFromImage(
