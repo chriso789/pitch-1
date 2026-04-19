@@ -625,10 +625,8 @@ export const CompanyManagement = () => {
                 </div>
               </TabsContent>
 
-              <TabsContent value="settings">
-                <div className="text-muted-foreground text-center py-8">
-                  Company settings coming soon
-                </div>
+              <TabsContent value="settings" className="space-y-6">
+                <CompanyEmailDomainsManager tenantId={selectedCompany.id} />
               </TabsContent>
             </Tabs>
           )}
