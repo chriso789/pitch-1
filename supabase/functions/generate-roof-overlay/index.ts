@@ -110,21 +110,33 @@ Deno.serve(async (req) => {
 
     // Step 2: Call main analyze-roof-aerial for perimeter and initial detection
     const analysisResult = await callAnalyzeRoofAerial(supabase, address, coordinates)
-    
-    if (!analysisResult.success) {
-      console.error('❌ Roof analysis failed:', analysisResult.error)
-      return new Response(JSON.stringify({
-        success: false,
-        error: analysisResult.error || 'Roof analysis failed'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+
+    // Step 3: Extract perimeter — with guaranteed Gemini Vision fallback.
+    // We NEVER fail here: if the structured analyzer returns nothing, we
+    // trace the roof outline directly from the satellite image. There is
+    // always aerial imagery, so there is always a perimeter we can produce.
+    let perimeter: [number, number][] = []
+    if (analysisResult.success) {
+      perimeter = extractPerimeter(analysisResult.data)
+      console.log(`📐 Perimeter from analyzer: ${perimeter.length} vertices`)
+    } else {
+      console.warn('⚠️ analyze-roof-aerial failed, will rely on Vision-traced perimeter:', analysisResult.error)
     }
 
-    // Step 3: Extract perimeter in correct format
-    const perimeter = extractPerimeter(analysisResult.data)
-    console.log(`📐 Perimeter: ${perimeter.length} vertices`)
+    if (perimeter.length < 4) {
+      console.log('🛟 Falling back to Gemini Vision perimeter trace from satellite image')
+      const traced = await traceRoofPerimeterFromImage(mapboxUrl, coordinates)
+      if (traced && traced.length >= 4) {
+        perimeter = traced
+        console.log(`✅ Vision-traced perimeter recovered: ${perimeter.length} vertices`)
+      } else {
+        console.error('❌ Even Vision fallback could not produce a perimeter')
+        return new Response(JSON.stringify({
+          success: false,
+          error: 'Could not extract roof perimeter from aerial imagery (all sources exhausted)'
+        }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+    }
 
     // Step 4: PHASE 1 - Enhanced AI Vision Detection with perimeter tracing + eave/rake classification
     const detectedFeatures = await detectAllFeaturesFromImage(
@@ -1260,3 +1272,117 @@ function deriveEavesRakesFromPerimeter(
   
   return { eaves, rakes };
 }
+
+/**
+ * GUARANTEED-PERIMETER FALLBACK
+ * -----------------------------
+ * Asks Gemini Vision to trace the visible roof drip-line directly from the
+ * Mapbox satellite image and return it as GPS coordinates. This is the
+ * "we always have aerial imagery, therefore we always have a perimeter"
+ * safety net — used when analyze-roof-aerial / OSM / U-Net all fail.
+ *
+ * Returns [[lng, lat], ...] in clockwise order, closed polygon, or null.
+ */
+async function traceRoofPerimeterFromImage(
+  imageUrl: string,
+  coordinates: { lat: number; lng: number }
+): Promise<[number, number][] | null> {
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  if (!LOVABLE_API_KEY) {
+    console.error('LOVABLE_API_KEY missing — cannot run Vision perimeter fallback');
+    return null;
+  }
+
+  // Fixed Mapbox static window assumption (~80m on a side at zoom 19, FL latitudes).
+  // We tell the model to return NORMALIZED [0..1] image coords, then convert to GPS.
+  const HALF_SPAN_M = 40;
+
+  const prompt = `You are looking at a high-resolution satellite image of a single residential property centered on the target house.
+
+TASK: Trace the OUTER ROOF DRIP-LINE (the outline where the roof edge meets the gutters) of the MAIN house in the center of the image.
+
+Return ONLY valid JSON:
+{ "vertices": [[x, y], [x, y], ...] }
+
+RULES:
+- x and y are NORMALIZED image coordinates: 0.0 = left/top edge, 1.0 = right/bottom edge.
+- Provide 4 to 24 vertices in CLOCKWISE order around the roof.
+- Trace ONLY the main house roof — ignore detached garages, pools, sheds, driveway.
+- Close the polygon (last vertex matches the first, OR omit the duplicate).
+- Snap precisely to actual roof corners visible in the image.
+- If multiple buildings, pick the LARGEST one nearest the image center.
+
+Output ONLY the JSON object. No prose, no markdown fences.`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: prompt },
+            { type: 'image_url', image_url: { url: imageUrl } },
+          ],
+        }],
+        max_completion_tokens: 1500,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('Vision perimeter HTTP error:', response.status, await response.text());
+      return null;
+    }
+
+    const ai = await response.json();
+    let content: string = ai?.choices?.[0]?.message?.content || '';
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+
+    let parsed: any;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      const m = content.match(/\{[\s\S]*\}/);
+      if (!m) { console.error('Vision perimeter: no JSON in response'); return null; }
+      parsed = JSON.parse(m[0]);
+    }
+
+    const verts = parsed?.vertices;
+    if (!Array.isArray(verts) || verts.length < 4) {
+      console.error('Vision perimeter: invalid vertex array', verts);
+      return null;
+    }
+
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((coordinates.lat * Math.PI) / 180);
+
+    const result: [number, number][] = [];
+    for (const v of verts) {
+      if (!Array.isArray(v) || v.length < 2) continue;
+      const x = Math.max(0, Math.min(1, Number(v[0])));
+      const y = Math.max(0, Math.min(1, Number(v[1])));
+      const dxM = (x - 0.5) * 2 * HALF_SPAN_M;
+      const dyM = (y - 0.5) * 2 * HALF_SPAN_M;
+      const lng = coordinates.lng + dxM / metersPerDegLng;
+      const lat = coordinates.lat - dyM / metersPerDegLat;
+      result.push([lng, lat]);
+    }
+
+    if (result.length < 4) return null;
+    const first = result[0], last = result[result.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      result.push([first[0], first[1]]);
+    }
+    return result;
+  } catch (err) {
+    console.error('Vision perimeter trace exception:', err);
+    return null;
+  }
+}
+

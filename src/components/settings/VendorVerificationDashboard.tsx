@@ -8,7 +8,8 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2, MapPin } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2, MapPin, Settings2 } from 'lucide-react';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
 import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
@@ -954,76 +955,8 @@ export function VendorVerificationDashboard() {
         </div>
         <div className="flex gap-2">
           <Button
-            variant="outline"
-            onClick={handleVerifyCoverage}
-            disabled={isCheckingCoverage || isTraining || isRunning || isFixingDiagrams}
-          >
-            {isCheckingCoverage ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <CheckCircle className="h-4 w-4 mr-2" />
-            )}
-            Verify AI Coverage
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleFixAllDiagrams}
-            disabled={isFixingDiagrams || isTraining || isCheckingCoverage || isRunning || isRunningAllAi}
-            title="Snap, dedupe, and clip every AI diagram, then re-queue any with accuracy < 80%"
-          >
-            {isFixingDiagrams ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Wand2 className="h-4 w-4 mr-2" />
-            )}
-            {isFixingDiagrams ? 'Fixing diagrams…' : 'Fix All AI Diagrams'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={async () => {
-              setIsBackfillingAddresses(true);
-              try {
-                const { data, error } = await supabase.functions.invoke('backfill-verification-addresses', {
-                  body: { tenantId: activeCompanyId },
-                });
-                if (error) throw error;
-                toast.success(`Backfilled ${data?.backfilled || 0} of ${data?.scanned || 0} addresses${data?.failed ? ` (${data.failed} unresolved)` : ''}`);
-                await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
-              } catch (err: any) {
-                console.error('Backfill addresses error', err);
-                toast.error(err?.message || 'Address backfill failed');
-              } finally {
-                setIsBackfillingAddresses(false);
-              }
-            }}
-            disabled={isBackfillingAddresses || isRunningAllAi || isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
-            title="Reverse-geocode and fill missing property addresses on verification sessions"
-          >
-            {isBackfillingAddresses ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <MapPin className="h-4 w-4 mr-2" />
-            )}
-            {isBackfillingAddresses ? 'Backfilling…' : 'Backfill Addresses'}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={handleRunAllAiMeasurements}
-            disabled={isRunningAllAi || isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
-            title="Backfill missing measurement links and run AI on every pending vendor report"
-          >
-            {isRunningAllAi ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 mr-2" />
-            )}
-            {isRunningAllAi
-              ? `Running AI… ${runAllAiProgress?.processed || 0} done, ${runAllAiProgress?.remaining || 0} left`
-              : 'Run AI on All Reports'}
-          </Button>
-          <Button
             onClick={handleCompareAndTrain}
-            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams || isRunningAllAi}
+            disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams || isRunningAllAi || isBackfillingAddresses}
             size="lg"
           >
             {isTraining ? (
@@ -1033,6 +966,60 @@ export function VendorVerificationDashboard() {
             )}
             {isTraining ? 'Comparing & Training...' : 'Compare & Train from Vendor Reports'}
           </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="outline"
+                size="lg"
+                disabled={isTraining || isCheckingCoverage || isRunning || isFixingDiagrams || isRunningAllAi || isBackfillingAddresses}
+              >
+                <Settings2 className="h-4 w-4 mr-2" />
+                Tools
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuLabel>Maintenance</DropdownMenuLabel>
+              <DropdownMenuItem onClick={handleRunAllAiMeasurements} disabled={isRunningAllAi}>
+                {isRunningAllAi ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Play className="h-4 w-4 mr-2" />}
+                {isRunningAllAi
+                  ? `Running… ${runAllAiProgress?.processed || 0}/${(runAllAiProgress?.processed || 0) + (runAllAiProgress?.remaining || 0)}`
+                  : 'Run AI on all reports'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleFixAllDiagrams} disabled={isFixingDiagrams}>
+                {isFixingDiagrams ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Wand2 className="h-4 w-4 mr-2" />}
+                Fix all AI diagrams
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>Data quality</DropdownMenuLabel>
+              <DropdownMenuItem onClick={handleVerifyCoverage} disabled={isCheckingCoverage}>
+                {isCheckingCoverage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-2" />}
+                Verify AI coverage
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                disabled={isBackfillingAddresses}
+                onClick={async () => {
+                  setIsBackfillingAddresses(true);
+                  try {
+                    const { data, error } = await supabase.functions.invoke('backfill-verification-addresses', {
+                      body: { tenantId: activeCompanyId },
+                    });
+                    if (error) throw error;
+                    toast.success(`Backfilled ${data?.backfilled || 0} of ${data?.scanned || 0} addresses${data?.failed ? ` (${data.failed} unresolved)` : ''}`);
+                    await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+                  } catch (err: any) {
+                    console.error('Backfill addresses error', err);
+                    toast.error(err?.message || 'Address backfill failed');
+                  } finally {
+                    setIsBackfillingAddresses(false);
+                  }
+                }}
+              >
+                {isBackfillingAddresses ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <MapPin className="h-4 w-4 mr-2" />}
+                Backfill missing addresses
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
