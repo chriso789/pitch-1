@@ -37059,6 +37059,71 @@ export type Database = {
           },
         ]
       }
+      tenant_stripe_accounts: {
+        Row: {
+          account_type: string
+          business_profile: Json | null
+          charges_enabled: boolean | null
+          country: string | null
+          created_at: string
+          created_by: string | null
+          default_currency: string | null
+          details_submitted: boolean | null
+          id: string
+          onboarding_complete: boolean | null
+          payouts_enabled: boolean | null
+          requirements_due: Json | null
+          requirements_pending: Json | null
+          stripe_account_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          account_type?: string
+          business_profile?: Json | null
+          charges_enabled?: boolean | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_currency?: string | null
+          details_submitted?: boolean | null
+          id?: string
+          onboarding_complete?: boolean | null
+          payouts_enabled?: boolean | null
+          requirements_due?: Json | null
+          requirements_pending?: Json | null
+          stripe_account_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          account_type?: string
+          business_profile?: Json | null
+          charges_enabled?: boolean | null
+          country?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_currency?: string | null
+          details_submitted?: boolean | null
+          id?: string
+          onboarding_complete?: boolean | null
+          payouts_enabled?: boolean | null
+          requirements_due?: Json | null
+          requirements_pending?: Json | null
+          stripe_account_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_stripe_accounts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenants: {
         Row: {
           about_us: string | null
