@@ -63,22 +63,41 @@ const DemoRequest: React.FC = () => {
     setLoading(true);
 
     try {
-      // Send demo request email
-      const { error } = await supabase.functions.invoke('send-demo-request', {
-        body: {
-          firstName: formData.firstName,
-          lastName: formData.lastName,
-          email: formData.email,
-          phone: formData.phone,
-          companyName: formData.companyName,
-          jobTitle: formData.jobTitle,
-          message: formData.message,
-          requestedAt: new Date().toISOString()
-        }
+      // 1) ALWAYS persist the lead to the database first so we never lose it,
+      //    even if the email-sending edge function fails.
+      const { error: dbError } = await supabase.from('demo_requests').insert({
+        first_name: formData.firstName,
+        last_name: formData.lastName,
+        email: formData.email,
+        phone: formData.phone || null,
+        company_name: formData.companyName,
+        job_title: formData.jobTitle || null,
+        message: formData.message || null,
+        email_sent: false,
       });
 
-      if (error) {
-        throw error;
+      if (dbError) {
+        console.error('Demo request DB insert error:', dbError);
+        throw dbError;
+      }
+
+      // 2) Best-effort: send notification email. Never block success on this.
+      try {
+        await supabase.functions.invoke('send-demo-request', {
+          body: {
+            firstName: formData.firstName,
+            lastName: formData.lastName,
+            email: formData.email,
+            phone: formData.phone,
+            companyName: formData.companyName,
+            jobTitle: formData.jobTitle,
+            message: formData.message,
+            requestedAt: new Date().toISOString(),
+            skipDbInsert: true,
+          },
+        });
+      } catch (emailErr) {
+        console.warn('Demo request email failed (lead still saved):', emailErr);
       }
 
       setSubmitted(true);
