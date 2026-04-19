@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { logSignupAttempt } from "@/lib/logSignupAttempt";
 import { useToast } from "@/hooks/use-toast";
 
 interface AuthProps {
