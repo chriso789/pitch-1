@@ -917,16 +917,11 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             </Tabs>
 
             <div className="mt-6 pt-6 border-t">
-              <Button
-                onClick={handleDemoRequest}
-                variant="outline"
-                className="w-full"
-                disabled={loading}
-              >
-                Request Demo Access
-              </Button>
-              <p className="text-xs text-muted-foreground text-center mt-2">
-                Get personalized access to PITCH CRM
+              <p className="text-xs text-muted-foreground text-center">
+                Sign-in is for users invited by their company admin. If you're trying to bring your company onto PITCH CRM, contact us at{' '}
+                <a href="mailto:support@pitch-crm.ai" className="text-primary hover:underline">
+                  support@pitch-crm.ai
+                </a>
               </p>
             </div>
           </CardContent>
