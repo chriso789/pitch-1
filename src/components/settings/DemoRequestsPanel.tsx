@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import { CreateCompanyFromDemoDialog } from "./CreateCompanyFromDemoDialog";
+import { SignupAttemptsPanel } from "./SignupAttemptsPanel";
 
 interface DemoRequest {
   id: string;
@@ -221,6 +222,7 @@ export const DemoRequestsPanel: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      <SignupAttemptsPanel />
       {/* Stats Cards */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
         <Card className="bg-card">
