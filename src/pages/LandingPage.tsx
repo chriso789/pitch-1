@@ -175,7 +175,7 @@ const LandingPage = () => {
               </Button>
               <Button 
                 size="sm"
-                onClick={() => { trackNavSignup(); navigate('/signup'); }}
+                onClick={() => { trackNavSignup(); navigate('/demo-request'); }}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-xs sm:text-sm hidden sm:inline-flex"
               >
                 Start Free Trial
@@ -209,7 +209,7 @@ const LandingPage = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
             <Button 
               size="lg" 
-              onClick={() => { trackHeroStartTrial(); navigate('/signup'); }}
+              onClick={() => { trackHeroStartTrial(); navigate('/demo-request'); }}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
             >
               Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
@@ -440,7 +440,7 @@ const LandingPage = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button 
               size="lg" 
-              onClick={() => { trackCTAClick('cta_start_trial', 'Start Free Trial'); navigate('/signup'); }}
+              onClick={() => { trackCTAClick('cta_start_trial', 'Start Free Trial'); navigate('/demo-request'); }}
               className="bg-white text-blue-600 hover:bg-slate-100 text-lg px-8 py-6"
             >
               Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
