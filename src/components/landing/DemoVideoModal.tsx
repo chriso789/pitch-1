@@ -277,7 +277,7 @@ export const DemoVideoModal: React.FC<DemoVideoModalProps> = ({ isOpen, onClose 
       metadata: { action: 'start_trial' } 
     });
     handleClose();
-    navigate('/signup');
+    navigate('/demo-request');
   }, [handleClose, navigate]);
 
   const handleBookCall = useCallback(() => {
@@ -286,8 +286,7 @@ export const DemoVideoModal: React.FC<DemoVideoModalProps> = ({ isOpen, onClose 
       metadata: { action: 'book_call' } 
     });
     handleClose();
-    // Could navigate to a booking page or open a calendar widget
-    navigate('/signup');
+    navigate('/demo-request');
   }, [handleClose, navigate]);
 
   const resetDemo = useCallback(() => {

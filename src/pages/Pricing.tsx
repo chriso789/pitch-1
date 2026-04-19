@@ -106,7 +106,7 @@ export default function Pricing() {
             <Button variant="ghost" onClick={() => navigate('/login')}>
               Sign In
             </Button>
-            <Button onClick={() => navigate('/signup')}>
+            <Button onClick={() => navigate('/demo-request')}>
               Get Started
             </Button>
           </div>
@@ -183,7 +183,7 @@ export default function Pricing() {
                     className="w-full mt-8" 
                     variant={plan.popular ? "default" : "outline"}
                     size="lg"
-                    onClick={() => navigate('/signup')}
+                    onClick={() => navigate('/demo-request')}
                   >
                     {plan.cta}
                   </Button>
@@ -241,7 +241,7 @@ export default function Pricing() {
             <Button 
               size="lg" 
               variant="secondary"
-              onClick={() => navigate('/signup')}
+              onClick={() => navigate('/demo-request')}
             >
               Start Free Trial
             </Button>
