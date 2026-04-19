@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { logSignupAttempt } from '@/lib/logSignupAttempt';
 import { Loader2, Eye, EyeOff, UserPlus, LogIn, Shield } from 'lucide-react';
 
 interface AuthTabsProps {
