@@ -125,7 +125,7 @@ export const EmailHealthCheck = () => {
             </div>
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              <span>RESEND_FROM_DOMAIN should be: <code className="bg-muted px-1 rounded">obriencontractingusa.com</code></span>
+              <span>RESEND_FROM_DOMAIN should be: <code className="bg-muted px-1 rounded">pitch-crm.ai</code></span>
             </div>
             <p className="text-muted-foreground mt-2">
               If emails are failing with "Invalid from field", update the RESEND_FROM_DOMAIN secret to your verified domain (not the API key).

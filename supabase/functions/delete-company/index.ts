@@ -343,7 +343,7 @@ Deno.serve(async (req) => {
         deleted_by_email: userProfile?.email,
         backup_storage_path: backupPath,
         backup_size_bytes: backupBytes.length,
-        email_sent_to: 'chrisobrien91@gmail.com',
+        email_sent_to: 'support@pitch-crm.ai',
         email_sent_at: new Date().toISOString(),
         data_summary: dataSummary,
         status: 'completed'
@@ -395,7 +395,7 @@ Deno.serve(async (req) => {
           backup_path: backupPath,
           data_summary: dataSummary,
           cleared_blocking_records: clearedRecords,
-          email_sent_to: 'chrisobrien91@gmail.com'
+          email_sent_to: 'support@pitch-crm.ai'
         },
         new_values: {
           status: 'soft_deleted',

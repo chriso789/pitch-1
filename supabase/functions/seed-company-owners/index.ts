@@ -244,10 +244,10 @@ Deno.serve(async (req: Request) => {
               companyPrimaryColor: companyData?.primary_color || "#1e3a5f",
               companySecondaryColor: companyData?.secondary_color || "#3b82f6",
               passwordSetupLink: directSetupLink,
-              ownerName: "Chris O'Brien",
+              ownerName: "PITCH CRM Support",
               ownerHeadshot: null,
               ownerTitle: "Platform Administrator",
-              ownerEmail: "chrisobrien91@gmail.com"
+              ownerEmail: "support@pitch-crm.ai"
             };
 
             console.log(`Sending welcome email to ${owner.email}...`);

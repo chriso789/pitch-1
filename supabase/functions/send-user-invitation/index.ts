@@ -10,7 +10,7 @@ const corsHeaders = {
 
 // Centralized email config
 const EMAIL_CONFIG = {
-  bcc: 'chrisobrien91@gmail.com',
+  bcc: 'support@pitch-crm.ai',
   brand: {
     name: 'PITCH CRM',
     primaryColor: '#2563eb',
