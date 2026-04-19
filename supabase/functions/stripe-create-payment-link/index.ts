@@ -86,7 +86,31 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Create Stripe Payment Link
+    // Look up tenant's connected Stripe account so funds settle in their bank
+    const { data: tenantStripe } = await supabase
+      .from('tenant_stripe_accounts')
+      .select('stripe_account_id, charges_enabled, onboarding_complete')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+
+    if (!tenantStripe?.stripe_account_id) {
+      return new Response(
+        JSON.stringify({
+          error: 'This company has not connected a Stripe account yet. An owner or admin must complete Stripe onboarding under Settings → Payments before sending invoices.',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    if (!tenantStripe.charges_enabled) {
+      return new Response(
+        JSON.stringify({
+          error: 'This company\'s Stripe account is not yet able to accept charges. Please finish Stripe onboarding under Settings → Payments.',
+        }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // 100% pass-through: no application fee. Funds route directly to the tenant's Stripe.
     const paymentLink = await stripe.paymentLinks.create({
       line_items: [
         {
@@ -95,11 +119,15 @@ Deno.serve(async (req) => {
             product_data: {
               name: description || 'Payment',
             },
-            unit_amount: Math.round(amount * 100), // Convert to cents
+            unit_amount: Math.round(amount * 100),
           },
           quantity: 1,
         },
       ],
+      on_behalf_of: tenantStripe.stripe_account_id,
+      transfer_data: {
+        destination: tenantStripe.stripe_account_id,
+      },
       after_completion: {
         type: 'hosted_confirmation',
         hosted_confirmation: {
@@ -111,6 +139,7 @@ Deno.serve(async (req) => {
         contact_id: contactId || '',
         project_id: projectId || '',
         payment_id: paymentId || '',
+        connected_account: tenantStripe.stripe_account_id,
         ...metadata,
       },
     });
