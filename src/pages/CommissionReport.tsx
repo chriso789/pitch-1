@@ -174,7 +174,7 @@ export default function CommissionReport() {
       let query = supabase
         .from('pipeline_entries')
         .select(`
-          id, lead_name, status, assigned_to, estimated_value, created_at, contact_number,
+          id, lead_name, status, assigned_to, estimated_value, created_at, contact_number, metadata,
           contacts!pipeline_entries_contact_id_fkey(first_name, last_name, address_street, address_city, address_state)
         `)
         .eq('tenant_id', currentUser.tenant_id)
@@ -205,21 +205,32 @@ export default function CommissionReport() {
         .in('id', repIds.length > 0 ? repIds : ['none']);
       const repMap = new Map((repProfiles || []).map(p => [p.id, p]));
 
-      // Get latest estimate for each pipeline entry
+      // Get all estimates for these pipeline entries
       const entryIds = entries.map(e => e.id);
       const { data: estimates } = await supabase
         .from('estimates')
-        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount')
+        .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost, overhead_amount, created_at')
         .in('pipeline_entry_id', entryIds)
         .order('created_at', { ascending: false });
 
-      // Map to latest estimate per entry
-      const estimateMap = new Map<string, any>();
+      // Index estimates by id and by pipeline_entry_id (highest selling_price wins per entry)
+      const estimateById = new Map<string, any>();
+      const estimateByEntry = new Map<string, any>();
       (estimates || []).forEach(est => {
-        if (!estimateMap.has(est.pipeline_entry_id)) {
-          estimateMap.set(est.pipeline_entry_id, est);
+        estimateById.set(est.id, est);
+        const existing = estimateByEntry.get(est.pipeline_entry_id);
+        if (!existing || (Number(est.selling_price) || 0) > (Number(existing.selling_price) || 0)) {
+          estimateByEntry.set(est.pipeline_entry_id, est);
         }
       });
+
+      // Resolve "active" estimate per pipeline entry using metadata first, then highest-price fallback
+      const resolveEstimate = (entry: any) => {
+        const meta = (entry.metadata || {}) as any;
+        const selId = meta.selected_estimate_id || meta.enhanced_estimate_id;
+        if (selId && estimateById.has(selId)) return estimateById.get(selId);
+        return estimateByEntry.get(entry.id) || null;
+      };
 
       // Get stage names
       const { data: stages } = await supabase
@@ -231,7 +242,7 @@ export default function CommissionReport() {
       // Build computed commissions
       return entries.map(entry => {
         const rep = entry.assigned_to ? repMap.get(entry.assigned_to) : null;
-        const est = estimateMap.get(entry.id);
+        const est = resolveEstimate(entry);
         const contact = entry.contacts as any;
 
         const contractValue = est?.selling_price || entry.estimated_value || 0;
