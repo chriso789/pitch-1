@@ -10,7 +10,7 @@ const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
 // Primary recipient + BCC for admin notifications
 const DEMO_RECIPIENT = 'demos@pitch-crm.ai';
-const ADMIN_BCC = Deno.env.get("DEMO_ADMIN_EMAIL") || 'chrisobrien91@gmail.com';
+const ADMIN_BCC = Deno.env.get("DEMO_ADMIN_EMAIL") || 'support@pitch-crm.ai';
 
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");

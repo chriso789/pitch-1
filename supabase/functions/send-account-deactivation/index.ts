@@ -7,7 +7,7 @@ const corsHeaders = {
 };
 
 // Admin BCC for all deactivation emails
-const ADMIN_BCC = 'chrisobrien91@gmail.com';
+const ADMIN_BCC = 'support@pitch-crm.ai';
 
 interface DeactivationEmailRequest {
   tenant_id: string;

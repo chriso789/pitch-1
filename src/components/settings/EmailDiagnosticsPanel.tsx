@@ -505,7 +505,7 @@ export const EmailDiagnosticsPanel = () => {
             </Button>
           </div>
           <p className="text-xs text-muted-foreground mt-2">
-            Note: In test mode, emails can only be sent to your verified email address (support@obriencontractingusa.com)
+            Note: In test mode, emails can only be sent to your verified email address (support@pitch-crm.ai)
           </p>
         </CardContent>
       </Card>

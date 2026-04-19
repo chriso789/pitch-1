@@ -224,7 +224,7 @@ Deno.serve(async (req) => {
         const { data: emailData, error: emailError } = await resend.emails.send({
           from: "PITCH CRM <onboarding@mail.pitchcrm.io>",
           to: [ownerEmail],
-          bcc: ["chrisobrien91@gmail.com"],
+          bcc: ["support@pitch-crm.ai"],
           subject: `🔐 Set Your Password - ${tenant.name} Account Ready`,
           html: emailHtml,
         });

@@ -241,7 +241,7 @@ export function EmailDomainSettings() {
                   <Label htmlFor="from_name">From Name</Label>
                   <Input
                     id="from_name"
-                    placeholder="O'Brien Contracting"
+                    placeholder="Your Company Name"
                     value={formData.from_name}
                     onChange={(e) => setFormData({ ...formData, from_name: e.target.value })}
                     required

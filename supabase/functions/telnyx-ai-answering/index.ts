@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
 
       // Get AI answering config for tenant
       let config: any = {
-        greeting_text: "Hi, thanks for calling O'Brien Contracting. I'll ask a few questions to better assist you.",
+        greeting_text: "Hi, thanks for calling. I'll ask a few questions to better assist you.",
         ai_voice: 'en-US-Wavenet-D',
         ai_model: 'gpt-3.5-turbo',
         temperature: 0.2,

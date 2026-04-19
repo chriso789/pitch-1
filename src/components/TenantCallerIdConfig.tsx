@@ -15,9 +15,9 @@ interface CallerIdSettings {
 
 export const TenantCallerIdConfig: React.FC = () => {
   const [settings, setSettings] = useState<CallerIdSettings>({
-    company_name: "O'Brien Contracting",
-    phone_number: "+1-555-OBRIEN",
-    display_name: "O'Brien Contracting"
+    company_name: "",
+    phone_number: "",
+    display_name: ""
   });
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
