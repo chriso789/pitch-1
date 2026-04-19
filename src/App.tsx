@@ -35,6 +35,7 @@ import NotFound from "./pages/NotFound";
 import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
 import DemoRequest from "./pages/DemoRequest";
+import BookDemo from "./pages/BookDemo";
 import RequestSetupLink from "./pages/auth/RequestSetupLink";
 
 // Route section wrappers
@@ -164,6 +165,7 @@ const AppContent = () => {
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/features" element={<Features />} />
         <Route path="/demo-request" element={<DemoRequest />} />
+        <Route path="/book-demo/:token" element={<BookDemo />} />
         <Route path="/request-setup-link" element={<RequestSetupLink />} />
 
         {/* Public routes – directly defined to avoid nested Routes matching issues */}
