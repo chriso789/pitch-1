@@ -17,14 +17,18 @@ Deno.serve(async (req) => {
     const predArea = measurement_data?.measurements?.area_sqft ?? null;
     const predPitch = measurement_data?.measurements?.predominant_pitch ?? null;
 
+    // Vendor reports store linear features under the `parsed` jsonb column.
+    // Support both: (a) raw row with `parsed` nested, (b) already-flattened parsed object,
+    // and (c) legacy singular-named fields. Field names in `parsed` are PLURAL (ridges_ft, hips_ft, ...).
+    const p = vendor_report?.parsed ?? vendor_report ?? {};
     const truth = {
-      ridge: vendor_report?.ridge_length_ft ?? vendor_report?.total_ridge_length ?? vendor_report?.ridge_ft ?? null,
-      hip: vendor_report?.hip_length_ft ?? vendor_report?.total_hip_length ?? vendor_report?.hip_ft ?? null,
-      valley: vendor_report?.valley_length_ft ?? vendor_report?.total_valley_length ?? vendor_report?.valley_ft ?? null,
-      eave: vendor_report?.eave_length_ft ?? vendor_report?.total_eave_length ?? vendor_report?.eave_ft ?? null,
-      rake: vendor_report?.rake_length_ft ?? vendor_report?.total_rake_length ?? vendor_report?.rake_ft ?? null,
-      area: vendor_report?.total_area_sqft ?? vendor_report?.area_sqft ?? null,
-      pitch: vendor_report?.predominant_pitch ?? vendor_report?.pitch ?? null,
+      ridge: p.ridges_ft ?? p.ridge_length_ft ?? p.total_ridge_length ?? p.ridge_ft ?? null,
+      hip: p.hips_ft ?? p.hip_length_ft ?? p.total_hip_length ?? p.hip_ft ?? null,
+      valley: p.valleys_ft ?? p.valley_length_ft ?? p.total_valley_length ?? p.valley_ft ?? null,
+      eave: p.eaves_ft ?? p.eave_length_ft ?? p.total_eave_length ?? p.eave_ft ?? null,
+      rake: p.rakes_ft ?? p.rake_length_ft ?? p.total_rake_length ?? p.rake_ft ?? null,
+      area: p.total_area_sqft ?? p.area_sqft ?? null,
+      pitch: p.predominant_pitch ?? p.pitch ?? null,
     };
 
     const area_error_pct = pctError(predArea, truth.area);

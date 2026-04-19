@@ -4319,14 +4319,15 @@ Deno.serve(async (req) => {
             continue;
           }
 
-         // Pull traced_totals from parsed report if available
+         // Pull traced_totals from parsed report. roof-report-ingest stores PLURAL keys
+         // (ridges_ft, hips_ft, ...). We accept legacy singular aliases as a fallback.
          const parsed = (report.parsed as any) || {};
          const tracedTotals = {
-           ridge: Number(parsed.ridge_length_ft ?? parsed.total_ridge_length ?? 0) || 0,
-           hip: Number(parsed.hip_length_ft ?? parsed.total_hip_length ?? 0) || 0,
-           valley: Number(parsed.valley_length_ft ?? parsed.total_valley_length ?? 0) || 0,
-           eave: Number(parsed.eave_length_ft ?? parsed.total_eave_length ?? 0) || 0,
-           rake: Number(parsed.rake_length_ft ?? parsed.total_rake_length ?? 0) || 0,
+           ridge: Number(parsed.ridges_ft ?? parsed.ridge_length_ft ?? parsed.total_ridge_length ?? 0) || 0,
+           hip: Number(parsed.hips_ft ?? parsed.hip_length_ft ?? parsed.total_hip_length ?? 0) || 0,
+           valley: Number(parsed.valleys_ft ?? parsed.valley_length_ft ?? parsed.total_valley_length ?? 0) || 0,
+           eave: Number(parsed.eaves_ft ?? parsed.eave_length_ft ?? parsed.total_eave_length ?? 0) || 0,
+           rake: Number(parsed.rakes_ft ?? parsed.rake_length_ft ?? parsed.total_rake_length ?? 0) || 0,
          };
 
          inserts.push({
