@@ -8900,6 +8900,9 @@ export type Database = {
       demo_requests: {
         Row: {
           assigned_to: string | null
+          booking_confirmed_at: string | null
+          booking_token: string | null
+          booking_token_sent_at: string | null
           company_name: string
           confirmed_slot: string | null
           contacted_at: string | null
@@ -8924,6 +8927,9 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          booking_confirmed_at?: string | null
+          booking_token?: string | null
+          booking_token_sent_at?: string | null
           company_name: string
           confirmed_slot?: string | null
           contacted_at?: string | null
@@ -8948,6 +8954,9 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          booking_confirmed_at?: string | null
+          booking_token?: string | null
+          booking_token_sent_at?: string | null
           company_name?: string
           confirmed_slot?: string | null
           contacted_at?: string | null
@@ -41352,6 +41361,10 @@ export type Database = {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined
       }
+      confirm_demo_slot_by_token: {
+        Args: { _slot: string; _token: string }
+        Returns: string
+      }
       determine_approval_requirements: {
         Args: { p_order_amount: number; p_tenant_id: string }
         Returns: {
@@ -41761,6 +41774,18 @@ export type Database = {
         }[]
       }
       get_default_brand_id: { Args: { _tenant_id: string }; Returns: string }
+      get_demo_request_by_token: {
+        Args: { _token: string }
+        Returns: {
+          booking_confirmed_at: string
+          company_name: string
+          confirmed_slot: string
+          email: string
+          first_name: string
+          id: string
+          last_name: string
+        }[]
+      }
       get_loyalty_balance: { Args: { p_contact_id: string }; Returns: number }
       get_next_contact_number: {
         Args: { tenant_id_param: string }
