@@ -1,5 +1,10 @@
-import { corsHeaders } from "npm:@supabase/supabase-js@2.49.1/cors";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 
 const RESEND_API_KEY = Deno.env.get("RESEND_API_KEY");
 
@@ -47,26 +52,30 @@ const handler = async (req: Request): Promise<Response> => {
       timestamp: new Date().toISOString()
     });
 
-    // First, log the request to database
-    const { data: insertedRequest, error: insertError } = await supabase
-      .from('demo_requests')
-      .insert({
-        first_name: requestData.firstName,
-        last_name: requestData.lastName,
-        email: requestData.email,
-        phone: requestData.phone || null,
-        company_name: requestData.companyName,
-        job_title: requestData.jobTitle || null,
-        message: requestData.message || null,
-        email_sent: false,
-      })
-      .select()
-      .single();
+    // Only insert if the client didn't already persist (back-compat).
+    let insertedRequest: { id: string } | null = null;
+    if (!(requestData as any).skipDbInsert) {
+      const { data, error: insertError } = await supabase
+        .from('demo_requests')
+        .insert({
+          first_name: requestData.firstName,
+          last_name: requestData.lastName,
+          email: requestData.email,
+          phone: requestData.phone || null,
+          company_name: requestData.companyName,
+          job_title: requestData.jobTitle || null,
+          message: requestData.message || null,
+          email_sent: false,
+        })
+        .select()
+        .single();
 
-    if (insertError) {
-      console.error("[send-demo-request] Error inserting demo request:", insertError);
-    } else {
-      console.log("[send-demo-request] Demo request logged to database:", insertedRequest.id);
+      if (insertError) {
+        console.error("[send-demo-request] Error inserting demo request:", insertError);
+      } else {
+        insertedRequest = data;
+        console.log("[send-demo-request] Demo request logged to database:", data?.id);
+      }
     }
 
     const emailHtml = `
