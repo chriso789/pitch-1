@@ -24,7 +24,8 @@ import {
   UserCheck,
   Copy,
   ExternalLink,
-  Plus
+  Plus,
+  Send
 } from "lucide-react";
 import { format } from "date-fns";
 import { CreateCompanyFromDemoDialog } from "./CreateCompanyFromDemoDialog";
@@ -69,7 +70,33 @@ export const DemoRequestsPanel: React.FC = () => {
   const [updating, setUpdating] = useState(false);
   const [createCompanyDialogOpen, setCreateCompanyDialogOpen] = useState(false);
   const [selectedForConversion, setSelectedForConversion] = useState<DemoRequest | null>(null);
+  const [sendingInviteId, setSendingInviteId] = useState<string | null>(null);
   const { toast } = useToast();
+
+  const sendBookingInvite = async (request: DemoRequest) => {
+    setSendingInviteId(request.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-booking-invite', {
+        body: { demo_request_id: request.id },
+      });
+      if (error) throw error;
+      if (!data?.success) throw new Error(data?.error || 'Failed to send invite');
+      toast({
+        title: "Booking link sent",
+        description: `Email sent to ${request.email}. They can pick a video meeting time.`,
+      });
+      loadDemoRequests();
+    } catch (e: any) {
+      console.error('Send booking invite error:', e);
+      toast({
+        title: "Could not send invite",
+        description: e.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSendingInviteId(null);
+    }
+  };
 
   useEffect(() => {
     loadDemoRequests();
@@ -421,6 +448,16 @@ export const DemoRequestsPanel: React.FC = () => {
                                 Company Created
                               </Badge>
                             )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => sendBookingInvite(request)}
+                              disabled={sendingInviteId === request.id}
+                              title="Email a video meeting booking link"
+                            >
+                              <Send className="h-4 w-4 mr-1" />
+                              {sendingInviteId === request.id ? 'Sending…' : 'Send Booking Link'}
+                            </Button>
                             <Button
                               variant="ghost"
                               size="sm"
