@@ -52,26 +52,30 @@ const handler = async (req: Request): Promise<Response> => {
       timestamp: new Date().toISOString()
     });
 
-    // First, log the request to database
-    const { data: insertedRequest, error: insertError } = await supabase
-      .from('demo_requests')
-      .insert({
-        first_name: requestData.firstName,
-        last_name: requestData.lastName,
-        email: requestData.email,
-        phone: requestData.phone || null,
-        company_name: requestData.companyName,
-        job_title: requestData.jobTitle || null,
-        message: requestData.message || null,
-        email_sent: false,
-      })
-      .select()
-      .single();
+    // Only insert if the client didn't already persist (back-compat).
+    let insertedRequest: { id: string } | null = null;
+    if (!(requestData as any).skipDbInsert) {
+      const { data, error: insertError } = await supabase
+        .from('demo_requests')
+        .insert({
+          first_name: requestData.firstName,
+          last_name: requestData.lastName,
+          email: requestData.email,
+          phone: requestData.phone || null,
+          company_name: requestData.companyName,
+          job_title: requestData.jobTitle || null,
+          message: requestData.message || null,
+          email_sent: false,
+        })
+        .select()
+        .single();
 
-    if (insertError) {
-      console.error("[send-demo-request] Error inserting demo request:", insertError);
-    } else {
-      console.log("[send-demo-request] Demo request logged to database:", insertedRequest.id);
+      if (insertError) {
+        console.error("[send-demo-request] Error inserting demo request:", insertError);
+      } else {
+        insertedRequest = data;
+        console.log("[send-demo-request] Demo request logged to database:", data?.id);
+      }
     }
 
     const emailHtml = `
