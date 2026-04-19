@@ -245,7 +245,7 @@ const Features = () => {
                 Log In
               </Button>
               <Button 
-                onClick={() => navigate('/signup')}
+                onClick={() => navigate('/demo-request')}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
                 Start Free Trial
@@ -456,7 +456,7 @@ const Features = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button 
               size="lg" 
-              onClick={() => navigate('/signup')}
+              onClick={() => navigate('/demo-request')}
               className="bg-white text-blue-600 hover:bg-slate-100 text-lg px-8 py-6"
             >
               Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
