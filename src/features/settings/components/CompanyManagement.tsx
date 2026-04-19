@@ -11,6 +11,7 @@ import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, 
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { LogoUploader } from '@/components/settings/LogoUploader';
+import { CompanyEmailDomainsManager } from '@/features/settings/components/CompanyEmailDomainsManager';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
@@ -625,10 +626,8 @@ export const CompanyManagement = () => {
                 </div>
               </TabsContent>
 
-              <TabsContent value="settings">
-                <div className="text-muted-foreground text-center py-8">
-                  Company settings coming soon
-                </div>
+              <TabsContent value="settings" className="space-y-6">
+                <CompanyEmailDomainsManager tenantId={selectedCompany.id} />
               </TabsContent>
             </Tabs>
           )}
