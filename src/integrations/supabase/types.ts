@@ -32441,6 +32441,57 @@ export type Database = {
         }
         Relationships: []
       }
+      signup_attempts: {
+        Row: {
+          company_name: string | null
+          created_at: string
+          email: string | null
+          error_code: string | null
+          error_message: string | null
+          first_name: string | null
+          id: string
+          ip_address: string | null
+          last_name: string | null
+          metadata: Json | null
+          phone: string | null
+          source: string | null
+          status: string
+          user_agent: string | null
+        }
+        Insert: {
+          company_name?: string | null
+          created_at?: string
+          email?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          first_name?: string | null
+          id?: string
+          ip_address?: string | null
+          last_name?: string | null
+          metadata?: Json | null
+          phone?: string | null
+          source?: string | null
+          status?: string
+          user_agent?: string | null
+        }
+        Update: {
+          company_name?: string | null
+          created_at?: string
+          email?: string | null
+          error_code?: string | null
+          error_message?: string | null
+          first_name?: string | null
+          id?: string
+          ip_address?: string | null
+          last_name?: string | null
+          metadata?: Json | null
+          phone?: string | null
+          source?: string | null
+          status?: string
+          user_agent?: string | null
+        }
+        Relationships: []
+      }
       skip_trace_results: {
         Row: {
           confidence_score: number | null

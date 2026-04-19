@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { logSignupAttempt } from '@/lib/logSignupAttempt';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 import { initSession, clearAllSessionData } from '@/services/sessionManager';
@@ -424,6 +425,15 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
 
     setLoading(true);
 
+    const attemptPayload = {
+      email: signupForm.email,
+      first_name: signupForm.firstName.trim(),
+      last_name: signupForm.lastName.trim(),
+      company_name: signupForm.companyName.trim(),
+      source: 'login_page_signup_tab',
+    };
+    logSignupAttempt({ ...attemptPayload, status: 'attempted' });
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: signupForm.email,
@@ -439,6 +449,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       });
 
       if (error) {
+        logSignupAttempt({ ...attemptPayload, status: 'error', error_message: error.message, error_code: (error as any).code });
         if (error.message.includes('User already registered')) {
           setErrors({ general: 'An account with this email already exists. Please sign in instead.' });
         } else {
@@ -448,6 +459,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       }
 
       if (data.user) {
+        logSignupAttempt({ ...attemptPayload, status: 'success', metadata: { user_id: data.user.id } });
         toast({
           title: "Account created successfully",
           description: "Please check your email to confirm your account.",
@@ -465,6 +477,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       }
     } catch (error: any) {
       console.error('Signup error:', error);
+      logSignupAttempt({ ...attemptPayload, status: 'error', error_message: error?.message || 'Connection error' });
       setErrors({ general: 'Connection error - please try again' });
     } finally {
       setLoading(false);
