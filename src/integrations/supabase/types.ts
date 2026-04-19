@@ -8901,6 +8901,7 @@ export type Database = {
         Row: {
           assigned_to: string | null
           company_name: string
+          confirmed_slot: string | null
           contacted_at: string | null
           converted_to_company_id: string | null
           created_at: string | null
@@ -8909,16 +8910,22 @@ export type Database = {
           email_sent: boolean | null
           first_name: string
           id: string
+          interview_status: string | null
           job_title: string | null
           last_name: string
           message: string | null
           notes: string | null
           phone: string | null
+          preferred_slot_1: string | null
+          preferred_slot_2: string | null
+          preferred_slot_3: string | null
           status: string | null
+          timezone: string | null
         }
         Insert: {
           assigned_to?: string | null
           company_name: string
+          confirmed_slot?: string | null
           contacted_at?: string | null
           converted_to_company_id?: string | null
           created_at?: string | null
@@ -8927,16 +8934,22 @@ export type Database = {
           email_sent?: boolean | null
           first_name: string
           id?: string
+          interview_status?: string | null
           job_title?: string | null
           last_name: string
           message?: string | null
           notes?: string | null
           phone?: string | null
+          preferred_slot_1?: string | null
+          preferred_slot_2?: string | null
+          preferred_slot_3?: string | null
           status?: string | null
+          timezone?: string | null
         }
         Update: {
           assigned_to?: string | null
           company_name?: string
+          confirmed_slot?: string | null
           contacted_at?: string | null
           converted_to_company_id?: string | null
           created_at?: string | null
@@ -8945,12 +8958,17 @@ export type Database = {
           email_sent?: boolean | null
           first_name?: string
           id?: string
+          interview_status?: string | null
           job_title?: string | null
           last_name?: string
           message?: string | null
           notes?: string | null
           phone?: string | null
+          preferred_slot_1?: string | null
+          preferred_slot_2?: string | null
+          preferred_slot_3?: string | null
           status?: string | null
+          timezone?: string | null
         }
         Relationships: [
           {
