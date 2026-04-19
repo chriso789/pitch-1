@@ -5,6 +5,7 @@ import { HomeownerProtectedRoute } from "@/components/auth/HomeownerProtectedRou
 const Pricing = React.lazy(() => import("@/pages/Pricing"));
 const Features = React.lazy(() => import("@/pages/Features"));
 const DemoRequest = React.lazy(() => import("@/pages/DemoRequest"));
+const BookDemo = React.lazy(() => import("@/pages/BookDemo"));
 const RequestSetupLink = React.lazy(() => import("@/pages/auth/RequestSetupLink"));
 const Privacy = React.lazy(() => import("@/pages/legal/Privacy"));
 const Terms = React.lazy(() => import("@/pages/legal/Terms"));
@@ -36,6 +37,7 @@ export default function PublicRoutes() {
     <Suspense fallback={<PageLoader />}>
       <Routes>
         <Route path="/demo-request" element={<DemoRequest />} />
+        <Route path="/book-demo/:token" element={<BookDemo />} />
         <Route path="/request-setup-link" element={<RequestSetupLink />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/features" element={<Features />} />
