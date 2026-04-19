@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
 import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
@@ -78,6 +78,7 @@ export function VendorVerificationDashboard() {
   const [isCheckingCoverage, setIsCheckingCoverage] = useState(false);
   const [isTraining, setIsTraining] = useState(false);
   const [isFixingDiagrams, setIsFixingDiagrams] = useState(false);
+  const [isBackfillingAddresses, setIsBackfillingAddresses] = useState(false);
   const [isRunningAllAi, setIsRunningAllAi] = useState(false);
   const [runAllAiProgress, setRunAllAiProgress] = useState<{
     backfilled: number;
@@ -976,6 +977,34 @@ export function VendorVerificationDashboard() {
               <Wand2 className="h-4 w-4 mr-2" />
             )}
             {isFixingDiagrams ? 'Fixing diagrams…' : 'Fix All AI Diagrams'}
+          </Button>
+          <Button
+            variant="outline"
+            onClick={async () => {
+              setIsBackfillingAddresses(true);
+              try {
+                const { data, error } = await supabase.functions.invoke('backfill-verification-addresses', {
+                  body: { tenantId: activeCompanyId },
+                });
+                if (error) throw error;
+                toast.success(`Backfilled ${data?.backfilled || 0} of ${data?.scanned || 0} addresses${data?.failed ? ` (${data.failed} unresolved)` : ''}`);
+                await queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+              } catch (err: any) {
+                console.error('Backfill addresses error', err);
+                toast.error(err?.message || 'Address backfill failed');
+              } finally {
+                setIsBackfillingAddresses(false);
+              }
+            }}
+            disabled={isBackfillingAddresses || isRunningAllAi || isFixingDiagrams || isTraining || isCheckingCoverage || isRunning}
+            title="Reverse-geocode and fill missing property addresses on verification sessions"
+          >
+            {isBackfillingAddresses ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <MapPin className="h-4 w-4 mr-2" />
+            )}
+            {isBackfillingAddresses ? 'Backfilling…' : 'Backfill Addresses'}
           </Button>
           <Button
             variant="outline"
