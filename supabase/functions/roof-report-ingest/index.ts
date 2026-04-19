@@ -1280,6 +1280,18 @@ Deno.serve(async (req) => {
     const provider = detectProvider(extractedText);
     console.log("roof-report-ingest: Detected provider:", provider);
 
+    // Training lab only accepts true roof measurement reports (EagleView / Roofr / similar).
+    // Xactimate is an insurance estimating tool and is not a measurement report — reject it.
+    if (provider === "xactimate") {
+      return new Response(
+        JSON.stringify({
+          error: "Xactimate reports are not supported. This training lab only accepts roof measurement reports (EagleView, Roofr, RoofScope, Hover).",
+          provider,
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
     let parsed: any;
     
     // Check if this is an image-based PDF (very little text extracted)
