@@ -146,10 +146,20 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
     }
 
     setLoading(true);
-    
+
+    const attemptPayload = {
+      email: signupForm.email,
+      first_name: signupForm.firstName.trim(),
+      last_name: signupForm.lastName.trim(),
+      company_name: signupForm.companyName.trim(),
+      source: 'auth_tabs_signup',
+    };
+    logSignupAttempt({ ...attemptPayload, status: 'attempted' });
+
     const timeoutId = setTimeout(() => {
       setLoading(false);
       setErrors({ general: 'Signup timeout - please check your connection and try again' });
+      logSignupAttempt({ ...attemptPayload, status: 'error', error_message: 'Signup timeout (15s)' });
     }, 15000);
 
     try {
@@ -169,6 +179,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
       clearTimeout(timeoutId);
 
       if (error) {
+        logSignupAttempt({ ...attemptPayload, status: 'error', error_message: error.message, error_code: (error as any).code });
         if (error.message.includes('User already registered')) {
           setErrors({ general: 'An account with this email already exists. Please sign in instead.' });
         } else {
@@ -178,6 +189,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
       }
 
       if (data.user) {
+        logSignupAttempt({ ...attemptPayload, status: 'success', metadata: { user_id: data.user.id } });
         toast({
           title: "Account created successfully",
           description: "Please check your email to confirm your account before signing in.",
@@ -198,6 +210,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
     } catch (error: any) {
       clearTimeout(timeoutId);
       console.error('Signup error:', error);
+      logSignupAttempt({ ...attemptPayload, status: 'error', error_message: error?.message || 'Connection error' });
       setErrors({ general: 'Connection error - please check your internet and try again' });
     } finally {
       setLoading(false);

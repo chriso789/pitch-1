@@ -59,6 +59,14 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
     e.preventDefault();
     setLoading(true);
 
+    const attemptPayload = {
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      source: 'auth_component',
+    };
+    logSignupAttempt({ ...attemptPayload, status: 'attempted' });
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -73,19 +81,22 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
       });
 
       if (error) {
+        logSignupAttempt({ ...attemptPayload, status: 'error', error_message: error.message, error_code: (error as any).code });
         toast({
           title: "Sign Up Error",
           description: error.message,
           variant: "destructive",
         });
       } else if (data.user) {
+        logSignupAttempt({ ...attemptPayload, status: 'success', metadata: { user_id: data.user.id } });
         toast({
           title: "Success",
           description: "Account created! Please check your email to verify your account.",
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Sign up error:', error);
+      logSignupAttempt({ ...attemptPayload, status: 'error', error_message: error?.message || 'unknown' });
       toast({
         title: "Error",
         description: "An unexpected error occurred",

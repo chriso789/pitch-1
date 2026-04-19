@@ -19,7 +19,7 @@ export interface SignupAttemptLog {
  */
 export async function logSignupAttempt(entry: SignupAttemptLog): Promise<void> {
   try {
-    await supabase.from("signup_attempts").insert({
+    await supabase.from("signup_attempts").insert([{
       email: entry.email || null,
       first_name: entry.first_name || null,
       last_name: entry.last_name || null,
@@ -30,8 +30,8 @@ export async function logSignupAttempt(entry: SignupAttemptLog): Promise<void> {
       error_code: entry.error_code || null,
       source: entry.source,
       user_agent: typeof navigator !== "undefined" ? navigator.userAgent : null,
-      metadata: entry.metadata || {},
-    });
+      metadata: (entry.metadata as never) || {},
+    }]);
   } catch (err) {
     // Intentional — never block signup on telemetry
     console.warn("[logSignupAttempt] failed to log:", err);
