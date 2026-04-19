@@ -301,8 +301,8 @@ export const DeveloperAccess = () => {
               Bulk Vendor Report Import
             </CardTitle>
             <CardDescription>
-              Upload 200+ paid roof reports (Roofr, EagleView, Xactimate, etc.) as AI training ground truth. 
-              Each report is parsed, geocoded, and stored with 3x confidence weight for model training.
+              Upload paid roof measurement reports (EagleView, Roofr, RoofScope, Hover) as AI training ground truth.
+              Xactimate insurance estimates are not accepted — measurement reports only.
             </CardDescription>
           </CardHeader>
           <CardContent>
