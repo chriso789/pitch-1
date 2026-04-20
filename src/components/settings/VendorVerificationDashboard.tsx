@@ -16,6 +16,7 @@ import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramPa
 import { cleanAiDiagram } from './lib/cleanAiDiagram';
 import { CoverageGapPanel } from './CoverageGapPanel';
 import { RoofLineOverlayEditor } from '@/components/roof-measurement/RoofLineOverlayEditor';
+import { PinConfirmDialog } from './PinConfirmDialog';
 
 interface VendorReportMeta {
   provider: string | null;
@@ -86,6 +87,15 @@ export function VendorVerificationDashboard() {
   const [isRunningAllAi, setIsRunningAllAi] = useState(false);
   const [overlayRefreshNonce, setOverlayRefreshNonce] = useState(0);
   const [addressSortDirection, setAddressSortDirection] = useState<'asc' | 'desc'>('asc');
+  // Pin-confirm dialog state — opened when the user clicks Play. We require
+  // the operator to drop a pin on the correct roof so the AI overlay crops
+  // imagery on the actual house instead of a stale/off-parcel centroid.
+  const [pinPrompt, setPinPrompt] = useState<{
+    sessionId: string;
+    lat: number;
+    lng: number;
+    address: string | null;
+  } | null>(null);
   const [runAllAiProgress, setRunAllAiProgress] = useState<{
     backfilled: number;
     processed: number;
