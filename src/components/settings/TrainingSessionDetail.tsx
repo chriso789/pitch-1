@@ -14,6 +14,8 @@ import { format } from 'date-fns';
 import { TrainingSession } from './RoofTrainingLab';
 import { TrainingCanvas } from './TrainingCanvas';
 import { TrainingComparisonView } from './TrainingComparisonView';
+import { RoofLineOverlayEditor } from '@/components/roof-measurement/RoofLineOverlayEditor';
+import { Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface TrainingSessionDetailProps {
@@ -43,7 +45,7 @@ const statusConfig = {
 
 export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSessionDetailProps) {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'trace' | 'compare' | 'notes'>('trace');
+  const [activeTab, setActiveTab] = useState<'trace' | 'overlay' | 'compare' | 'notes'>('trace');
   const [notes, setNotes] = useState(session.description || '');
   const [satelliteUrl, setSatelliteUrl] = useState<string | null>(session.satellite_image_url || null);
   const [isLoadingSatellite, setIsLoadingSatellite] = useState(false);
@@ -341,6 +343,10 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
             <Pencil className="h-4 w-4" />
             Trace Roof
           </TabsTrigger>
+          <TabsTrigger value="overlay" className="gap-2">
+            <Sparkles className="h-4 w-4" />
+            AI Lines
+          </TabsTrigger>
           <TabsTrigger value="compare" className="gap-2">
             <BarChart2 className="h-4 w-4" />
             Compare
@@ -395,6 +401,27 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
               </CardContent>
             </Card>
           ) : null}
+        </TabsContent>
+
+        <TabsContent value="overlay" className="mt-4">
+          {session.ai_measurement_id && session.lat && session.lng ? (
+            <RoofLineOverlayEditor
+              measurementId={session.ai_measurement_id}
+              tenantId={session.tenant_id}
+              lat={session.lat}
+              lng={session.lng}
+            />
+          ) : (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-lg font-medium mb-2">No AI Measurement Linked</p>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Run an AI measurement on this lead first — the line overlay will appear here for review and reclassification.
+                </p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="compare" className="mt-4">
