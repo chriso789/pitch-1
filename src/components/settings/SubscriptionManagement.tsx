@@ -302,28 +302,28 @@ export const SubscriptionManagement = () => {
             <div className="flex justify-between text-sm">
               <span>Contacts</span>
               <span className="text-muted-foreground">
-                245 / {typeof currentConfig.features.contacts === 'number' ? currentConfig.features.contacts.toLocaleString() : currentConfig.features.contacts}
+                245 / {typeof currentConfig.features.contacts === 'number' ? (currentConfig.features.contacts as number).toLocaleString() : currentConfig.features.contacts}
               </span>
             </div>
-            <Progress value={typeof currentConfig.features.contacts === 'number' ? (245 / currentConfig.features.contacts) * 100 : 10} />
+            <Progress value={typeof currentConfig.features.contacts === 'number' ? (245 / (currentConfig.features.contacts as number)) * 100 : 10} />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Measurements</span>
               <span className="text-muted-foreground">
-                12 / {typeof currentConfig.features.measurements === 'number' ? currentConfig.features.measurements : currentConfig.features.measurements}
+                12 / {currentConfig.features.measurements}
               </span>
             </div>
-            <Progress value={typeof currentConfig.features.measurements === 'number' ? (12 / currentConfig.features.measurements) * 100 : 5} />
+            <Progress value={typeof currentConfig.features.measurements === 'number' ? (12 / (currentConfig.features.measurements as number)) * 100 : 5} />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Team Members</span>
               <span className="text-muted-foreground">
-                3 / {typeof currentConfig.features.users === 'number' ? currentConfig.features.users : currentConfig.features.users}
+                3 / {currentConfig.features.users}
               </span>
             </div>
-            <Progress value={typeof currentConfig.features.users === 'number' ? (3 / currentConfig.features.users) * 100 : 10} />
+            <Progress value={typeof currentConfig.features.users === 'number' ? (3 / (currentConfig.features.users as number)) * 100 : 10} />
           </div>
         </CardContent>
       </Card>
