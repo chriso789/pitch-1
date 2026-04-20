@@ -669,48 +669,68 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
                     {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="remember-me"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded border-input cursor-pointer"
-                      data-testid="auth-remember-me"
-                    />
-                    <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
-                      Keep me signed in
-                    </Label>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="remember-me"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded border-input cursor-pointer"
+                        data-testid="auth-remember-me"
+                      />
+                      <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                        Keep me signed in
+                      </Label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('forgot')}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </button>
                   </div>
 
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full font-semibold text-base shadow-md hover:shadow-lg transition-shadow"
+                    disabled={loading}
+                  >
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Signing in...
                       </>
                     ) : (
-                      'Sign In'
+                      <>
+                        <Shield className="mr-2 h-4 w-4" />
+                        Sign In
+                      </>
                     )}
                   </Button>
 
-                  <div className="relative my-4">
+                  <div className="relative my-5">
                     <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
+                      <span className="w-full border-t border-border/60" />
                     </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
+                    <div className="relative flex justify-center">
+                      <span className="bg-white px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Or
+                      </span>
                     </div>
                   </div>
 
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full" 
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="w-full font-medium border-2 hover:bg-muted/50"
                     onClick={handleGoogleLogin}
                     disabled={loading}
                   >
-                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                    <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
                       <path
                         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                         fill="#4285F4"
@@ -728,17 +748,28 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
                         fill="#EA4335"
                       />
                     </svg>
-                    Sign in with Google
+                    Continue with Google
                   </Button>
 
-                  <div className="text-center pt-2">
-                    <Link 
-                      to="/request-setup-link" 
-                      className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  <div className="text-center pt-2 space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Want to bring your company to PITCH?{' '}
+                      <button
+                        type="button"
+                        onClick={() => navigate('/demo-request')}
+                        className="font-semibold text-primary hover:underline"
+                      >
+                        Request a demo
+                      </button>
+                    </p>
+                    <Link
+                      to="/request-setup-link"
+                      className="inline-block text-xs text-muted-foreground hover:text-primary transition-colors"
                     >
                       Need a new setup link? Request one here
                     </Link>
                   </div>
+
                 </form>
               </TabsContent>
 
