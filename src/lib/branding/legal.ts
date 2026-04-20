@@ -7,12 +7,12 @@
 
 export const BRAND = {
   // Trademark names
-  name: 'PITCH CRM™',
-  shortName: 'PITCH™',
-  namePlain: 'PITCH CRM',
+  name: 'Pitch Construction CRM™',
+  shortName: 'Pitch Construction™',
+  namePlain: 'Pitch Construction CRM',
   
   // Legal entity
-  company: 'PITCH CRM, Inc.',
+  company: 'Pitch Construction CRM, Inc.',
   
   // Copyright
   copyrightYear: new Date().getFullYear(),
