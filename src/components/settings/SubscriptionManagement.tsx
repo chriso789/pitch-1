@@ -32,44 +32,47 @@ interface SubscriptionData {
 
 const TIER_CONFIG = {
   starter: {
-    name: 'Starter',
-    price: 199,
+    name: 'CRM',
+    price: 40,
+    priceSuffix: '/user/mo',
     icon: Star,
     color: 'text-blue-500',
     bgColor: 'bg-blue-500/10',
     borderColor: 'border-blue-500/30',
     features: {
-      users: 5,
-      contacts: 1000,
-      measurements: 50,
+      users: 'Unlimited',
+      contacts: 'Unlimited',
+      measurements: '—',
       smartDocs: 'Basic',
-      powerDialer: false,
+      powerDialer: '500 min/mo',
       apiAccess: false,
       whiteLabel: false,
       prioritySupport: false,
     }
   },
   professional: {
-    name: 'Professional',
-    price: 499,
+    name: 'CRM + Live Canvass',
+    price: 75,
+    priceSuffix: '/user/mo',
     icon: Crown,
     color: 'text-primary',
     bgColor: 'bg-primary/10',
     borderColor: 'border-primary/30',
     features: {
-      users: 25,
-      contacts: 10000,
-      measurements: 200,
+      users: 'Unlimited',
+      contacts: 'Unlimited',
+      measurements: '—',
       smartDocs: 'Advanced',
-      powerDialer: true,
-      apiAccess: false,
+      powerDialer: '2,500 min/mo',
+      apiAccess: true,
       whiteLabel: false,
       prioritySupport: true,
     }
   },
   enterprise: {
-    name: 'Enterprise',
-    price: null,
+    name: 'CRM + AI Measuring',
+    price: 100,
+    priceSuffix: '/user/mo',
     icon: Rocket,
     color: 'text-amber-500',
     bgColor: 'bg-amber-500/10',
@@ -79,7 +82,7 @@ const TIER_CONFIG = {
       contacts: 'Unlimited',
       measurements: 'Unlimited',
       smartDocs: 'Custom',
-      powerDialer: true,
+      powerDialer: 'Unlimited',
       apiAccess: true,
       whiteLabel: true,
       prioritySupport: true,
@@ -201,8 +204,8 @@ export const SubscriptionManagement = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-3xl font-bold">
-                {currentConfig.price ? `$${currentConfig.price}` : 'Custom'}
-                {currentConfig.price && <span className="text-sm font-normal text-muted-foreground">/month</span>}
+                ${currentConfig.price}
+                <span className="text-sm font-normal text-muted-foreground">{currentConfig.priceSuffix}</span>
               </p>
             </div>
             <Button variant="outline" className="gap-2">
@@ -239,14 +242,8 @@ export const SubscriptionManagement = () => {
                   </div>
                   <CardTitle className="mt-2">{config.name}</CardTitle>
                   <div className="text-2xl font-bold mt-2">
-                    {config.price ? (
-                      <>
-                        ${config.price}
-                        <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                      </>
-                    ) : (
-                      <span className="text-lg">Custom Pricing</span>
-                    )}
+                    ${config.price}
+                    <span className="text-sm font-normal text-muted-foreground">{config.priceSuffix}</span>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
@@ -299,28 +296,28 @@ export const SubscriptionManagement = () => {
             <div className="flex justify-between text-sm">
               <span>Contacts</span>
               <span className="text-muted-foreground">
-                245 / {typeof currentConfig.features.contacts === 'number' ? currentConfig.features.contacts.toLocaleString() : currentConfig.features.contacts}
+                245 / {typeof currentConfig.features.contacts === 'number' ? (currentConfig.features.contacts as number).toLocaleString() : currentConfig.features.contacts}
               </span>
             </div>
-            <Progress value={typeof currentConfig.features.contacts === 'number' ? (245 / currentConfig.features.contacts) * 100 : 10} />
+            <Progress value={typeof currentConfig.features.contacts === 'number' ? (245 / (currentConfig.features.contacts as number)) * 100 : 10} />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Measurements</span>
               <span className="text-muted-foreground">
-                12 / {typeof currentConfig.features.measurements === 'number' ? currentConfig.features.measurements : currentConfig.features.measurements}
+                12 / {currentConfig.features.measurements}
               </span>
             </div>
-            <Progress value={typeof currentConfig.features.measurements === 'number' ? (12 / currentConfig.features.measurements) * 100 : 5} />
+            <Progress value={typeof currentConfig.features.measurements === 'number' ? (12 / (currentConfig.features.measurements as number)) * 100 : 5} />
           </div>
           <div className="space-y-2">
             <div className="flex justify-between text-sm">
               <span>Team Members</span>
               <span className="text-muted-foreground">
-                3 / {typeof currentConfig.features.users === 'number' ? currentConfig.features.users : currentConfig.features.users}
+                3 / {currentConfig.features.users}
               </span>
             </div>
-            <Progress value={typeof currentConfig.features.users === 'number' ? (3 / currentConfig.features.users) * 100 : 10} />
+            <Progress value={typeof currentConfig.features.users === 'number' ? (3 / (currentConfig.features.users as number)) * 100 : 10} />
           </div>
         </CardContent>
       </Card>
