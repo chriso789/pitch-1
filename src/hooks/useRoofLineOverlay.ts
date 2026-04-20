@@ -109,7 +109,7 @@ export function useRoofLineOverlay(measurementId?: string | null) {
         lines: updatedLines,
         totals_ft,
         model_version: overlay.model_version,
-      })
+      }])
       .select()
       .single()
 
