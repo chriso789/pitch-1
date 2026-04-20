@@ -152,15 +152,35 @@ async function callGemini(model: string, imageBase64: string, timeoutMs: number)
   }
 }
 
+function coverageFraction(lines: DetectedLine[]): number {
+  if (lines.length === 0) return 0
+  const xs = lines.flatMap((l) => [l.p1[0], l.p2[0]])
+  const ys = lines.flatMap((l) => [l.p1[1], l.p2[1]])
+  const w = Math.max(...xs) - Math.min(...xs)
+  const h = Math.max(...ys) - Math.min(...ys)
+  return (w * h) / (DETECTION_IMG_W * DETECTION_IMG_H)
+}
+
 async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
-  // Try the fast model first (usually completes well under 60s). If it
-  // aborts/errors, fall back to the pro model with a longer budget.
+  // Try flash first for speed.
+  let lines: DetectedLine[] = []
   try {
-    return await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
+    lines = await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
   } catch (err) {
     console.warn('flash model failed, falling back to pro', err instanceof Error ? err.message : err)
     return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
   }
+  // If flash mis-targeted (tiny bounding box), retry with pro for better visual reasoning.
+  const coverage = coverageFraction(lines)
+  if (coverage < 0.05 || lines.length < 6) {
+    console.warn(`flash returned poor coverage (${(coverage * 100).toFixed(1)}%, ${lines.length} lines) — retrying with pro`)
+    try {
+      return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
+    } catch (err) {
+      console.warn('pro retry failed, keeping flash result', err instanceof Error ? err.message : err)
+    }
+  }
+  return lines
 }
 
 Deno.serve(async (req) => {
