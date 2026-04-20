@@ -67,40 +67,58 @@ Rules:
 - Return 8-40 lines for a typical residential roof.
 - No duplicates, no overlapping segments.`
 
-async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
-  const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-pro',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: DETECT_PROMPT },
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}` } },
-          ],
-        },
-      ],
-    }),
-  })
+async function callGemini(model: string, imageBase64: string, timeoutMs: number): Promise<DetectedLine[]> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs)
+  try {
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: DETECT_PROMPT },
+              { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}` } },
+            ],
+          },
+        ],
+      }),
+    })
 
-  if (!resp.ok) {
-    const txt = await resp.text()
-    throw new Error(`AI gateway ${resp.status}: ${txt.slice(0, 500)}`)
+    if (!resp.ok) {
+      const txt = await resp.text()
+      throw new Error(`AI gateway ${resp.status}: ${txt.slice(0, 300)}`)
+    }
+
+    const data = await resp.json()
+    const raw = data.choices?.[0]?.message?.content ?? ''
+    const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    if (!match) throw new Error(`AI returned no JSON: ${raw.slice(0, 200)}`)
+
+    const parsed = JSON.parse(match[0]) as { lines: Omit<DetectedLine, 'id'>[] }
+    return parsed.lines.map((l, i) => ({ ...l, id: `line-${i}` }))
+  } finally {
+    clearTimeout(timer)
   }
+}
 
-  const data = await resp.json()
-  const raw = data.choices?.[0]?.message?.content ?? ''
-  const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
-  const match = cleaned.match(/\{[\s\S]*\}/)
-  if (!match) throw new Error(`AI returned no JSON: ${raw.slice(0, 300)}`)
-
-  const parsed = JSON.parse(match[0]) as { lines: Omit<DetectedLine, 'id'>[] }
-  return parsed.lines.map((l, i) => ({ ...l, id: `line-${i}` }))
+async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
+  // Try the fast model first (usually completes well under 60s). If it
+  // aborts/errors, fall back to the pro model with a longer budget.
+  try {
+    return await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
+  } catch (err) {
+    console.warn('flash model failed, falling back to pro', err instanceof Error ? err.message : err)
+    return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
+  }
 }
 
 Deno.serve(async (req) => {
