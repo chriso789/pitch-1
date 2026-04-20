@@ -82,6 +82,7 @@ export function VendorVerificationDashboard() {
   const [isFixingDiagrams, setIsFixingDiagrams] = useState(false);
   const [isBackfillingAddresses, setIsBackfillingAddresses] = useState(false);
   const [isRunningAllAi, setIsRunningAllAi] = useState(false);
+  const [overlayRefreshNonce, setOverlayRefreshNonce] = useState(0);
   const [runAllAiProgress, setRunAllAiProgress] = useState<{
     backfilled: number;
     processed: number;
@@ -517,10 +518,27 @@ export function VendorVerificationDashboard() {
             body: { measurement_id: measurementId, tenant_id: activeCompanyId, lat, lng },
           });
           if (ovErr) {
-            console.warn('Overlay generation failed', ovErr);
-            toast.error('Roof line overlay failed', { description: ovErr.message });
+            const { data: existingOverlay } = await supabase
+              .from('roof_line_overlays')
+              .select('id, created_at')
+              .eq('measurement_id', measurementId)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (existingOverlay) {
+              toast.success('Roof line overlay generated');
+              setOverlayRefreshNonce((value) => value + 1);
+              await queryClient.invalidateQueries({
+                queryKey: ['vendor-verification-sessions', activeCompanyId],
+              });
+            } else {
+              console.warn('Overlay generation failed', ovErr);
+              toast.error('Roof line overlay failed', { description: ovErr.message });
+            }
           } else {
             toast.success('Roof line overlay generated');
+            setOverlayRefreshNonce((value) => value + 1);
             await queryClient.invalidateQueries({
               queryKey: ['vendor-verification-sessions', activeCompanyId],
             });
@@ -1467,6 +1485,7 @@ export function VendorVerificationDashboard() {
                                           tenantId={activeCompanyId}
                                           lat={Number((session as any).lat)}
                                           lng={Number((session as any).lng)}
+                                          refreshKey={overlayRefreshNonce}
                                         />
                                       </div>
                                     )}
