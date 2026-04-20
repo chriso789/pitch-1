@@ -478,6 +478,26 @@ export function VendorVerificationDashboard() {
       await queryClient.invalidateQueries({
         queryKey: ['vendor-verification-sessions', activeCompanyId],
       });
+
+      // Fire-and-forget: generate the v28-style roof line overlay so the AI
+      // drawing area gets a clean ridge/hip/valley/eave/rake annotation that
+      // can be reclassified by hand and used as training data against the
+      // paid vendor parsed diagram.
+      try {
+        const measurementId = detail?.ai_measurement_id || detail?.measurement_id;
+        const lat = detail?.lat ?? detail?.target_lat;
+        const lng = detail?.lng ?? detail?.target_lng;
+        if (measurementId && activeCompanyId && lat != null && lng != null) {
+          supabase.functions.invoke('generate-roof-line-overlay', {
+            body: { measurement_id: measurementId, tenant_id: activeCompanyId, lat, lng },
+          }).then(({ error: ovErr }) => {
+            if (ovErr) console.warn('Overlay generation failed', ovErr);
+            else queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
+          });
+        }
+      } catch (ovErr) {
+        console.warn('Overlay generation invoke failed', ovErr);
+      }
     } catch (err: any) {
       console.error('Run one error:', err);
       toast.error(err?.message || 'Failed to run AI measurement');
