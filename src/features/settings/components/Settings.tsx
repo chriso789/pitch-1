@@ -215,6 +215,15 @@ export const Settings = () => {
         filteredTabs = filteredTabs.filter(tab => !masterBackendTabs.includes(tab.tab_key));
       }
 
+      // Restrict ALL "System" category tabs to the COB owner only
+      const SYSTEM_OWNER_EMAIL = 'chrisobrien91@gmail.com';
+      const isSystemOwner = currentUser?.email?.toLowerCase() === SYSTEM_OWNER_EMAIL;
+      if (!isSystemOwner) {
+        filteredTabs = filteredTabs.filter(
+          tab => TAB_TO_CATEGORY[tab.tab_key] !== 'system'
+        );
+      }
+
       setTabConfig(filteredTabs);
       const hasProductTabs = filteredTabs.some(t => PRODUCT_TAB_KEYS.includes(t.tab_key));
       const tabExists = filteredTabs.find(t => t.tab_key === activeTab) || 
