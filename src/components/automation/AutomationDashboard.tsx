@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Play, Pause, RefreshCw, Plus, Zap, AlertTriangle, CheckCircle, Activity } from 'lucide-react';
 import { toast } from 'sonner';
 import { Database } from '@/integrations/supabase/types';
+import { AutomationEngineV2 } from './engine/AutomationEngineV2';
 
 type WorkflowTask = Database['public']['Tables']['workflow_tasks']['Row'];
 type PhaseHistory = Database['public']['Tables']['workflow_phase_history']['Row'];
