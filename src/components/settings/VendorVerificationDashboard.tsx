@@ -1455,7 +1455,29 @@ export function VendorVerificationDashboard() {
                               disabled={runningOneId === session.id || isRunning}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRunOne(session.id);
+                                // Require operator to confirm the parcel pin
+                                // before running. Resolves cases where the
+                                // cached lat/lng points at a neighbor's roof.
+                                const lat =
+                                  session.ai_coordinates?.lat ??
+                                  (session as any).lat ??
+                                  null;
+                                const lng =
+                                  session.ai_coordinates?.lng ??
+                                  (session as any).lng ??
+                                  null;
+                                if (lat == null || lng == null) {
+                                  toast.error(
+                                    'No coordinates on file — geocode this address first.',
+                                  );
+                                  return;
+                                }
+                                setPinPrompt({
+                                  sessionId: session.id,
+                                  lat,
+                                  lng,
+                                  address: session.property_address,
+                                });
                               }}
                             >
                               {runningOneId === session.id ? (
