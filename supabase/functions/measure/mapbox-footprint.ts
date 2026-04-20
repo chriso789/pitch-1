@@ -33,12 +33,13 @@ export async function fetchMapboxFootprint(
 ): Promise<MapboxFootprintResult> {
   const tileset = options?.tilesetId || 'mapbox.mapbox-streets-v8';
   const layers = 'building';
-  const radius = options?.radius || 25; // meters
-  
+  const radius = options?.radius || 30; // meters
+
   try {
-    const url = `https://api.mapbox.com/v4/${tileset}/tilequery/${lng},${lat}.json?radius=${radius}&layers=${layers}&limit=10&access_token=${accessToken}`;
-    
-    console.log(`🗺️ Fetching Mapbox footprint at ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    // CRITICAL: Add geometry=polygon to request polygon geometries instead of centroids
+    const url = `https://api.mapbox.com/v4/${tileset}/tilequery/${lng},${lat}.json?radius=${radius}&layers=${layers}&limit=50&geometry=polygon&access_token=${accessToken}`;
+
+    console.log(`🗺️ Fetching Mapbox footprint at ${lat.toFixed(6)}, ${lng.toFixed(6)} (radius=${radius}m, geometry=polygon)`);
     
     const response = await fetch(url);
     
@@ -55,73 +56,122 @@ export async function fetchMapboxFootprint(
     const data = await response.json();
     
     if (!data.features || data.features.length === 0) {
-      console.log('No building features found in Mapbox response');
+      console.log('⚠️ No building features found in Mapbox response');
+      // Retry with larger radius
+      if (radius < 100) {
+        console.log(`🔄 Retrying with larger radius (100m)...`);
+        return fetchMapboxFootprint(lat, lng, accessToken, { ...options, radius: 100 });
+      }
       return {
         footprint: null,
         fallbackReason: 'no_buildings_found'
       };
     }
-    
-    // Find the building feature closest to and containing the target point
-    const buildings = data.features.filter((f: any) => 
-      f.geometry?.type === 'Polygon' && 
-      f.geometry?.coordinates?.[0]?.length >= 4
-    );
-    
-    if (buildings.length === 0) {
+
+    // Log geometry type distribution for debugging
+    const geomTypes: Record<string, number> = {};
+    data.features.forEach((f: any) => {
+      const gtype = f.geometry?.type || 'unknown';
+      geomTypes[gtype] = (geomTypes[gtype] || 0) + 1;
+    });
+    console.log(`📊 Mapbox features: ${data.features.length} total, types: ${JSON.stringify(geomTypes)}`);
+
+    // Extract polygon rings from both Polygon and MultiPolygon features
+    type BuildingCandidate = {
+      ring: XY[];
+      distance: number;
+      containsPoint: boolean;
+      areaM2: number;
+      buildingId?: string;
+    };
+
+    const candidates: BuildingCandidate[] = [];
+    const targetPoint: XY = [lng, lat];
+
+    for (const feature of data.features) {
+      const geom = feature.geometry;
+      const distance = feature.properties?.tilequery?.distance || 0;
+      const buildingId = feature.properties?.id?.toString();
+
+      if (geom?.type === 'Polygon' && geom.coordinates?.[0]?.length >= 4) {
+        const ring = geom.coordinates[0] as XY[];
+        const closed = ensureClosed(ring);
+        candidates.push({
+          ring: closed,
+          distance,
+          containsPoint: pointInPolygon(targetPoint, closed),
+          areaM2: calculatePolygonAreaM2(closed),
+          buildingId
+        });
+      } else if (geom?.type === 'MultiPolygon' && geom.coordinates?.length > 0) {
+        // Handle MultiPolygon - extract each polygon and evaluate separately
+        for (const polygonCoords of geom.coordinates) {
+          if (polygonCoords?.[0]?.length >= 4) {
+            const ring = polygonCoords[0] as XY[];
+            const closed = ensureClosed(ring);
+            candidates.push({
+              ring: closed,
+              distance,
+              containsPoint: pointInPolygon(targetPoint, closed),
+              areaM2: calculatePolygonAreaM2(closed),
+              buildingId
+            });
+          }
+        }
+      }
+    }
+
+    console.log(`📐 Mapbox candidates: ${candidates.length} polygons extracted`);
+
+    if (candidates.length === 0) {
+      // Retry with larger radius if no candidates found
+      if (radius < 100) {
+        console.log(`🔄 No polygons at radius ${radius}m, retrying with 100m...`);
+        return fetchMapboxFootprint(lat, lng, accessToken, { ...options, radius: 100 });
+      }
       return {
         footprint: null,
         fallbackReason: 'no_polygon_buildings'
       };
     }
-    
-    // Sort by distance to target (tilequery.distance property)
-    buildings.sort((a: any, b: any) => {
-      const distA = a.properties?.tilequery?.distance || Infinity;
-      const distB = b.properties?.tilequery?.distance || Infinity;
-      return distA - distB;
+
+    // Prioritize: 1) contains point, 2) smallest distance, 3) reasonable area (100-500 m²)
+    candidates.sort((a, b) => {
+      // First: prefer containing the point
+      if (a.containsPoint !== b.containsPoint) return a.containsPoint ? -1 : 1;
+      // Second: prefer closer buildings
+      if (Math.abs(a.distance - b.distance) > 5) return a.distance - b.distance;
+      // Third: prefer residential-sized buildings (100-500 m²)
+      const aResidential = a.areaM2 >= 100 && a.areaM2 <= 500;
+      const bResidential = b.areaM2 >= 100 && b.areaM2 <= 500;
+      if (aResidential !== bResidential) return aResidential ? -1 : 1;
+      return 0;
     });
-    
-    // Take the closest building that contains the point or is very close
-    let bestBuilding = buildings[0];
-    
-    // Check if point is inside building polygon
-    for (const building of buildings) {
-      const ring = building.geometry.coordinates[0] as XY[];
-      if (pointInPolygon([lng, lat], ring)) {
-        bestBuilding = building;
-        break;
-      }
-    }
-    
-    const ring = bestBuilding.geometry.coordinates[0] as XY[];
+
+    const best = candidates[0];
+    const ring = best.ring;
     
     // Ensure polygon is closed
     const coords = ensureClosed(ring);
-    
-    // Calculate area for confidence estimation
-    const areaM2 = calculatePolygonAreaM2(coords);
-    
-    // Confidence based on distance and area
-    const distance = bestBuilding.properties?.tilequery?.distance || 0;
+
+    // Confidence based on distance, containment, and area
     let confidence = 0.92;
-    
-    if (distance > 10) confidence -= 0.1;
-    if (distance > 20) confidence -= 0.1;
-    if (areaM2 < 50) confidence -= 0.15; // Very small building, might be wrong
-    if (areaM2 > 2000) confidence -= 0.05; // Very large, might be commercial
-    
+    if (!best.containsPoint) confidence -= 0.1;
+    if (best.distance > 10) confidence -= 0.05;
+    if (best.distance > 20) confidence -= 0.1;
+    if (best.areaM2 < 50) confidence -= 0.15; // Very small building, might be wrong
+    if (best.areaM2 > 2000) confidence -= 0.05; // Very large, might be commercial
     confidence = Math.max(0.5, Math.min(0.98, confidence));
-    
-    console.log(`✓ Mapbox footprint: ${coords.length} vertices, ${Math.round(areaM2)}m², confidence ${(confidence * 100).toFixed(0)}%`);
-    
+
+    console.log(`✅ Mapbox footprint: ${coords.length} vertices, ${Math.round(best.areaM2)}m² (${Math.round(best.areaM2 * 10.764)}sqft), distance=${best.distance.toFixed(1)}m, containsPoint=${best.containsPoint}, confidence ${(confidence * 100).toFixed(0)}%`);
+
     return {
       footprint: {
         coordinates: coords,
         source: 'mapbox_vector',
         confidence,
-        buildingId: bestBuilding.properties?.id?.toString(),
-        areaM2
+        buildingId: best.buildingId,
+        areaM2: best.areaM2
       }
     };
     
