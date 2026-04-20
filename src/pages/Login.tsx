@@ -623,23 +623,14 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             )}
 
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'signup' | 'forgot')} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="login">
-                  <Shield className="h-4 w-4 mr-2" />
-                  Sign In
-                </TabsTrigger>
-                <TabsTrigger value="signup">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Sign Up
-                </TabsTrigger>
-                <TabsTrigger value="forgot">
-                  <KeyRound className="h-4 w-4 mr-2" />
-                  Reset
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login" className="space-y-4">
+            <Tabs value={activeTab} onValueChange={(value) => {
+              if (value === 'signup') {
+                navigate('/demo-request');
+                return;
+              }
+              setActiveTab(value as 'login' | 'signup' | 'forgot');
+            }} className="space-y-4">
+              <TabsContent value="login" className="space-y-4 mt-0">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-email">Email</Label>
@@ -678,48 +669,68 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
                     {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                   </div>
 
-                  <div className="flex items-center space-x-2">
-                    <input
-                      type="checkbox"
-                      id="remember-me"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="rounded border-input cursor-pointer"
-                      data-testid="auth-remember-me"
-                    />
-                    <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
-                      Keep me signed in
-                    </Label>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        id="remember-me"
+                        checked={rememberMe}
+                        onChange={(e) => setRememberMe(e.target.checked)}
+                        className="rounded border-input cursor-pointer"
+                        data-testid="auth-remember-me"
+                      />
+                      <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                        Keep me signed in
+                      </Label>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('forgot')}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Forgot password?
+                    </button>
                   </div>
 
-                  <Button type="submit" className="w-full" disabled={loading}>
+                  <Button
+                    type="submit"
+                    size="lg"
+                    className="w-full font-semibold text-base shadow-md hover:shadow-lg transition-shadow"
+                    disabled={loading}
+                  >
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                         Signing in...
                       </>
                     ) : (
-                      'Sign In'
+                      <>
+                        <Shield className="mr-2 h-4 w-4" />
+                        Sign In
+                      </>
                     )}
                   </Button>
 
-                  <div className="relative my-4">
+                  <div className="relative my-5">
                     <div className="absolute inset-0 flex items-center">
-                      <span className="w-full border-t" />
+                      <span className="w-full border-t border-border/60" />
                     </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-white px-2 text-muted-foreground">Or continue with</span>
+                    <div className="relative flex justify-center">
+                      <span className="bg-white px-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        Or
+                      </span>
                     </div>
                   </div>
 
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    className="w-full" 
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="lg"
+                    className="w-full font-medium border-2 hover:bg-muted/50"
                     onClick={handleGoogleLogin}
                     disabled={loading}
                   >
-                    <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                    <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
                       <path
                         d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
                         fill="#4285F4"
@@ -737,124 +748,31 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
                         fill="#EA4335"
                       />
                     </svg>
-                    Sign in with Google
+                    Continue with Google
                   </Button>
 
-                  <div className="text-center pt-2">
-                    <Link 
-                      to="/request-setup-link" 
-                      className="text-sm text-muted-foreground hover:text-primary transition-colors"
+                  <div className="text-center pt-2 space-y-2">
+                    <p className="text-sm text-muted-foreground">
+                      Want to bring your company to PITCH?{' '}
+                      <button
+                        type="button"
+                        onClick={() => navigate('/demo-request')}
+                        className="font-semibold text-primary hover:underline"
+                      >
+                        Request a demo
+                      </button>
+                    </p>
+                    <Link
+                      to="/request-setup-link"
+                      className="inline-block text-xs text-muted-foreground hover:text-primary transition-colors"
                     >
                       Need a new setup link? Request one here
                     </Link>
                   </div>
+
                 </form>
               </TabsContent>
 
-              <TabsContent value="signup" className="space-y-4">
-                <form onSubmit={handleSignup} className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-firstName">First Name</Label>
-                      <Input
-                        id="signup-firstName"
-                        type="text"
-                        placeholder="First name"
-                        value={signupForm.firstName}
-                        onChange={(e) => setSignupForm({ ...signupForm, firstName: e.target.value })}
-                        className={errors.firstName ? 'border-destructive' : ''}
-                      />
-                      {errors.firstName && <p className="text-sm text-destructive">{errors.firstName}</p>}
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="signup-lastName">Last Name</Label>
-                      <Input
-                        id="signup-lastName"
-                        type="text"
-                        placeholder="Last name"
-                        value={signupForm.lastName}
-                        onChange={(e) => setSignupForm({ ...signupForm, lastName: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-email">Email</Label>
-                    <Input
-                      id="signup-email"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={signupForm.email}
-                      onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
-                      className={errors.email ? 'border-destructive' : ''}
-                    />
-                    {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-company">Company Name (Optional)</Label>
-                    <Input
-                      id="signup-company"
-                      type="text"
-                      placeholder="Your company name"
-                      value={signupForm.companyName}
-                      onChange={(e) => setSignupForm({ ...signupForm, companyName: e.target.value })}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-password">Password</Label>
-                    <div className="relative">
-                      <Input
-                        id="signup-password"
-                        type={showPassword ? 'text' : 'password'}
-                        placeholder="Create a strong password"
-                        value={signupForm.password}
-                        onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
-                        className={errors.password ? 'border-destructive pr-10' : 'pr-10'}
-                      />
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                        onClick={() => setShowPassword(!showPassword)}
-                      >
-                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
-                    </div>
-                    {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="signup-confirmPassword">Confirm Password</Label>
-                    <Input
-                      id="signup-confirmPassword"
-                      type="password"
-                      placeholder="Confirm your password"
-                      value={signupForm.confirmPassword}
-                      onChange={(e) => setSignupForm({ ...signupForm, confirmPassword: e.target.value })}
-                      className={errors.confirmPassword ? 'border-destructive' : ''}
-                    />
-                    {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
-                    <p className="text-xs text-muted-foreground">
-                      Password must be at least 6 characters
-                    </p>
-                  </div>
-
-                  <Button type="submit" className="w-full" disabled={loading}>
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Creating account...
-                      </>
-                    ) : (
-                      'Create Account'
-                    )}
-                  </Button>
-                </form>
-              </TabsContent>
 
               <TabsContent value="forgot" className="space-y-4">
                 <div className="text-center mb-4">
