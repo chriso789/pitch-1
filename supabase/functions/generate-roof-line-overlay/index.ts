@@ -175,7 +175,7 @@ function coverageFraction(lines: DetectedLine[]): number {
 async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
   // Pro-only: flash hallucinates roof geometry across neighboring parcels.
   // The latency cost (~30s vs ~10s) is worth it for usable output.
-  return await callGemini('google/gemini-2.5-pro', imageBase64, 90_000)
+  return await callGemini('google/gemini-2.5-pro', imageBase64, 240_000)
 }
 
 // Reject any line whose endpoints both fall in the outer 8% margin —
