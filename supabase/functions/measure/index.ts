@@ -4663,7 +4663,7 @@ Deno.serve(async (req) => {
                       address: session.property_address || '',
                       training_session_id: session.id,
                       engine: 'skeleton',
-                      disableVisionFallback: true,
+                      disableVisionFallback: false,
                     }),
                   });
                   const pullData = await pullResp.json();
