@@ -240,7 +240,9 @@ Deno.serve(async (req) => {
     const imgBase64 = btoa(binary)
 
     // 2. Detect lines via AI
-    const detected = normalizeDetectedLines(await detectLines(imgBase64))
+    const rawDetected = normalizeDetectedLines(await detectLines(imgBase64))
+    const detected = filterToTargetRoof(rawDetected)
+    console.log(`Detection: ${rawDetected.length} raw → ${detected.length} after target-roof filter`)
 
     // 3. Compute lengths (meters/pixel * 3.28084 ft/m)
     const mpp = metersPerPixel(resolvedLat, ZOOM) / STATIC_SCALE
