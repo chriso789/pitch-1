@@ -81,14 +81,17 @@ export function PinConfirmDialog({
     }
   }, [open, initialLat, initialLng]);
 
-  // Build the static satellite URL — Google first, Mapbox fallback (matches
-  // FootprintDrawingDialog conventions).
+  // Build the static satellite URL — Google first, Mapbox fallback, then
+  // backend proxy (so the dialog works even when no frontend token is configured).
   const googleKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
   const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const imgSrc = googleKey
     ? `https://maps.googleapis.com/maps/api/staticmap?center=${initialLat},${initialLng}&zoom=${ZOOM}&size=${IMG_SIZE}x${IMG_SIZE}&scale=2&maptype=satellite&key=${googleKey}`
     : mapboxToken
     ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${initialLng},${initialLat},${ZOOM}/${IMG_SIZE}x${IMG_SIZE}@2x?access_token=${mapboxToken}`
+    : supabaseUrl
+    ? `${supabaseUrl}/functions/v1/satellite-tile?lat=${initialLat}&lng=${initialLng}&zoom=${ZOOM}&size=${IMG_SIZE}`
     : '';
 
   const handleImgLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
