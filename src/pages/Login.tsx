@@ -14,6 +14,7 @@ import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, Key
 import { initSession, clearAllSessionData } from '@/services/sessionManager';
 import { getDeviceFingerprint, getDeviceName } from '@/services/deviceFingerprint';
 import { clearAllAppLocalStorage } from '@/components/layout/GlobalLoadingHandler';
+import { BRAND } from '@/lib/branding/legal';
 
 // Helper to clean up stale localStorage on Login mount
 const cleanupStaleLocalStorage = () => {
@@ -60,6 +61,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { user: authUser, session, loading: authLoading } = useAuth();
+  const oauthRedirectBase = window.location.hostname.includes('lovable.app') ? BRAND.website : window.location.origin;
   
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -496,7 +498,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${oauthRedirectBase}/dashboard`,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
