@@ -423,6 +423,8 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
             </Card>
           )}
         </TabsContent>
+
+        <TabsContent value="compare" className="mt-4">
           <TrainingComparisonView
             sessionId={session.id}
             aiMeasurementId={session.ai_measurement_id}
