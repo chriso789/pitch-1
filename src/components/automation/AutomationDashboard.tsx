@@ -190,11 +190,23 @@ const AutomationDashboard = () => {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold">Automation Dashboard</h1>
+        <h1 className="text-3xl font-bold">Automation</h1>
         <p className="text-muted-foreground">
-          AI-powered workflow automation and button pathway validation
+          Event-driven automation engine plus legacy AI workflow tasks.
         </p>
       </div>
+
+      <Tabs defaultValue="engine" className="w-full">
+        <TabsList>
+          <TabsTrigger value="engine">Automation Engine</TabsTrigger>
+          <TabsTrigger value="workflow">Workflow Tasks (legacy)</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="engine" className="mt-4">
+          <AutomationEngineV2 />
+        </TabsContent>
+
+        <TabsContent value="workflow" className="mt-4 space-y-6">
 
       {/* Control Panel */}
       <Card>
