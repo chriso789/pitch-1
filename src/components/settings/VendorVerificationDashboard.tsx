@@ -16,6 +16,7 @@ import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramPa
 import { cleanAiDiagram } from './lib/cleanAiDiagram';
 import { CoverageGapPanel } from './CoverageGapPanel';
 import { RoofLineOverlayEditor } from '@/components/roof-measurement/RoofLineOverlayEditor';
+import { PinConfirmDialog } from './PinConfirmDialog';
 
 interface VendorReportMeta {
   provider: string | null;
@@ -86,6 +87,15 @@ export function VendorVerificationDashboard() {
   const [isRunningAllAi, setIsRunningAllAi] = useState(false);
   const [overlayRefreshNonce, setOverlayRefreshNonce] = useState(0);
   const [addressSortDirection, setAddressSortDirection] = useState<'asc' | 'desc'>('asc');
+  // Pin-confirm dialog state — opened when the user clicks Play. We require
+  // the operator to drop a pin on the correct roof so the AI overlay crops
+  // imagery on the actual house instead of a stale/off-parcel centroid.
+  const [pinPrompt, setPinPrompt] = useState<{
+    sessionId: string;
+    lat: number;
+    lng: number;
+    address: string | null;
+  } | null>(null);
   const [runAllAiProgress, setRunAllAiProgress] = useState<{
     backfilled: number;
     processed: number;
@@ -456,9 +466,22 @@ export function VendorVerificationDashboard() {
     queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
   };
 
-  const handleRunOne = async (sessionId: string) => {
+  const handleRunOne = async (
+    sessionId: string,
+    coordOverride?: { lat: number; lng: number },
+  ) => {
     setRunningOneId(sessionId);
     try {
+      // If the operator confirmed a refined pin, persist it to the session row
+      // FIRST so downstream measurement + overlay calls all crop on the right
+      // parcel. We update lat/lng on roof_training_sessions (used for imagery
+      // re-fetch) and propagate to any existing roof_measurements row.
+      if (coordOverride) {
+        await supabase
+          .from('roof_training_sessions')
+          .update({ lat: coordOverride.lat, lng: coordOverride.lng } as any)
+          .eq('id', sessionId);
+      }
       // Reset this single session and clear stale AI links so the clicked row is forced
       // through a fresh measurement + diagram persistence pass.
       const { error: resetErr } = await supabase
@@ -545,6 +568,19 @@ export function VendorVerificationDashboard() {
           if (measurementCoords?.target_lat != null && measurementCoords?.target_lng != null) {
             lat = measurementCoords.target_lat;
             lng = measurementCoords.target_lng;
+          }
+        }
+
+        // Confirmed-pin override always wins — also push it onto the
+        // measurement row so future runs and the editor stay aligned.
+        if (coordOverride) {
+          lat = coordOverride.lat;
+          lng = coordOverride.lng;
+          if (measurementId) {
+            await supabase
+              .from('roof_measurements')
+              .update({ target_lat: coordOverride.lat, target_lng: coordOverride.lng } as any)
+              .eq('id', measurementId);
           }
         }
 
@@ -1058,6 +1094,7 @@ export function VendorVerificationDashboard() {
   };
 
   return (
+    <>
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
@@ -1419,7 +1456,29 @@ export function VendorVerificationDashboard() {
                               disabled={runningOneId === session.id || isRunning}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleRunOne(session.id);
+                                // Require operator to confirm the parcel pin
+                                // before running. Resolves cases where the
+                                // cached lat/lng points at a neighbor's roof.
+                                const lat =
+                                  session.ai_coordinates?.lat ??
+                                  (session as any).lat ??
+                                  null;
+                                const lng =
+                                  session.ai_coordinates?.lng ??
+                                  (session as any).lng ??
+                                  null;
+                                if (lat == null || lng == null) {
+                                  toast.error(
+                                    'No coordinates on file — geocode this address first.',
+                                  );
+                                  return;
+                                }
+                                setPinPrompt({
+                                  sessionId: session.id,
+                                  lat,
+                                  lng,
+                                  address: session.property_address,
+                                });
                               }}
                             >
                               {runningOneId === session.id ? (
@@ -1596,6 +1655,27 @@ export function VendorVerificationDashboard() {
         </CardContent>
       </Card>
     </div>
+
+    <PinConfirmDialog
+      open={!!pinPrompt}
+      onClose={() => setPinPrompt(null)}
+      initialLat={pinPrompt?.lat ?? 0}
+      initialLng={pinPrompt?.lng ?? 0}
+      address={pinPrompt?.address ?? undefined}
+      confirming={!!pinPrompt && runningOneId === pinPrompt.sessionId}
+      onConfirm={async (lat, lng) => {
+        if (!pinPrompt) return;
+        const sessionId = pinPrompt.sessionId;
+        // Detect whether the operator actually nudged the pin. If they used
+        // the original cached coords, skip the override path entirely.
+        const moved =
+          Math.abs(lat - pinPrompt.lat) > 1e-7 ||
+          Math.abs(lng - pinPrompt.lng) > 1e-7;
+        setPinPrompt(null);
+        await handleRunOne(sessionId, moved ? { lat, lng } : undefined);
+      }}
+    />
+  </>
   );
 }
 
