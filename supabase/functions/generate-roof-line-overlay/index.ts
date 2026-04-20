@@ -174,8 +174,29 @@ Deno.serve(async (req) => {
 
     const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+    const { data: measurementRow, error: measurementError } = await admin
+      .from('roof_measurements')
+      .select('target_lat, target_lng, gps_coordinates')
+      .eq('id', measurement_id)
+      .maybeSingle()
+
+    if (measurementError) throw measurementError
+
+    const resolvedLat =
+      measurementRow?.target_lat ??
+      ((measurementRow?.gps_coordinates as { lat?: number } | null)?.lat ?? null) ??
+      lat
+    const resolvedLng =
+      measurementRow?.target_lng ??
+      ((measurementRow?.gps_coordinates as { lng?: number } | null)?.lng ?? null) ??
+      lng
+
+    if (resolvedLat == null || resolvedLng == null) {
+      throw new Error('Unable to resolve measurement coordinates for overlay generation')
+    }
+
     // 1. Fetch Mapbox aerial
-    const mapboxUrl = buildMapboxUrl(lat, lng)
+    const mapboxUrl = buildMapboxUrl(resolvedLat, resolvedLng)
     const imgResp = await fetch(mapboxUrl)
     if (!imgResp.ok) throw new Error(`Mapbox fetch failed: ${imgResp.status}`)
     const imgBytes = new Uint8Array(await imgResp.arrayBuffer())
@@ -190,7 +211,7 @@ Deno.serve(async (req) => {
     const detected = normalizeDetectedLines(await detectLines(imgBase64))
 
     // 3. Compute lengths (meters/pixel * 3.28084 ft/m)
-    const mpp = metersPerPixel(lat, ZOOM) / STATIC_SCALE
+    const mpp = metersPerPixel(resolvedLat, ZOOM) / STATIC_SCALE
     const ftPerPx = mpp * 3.28084
 
     const lines: DetectedLine[] = detected.map((l) => {
@@ -238,8 +259,8 @@ Deno.serve(async (req) => {
         image_width: DETECTION_IMG_W,
         image_height: DETECTION_IMG_H,
         meters_per_pixel: mpp,
-        center_lat: lat,
-        center_lng: lng,
+        center_lat: resolvedLat,
+        center_lng: resolvedLng,
         zoom: ZOOM,
         lines,
         totals_ft,
