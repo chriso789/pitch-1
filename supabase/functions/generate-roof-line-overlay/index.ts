@@ -329,22 +329,43 @@ Deno.serve(async (req) => {
       throw new Error('Unable to resolve measurement coordinates for overlay generation')
     }
 
-    // 1. Fetch Mapbox aerial
-    const mapboxUrl = buildMapboxUrl(resolvedLat, resolvedLng)
-    const imgResp = await fetch(mapboxUrl)
-    if (!imgResp.ok) throw new Error(`Mapbox fetch failed: ${imgResp.status}`)
-    const imgBytes = new Uint8Array(await imgResp.arrayBuffer())
-    let binary = ''
-    const chunkSize = 0x8000
-    for (let i = 0; i < imgBytes.length; i += chunkSize) {
-      binary += String.fromCharCode.apply(null, imgBytes.subarray(i, i + chunkSize) as unknown as number[])
-    }
-    const imgBase64 = btoa(binary)
+    // 1a. Fetch upright Mapbox aerial (north-up). This is what we store and
+    //     show in the UI so the overlay coordinates match what the operator sees.
+    const uprightUrl = buildMapboxUrl(resolvedLat, resolvedLng)
+    const upright = await fetchAsBase64(uprightUrl)
 
-    // 2. Detect lines via AI
-    const rawDetected = normalizeDetectedLines(await detectLines(imgBase64))
-    const detected = filterToTargetRoof(rawDetected)
-    console.log(`Detection: ${rawDetected.length} raw → ${detected.length} after target-roof filter`)
+    // 1b. Cheap angle-pass: ask flash for the dominant roof edge bearing.
+    const cameraBearing = await detectDominantBearing(upright.b64)
+    console.log(`Dominant roof bearing: rotating camera by ${cameraBearing.toFixed(1)}°`)
+
+    // 1c. Re-fetch the same tile rotated so the dominant edge is horizontal,
+    //     mimicking the user's "spin the map before screenshotting" workflow.
+    //     If bearing is ~0, skip the second fetch.
+    const useRotated = Math.abs(cameraBearing) > 1
+    const detectionUrl = useRotated
+      ? buildMapboxUrlRotated(resolvedLat, resolvedLng, cameraBearing)
+      : uprightUrl
+    const detection = useRotated ? await fetchAsBase64(detectionUrl) : upright
+
+    // 2. Detect lines on the (possibly rotated) image
+    const rawDetected = normalizeDetectedLines(await detectLines(detection.b64))
+    // 2b. Rotate endpoints back to the upright frame so they line up with the
+    //     stored north-up tile. Mapbox rotated the camera CW by `cameraBearing`,
+    //     which means pixels in the detection image are rotated CW relative to
+    //     the upright image — so we rotate points CCW (negative) to undo it.
+    const upright_lines = useRotated
+      ? rawDetected.map((l) => ({
+          ...l,
+          p1: rotatePointCW(l.p1, -cameraBearing),
+          p2: rotatePointCW(l.p2, -cameraBearing),
+        }))
+      : rawDetected
+    const detected = filterToTargetRoof(upright_lines)
+    console.log(`Detection: ${rawDetected.length} raw → ${detected.length} after target-roof filter (rotated=${useRotated})`)
+
+    // The image we store/display is always the upright tile.
+    const imgBytes = upright.bytes
+    const mapboxUrl = uprightUrl
 
     // 3. Compute lengths (meters/pixel * 3.28084 ft/m)
     const mpp = metersPerPixel(resolvedLat, ZOOM) / STATIC_SCALE
@@ -400,7 +421,9 @@ Deno.serve(async (req) => {
         zoom: ZOOM,
         lines,
         totals_ft,
-        model_version: 'google/gemini-2.5-pro',
+        model_version: useRotated
+          ? `google/gemini-2.5-pro+rotated@${cameraBearing.toFixed(1)}`
+          : 'google/gemini-2.5-pro',
       })
       .select()
       .single()
