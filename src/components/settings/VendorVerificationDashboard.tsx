@@ -571,6 +571,19 @@ export function VendorVerificationDashboard() {
           }
         }
 
+        // Confirmed-pin override always wins — also push it onto the
+        // measurement row so future runs and the editor stay aligned.
+        if (coordOverride) {
+          lat = coordOverride.lat;
+          lng = coordOverride.lng;
+          if (measurementId) {
+            await supabase
+              .from('roof_measurements')
+              .update({ target_lat: coordOverride.lat, target_lng: coordOverride.lng } as any)
+              .eq('id', measurementId);
+          }
+        }
+
         if (measurementId && activeCompanyId && lat != null && lng != null) {
           toast.info('Generating roof line overlay…');
           const { error: ovErr } = await supabase.functions.invoke('generate-roof-line-overlay', {
