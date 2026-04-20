@@ -45,7 +45,7 @@ function buildMapboxUrl(lat: number, lng: number): string {
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 }
 
-const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image of a single residential roof.
+const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image.
 
 Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 {
@@ -56,8 +56,11 @@ Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 
 Coordinate system: pixel coordinates in a ${DETECTION_IMG_W}x${DETECTION_IMG_H} image, origin top-left, x right, y down.
 
-The target property is the MAIN roof nearest the image center at [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
-If multiple buildings are visible, annotate only that centered home and ignore neighboring houses, detached structures, pool cages, and shadows.
+CRITICAL TARGETING:
+- The TARGET HOUSE is the LARGEST building roof whose footprint covers or surrounds the image center [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
+- The target roof typically occupies 25-60% of the image area. If you find yourself annotating a tiny shape (<5% of image), you have picked a dormer/shed/neighbor by mistake — STOP and re-identify the largest centered roof.
+- First, mentally outline the full perimeter (eaves) of the target roof. Then trace internal lines (ridges/hips/valleys).
+- Ignore neighboring houses, pools, pool cages, sheds, driveways, vegetation, and shadows.
 
 Definitions (be strict):
 - ridge: top horizontal seam where two upward-sloping planes meet
@@ -67,7 +70,8 @@ Definitions (be strict):
 - rake: sloped outer edge of a gable end
 
 Rules:
-- Trace EVERY visible roof edge. Do not invent lines that are not visually evidenced.
+- ALWAYS include the full eave perimeter of the target roof first (4+ eave lines for any house).
+- Trace EVERY visible roof edge of the target. Do not invent lines without visual evidence.
 - Lines must be straight segments with crisp endpoints that snap to actual roof corners.
 - Use whole-pixel integers.
 - Return 8-40 lines for a typical residential roof.
@@ -148,15 +152,35 @@ async function callGemini(model: string, imageBase64: string, timeoutMs: number)
   }
 }
 
+function coverageFraction(lines: DetectedLine[]): number {
+  if (lines.length === 0) return 0
+  const xs = lines.flatMap((l) => [l.p1[0], l.p2[0]])
+  const ys = lines.flatMap((l) => [l.p1[1], l.p2[1]])
+  const w = Math.max(...xs) - Math.min(...xs)
+  const h = Math.max(...ys) - Math.min(...ys)
+  return (w * h) / (DETECTION_IMG_W * DETECTION_IMG_H)
+}
+
 async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
-  // Try the fast model first (usually completes well under 60s). If it
-  // aborts/errors, fall back to the pro model with a longer budget.
+  // Try flash first for speed.
+  let lines: DetectedLine[] = []
   try {
-    return await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
+    lines = await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
   } catch (err) {
     console.warn('flash model failed, falling back to pro', err instanceof Error ? err.message : err)
     return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
   }
+  // If flash mis-targeted (tiny bounding box), retry with pro for better visual reasoning.
+  const coverage = coverageFraction(lines)
+  if (coverage < 0.05 || lines.length < 6) {
+    console.warn(`flash returned poor coverage (${(coverage * 100).toFixed(1)}%, ${lines.length} lines) — retrying with pro`)
+    try {
+      return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
+    } catch (err) {
+      console.warn('pro retry failed, keeping flash result', err instanceof Error ? err.message : err)
+    }
+  }
+  return lines
 }
 
 Deno.serve(async (req) => {
