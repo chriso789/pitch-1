@@ -19,7 +19,10 @@ const IMG_H = 1024
 const STATIC_SCALE = 2
 const DETECTION_IMG_W = IMG_W * STATIC_SCALE
 const DETECTION_IMG_H = IMG_H * STATIC_SCALE
-const ZOOM = 20
+// Zoom 21 + tight Mapbox tile gives us the target house filling most of the frame.
+// Earlier zoom 20 was pulling in 4-6 neighboring houses, which is what caused the
+// AI to hallucinate ridges/eaves across multiple parcels.
+const ZOOM = 21
 
 interface DetectedLine {
   id: string
@@ -45,7 +48,7 @@ function buildMapboxUrl(lat: number, lng: number): string {
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 }
 
-const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image.
+const DETECT_PROMPT = `You are an expert roof-line annotator looking at a tightly-cropped aerial satellite image of a SINGLE residential property.
 
 Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 {
@@ -56,26 +59,34 @@ Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 
 Coordinate system: pixel coordinates in a ${DETECTION_IMG_W}x${DETECTION_IMG_H} image, origin top-left, x right, y down.
 
-CRITICAL TARGETING:
-- The TARGET HOUSE is the LARGEST building roof whose footprint covers or surrounds the image center [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
-- The target roof typically occupies 25-60% of the image area. If you find yourself annotating a tiny shape (<5% of image), you have picked a dormer/shed/neighbor by mistake — STOP and re-identify the largest centered roof.
-- First, mentally outline the full perimeter (eaves) of the target roof. Then trace internal lines (ridges/hips/valleys).
-- Ignore neighboring houses, pools, pool cages, sheds, driveways, vegetation, and shadows.
+CRITICAL TARGETING — READ CAREFULLY:
+- The image has been cropped and zoomed so the TARGET HOUSE is the dominant roof in the frame.
+- Annotate ONLY the single roof whose footprint covers the image center [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
+- DO NOT annotate any neighboring houses, even if part of them is visible at the edge of the frame.
+- DO NOT draw a line unless BOTH endpoints sit on a visible roof edge of the TARGET house. If you can't see the edge clearly (tree, shadow, low contrast), OMIT the line entirely.
+- DO NOT connect endpoints across gaps, driveways, lawns, or pools. Every line must lie ON the roof surface.
+- If the target roof is unclear, return fewer lines (5-10) rather than guessing.
 
 Definitions (be strict):
-- ridge: top horizontal seam where two upward-sloping planes meet
+- ridge: top horizontal seam where two upward-sloping planes meet (highest line on the roof)
 - hip: sloped seam from a ridge end down to an outer corner (external angle)
 - valley: sloped seam where two planes meet at an internal angle (water flows down it)
-- eave: lower horizontal edge of a roof plane (where gutters sit)
+- eave: lower horizontal edge of a roof plane (where gutters sit) — should form the closed outer perimeter
 - rake: sloped outer edge of a gable end
 
-Rules:
-- ALWAYS include the full eave perimeter of the target roof first (4+ eave lines for any house).
-- Trace EVERY visible roof edge of the target. Do not invent lines without visual evidence.
-- Lines must be straight segments with crisp endpoints that snap to actual roof corners.
-- Use whole-pixel integers.
-- Return 8-40 lines for a typical residential roof.
-- No duplicates, no overlapping segments.`
+Process (follow in order):
+1. Identify the single target roof centered in the image. Mentally outline its full perimeter.
+2. Trace the eave perimeter as a closed loop of 4-12 eave segments. Every endpoint must snap to a real outer corner.
+3. Add ridges along the highest seams.
+4. Add hips from ridge ends down to outer eave corners.
+5. Add valleys only where you can see the dark V-shaped seam.
+6. Add rakes only along visible gable-end slopes.
+
+Hard rules:
+- Lines must be straight segments with whole-pixel integer endpoints.
+- No duplicates, no overlapping segments, no zero-length lines.
+- Return 6-30 lines for a typical residential roof. Quality over quantity.
+- If you are uncertain about a segment, set confidence below 0.6 — better to be honest than to invent geometry.`
 
 function normalizeDetectedLines(lines: DetectedLine[]): DetectedLine[] {
   if (lines.length === 0) return lines
@@ -162,25 +173,22 @@ function coverageFraction(lines: DetectedLine[]): number {
 }
 
 async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
-  // Try flash first for speed.
-  let lines: DetectedLine[] = []
-  try {
-    lines = await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
-  } catch (err) {
-    console.warn('flash model failed, falling back to pro', err instanceof Error ? err.message : err)
-    return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
-  }
-  // If flash mis-targeted (tiny bounding box), retry with pro for better visual reasoning.
-  const coverage = coverageFraction(lines)
-  if (coverage < 0.05 || lines.length < 6) {
-    console.warn(`flash returned poor coverage (${(coverage * 100).toFixed(1)}%, ${lines.length} lines) — retrying with pro`)
-    try {
-      return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
-    } catch (err) {
-      console.warn('pro retry failed, keeping flash result', err instanceof Error ? err.message : err)
-    }
-  }
-  return lines
+  // Pro-only: flash hallucinates roof geometry across neighboring parcels.
+  // The latency cost (~30s vs ~10s) is worth it for usable output.
+  return await callGemini('google/gemini-2.5-pro', imageBase64, 90_000)
+}
+
+// Reject any line whose endpoints both fall in the outer 8% margin —
+// those are almost always neighboring houses bleeding into the crop.
+function filterToTargetRoof(lines: DetectedLine[]): DetectedLine[] {
+  const margin = 0.08
+  const minX = DETECTION_IMG_W * margin
+  const maxX = DETECTION_IMG_W * (1 - margin)
+  const minY = DETECTION_IMG_H * margin
+  const maxY = DETECTION_IMG_H * (1 - margin)
+  const inFrame = (p: [number, number]) =>
+    p[0] >= minX && p[0] <= maxX && p[1] >= minY && p[1] <= maxY
+  return lines.filter((l) => inFrame(l.p1) || inFrame(l.p2))
 }
 
 Deno.serve(async (req) => {
@@ -232,7 +240,9 @@ Deno.serve(async (req) => {
     const imgBase64 = btoa(binary)
 
     // 2. Detect lines via AI
-    const detected = normalizeDetectedLines(await detectLines(imgBase64))
+    const rawDetected = normalizeDetectedLines(await detectLines(imgBase64))
+    const detected = filterToTargetRoof(rawDetected)
+    console.log(`Detection: ${rawDetected.length} raw → ${detected.length} after target-roof filter`)
 
     // 3. Compute lengths (meters/pixel * 3.28084 ft/m)
     const mpp = metersPerPixel(resolvedLat, ZOOM) / STATIC_SCALE
