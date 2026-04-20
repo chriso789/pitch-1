@@ -64,6 +64,7 @@ const Privacy = React.lazy(() => import("@/pages/legal/Privacy"));
 const Terms = React.lazy(() => import("@/pages/legal/Terms"));
 const Security = React.lazy(() => import("@/pages/legal/Security"));
 const HomeownerProtectedRoute = React.lazy(() => import("@/components/auth/HomeownerProtectedRoute").then(m => ({ default: m.HomeownerProtectedRoute })));
+const Unsubscribe = React.lazy(() => import("@/pages/Unsubscribe"));
 
 // Route-level loading fallback
 const PageLoader = () => (
@@ -188,6 +189,7 @@ const AppContent = () => {
         <Route path="/proposal/:token" element={<Suspense fallback={<PageLoader />}><PublicProposalView /></Suspense>} />
         <Route path="/v/:token" element={<Suspense fallback={<PageLoader />}><PublicDocumentView /></Suspense>} />
         <Route path="/pay/:token" element={<Suspense fallback={<PageLoader />}><ZellePaymentPage /></Suspense>} />
+        <Route path="/unsubscribe" element={<Suspense fallback={<PageLoader />}><Unsubscribe /></Suspense>} />
 
         {/* All other paths → protected app routes */}
         <Route path="/*" element={<ProtectedRoutes />} />
