@@ -116,50 +116,26 @@ export function PortalAuthentication() {
 
     setIsLoading(true);
     try {
-      // Check if email exists in contacts
-      const { data: contact, error: contactError } = await supabase
-        .from("contacts")
-        .select("id, first_name, tenant_id")
-        .eq("email", homeownerEmail.trim().toLowerCase())
-        .single();
+      // Request a magic link via secure edge function. The function performs
+      // the contact lookup server-side using the service role and only emails
+      // the link if a matching contact exists. We never reveal whether the
+      // email is on file, and we never create a session client-side.
+      const { error: fnError } = await supabase.functions.invoke(
+        "homeowner-magic-link",
+        {
+          body: { email: homeownerEmail.trim().toLowerCase() },
+        }
+      );
 
-      if (contactError || !contact) {
-        throw new Error("No project found for this email address");
-      }
+      if (fnError) throw fnError;
 
-      // Generate magic link token
-      const token = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24 hours
+      // Always show "email sent" — even if no match — to prevent enumeration
+      setEmailSent(true);
 
-      // Create homeowner session
-      const { error: sessionError } = await supabase
-        .from("homeowner_portal_sessions")
-        .insert({
-          tenant_id: contact.tenant_id,
-          contact_id: contact.id,
-          token,
-          email: homeownerEmail.trim().toLowerCase(),
-          expires_at: expiresAt
-        });
-
-      if (sessionError) throw sessionError;
-
-      // Store session immediately and navigate
-      localStorage.setItem("homeowner_session", JSON.stringify({
-        token,
-        contactId: contact.id,
-        tenantId: contact.tenant_id,
-        email: homeownerEmail.trim().toLowerCase(),
-        expiresAt
-      }));
-      
       toast({
-        title: "Welcome!",
-        description: `Logged in as ${contact.first_name || "Homeowner"}`
+        title: "Check your email",
+        description: "If a project matches that email, we just sent you a secure sign-in link.",
       });
-
-      navigate("/homeowner");
-
     } catch (error: any) {
       toast({
         title: "Login Failed",
