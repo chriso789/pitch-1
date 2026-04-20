@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2, MapPin, Settings2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Play, Wand2, MapPin, Settings2, ArrowUpDown } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
@@ -196,7 +196,7 @@ export function VendorVerificationDashboard() {
       if (missingReportIds.length > 0) {
         const { data: measByVendor } = await supabase
           .from('roof_measurements')
-          .select('vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .select('id, vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
           .in('vendor_report_id', missingReportIds)
           .order('created_at', { ascending: false });
 
@@ -234,12 +234,15 @@ export function VendorVerificationDashboard() {
         ai_diagram_svg: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.vector_diagram_svg ?? null : null,
         ai_linear_features: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.linear_features_wkt ?? null : null,
         ai_perimeter_wkt: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.perimeter_wkt ?? null : null,
+        effective_ai_measurement_id:
+          (s as any).ai_measurement_id ||
+          (s.vendor_report_id ? measurementMap[s.vendor_report_id]?.id ?? null : null),
         ai_coordinates: s.vendor_report_id && measurementMap[s.vendor_report_id]?.target_lat != null && measurementMap[s.vendor_report_id]?.target_lng != null
           ? {
               lat: measurementMap[s.vendor_report_id]!.target_lat!,
               lng: measurementMap[s.vendor_report_id]!.target_lng!,
             }
-          : (s as any).lat && (s as any).lng ? { lat: (s as any).lat, lng: (s as any).lng } : null,
+          : (s as any).lat != null && (s as any).lng != null ? { lat: (s as any).lat, lng: (s as any).lng } : null,
         ai_pitch: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.predominant_pitch ?? null : null,
         ai_total_area: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.total_area_adjusted_sqft ?? null : null,
       })) as unknown as VerificationSession[];
@@ -292,6 +295,21 @@ export function VendorVerificationDashboard() {
       toast.success('AI measurement batch finished in the background');
     }
   }, [isRunningAllAi, sessions]);
+
+  const sortedSessions = useMemo(() => {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+    return [...sessions].sort((a, b) => {
+      const addressCompare = collator.compare(a.property_address?.trim() || '', b.property_address?.trim() || '');
+      if (addressCompare !== 0) {
+        return addressSortDirection === 'asc' ? addressCompare : -addressCompare;
+      }
+
+      return addressSortDirection === 'asc'
+        ? a.id.localeCompare(b.id)
+        : b.id.localeCompare(a.id);
+    });
+  }, [sessions, addressSortDirection]);
 
 
 
