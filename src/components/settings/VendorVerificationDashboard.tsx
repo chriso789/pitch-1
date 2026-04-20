@@ -1654,6 +1654,27 @@ export function VendorVerificationDashboard() {
         </CardContent>
       </Card>
     </div>
+
+    <PinConfirmDialog
+      open={!!pinPrompt}
+      onClose={() => setPinPrompt(null)}
+      initialLat={pinPrompt?.lat ?? 0}
+      initialLng={pinPrompt?.lng ?? 0}
+      address={pinPrompt?.address ?? undefined}
+      confirming={!!pinPrompt && runningOneId === pinPrompt.sessionId}
+      onConfirm={async (lat, lng) => {
+        if (!pinPrompt) return;
+        const sessionId = pinPrompt.sessionId;
+        // Detect whether the operator actually nudged the pin. If they used
+        // the original cached coords, skip the override path entirely.
+        const moved =
+          Math.abs(lat - pinPrompt.lat) > 1e-7 ||
+          Math.abs(lng - pinPrompt.lng) > 1e-7;
+        setPinPrompt(null);
+        await handleRunOne(sessionId, moved ? { lat, lng } : undefined);
+      }}
+    />
+  </>
   );
 }
 
