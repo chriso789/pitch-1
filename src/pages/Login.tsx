@@ -623,23 +623,14 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             )}
 
 
-            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'signup' | 'forgot')} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="login">
-                  <Shield className="h-4 w-4 mr-2" />
-                  Sign In
-                </TabsTrigger>
-                <TabsTrigger value="signup">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Sign Up
-                </TabsTrigger>
-                <TabsTrigger value="forgot">
-                  <KeyRound className="h-4 w-4 mr-2" />
-                  Reset
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="login" className="space-y-4">
+            <Tabs value={activeTab} onValueChange={(value) => {
+              if (value === 'signup') {
+                navigate('/demo-request');
+                return;
+              }
+              setActiveTab(value as 'login' | 'signup' | 'forgot');
+            }} className="space-y-4">
+              <TabsContent value="login" className="space-y-4 mt-0">
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-email">Email</Label>
