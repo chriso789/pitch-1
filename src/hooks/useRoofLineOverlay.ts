@@ -106,8 +106,8 @@ export function useRoofLineOverlay(measurementId?: string | null) {
         center_lat: overlay.center_lat,
         center_lng: overlay.center_lng,
         zoom: overlay.zoom,
-        lines: updatedLines,
-        totals_ft,
+        lines: updatedLines as unknown as never,
+        totals_ft: totals_ft as unknown as never,
         model_version: overlay.model_version,
       }])
       .select()
