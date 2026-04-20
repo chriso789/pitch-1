@@ -1192,3 +1192,6 @@ verify_jwt = false
 
 [functions.handle-email-suppression]
 verify_jwt = false
+
+[functions.satellite-tile]
+verify_jwt = false
