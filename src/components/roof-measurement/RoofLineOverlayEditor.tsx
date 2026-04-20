@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Loader2, Sparkles, RefreshCw } from 'lucide-react'
 import { useRoofLineOverlay, type RoofLineType, type RoofLine } from '@/hooks/useRoofLineOverlay'
+import { PinConfirmDialog } from '@/components/settings/PinConfirmDialog'
 
 const LINE_COLORS: Record<RoofLineType, string> = {
   ridge: 'hsl(140 70% 50%)',   // green
@@ -27,6 +28,17 @@ interface Props {
 export function RoofLineOverlayEditor({ measurementId, tenantId, lat, lng, refreshKey }: Props) {
   const { overlay, loading, generating, generate, reclassify } = useRoofLineOverlay(measurementId, refreshKey)
   const [selectedLine, setSelectedLine] = useState<RoofLine | null>(null)
+  const [pinDialogOpen, setPinDialogOpen] = useState(false)
+
+  const requestGenerate = () => {
+    if (generating) return
+    setPinDialogOpen(true)
+  }
+
+  const handleConfirmGenerate = async (confirmedLat: number, confirmedLng: number) => {
+    setPinDialogOpen(false)
+    await generate({ tenant_id: tenantId, lat: confirmedLat, lng: confirmedLng })
+  }
 
   if (loading) {
     return (
@@ -50,7 +62,7 @@ export function RoofLineOverlayEditor({ measurementId, tenantId, lat, lng, refre
             No overlay yet. Generate one from the Mapbox aerial.
           </p>
           <Button
-            onClick={() => generate({ tenant_id: tenantId, lat, lng })}
+            onClick={requestGenerate}
             disabled={generating}
           >
             {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Sparkles className="h-4 w-4 mr-2" />}
@@ -80,7 +92,7 @@ export function RoofLineOverlayEditor({ measurementId, tenantId, lat, lng, refre
         <Button
           size="sm"
           variant="outline"
-          onClick={() => generate({ tenant_id: tenantId, lat, lng })}
+          onClick={requestGenerate}
           disabled={generating}
         >
           {generating ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <RefreshCw className="h-4 w-4 mr-2" />}
@@ -170,6 +182,14 @@ export function RoofLineOverlayEditor({ measurementId, tenantId, lat, lng, refre
           ))}
         </div>
       </CardContent>
+      <PinConfirmDialog
+        open={pinDialogOpen}
+        onClose={() => setPinDialogOpen(false)}
+        initialLat={overlay?.center_lat ?? lat}
+        initialLng={overlay?.center_lng ?? lng}
+        onConfirm={handleConfirmGenerate}
+        confirming={generating}
+      />
     </Card>
   )
 }
