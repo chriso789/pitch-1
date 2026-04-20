@@ -4663,7 +4663,7 @@ Deno.serve(async (req) => {
                       address: session.property_address || '',
                       training_session_id: session.id,
                       engine: 'skeleton',
-                      disableVisionFallback: true,
+                      disableVisionFallback: false,
                     }),
                   });
                   const pullData = await pullResp.json();
@@ -4767,8 +4767,75 @@ Deno.serve(async (req) => {
             }
 
             // Final check — still no AI data?
-            const finalHasAi = aiTotals && Object.keys(aiTotals).length > 0 && !!linkedMeasurementId &&
+            let finalHasAi = aiTotals && Object.keys(aiTotals).length > 0 && !!linkedMeasurementId &&
               (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
+
+            // ============= VENDOR-SEED LAST RESORT =============
+            // If both skeleton and vision engines failed but we DO have a parsed vendor
+            // report, seed an AI measurement row from the vendor totals so the session
+            // is not stuck with zero comparable data. Marked with ai_model_version
+            // 'vendor-seed-v1' so analytics can exclude it from accuracy scoring.
+            if (!finalHasAi && session.vendor_report_id) {
+              try {
+                const { data: vr } = await adminSupabase
+                  .from('roof_vendor_reports')
+                  .select('parsed')
+                  .eq('id', session.vendor_report_id)
+                  .maybeSingle();
+                const p: any = vr?.parsed || null;
+                if (p && (p.ridges_ft || p.hips_ft || p.eaves_ft || p.total_area_sqft)) {
+                  aiTotals = {
+                    ridge: Number(p.ridges_ft) || 0,
+                    hip: Number(p.hips_ft) || 0,
+                    valley: Number(p.valleys_ft) || 0,
+                    eave: Number(p.eaves_ft) || 0,
+                    rake: Number(p.rakes_ft) || 0,
+                  };
+                  const seedRow: Record<string, any> = {
+                    tenant_id: tenantId,
+                    target_lat: sessionLat,
+                    target_lng: sessionLng,
+                    gps_coordinates: { lat: sessionLat, lng: sessionLng },
+                    property_address: session.property_address || null,
+                    vendor_report_id: session.vendor_report_id,
+                    verification_status: 'pending',
+                    detection_timestamp: new Date().toISOString(),
+                    ai_model_version: 'vendor-seed-v1',
+                    total_ridge_length: aiTotals.ridge,
+                    total_hip_length: aiTotals.hip,
+                    total_valley_length: aiTotals.valley,
+                    total_eave_length: aiTotals.eave,
+                    total_rake_length: aiTotals.rake,
+                    total_area_flat_sqft: Number(p.total_area_sqft) || null,
+                    predominant_pitch: p.predominant_pitch || null,
+                    ai_detection_data: { source: 'vendor_seed', reason: lastErrorLog || 'engines_failed' },
+                  };
+                  const { data: seeded, error: seedErr } = await adminSupabase
+                    .from('roof_measurements')
+                    .insert(seedRow)
+                    .select('id')
+                    .single();
+                  if (!seedErr && seeded?.id) {
+                    await adminSupabase
+                      .from('roof_training_sessions')
+                      .update({
+                        ai_totals: aiTotals,
+                        ai_measurement_id: seeded.id,
+                        original_ai_measurement_id: seeded.id,
+                        verification_notes: `Seeded from vendor (engines failed: ${lastErrorLog || 'unknown'})`,
+                      })
+                      .eq('id', session.id);
+                    linkedMeasurementId = seeded.id;
+                    finalHasAi = true;
+                    console.log(`🌱 Vendor-seeded AI measurement ${seeded.id} for session ${session.id}`);
+                  } else {
+                    console.error(`Vendor seed insert failed: ${seedErr?.message}`);
+                  }
+                }
+              } catch (seedEx: any) {
+                console.error(`Vendor seed exception: ${seedEx?.message || seedEx}`);
+              }
+            }
 
             if (!finalHasAi) {
               const reason = lastErrorLog
