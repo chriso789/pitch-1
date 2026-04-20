@@ -21,10 +21,11 @@ interface Props {
   tenantId: string
   lat: number
   lng: number
+  refreshKey?: number
 }
 
-export function RoofLineOverlayEditor({ measurementId, tenantId, lat, lng }: Props) {
-  const { overlay, loading, generating, generate, reclassify } = useRoofLineOverlay(measurementId)
+export function RoofLineOverlayEditor({ measurementId, tenantId, lat, lng, refreshKey }: Props) {
+  const { overlay, loading, generating, generate, reclassify } = useRoofLineOverlay(measurementId, refreshKey)
   const [selectedLine, setSelectedLine] = useState<RoofLine | null>(null)
 
   if (loading) {
