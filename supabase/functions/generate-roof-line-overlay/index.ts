@@ -45,7 +45,7 @@ function buildMapboxUrl(lat: number, lng: number): string {
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 }
 
-const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image of a single residential roof.
+const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image.
 
 Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 {
@@ -56,8 +56,11 @@ Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 
 Coordinate system: pixel coordinates in a ${DETECTION_IMG_W}x${DETECTION_IMG_H} image, origin top-left, x right, y down.
 
-The target property is the MAIN roof nearest the image center at [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
-If multiple buildings are visible, annotate only that centered home and ignore neighboring houses, detached structures, pool cages, and shadows.
+CRITICAL TARGETING:
+- The TARGET HOUSE is the LARGEST building roof whose footprint covers or surrounds the image center [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
+- The target roof typically occupies 25-60% of the image area. If you find yourself annotating a tiny shape (<5% of image), you have picked a dormer/shed/neighbor by mistake — STOP and re-identify the largest centered roof.
+- First, mentally outline the full perimeter (eaves) of the target roof. Then trace internal lines (ridges/hips/valleys).
+- Ignore neighboring houses, pools, pool cages, sheds, driveways, vegetation, and shadows.
 
 Definitions (be strict):
 - ridge: top horizontal seam where two upward-sloping planes meet
@@ -67,7 +70,8 @@ Definitions (be strict):
 - rake: sloped outer edge of a gable end
 
 Rules:
-- Trace EVERY visible roof edge. Do not invent lines that are not visually evidenced.
+- ALWAYS include the full eave perimeter of the target roof first (4+ eave lines for any house).
+- Trace EVERY visible roof edge of the target. Do not invent lines without visual evidence.
 - Lines must be straight segments with crisp endpoints that snap to actual roof corners.
 - Use whole-pixel integers.
 - Return 8-40 lines for a typical residential roof.
