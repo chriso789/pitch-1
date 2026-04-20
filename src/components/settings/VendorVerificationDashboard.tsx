@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Textarea } from '@/components/ui/textarea';
-import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Download, Play, Wand2, MapPin, Settings2 } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertTriangle, ChevronDown, ChevronRight, Edit2, Save, Clock, Zap, FileWarning, Play, Wand2, MapPin, Settings2, ArrowUpDown } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { toast } from 'sonner';
 import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRenderer';
@@ -28,6 +28,7 @@ interface VendorReportMeta {
 }
 
 interface AiMeasurementPreview {
+  id: string;
   vendor_report_id: string | null;
   vector_diagram_svg: string | null;
   linear_features_wkt: Array<Record<string, any>> | null;
@@ -63,6 +64,7 @@ interface VerificationSession {
   ai_diagram_svg?: string | null;
   ai_linear_features?: Array<Record<string, any>> | null;
   ai_perimeter_wkt?: string | null;
+  effective_ai_measurement_id?: string | null;
   ai_coordinates?: { lat: number; lng: number } | null;
   ai_pitch?: string | null;
   ai_total_area?: number | null;
@@ -83,6 +85,7 @@ export function VendorVerificationDashboard() {
   const [isBackfillingAddresses, setIsBackfillingAddresses] = useState(false);
   const [isRunningAllAi, setIsRunningAllAi] = useState(false);
   const [overlayRefreshNonce, setOverlayRefreshNonce] = useState(0);
+  const [addressSortDirection, setAddressSortDirection] = useState<'asc' | 'desc'>('asc');
   const [runAllAiProgress, setRunAllAiProgress] = useState<{
     backfilled: number;
     processed: number;
@@ -193,7 +196,7 @@ export function VendorVerificationDashboard() {
       if (missingReportIds.length > 0) {
         const { data: measByVendor } = await supabase
           .from('roof_measurements')
-          .select('vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
+          .select('id, vendor_report_id, vector_diagram_svg, linear_features_wkt, perimeter_wkt, target_lat, target_lng, predominant_pitch, total_area_adjusted_sqft, created_at')
           .in('vendor_report_id', missingReportIds)
           .order('created_at', { ascending: false });
 
@@ -231,12 +234,15 @@ export function VendorVerificationDashboard() {
         ai_diagram_svg: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.vector_diagram_svg ?? null : null,
         ai_linear_features: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.linear_features_wkt ?? null : null,
         ai_perimeter_wkt: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.perimeter_wkt ?? null : null,
+        effective_ai_measurement_id:
+          (s as any).ai_measurement_id ||
+          (s.vendor_report_id ? measurementMap[s.vendor_report_id]?.id ?? null : null),
         ai_coordinates: s.vendor_report_id && measurementMap[s.vendor_report_id]?.target_lat != null && measurementMap[s.vendor_report_id]?.target_lng != null
           ? {
               lat: measurementMap[s.vendor_report_id]!.target_lat!,
               lng: measurementMap[s.vendor_report_id]!.target_lng!,
             }
-          : (s as any).lat && (s as any).lng ? { lat: (s as any).lat, lng: (s as any).lng } : null,
+          : (s as any).lat != null && (s as any).lng != null ? { lat: (s as any).lat, lng: (s as any).lng } : null,
         ai_pitch: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.predominant_pitch ?? null : null,
         ai_total_area: s.vendor_report_id ? measurementMap[s.vendor_report_id]?.total_area_adjusted_sqft ?? null : null,
       })) as unknown as VerificationSession[];
@@ -289,6 +295,21 @@ export function VendorVerificationDashboard() {
       toast.success('AI measurement batch finished in the background');
     }
   }, [isRunningAllAi, sessions]);
+
+  const sortedSessions = useMemo(() => {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+
+    return [...sessions].sort((a, b) => {
+      const addressCompare = collator.compare(a.property_address?.trim() || '', b.property_address?.trim() || '');
+      if (addressCompare !== 0) {
+        return addressSortDirection === 'asc' ? addressCompare : -addressCompare;
+      }
+
+      return addressSortDirection === 'asc'
+        ? a.id.localeCompare(b.id)
+        : b.id.localeCompare(a.id);
+    });
+  }, [sessions, addressSortDirection]);
 
 
 
@@ -1259,7 +1280,18 @@ export function VendorVerificationDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8 whitespace-nowrap"></TableHead>
-                  <TableHead className="whitespace-nowrap">Address</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-0 font-medium"
+                      onClick={() => setAddressSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}
+                    >
+                      Address
+                      <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                  </TableHead>
                   <TableHead className="whitespace-nowrap">Provider</TableHead>
                   <TableHead className="whitespace-nowrap">Source</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
@@ -1272,7 +1304,7 @@ export function VendorVerificationDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sessions.map(session => {
+                {sortedSessions.map(session => {
                   const fb = session.verification_feature_breakdown;
                   const isExpanded = expandedRow === session.id;
                   const hasAiDrawing = !!(
@@ -1478,13 +1510,13 @@ export function VendorVerificationDashboard() {
                                       </div>
                                     )}
 
-                                    {session.ai_measurement_id && (session as any).lat != null && (session as any).lng != null && activeCompanyId && (
+                                    {session.effective_ai_measurement_id && (session.ai_coordinates || ((session as any).lat != null && (session as any).lng != null)) && activeCompanyId && (
                                       <div className="pt-2">
                                         <RoofLineOverlayEditor
-                                          measurementId={session.ai_measurement_id}
+                                          measurementId={session.effective_ai_measurement_id}
                                           tenantId={activeCompanyId}
-                                          lat={Number((session as any).lat)}
-                                          lng={Number((session as any).lng)}
+                                          lat={Number(session.ai_coordinates?.lat ?? (session as any).lat)}
+                                          lng={Number(session.ai_coordinates?.lng ?? (session as any).lng)}
                                           refreshKey={overlayRefreshNonce}
                                         />
                                       </div>
