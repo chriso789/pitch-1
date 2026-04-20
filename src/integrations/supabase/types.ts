@@ -41938,6 +41938,20 @@ export type Database = {
           }
         | { Args: { schema_name: string; table_name: string }; Returns: string }
         | { Args: { table_name: string }; Returns: string }
+      emit_domain_event: {
+        Args: {
+          p_actor_user_id?: string
+          p_company_id: string
+          p_dedupe_key?: string
+          p_entity_id: string
+          p_entity_type: string
+          p_event_type: string
+          p_parent_entity_id?: string
+          p_parent_entity_type?: string
+          p_payload?: Json
+        }
+        Returns: string
+      }
       enablelongtransactions: { Args: never; Returns: string }
       equals: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
       est_bind_template: {
