@@ -1460,13 +1460,13 @@ export function VendorVerificationDashboard() {
                                       </div>
                                     )}
 
-                                    {session.ai_measurement_id && session.lat != null && session.lng != null && activeCompanyId && (
+                                    {session.ai_measurement_id && (session as any).lat != null && (session as any).lng != null && activeCompanyId && (
                                       <div className="pt-2">
                                         <RoofLineOverlayEditor
                                           measurementId={session.ai_measurement_id}
                                           tenantId={activeCompanyId}
-                                          lat={Number(session.lat)}
-                                          lng={Number(session.lng)}
+                                          lat={Number((session as any).lat)}
+                                          lng={Number((session as any).lng)}
                                         />
                                       </div>
                                     )}
