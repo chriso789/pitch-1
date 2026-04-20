@@ -376,6 +376,8 @@ const AutomationDashboard = () => {
           </ScrollArea>
         </TabsContent>
       </Tabs>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
