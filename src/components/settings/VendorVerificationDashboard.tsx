@@ -1420,6 +1420,17 @@ export function VendorVerificationDashboard() {
                                         No AI roof drawing is attached to this session yet.
                                       </div>
                                     )}
+
+                                    {session.ai_measurement_id && session.ai_coordinates && activeCompanyId && (
+                                      <div className="pt-2">
+                                        <RoofLineOverlayEditor
+                                          measurementId={session.ai_measurement_id}
+                                          tenantId={activeCompanyId}
+                                          lat={session.ai_coordinates.lat}
+                                          lng={session.ai_coordinates.lng}
+                                        />
+                                      </div>
+                                    )}
                                   </div>
 
                                   <VendorEvidencePanel session={session} />
