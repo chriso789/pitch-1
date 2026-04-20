@@ -204,8 +204,8 @@ export const SubscriptionManagement = () => {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-3xl font-bold">
-                {currentConfig.price ? `$${currentConfig.price}` : 'Custom'}
-                {currentConfig.price && <span className="text-sm font-normal text-muted-foreground">/month</span>}
+                ${currentConfig.price}
+                <span className="text-sm font-normal text-muted-foreground">{currentConfig.priceSuffix}</span>
               </p>
             </div>
             <Button variant="outline" className="gap-2">
