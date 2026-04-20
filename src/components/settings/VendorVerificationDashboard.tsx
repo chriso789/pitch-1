@@ -15,6 +15,7 @@ import { RoofDiagramRenderer } from '@/components/measurements/RoofDiagramRender
 import { VendorDiagramParsedCanvas, type ParsedDiagram } from './VendorDiagramParsedCanvas';
 import { cleanAiDiagram } from './lib/cleanAiDiagram';
 import { CoverageGapPanel } from './CoverageGapPanel';
+import { RoofLineOverlayEditor } from '@/components/roof-measurement/RoofLineOverlayEditor';
 
 interface VendorReportMeta {
   provider: string | null;
