@@ -21,10 +21,10 @@ export const BRAND = {
   },
   
   // Trademark notice
-  trademarkNotice: `PITCH™ and PITCH CRM™ are trademarks of PITCH CRM, Inc. This software is not affiliated with, endorsed by, or connected to any other product or service with a similar name.`,
+  trademarkNotice: `Pitch Construction™ and Pitch Construction CRM™ are trademarks of Pitch Construction CRM, Inc. This software is not affiliated with, endorsed by, or connected to any other product or service with a similar name.`,
   
   // Short trademark notice for footers
-  trademarkShort: `PITCH™ and PITCH CRM™ are trademarks of PITCH CRM, Inc.`,
+  trademarkShort: `Pitch Construction™ and Pitch Construction CRM™ are trademarks of Pitch Construction CRM, Inc.`,
   
   // Taglines
   tagline: 'The AI-Powered CRM for Construction Businesses',
