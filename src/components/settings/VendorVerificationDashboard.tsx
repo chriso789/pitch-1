@@ -1280,7 +1280,18 @@ export function VendorVerificationDashboard() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-8 whitespace-nowrap"></TableHead>
-                  <TableHead className="whitespace-nowrap">Address</TableHead>
+                  <TableHead className="whitespace-nowrap">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto px-0 font-medium"
+                      onClick={() => setAddressSortDirection((current) => (current === 'asc' ? 'desc' : 'asc'))}
+                    >
+                      Address
+                      <ArrowUpDown className="ml-2 h-3.5 w-3.5" />
+                    </Button>
+                  </TableHead>
                   <TableHead className="whitespace-nowrap">Provider</TableHead>
                   <TableHead className="whitespace-nowrap">Source</TableHead>
                   <TableHead className="whitespace-nowrap">Status</TableHead>
@@ -1293,7 +1304,7 @@ export function VendorVerificationDashboard() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sessions.map(session => {
+                {sortedSessions.map(session => {
                   const fb = session.verification_feature_breakdown;
                   const isExpanded = expandedRow === session.id;
                   const hasAiDrawing = !!(
@@ -1499,13 +1510,13 @@ export function VendorVerificationDashboard() {
                                       </div>
                                     )}
 
-                                    {session.ai_measurement_id && (session as any).lat != null && (session as any).lng != null && activeCompanyId && (
+                                    {session.effective_ai_measurement_id && (session.ai_coordinates || ((session as any).lat != null && (session as any).lng != null)) && activeCompanyId && (
                                       <div className="pt-2">
                                         <RoofLineOverlayEditor
-                                          measurementId={session.ai_measurement_id}
+                                          measurementId={session.effective_ai_measurement_id}
                                           tenantId={activeCompanyId}
-                                          lat={Number((session as any).lat)}
-                                          lng={Number((session as any).lng)}
+                                          lat={Number(session.ai_coordinates?.lat ?? (session as any).lat)}
+                                          lng={Number(session.ai_coordinates?.lng ?? (session as any).lng)}
                                           refreshKey={overlayRefreshNonce}
                                         />
                                       </div>
