@@ -48,7 +48,7 @@ function buildMapboxUrl(lat: number, lng: number): string {
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 }
 
-const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image.
+const DETECT_PROMPT = `You are an expert roof-line annotator looking at a tightly-cropped aerial satellite image of a SINGLE residential property.
 
 Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 {
@@ -59,26 +59,34 @@ Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
 
 Coordinate system: pixel coordinates in a ${DETECTION_IMG_W}x${DETECTION_IMG_H} image, origin top-left, x right, y down.
 
-CRITICAL TARGETING:
-- The TARGET HOUSE is the LARGEST building roof whose footprint covers or surrounds the image center [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
-- The target roof typically occupies 25-60% of the image area. If you find yourself annotating a tiny shape (<5% of image), you have picked a dormer/shed/neighbor by mistake — STOP and re-identify the largest centered roof.
-- First, mentally outline the full perimeter (eaves) of the target roof. Then trace internal lines (ridges/hips/valleys).
-- Ignore neighboring houses, pools, pool cages, sheds, driveways, vegetation, and shadows.
+CRITICAL TARGETING — READ CAREFULLY:
+- The image has been cropped and zoomed so the TARGET HOUSE is the dominant roof in the frame.
+- Annotate ONLY the single roof whose footprint covers the image center [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
+- DO NOT annotate any neighboring houses, even if part of them is visible at the edge of the frame.
+- DO NOT draw a line unless BOTH endpoints sit on a visible roof edge of the TARGET house. If you can't see the edge clearly (tree, shadow, low contrast), OMIT the line entirely.
+- DO NOT connect endpoints across gaps, driveways, lawns, or pools. Every line must lie ON the roof surface.
+- If the target roof is unclear, return fewer lines (5-10) rather than guessing.
 
 Definitions (be strict):
-- ridge: top horizontal seam where two upward-sloping planes meet
+- ridge: top horizontal seam where two upward-sloping planes meet (highest line on the roof)
 - hip: sloped seam from a ridge end down to an outer corner (external angle)
 - valley: sloped seam where two planes meet at an internal angle (water flows down it)
-- eave: lower horizontal edge of a roof plane (where gutters sit)
+- eave: lower horizontal edge of a roof plane (where gutters sit) — should form the closed outer perimeter
 - rake: sloped outer edge of a gable end
 
-Rules:
-- ALWAYS include the full eave perimeter of the target roof first (4+ eave lines for any house).
-- Trace EVERY visible roof edge of the target. Do not invent lines without visual evidence.
-- Lines must be straight segments with crisp endpoints that snap to actual roof corners.
-- Use whole-pixel integers.
-- Return 8-40 lines for a typical residential roof.
-- No duplicates, no overlapping segments.`
+Process (follow in order):
+1. Identify the single target roof centered in the image. Mentally outline its full perimeter.
+2. Trace the eave perimeter as a closed loop of 4-12 eave segments. Every endpoint must snap to a real outer corner.
+3. Add ridges along the highest seams.
+4. Add hips from ridge ends down to outer eave corners.
+5. Add valleys only where you can see the dark V-shaped seam.
+6. Add rakes only along visible gable-end slopes.
+
+Hard rules:
+- Lines must be straight segments with whole-pixel integer endpoints.
+- No duplicates, no overlapping segments, no zero-length lines.
+- Return 6-30 lines for a typical residential roof. Quality over quantity.
+- If you are uncertain about a segment, set confidence below 0.6 — better to be honest than to invent geometry.`
 
 function normalizeDetectedLines(lines: DetectedLine[]): DetectedLine[] {
   if (lines.length === 0) return lines
