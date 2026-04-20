@@ -123,7 +123,12 @@ Deno.serve(async (req) => {
     const imgResp = await fetch(mapboxUrl)
     if (!imgResp.ok) throw new Error(`Mapbox fetch failed: ${imgResp.status}`)
     const imgBytes = new Uint8Array(await imgResp.arrayBuffer())
-    const imgBase64 = btoa(String.fromCharCode(...imgBytes))
+    let binary = ''
+    const chunkSize = 0x8000
+    for (let i = 0; i < imgBytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, imgBytes.subarray(i, i + chunkSize) as unknown as number[])
+    }
+    const imgBase64 = btoa(binary)
 
     // 2. Detect lines via AI
     const detected = await detectLines(imgBase64)
