@@ -1,5 +1,5 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
-import { corsHeaders, handleOptions, json, badRequest, serverError } from '../_shared/http.ts';
+import { handleOptions, json, badRequest, serverError } from '../_shared/http.ts';
+import { verifyAuthAndTenant } from '../_shared/auth-tenant.ts';
 
 Deno.serve(async (req) => {
   const optRes = handleOptions(req);
@@ -8,14 +8,11 @@ Deno.serve(async (req) => {
   if (req.method !== 'POST') return badRequest('Method not allowed');
 
   try {
-    const { tenant_id, days, group_by } = await req.json();
+    const { tenant_id: requested, days, group_by } = await req.json();
 
-    if (!tenant_id) return badRequest('tenant_id is required');
-
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    );
+    const auth = await verifyAuthAndTenant(req, requested);
+    if (auth.error) return auth.error;
+    const { tenantId: tenant_id, supabase } = auth;
 
     const since = new Date();
     since.setDate(since.getDate() - (days || 30));

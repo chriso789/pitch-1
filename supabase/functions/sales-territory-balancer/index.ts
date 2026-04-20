@@ -1,9 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { verifyAuthAndTenant, corsHeaders } from "../_shared/auth-tenant.ts";
 
 interface TerritoryRequest {
   action: "analyze_distribution" | "recommend_rebalance" | "execute_rebalance" | "forecast_capacity" | "identify_hotspots";
@@ -17,19 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const { action, tenant_id: requested, params = {} } = await req.json() as TerritoryRequest;
 
-    const { action, tenant_id, params = {} } = await req.json() as TerritoryRequest;
-
-    if (!tenant_id) {
-      return new Response(
-        JSON.stringify({ error: "tenant_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const auth = await verifyAuthAndTenant(req, requested);
+    if (auth.error) return auth.error;
+    const { tenantId: tenant_id, supabase } = auth;
 
     console.log(`[sales-territory-balancer] Action: ${action}, Tenant: ${tenant_id}`);
 
