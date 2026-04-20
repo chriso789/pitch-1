@@ -5,8 +5,17 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { ChevronDown, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { 
@@ -429,94 +438,79 @@ export const DemoRequestsPanel: React.FC = () => {
                           </div>
                         </TableCell>
                         <TableCell className="text-right">
-                          <div className="flex items-center justify-end gap-1">
-                            {/* Create Company Button - only show if not converted */}
-                            {!isConverted && (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => handleCreateCompany(request)}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Create Company
-                              </Button>
-                            )}
+                          <div className="flex items-center justify-end gap-2">
                             {isConverted && (
                               <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
                                 <CheckCircle className="h-3 w-3 mr-1" />
-                                Company Created
+                                Converted
                               </Badge>
                             )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => sendBookingInvite(request)}
-                              disabled={sendingInviteId === request.id}
-                              title="Email a video meeting booking link"
-                            >
-                              <Send className="h-4 w-4 mr-1" />
-                              {sendingInviteId === request.id ? 'Sending…' : 'Send Booking Link'}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => copyToClipboard(request.email, 'Email')}
-                            >
-                              <Copy className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => window.open(`mailto:${request.email}`, '_blank')}
-                            >
-                              <ExternalLink className="h-4 w-4" />
-                            </Button>
-                            <Dialog open={notesDialogOpen && selectedRequest?.id === request.id} onOpenChange={(open) => {
-                              setNotesDialogOpen(open);
-                              if (open) {
-                                setSelectedRequest(request);
-                                setNotes(request.notes || '');
-                              }
-                            }}>
-                              <DialogTrigger asChild>
-                                <Button variant="ghost" size="sm">
-                                  <MessageSquare className="h-4 w-4" />
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="outline" size="sm">
+                                  Actions
+                                  <ChevronDown className="h-4 w-4 ml-1" />
                                 </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>
-                                    Notes for {request.first_name} {request.last_name}
-                                  </DialogTitle>
-                                </DialogHeader>
-                                <div className="space-y-4">
-                                  <div className="text-sm text-muted-foreground">
-                                    {request.company_name} • {request.email}
-                                  </div>
-                                  {request.message && (
-                                    <div className="p-3 bg-muted rounded-lg">
-                                      <div className="text-xs font-medium mb-1">Original Message:</div>
-                                      <p className="text-sm">{request.message}</p>
-                                    </div>
-                                  )}
-                                  <Textarea
-                                    placeholder="Add follow-up notes..."
-                                    value={notes}
-                                    onChange={(e) => setNotes(e.target.value)}
-                                    rows={4}
-                                  />
-                                </div>
-                                <DialogFooter>
-                                  <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
-                                    Cancel
-                                  </Button>
-                                  <Button onClick={updateRequestNotes} disabled={updating}>
-                                    Save Notes
-                                  </Button>
-                                </DialogFooter>
-                              </DialogContent>
-                            </Dialog>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-56">
+                                <DropdownMenuLabel>Pipeline Actions</DropdownMenuLabel>
+                                {!isConverted && (
+                                  <DropdownMenuItem onClick={() => handleCreateCompany(request)}>
+                                    <Plus className="h-4 w-4 mr-2 text-green-600" />
+                                    Create Company
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => sendBookingInvite(request)}
+                                  disabled={sendingInviteId === request.id}
+                                >
+                                  <Send className="h-4 w-4 mr-2" />
+                                  {sendingInviteId === request.id ? 'Sending…' : 'Send Booking Link'}
+                                </DropdownMenuItem>
+
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>Move to Stage</DropdownMenuLabel>
+                                {Object.entries(STATUS_CONFIG)
+                                  .filter(([key]) => key !== status)
+                                  .map(([key, config]) => (
+                                    <DropdownMenuItem
+                                      key={key}
+                                      onClick={() => updateRequestStatus(request.id, key)}
+                                      disabled={updating}
+                                    >
+                                      <ArrowRight className="h-4 w-4 mr-2 text-muted-foreground" />
+                                      {config.label}
+                                    </DropdownMenuItem>
+                                  ))}
+
+                                <DropdownMenuSeparator />
+                                <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
+                                <DropdownMenuItem onClick={() => copyToClipboard(request.email, 'Email')}>
+                                  <Copy className="h-4 w-4 mr-2" />
+                                  Copy Email
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => window.open(`mailto:${request.email}`, '_blank')}>
+                                  <ExternalLink className="h-4 w-4 mr-2" />
+                                  Open in Mail
+                                </DropdownMenuItem>
+                                {request.phone && (
+                                  <DropdownMenuItem onClick={() => window.open(`tel:${request.phone}`, '_blank')}>
+                                    <Phone className="h-4 w-4 mr-2" />
+                                    Call {request.phone}
+                                  </DropdownMenuItem>
+                                )}
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSelectedRequest(request);
+                                    setNotes(request.notes || '');
+                                    setNotesDialogOpen(true);
+                                  }}
+                                >
+                                  <MessageSquare className="h-4 w-4 mr-2" />
+                                  {request.notes ? 'Edit Notes' : 'Add Notes'}
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -528,6 +522,42 @@ export const DemoRequestsPanel: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Notes Dialog */}
+      <Dialog open={notesDialogOpen} onOpenChange={setNotesDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Notes for {selectedRequest?.first_name} {selectedRequest?.last_name}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="text-sm text-muted-foreground">
+              {selectedRequest?.company_name} • {selectedRequest?.email}
+            </div>
+            {selectedRequest?.message && (
+              <div className="p-3 bg-muted rounded-lg">
+                <div className="text-xs font-medium mb-1">Original Message:</div>
+                <p className="text-sm">{selectedRequest.message}</p>
+              </div>
+            )}
+            <Textarea
+              placeholder="Add follow-up notes..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={4}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNotesDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={updateRequestNotes} disabled={updating}>
+              Save Notes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Create Company Dialog */}
       <CreateCompanyFromDemoDialog
