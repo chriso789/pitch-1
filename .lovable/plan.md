@@ -1,56 +1,75 @@
+# PITCH Automation Engine — Phase 1 Foundation Plan
 
+## Audit of existing schema (relevant tables)
 
-## Root Cause
+| Existing table | Role | Decision |
+|---|---|---|
+| `tenants` | Tenant root (uses `tenant_id` everywhere) | New tables use `company_id uuid` FK → `tenants(id)`. "company" = "tenant" in this codebase. |
+| `automations` (id, tenant_id, name, trigger_type, trigger_conditions, actions jsonb, is_active) | Old simple engine | Keep, untouched. |
+| `automation_rules` (id, tenant_id, trigger_event, trigger_conditions, template_id, recipient_rules, delay_minutes…) | Newer template-based rules | **Do NOT extend.** Naming collides. New table: `automation_rules_v2`. |
+| `automation_logs` (id, tenant_id, automation_id, trigger_data, execution_result, status, error_message) | Per-rule run log | Keep. New engine writes to `automation_runs` + `automation_action_runs` (richer, per-action). |
+| `smart_tag_definitions` | Already exists | **Inspect columns first.** Likely augment by adding `smart_tag_cache` only. If shape is incompatible, create `smart_tag_definitions_v2`. |
+| `communication_history` (tenant_id, contact_id, pipeline_entry_id, project_id, rep_id, communication_type, direction, content, sentiment, delivery_status…) | System of record for comms | **Keep.** Skip new `communications` table in Phase 1 to avoid double-write. Phase 2 trigger emits domain events from this table. |
+| `outbox_events` | Existing outbox pattern | Untouched in Phase 1. New `domain_events` is purpose-built for the automation engine + AI memory, not a replacement for the outbox. |
+| `workflow_tasks`, `workflow_phase_history`, `pipeline_automation_rules` | Different domains | Untouched. |
 
-**1. Why the toggles "don't work"** (Materials Section, Labor Section, Unit Pricing, Subtotals, Customer Name, Property Address)
+### Naming decisions
+- `company_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` everywhere (per user choice).
+- RLS uses existing `public.get_user_tenant_ids()` helper, treating company_id as tenant_id.
 
-The toggle handlers (`updateOption`) are wired correctly and DO mutate state. The reason nothing visibly changes in the customer-mode preview is that the customer preset in `PDFComponentOptions.ts` has `showUnifiedItems: true` and `hideSectionSubtotals: true`. The PDF template in `EstimatePDFTemplate.tsx` then short-circuits:
+---
 
-- Line 306: `!opts.showUnifiedItems && opts.showMaterialsSection && ...` — Materials Section only renders if unified view is OFF. Toggling "Materials Section" ON does nothing because unified view wins.
-- Line 378: same pattern for Labor Section.
-- Line 322 / 348 / 394 / 417: `showLineItemPricing` is honored — but only inside the materials/labor sections, which are hidden by unified view. So toggling "Unit Pricing" appears dead in customer mode.
-- Line 357 / 426: Subtotals require `showSubtotals && !hideSectionSubtotals`. The customer preset forces `hideSectionSubtotals: true`, so toggling "Subtotals" ON has no effect.
-- Customer Name / Property Address (line 223-230) ARE wired correctly and should toggle. Will verify, but the wrapper `(opts.showCustomerName || opts.showCustomerAddress)` correctly hides the whole block only when both are off — individual toggles work. If user reports them broken, it's likely the same visual confusion from the pricing toggles next to them, OR the cover page is showing customer info from a separate source. Will audit cover page rendering for the same flags.
+## Phase 1 — Tables to create (9 total)
 
-**2. Warranty default for O'Brien Contracting**
+1. **`event_types`** (lookup, no tenant scope, public read) — seeded with canonical event keys.
+2. **`domain_events`** — append-only event bus. Unique partial index on `(company_id, dedupe_key) WHERE dedupe_key IS NOT NULL`.
+3. **`automation_rules_v2`** — cooldown_seconds, max_runs_per_entity_per_day, trigger_scope, stop_processing_on_match, conditions/actions JSONB.
+4. **`automation_runs`** — one row per (rule × event). Unique on `(automation_rule_id, domain_event_id)`.
+5. **`automation_action_runs`** — per-action execution rows.
+6. **`smart_tag_cache`** — resolved tag values per entity, unique on `(company_id, entity_type, entity_id, tag_key)`.
+7. **`ai_context_profiles`** — per-scope (company/contact/lead/job) memory snapshot, unique on `(company_id, scope_type, scope_id)`.
+8. **`ai_context_refresh_queue`** — dirty queue for memory rebuilds (status, attempts, priority).
+9. **`automation_generated_records`** — links runs to rows they created (dedupe + traceability).
 
-`PDF_PRESETS.customer.showManufacturerWarranty = true` is hardcoded. There's no per-tenant override. Need to read tenant name (or tenant settings) and force it off for O'Brien Contracting.
+## Phase 1 — RLS pattern (every tenant-scoped table)
 
-## Plan
+- `SELECT/INSERT/UPDATE/DELETE` restricted to authenticated users where `company_id IN (SELECT public.get_user_tenant_ids())`.
+- `master` role: SELECT bypass via `public.has_role(auth.uid(),'master')` for cross-tenant audit. Writes still scoped to their own tenant.
+- Service role implicit bypass (workers run as service role).
+- `event_types`: public read, service-role write.
 
-### Fix 1 — Make toggles actually take effect (`EstimatePreviewPanel.tsx`)
+## Phase 1 — Indexes (per spec)
 
-When the user toggles **Materials Section, Labor Section, Unit Pricing, or Subtotals** in the controls panel, also flip the conflicting unified-view flags so the change is visible:
+- `domain_events(company_id, event_type, occurred_at desc)`
+- `domain_events(company_id, entity_type, entity_id, occurred_at desc)`
+- unique partial `domain_events(company_id, dedupe_key) WHERE dedupe_key IS NOT NULL`
+- `automation_rules_v2(company_id, trigger_event, is_active)`
+- unique `automation_runs(automation_rule_id, domain_event_id)`
+- unique `smart_tag_cache(company_id, entity_type, entity_id, tag_key)`
+- unique `ai_context_profiles(company_id, scope_type, scope_id)`
+- `ai_context_refresh_queue(company_id, status, priority)`
 
-- Toggle Materials/Labor Section ON → set `showUnifiedItems: false` (switch to traditional sectioned view).
-- Toggle Unit Pricing ON → set `showUnifiedItems: false` AND `showLineItemPricing: true` (unit prices live inside the materials/labor tables).
-- Toggle Subtotals ON → set `hideSectionSubtotals: false` AND `showSubtotals: true`.
-- Toggle Materials/Labor Section OFF when both off → restore `showUnifiedItems: true` so something still renders.
+## Phase 1 — `event_types` seed (canonical keys)
 
-Implement via a smarter `updateOption` wrapper (e.g. `updateOptionSmart`) used by these four toggles only. Other toggles keep the simple setter.
+`lead.created, lead.assigned, lead.status_changed, job.created, job.status_changed, job.complete, job.closed, estimate.sent, estimate.approved, estimate.rejected, contract.signed, permit.submitted, permit.approved, materials.ordered, materials.delivered, invoice.created, invoice.overdue, payment.received, inspection.scheduled, inspection.failed, inspection.passed, communication.inbound_sms, communication.outbound_sms, communication.inbound_email, communication.outbound_email, communication.call_completed, document.uploaded, task.overdue, note.added, ai.summary_requested`
 
-### Fix 2 — Audit Customer Name / Property Address
+---
 
-Confirm `EstimatePDFTemplate.tsx` lines 223-230 are the only place these render in the customer-facing PDF. Check `EstimatePDFDocument.tsx` cover page — if cover page renders customer info ignoring the flags, gate it on the same `opts.showCustomerName` / `opts.showCustomerAddress`.
+## Out of scope for Phase 1
 
-### Fix 3 — Tenant-level warranty default for O'Brien Contracting
+- Edge function workers (`automation-dispatcher`, `automation-worker`, `smart-tag-resolver`, `ai-context-builder`, `communication-ingest`).
+- Triggers on `jobs` / `pipeline_entries` / `estimates` / `communication_history` to emit events.
+- Materialized views and rollups (`job_comms_rollup` etc.).
+- Seeding any `automation_rules_v2` rows.
+- Touching `outbox_events` or migrating from old `automations` / `automation_rules`.
+- Any frontend UI.
 
-In `EstimatePreviewPanel.tsx` (or wherever `getDefaultOptions('customer')` is first applied), after loading `companyInfo.name`, detect O'Brien Contracting (case-insensitive match on `obrien` / `o'brien`) and override:
+## Open question before migration
 
-```ts
-showManufacturerWarranty: false
-```
+Inspect `public.smart_tag_definitions` columns to decide reuse vs v2 — done immediately before writing the migration.
 
-Apply on initial mount AND on `handleViewModeChange` / `handleResetToDefaults` so it persists across resets. Use the same matching pattern already established in `ContactBulkImport.tsx` (`obrien contracting`, `o'brien contracting`, etc.).
+## Next steps
 
-### Files to edit
-
-- `src/components/estimates/EstimatePreviewPanel.tsx` — smart toggle handler + tenant-aware warranty default.
-- `src/components/estimates/EstimatePDFDocument.tsx` — only if cover page bypasses customer name/address flags (verify first, edit if needed).
-
-### What I will NOT do
-
-- No schema changes.
-- No new settings UI for warranty default — it's a hardcoded rule for O'Brien per the request.
-- No changes to the PDF template rendering logic itself; the existing flag checks are correct, the controls just need to set the right combination of flags.
-
+1. Inspect `smart_tag_definitions` schema.
+2. Write a single migration creating all 9 tables + RLS + indexes + event_types seed.
+3. Stop. Phase 2 (workers + triggers) waits for explicit go-ahead.
