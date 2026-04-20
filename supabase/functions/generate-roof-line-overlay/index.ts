@@ -48,6 +48,108 @@ function buildMapboxUrl(lat: number, lng: number): string {
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 }
 
+// Bearing-aware variant: Mapbox supports a 4th positional value in the
+// `lon,lat,zoom,bearing,pitch` pair. We rotate the camera so the dominant roof
+// edge becomes horizontal — exactly like the user manually spinning the map
+// before screenshotting. Bearing is in degrees clockwise from north.
+function buildMapboxUrlRotated(lat: number, lng: number, bearingDeg: number): string {
+  const b = ((bearingDeg % 360) + 360) % 360
+  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},${b.toFixed(2)},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
+}
+
+const ANGLE_PROMPT = `You are looking at a tightly-cropped aerial satellite image of a SINGLE residential house.
+
+Find the DOMINANT ROOF EDGE direction of the house in the image center — usually the longest ridge or eave.
+
+Return ONLY a JSON object of this exact shape (no prose, no markdown):
+{ "bearing_deg": <number between 0 and 180>, "confidence": 0.0-1.0 }
+
+\`bearing_deg\` is the angle, in degrees clockwise from image-up (north), of the dominant roof edge. Examples:
+- A horizontal east-west ridge → 90
+- A vertical north-south ridge → 0
+- A ridge that runs from top-left to bottom-right at 45° → 135
+
+If unclear, return your best guess with confidence < 0.5.`
+
+async function detectDominantBearing(imageBase64: string): Promise<number> {
+  // Use flash for the angle pass — it's a single number, much cheaper than the
+  // full line-detection pass. Falls back to 0 (no rotation) on any failure.
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 60_000)
+  try {
+    const resp = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: ANGLE_PROMPT },
+              { type: 'image_url', image_url: { url: `data:image/png;base64,${imageBase64}` } },
+            ],
+          },
+        ],
+      }),
+    })
+    if (!resp.ok) return 0
+    const data = await resp.json()
+    const raw = data.choices?.[0]?.message?.content ?? ''
+    const cleaned = raw.replace(/```json\s*/gi, '').replace(/```/g, '').trim()
+    const match = cleaned.match(/\{[\s\S]*\}/)
+    if (!match) return 0
+    const parsed = JSON.parse(match[0]) as { bearing_deg?: number; confidence?: number }
+    const bearing = Number(parsed.bearing_deg)
+    const conf = Number(parsed.confidence ?? 1)
+    if (!Number.isFinite(bearing) || conf < 0.4) return 0
+    // Normalize to 0-180 (a roof edge is undirected)
+    let b = ((bearing % 180) + 180) % 180
+    // To make the dominant edge HORIZONTAL we need to rotate the camera by
+    // (90 - b) degrees clockwise. Mapbox bearing rotates the map clockwise.
+    const cameraBearing = 90 - b
+    return cameraBearing
+  } catch (err) {
+    console.warn('Bearing detection failed, using 0°:', err)
+    return 0
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Rotate a pixel point about the image center by `deg` degrees clockwise.
+// Used to map line endpoints from the rotated detection image back to the
+// upright Mapbox tile that the UI displays.
+function rotatePointCW(p: [number, number], deg: number): [number, number] {
+  const cx = DETECTION_IMG_W / 2
+  const cy = DETECTION_IMG_H / 2
+  const rad = (deg * Math.PI) / 180
+  const cos = Math.cos(rad)
+  const sin = Math.sin(rad)
+  const dx = p[0] - cx
+  const dy = p[1] - cy
+  return [
+    Math.round(cx + dx * cos - dy * sin),
+    Math.round(cy + dx * sin + dy * cos),
+  ]
+}
+
+async function fetchAsBase64(url: string): Promise<{ bytes: Uint8Array; b64: string }> {
+  const r = await fetch(url)
+  if (!r.ok) throw new Error(`Mapbox fetch failed: ${r.status}`)
+  const bytes = new Uint8Array(await r.arrayBuffer())
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize) as unknown as number[])
+  }
+  return { bytes, b64: btoa(binary) }
+}
+
 const DETECT_PROMPT = `You are an expert roof-line annotator looking at a tightly-cropped aerial satellite image of a SINGLE residential property.
 
 Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
