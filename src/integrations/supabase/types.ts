@@ -996,6 +996,121 @@ export type Database = {
           },
         ]
       }
+      ai_context_profiles: {
+        Row: {
+          communication_snapshot: Json
+          company_id: string
+          created_at: string
+          documents_snapshot: Json
+          financial_snapshot: Json
+          id: string
+          last_event_at: string | null
+          open_loops: Json
+          production_snapshot: Json
+          recent_activity: Json
+          refreshed_at: string
+          scope_id: string
+          scope_type: string
+          structured_facts: Json
+          summary_long: string | null
+          summary_short: string | null
+        }
+        Insert: {
+          communication_snapshot?: Json
+          company_id: string
+          created_at?: string
+          documents_snapshot?: Json
+          financial_snapshot?: Json
+          id?: string
+          last_event_at?: string | null
+          open_loops?: Json
+          production_snapshot?: Json
+          recent_activity?: Json
+          refreshed_at?: string
+          scope_id: string
+          scope_type: string
+          structured_facts?: Json
+          summary_long?: string | null
+          summary_short?: string | null
+        }
+        Update: {
+          communication_snapshot?: Json
+          company_id?: string
+          created_at?: string
+          documents_snapshot?: Json
+          financial_snapshot?: Json
+          id?: string
+          last_event_at?: string | null
+          open_loops?: Json
+          production_snapshot?: Json
+          recent_activity?: Json
+          refreshed_at?: string
+          scope_id?: string
+          scope_type?: string
+          structured_facts?: Json
+          summary_long?: string | null
+          summary_short?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_context_profiles_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_context_refresh_queue: {
+        Row: {
+          attempts: number
+          company_id: string
+          created_at: string
+          id: string
+          last_error: string | null
+          priority: number
+          reason: string | null
+          scope_id: string
+          scope_type: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          company_id: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          priority?: number
+          reason?: string | null
+          scope_id: string
+          scope_type: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          company_id?: string
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          priority?: number
+          reason?: string | null
+          scope_id?: string
+          scope_type?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_context_refresh_queue_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_conversations: {
         Row: {
           channel: string
@@ -2454,6 +2569,95 @@ export type Database = {
           },
         ]
       }
+      automation_action_runs: {
+        Row: {
+          action_index: number
+          action_type: string
+          automation_run_id: string
+          created_at: string
+          error_text: string | null
+          finished_at: string | null
+          id: string
+          result: Json
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          action_index: number
+          action_type: string
+          automation_run_id: string
+          created_at?: string
+          error_text?: string | null
+          finished_at?: string | null
+          id?: string
+          result?: Json
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          action_index?: number
+          action_type?: string
+          automation_run_id?: string
+          created_at?: string
+          error_text?: string | null
+          finished_at?: string | null
+          id?: string
+          result?: Json
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_action_runs_automation_run_id_fkey"
+            columns: ["automation_run_id"]
+            isOneToOne: false
+            referencedRelation: "automation_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_generated_records: {
+        Row: {
+          automation_run_id: string
+          company_id: string
+          created_at: string
+          id: string
+          record_id: string
+          record_type: string
+        }
+        Insert: {
+          automation_run_id: string
+          company_id: string
+          created_at?: string
+          id?: string
+          record_id: string
+          record_type: string
+        }
+        Update: {
+          automation_run_id?: string
+          company_id?: string
+          created_at?: string
+          id?: string
+          record_id?: string
+          record_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_generated_records_automation_run_id_fkey"
+            columns: ["automation_run_id"]
+            isOneToOne: false
+            referencedRelation: "automation_runs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_generated_records_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_logs: {
         Row: {
           automation_id: string
@@ -2553,6 +2757,142 @@ export type Database = {
             columns: ["template_id"]
             isOneToOne: false
             referencedRelation: "notification_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      automation_rules_v2: {
+        Row: {
+          actions: Json
+          company_id: string
+          conditions: Json
+          cooldown_seconds: number
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          max_runs_per_entity_per_day: number | null
+          name: string
+          stop_processing_on_match: boolean
+          trigger_event: string
+          trigger_scope: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          actions?: Json
+          company_id: string
+          conditions?: Json
+          cooldown_seconds?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          max_runs_per_entity_per_day?: number | null
+          name: string
+          stop_processing_on_match?: boolean
+          trigger_event: string
+          trigger_scope?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          actions?: Json
+          company_id?: string
+          conditions?: Json
+          cooldown_seconds?: number
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          max_runs_per_entity_per_day?: number | null
+          name?: string
+          stop_processing_on_match?: boolean
+          trigger_event?: string
+          trigger_scope?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rules_v2_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_rules_v2_trigger_event_fkey"
+            columns: ["trigger_event"]
+            isOneToOne: false
+            referencedRelation: "event_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
+      automation_runs: {
+        Row: {
+          automation_rule_id: string
+          company_id: string
+          created_at: string
+          domain_event_id: string
+          entity_id: string
+          entity_type: string
+          finished_at: string | null
+          id: string
+          skip_reason: string | null
+          started_at: string | null
+          status: string
+        }
+        Insert: {
+          automation_rule_id: string
+          company_id: string
+          created_at?: string
+          domain_event_id: string
+          entity_id: string
+          entity_type: string
+          finished_at?: string | null
+          id?: string
+          skip_reason?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Update: {
+          automation_rule_id?: string
+          company_id?: string
+          created_at?: string
+          domain_event_id?: string
+          entity_id?: string
+          entity_type?: string
+          finished_at?: string | null
+          id?: string
+          skip_reason?: string | null
+          started_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_runs_automation_rule_id_fkey"
+            columns: ["automation_rule_id"]
+            isOneToOne: false
+            referencedRelation: "automation_rules_v2"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_runs_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "automation_runs_domain_event_id_fkey"
+            columns: ["domain_event_id"]
+            isOneToOne: false
+            referencedRelation: "domain_events"
             referencedColumns: ["id"]
           },
         ]
@@ -10218,6 +10558,72 @@ export type Database = {
           },
         ]
       }
+      domain_events: {
+        Row: {
+          caused_by_automation_id: string | null
+          caused_by_user_id: string | null
+          company_id: string
+          created_at: string
+          dedupe_key: string | null
+          entity_id: string
+          entity_type: string
+          event_source: string
+          event_type: string
+          id: string
+          occurred_at: string
+          parent_entity_id: string | null
+          parent_entity_type: string | null
+          payload: Json
+        }
+        Insert: {
+          caused_by_automation_id?: string | null
+          caused_by_user_id?: string | null
+          company_id: string
+          created_at?: string
+          dedupe_key?: string | null
+          entity_id: string
+          entity_type: string
+          event_source?: string
+          event_type: string
+          id?: string
+          occurred_at?: string
+          parent_entity_id?: string | null
+          parent_entity_type?: string | null
+          payload?: Json
+        }
+        Update: {
+          caused_by_automation_id?: string | null
+          caused_by_user_id?: string | null
+          company_id?: string
+          created_at?: string
+          dedupe_key?: string | null
+          entity_id?: string
+          entity_type?: string
+          event_source?: string
+          event_type?: string
+          id?: string
+          occurred_at?: string
+          parent_entity_id?: string | null
+          parent_entity_type?: string | null
+          payload?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "domain_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "domain_events_event_type_fkey"
+            columns: ["event_type"]
+            isOneToOne: false
+            referencedRelation: "event_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       duplicate_detection_rules: {
         Row: {
           created_at: string | null
@@ -12328,6 +12734,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      event_types: {
+        Row: {
+          created_at: string
+          description: string
+          key: string
+        }
+        Insert: {
+          created_at?: string
+          description: string
+          key: string
+        }
+        Update: {
+          created_at?: string
+          description?: string
+          key?: string
+        }
+        Relationships: []
       }
       expert_review_assignments: {
         Row: {
@@ -32833,6 +33257,50 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      smart_tag_cache: {
+        Row: {
+          company_id: string
+          computed_at: string
+          entity_id: string
+          entity_type: string
+          expires_at: string | null
+          id: string
+          rendered_text: string | null
+          tag_key: string
+          tag_value: Json | null
+        }
+        Insert: {
+          company_id: string
+          computed_at?: string
+          entity_id: string
+          entity_type: string
+          expires_at?: string | null
+          id?: string
+          rendered_text?: string | null
+          tag_key: string
+          tag_value?: Json | null
+        }
+        Update: {
+          company_id?: string
+          computed_at?: string
+          entity_id?: string
+          entity_type?: string
+          expires_at?: string | null
+          id?: string
+          rendered_text?: string | null
+          tag_key?: string
+          tag_value?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smart_tag_cache_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       smart_tag_definitions: {
         Row: {
