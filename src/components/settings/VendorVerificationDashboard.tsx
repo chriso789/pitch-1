@@ -487,24 +487,29 @@ export function VendorVerificationDashboard() {
       try {
         const { data: refreshed } = await supabase
           .from('roof_training_sessions')
-          .select('ai_measurement_id, lat, lng, ai_coordinates')
+          .select('ai_measurement_id, lat, lng, vendor_report_id')
           .eq('id', sessionId)
           .maybeSingle();
 
-        const measurementId =
+        const lat = (refreshed as any)?.lat ?? detail?.lat ?? detail?.target_lat;
+        const lng = (refreshed as any)?.lng ?? detail?.lng ?? detail?.target_lng;
+        let measurementId: string | null =
           (refreshed as any)?.ai_measurement_id ||
           detail?.ai_measurement_id ||
-          detail?.measurement_id;
-        const lat =
-          (refreshed as any)?.lat ??
-          (refreshed as any)?.ai_coordinates?.lat ??
-          detail?.lat ??
-          detail?.target_lat;
-        const lng =
-          (refreshed as any)?.lng ??
-          (refreshed as any)?.ai_coordinates?.lng ??
-          detail?.lng ??
-          detail?.target_lng;
+          detail?.measurement_id ||
+          null;
+
+        // Fallback: find the most recent measurement linked to this vendor report
+        if (!measurementId && (refreshed as any)?.vendor_report_id) {
+          const { data: m } = await supabase
+            .from('roof_measurements')
+            .select('id')
+            .eq('vendor_report_id', (refreshed as any).vendor_report_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          measurementId = m?.id || null;
+        }
 
         if (measurementId && activeCompanyId && lat != null && lng != null) {
           toast.info('Generating roof line overlay…');
@@ -521,10 +526,12 @@ export function VendorVerificationDashboard() {
             });
           }
         } else {
-          console.warn('Skipping overlay — missing measurementId/lat/lng', {
-            measurementId, lat, lng, sessionId,
-          });
-          toast.warning('Overlay not generated — measurement coordinates unavailable');
+          console.warn('Skipping overlay — missing data', { measurementId, lat, lng, sessionId });
+          toast.warning(
+            !measurementId
+              ? 'Overlay skipped — no AI measurement linked yet. Click Run again once the measurement completes.'
+              : 'Overlay skipped — measurement coordinates unavailable',
+          );
         }
       } catch (ovErr: any) {
         console.warn('Overlay generation invoke failed', ovErr);
