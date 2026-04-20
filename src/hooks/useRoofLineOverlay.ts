@@ -91,7 +91,7 @@ export function useRoofLineOverlay(measurementId?: string | null) {
     // Insert NEW corrected version (training-data preservation)
     const { data, error } = await supabase
       .from('roof_line_overlays')
-      .insert({
+      .insert([{
         tenant_id: overlay.tenant_id,
         measurement_id: overlay.measurement_id,
         parent_overlay_id: overlay.id,
