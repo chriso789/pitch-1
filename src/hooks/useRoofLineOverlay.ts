@@ -36,7 +36,7 @@ export interface RoofLineOverlay {
   created_at: string
 }
 
-export function useRoofLineOverlay(measurementId?: string | null) {
+export function useRoofLineOverlay(measurementId?: string | null, refreshKey?: number) {
   const [overlay, setOverlay] = useState<RoofLineOverlay | null>(null)
   const [loading, setLoading] = useState(false)
   const [generating, setGenerating] = useState(false)
@@ -55,7 +55,7 @@ export function useRoofLineOverlay(measurementId?: string | null) {
     setLoading(false)
   }, [measurementId])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load() }, [load, refreshKey])
 
   const generate = useCallback(async (params: { tenant_id: string; lat: number; lng: number }) => {
     if (!measurementId) return null
