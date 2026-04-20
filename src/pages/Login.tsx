@@ -615,13 +615,35 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Top CTA: Request a Demo - prominent for prospects */}
+            <div className="mb-5 rounded-xl border-2 border-primary/20 bg-gradient-to-br from-primary/5 via-primary/10 to-primary/5 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-foreground leading-tight">
+                    New to PITCH Construction CRM?
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    See it in action — book your free demo
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="lg"
+                  onClick={() => navigate('/demo-request')}
+                  className="font-bold shadow-md hover:shadow-lg shrink-0 bg-gradient-to-r from-primary to-primary/85 hover:from-primary hover:to-primary"
+                >
+                  <UserPlus className="mr-2 h-4 w-4" />
+                  Request Demo
+                </Button>
+              </div>
+            </div>
+
             {errors.general && (
               <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{errors.general}</AlertDescription>
               </Alert>
             )}
-
 
             <Tabs value={activeTab} onValueChange={(value) => {
               if (value === 'signup') {
