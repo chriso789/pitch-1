@@ -2699,6 +2699,71 @@ export type Database = {
           },
         ]
       }
+      automation_rule_templates: {
+        Row: {
+          actions: Json
+          category: string
+          conditions: Json
+          created_at: string
+          created_by: string | null
+          default_cooldown_seconds: number
+          default_max_runs_per_entity_per_day: number | null
+          description: string | null
+          id: string
+          is_active: boolean
+          is_recommended: boolean
+          name: string
+          sort_order: number
+          trigger_event: string
+          trigger_scope: string
+          updated_at: string
+        }
+        Insert: {
+          actions?: Json
+          category?: string
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          default_cooldown_seconds?: number
+          default_max_runs_per_entity_per_day?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_recommended?: boolean
+          name: string
+          sort_order?: number
+          trigger_event: string
+          trigger_scope?: string
+          updated_at?: string
+        }
+        Update: {
+          actions?: Json
+          category?: string
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          default_cooldown_seconds?: number
+          default_max_runs_per_entity_per_day?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          is_recommended?: boolean
+          name?: string
+          sort_order?: number
+          trigger_event?: string
+          trigger_scope?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rule_templates_trigger_event_fkey"
+            columns: ["trigger_event"]
+            isOneToOne: false
+            referencedRelation: "event_types"
+            referencedColumns: ["key"]
+          },
+        ]
+      }
       automation_rules: {
         Row: {
           created_at: string | null
