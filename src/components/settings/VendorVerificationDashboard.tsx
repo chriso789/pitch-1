@@ -466,9 +466,22 @@ export function VendorVerificationDashboard() {
     queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
   };
 
-  const handleRunOne = async (sessionId: string) => {
+  const handleRunOne = async (
+    sessionId: string,
+    coordOverride?: { lat: number; lng: number },
+  ) => {
     setRunningOneId(sessionId);
     try {
+      // If the operator confirmed a refined pin, persist it to the session row
+      // FIRST so downstream measurement + overlay calls all crop on the right
+      // parcel. We update lat/lng on roof_training_sessions (used for imagery
+      // re-fetch) and propagate to any existing roof_measurements row.
+      if (coordOverride) {
+        await supabase
+          .from('roof_training_sessions')
+          .update({ lat: coordOverride.lat, lng: coordOverride.lng } as any)
+          .eq('id', sessionId);
+      }
       // Reset this single session and clear stale AI links so the clicked row is forced
       // through a fresh measurement + diagram persistence pass.
       const { error: resetErr } = await supabase
