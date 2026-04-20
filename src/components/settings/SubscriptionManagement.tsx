@@ -242,14 +242,8 @@ export const SubscriptionManagement = () => {
                   </div>
                   <CardTitle className="mt-2">{config.name}</CardTitle>
                   <div className="text-2xl font-bold mt-2">
-                    {config.price ? (
-                      <>
-                        ${config.price}
-                        <span className="text-sm font-normal text-muted-foreground">/mo</span>
-                      </>
-                    ) : (
-                      <span className="text-lg">Custom Pricing</span>
-                    )}
+                    ${config.price}
+                    <span className="text-sm font-normal text-muted-foreground">{config.priceSuffix}</span>
                   </div>
                 </CardHeader>
                 <CardContent className="space-y-3">
