@@ -16,6 +16,9 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const IMG_W = 1024
 const IMG_H = 1024
+const STATIC_SCALE = 2
+const DETECTION_IMG_W = IMG_W * STATIC_SCALE
+const DETECTION_IMG_H = IMG_H * STATIC_SCALE
 const ZOOM = 20
 
 interface DetectedLine {
@@ -39,7 +42,7 @@ function pxLength(p1: [number, number], p2: [number, number]): number {
 }
 
 function buildMapboxUrl(lat: number, lng: number): string {
-  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@2x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
+  return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${ZOOM},0/${IMG_W}x${IMG_H}@${STATIC_SCALE}x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 }
 
 const DETECT_PROMPT = `You are an expert roof-line annotator looking at an aerial satellite image of a single residential roof.
@@ -51,7 +54,10 @@ Output ONLY a JSON object (no prose, no markdown fences) of this exact shape:
   ]
 }
 
-Coordinate system: pixel coordinates in a ${IMG_W}x${IMG_H} image, origin top-left, x right, y down.
+Coordinate system: pixel coordinates in a ${DETECTION_IMG_W}x${DETECTION_IMG_H} image, origin top-left, x right, y down.
+
+The target property is the MAIN roof nearest the image center at [${DETECTION_IMG_W / 2}, ${DETECTION_IMG_H / 2}].
+If multiple buildings are visible, annotate only that centered home and ignore neighboring houses, detached structures, pool cages, and shadows.
 
 Definitions (be strict):
 - ridge: top horizontal seam where two upward-sloping planes meet
@@ -66,6 +72,38 @@ Rules:
 - Use whole-pixel integers.
 - Return 8-40 lines for a typical residential roof.
 - No duplicates, no overlapping segments.`
+
+function normalizeDetectedLines(lines: DetectedLine[]): DetectedLine[] {
+  if (lines.length === 0) return lines
+
+  const points = lines.flatMap((line) => [line.p1, line.p2])
+  const maxX = Math.max(...points.map(([x]) => x))
+  const maxY = Math.max(...points.map(([, y]) => y))
+  const centroidX = points.reduce((sum, [x]) => sum + x, 0) / points.length
+  const centroidY = points.reduce((sum, [, y]) => sum + y, 0) / points.length
+  const centerX = DETECTION_IMG_W / 2
+  const centerY = DETECTION_IMG_H / 2
+
+  const looksLikeHalfScale =
+    STATIC_SCALE === 2 &&
+    maxX <= IMG_W + 64 &&
+    maxY <= IMG_H + 64 &&
+    Math.hypot(centroidX - centerX, centroidY - centerY) > DETECTION_IMG_W * 0.22
+
+  const scale = looksLikeHalfScale ? STATIC_SCALE : 1
+
+  return lines.map((line) => ({
+    ...line,
+    p1: [
+      Math.max(0, Math.min(DETECTION_IMG_W, Math.round(line.p1[0] * scale))),
+      Math.max(0, Math.min(DETECTION_IMG_H, Math.round(line.p1[1] * scale))),
+    ],
+    p2: [
+      Math.max(0, Math.min(DETECTION_IMG_W, Math.round(line.p2[0] * scale))),
+      Math.max(0, Math.min(DETECTION_IMG_H, Math.round(line.p2[1] * scale))),
+    ],
+  }))
+}
 
 async function callGemini(model: string, imageBase64: string, timeoutMs: number): Promise<DetectedLine[]> {
   const ctrl = new AbortController()
@@ -149,10 +187,10 @@ Deno.serve(async (req) => {
     const imgBase64 = btoa(binary)
 
     // 2. Detect lines via AI
-    const detected = await detectLines(imgBase64)
+    const detected = normalizeDetectedLines(await detectLines(imgBase64))
 
     // 3. Compute lengths (meters/pixel * 3.28084 ft/m)
-    const mpp = metersPerPixel(lat, ZOOM) / 2 // /2 for @2x retina
+    const mpp = metersPerPixel(lat, ZOOM) / STATIC_SCALE
     const ftPerPx = mpp * 3.28084
 
     const lines: DetectedLine[] = detected.map((l) => {
@@ -165,8 +203,18 @@ Deno.serve(async (req) => {
     for (const l of lines) totals_ft[l.type] = (totals_ft[l.type] || 0) + (l.length_ft || 0)
     totals_ft.perimeter = totals_ft.eave + totals_ft.rake
 
+    const { data: latestOverlay } = await admin
+      .from('roof_line_overlays')
+      .select('version')
+      .eq('measurement_id', measurement_id)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const nextVersion = (latestOverlay?.version ?? 0) + 1
+
     // 5. Upload PNG to bucket
-    const storagePath = `${tenant_id}/${measurement_id}/v1.png`
+    const storagePath = `${tenant_id}/${measurement_id}/v${nextVersion}.png`
     const { error: uploadErr } = await admin.storage
       .from('roof-line-overlays')
       .upload(storagePath, imgBytes, { contentType: 'image/png', upsert: true })
@@ -182,13 +230,13 @@ Deno.serve(async (req) => {
       .insert({
         tenant_id,
         measurement_id,
-        version: 1,
+        version: nextVersion,
         source: 'auto',
         image_url: signed?.signedUrl ?? null,
         storage_path: storagePath,
         base_image_url: mapboxUrl,
-        image_width: IMG_W * 2,
-        image_height: IMG_H * 2,
+        image_width: DETECTION_IMG_W,
+        image_height: DETECTION_IMG_H,
         meters_per_pixel: mpp,
         center_lat: lat,
         center_lng: lng,

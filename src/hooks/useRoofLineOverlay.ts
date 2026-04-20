@@ -49,6 +49,7 @@ export function useRoofLineOverlay(measurementId?: string | null, refreshKey?: n
       .select('*')
       .eq('measurement_id', measurementId)
       .order('version', { ascending: false })
+      .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
     if (!error && data) setOverlay(data as unknown as RoofLineOverlay)
