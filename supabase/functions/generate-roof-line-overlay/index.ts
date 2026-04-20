@@ -19,7 +19,10 @@ const IMG_H = 1024
 const STATIC_SCALE = 2
 const DETECTION_IMG_W = IMG_W * STATIC_SCALE
 const DETECTION_IMG_H = IMG_H * STATIC_SCALE
-const ZOOM = 20
+// Zoom 21 + tight Mapbox tile gives us the target house filling most of the frame.
+// Earlier zoom 20 was pulling in 4-6 neighboring houses, which is what caused the
+// AI to hallucinate ridges/eaves across multiple parcels.
+const ZOOM = 21
 
 interface DetectedLine {
   id: string
