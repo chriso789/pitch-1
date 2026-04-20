@@ -29840,6 +29840,89 @@ export type Database = {
           },
         ]
       }
+      roof_line_overlays: {
+        Row: {
+          base_image_url: string | null
+          center_lat: number | null
+          center_lng: number | null
+          created_at: string
+          created_by: string | null
+          id: string
+          image_height: number | null
+          image_url: string | null
+          image_width: number | null
+          lines: Json
+          measurement_id: string
+          meters_per_pixel: number | null
+          model_version: string | null
+          notes: string | null
+          parent_overlay_id: string | null
+          source: string
+          storage_path: string | null
+          tenant_id: string
+          totals_ft: Json | null
+          updated_at: string
+          version: number
+          zoom: number | null
+        }
+        Insert: {
+          base_image_url?: string | null
+          center_lat?: number | null
+          center_lng?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_height?: number | null
+          image_url?: string | null
+          image_width?: number | null
+          lines?: Json
+          measurement_id: string
+          meters_per_pixel?: number | null
+          model_version?: string | null
+          notes?: string | null
+          parent_overlay_id?: string | null
+          source?: string
+          storage_path?: string | null
+          tenant_id: string
+          totals_ft?: Json | null
+          updated_at?: string
+          version?: number
+          zoom?: number | null
+        }
+        Update: {
+          base_image_url?: string | null
+          center_lat?: number | null
+          center_lng?: number | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_height?: number | null
+          image_url?: string | null
+          image_width?: number | null
+          lines?: Json
+          measurement_id?: string
+          meters_per_pixel?: number | null
+          model_version?: string | null
+          notes?: string | null
+          parent_overlay_id?: string | null
+          source?: string
+          storage_path?: string | null
+          tenant_id?: string
+          totals_ft?: Json | null
+          updated_at?: string
+          version?: number
+          zoom?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_line_overlays_parent_overlay_id_fkey"
+            columns: ["parent_overlay_id"]
+            isOneToOne: false
+            referencedRelation: "roof_line_overlays"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_linear_features: {
         Row: {
           azimuth_degrees: number | null
@@ -43342,6 +43425,7 @@ export type Database = {
         }
         Returns: string
       }
+      user_can_access_tenant: { Args: { _tenant_id: string }; Returns: boolean }
       user_has_full_location_access: { Args: never; Returns: boolean }
       validate_canvass_token: {
         Args: { p_token: string }
