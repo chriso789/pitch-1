@@ -513,8 +513,8 @@ export function VendorVerificationDashboard() {
           .eq('id', sessionId)
           .maybeSingle();
 
-        const lat = (refreshed as any)?.lat ?? detail?.lat ?? detail?.target_lat;
-        const lng = (refreshed as any)?.lng ?? detail?.lng ?? detail?.target_lng;
+        let lat = (refreshed as any)?.lat ?? detail?.lat ?? detail?.target_lat;
+        let lng = (refreshed as any)?.lng ?? detail?.lng ?? detail?.target_lng;
         let measurementId: string | null =
           (refreshed as any)?.ai_measurement_id ||
           detail?.ai_measurement_id ||
@@ -525,12 +525,27 @@ export function VendorVerificationDashboard() {
         if (!measurementId && (refreshed as any)?.vendor_report_id) {
           const { data: m } = await supabase
             .from('roof_measurements')
-            .select('id')
+            .select('id, target_lat, target_lng')
             .eq('vendor_report_id', (refreshed as any).vendor_report_id)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
           measurementId = m?.id || null;
+          if (m?.target_lat != null && m?.target_lng != null) {
+            lat = m.target_lat;
+            lng = m.target_lng;
+          }
+        } else if (measurementId) {
+          const { data: measurementCoords } = await supabase
+            .from('roof_measurements')
+            .select('target_lat, target_lng')
+            .eq('id', measurementId)
+            .maybeSingle();
+
+          if (measurementCoords?.target_lat != null && measurementCoords?.target_lng != null) {
+            lat = measurementCoords.target_lat;
+            lng = measurementCoords.target_lng;
+          }
         }
 
         if (measurementId && activeCompanyId && lat != null && lng != null) {
