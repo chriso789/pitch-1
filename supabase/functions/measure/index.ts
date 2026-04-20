@@ -3197,6 +3197,28 @@ Deno.serve(async (req) => {
           // Don't fail the pull request if visualization fails
         }
 
+        // Auto-generate roof line overlay (fire-and-forget, non-blocking)
+        try {
+          const overlayLat = verifiedLat || lat;
+          const overlayLng = verifiedLng || lng;
+          if (overlayLat && overlayLng && row.tenant_id) {
+            console.log('Auto-triggering roof line overlay for measurement:', row.id);
+            supabase.functions.invoke('generate-roof-line-overlay', {
+              body: {
+                measurement_id: row.id,
+                tenant_id: row.tenant_id,
+                lat: overlayLat,
+                lng: overlayLng,
+              }
+            }).then(({ error }) => {
+              if (error) console.error('Roof line overlay error:', error);
+              else console.log('Roof line overlay generated for:', row.id);
+            }).catch((e) => console.error('Roof line overlay exception:', e));
+          }
+        } catch (overlayErr) {
+          console.error('Roof line overlay trigger exception:', overlayErr);
+        }
+
         return json({ 
           ok: true, 
           data: {
@@ -3268,6 +3290,20 @@ Deno.serve(async (req) => {
           }
         } catch (vizError) {
           console.error('Visualization generation exception:', vizError instanceof Error ? vizError.message : String(vizError));
+        }
+
+        // Auto-generate roof line overlay (fire-and-forget, non-blocking)
+        try {
+          if (lat && lng && row.tenant_id) {
+            console.log('Auto-triggering roof line overlay for manual measurement:', row.id);
+            supabase.functions.invoke('generate-roof-line-overlay', {
+              body: { measurement_id: row.id, tenant_id: row.tenant_id, lat, lng }
+            }).then(({ error }) => {
+              if (error) console.error('Roof line overlay error:', error);
+            }).catch((e) => console.error('Roof line overlay exception:', e));
+          }
+        } catch (overlayErr) {
+          console.error('Roof line overlay trigger exception:', overlayErr);
         }
 
         return json({ 
@@ -3602,6 +3638,22 @@ Deno.serve(async (req) => {
           }
         } catch (vizError) {
           console.error('Manual verification visualization exception:', vizError instanceof Error ? vizError.message : String(vizError));
+        }
+
+        // Auto-generate roof line overlay (fire-and-forget, non-blocking)
+        try {
+          const overlayLat = manualMeasurement.center_lat;
+          const overlayLng = manualMeasurement.center_lng;
+          if (overlayLat && overlayLng && row.tenant_id) {
+            console.log('Auto-triggering roof line overlay for manual verification:', row.id);
+            supabase.functions.invoke('generate-roof-line-overlay', {
+              body: { measurement_id: row.id, tenant_id: row.tenant_id, lat: overlayLat, lng: overlayLng }
+            }).then(({ error }) => {
+              if (error) console.error('Roof line overlay error:', error);
+            }).catch((e) => console.error('Roof line overlay exception:', e));
+          }
+        } catch (overlayErr) {
+          console.error('Roof line overlay trigger exception:', overlayErr);
         }
 
         console.log('Manual verification saved:', { id: row.id, propertyId, userId });
