@@ -513,8 +513,8 @@ export function VendorVerificationDashboard() {
           .eq('id', sessionId)
           .maybeSingle();
 
-        const lat = (refreshed as any)?.lat ?? detail?.lat ?? detail?.target_lat;
-        const lng = (refreshed as any)?.lng ?? detail?.lng ?? detail?.target_lng;
+        let lat = (refreshed as any)?.lat ?? detail?.lat ?? detail?.target_lat;
+        let lng = (refreshed as any)?.lng ?? detail?.lng ?? detail?.target_lng;
         let measurementId: string | null =
           (refreshed as any)?.ai_measurement_id ||
           detail?.ai_measurement_id ||
