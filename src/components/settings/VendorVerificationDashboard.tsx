@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
@@ -28,6 +28,7 @@ interface VendorReportMeta {
 }
 
 interface AiMeasurementPreview {
+  id: string;
   vendor_report_id: string | null;
   vector_diagram_svg: string | null;
   linear_features_wkt: Array<Record<string, any>> | null;
@@ -63,6 +64,7 @@ interface VerificationSession {
   ai_diagram_svg?: string | null;
   ai_linear_features?: Array<Record<string, any>> | null;
   ai_perimeter_wkt?: string | null;
+  effective_ai_measurement_id?: string | null;
   ai_coordinates?: { lat: number; lng: number } | null;
   ai_pitch?: string | null;
   ai_total_area?: number | null;
@@ -83,6 +85,7 @@ export function VendorVerificationDashboard() {
   const [isBackfillingAddresses, setIsBackfillingAddresses] = useState(false);
   const [isRunningAllAi, setIsRunningAllAi] = useState(false);
   const [overlayRefreshNonce, setOverlayRefreshNonce] = useState(0);
+  const [addressSortDirection, setAddressSortDirection] = useState<'asc' | 'desc'>('asc');
   const [runAllAiProgress, setRunAllAiProgress] = useState<{
     backfilled: number;
     processed: number;
