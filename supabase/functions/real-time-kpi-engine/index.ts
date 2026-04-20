@@ -1,9 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { verifyAuthAndTenant, corsHeaders } from "../_shared/auth-tenant.ts";
 
 interface KPIRequest {
   action: "get_live_metrics" | "calculate_trends" | "set_alert_thresholds" | "get_leaderboard" | "get_channel_info";
@@ -17,19 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const { action, tenant_id: requested, params = {} } = await req.json() as KPIRequest;
 
-    const { action, tenant_id, params = {} } = await req.json() as KPIRequest;
-
-    if (!tenant_id) {
-      return new Response(
-        JSON.stringify({ error: "tenant_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const auth = await verifyAuthAndTenant(req, requested);
+    if (auth.error) return auth.error;
+    const { tenantId: tenant_id, supabase } = auth;
 
     console.log(`[real-time-kpi-engine] Action: ${action}, Tenant: ${tenant_id}`);
 

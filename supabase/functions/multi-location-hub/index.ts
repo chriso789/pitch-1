@@ -1,9 +1,4 @@
-import { createClient } from "npm:@supabase/supabase-js@2.49.1";
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-};
+import { verifyAuthAndTenant, corsHeaders } from "../_shared/auth-tenant.ts";
 
 interface MultiLocationRequest {
   action: "create_location" | "get_location_metrics" | "transfer_lead" | "compare_locations" | "consolidate_reports" | "set_location_rules";
@@ -17,19 +12,11 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? ""
-    );
+    const { action, tenant_id: requested, params = {} } = await req.json() as MultiLocationRequest;
 
-    const { action, tenant_id, params = {} } = await req.json() as MultiLocationRequest;
-
-    if (!tenant_id) {
-      return new Response(
-        JSON.stringify({ error: "tenant_id is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    const auth = await verifyAuthAndTenant(req, requested);
+    if (auth.error) return auth.error;
+    const { tenantId: tenant_id, supabase } = auth;
 
     console.log(`[multi-location-hub] Action: ${action}, Tenant: ${tenant_id}`);
 
