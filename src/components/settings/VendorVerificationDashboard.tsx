@@ -479,24 +479,56 @@ export function VendorVerificationDashboard() {
         queryKey: ['vendor-verification-sessions', activeCompanyId],
       });
 
-      // Fire-and-forget: generate the v28-style roof line overlay so the AI
-      // drawing area gets a clean ridge/hip/valley/eave/rake annotation that
-      // can be reclassified by hand and used as training data against the
-      // paid vendor parsed diagram.
+      // Generate the v28-style roof line overlay so the AI drawing area gets
+      // a clean ridge/hip/valley/eave/rake annotation that can be reclassified
+      // by hand and used as training data against the paid vendor parsed diagram.
+      // Re-read the session row (instead of trusting `detail`) because the
+      // measure function doesn't always echo lat/lng/ai_measurement_id back.
       try {
-        const measurementId = detail?.ai_measurement_id || detail?.measurement_id;
-        const lat = detail?.lat ?? detail?.target_lat;
-        const lng = detail?.lng ?? detail?.target_lng;
+        const { data: refreshed } = await supabase
+          .from('roof_training_sessions')
+          .select('ai_measurement_id, lat, lng, ai_coordinates')
+          .eq('id', sessionId)
+          .maybeSingle();
+
+        const measurementId =
+          (refreshed as any)?.ai_measurement_id ||
+          detail?.ai_measurement_id ||
+          detail?.measurement_id;
+        const lat =
+          (refreshed as any)?.lat ??
+          (refreshed as any)?.ai_coordinates?.lat ??
+          detail?.lat ??
+          detail?.target_lat;
+        const lng =
+          (refreshed as any)?.lng ??
+          (refreshed as any)?.ai_coordinates?.lng ??
+          detail?.lng ??
+          detail?.target_lng;
+
         if (measurementId && activeCompanyId && lat != null && lng != null) {
-          supabase.functions.invoke('generate-roof-line-overlay', {
+          toast.info('Generating roof line overlay…');
+          const { error: ovErr } = await supabase.functions.invoke('generate-roof-line-overlay', {
             body: { measurement_id: measurementId, tenant_id: activeCompanyId, lat, lng },
-          }).then(({ error: ovErr }) => {
-            if (ovErr) console.warn('Overlay generation failed', ovErr);
-            else queryClient.invalidateQueries({ queryKey: ['vendor-verification-sessions', activeCompanyId] });
           });
+          if (ovErr) {
+            console.warn('Overlay generation failed', ovErr);
+            toast.error('Roof line overlay failed', { description: ovErr.message });
+          } else {
+            toast.success('Roof line overlay generated');
+            await queryClient.invalidateQueries({
+              queryKey: ['vendor-verification-sessions', activeCompanyId],
+            });
+          }
+        } else {
+          console.warn('Skipping overlay — missing measurementId/lat/lng', {
+            measurementId, lat, lng, sessionId,
+          });
+          toast.warning('Overlay not generated — measurement coordinates unavailable');
         }
-      } catch (ovErr) {
+      } catch (ovErr: any) {
         console.warn('Overlay generation invoke failed', ovErr);
+        toast.error('Overlay generation failed', { description: ovErr?.message });
       }
     } catch (err: any) {
       console.error('Run one error:', err);
