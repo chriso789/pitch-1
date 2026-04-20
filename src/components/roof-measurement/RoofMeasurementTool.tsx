@@ -14,6 +14,8 @@ import { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer'
 import { CleanRoofDiagram } from './CleanRoofDiagram'
 import { toast } from 'sonner'
 import { useRoofOverlay, overlayToLinearFeatures, perimeterToWKT } from '@/hooks/useRoofOverlay'
+import { RoofLineOverlayEditor } from './RoofLineOverlayEditor'
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId'
 
 export interface RoofMeasurements {
   // New API properties
@@ -75,6 +77,7 @@ export function RoofMeasurementTool({
   const effectiveLat = initialLat ?? lat
   const effectiveLng = initialLng ?? lng
   const effectiveAddress = initialAddress || propAddress || ''
+  const effectiveTenantId = useEffectiveTenantId()
   
   const [address, setAddress] = useState(effectiveAddress)
   const [loading, setLoading] = useState(false)
@@ -388,10 +391,14 @@ export function RoofMeasurementTool({
           </Card>
 
           <Tabs defaultValue="diagram" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-7">
               <TabsTrigger value="diagram" className="flex items-center gap-1">
                 <Layers className="h-3.5 w-3.5" />
                 Diagram
+              </TabsTrigger>
+              <TabsTrigger value="overlay" className="flex items-center gap-1">
+                <Sparkles className="h-3.5 w-3.5" />
+                Lines
               </TabsTrigger>
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="facets">Facets</TabsTrigger>
@@ -399,6 +406,21 @@ export function RoofMeasurementTool({
               <TabsTrigger value="materials">Materials</TabsTrigger>
               <TabsTrigger value="images">Images</TabsTrigger>
             </TabsList>
+
+            <TabsContent value="overlay" className="space-y-4">
+              {measurementData.measurementId && effectiveTenantId && effectiveLat && effectiveLng ? (
+                <RoofLineOverlayEditor
+                  measurementId={measurementData.measurementId}
+                  tenantId={effectiveTenantId}
+                  lat={effectiveLat}
+                  lng={effectiveLng}
+                />
+              ) : (
+                <Card className="p-6 text-sm text-muted-foreground">
+                  Run an analysis to generate the line overlay.
+                </Card>
+              )}
+            </TabsContent>
 
             {/* Roof Diagram Tab - AI Analysis with View Toggle */}
             <TabsContent value="diagram" className="space-y-4">
