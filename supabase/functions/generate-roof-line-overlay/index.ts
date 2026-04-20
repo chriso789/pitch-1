@@ -173,25 +173,22 @@ function coverageFraction(lines: DetectedLine[]): number {
 }
 
 async function detectLines(imageBase64: string): Promise<DetectedLine[]> {
-  // Try flash first for speed.
-  let lines: DetectedLine[] = []
-  try {
-    lines = await callGemini('google/gemini-2.5-flash', imageBase64, 55_000)
-  } catch (err) {
-    console.warn('flash model failed, falling back to pro', err instanceof Error ? err.message : err)
-    return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
-  }
-  // If flash mis-targeted (tiny bounding box), retry with pro for better visual reasoning.
-  const coverage = coverageFraction(lines)
-  if (coverage < 0.05 || lines.length < 6) {
-    console.warn(`flash returned poor coverage (${(coverage * 100).toFixed(1)}%, ${lines.length} lines) — retrying with pro`)
-    try {
-      return await callGemini('google/gemini-2.5-pro', imageBase64, 80_000)
-    } catch (err) {
-      console.warn('pro retry failed, keeping flash result', err instanceof Error ? err.message : err)
-    }
-  }
-  return lines
+  // Pro-only: flash hallucinates roof geometry across neighboring parcels.
+  // The latency cost (~30s vs ~10s) is worth it for usable output.
+  return await callGemini('google/gemini-2.5-pro', imageBase64, 90_000)
+}
+
+// Reject any line whose endpoints both fall in the outer 8% margin —
+// those are almost always neighboring houses bleeding into the crop.
+function filterToTargetRoof(lines: DetectedLine[]): DetectedLine[] {
+  const margin = 0.08
+  const minX = DETECTION_IMG_W * margin
+  const maxX = DETECTION_IMG_W * (1 - margin)
+  const minY = DETECTION_IMG_H * margin
+  const maxY = DETECTION_IMG_H * (1 - margin)
+  const inFrame = (p: [number, number]) =>
+    p[0] >= minX && p[0] <= maxX && p[1] >= minY && p[1] <= maxY
+  return lines.filter((l) => inFrame(l.p1) || inFrame(l.p2))
 }
 
 Deno.serve(async (req) => {
