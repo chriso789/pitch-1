@@ -1,14 +1,4 @@
-"""End-to-end orchestrator: bucket -> parsed canonical -> aligned -> rasterized -> scored.
-
-Layout produced under roof-training/:
-  data/raw/<id>/         - original PDFs/diagrams/aerials cached from bucket
-  data/processed/        - canonical JSON per sample
-  images/<id>.png        - aerial tile (input to U-Net)
-  masks/<class>/<id>.png - per-class binary masks
-  labels/<id>.json       - regression targets + alignment quality
-  splits/{train,val}.txt - sample id splits (auto)
-  exports/metrics/       - dataset summary + per-sample scores
-"""
+"""End-to-end orchestrator: bucket -> parsed canonical -> aligned -> rasterized -> scored."""
 
 from __future__ import annotations
 
@@ -17,7 +7,7 @@ import os
 import random
 from dataclasses import asdict
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 from PIL import Image
 
@@ -38,7 +28,7 @@ for p in (DATA_RAW, DATA_PROCESSED, IMAGES, MASKS, LABELS, SPLITS, METRICS):
     p.mkdir(parents=True, exist_ok=True)
 
 
-def _label_payload(sample_id: str, canonical: Dict, quality: float) -> Dict:
+def _label_payload(sample_id: str, canonical: Dict, quality: float, transform: Dict) -> Dict:
     m = canonical.get("measurements") or {}
     lengths = m.get("lengths_ft") or {}
     targets = {
@@ -54,6 +44,7 @@ def _label_payload(sample_id: str, canonical: Dict, quality: float) -> Dict:
         "sample_id": sample_id,
         "targets": targets,
         "quality": {"alignment_quality": round(quality, 4)},
+        "transform": transform,
         "vendor": (canonical.get("meta") or {}).get("vendor"),
         "address": (canonical.get("location") or {}).get("address"),
     }
@@ -75,23 +66,36 @@ def process_sample(
     polygon = (canonical.get("geometry") or {}).get("footprint_polygon") or []
     align = align_polygon_to_aerial(polygon, aerial) if polygon else None
     quality = align.quality if align else 0.0
+    transform = align.transform.to_dict() if align else {
+        "angle_deg": 0.0, "scale": 1.0, "translation": [0.0, 0.0],
+        "source_center": [0.0, 0.0], "image_size": list(out_size),
+    }
 
+    # Rasterize using source-coord canonical + transform so footprint AND
+    # structural lines stay in registration on the aerial grid.
+    rasterize_sample(canonical, MASKS, sample_id, size=out_size, transform=transform)
+
+    # Persist canonical with both the original (source-coord) geometry AND
+    # the aligned polygon for downstream consumers.
     aligned_canonical = dict(canonical)
-    if align and align.polygon:
-        aligned_canonical["geometry"] = {
-            **(canonical.get("geometry") or {}),
-            "footprint_polygon": [list(p) for p in align.polygon],
-        }
-
-    rasterize_sample(aligned_canonical, MASKS, sample_id, size=out_size)
+    aligned_canonical["geometry"] = {
+        **(canonical.get("geometry") or {}),
+        "footprint_polygon_aligned": [list(p) for p in (align.polygon if align else [])],
+        "alignment_transform": transform,
+    }
 
     score = score_sample(sample_id, aligned_canonical, quality, MASKS)
 
-    label = _label_payload(sample_id, aligned_canonical, quality)
+    label = _label_payload(sample_id, aligned_canonical, quality, transform)
     (LABELS / f"{sample_id}.json").write_text(json.dumps(label, indent=2))
     (DATA_PROCESSED / f"{sample_id}.json").write_text(json.dumps(aligned_canonical, indent=2))
 
-    return {"sample_id": sample_id, "score": asdict(score), "alignment_quality": quality}
+    return {
+        "sample_id": sample_id,
+        "score": asdict(score),
+        "alignment_quality": quality,
+        "transform": transform,
+    }
 
 
 def write_splits(accepted_ids: List[str], val_ratio: float = 0.15, seed: int = 42) -> None:
