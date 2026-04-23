@@ -101,6 +101,7 @@ Deno.serve(async (req) => {
             .from('pipeline_entries')
             .select(`
               *,
+              lead_name,
               contacts (
                 first_name,
                 last_name,
@@ -113,8 +114,13 @@ Deno.serve(async (req) => {
             .single();
           
           if (entry?.contacts) {
+            // Per product rule: documents on a lead/project use the lead/project name,
+            // not the homeowner contact name. Only fall back to the contact name if
+            // the lead has no explicit name yet.
+            const contactFullName = `${entry.contacts.first_name || ''} ${entry.contacts.last_name || ''}`.trim();
+            const leadName = (entry as any).lead_name?.trim();
             customerInfo = {
-              name: `${entry.contacts.first_name || ''} ${entry.contacts.last_name || ''}`.trim(),
+              name: leadName || contactFullName,
               address: entry.contacts.property_address || '',
               phone: entry.contacts.phone || '',
               email: entry.contacts.email || ''
