@@ -10,6 +10,104 @@ import pathlib, json
 import cv2
 import numpy as np
 
+try:
+    import pytesseract
+    _HAS_OCR = True
+except Exception:
+    _HAS_OCR = False
+
+
+# ---------------------- Stage 0: OCR-anchored legend/scale masking ----------------------
+
+# Anything inside an axis-aligned bbox containing one of these tokens is NOT roof geometry.
+_LEGEND_TOKENS = (
+    "LEGEND", "Legend",
+    "Ridge", "Ridges", "Hip", "Hips", "Valley", "Valleys",
+    "Rake", "Rakes", "Eave", "Eaves", "Flashing", "Step",
+    "NORTH", "North",
+    "Note:", "Notes:",
+)
+# Scale-bar tokens (always near a horizontal black bar with tick marks).
+_SCALE_TOKENS = ("ft", "feet", "Scale", "SCALE")
+
+
+def _ocr_boxes(img_bgr: np.ndarray):
+    """Return list of (x, y, w, h, text) for every recognised word."""
+    if not _HAS_OCR:
+        return []
+    gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
+    try:
+        data = pytesseract.image_to_data(
+            gray, output_type=pytesseract.Output.DICT,
+            config="--psm 11"  # sparse text — find as many words as possible
+        )
+    except Exception:
+        return []
+    out = []
+    for i, txt in enumerate(data["text"]):
+        if not txt or not txt.strip():
+            continue
+        try:
+            conf = float(data["conf"][i])
+        except Exception:
+            conf = -1
+        if conf < 30:
+            continue
+        out.append((
+            int(data["left"][i]), int(data["top"][i]),
+            int(data["width"][i]), int(data["height"][i]),
+            txt.strip(),
+        ))
+    return out
+
+
+def mask_legend_and_scale(img_bgr: np.ndarray) -> np.ndarray:
+    """Use OCR to find the LEGEND block + scale-bar, then white them out.
+
+    Strategy:
+      1. OCR the page; collect word bboxes.
+      2. If we see a LEGEND token, expand its bbox to include every word
+         within ~14% of page width / 35% of page height of it (the legend
+         is a tight cluster of class names).
+      3. If we see a scale token ('ft' / 'Scale'), expand around it to cover
+         the scale-bar tick row (usually a thin horizontal strip).
+      4. Paint each cluster bbox + a small margin to white.
+    """
+    h, w = img_bgr.shape[:2]
+    out = img_bgr.copy()
+    boxes = _ocr_boxes(img_bgr)
+    if not boxes:
+        return out
+
+    def cluster(seed_idx: int, max_dx: float, max_dy: float):
+        sx, sy, sw, sh, _ = boxes[seed_idx]
+        cx, cy = sx + sw / 2, sy + sh / 2
+        xs0, ys0, xs1, ys1 = sx, sy, sx + sw, sy + sh
+        for j, (bx, by, bw, bh, _t) in enumerate(boxes):
+            mx, my = bx + bw / 2, by + bh / 2
+            if abs(mx - cx) <= max_dx and abs(my - cy) <= max_dy:
+                xs0 = min(xs0, bx)
+                ys0 = min(ys0, by)
+                xs1 = max(xs1, bx + bw)
+                ys1 = max(ys1, by + bh)
+        return xs0, ys0, xs1, ys1
+
+    rects: list[tuple[int, int, int, int]] = []
+    for idx, (_x, _y, _w, _h, t) in enumerate(boxes):
+        if any(tok in t for tok in _LEGEND_TOKENS):
+            rects.append(cluster(idx, w * 0.14, h * 0.30))
+        elif any(tok == t or tok in t for tok in _SCALE_TOKENS):
+            rects.append(cluster(idx, w * 0.18, h * 0.04))
+
+    margin_x, margin_y = int(w * 0.012), int(h * 0.012)
+    for x0, y0, x1, y1 in rects:
+        x0 = max(0, x0 - margin_x)
+        y0 = max(0, y0 - margin_y)
+        x1 = min(w, x1 + margin_x)
+        y1 = min(h, y1 + margin_y)
+        out[y0:y1, x0:x1] = (255, 255, 255)
+    return out
+
 
 # ---------------------- Stage 1: cleanup ----------------------
 
@@ -283,7 +381,8 @@ def parse(image_path: pathlib.Path, truth_ft: dict[str, int] | None = None) -> d
     if img is None:
         raise RuntimeError(f"cannot read {image_path}")
     img = crop_diagram(img)
-    # blank_legend disabled: too aggressive, removes real perimeter.
+    # Round-3: OCR-anchored legend + scale-bar removal (was: heuristic blank_legend).
+    img = mask_legend_and_scale(img)
     img = strip_text(img)
     px = per_class_pixels(img)
 
