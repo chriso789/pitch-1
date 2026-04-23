@@ -311,12 +311,11 @@ export function UnifiedMeasurementPanel({
   const { data: aiMeasurements } = useQuery({
     queryKey: ['ai-measurements', pipelineEntryId],
     queryFn: async () => {
+      // Include both AI-pulled and manual measurements so users see full history
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft')
+        .select('id, created_at, customer_id, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data')
         .eq('customer_id', pipelineEntryId)
-        .not('footprint_source', 'in', '("manual_entry","manual")')
-        .not('detection_method', 'in', '("manual_entry","manual")')
         .order('created_at', { ascending: false });
 
       if (error) {
