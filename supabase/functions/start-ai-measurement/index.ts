@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
             requires_manual_review: requiresManualReview,
             validation_status: validationStatus,
             // Organization
-            tenant_id: tenantId || null,
+            tenant_id: effectiveTenantId,
           })
 
         if (roofInsertError) {
@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
         const { error: approvalError } = await supabaseAdmin
           .from('measurement_approvals')
           .insert({
-            tenant_id: tenantId || null,
+            tenant_id: effectiveTenantId,
             pipeline_entry_id: pipelineEntryId,
             approved_at: new Date().toISOString(),
             saved_tags: savedTags,
