@@ -27,11 +27,32 @@ Deno.serve(async (req) => {
 
     const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
+    // 🔒 Authoritative tenant_id: derive from the lead itself, not the client.
+    // This prevents measurements from being saved under the user's "default" tenant
+    // when the lead actually belongs to a different company (multi-tenant users).
+    const { data: leadRow, error: leadError } = await supabaseAdmin
+      .from('pipeline_entries')
+      .select('tenant_id')
+      .eq('id', pipelineEntryId)
+      .maybeSingle()
+
+    if (leadError || !leadRow?.tenant_id) {
+      return new Response(JSON.stringify({ error: 'Lead not found or missing tenant_id' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const effectiveTenantId = leadRow.tenant_id
+    if (tenantId && tenantId !== effectiveTenantId) {
+      console.warn(`[start-ai-measurement] tenant mismatch: client sent ${tenantId}, lead is ${effectiveTenantId} — using lead's tenant`)
+    }
+
     // Create job row
     const { data: job, error: insertError } = await supabaseAdmin
       .from('measurement_jobs')
       .insert({
-        tenant_id: tenantId || 'unknown',
+        tenant_id: effectiveTenantId,
         pipeline_entry_id: pipelineEntryId,
         user_id: userId || null,
         status: 'queued',
