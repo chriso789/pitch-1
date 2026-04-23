@@ -22,6 +22,8 @@ export async function saveEstimatePdf({
   userId,
   estimateDisplayName,
   estimatePricingTier,
+  estimateId,
+  signatureAnchor,
 }: {
   pdfBlob: Blob;
   pipelineEntryId: string;
@@ -31,6 +33,8 @@ export async function saveEstimatePdf({
   userId: string;
   estimateDisplayName?: string | null;
   estimatePricingTier?: string | null;
+  estimateId?: string | null;
+  signatureAnchor?: any | null;
 }): Promise<EstimatePdfSaveResult> {
   try {
     // Path structure: tenantId first to satisfy storage RLS policy
@@ -79,6 +83,20 @@ export async function saveEstimatePdf({
         filePath: pdfPath,
         error: `File uploaded but document record failed: ${docError.message}`
       };
+    }
+
+    // Persist signature anchor coordinates onto the linked estimate so finalize-envelope
+    // can place the signature image directly on the printed signature line — even when
+    // the terms-and-conditions text is shorter or longer than usual.
+    if (estimateId && signatureAnchor) {
+      try {
+        await (supabase as any)
+          .from('enhanced_estimates')
+          .update({ signature_anchor: signatureAnchor })
+          .eq('id', estimateId);
+      } catch (anchorErr: any) {
+        console.warn('Failed to save signature_anchor:', anchorErr?.message || anchorErr);
+      }
     }
 
     return {

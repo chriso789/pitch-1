@@ -14,6 +14,15 @@ interface PDFGenerationOptions {
   orientation?: 'portrait' | 'landscape';
 }
 
+interface SignatureAnchor {
+  pageIndex: number;        // 0-based page index in final PDF
+  xPt: number;              // X in PDF points (origin: bottom-left)
+  yPt: number;              // Y in PDF points (origin: bottom-left) — baseline of signature line
+  widthPt: number;          // width of signature line in PDF points
+  pageWidthPt: number;      // page width in PDF points
+  pageHeightPt: number;     // page height in PDF points
+}
+
 interface PDFGenerationResult {
   success: boolean;
   blob?: Blob;
@@ -21,6 +30,7 @@ interface PDFGenerationResult {
   storageUrl?: string;
   shareToken?: string;
   error?: string;
+  signatureAnchor?: SignatureAnchor | null;
 }
 
 /**
@@ -131,6 +141,10 @@ export function useMultiPagePDFGeneration() {
 
       console.log(`📄 Generating PDF with ${pageElements.length} pages...`);
 
+      // mm -> pt for PDF anchor coords (1 inch = 72pt = 25.4mm)
+      const MM_TO_PT = 72 / 25.4;
+      let signatureAnchor: SignatureAnchor | null = null;
+
       for (let i = 0; i < pageElements.length; i++) {
         const pageElement = pageElements[i] as HTMLElement;
         
@@ -209,6 +223,40 @@ export function useMultiPagePDFGeneration() {
           Math.min(imgHeight, pageHeight - 20)
         );
 
+        // ====== Capture signature line anchor (customer signature) ======
+        // The page element is captured 1:1 then placed inside [10mm, 10mm, imgWidth, imgHeight]
+        // on the PDF page. Convert the signature line's CSS bbox (relative to pageElement)
+        // into PDF points so finalize-envelope can place the signature image precisely on it.
+        if (!signatureAnchor) {
+          const sigLine = pageElement.querySelector('[data-signature-line="customer"]') as HTMLElement | null;
+          if (sigLine) {
+            const pageRect = pageElement.getBoundingClientRect();
+            const lineRect = sigLine.getBoundingClientRect();
+            // Position relative to page element (CSS pixels)
+            const relX = lineRect.left - pageRect.left;
+            const relY = lineRect.bottom - pageRect.top; // baseline of the line (bottom border)
+            const relW = lineRect.width;
+            // Scale CSS px → mm in the printed image area
+            const mmPerCssPx = imgWidth / pageRect.width;
+            const xMm = xOffset + relX * mmPerCssPx;
+            const yMmFromTop = yOffset + relY * mmPerCssPx;
+            const widthMm = relW * mmPerCssPx;
+            // Convert to PDF points; PDF y-origin is bottom-left
+            const xPt = xMm * MM_TO_PT;
+            const yPt = (pageHeight - yMmFromTop) * MM_TO_PT;
+            const widthPt = widthMm * MM_TO_PT;
+            signatureAnchor = {
+              pageIndex: i,
+              xPt,
+              yPt,
+              widthPt,
+              pageWidthPt: pageWidth * MM_TO_PT,
+              pageHeightPt: pageHeight * MM_TO_PT,
+            };
+            console.log(`📐 Captured signature anchor on page ${i}:`, signatureAnchor);
+          }
+        }
+
         setProgress(((i + 1) / pageElements.length) * 90 + 5);
         console.log(`📄 Page ${i + 1}/${pageElements.length} captured (${isImageHeavy ? 'JPEG' : 'PNG'}, scale:${captureScale})`);
       }
@@ -261,6 +309,7 @@ export function useMultiPagePDFGeneration() {
         filename,
         storageUrl,
         shareToken,
+        signatureAnchor,
       };
 
     } catch (error: any) {

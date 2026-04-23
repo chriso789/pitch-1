@@ -1496,6 +1496,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       toast({ title: 'Generating PDF...', description: 'Please wait while we create your estimate document.' });
       
       let pdfBlob: Blob | null = null;
+      let signatureAnchorCaptured: any = null;
       try {
         const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
           filename: `${estimateNumber}.pdf`,
@@ -1505,6 +1506,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         
         if (pdfResult.success && pdfResult.blob) {
           pdfBlob = pdfResult.blob;
+          signatureAnchorCaptured = pdfResult.signatureAnchor || null;
         } else {
           console.error('PDF generation failed:', pdfResult.error);
         }
@@ -1559,6 +1561,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           userId: user.id,
           estimateDisplayName: estimateDisplayName.trim() || null,
           estimatePricingTier: estimatePricingTier || null,
+          signatureAnchor: signatureAnchorCaptured,
         });
 
         if (result.success && result.filePath) {
@@ -1616,6 +1619,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           total_with_tax: breakdown.totalWithTax,
           line_items: lineItemsJson,
           pdf_url: pdfUrl,
+          signature_anchor: signatureAnchorCaptured,
           short_description: shortDescription,
           calculation_metadata: {
             source: 'multi_template_selector',
@@ -1833,6 +1837,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
           // Generate PDF
           let pdfBlob: Blob | null = null;
+          let regenSignatureAnchor: any = null;
           try {
             const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
               filename: `${estimateNumberToUpdate}.pdf`,
@@ -1842,6 +1847,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             
             if (pdfResult.success && pdfResult.blob) {
               pdfBlob = pdfResult.blob;
+              regenSignatureAnchor = pdfResult.signatureAnchor || null;
             }
           } catch (pdfError) {
             console.error('PDF regeneration failed:', pdfError);
@@ -1860,6 +1866,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               estimateNumber: estimateNumberToUpdate,
               description: `Updated estimate ${estimateNumberToUpdate}`,
               userId: userIdForPdf,
+              estimateId: estimateIdToUpdate,
+              signatureAnchor: regenSignatureAnchor,
             });
             
             if (result.success && result.filePath) {
