@@ -76,6 +76,8 @@ Deno.serve(async (req: Request) => {
         title,
         status,
         created_by,
+        estimate_id,
+        pipeline_entry_id,
         document_url,
         generated_pdf_path,
         expires_at
@@ -218,6 +220,43 @@ Deno.serve(async (req: Request) => {
     // Generate a fresh signed URL for the PDF document
     let pdfUrl = envelope.document_url;
     
+    if (!envelope.generated_pdf_path && envelope.estimate_id) {
+      const { data: estimate, error: estimateError } = await supabase
+        .from('enhanced_estimates')
+        .select('pdf_url, pipeline_entry_id')
+        .eq('id', envelope.estimate_id)
+        .maybeSingle();
+
+      if (estimateError) {
+        console.warn('Estimate PDF lookup failed:', estimateError);
+      }
+
+      if (estimate?.pdf_url) {
+        envelope.generated_pdf_path = estimate.pdf_url;
+      } else {
+        const fallbackPipelineEntryId = estimate?.pipeline_entry_id || envelope.pipeline_entry_id;
+        if (fallbackPipelineEntryId) {
+          const { data: latestEstimateDoc, error: docError } = await supabase
+            .from('documents')
+            .select('file_path')
+            .eq('tenant_id', envelope.tenant_id)
+            .eq('pipeline_entry_id', fallbackPipelineEntryId)
+            .eq('document_type', 'estimate')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (docError) {
+            console.warn('Fallback document lookup failed:', docError);
+          }
+
+          if (latestEstimateDoc?.file_path) {
+            envelope.generated_pdf_path = latestEstimateDoc.file_path;
+          }
+        }
+      }
+    }
+
     if (envelope.generated_pdf_path) {
       // Always generate a fresh signed URL from the storage path
       try {

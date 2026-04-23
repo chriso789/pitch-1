@@ -143,6 +143,26 @@ Deno.serve(async (req) => {
           .maybeSingle();
         resolvedContactId = pe?.contact_id || null;
       }
+
+      if (!pdfPath && data.pipeline_entry_id) {
+        const { data: latestEstimateDoc, error: docError } = await supabase
+          .from("documents")
+          .select("file_path")
+          .eq("tenant_id", tenantId)
+          .eq("pipeline_entry_id", data.pipeline_entry_id)
+          .eq("document_type", "estimate")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (docError) {
+          console.warn("Estimate document lookup error:", docError);
+        }
+
+        if (latestEstimateDoc?.file_path) {
+          pdfPath = latestEstimateDoc.file_path;
+        }
+      }
     } else if (document_type === 'proposal') {
       const { data } = await supabase
         .from("proposals")
@@ -163,6 +183,13 @@ Deno.serve(async (req) => {
         .from("documents")
         .createSignedUrl(pdfPath, 60 * 60 * 24 * 30); // 30 days
       documentUrl = signedUrlData?.signedUrl || null;
+    }
+
+    if (document_type === 'estimate' && !pdfPath) {
+      return new Response(JSON.stringify({ error: "Estimate PDF not found. Please save the estimate before sending for signature." }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     // Calculate expiry date
