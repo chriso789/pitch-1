@@ -34,7 +34,7 @@ export async function saveEstimatePdf({
   estimateDisplayName?: string | null;
   estimatePricingTier?: string | null;
   estimateId?: string | null;
-  signatureAnchor?: Record<string, number> | null;
+  signatureAnchor?: any | null;
 }): Promise<EstimatePdfSaveResult> {
   try {
     // Path structure: tenantId first to satisfy storage RLS policy
