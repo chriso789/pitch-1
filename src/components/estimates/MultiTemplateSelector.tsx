@@ -1619,6 +1619,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           total_with_tax: breakdown.totalWithTax,
           line_items: lineItemsJson,
           pdf_url: pdfUrl,
+          signature_anchor: signatureAnchorCaptured,
           short_description: shortDescription,
           calculation_metadata: {
             source: 'multi_template_selector',
