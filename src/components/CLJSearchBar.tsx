@@ -80,6 +80,12 @@ export const CLJSearchBar = () => {
   const { currentLocationId } = useLocation();
   const { activeTenantId } = useActiveTenantId();
 
+  // Reload recents whenever the active company changes (so switching tenants
+  // immediately swaps the recent-search list to that company's history).
+  useEffect(() => {
+    setRecents(loadRecents(activeTenantId));
+  }, [activeTenantId]);
+
   // Handle clicks outside to close dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -149,6 +155,7 @@ export const CLJSearchBar = () => {
     };
 
     saveRecent(result, activeTenantId);
+    setRecents(loadRecents(activeTenantId));
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
