@@ -314,6 +314,11 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
             value={address.street}
             onChange={(e) => handleAddressChange("street", e.target.value)}
             className="w-full"
+            autoComplete="off"
+            name="lead-street-address"
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore="true"
           />
           <p className="text-xs text-muted-foreground mt-1">
             Type your address above for autocomplete, or fill fields manually
