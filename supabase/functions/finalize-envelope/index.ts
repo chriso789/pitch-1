@@ -155,12 +155,16 @@ Deno.serve(async (req: Request) => {
               console.warn('Could not load signature_anchor:', e);
             }
 
+            // If anchor specifies a different page, switch to it
+            const effectivePageIdx = anchor && anchor.pageIndex < pageCount ? anchor.pageIndex : targetPageIdx;
+            const placementPage = pdfDoc.getPage(effectivePageIdx);
+
             let sigX = anchor ? anchor.xPt : 60;
             const signatureLineY = anchor ? anchor.yPt : 138;
             const maxSigWidth = anchor ? Math.min(anchor.widthPt, 200) : 160;
             const maxSigHeight = 28;
             const sigSpacing = 240;
-            console.log(`Signature placement: anchor=${!!anchor} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${pageHeight}`);
+            console.log(`Signature placement: anchor=${!!anchor} page=${effectivePageIdx} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${pageHeight}`);
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
