@@ -1,4 +1,5 @@
-import React, { useState, useRef, useMemo, useEffect } from "react";
+import React, { useState, useRef, useMemo, useEffect, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,10 +45,23 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   >("none");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [suggestionDropdownStyle, setSuggestionDropdownStyle] = useState<React.CSSProperties>({});
 
   const streetInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number | null>(null);
   const { toast } = useToast();
+
+  const updateSuggestionDropdownPosition = useCallback(() => {
+    if (!streetInputRef.current) return;
+
+    const rect = streetInputRef.current.getBoundingClientRect();
+    setSuggestionDropdownStyle({
+      position: "fixed",
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
 
   // Random field names so Chrome / 1Password / LastPass can't recognize them as address fields
   const fieldNames = useMemo(() => {
@@ -67,6 +81,21 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
     }
   }, []);
 
+  useEffect(() => {
+    if (!showSuggestions) return;
+
+    updateSuggestionDropdownPosition();
+
+    const handlePositionUpdate = () => updateSuggestionDropdownPosition();
+    window.addEventListener("resize", handlePositionUpdate);
+    window.addEventListener("scroll", handlePositionUpdate, true);
+
+    return () => {
+      window.removeEventListener("resize", handlePositionUpdate);
+      window.removeEventListener("scroll", handlePositionUpdate, true);
+    };
+  }, [showSuggestions, updateSuggestionDropdownPosition]);
+
   const fetchSuggestions = async (value: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
@@ -81,6 +110,7 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
       });
       if (error) throw error;
       if (data?.predictions && data.predictions.length > 0) {
+        updateSuggestionDropdownPosition();
         setSuggestions(data.predictions.slice(0, 5));
         setShowSuggestions(true);
       } else {
@@ -346,6 +376,7 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
             value={address.street}
             onChange={(e) => handleAddressChange("street", e.target.value)}
             onFocus={() => {
+              updateSuggestionDropdownPosition();
               if (suggestions.length > 0) setShowSuggestions(true);
             }}
             onBlur={() => {
@@ -359,6 +390,8 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
             type="search"
             role="combobox"
             aria-autocomplete="list"
+            aria-expanded={showSuggestions}
+            aria-controls="google-address-suggestions"
             data-form-type="other"
             data-lpignore="true"
             data-1p-ignore="true"
@@ -367,27 +400,35 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
           <p className="text-xs text-muted-foreground mt-1">
             Type your address above for autocomplete, or fill fields manually
           </p>
-
-          {showSuggestions && suggestions.length > 0 && (
-            <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
-              {suggestions.map((suggestion, index) => (
-                <div
-                  key={index}
-                  className="px-4 py-2 cursor-pointer hover:bg-muted"
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    selectSuggestion(suggestion);
-                  }}
-                >
-                  <div className="font-medium">{suggestion.structured_formatting.main_text}</div>
-                  <div className="text-sm text-muted-foreground">
-                    {suggestion.structured_formatting.secondary_text}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
+
+        {showSuggestions && suggestions.length > 0 && typeof document !== "undefined" && createPortal(
+          <div
+            id="google-address-suggestions"
+            className="z-[80] max-h-60 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
+            style={suggestionDropdownStyle}
+          >
+            {suggestions.map((suggestion, index) => (
+              <button
+                key={suggestion.place_id || index}
+                type="button"
+                className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
+              >
+                <div className="font-medium leading-snug">{suggestion.description}</div>
+                <div className="text-xs text-muted-foreground">
+                  {suggestion.structured_formatting?.main_text !== suggestion.description
+                    ? suggestion.structured_formatting?.main_text
+                    : "Google recognized address"}
+                </div>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
 
         <div className="grid grid-cols-2 gap-4">
           <Input
