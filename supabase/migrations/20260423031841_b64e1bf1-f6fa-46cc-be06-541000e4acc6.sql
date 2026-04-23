@@ -1,0 +1,1 @@
+ALTER TABLE public.enhanced_estimates ADD COLUMN IF NOT EXISTS signature_anchor jsonb;
