@@ -231,7 +231,7 @@ async function fetchPhotos(id: string) {
     .from('customer_photos')
     .select('*')
     .eq('lead_id', id)
-    .order('created_at', { ascending: false });
+    .order('uploaded_at', { ascending: false });
 
   if (error) throw error;
   return data || [];
