@@ -179,9 +179,11 @@ Deno.serve(async (req: Request) => {
                   color: rgb(1, 1, 1),
                 });
 
+                // Place image so its bottom sits just above the signature line
+                // (sig image baseline ≈ 2pt above the printed line)
                 lastPage.drawImage(embeddedImg, {
                   x: sigX,
-                  y: sigY,
+                  y: signatureLineY - 2,
                   width: drawW,
                   height: drawH,
                 });
