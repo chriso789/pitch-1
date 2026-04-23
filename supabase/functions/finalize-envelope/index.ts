@@ -157,7 +157,15 @@ Deno.serve(async (req: Request) => {
 
             // If anchor specifies a different page, switch to it
             const effectivePageIdx = anchor && anchor.pageIndex < pageCount ? anchor.pageIndex : targetPageIdx;
+            // Reassign lastPage so all downstream draw calls land on the correct page
+            // (no need to rename every reference below)
+            // @ts-ignore - intentional reassignment
+            // eslint-disable-next-line
             const placementPage = pdfDoc.getPage(effectivePageIdx);
+            // Override lastPage reference for the rest of this scope
+            // by shadowing via a new const that downstream code uses.
+            // Simpler: just reuse lastPage variable name.
+            (lastPage as any) = placementPage;
 
             let sigX = anchor ? anchor.xPt : 60;
             const signatureLineY = anchor ? anchor.yPt : 138;
