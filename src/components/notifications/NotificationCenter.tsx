@@ -58,9 +58,62 @@ export function NotificationCenter() {
     }
   };
 
-  const handleNotificationClick = (notification: Notification) => {
+  const resolveNotificationLink = async (notification: Notification): Promise<string | null> => {
+    const meta: any = (notification as any).metadata || {};
+
+    // Direct hints first
+    if (meta.action_url) return meta.action_url;
+    if (meta.link) return meta.link;
+    if (meta.pipeline_entry_id) {
+      return `/lead/${meta.pipeline_entry_id}?tab=documents`;
+    }
+    if (meta.project_id) {
+      // Project route auto-redirects to /lead/:pipeline_entry_id
+      return `/project/${meta.project_id}?tab=documents`;
+    }
+
+    // Envelope-based notifications: look up the linked pipeline entry
+    if (meta.envelope_id) {
+      try {
+        const { data: env } = await supabase
+          .from('signature_envelopes')
+          .select('pipeline_entry_id, estimate_id')
+          .eq('id', meta.envelope_id)
+          .maybeSingle();
+
+        if (env?.pipeline_entry_id) {
+          return `/lead/${env.pipeline_entry_id}?tab=documents`;
+        }
+
+        // Fall back via estimate → pipeline_entry
+        if (env?.estimate_id) {
+          const { data: est } = await supabase
+            .from('enhanced_estimates')
+            .select('pipeline_entry_id')
+            .eq('id', env.estimate_id)
+            .maybeSingle();
+          if (est?.pipeline_entry_id) {
+            return `/lead/${est.pipeline_entry_id}?tab=documents`;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to resolve envelope notification link:', err);
+      }
+    }
+
+    if (meta.contact_id) return `/contact/${meta.contact_id}`;
+    if (meta.job_id) return `/job/${meta.job_id}`;
+    return null;
+  };
+
+  const handleNotificationClick = async (notification: Notification) => {
     if (!notification.is_read) {
       markAsRead(notification.id);
+    }
+    const link = await resolveNotificationLink(notification);
+    if (link) {
+      setIsOpen(false);
+      navigate(link);
     }
   };
 
