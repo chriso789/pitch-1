@@ -1,16 +1,12 @@
-// Orchestrates blueprint parsing: rasterize pages -> classify -> extract geometry -> extract specs -> link details.
-// This skeleton creates plan_pages rows from the uploaded PDF and chains the downstream functions.
+// Orchestrates blueprint parsing: extract text per page -> classify -> geometry -> specs -> link details.
+// Uses unpdf (Deno-compatible) instead of pdfjs-dist to avoid native canvas.node dependency.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { getDocument, GlobalWorkerOptions } from "https://esm.sh/pdfjs-dist@4.0.379/build/pdf.mjs";
+import { extractText, getDocumentProxy } from "https://esm.sh/unpdf@0.12.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
-
-// pdfjs in Deno: disable worker
-// @ts-ignore
-GlobalWorkerOptions.workerSrc = "";
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
@@ -28,35 +24,34 @@ Deno.serve(async (req) => {
     if (docErr || !doc) throw new Error(`document not found: ${docErr?.message}`);
 
     await supabase.from("plan_documents")
-      .update({ status: "classifying", status_message: "rasterizing pages" })
+      .update({ status: "classifying", status_message: "extracting page text" })
       .eq("id", document_id);
 
-    // Download PDF from storage
     const { data: pdfBlob, error: dlErr } = await supabase.storage
       .from("blueprints").download(doc.file_path);
     if (dlErr || !pdfBlob) throw new Error(`download failed: ${dlErr?.message}`);
 
     const arrayBuf = await pdfBlob.arrayBuffer();
-    const pdf = await getDocument({ data: new Uint8Array(arrayBuf), disableWorker: true } as any).promise;
-    const pageCount = pdf.numPages;
+    const bytes = new Uint8Array(arrayBuf);
+
+    // Load PDF and extract per-page text
+    const pdf = await getDocumentProxy(bytes);
+    const pageCount: number = pdf.numPages;
+
+    const { text: pagesText } = await extractText(pdf, { mergePages: false });
+    const textArr: string[] = Array.isArray(pagesText) ? pagesText : [String(pagesText)];
 
     await supabase.from("plan_documents").update({ page_count: pageCount }).eq("id", document_id);
 
-    // Create one plan_pages row per page (image rasterization stub - we store the source PDF page index;
-    // page image generation can be moved to a Python worker later for true raster output).
     const rows = [];
     for (let i = 1; i <= pageCount; i++) {
-      const page = await pdf.getPage(i);
-      const textContent = await page.getTextContent().catch(() => ({ items: [] }));
-      // @ts-ignore
-      const rawText = (textContent.items || []).map((it: any) => it.str).join(" ").slice(0, 8000);
-      const viewport = page.getViewport({ scale: 1.0 });
+      const rawText = (textArr[i - 1] || "").slice(0, 8000);
       rows.push({
         tenant_id: doc.tenant_id,
         document_id,
         page_number: i,
-        width_px: Math.round(viewport.width),
-        height_px: Math.round(viewport.height),
+        width_px: null,
+        height_px: null,
         raw_text: rawText,
       });
     }
@@ -65,7 +60,7 @@ Deno.serve(async (req) => {
     });
     if (insErr) throw new Error(`insert pages failed: ${insErr.message}`);
 
-    // Kick off classifier (non-blocking: chain via fetch)
+    // Chain to classifier (non-blocking)
     const baseUrl = Deno.env.get("SUPABASE_URL")!;
     const anonKey = Deno.env.get("SUPABASE_ANON_KEY")!;
     fetch(`${baseUrl}/functions/v1/classify-blueprint-pages`, {
