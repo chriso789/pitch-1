@@ -777,7 +777,6 @@ export function UnifiedMeasurementPanel({
                     mapbox_image_url: ai.mapbox_image_url,
                     selected_image_source: ai.selected_image_source,
                     image_source: ai.image_source,
-                    perimeter_wkt: ai.perimeter_wkt,
                     footprint_vertices_geo: ai.footprint_vertices_geo,
                     footprint_source: ai.footprint_source,
                     footprint_confidence: ai.footprint_confidence,
