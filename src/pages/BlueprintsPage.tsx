@@ -89,7 +89,7 @@ export default function BlueprintsPage() {
       if (upErr) throw upErr;
 
       const { data: { user } } = await supabase.auth.getUser();
-      const { error: insErr } = await supabase.from("plan_documents").insert({
+      const { error: insErr } = await supabase.from("plan_documents").insert([{
         id: docId,
         tenant_id: tenantId,
         uploaded_by: user?.id,
@@ -97,7 +97,7 @@ export default function BlueprintsPage() {
         file_path: path,
         property_address: address || null,
         status: "uploaded",
-      });
+      }]);
       if (insErr) throw insErr;
 
       const { error: fnErr } = await supabase.functions.invoke("parse-blueprint-document", {
@@ -185,7 +185,7 @@ export default function BlueprintsPage() {
                     </div>
                   </div>
                   <Badge variant={STATUS_VARIANT[d.status] || "outline"}>
-                    {d.status.replaceAll("_", " ")}
+                    {d.status.split("_").join(" ")}
                   </Badge>
                 </Link>
               ))}

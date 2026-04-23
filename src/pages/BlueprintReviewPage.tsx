@@ -98,7 +98,7 @@ export default function BlueprintReviewPage() {
   };
 
   const updatePageType = async (pageId: string, newType: string) => {
-    await supabase.from("plan_pages").update({ page_type: newType }).eq("id", pageId);
+    await supabase.from("plan_pages").update({ page_type: newType as any }).eq("id", pageId);
     load();
   };
 
@@ -130,7 +130,7 @@ export default function BlueprintReviewPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Badge>{doc.status.replaceAll("_", " ")}</Badge>
+          <Badge>{String(doc.status).split("_").join(" ")}</Badge>
           <Button variant="outline" size="sm" onClick={reparse}>
             <RefreshCw className="h-4 w-4 mr-1" /> Re-parse
           </Button>
