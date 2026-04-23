@@ -135,13 +135,37 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Verify all documents belong to the caller's tenant
+    // Verify document tenancy. Master/owner roles can operate across tenants
+    // they have access to via user_company_access (used by the company switcher).
+    const crossTenantRoles = ["master", "owner"];
     const unauthorizedDocs = documents.filter(d => d.tenant_id !== profile.tenant_id);
     if (unauthorizedDocs.length > 0) {
-      return new Response(
-        JSON.stringify({ error: "Some documents do not belong to your organization" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      if (!crossTenantRoles.includes(profile.role)) {
+        return new Response(
+          JSON.stringify({ error: "Some documents do not belong to your organization" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // For master/owner, verify they have access to each document's tenant
+      const foreignTenantIds = Array.from(new Set(unauthorizedDocs.map(d => d.tenant_id)));
+      const { data: accessRows } = await adminClient
+        .from("user_company_access")
+        .select("tenant_id")
+        .eq("user_id", user.id)
+        .in("tenant_id", foreignTenantIds);
+      const accessibleTenantIds = new Set((accessRows || []).map((r: any) => r.tenant_id));
+      // Master role: allow all tenants (platform-wide admin)
+      const stillUnauthorized = profile.role === "master"
+        ? []
+        : unauthorizedDocs.filter(d => !accessibleTenantIds.has(d.tenant_id));
+      if (stillUnauthorized.length > 0) {
+        console.log(`[delete-documents] ${profile.role} blocked from tenants:`, stillUnauthorized.map(d => d.tenant_id));
+        return new Response(
+          JSON.stringify({ error: "Some documents belong to organizations you don't have access to" }),
+          { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      console.log(`[delete-documents] Cross-tenant delete by ${profile.role}: ${unauthorizedDocs.length} foreign docs allowed`);
     }
 
     // Step 2: Find approvals referencing these documents

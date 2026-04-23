@@ -129,7 +129,7 @@ Deno.serve(async (req: Request) => {
               ? envelope.signature_page_index
               : pageCount - 1;
             console.log(`Targeting page ${targetPageIdx} for signature (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount})`);
-            const lastPage = pdfDoc.getPage(targetPageIdx);
+            let lastPage = pdfDoc.getPage(targetPageIdx);
             const { width: pageWidth, height: pageHeight } = lastPage.getSize();
 
             // Place signatures on the signature block area of the last page
@@ -155,17 +155,11 @@ Deno.serve(async (req: Request) => {
               console.warn('Could not load signature_anchor:', e);
             }
 
-            // If anchor specifies a different page, switch to it
+            // If anchor specifies a different page, switch to it for drawing.
             const effectivePageIdx = anchor && anchor.pageIndex < pageCount ? anchor.pageIndex : targetPageIdx;
-            // Reassign lastPage so all downstream draw calls land on the correct page
-            // (no need to rename every reference below)
-            // @ts-ignore - intentional reassignment
-            // eslint-disable-next-line
-            const placementPage = pdfDoc.getPage(effectivePageIdx);
-            // Override lastPage reference for the rest of this scope
-            // by shadowing via a new const that downstream code uses.
-            // Simpler: just reuse lastPage variable name.
-            (lastPage as any) = placementPage;
+            if (effectivePageIdx !== targetPageIdx) {
+              lastPage = pdfDoc.getPage(effectivePageIdx);
+            }
 
             let sigX = anchor ? anchor.xPt : 60;
             const signatureLineY = anchor ? anchor.yPt : 138;
