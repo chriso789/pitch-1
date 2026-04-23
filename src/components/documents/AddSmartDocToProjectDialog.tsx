@@ -193,7 +193,18 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
         .maybeSingle();
 
       if (project) {
-        context.project = project;
+        // Projects have no address column — derive from contact's property address
+        const c = (entry?.contacts || {}) as Record<string, any>;
+        const addrParts = [c.address_street, c.address_city, c.address_state, c.address_zip].filter(Boolean);
+        context.project = {
+          ...project,
+          address: (project as any).address || addrParts.join(', ') || null,
+          address_street: c.address_street || null,
+          address_city: c.address_city || null,
+          address_state: c.address_state || null,
+          address_zip: c.address_zip || null,
+          full_address: addrParts.join(', ') || null,
+        };
       }
 
       // Fetch estimates
