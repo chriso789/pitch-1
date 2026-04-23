@@ -282,6 +282,7 @@ def parse(image_path: pathlib.Path, truth_ft: dict[str, int] | None = None) -> d
     if img is None:
         raise RuntimeError(f"cannot read {image_path}")
     img = crop_diagram(img)
+    img = blank_legend(img)
     img = strip_text(img)
     px = per_class_pixels(img)
 
