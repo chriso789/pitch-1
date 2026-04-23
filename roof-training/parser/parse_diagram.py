@@ -56,9 +56,10 @@ def color_masks(img_bgr: np.ndarray) -> dict[str, np.ndarray]:
     hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     h, s, v = cv2.split(hsv)
 
-    # Red (hips + ridges) — wraps around hue 0
-    red1 = cv2.inRange(hsv, (0,   90, 60), (12,  255, 255))
-    red2 = cv2.inRange(hsv, (168, 90, 60), (179, 255, 255))
+    # Red/orange-red (hips + ridges). EagleView's red prints with hue ~10-18,
+    # so we widen past pure red to include the orange-red end of the spectrum.
+    red1 = cv2.inRange(hsv, (0,   80, 60), (22,  255, 255))
+    red2 = cv2.inRange(hsv, (168, 80, 60), (179, 255, 255))
     red = cv2.bitwise_or(red1, red2)
 
     # Blue (valleys, often dashed)
