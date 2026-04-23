@@ -37,22 +37,56 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [tempAssignments, setTempAssignments] = useState<string[]>([]);
+  const effectiveTenantId = useEffectiveTenantId();
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (effectiveTenantId) fetchData();
+  }, [effectiveTenantId]);
 
   const fetchData = async () => {
+    if (!effectiveTenantId) return;
     try {
       setLoading(true);
-      
-      // Fetch users - exclude master role users who have platform-wide access
-      const { data: usersData, error: usersError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email, role')
-        .neq('role', 'master')
-        .order('first_name');
 
+      // Get user IDs that have access to the active tenant (home tenant or via user_company_access)
+      const [homeProfilesRes, accessRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email, role')
+          .eq('tenant_id', effectiveTenantId)
+          .neq('role', 'master'),
+        supabase
+          .from('user_company_access')
+          .select('user_id')
+          .eq('tenant_id', effectiveTenantId)
+          .eq('is_active', true),
+      ]);
+
+      if (homeProfilesRes.error) throw homeProfilesRes.error;
+      if (accessRes.error) throw accessRes.error;
+
+      const homeProfiles = homeProfilesRes.data || [];
+      const homeIds = new Set(homeProfiles.map(p => p.id));
+      const extraIds = (accessRes.data || [])
+        .map((r: any) => r.user_id)
+        .filter((id: string) => !homeIds.has(id));
+
+      let extraProfiles: any[] = [];
+      if (extraIds.length > 0) {
+        const { data: extras, error: extrasErr } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email, role')
+          .in('id', extraIds)
+          .neq('role', 'master');
+        if (extrasErr) throw extrasErr;
+        extraProfiles = extras || [];
+      }
+
+      const usersData = [...homeProfiles, ...extraProfiles].sort((a, b) =>
+        (a.first_name || '').localeCompare(b.first_name || '')
+      );
+
+      const usersError = null;
       if (usersError) throw usersError;
 
       // Fetch locations
