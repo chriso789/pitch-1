@@ -80,10 +80,73 @@ export const CLJSearchBar = () => {
   const { currentLocationId } = useLocation();
   const { activeTenantId } = useActiveTenantId();
 
-  // Reload recents whenever the active company changes (so switching tenants
-  // immediately swaps the recent-search list to that company's history).
+  // Re-resolve cached recent items against the live DB so renames (e.g. a
+  // contact renamed from "Reed Alter" to "Brittany Jones", or a lead/project
+  // renamed by a manager) immediately show the current name in the dropdown
+  // instead of a stale localStorage snapshot.
+  const refreshRecents = async (tenantId: string | null) => {
+    const cached = loadRecents(tenantId);
+    if (!tenantId || cached.length === 0) {
+      setRecents(cached);
+      return;
+    }
+
+    try {
+      const contactIds = cached.filter(r => r.entity_type === 'contact').map(r => r.entity_id);
+      const leadIds = cached.filter(r => r.entity_type === 'lead' || r.entity_type === 'job').map(r => r.entity_id);
+
+      const [contactsRes, leadsRes] = await Promise.all([
+        contactIds.length
+          ? supabase.from('contacts').select('id, first_name, last_name, address_street').in('id', contactIds)
+          : Promise.resolve({ data: [] as any[] }),
+        leadIds.length
+          ? supabase
+              .from('pipeline_entries')
+              .select('id, lead_name, contacts(first_name, last_name, address_street)')
+              .in('id', leadIds)
+          : Promise.resolve({ data: [] as any[] }),
+      ]);
+
+      const contactMap = new Map((contactsRes.data || []).map((c: any) => [c.id, c]));
+      const leadMap = new Map((leadsRes.data || []).map((l: any) => [l.id, l]));
+
+      const refreshed = cached.map(r => {
+        if (r.entity_type === 'contact') {
+          const c = contactMap.get(r.entity_id);
+          if (!c) return r;
+          const name = `${c.first_name || ''} ${c.last_name || ''}`.trim() || r.entity_name;
+          return { ...r, entity_name: name, entity_subtext: c.address_street || r.entity_subtext };
+        }
+        if (r.entity_type === 'lead' || r.entity_type === 'job') {
+          const l: any = leadMap.get(r.entity_id);
+          if (!l) return r;
+          // Lead/Project name takes precedence; fall back to contact name.
+          const contactName = l.contacts
+            ? `${l.contacts.first_name || ''} ${l.contacts.last_name || ''}`.trim()
+            : '';
+          const name = (l.lead_name && l.lead_name.trim()) || contactName || r.entity_name;
+          return {
+            ...r,
+            entity_name: name,
+            entity_subtext: l.contacts?.address_street || r.entity_subtext,
+          };
+        }
+        return r;
+      });
+
+      setRecents(refreshed);
+      // Persist refreshed names so the next open is instant and consistent.
+      localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(refreshed));
+    } catch (err) {
+      console.warn('[CLJSearch] Failed to refresh recents from DB', err);
+      setRecents(cached);
+    }
+  };
+
+  // Reload + refresh recents whenever the active company changes (so switching
+  // tenants immediately swaps the list to that company's history).
   useEffect(() => {
-    setRecents(loadRecents(activeTenantId));
+    refreshRecents(activeTenantId);
   }, [activeTenantId]);
 
   // Handle clicks outside to close dropdown
@@ -155,7 +218,9 @@ export const CLJSearchBar = () => {
     };
 
     saveRecent(result, activeTenantId);
-    setRecents(loadRecents(activeTenantId));
+    // Re-resolve names from DB so the freshly added recent reflects any
+    // rename that happened after the original cache was written.
+    refreshRecents(activeTenantId);
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
@@ -188,8 +253,10 @@ export const CLJSearchBar = () => {
           } else if (searchTerm.length < 2) {
             const r = loadRecents(activeTenantId);
             if (r.length > 0) {
-              setRecents(r);
               setOpen(true);
+              // Pull live names from DB on every focus so renames show up
+              // immediately without requiring a tenant switch or reload.
+              refreshRecents(activeTenantId);
             }
           }
         }}
