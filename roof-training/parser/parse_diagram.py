@@ -33,6 +33,90 @@ def crop_diagram(img_bgr: np.ndarray) -> np.ndarray:
     return img_bgr[top:bottom, :]
 
 
+def blank_legend(img_bgr: np.ndarray) -> np.ndarray:
+    """EagleView Length Diagrams render a legend + scale-bar in a fixed
+    rectangle in the lower-left corner. Both contain pure red, blue, and
+    black sample lines that are NOT roof edges. We blank that rectangle
+    to white before color-splitting.
+
+    Heuristic: scan the lower-left quadrant for a tight cluster of all
+    three colors (red + blue + black) inside a small rectangular region
+    bordered by a black box. If found, paint it white. If not found,
+    fall back to a conservative fixed crop (lower-left 22% W x 18% H).
+    """
+    h, w = img_bgr.shape[:2]
+    out = img_bgr.copy()
+    # Conservative fallback rectangle (lower-left)
+    x0, y0 = int(w * 0.00), int(h * 0.78)
+    x1, y1 = int(w * 0.26), int(h * 1.00)
+
+    # Try to refine: look for a black-bordered box in that quadrant
+    quad = cv2.cvtColor(img_bgr[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY)
+    _, binv = cv2.threshold(quad, 130, 255, cv2.THRESH_BINARY_INV)
+    n, _, stats, _ = cv2.connectedComponentsWithStats(binv, connectivity=8)
+    best = None
+    for i in range(1, n):
+        x, y, ww, hh, area = stats[i]
+        if ww > quad.shape[1] * 0.4 and hh > quad.shape[0] * 0.4 and area > 0.02 * quad.size:
+            if best is None or area > best[4]:
+                best = (x, y, ww, hh, area)
+    if best is not None:
+        bx, by, bw, bh, _ = best
+        x0r, y0r = x0 + bx, y0 + by
+        x1r, y1r = x0r + bw, y0r + bh
+        out[y0r:y1r, x0r:x1r] = (255, 255, 255)
+    else:
+        out[y0:y1, x0:x1] = (255, 255, 255)
+    return out
+
+
+def filter_dashed(mask: np.ndarray, min_dashes: int = 3) -> np.ndarray:
+    """Keep only line-runs that are actually dashed (real valleys);
+    drop solid blue runs (legend swatches, scale bars, north arrows).
+
+    For each connected component on the *raw* (non-bridged) mask,
+    measure the ratio of run-length-pixels to bbox diagonal. Solid
+    lines have ratio close to 1; dashed lines have ratio ~0.4-0.7.
+    Reject components with ratio > 0.85 (solid) or with too few
+    distinct dash blobs along their major axis.
+    """
+    out = np.zeros_like(mask)
+    n, lbl, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    for i in range(1, n):
+        x, y, ww, hh, area = stats[i]
+        diag = float(np.hypot(ww, hh))
+        if diag < 12:
+            continue
+        fill = area / max(diag, 1.0)
+        # Solid sample line in legend: fill ratio is high relative to length
+        if ww * hh < 200 and fill > 6.0:
+            continue
+        # Count dash blobs along the component
+        comp = (lbl[y:y+hh, x:x+ww] == i).astype(np.uint8) * 255
+        nb, _, _, _ = cv2.connectedComponentsWithStats(comp, connectivity=8)
+        # Note: comp itself is one component; re-erode to split dashes
+        eroded = cv2.erode(comp, np.ones((2, 2), np.uint8), iterations=1)
+        nd, _, _, _ = cv2.connectedComponentsWithStats(eroded, connectivity=8)
+        # nd-1 is dash count after erosion. Solid → ~1, dashed → many.
+        if (nd - 1) < min_dashes and diag > 40:
+            continue
+        out[y:y+hh, x:x+ww] |= comp
+    return out
+
+
+def reject_arrows(mask: np.ndarray) -> np.ndarray:
+    """Drop tiny arrow-tip blobs from the red channel (leader arrows
+    pointing from callouts to edges). Arrows are small + roughly
+    triangular (high solidity, small area, low aspect)."""
+    out = mask.copy()
+    n, lbl, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    for i in range(1, n):
+        x, y, ww, hh, area = stats[i]
+        if area < 80 and max(ww, hh) < 18:
+            out[y:y+hh, x:x+ww][lbl[y:y+hh, x:x+ww] == i] = 0
+    return out
+
+
 def strip_text(img_bgr: np.ndarray) -> np.ndarray:
     """Inpaint text glyphs (numbers + callout labels in red and black) so
     Hough doesn't pick them up as line segments. We detect text by
