@@ -144,9 +144,8 @@ Deno.serve(async (req: Request) => {
             // appear BELOW the line — never overlapping the fine-print paragraph above.
             let sigX = 60;
             const signatureLineY = 138; // baseline y of the printed signature line
-            let sigY = signatureLineY;  // image baseline sits on the line
-            const maxSigWidth = 180;
-            const maxSigHeight = 45;    // keep signature compact so it doesn't reach into terms
+            const maxSigWidth = 160;
+            const maxSigHeight = 28;    // keep signature compact so it sits on the line, not floating above
             const sigSpacing = 240;
 
             for (const sig of signatures) {
