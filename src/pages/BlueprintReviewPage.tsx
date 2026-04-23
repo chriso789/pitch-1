@@ -191,7 +191,7 @@ export default function BlueprintReviewPage() {
           {Object.entries(specsByCategory).map(([cat, items]) => (
             <Card key={cat}>
               <CardHeader>
-                <CardTitle className="text-base capitalize">{cat.replaceAll("_", " ")}</CardTitle>
+                <CardTitle className="text-base capitalize">{cat.split("_").join(" ")}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
                 {items.map((s) => (

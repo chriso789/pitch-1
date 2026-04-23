@@ -33,7 +33,7 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "dest
 
 export default function BlueprintsPage() {
   const navigate = useNavigate();
-  const tenantId = useActiveTenantId();
+  const { activeTenantId: tenantId } = useActiveTenantId();
   const [docs, setDocs] = useState<PlanDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
