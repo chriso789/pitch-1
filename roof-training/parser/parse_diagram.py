@@ -247,13 +247,14 @@ def merge_collinear(segs, tol_angle_deg=2.0, tol_dist_px=4.0):
 
 def per_class_pixels(img_bgr: np.ndarray) -> dict[str, float]:
     masks = color_masks(img_bgr)
-    # Round-2: drop arrow-tips from red, drop solid swatches from blue.
+    # Round-2: drop only arrow-tip blobs from red. filter_dashed and
+    # blank_legend were too aggressive — they killed real valleys and
+    # real perimeter — so they are disabled until we can detect the
+    # legend rectangle more reliably (Round-3).
     masks["red"]  = reject_arrows(masks["red"])
-    masks["blue"] = filter_dashed(masks["blue"])
     out = {}
     for name, m in masks.items():
         if name == "blue":
-            # Bridge dashed valleys so a dash-train merges before Hough.
             m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 9), np.uint8))
             m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((9, 3), np.uint8))
         min_len = 22 if name == "blue" else 18
