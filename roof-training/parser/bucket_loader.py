@@ -17,15 +17,17 @@ ANON_KEY = os.environ.get(
 
 
 def list_eagleview_with_diagrams() -> list[dict]:
-    url = (
-        f"{SUPABASE_URL}/rest/v1/roof_vendor_reports"
-        "?select=id,address,provider,diagram_image_url"
-        "&provider=eq.eagleview&diagram_image_url=not.is.null"
-        "&order=created_at.desc"
-    )
+    """Calls the public.list_eagleview_diagrams() RPC (security-definer)."""
+    url = f"{SUPABASE_URL}/rest/v1/rpc/list_eagleview_diagrams"
     req = urllib.request.Request(
         url,
-        headers={"apikey": ANON_KEY, "Authorization": f"Bearer {ANON_KEY}"},
+        method="POST",
+        data=b"{}",
+        headers={
+            "apikey": ANON_KEY,
+            "Authorization": f"Bearer {ANON_KEY}",
+            "Content-Type": "application/json",
+        },
     )
     with urllib.request.urlopen(req, timeout=30) as r:
         return json.loads(r.read())
