@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { MapPin, Users, Settings, Building2 } from "lucide-react";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 interface User {
   id: string;
@@ -36,38 +37,74 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [tempAssignments, setTempAssignments] = useState<string[]>([]);
+  const effectiveTenantId = useEffectiveTenantId();
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    if (effectiveTenantId) fetchData();
+  }, [effectiveTenantId]);
 
   const fetchData = async () => {
+    if (!effectiveTenantId) return;
     try {
       setLoading(true);
-      
-      // Fetch users - exclude master role users who have platform-wide access
-      const { data: usersData, error: usersError } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name, email, role')
-        .neq('role', 'master')
-        .order('first_name');
 
+      // Get user IDs that have access to the active tenant (home tenant or via user_company_access)
+      const [homeProfilesRes, accessRes] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email, role')
+          .eq('tenant_id', effectiveTenantId)
+          .neq('role', 'master'),
+        supabase
+          .from('user_company_access')
+          .select('user_id')
+          .eq('tenant_id', effectiveTenantId)
+          .eq('is_active', true),
+      ]);
+
+      if (homeProfilesRes.error) throw homeProfilesRes.error;
+      if (accessRes.error) throw accessRes.error;
+
+      const homeProfiles = homeProfilesRes.data || [];
+      const homeIds = new Set(homeProfiles.map(p => p.id));
+      const extraIds = (accessRes.data || [])
+        .map((r: any) => r.user_id)
+        .filter((id: string) => !homeIds.has(id));
+
+      let extraProfiles: any[] = [];
+      if (extraIds.length > 0) {
+        const { data: extras, error: extrasErr } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email, role')
+          .in('id', extraIds)
+          .neq('role', 'master');
+        if (extrasErr) throw extrasErr;
+        extraProfiles = extras || [];
+      }
+
+      const usersData = [...homeProfiles, ...extraProfiles].sort((a, b) =>
+        (a.first_name || '').localeCompare(b.first_name || '')
+      );
+
+      const usersError = null;
       if (usersError) throw usersError;
 
-      // Fetch locations
+      // Fetch locations (active tenant only)
       const { data: locationsData, error: locationsError } = await supabase
         .from('locations')
         .select('id, name, address_city, address_state')
         .eq('is_active', true)
+        .eq('tenant_id', effectiveTenantId)
         .order('name');
 
       if (locationsError) throw locationsError;
 
-      // Fetch user-location assignments
+      // Fetch user-location assignments (active tenant only)
       const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('user_location_assignments')
         .select('user_id, location_id')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('tenant_id', effectiveTenantId);
 
       if (assignmentsError) throw assignmentsError;
 
@@ -115,27 +152,21 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) throw new Error('Not authenticated');
+      if (!effectiveTenantId) throw new Error('No active tenant');
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', currentUser.id)
-        .single();
-
-      if (!profile) throw new Error('Profile not found');
-
-      // First, deactivate all existing assignments for this user
+      // First, deactivate all existing assignments for this user in this tenant
       const { error: deactivateError } = await supabase
         .from('user_location_assignments')
         .update({ is_active: false })
-        .eq('user_id', selectedUser.id);
+        .eq('user_id', selectedUser.id)
+        .eq('tenant_id', effectiveTenantId);
 
       if (deactivateError) throw deactivateError;
 
       // Then, create new assignments
       if (tempAssignments.length > 0) {
         const assignments = tempAssignments.map(locationId => ({
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           user_id: selectedUser.id,
           location_id: locationId,
           assigned_by: currentUser.id,
