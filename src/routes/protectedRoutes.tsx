@@ -22,6 +22,9 @@ const Campaigns = React.lazy(() => import("@/pages/Campaigns"));
 const SmartDocs = React.lazy(() => import("@/pages/SmartDocs"));
 const BlueprintsPage = React.lazy(() => import("@/pages/BlueprintsPage"));
 const BlueprintReviewPage = React.lazy(() => import("@/pages/BlueprintReviewPage"));
+const BlueprintLab = React.lazy(() => import("@/pages/BlueprintLab"));
+const BlueprintDocumentDetail = React.lazy(() => import("@/pages/BlueprintDocumentDetail"));
+const BlueprintPageReview = React.lazy(() => import("@/pages/BlueprintPageReview"));
 const Jobs = React.lazy(() => import("@/pages/Jobs"));
 const Estimates = React.lazy(() => import("@/pages/Estimates"));
 const AutomationDashboard = React.lazy(() => import("@/pages/AutomationDashboard"));
@@ -120,7 +123,10 @@ export default function ProtectedRoutes() {
         <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
        <Route path="/smartdocs" element={<ProtectedRoute><SmartDocs /></ProtectedRoute>} />
        <Route path="/blueprints" element={<ProtectedRoute><BlueprintsPage /></ProtectedRoute>} />
-       <Route path="/blueprints/:id" element={<ProtectedRoute><BlueprintReviewPage /></ProtectedRoute>} />
+       <Route path="/blueprints/:id" element={<ProtectedRoute><BlueprintDocumentDetail /></ProtectedRoute>} />
+       <Route path="/blueprints/page/:id" element={<ProtectedRoute><BlueprintPageReview /></ProtectedRoute>} />
+       <Route path="/blueprint-lab" element={<ProtectedRoute><BlueprintLab /></ProtectedRoute>} />
+       <Route path="/blueprints/:id/legacy" element={<ProtectedRoute><BlueprintReviewPage /></ProtectedRoute>} />
         <Route path="/jobs" element={<ProtectedRoute><Jobs /></ProtectedRoute>} />
         <Route path="/estimates" element={<ProtectedRoute><Estimates /></ProtectedRoute>} />
         <Route path="/automation" element={<ProtectedRoute><AutomationDashboard /></ProtectedRoute>} />
