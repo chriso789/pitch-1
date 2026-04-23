@@ -85,6 +85,20 @@ export async function saveEstimatePdf({
       };
     }
 
+    // Persist signature anchor coordinates onto the linked estimate so finalize-envelope
+    // can place the signature image directly on the printed signature line — even when
+    // the terms-and-conditions text is shorter or longer than usual.
+    if (estimateId && signatureAnchor) {
+      try {
+        await (supabase as any)
+          .from('enhanced_estimates')
+          .update({ signature_anchor: signatureAnchor })
+          .eq('id', estimateId);
+      } catch (anchorErr: any) {
+        console.warn('Failed to save signature_anchor:', anchorErr?.message || anchorErr);
+      }
+    }
+
     return {
       success: true,
       filePath: pdfPath
