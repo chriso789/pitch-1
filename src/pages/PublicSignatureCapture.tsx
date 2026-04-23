@@ -343,9 +343,9 @@ const PublicSignatureCapture = () => {
         )}
       </div>
 
-      {/* Sticky mobile CTA bar */}
-      {isMobile && !sheetOpen && (
-        <div className="shrink-0 bg-background border-t p-3 safe-area-bottom">
+      {/* Sticky mobile CTA bar - always visible so homeowner can sign */}
+      {isMobile && (
+        <div className="sticky bottom-0 z-40 shrink-0 bg-background border-t p-3 safe-area-bottom shadow-lg">
           <Button
             size="lg"
             className="w-full h-12 text-base font-semibold"
