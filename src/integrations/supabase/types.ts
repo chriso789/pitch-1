@@ -23825,10 +23825,13 @@ export type Database = {
           created_at: string
           document_id: string
           id: string
+          link_status: string
           metadata: Json | null
           source_page_id: string | null
+          target_detail_id: string | null
           target_geometry_ref: string | null
           target_page_id: string | null
+          target_region_json: Json | null
           target_sheet_number: string | null
           tenant_id: string
         }
@@ -23838,10 +23841,13 @@ export type Database = {
           created_at?: string
           document_id: string
           id?: string
+          link_status?: string
           metadata?: Json | null
           source_page_id?: string | null
+          target_detail_id?: string | null
           target_geometry_ref?: string | null
           target_page_id?: string | null
+          target_region_json?: Json | null
           target_sheet_number?: string | null
           tenant_id: string
         }
@@ -23851,10 +23857,13 @@ export type Database = {
           created_at?: string
           document_id?: string
           id?: string
+          link_status?: string
           metadata?: Json | null
           source_page_id?: string | null
+          target_detail_id?: string | null
           target_geometry_ref?: string | null
           target_page_id?: string | null
+          target_region_json?: Json | null
           target_sheet_number?: string | null
           tenant_id?: string
         }
@@ -24002,41 +24011,56 @@ export type Database = {
       }
       plan_geometry: {
         Row: {
+          class_name: string | null
           confidence: number | null
           created_at: string
           geometry_class: Database["public"]["Enums"]["plan_geometry_class"]
+          geometry_type: string | null
           id: string
+          is_reviewed: boolean
           length_ft: number | null
           length_px: number | null
           metadata: Json | null
+          metadata_json: Json | null
           page_id: string
           points: Json
+          points_json: Json | null
           source: string | null
           tenant_id: string
         }
         Insert: {
+          class_name?: string | null
           confidence?: number | null
           created_at?: string
           geometry_class: Database["public"]["Enums"]["plan_geometry_class"]
+          geometry_type?: string | null
           id?: string
+          is_reviewed?: boolean
           length_ft?: number | null
           length_px?: number | null
           metadata?: Json | null
+          metadata_json?: Json | null
           page_id: string
           points: Json
+          points_json?: Json | null
           source?: string | null
           tenant_id: string
         }
         Update: {
+          class_name?: string | null
           confidence?: number | null
           created_at?: string
           geometry_class?: Database["public"]["Enums"]["plan_geometry_class"]
+          geometry_type?: string | null
           id?: string
+          is_reviewed?: boolean
           length_ft?: number | null
           length_px?: number | null
           metadata?: Json | null
+          metadata_json?: Json | null
           page_id?: string
           points?: Json
+          points_json?: Json | null
           source?: string | null
           tenant_id?: string
         }
@@ -24061,9 +24085,12 @@ export type Database = {
           metadata: Json | null
           north_arrow_deg: number | null
           page_number: number
+          page_title: string | null
           page_type: Database["public"]["Enums"]["plan_page_type"]
           page_type_confidence: number | null
+          parse_status: string
           raw_text: string | null
+          review_status: string
           scale_text: string | null
           sheet_name: string | null
           sheet_number: string | null
@@ -24081,9 +24108,12 @@ export type Database = {
           metadata?: Json | null
           north_arrow_deg?: number | null
           page_number: number
+          page_title?: string | null
           page_type?: Database["public"]["Enums"]["plan_page_type"]
           page_type_confidence?: number | null
+          parse_status?: string
           raw_text?: string | null
+          review_status?: string
           scale_text?: string | null
           sheet_name?: string | null
           sheet_number?: string | null
@@ -24101,9 +24131,12 @@ export type Database = {
           metadata?: Json | null
           north_arrow_deg?: number | null
           page_number?: number
+          page_title?: string | null
           page_type?: Database["public"]["Enums"]["plan_page_type"]
           page_type_confidence?: number | null
+          parse_status?: string
           raw_text?: string | null
+          review_status?: string
           scale_text?: string | null
           sheet_name?: string | null
           sheet_number?: string | null
@@ -24117,6 +24150,106 @@ export type Database = {
             columns: ["document_id"]
             isOneToOne: false
             referencedRelation: "plan_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_parse_jobs: {
+        Row: {
+          created_at: string
+          document_id: string
+          error_text: string | null
+          finished_at: string | null
+          id: string
+          input_json: Json
+          job_type: string
+          output_json: Json
+          started_at: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          document_id: string
+          error_text?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json
+          job_type: string
+          output_json?: Json
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          document_id?: string
+          error_text?: string | null
+          finished_at?: string | null
+          id?: string
+          input_json?: Json
+          job_type?: string
+          output_json?: Json
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_parse_jobs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "plan_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_pitch_notes: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          id: string
+          is_reviewed: boolean
+          normalized_rise: number | null
+          normalized_run: number | null
+          page_id: string
+          pitch_text: string
+          target_region_json: Json | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          is_reviewed?: boolean
+          normalized_rise?: number | null
+          normalized_run?: number | null
+          page_id: string
+          pitch_text: string
+          target_region_json?: Json | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          is_reviewed?: boolean
+          normalized_rise?: number | null
+          normalized_run?: number | null
+          page_id?: string
+          pitch_text?: string
+          target_region_json?: Json | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_pitch_notes_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
             referencedColumns: ["id"]
           },
         ]
