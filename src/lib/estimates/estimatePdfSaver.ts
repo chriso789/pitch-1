@@ -33,8 +33,9 @@ export async function saveEstimatePdf({
   estimatePricingTier?: string | null;
 }): Promise<EstimatePdfSaveResult> {
   try {
-    // Path structure: pipelineEntryId first to satisfy RLS policy
-    const pdfPath = `${pipelineEntryId}/estimates/${estimateNumber}.pdf`;
+    // Path structure: tenantId first to satisfy storage RLS policy
+    // (doc_insert_policy requires the first folder segment to equal the user's tenant_id)
+    const pdfPath = `${tenantId}/${pipelineEntryId}/estimates/${estimateNumber}.pdf`;
     
     // Upload to storage
     const { error: uploadError } = await supabase.storage
