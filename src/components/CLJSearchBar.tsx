@@ -218,7 +218,9 @@ export const CLJSearchBar = () => {
     };
 
     saveRecent(result, activeTenantId);
-    setRecents(loadRecents(activeTenantId));
+    // Re-resolve names from DB so the freshly added recent reflects any
+    // rename that happened after the original cache was written.
+    refreshRecents(activeTenantId);
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
@@ -251,8 +253,10 @@ export const CLJSearchBar = () => {
           } else if (searchTerm.length < 2) {
             const r = loadRecents(activeTenantId);
             if (r.length > 0) {
-              setRecents(r);
               setOpen(true);
+              // Pull live names from DB on every focus so renames show up
+              // immediately without requiring a tenant switch or reload.
+              refreshRecents(activeTenantId);
             }
           }
         }}
