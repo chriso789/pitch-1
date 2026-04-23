@@ -814,23 +814,24 @@ export function EstimatePreviewPanel({
         orientation: 'portrait',
       });
 
-      if (result.success && result.blob && pipelineEntryId) {
-        // Upload fresh PDF to storage
-        const pdfPath = `${pipelineEntryId}/estimates/${estimateNumber}.pdf`;
-        const { error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(pdfPath, result.blob, {
-            contentType: 'application/pdf',
-            upsert: true
-          });
+      if (result.success && result.blob && pipelineEntryId && tenantId && userId) {
+        const saveResult = await saveEstimatePdf({
+          pdfBlob: result.blob,
+          pipelineEntryId,
+          tenantId,
+          estimateNumber,
+          description: `Estimate ${estimateDisplayName || estimateNumber}`,
+          userId,
+          estimateDisplayName: estimateDisplayName || null,
+          estimatePricingTier: null,
+        });
 
-        if (uploadError) {
-          console.error('[Share] PDF upload failed:', uploadError);
-        } else {
-          // Update pdf_url in database
+        if (!saveResult.success) {
+          console.error('[Share] PDF upload failed:', saveResult.error);
+        } else if (saveResult.filePath) {
           const { error: updateError } = await supabase
             .from('enhanced_estimates')
-            .update({ pdf_url: pdfPath })
+            .update({ pdf_url: saveResult.filePath })
             .eq('id', estimateId);
 
           if (updateError) {
@@ -839,6 +840,8 @@ export function EstimatePreviewPanel({
             console.log('[Share] PDF regenerated with attachments before sharing');
           }
         }
+      } else if (result.success && result.blob && pipelineEntryId) {
+        console.warn('[Share] Skipped PDF save before sharing because tenant or user context is missing');
       }
     } catch (err) {
       console.error('[Share] PDF regeneration failed:', err);
