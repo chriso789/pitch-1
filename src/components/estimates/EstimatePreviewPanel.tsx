@@ -824,6 +824,8 @@ export function EstimatePreviewPanel({
           userId,
           estimateDisplayName: estimateDisplayName || null,
           estimatePricingTier: null,
+          estimateId: estimateId || null,
+          signatureAnchor: result.signatureAnchor || null,
         });
 
         if (!saveResult.success) {
@@ -906,6 +908,8 @@ export function EstimatePreviewPanel({
         userId,
         estimateDisplayName: estimateDisplayName || null,
         estimatePricingTier: null,
+        estimateId: estimateId || null,
+        signatureAnchor: result.signatureAnchor || null,
       });
 
       if (!saveResult.success) {
