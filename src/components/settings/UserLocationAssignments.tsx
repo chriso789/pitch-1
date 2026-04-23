@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { MapPin, Users, Settings, Building2 } from "lucide-react";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 
 interface User {
   id: string;
