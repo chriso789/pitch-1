@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useMemo, useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,44 +44,68 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   >("none");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  
+
   const streetInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<number | null>(null);
   const { toast } = useToast();
 
-  const handleAddressChange = async (field: keyof AddressData, value: string) => {
-    setAddress(prev => ({ ...prev, [field]: value }));
-    setVerificationStatus("none");
+  // Random field names so Chrome / 1Password / LastPass can't recognize them as address fields
+  const fieldNames = useMemo(() => {
+    const r = Math.random().toString(36).slice(2, 10);
+    return {
+      street: `street-${r}`,
+      city: `city-${r}`,
+      state: `state-${r}`,
+      zip: `zip-${r}`,
+    };
+  }, []);
 
-    // Trigger autocomplete for street address using edge function
-    if (field === "street" && value.length > 3) {
-      try {
-        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-          body: {
-            endpoint: 'autocomplete',
-            params: {
-              input: value,
-              types: 'address',
-              components: 'country:us'
-            }
-          }
-        });
+  // Belt-and-suspenders: some browsers re-enable autofill after mount
+  useEffect(() => {
+    if (streetInputRef.current) {
+      streetInputRef.current.setAttribute("autocomplete", "new-password");
+    }
+  }, []);
 
-        if (error) throw error;
-
-        if (data?.predictions && data.predictions.length > 0) {
-          setSuggestions(data.predictions.slice(0, 5));
-          setShowSuggestions(true);
-        } else {
-          setSuggestions([]);
-          setShowSuggestions(false);
-        }
-      } catch (error) {
-        console.error("Autocomplete error:", error);
+  const fetchSuggestions = async (value: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+        body: {
+          endpoint: 'autocomplete',
+          params: {
+            input: value,
+            types: 'address',
+            components: 'country:us',
+          },
+        },
+      });
+      if (error) throw error;
+      if (data?.predictions && data.predictions.length > 0) {
+        setSuggestions(data.predictions.slice(0, 5));
+        setShowSuggestions(true);
+      } else {
         setSuggestions([]);
         setShowSuggestions(false);
       }
-    } else if (field === "street") {
+    } catch (error) {
+      console.error("Autocomplete error:", error);
+      setSuggestions([]);
       setShowSuggestions(false);
+    }
+  };
+
+  const handleAddressChange = (field: keyof AddressData, value: string) => {
+    setAddress(prev => ({ ...prev, [field]: value }));
+    setVerificationStatus("none");
+
+    if (field === "street") {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      if (value.trim().length >= 3) {
+        debounceRef.current = window.setTimeout(() => fetchSuggestions(value.trim()), 200);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
     }
   };
 
@@ -307,30 +331,53 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Honeypot fields — Chrome fills these instead of the real ones */}
+        <div style={{ position: "absolute", top: -9999, left: -9999, height: 0, width: 0, overflow: "hidden" }} aria-hidden="true">
+          <input type="text" name="address" tabIndex={-1} autoComplete="street-address" />
+          <input type="text" name="city" tabIndex={-1} autoComplete="address-level2" />
+          <input type="text" name="state" tabIndex={-1} autoComplete="address-level1" />
+          <input type="text" name="zip" tabIndex={-1} autoComplete="postal-code" />
+        </div>
+
         <div className="relative">
           <Input
             ref={streetInputRef}
             placeholder="Start typing full address for suggestions..."
             value={address.street}
             onChange={(e) => handleAddressChange("street", e.target.value)}
+            onFocus={() => {
+              if (suggestions.length > 0) setShowSuggestions(true);
+            }}
+            onBlur={() => {
+              // Delay so click on suggestion still registers
+              window.setTimeout(() => setShowSuggestions(false), 150);
+            }}
             className="w-full"
-            autoComplete="off"
-            name="lead-street-address"
+            autoComplete="new-password"
+            name={fieldNames.street}
+            id={fieldNames.street}
+            type="search"
+            role="combobox"
+            aria-autocomplete="list"
             data-form-type="other"
             data-lpignore="true"
             data-1p-ignore="true"
+            spellCheck={false}
           />
           <p className="text-xs text-muted-foreground mt-1">
             Type your address above for autocomplete, or fill fields manually
           </p>
-          
+
           {showSuggestions && suggestions.length > 0 && (
             <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
               {suggestions.map((suggestion, index) => (
                 <div
                   key={index}
                   className="px-4 py-2 cursor-pointer hover:bg-muted"
-                  onClick={() => selectSuggestion(suggestion)}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    selectSuggestion(suggestion);
+                  }}
                 >
                   <div className="font-medium">{suggestion.structured_formatting.main_text}</div>
                   <div className="text-sm text-muted-foreground">
@@ -347,8 +394,9 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
             placeholder="City"
             value={address.city}
             onChange={(e) => handleAddressChange("city", e.target.value)}
-            autoComplete="off"
-            name="lead-address-city"
+            autoComplete="new-password"
+            name={fieldNames.city}
+            id={fieldNames.city}
             data-form-type="other"
             data-lpignore="true"
             data-1p-ignore="true"
@@ -359,8 +407,9 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
               value={address.state}
               onChange={(e) => handleAddressChange("state", e.target.value)}
               maxLength={2}
-              autoComplete="off"
-              name="lead-address-state"
+              autoComplete="new-password"
+              name={fieldNames.state}
+              id={fieldNames.state}
               data-form-type="other"
               data-lpignore="true"
               data-1p-ignore="true"
@@ -370,8 +419,9 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
               value={address.zip}
               onChange={(e) => handleAddressChange("zip", e.target.value)}
               maxLength={10}
-              autoComplete="off"
-              name="lead-address-zip"
+              autoComplete="new-password"
+              name={fieldNames.zip}
+              id={fieldNames.zip}
               data-form-type="other"
               data-lpignore="true"
               data-1p-ignore="true"
