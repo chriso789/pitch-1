@@ -11245,6 +11245,7 @@ export type Database = {
           sent_to_customer_at: string | null
           share_token: string | null
           short_description: string | null
+          signature_anchor: Json | null
           signature_envelope_id: string | null
           signed_at: string | null
           status: Database["public"]["Enums"]["estimate_status"]
@@ -11337,6 +11338,7 @@ export type Database = {
           sent_to_customer_at?: string | null
           share_token?: string | null
           short_description?: string | null
+          signature_anchor?: Json | null
           signature_envelope_id?: string | null
           signed_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"]
@@ -11429,6 +11431,7 @@ export type Database = {
           sent_to_customer_at?: string | null
           share_token?: string | null
           short_description?: string | null
+          signature_anchor?: Json | null
           signature_envelope_id?: string | null
           signed_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"]
