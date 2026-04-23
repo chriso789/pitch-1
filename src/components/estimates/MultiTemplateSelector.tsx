@@ -1836,6 +1836,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
           // Generate PDF
           let pdfBlob: Blob | null = null;
+          let regenSignatureAnchor: any = null;
           try {
             const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
               filename: `${estimateNumberToUpdate}.pdf`,
@@ -1845,6 +1846,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             
             if (pdfResult.success && pdfResult.blob) {
               pdfBlob = pdfResult.blob;
+              regenSignatureAnchor = pdfResult.signatureAnchor || null;
             }
           } catch (pdfError) {
             console.error('PDF regeneration failed:', pdfError);
@@ -1863,6 +1865,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               estimateNumber: estimateNumberToUpdate,
               description: `Updated estimate ${estimateNumberToUpdate}`,
               userId: userIdForPdf,
+              estimateId: estimateIdToUpdate,
+              signatureAnchor: regenSignatureAnchor,
             });
             
             if (result.success && result.filePath) {
