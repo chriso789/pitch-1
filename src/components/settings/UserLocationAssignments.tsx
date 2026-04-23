@@ -152,20 +152,14 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
     try {
       const { data: { user: currentUser } } = await supabase.auth.getUser();
       if (!currentUser) throw new Error('Not authenticated');
+      if (!effectiveTenantId) throw new Error('No active tenant');
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', currentUser.id)
-        .single();
-
-      if (!profile) throw new Error('Profile not found');
-
-      // First, deactivate all existing assignments for this user
+      // First, deactivate all existing assignments for this user in this tenant
       const { error: deactivateError } = await supabase
         .from('user_location_assignments')
         .update({ is_active: false })
-        .eq('user_id', selectedUser.id);
+        .eq('user_id', selectedUser.id)
+        .eq('tenant_id', effectiveTenantId);
 
       if (deactivateError) throw deactivateError;
 
