@@ -351,7 +351,16 @@ export function useRevokePortalAccess() {
     mutationFn: async (contactId: string) => {
       if (!activeCompanyId) throw new Error('No company selected');
 
-      // Delete all sessions for this contact
+      // 1) Disable portal access on the contact (source of truth for the user list)
+      const { error: contactError } = await supabase
+        .from('contacts')
+        .update({ portal_access_enabled: false })
+        .eq('id', contactId)
+        .eq('tenant_id', activeCompanyId);
+
+      if (contactError) throw contactError;
+
+      // 2) Delete all sessions for this contact so they're logged out immediately
       const { error } = await supabase
         .from('homeowner_portal_sessions')
         .delete()

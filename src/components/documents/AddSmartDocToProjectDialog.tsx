@@ -426,7 +426,8 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
         blob = new Blob([bytes], { type: 'application/pdf' });
         
         const baseName = selectedDoc.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_');
-        fileName = `${pipelineEntryId}/${Date.now()}_${baseName}_filled.pdf`;
+        // Path MUST start with tenant_id to satisfy storage RLS policies on the documents bucket
+        fileName = `${effectiveTenantId}/${pipelineEntryId}/${Date.now()}_${baseName}_filled.pdf`;
         mimeType = 'application/pdf';
         displayName = `${selectedDoc.name.replace(/\.[^/.]+$/, '')}_filled.pdf`;
 
@@ -434,7 +435,7 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
       } else {
         // For HTML templates, keep existing behavior
         blob = new Blob([preview], { type: 'text/html' });
-        fileName = `${pipelineEntryId}/${Date.now()}_${selectedDoc.name.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+        fileName = `${effectiveTenantId}/${pipelineEntryId}/${Date.now()}_${selectedDoc.name.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
         mimeType = 'text/html';
         displayName = `${selectedDoc.name}.html`;
       }
