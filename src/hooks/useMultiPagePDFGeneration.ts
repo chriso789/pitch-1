@@ -309,6 +309,7 @@ export function useMultiPagePDFGeneration() {
         filename,
         storageUrl,
         shareToken,
+        signatureAnchor,
       };
 
     } catch (error: any) {
