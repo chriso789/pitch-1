@@ -58,7 +58,7 @@ export function BlueprintDocumentTable({
                     <td className="py-2 pr-3">{doc.property_address || "—"}</td>
                     <td className="py-2 pr-3">
                       <Badge variant={STATUS_VARIANT[doc.status] || "outline"}>
-                        {String(doc.status).replaceAll("_", " ")}
+                        {String(doc.status).split("_").join(" ")}
                       </Badge>
                     </td>
                     <td className="py-2 pr-3">{doc.page_count}</td>

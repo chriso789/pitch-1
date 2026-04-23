@@ -1210,3 +1210,12 @@ verify_jwt = false
 
 [functions.link-blueprint-details]
 verify_jwt = false
+
+[functions.upload-blueprint-document]
+verify_jwt = true
+
+[functions.review-blueprint-page]
+verify_jwt = true
+
+[functions.get-blueprint-document]
+verify_jwt = true
