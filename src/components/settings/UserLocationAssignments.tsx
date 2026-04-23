@@ -166,7 +166,7 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
       // Then, create new assignments
       if (tempAssignments.length > 0) {
         const assignments = tempAssignments.map(locationId => ({
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           user_id: selectedUser.id,
           location_id: locationId,
           assigned_by: currentUser.id,
