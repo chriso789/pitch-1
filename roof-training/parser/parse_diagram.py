@@ -247,6 +247,9 @@ def merge_collinear(segs, tol_angle_deg=2.0, tol_dist_px=4.0):
 
 def per_class_pixels(img_bgr: np.ndarray) -> dict[str, float]:
     masks = color_masks(img_bgr)
+    # Round-2: drop arrow-tips from red, drop solid swatches from blue.
+    masks["red"]  = reject_arrows(masks["red"])
+    masks["blue"] = filter_dashed(masks["blue"])
     out = {}
     for name, m in masks.items():
         if name == "blue":
