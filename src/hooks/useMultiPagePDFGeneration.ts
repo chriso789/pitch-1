@@ -14,6 +14,15 @@ interface PDFGenerationOptions {
   orientation?: 'portrait' | 'landscape';
 }
 
+interface SignatureAnchor {
+  pageIndex: number;        // 0-based page index in final PDF
+  xPt: number;              // X in PDF points (origin: bottom-left)
+  yPt: number;              // Y in PDF points (origin: bottom-left) — baseline of signature line
+  widthPt: number;          // width of signature line in PDF points
+  pageWidthPt: number;      // page width in PDF points
+  pageHeightPt: number;     // page height in PDF points
+}
+
 interface PDFGenerationResult {
   success: boolean;
   blob?: Blob;
@@ -21,6 +30,7 @@ interface PDFGenerationResult {
   storageUrl?: string;
   shareToken?: string;
   error?: string;
+  signatureAnchor?: SignatureAnchor | null;
 }
 
 /**
