@@ -42605,6 +42605,14 @@ export type Database = {
         Returns: boolean
       }
       jsonb_get_path: { Args: { obj: Json; path: string }; Returns: string }
+      list_eagleview_diagrams: {
+        Args: never
+        Returns: {
+          address: string
+          diagram_image_url: string
+          id: string
+        }[]
+      }
       log_company_activity: {
         Args: {
           p_action_description: string
