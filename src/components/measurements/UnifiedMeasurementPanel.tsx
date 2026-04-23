@@ -759,8 +759,13 @@ export function UnifiedMeasurementPanel({
                       eave_ft: ai.total_eave_length || 0,
                       rake_ft: ai.total_rake_length || 0,
                     },
-                    linear_features: ai.linear_features_wkt || [],
-                    faces: ai.faces_wkt || [],
+                    linear_features: (Array.isArray(ai.linear_features_wkt) && ai.linear_features_wkt.length > 0
+                      ? ai.linear_features_wkt
+                      : (ai.ai_detection_data?.linear_features || [])),
+                    faces: (Array.isArray((ai as any).faces_wkt) && (ai as any).faces_wkt.length > 0
+                      ? (ai as any).faces_wkt
+                      : (ai.ai_detection_data?.faces || [])),
+                    perimeter_wkt: ai.perimeter_wkt || ai.ai_detection_data?.perimeter_wkt,
                     center_lat: ai.target_lat,
                     center_lng: ai.target_lng,
                     gps_coordinates: ai.gps_coordinates || { lat: ai.target_lat, lng: ai.target_lng },
