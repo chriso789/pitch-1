@@ -304,8 +304,8 @@ const PublicSignatureCapture = () => {
 
   return (
     <div className="min-h-screen bg-muted flex flex-col">
-      {/* Header bar */}
-      <div className="bg-background border-b px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between shrink-0 safe-area-top">
+      {/* Header bar - sticky so Download/Sign always visible on mobile */}
+      <div className="sticky top-0 z-40 bg-background border-b px-3 sm:px-4 py-2.5 sm:py-3 flex items-center justify-between shrink-0 safe-area-top shadow-sm">
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="h-4 w-4 sm:h-5 sm:w-5 text-primary shrink-0" />
           <h1 className="font-semibold text-sm sm:text-lg truncate">{envelope?.title || 'Document'}</h1>
