@@ -130,23 +130,37 @@ Deno.serve(async (req: Request) => {
               : pageCount - 1;
             console.log(`Targeting page ${targetPageIdx} for signature (signature_page_index=${envelope.signature_page_index}, pageCount=${pageCount})`);
             const lastPage = pdfDoc.getPage(targetPageIdx);
-            const { width: pageWidth } = lastPage.getSize();
+            const { width: pageWidth, height: pageHeight } = lastPage.getSize();
 
             // Place signatures on the signature block area of the last page
             const helveticaFont = await pdfDoc.embedFont(StandardFonts.Helvetica);
             const helveticaBoldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
-            
-            // PDF coords: y=0 is bottom of page. The "Customer Signature" block in
-            // EstimatePDFDocument renders near the bottom of the last page with the
-            // signature LINE around y≈135pt and a "Date: ___" label just below it.
-            // We want the signature image to sit DIRECTLY ON the signature line
-            // (image baseline = line), and the audit metadata (name/date/IP) to
-            // appear BELOW the line — never overlapping the fine-print paragraph above.
-            let sigX = 60;
-            const signatureLineY = 138; // baseline y of the printed signature line
-            const maxSigWidth = 160;
-            const maxSigHeight = 28;    // keep signature compact so it sits on the line, not floating above
+
+            // Try to use a stored signature anchor (captured at PDF generation time)
+            // so the signature image lands precisely on the printed signature line —
+            // regardless of how long the terms-and-conditions text is.
+            let anchor: { pageIndex: number; xPt: number; yPt: number; widthPt: number } | null = null;
+            try {
+              if (envelope.estimate_id) {
+                const { data: est } = await supabase
+                  .from('enhanced_estimates')
+                  .select('signature_anchor')
+                  .eq('id', envelope.estimate_id)
+                  .maybeSingle();
+                if (est?.signature_anchor && typeof est.signature_anchor === 'object') {
+                  anchor = est.signature_anchor as any;
+                }
+              }
+            } catch (e) {
+              console.warn('Could not load signature_anchor:', e);
+            }
+
+            let sigX = anchor ? anchor.xPt : 60;
+            const signatureLineY = anchor ? anchor.yPt : 138;
+            const maxSigWidth = anchor ? Math.min(anchor.widthPt, 200) : 160;
+            const maxSigHeight = 28;
             const sigSpacing = 240;
+            console.log(`Signature placement: anchor=${!!anchor} x=${sigX} y=${signatureLineY} w=${maxSigWidth} pageH=${pageHeight}`);
 
             for (const sig of signatures) {
               const meta = (sig.signature_metadata || {}) as Record<string, unknown>;
