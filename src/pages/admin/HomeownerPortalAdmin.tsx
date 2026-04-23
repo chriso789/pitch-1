@@ -22,12 +22,16 @@ import { PortalUserDetail } from "@/components/admin/PortalUserDetail";
 import { PortalActivityLog } from "@/components/admin/PortalActivityLog";
 import { PortalGlobalSettings } from "@/components/admin/PortalGlobalSettings";
 import { PortalSignatureTracking } from "@/components/admin/PortalSignatureTracking";
+import { AddPortalUserDialog } from "@/components/admin/AddPortalUserDialog";
+import { Button } from "@/components/ui/button";
+import { UserPlus } from "lucide-react";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 
 export const HomeownerPortalAdmin: React.FC = () => {
   const { data: stats, isLoading: statsLoading } = usePortalStats();
   const [selectedUser, setSelectedUser] = useState<PortalUser | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("active");
 
   const handleSelectUser = (user: PortalUser) => {
@@ -130,11 +134,15 @@ export const HomeownerPortalAdmin: React.FC = () => {
 
       {/* Main Content */}
       <Card>
-        <CardHeader className="pb-3">
+        <CardHeader className="pb-3 flex-row items-center justify-between space-y-0">
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
             Portal Users
           </CardTitle>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
+            <UserPlus className="h-4 w-4 mr-2" />
+            Add Portal User
+          </Button>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -199,6 +207,9 @@ export const HomeownerPortalAdmin: React.FC = () => {
         open={detailOpen}
         onOpenChange={setDetailOpen}
       />
+
+      {/* Add Portal User Dialog */}
+      <AddPortalUserDialog open={addOpen} onOpenChange={setAddOpen} />
       </div>
     </GlobalLayout>
   );
