@@ -89,20 +89,22 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
       const usersError = null;
       if (usersError) throw usersError;
 
-      // Fetch locations
+      // Fetch locations (active tenant only)
       const { data: locationsData, error: locationsError } = await supabase
         .from('locations')
         .select('id, name, address_city, address_state')
         .eq('is_active', true)
+        .eq('tenant_id', effectiveTenantId)
         .order('name');
 
       if (locationsError) throw locationsError;
 
-      // Fetch user-location assignments
+      // Fetch user-location assignments (active tenant only)
       const { data: assignmentsData, error: assignmentsError } = await supabase
         .from('user_location_assignments')
         .select('user_id, location_id')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('tenant_id', effectiveTenantId);
 
       if (assignmentsError) throw assignmentsError;
 
