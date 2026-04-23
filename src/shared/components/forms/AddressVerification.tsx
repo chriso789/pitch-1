@@ -44,44 +44,68 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   >("none");
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  
+
   const streetInputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<number | null>(null);
   const { toast } = useToast();
 
-  const handleAddressChange = async (field: keyof AddressData, value: string) => {
-    setAddress(prev => ({ ...prev, [field]: value }));
-    setVerificationStatus("none");
+  // Random field names so Chrome / 1Password / LastPass can't recognize them as address fields
+  const fieldNames = useMemo(() => {
+    const r = Math.random().toString(36).slice(2, 10);
+    return {
+      street: `street-${r}`,
+      city: `city-${r}`,
+      state: `state-${r}`,
+      zip: `zip-${r}`,
+    };
+  }, []);
 
-    // Trigger autocomplete for street address using edge function
-    if (field === "street" && value.length > 3) {
-      try {
-        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-          body: {
-            endpoint: 'autocomplete',
-            params: {
-              input: value,
-              types: 'address',
-              components: 'country:us'
-            }
-          }
-        });
+  // Belt-and-suspenders: some browsers re-enable autofill after mount
+  useEffect(() => {
+    if (streetInputRef.current) {
+      streetInputRef.current.setAttribute("autocomplete", "new-password");
+    }
+  }, []);
 
-        if (error) throw error;
-
-        if (data?.predictions && data.predictions.length > 0) {
-          setSuggestions(data.predictions.slice(0, 5));
-          setShowSuggestions(true);
-        } else {
-          setSuggestions([]);
-          setShowSuggestions(false);
-        }
-      } catch (error) {
-        console.error("Autocomplete error:", error);
+  const fetchSuggestions = async (value: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+        body: {
+          endpoint: 'autocomplete',
+          params: {
+            input: value,
+            types: 'address',
+            components: 'country:us',
+          },
+        },
+      });
+      if (error) throw error;
+      if (data?.predictions && data.predictions.length > 0) {
+        setSuggestions(data.predictions.slice(0, 5));
+        setShowSuggestions(true);
+      } else {
         setSuggestions([]);
         setShowSuggestions(false);
       }
-    } else if (field === "street") {
+    } catch (error) {
+      console.error("Autocomplete error:", error);
+      setSuggestions([]);
       setShowSuggestions(false);
+    }
+  };
+
+  const handleAddressChange = (field: keyof AddressData, value: string) => {
+    setAddress(prev => ({ ...prev, [field]: value }));
+    setVerificationStatus("none");
+
+    if (field === "street") {
+      if (debounceRef.current) window.clearTimeout(debounceRef.current);
+      if (value.trim().length >= 3) {
+        debounceRef.current = window.setTimeout(() => fetchSuggestions(value.trim()), 200);
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
     }
   };
 
