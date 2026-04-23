@@ -1528,7 +1528,8 @@ export function SchematicRoofDiagram({
         })()}
 
         {/* Linear features - ridges, hips, valleys with indexed labels (skip eaves/rakes) */}
-        {(() => {
+        {/* Suppress interior features when geometry confidence is too low - they would be misleading noise */}
+        {geometrySourceInfo.shouldShowLinearFeatures && (() => {
           // Build feature counters for indexing (e.g., Hip-A, Hip-B, Valley-1)
           const featureCountsByType: Record<string, number> = {};
           const interiorFeatures = linearFeatures.filter(f => f.type !== 'eave' && f.type !== 'rake');
