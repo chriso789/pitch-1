@@ -34,18 +34,31 @@ def crop_diagram(img_bgr: np.ndarray) -> np.ndarray:
 
 
 def strip_text(img_bgr: np.ndarray) -> np.ndarray:
-    """Inpaint dense text regions (numbers/labels) so Hough doesn't pick
-    them up as line segments. We detect text as small dark blobs."""
+    """Inpaint text glyphs (numbers + callout labels in red and black) so
+    Hough doesn't pick them up as line segments. We detect text by
+    looking for small connected components in BOTH the dark and red
+    color channels — EagleView's red dimension callouts are the single
+    biggest source of red-mask pollution."""
+    hsv  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # Threshold dark pixels
-    _, dark = cv2.threshold(gray, 110, 255, cv2.THRESH_BINARY_INV)
-    # Find small connected components (text glyphs)
-    n, lbl, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+
+    # Dark glyphs (black numerals)
+    _, dark = cv2.threshold(gray, 130, 255, cv2.THRESH_BINARY_INV)
+    # Red glyphs (red dimension callouts on hips/ridges)
+    red1 = cv2.inRange(hsv, (0,   80, 60), (22,  255, 255))
+    red2 = cv2.inRange(hsv, (168, 80, 60), (179, 255, 255))
+    red  = cv2.bitwise_or(red1, red2)
+
     text_mask = np.zeros_like(gray)
-    for i in range(1, n):
-        x, y, ww, hh, area = stats[i]
-        if 4 <= area <= 600 and ww < 40 and hh < 40 and 0.2 < ww / max(hh, 1) < 5:
-            text_mask[y:y + hh, x:x + ww] = 255
+    for src in (dark, red):
+        n, _, stats, _ = cv2.connectedComponentsWithStats(src, connectivity=8)
+        for i in range(1, n):
+            x, y, ww, hh, area = stats[i]
+            # Glyph-sized: small + roughly square aspect
+            if 3 <= area <= 900 and ww < 50 and hh < 50 and 0.15 < ww / max(hh, 1) < 6:
+                # And not a thin line (lines have area >> bbox-perimeter*1)
+                if area < 0.7 * ww * hh:  # not a near-solid rectangle (line bbox is ~thin)
+                    text_mask[y:y + hh, x:x + ww] = 255
     text_mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
     return cv2.inpaint(img_bgr, text_mask, 3, cv2.INPAINT_TELEA)
 
