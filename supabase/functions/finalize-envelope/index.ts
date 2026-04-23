@@ -215,7 +215,6 @@ Deno.serve(async (req: Request) => {
                 sigX += sigSpacing;
                 if (sigX + maxSigWidth > pageWidth - 40) {
                   sigX = 60;
-                  sigY -= 110;
                 }
               };
 
