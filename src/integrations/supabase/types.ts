@@ -23818,6 +23818,426 @@ export type Database = {
         }
         Relationships: []
       }
+      plan_detail_refs: {
+        Row: {
+          callout_text: string
+          confidence: number | null
+          created_at: string
+          document_id: string
+          id: string
+          metadata: Json | null
+          source_page_id: string | null
+          target_geometry_ref: string | null
+          target_page_id: string | null
+          target_sheet_number: string | null
+          tenant_id: string
+        }
+        Insert: {
+          callout_text: string
+          confidence?: number | null
+          created_at?: string
+          document_id: string
+          id?: string
+          metadata?: Json | null
+          source_page_id?: string | null
+          target_geometry_ref?: string | null
+          target_page_id?: string | null
+          target_sheet_number?: string | null
+          tenant_id: string
+        }
+        Update: {
+          callout_text?: string
+          confidence?: number | null
+          created_at?: string
+          document_id?: string
+          id?: string
+          metadata?: Json | null
+          source_page_id?: string | null
+          target_geometry_ref?: string | null
+          target_page_id?: string | null
+          target_sheet_number?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_detail_refs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "plan_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_detail_refs_source_page_id_fkey"
+            columns: ["source_page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_detail_refs_target_geometry_ref_fkey"
+            columns: ["target_geometry_ref"]
+            isOneToOne: false
+            referencedRelation: "plan_geometry"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_detail_refs_target_page_id_fkey"
+            columns: ["target_page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_dimensions: {
+        Row: {
+          bbox: Json | null
+          confidence: number | null
+          created_at: string
+          id: string
+          label_text: string
+          normalized_feet: number | null
+          page_id: string
+          source_geometry_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          bbox?: Json | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          label_text: string
+          normalized_feet?: number | null
+          page_id: string
+          source_geometry_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          bbox?: Json | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          label_text?: string
+          normalized_feet?: number | null
+          page_id?: string
+          source_geometry_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_dimensions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_dimensions_source_geometry_id_fkey"
+            columns: ["source_geometry_id"]
+            isOneToOne: false
+            referencedRelation: "plan_geometry"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_documents: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          contact_id: string | null
+          created_at: string
+          file_name: string
+          file_path: string
+          id: string
+          metadata: Json | null
+          page_count: number | null
+          pipeline_entry_id: string | null
+          project_id: string | null
+          property_address: string | null
+          status: Database["public"]["Enums"]["plan_doc_status"]
+          status_message: string | null
+          tenant_id: string
+          updated_at: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contact_id?: string | null
+          created_at?: string
+          file_name: string
+          file_path: string
+          id?: string
+          metadata?: Json | null
+          page_count?: number | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          property_address?: string | null
+          status?: Database["public"]["Enums"]["plan_doc_status"]
+          status_message?: string | null
+          tenant_id: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          contact_id?: string | null
+          created_at?: string
+          file_name?: string
+          file_path?: string
+          id?: string
+          metadata?: Json | null
+          page_count?: number | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          property_address?: string | null
+          status?: Database["public"]["Enums"]["plan_doc_status"]
+          status_message?: string | null
+          tenant_id?: string
+          updated_at?: string
+          uploaded_by?: string | null
+        }
+        Relationships: []
+      }
+      plan_geometry: {
+        Row: {
+          confidence: number | null
+          created_at: string
+          geometry_class: Database["public"]["Enums"]["plan_geometry_class"]
+          id: string
+          length_ft: number | null
+          length_px: number | null
+          metadata: Json | null
+          page_id: string
+          points: Json
+          source: string | null
+          tenant_id: string
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string
+          geometry_class: Database["public"]["Enums"]["plan_geometry_class"]
+          id?: string
+          length_ft?: number | null
+          length_px?: number | null
+          metadata?: Json | null
+          page_id: string
+          points: Json
+          source?: string | null
+          tenant_id: string
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string
+          geometry_class?: Database["public"]["Enums"]["plan_geometry_class"]
+          id?: string
+          length_ft?: number | null
+          length_px?: number | null
+          metadata?: Json | null
+          page_id?: string
+          points?: Json
+          source?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_geometry_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_pages: {
+        Row: {
+          ai_summary: string | null
+          created_at: string
+          document_id: string
+          height_px: number | null
+          id: string
+          image_path: string | null
+          metadata: Json | null
+          north_arrow_deg: number | null
+          page_number: number
+          page_type: Database["public"]["Enums"]["plan_page_type"]
+          page_type_confidence: number | null
+          raw_text: string | null
+          scale_text: string | null
+          sheet_name: string | null
+          sheet_number: string | null
+          tenant_id: string
+          updated_at: string
+          width_px: number | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          created_at?: string
+          document_id: string
+          height_px?: number | null
+          id?: string
+          image_path?: string | null
+          metadata?: Json | null
+          north_arrow_deg?: number | null
+          page_number: number
+          page_type?: Database["public"]["Enums"]["plan_page_type"]
+          page_type_confidence?: number | null
+          raw_text?: string | null
+          scale_text?: string | null
+          sheet_name?: string | null
+          sheet_number?: string | null
+          tenant_id: string
+          updated_at?: string
+          width_px?: number | null
+        }
+        Update: {
+          ai_summary?: string | null
+          created_at?: string
+          document_id?: string
+          height_px?: number | null
+          id?: string
+          image_path?: string | null
+          metadata?: Json | null
+          north_arrow_deg?: number | null
+          page_number?: number
+          page_type?: Database["public"]["Enums"]["plan_page_type"]
+          page_type_confidence?: number | null
+          raw_text?: string | null
+          scale_text?: string | null
+          sheet_name?: string | null
+          sheet_number?: string | null
+          tenant_id?: string
+          updated_at?: string
+          width_px?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_pages_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "plan_documents"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_review_actions: {
+        Row: {
+          action: string
+          created_at: string
+          document_id: string
+          id: string
+          page_id: string | null
+          payload: Json | null
+          target_id: string | null
+          target_table: string | null
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string
+          document_id: string
+          id?: string
+          page_id?: string | null
+          payload?: Json | null
+          target_id?: string | null
+          target_table?: string | null
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string
+          document_id?: string
+          id?: string
+          page_id?: string | null
+          payload?: Json | null
+          target_id?: string | null
+          target_table?: string | null
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_review_actions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "plan_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_review_actions_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      plan_specs: {
+        Row: {
+          approved: boolean | null
+          category: string
+          confidence: number | null
+          created_at: string
+          document_id: string
+          edited_by: string | null
+          id: string
+          key_name: string
+          normalized_value: Json | null
+          page_id: string | null
+          tenant_id: string
+          updated_at: string
+          value_text: string | null
+        }
+        Insert: {
+          approved?: boolean | null
+          category: string
+          confidence?: number | null
+          created_at?: string
+          document_id: string
+          edited_by?: string | null
+          id?: string
+          key_name: string
+          normalized_value?: Json | null
+          page_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          value_text?: string | null
+        }
+        Update: {
+          approved?: boolean | null
+          category?: string
+          confidence?: number | null
+          created_at?: string
+          document_id?: string
+          edited_by?: string | null
+          id?: string
+          key_name?: string
+          normalized_value?: Json | null
+          page_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          value_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "plan_specs_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "plan_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "plan_specs_page_id_fkey"
+            columns: ["page_id"]
+            isOneToOne: false
+            referencedRelation: "plan_pages"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       platform_announcements: {
         Row: {
           announcement_type: string | null
@@ -43581,6 +44001,39 @@ export type Database = {
         | "ready_for_approval"
         | "production"
         | "final_payment"
+      plan_doc_status:
+        | "uploaded"
+        | "classifying"
+        | "extracting_geometry"
+        | "extracting_specs"
+        | "linking_details"
+        | "ready_for_review"
+        | "approved"
+        | "rejected"
+        | "failed"
+      plan_geometry_class:
+        | "outline"
+        | "eave"
+        | "rake"
+        | "ridge"
+        | "hip"
+        | "valley"
+        | "facet"
+        | "penetration"
+        | "drain"
+        | "dimension_line"
+        | "callout_leader"
+        | "other"
+      plan_page_type:
+        | "roof_plan"
+        | "detail_sheet"
+        | "specification_sheet"
+        | "section_sheet"
+        | "schedule_sheet"
+        | "cover_sheet"
+        | "framing_plan"
+        | "irrelevant"
+        | "unknown"
       portal_type: "ACCELA" | "ENERGOV" | "ETRAKIT" | "CUSTOM" | "UNKNOWN"
       report_file_kind:
         | "measurement_pdf"
@@ -43920,6 +44373,42 @@ export const Constants = {
         "ready_for_approval",
         "production",
         "final_payment",
+      ],
+      plan_doc_status: [
+        "uploaded",
+        "classifying",
+        "extracting_geometry",
+        "extracting_specs",
+        "linking_details",
+        "ready_for_review",
+        "approved",
+        "rejected",
+        "failed",
+      ],
+      plan_geometry_class: [
+        "outline",
+        "eave",
+        "rake",
+        "ridge",
+        "hip",
+        "valley",
+        "facet",
+        "penetration",
+        "drain",
+        "dimension_line",
+        "callout_leader",
+        "other",
+      ],
+      plan_page_type: [
+        "roof_plan",
+        "detail_sheet",
+        "specification_sheet",
+        "section_sheet",
+        "schedule_sheet",
+        "cover_sheet",
+        "framing_plan",
+        "irrelevant",
+        "unknown",
       ],
       portal_type: ["ACCELA", "ENERGOV", "ETRAKIT", "CUSTOM", "UNKNOWN"],
       report_file_kind: [
