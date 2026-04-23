@@ -347,6 +347,11 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
             placeholder="City"
             value={address.city}
             onChange={(e) => handleAddressChange("city", e.target.value)}
+            autoComplete="off"
+            name="lead-address-city"
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore="true"
           />
           <div className="grid grid-cols-2 gap-2">
             <Input
@@ -354,12 +359,22 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
               value={address.state}
               onChange={(e) => handleAddressChange("state", e.target.value)}
               maxLength={2}
+              autoComplete="off"
+              name="lead-address-state"
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
             <Input
               placeholder="ZIP"
               value={address.zip}
               onChange={(e) => handleAddressChange("zip", e.target.value)}
               maxLength={10}
+              autoComplete="off"
+              name="lead-address-zip"
+              data-form-type="other"
+              data-lpignore="true"
+              data-1p-ignore="true"
             />
           </div>
         </div>
