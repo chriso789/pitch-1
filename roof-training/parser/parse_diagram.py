@@ -34,18 +34,31 @@ def crop_diagram(img_bgr: np.ndarray) -> np.ndarray:
 
 
 def strip_text(img_bgr: np.ndarray) -> np.ndarray:
-    """Inpaint dense text regions (numbers/labels) so Hough doesn't pick
-    them up as line segments. We detect text as small dark blobs."""
+    """Inpaint text glyphs (numbers + callout labels in red and black) so
+    Hough doesn't pick them up as line segments. We detect text by
+    looking for small connected components in BOTH the dark and red
+    color channels — EagleView's red dimension callouts are the single
+    biggest source of red-mask pollution."""
+    hsv  = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
     gray = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2GRAY)
-    # Threshold dark pixels
-    _, dark = cv2.threshold(gray, 110, 255, cv2.THRESH_BINARY_INV)
-    # Find small connected components (text glyphs)
-    n, lbl, stats, _ = cv2.connectedComponentsWithStats(dark, connectivity=8)
+
+    # Dark glyphs (black numerals)
+    _, dark = cv2.threshold(gray, 130, 255, cv2.THRESH_BINARY_INV)
+    # Red glyphs (red dimension callouts on hips/ridges)
+    red1 = cv2.inRange(hsv, (0,   80, 60), (22,  255, 255))
+    red2 = cv2.inRange(hsv, (168, 80, 60), (179, 255, 255))
+    red  = cv2.bitwise_or(red1, red2)
+
     text_mask = np.zeros_like(gray)
-    for i in range(1, n):
-        x, y, ww, hh, area = stats[i]
-        if 4 <= area <= 600 and ww < 40 and hh < 40 and 0.2 < ww / max(hh, 1) < 5:
-            text_mask[y:y + hh, x:x + ww] = 255
+    for src in (dark, red):
+        n, _, stats, _ = cv2.connectedComponentsWithStats(src, connectivity=8)
+        for i in range(1, n):
+            x, y, ww, hh, area = stats[i]
+            # Glyph-sized: small + roughly square aspect
+            if 3 <= area <= 900 and ww < 50 and hh < 50 and 0.15 < ww / max(hh, 1) < 6:
+                # And not a thin line (lines have area >> bbox-perimeter*1)
+                if area < 0.7 * ww * hh:  # not a near-solid rectangle (line bbox is ~thin)
+                    text_mask[y:y + hh, x:x + ww] = 255
     text_mask = cv2.dilate(text_mask, np.ones((3, 3), np.uint8), iterations=2)
     return cv2.inpaint(img_bgr, text_mask, 3, cv2.INPAINT_TELEA)
 
@@ -152,33 +165,29 @@ def per_class_pixels(img_bgr: np.ndarray) -> dict[str, float]:
     masks = color_masks(img_bgr)
     out = {}
     for name, m in masks.items():
-        segs, _ = hough_segments(m)
-        merged, total = merge_collinear(segs)
+        if name == "blue":
+            # Bridge dashed valleys so a dash-train merges before Hough.
+            m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 9), np.uint8))
+            m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((9, 3), np.uint8))
+        min_len = 22 if name == "blue" else 18
+        max_gap = 12 if name == "blue" else 8
+        segs, _ = hough_segments(m, min_len=min_len, max_gap=max_gap)
+        _, total = merge_collinear(segs)
         out[name] = total
     return out
 
 
-def calibrate_pixels_per_foot(per_class_px: dict[str, float],
-                              truth_ft: dict[str, int]) -> float:
-    """Phase-1 calibration: combine red→(ridges+hips), blue→valleys,
-    black→(rakes+eaves), then solve a single scale via least-squares.
-
-    Returns pixels-per-foot.
-    """
-    pairs = []  # (px_total, ft_total)
-    if "red" in per_class_px:
-        pairs.append((per_class_px["red"], truth_ft.get("ridges", 0) + truth_ft.get("hips", 0)))
-    if "blue" in per_class_px:
-        pairs.append((per_class_px["blue"], truth_ft.get("valleys", 0)))
-    if "black" in per_class_px:
-        pairs.append((per_class_px["black"], truth_ft.get("rakes", 0) + truth_ft.get("eaves", 0)))
-    pairs = [(p, f) for p, f in pairs if f > 0 and p > 0]
-    if not pairs:
-        return 0.0
-    px = np.array([p for p, _ in pairs], dtype=float)
-    ft = np.array([f for _, f in pairs], dtype=float)
-    # px = scale * ft  → scale = (px·ft) / (ft·ft)
-    return float((px * ft).sum() / (ft * ft).sum())
+def calibrate_per_channel(per_class_px: dict[str, float],
+                          truth_ft: dict[str, int]) -> dict[str, float]:
+    """One scale per color channel — isolates pure CV-separation error."""
+    truth_red   = truth_ft.get("ridges", 0) + truth_ft.get("hips", 0)
+    truth_blue  = truth_ft.get("valleys", 0)
+    truth_black = truth_ft.get("rakes", 0)  + truth_ft.get("eaves", 0)
+    return {
+        "red":   (per_class_px.get("red",   0.0) / truth_red)   if truth_red   > 0 else 0.0,
+        "blue":  (per_class_px.get("blue",  0.0) / truth_blue)  if truth_blue  > 0 else 0.0,
+        "black": (per_class_px.get("black", 0.0) / truth_black) if truth_black > 0 else 0.0,
+    }
 
 
 def parse(image_path: pathlib.Path, truth_ft: dict[str, int] | None = None) -> dict:
@@ -194,39 +203,39 @@ def parse(image_path: pathlib.Path, truth_ft: dict[str, int] | None = None) -> d
         "pixels_per_class": px,
     }
     if truth_ft:
-        ppf = calibrate_pixels_per_foot(px, truth_ft)
-        out["pixels_per_foot"] = ppf
-        if ppf > 0:
-            # Estimate per-class feet using calibrated ppf.
-            # For combined channels, allocate proportionally to truth split.
-            est = {
-                "ridges":  (px["red"]   * (truth_ft["ridges"]  / max(truth_ft["ridges"]  + truth_ft["hips"], 1))) / ppf,
-                "hips":    (px["red"]   * (truth_ft["hips"]    / max(truth_ft["ridges"]  + truth_ft["hips"], 1))) / ppf,
-                "valleys":  px["blue"]  / ppf,
-                "rakes":   (px["black"] * (truth_ft["rakes"]   / max(truth_ft["rakes"]   + truth_ft["eaves"], 1))) / ppf,
-                "eaves":   (px["black"] * (truth_ft["eaves"]   / max(truth_ft["rakes"]   + truth_ft["eaves"], 1))) / ppf,
-            }
-            # Combined-channel accuracy (what Phase 1 actually measures)
+        ppf_per = calibrate_per_channel(px, truth_ft)
+        out["pixels_per_foot_per_channel"] = ppf_per
+
+        # Honest signal: residual against a SHARED scale (median of
+        # channel scales). Per-channel scales are exact by construction;
+        # their spread measures how cleanly each color isolates its lines.
+        scales = [s for s in ppf_per.values() if s > 0]
+        if scales:
+            shared = float(np.median(scales))
+            out["pixels_per_foot_shared"] = shared
             combined_truth = {
                 "ridges_plus_hips":  truth_ft["ridges"] + truth_ft["hips"],
                 "valleys":           truth_ft["valleys"],
                 "rakes_plus_eaves":  truth_ft["rakes"]  + truth_ft["eaves"],
             }
             combined_pred = {
-                "ridges_plus_hips":  px["red"]   / ppf,
-                "valleys":           px["blue"]  / ppf,
-                "rakes_plus_eaves":  px["black"] / ppf,
+                "ridges_plus_hips":  px.get("red",   0) / shared,
+                "valleys":           px.get("blue",  0) / shared,
+                "rakes_plus_eaves":  px.get("black", 0) / shared,
             }
             combined_err_pct = {
                 k: (abs(combined_pred[k] - combined_truth[k]) / combined_truth[k] * 100.0
                     if combined_truth[k] > 0 else 0.0)
                 for k in combined_truth
             }
-            out["totals_ft"] = est
             out["combined_truth_ft"] = combined_truth
             out["combined_pred_ft"]  = combined_pred
             out["combined_err_pct"]  = combined_err_pct
             out["passes_strict_3pct"] = all(v <= 3.0 for v in combined_err_pct.values())
+            out["channel_scale_dev_pct"] = {
+                ch: (abs(ppf_per[ch] - shared) / shared * 100.0 if shared > 0 else 0.0)
+                for ch in ("red", "blue", "black")
+            }
     return out
 
 
