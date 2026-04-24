@@ -4962,7 +4962,7 @@ async function processSolarFastPath(
   footprintPromises.push(
     (async () => {
       try {
-        const osmFootprint = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng)
+        const osmFootprint = await fetchOSMBuildingFootprintLegacy(coordinates.lat, coordinates.lng)
         if (osmFootprint && osmFootprint.vertices.length >= 4) {
           const coords = osmFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
           footprintCandidates.push({ source: 'osm_overpass', coordinates: coords, confidence: osmFootprint.confidence, vertexCount: osmFootprint.vertices.length })
@@ -5629,17 +5629,17 @@ function degreesToPitchFast(degrees: number): string {
 // Free API, no key required - backup when Mapbox and Regrid fail
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface OSMFootprint {
+interface LegacyOSMFootprint {
   vertices: Array<{ lat: number; lng: number }>;
   confidence: number;
   source: 'osm_overpass';
   osmId?: string;
 }
 
-async function fetchOSMBuildingFootprint(
+async function fetchOSMBuildingFootprintLegacy(
   lat: number,
   lng: number
-): Promise<OSMFootprint | null> {
+): Promise<LegacyOSMFootprint | null> {
   try {
     // Query buildings within ~50m of the point
     const radius = 50; // meters
