@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
             .from("srs_connections")
             .update({
               connection_status: "error",
-              last_error: err.message,
+              last_error: err instanceof Error ? err.message : String(err),
               last_validated_at: new Date().toISOString(),
             })
             .eq("id", connection.id);
