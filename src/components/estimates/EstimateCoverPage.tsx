@@ -53,7 +53,11 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
     ? new Date(createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
     : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
 
-  const yearStr = (createdAt ? new Date(createdAt) : new Date()).getFullYear();
+  // Show the company's actual founding year if known. Fall back to the
+  // estimate/issue year only when the tenant hasn't configured one.
+  const yearStr = companyInfo?.established_year
+    ? companyInfo.established_year
+    : (createdAt ? new Date(createdAt) : new Date()).getFullYear();
 
   const companyAddressParts = [
     companyInfo?.address_street,
