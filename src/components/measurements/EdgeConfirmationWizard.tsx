@@ -381,8 +381,14 @@ export function EdgeConfirmationWizard({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!allConfirmed || saving}>
-            {saving ? 'Saving…' : allConfirmed ? '✓ Save 100% Verified Plan' : `Confirm ${edges.length - confirmedCount} more edge(s)`}
+          <Button onClick={handleSave} disabled={!canSave || saving}>
+            {saving
+              ? 'Saving…'
+              : geometryIssues.length > 0
+                ? `Fix ${geometryIssues.length} geometry issue(s)`
+                : allConfirmed
+                  ? '✓ Save 100% Verified Plan'
+                  : `Confirm ${edges.length - confirmedCount} more edge(s)`}
           </Button>
         </DialogFooter>
       </DialogContent>
