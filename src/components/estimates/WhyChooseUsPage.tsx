@@ -11,14 +11,26 @@ const PAGE_HEIGHT = 1056;
 interface WhyChooseUsPageProps {
   companyName?: string;
   licenseNumber?: string | null;
+  establishedYear?: number | null;
+  brandStory?: string | null;
+  brandMission?: string | null;
+  brandCertifications?: string | null;
 }
 
-const STATS = [
-  { value: '20+', label: 'Years\nin business' },
-  { value: '5,000+', label: 'Projects\ncompleted' },
-  { value: '4.9★', label: 'Average\ncustomer rating' },
-  { value: '100%', label: 'Licensed,\nbonded, insured' },
-];
+const buildStats = (establishedYear?: number | null) => {
+  const yearsInBusiness = establishedYear
+    ? Math.max(1, new Date().getFullYear() - establishedYear)
+    : null;
+  return [
+    {
+      value: yearsInBusiness ? `${yearsInBusiness}+` : '20+',
+      label: 'Years\nin business',
+    },
+    { value: '5,000+', label: 'Projects\ncompleted' },
+    { value: '4.9★', label: 'Average\ncustomer rating' },
+    { value: '100%', label: 'Licensed,\nbonded, insured' },
+  ];
+};
 
 const PROMISES = [
   {
