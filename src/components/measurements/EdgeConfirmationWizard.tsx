@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Plus, Sparkles } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Plus, Sparkles, AlertTriangle, RefreshCw, ImageOff } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DimensionedPlanDrawing, type PlanEdge, type EdgeType, type AerialBackground } from './DimensionedPlanDrawing';
 
 interface EdgeConfirmationWizardProps {
