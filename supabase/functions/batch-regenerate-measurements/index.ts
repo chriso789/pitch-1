@@ -191,7 +191,7 @@ Deno.serve(async (req) => {
           results.details.push({
             measurement_id: measurement.id,
             status: 'error',
-            error: error.message
+            error: error instanceof Error ? error.message : String(error)
           });
         }
       }
@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         ok: false,
-        error: error.message
+        error: error instanceof Error ? error.message : String(error)
       }),
       { 
         status: 500,

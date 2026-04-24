@@ -51,7 +51,7 @@ Deno.serve(async (req) => {
 
     if (error) {
       console.error("Insert error:", error);
-      return new Response(JSON.stringify({ error: error.message }), {
+      return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
         status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -68,7 +68,7 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error("canvass-drop-pin error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

@@ -750,7 +750,7 @@ async function callAnalyzeRoofAerial(
     const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
       body: { address, coordinates }
     })
-    if (error) return { success: false, error: error.message }
+    if (error) return { success: false, error: error instanceof Error ? error.message : String(error) }
     return { success: data?.success || false, data: data?.data, error: data?.error }
   } catch (err) {
     return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }

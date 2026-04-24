@@ -162,7 +162,7 @@ Deno.serve(async (req: Request) => {
   let tmpl: any
   if (template_id) {
     const { data, error } = await supabase.rpc('api_smartdoc_templates_get', { p_id: template_id })
-    if (error) return json({ error: error.message }, 400)
+    if (error) return json({ error: error instanceof Error ? error.message : String(error) }, 400)
     tmpl = data
   } else {
     const { data, error } = await supabase

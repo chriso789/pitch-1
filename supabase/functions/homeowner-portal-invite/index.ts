@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error("homeowner-portal-invite error:", e);
-    return new Response(JSON.stringify({ error: e.message || "Unknown error" }), {
+    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : String(e) || "Unknown error" }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

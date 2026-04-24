@@ -720,7 +720,7 @@ Deno.serve(async (req) => {
     
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Failed to generate report',
+      error: error instanceof Error ? error.message : String(error) || 'Failed to generate report',
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

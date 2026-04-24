@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
       });
 
       if (error) {
-        results.push({ recipient_id: recipient.id, ok: false, error: error.message });
+        results.push({ recipient_id: recipient.id, ok: false, error: error instanceof Error ? error.message : String(error) });
       } else {
         results.push({ recipient_id: recipient.id, ok: true, data });
 
@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error("resend-signature-request error:", error);
     return new Response(
-      JSON.stringify({ error: error.message || "Internal error" }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) || "Internal error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

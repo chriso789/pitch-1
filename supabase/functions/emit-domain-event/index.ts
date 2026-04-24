@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     }
     if (error) {
       console.error('[emit-domain-event] insert failed', error);
-      return json({ error: error.message }, 500);
+      return json({ error: error instanceof Error ? error.message : String(error) }, 500);
     }
 
     // Fire-and-forget dispatcher kick (best-effort, don't block caller)
