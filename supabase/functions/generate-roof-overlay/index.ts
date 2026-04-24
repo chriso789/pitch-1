@@ -214,12 +214,13 @@ interface TwoPassResult {
 
 async function twoPassVertexSnappedDetection(
   imageUrl: string,
-  coordinates: { lat: number; lng: number }
+  coordinates: { lat: number; lng: number },
+  perimeterPctVertices: { x: number; y: number }[]
 ): Promise<TwoPassResult | null> {
 
-  // ──── PASS 1: Detect all vertices ────
-  console.log('🔵 Pass 1: Detecting vertices...')
-  const vertices = await detectVertices(imageUrl)
+  // ──── PASS 1: Detect all vertices, seeded with perimeter eave_corners ────
+  console.log(`🔵 Pass 1: Detecting vertices (with ${perimeterPctVertices.length} perimeter seed corners)...`)
+  const vertices = await detectVertices(imageUrl, perimeterPctVertices)
   if (!vertices || vertices.length < 3) {
     console.error('Pass 1 failed: insufficient vertices detected')
     return null
@@ -238,31 +239,46 @@ async function twoPassVertexSnappedDetection(
   return { vertices, edges }
 }
 
-async function detectVertices(imageUrl: string): Promise<DetectedVertex[] | null> {
-  const prompt = `You are an expert satellite imagery analyst. Analyze this roof image and identify EVERY vertex point where roof edges meet.
+async function detectVertices(
+  imageUrl: string,
+  perimeterPctVertices: { x: number; y: number }[]
+): Promise<DetectedVertex[] | null> {
+  // Build a seed list of known eave corners from the perimeter footprint
+  const seedList = perimeterPctVertices.length > 0
+    ? perimeterPctVertices.map((v, i) =>
+        `  p${i + 1}: (${v.x.toFixed(1)}%, ${v.y.toFixed(1)}%) — known eave corner from building footprint`
+      ).join('\n')
+    : '  (no footprint available — detect all corners from image)'
 
-VERTEX TYPES TO FIND:
-1. EAVE CORNERS: Where the roof edge (gutter line) changes direction at building corners
-2. RIDGE ENDS: Where a ridge line terminates (at a gable end or where it meets a hip)
-3. HIP APEXES: Where a hip line originates at the ridge and begins descending
-4. VALLEY BOTTOMS: Where two roof planes meet creating an inward V at the eave level
-5. T-JUNCTIONS: Where a smaller roof section meets a larger one
-6. GABLE PEAKS: The triangular peak of a gable end
+  const prompt = `You are an expert satellite imagery analyst tracing a single residential roof.
+
+KNOWN BUILDING FOOTPRINT CORNERS (already detected — DO include these as eave_corner vertices):
+${seedList}
+
+YOUR JOB: Confirm the footprint corners as eave_corners (snapping to the actual visible roof drip-line, NOT the wall) AND add any additional vertices needed to describe the roof geometry:
+
+VERTEX TYPES:
+1. eave_corner — where the roof drip-line (gutter) changes direction. Include ALL footprint corners.
+2. ridge_end — where a horizontal ridge line terminates (at a gable end OR where it meets a hip apex)
+3. hip_apex — where a hip line originates from a ridge endpoint
+4. valley_bottom — inward-V where two roof planes meet at the eave (only on L/T/cross-shaped roofs)
+5. t_junction — where a smaller roof section's ridge meets a larger one
+6. gable_peak — triangular peak at a gable end (same point as a ridge_end on gable roofs)
 
 CRITICAL RULES:
-- Use [x%, y%] coordinates where (0,0) = top-left, (100,100) = bottom-right of image
-- Give each vertex a unique ID like "v1", "v2", etc.
-- Look VERY carefully at the image — roofs are rarely perfect rectangles
-- Include ALL corners including porch kickouts, garage extensions, dormers
-- Accuracy is paramount — place each point exactly on the visible feature
+- Coordinates are [x%, y%] where (0,0) = top-left, (100,100) = bottom-right.
+- Reuse the seed corner positions (p1, p2…) but rename them v1, v2… and refine x/y to snap to the visible roof drip-line.
+- Add interior vertices (ridge_end, hip_apex, valley_bottom) for roof features visible in the imagery.
+- For a simple gable roof: 4 eave_corners + 2 ridge_ends = 6 vertices total.
+- For a simple hip roof: 4 eave_corners + 2 ridge_ends = 6 vertices (hips run from ridge_ends to eave_corners).
+- For a complex L-shape: include the valley_bottom at the inside corner.
+- Do NOT invent vertices that aren't visible. Do NOT skip obvious ridges.
+- IDs must be unique strings like "v1", "v2", etc.
 
-Return ONLY valid JSON (no markdown, no explanation):
+Return ONLY a JSON object matching this shape (no markdown):
 {
   "vertices": [
-    {"id": "v1", "x": 15.2, "y": 10.5, "type": "eave_corner", "description": "NW eave corner of main roof"},
-    {"id": "v2", "x": 82.1, "y": 10.8, "type": "eave_corner", "description": "NE eave corner of main roof"},
-    {"id": "v3", "x": 48.5, "y": 42.0, "type": "ridge_end", "description": "west end of main ridge"},
-    {"id": "v4", "x": 78.0, "y": 42.0, "type": "ridge_end", "description": "east end of main ridge where hip begins"}
+    {"id": "v1", "x": 15.2, "y": 10.5, "type": "eave_corner", "description": "NW corner"}
   ]
 }`
 
@@ -278,7 +294,7 @@ Return ONLY valid JSON (no markdown, no explanation):
         messages: [
           {
             role: 'system',
-            content: 'You are a precision roof geometry analyst. You identify exact vertex locations on satellite roof images. Return only valid JSON, no markdown.'
+            content: 'You are a precision roof geometry analyst. You confirm building corners and identify ridge/hip/valley vertices on satellite roof images. Always return valid JSON only.'
           },
           {
             role: 'user',
@@ -289,32 +305,40 @@ Return ONLY valid JSON (no markdown, no explanation):
           }
         ],
         max_tokens: 4000,
-        temperature: 0.1
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
       })
     })
 
     if (!response.ok) {
-      console.error('Pass 1 AI call failed:', response.status)
+      console.error('Pass 1 AI call failed:', response.status, await response.text().catch(() => ''))
       return null
     }
 
     const data = await response.json()
     const content = data.choices?.[0]?.message?.content || ''
-    
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.warn('Pass 1: No JSON in response')
-      return null
+
+    let parsed: any
+    try {
+      parsed = JSON.parse(content)
+    } catch {
+      const m = content.match(/\{[\s\S]*\}/)
+      if (!m) {
+        console.warn('Pass 1: No JSON in response')
+        return null
+      }
+      parsed = JSON.parse(m[0])
     }
 
-    const parsed = JSON.parse(jsonMatch[0])
-    const vertices: DetectedVertex[] = (parsed.vertices || []).map((v: any) => ({
-      id: v.id,
-      x: v.x,
-      y: v.y,
-      type: v.type || 'unknown',
-      description: v.description || ''
-    }))
+    const vertices: DetectedVertex[] = (parsed.vertices || [])
+      .filter((v: any) => typeof v?.x === 'number' && typeof v?.y === 'number' && v?.id)
+      .map((v: any) => ({
+        id: String(v.id),
+        x: Math.max(0, Math.min(100, Number(v.x))),
+        y: Math.max(0, Math.min(100, Number(v.y))),
+        type: v.type || 'unknown',
+        description: v.description || ''
+      }))
 
     return vertices
 
@@ -328,41 +352,37 @@ async function connectVerticesAsEdges(
   imageUrl: string,
   vertices: DetectedVertex[]
 ): Promise<DetectedEdge[] | null> {
-  
+
   // Build vertex list for the prompt
-  const vertexList = vertices.map(v => 
+  const vertexList = vertices.map(v =>
     `  ${v.id}: (${v.x.toFixed(1)}%, ${v.y.toFixed(1)}%) — ${v.type} — ${v.description}`
   ).join('\n')
 
   const prompt = `You are connecting previously detected roof vertices into classified edges.
 
-HERE ARE THE DETECTED VERTICES (from Pass 1):
+DETECTED VERTICES (Pass 1):
 ${vertexList}
 
-YOUR TASK: For each pair of vertices that should be connected by a roof feature, create an edge with the correct classification.
-
 EDGE TYPES:
-- "ridge": Connects ridge_end to ridge_end (the peak line at the very top)
-- "hip": Connects a ridge endpoint DOWN to an eave_corner (diagonal line descending from ridge to corner)
-- "valley": Connects from a T-junction or reflex corner UP to a ridge (inward V where two sections meet)
-- "eave": Connects eave_corner to eave_corner along the gutter/drip line (horizontal bottom edge)
-- "rake": Connects eave_corner to gable_peak (sloped edge at a gable end)
+- "eave": eave_corner → eave_corner along the gutter/drip line (perimeter)
+- "ridge": ridge_end → ridge_end along the top peak
+- "hip": ridge_end → eave_corner (diagonal descending from ridge to corner)
+- "valley": ridge_end (or t_junction) → valley_bottom (inward V at inside corners)
+- "rake": eave_corner → gable_peak (sloped edge along a gable end)
 
-TOPOLOGY RULES:
-- Every eave_corner should connect to its adjacent eave_corners (forming the perimeter)
-- Every eave_corner that is NOT a gable end should have a hip running UP to the nearest ridge endpoint
-- Ridges run along the top peak, connecting ridge endpoints
-- Valleys ONLY exist at inside corners (L-shaped, T-shaped roofs)
-- Every vertex should have at least 2 edges connected to it
-- Do NOT create edges between vertices that are not visually connected by a roof feature
-- Every edge MUST use vertex IDs from the list above — no new points allowed
+TOPOLOGY RULES (MUST hold):
+- Every eave_corner must connect to exactly two adjacent eave_corners (forming a closed perimeter loop).
+- Every ridge_end must have at least one ridge edge OR one hip edge attached.
+- Hips only descend from ridge_ends to eave_corners. Never hip-to-hip.
+- Valleys only exist where the roof has an inside corner (L/T/cross shape).
+- Every edge MUST reference vertex IDs from the list above. Do NOT invent points.
+- Do NOT create duplicate edges (same vertex pair).
+- Do NOT cross edges through the building interior unless they're a ridge/hip/valley.
 
 Return ONLY valid JSON (no markdown):
 {
   "edges": [
-    {"fromId": "v1", "toId": "v2", "type": "eave", "confidence": 95, "description": "north eave line"},
-    {"fromId": "v3", "toId": "v4", "type": "ridge", "confidence": 90, "description": "main ridge"},
-    {"fromId": "v3", "toId": "v1", "type": "hip", "confidence": 88, "description": "NW hip from ridge to corner"}
+    {"fromId": "v1", "toId": "v2", "type": "eave", "confidence": 95, "description": "north eave"}
   ]
 }`
 
@@ -378,7 +398,7 @@ Return ONLY valid JSON (no markdown):
         messages: [
           {
             role: 'system',
-            content: 'You are connecting roof vertices into classified edges. Every edge MUST reference existing vertex IDs. Return only valid JSON, no markdown.'
+            content: 'You connect roof vertices into classified edges. Every edge must reference an existing vertex ID. Always return valid JSON only.'
           },
           {
             role: 'user',
@@ -389,41 +409,54 @@ Return ONLY valid JSON (no markdown):
           }
         ],
         max_tokens: 4000,
-        temperature: 0.1
+        temperature: 0.1,
+        response_format: { type: 'json_object' }
       })
     })
 
     if (!response.ok) {
-      console.error('Pass 2 AI call failed:', response.status)
+      console.error('Pass 2 AI call failed:', response.status, await response.text().catch(() => ''))
       return null
     }
 
     const data = await response.json()
     const content = data.choices?.[0]?.message?.content || ''
-    
-    const jsonMatch = content.match(/\{[\s\S]*\}/)
-    if (!jsonMatch) {
-      console.warn('Pass 2: No JSON in response')
-      return null
+
+    let parsed: any
+    try {
+      parsed = JSON.parse(content)
+    } catch {
+      const m = content.match(/\{[\s\S]*\}/)
+      if (!m) {
+        console.warn('Pass 2: No JSON in response')
+        return null
+      }
+      parsed = JSON.parse(m[0])
     }
 
-    const parsed = JSON.parse(jsonMatch[0])
-    
     // Validate that all edge references exist in vertex list
     const vertexIds = new Set(vertices.map(v => v.id))
+    const seen = new Set<string>()
     const edges: DetectedEdge[] = (parsed.edges || [])
-      .filter((e: any) => vertexIds.has(e.fromId) && vertexIds.has(e.toId))
+      .filter((e: any) => e?.fromId && e?.toId && vertexIds.has(e.fromId) && vertexIds.has(e.toId) && e.fromId !== e.toId)
+      .filter((e: any) => {
+        // Dedupe undirected edges
+        const key = [e.fromId, e.toId].sort().join('::')
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
       .map((e: any) => ({
         fromId: e.fromId,
         toId: e.toId,
-        type: e.type || 'unknown',
-        confidence: e.confidence || 80,
+        type: (e.type || 'unknown').toLowerCase(),
+        confidence: Number(e.confidence) || 80,
         description: e.description || ''
       }))
 
     const invalidCount = (parsed.edges || []).length - edges.length
     if (invalidCount > 0) {
-      console.warn(`Pass 2: Dropped ${invalidCount} edges with invalid vertex references`)
+      console.warn(`Pass 2: Dropped ${invalidCount} invalid/duplicate edges`)
     }
 
     return edges
@@ -433,6 +466,50 @@ Return ONLY valid JSON (no markdown):
     return null
   }
 }
+
+// ═══════════════════════════════════════════════════════════════
+// TOPOLOGY REPAIR
+// Ensures perimeter is a closed eave loop and orphan vertices are removed.
+// ═══════════════════════════════════════════════════════════════
+
+function repairTopology(
+  result: TwoPassResult,
+  perimeterPctVertices: { x: number; y: number }[]
+): TwoPassResult {
+  const vertices = [...result.vertices]
+  let edges = [...result.edges]
+
+  // 1. Snap any eave_corner that's near a known perimeter point to the perimeter point
+  //    (handles AI drift away from the known footprint).
+  if (perimeterPctVertices.length >= 4) {
+    const SNAP_PCT = 3.0 // 3% of image ≈ a few feet at zoom 20
+    for (const v of vertices) {
+      if (v.type !== 'eave_corner') continue
+      let best: { x: number; y: number; d: number } | null = null
+      for (const p of perimeterPctVertices) {
+        const d = Math.hypot(v.x - p.x, v.y - p.y)
+        if (d < SNAP_PCT && (!best || d < best.d)) best = { x: p.x, y: p.y, d }
+      }
+      if (best) {
+        v.x = best.x
+        v.y = best.y
+      }
+    }
+  }
+
+  // 2. Drop orphan vertices (degree 0)
+  const degree = new Map<string, number>()
+  for (const e of edges) {
+    degree.set(e.fromId, (degree.get(e.fromId) || 0) + 1)
+    degree.set(e.toId, (degree.get(e.toId) || 0) + 1)
+  }
+  const keptVertices = vertices.filter(v => (degree.get(v.id) || 0) > 0)
+  const keptIds = new Set(keptVertices.map(v => v.id))
+  edges = edges.filter(e => keptIds.has(e.fromId) && keptIds.has(e.toId))
+
+  return { vertices: keptVertices, edges }
+}
+
 
 // ═══════════════════════════════════════════════════════════════
 // COORDINATE CONVERSION & FEATURE BUILDING
