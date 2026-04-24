@@ -291,9 +291,52 @@ export function PullMeasurementsButton({
       queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
       toast({
-        title: "✅ Measurement Complete",
-        description: "AI analysis finished. Check the results below.",
+        title: "✅ AI Analysis Complete — Verify for 100% Accuracy",
+        description: "Confirm each edge to lock in the measurement.",
       });
+
+      // Fetch the latest AI measurement and seed the verification wizard
+      (async () => {
+        try {
+          const { data } = await supabase
+            .from('roof_measurements')
+            .select('total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length')
+            .eq('customer_id', propertyId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const seeds: PlanEdge[] = [];
+          // Build a simple rectangular plan from the AI's totals so the user
+          // can confirm/correct each edge type and length.
+          const addRun = (type: EdgeType, total: number) => {
+            const len = Number(total) || 0;
+            if (len <= 0) return;
+            // Split each total into a single representative edge per type
+            seeds.push({
+              id: `ai-${type}-${seeds.length}`,
+              type,
+              p1: [0, seeds.length * 8],
+              p2: [len, seeds.length * 8],
+              length_ft: len,
+              confirmed: false,
+            });
+          };
+          if (data) {
+            addRun('eave', data.total_eave_length || 0);
+            addRun('rake', data.total_rake_length || 0);
+            addRun('ridge', data.total_ridge_length || 0);
+            addRun('hip', data.total_hip_length || 0);
+            addRun('valley', data.total_valley_length || 0);
+          }
+          setSeedEdges(seeds.length > 0 ? seeds : undefined);
+        } catch (e) {
+          console.warn('Could not seed verify wizard from AI measurement:', e);
+          setSeedEdges(undefined);
+        } finally {
+          setShowVerifyWizard(true);
+        }
+      })();
     } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
       toast({
         title: "Analysis Failed",
