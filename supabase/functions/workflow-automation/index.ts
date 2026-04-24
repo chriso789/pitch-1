@@ -156,4 +156,4 @@ Determine if this task should progress to the next phase and what actions should
   }
 };
 
-serve(handler);
+Deno.serve(handler);

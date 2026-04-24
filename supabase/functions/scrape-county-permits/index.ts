@@ -288,4 +288,4 @@ function extractPermitInfo(content: string, countyName: string): {
   };
 }
 
-serve(handler);
+Deno.serve(handler);

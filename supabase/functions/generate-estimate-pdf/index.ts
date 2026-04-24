@@ -292,4 +292,4 @@ function generateEstimateHTML(data: any): string {
   `;
 }
 
-serve(handler);
+Deno.serve(handler);
