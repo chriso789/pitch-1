@@ -690,16 +690,16 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       letterSpacing: '0.01em',
     }}>
       {pages.pages.map((pageContent, idx) => {
-        // Cover page already has its own data-report-page attribute, don't wrap in PageShell
-        // Only treat idx 0 as cover page when this instance actually rendered one (not skipped for added estimates)
+        // Cover page + the two new editorial pages (Why Choose Us, Process Timeline)
+        // already include their own data-report-page wrapper and full-bleed design.
+        // Skip PageShell for them so we don't double-wrap headers/footers.
         const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage;
-        const isCoverPage = hasRenderedCoverPage && idx === 0;
-        
-        if (isCoverPage) {
-          // Render cover page directly without PageShell wrapper to avoid duplicate data-report-page
-          return <React.Fragment key="cover">{pageContent}</React.Fragment>;
+        const isStandalonePage = hasRenderedCoverPage && idx <= 2;
+
+        if (isStandalonePage) {
+          return <React.Fragment key={`standalone-${idx}`}>{pageContent}</React.Fragment>;
         }
-        
+
         // Wrap other pages in PageShell
         return (
           <PageShell
