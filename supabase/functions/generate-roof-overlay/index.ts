@@ -122,12 +122,20 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Step 4: TWO-PASS VERTEX-SNAPPED DETECTION
+    // Step 4: TWO-PASS VERTEX-SNAPPED DETECTION (perimeter-constrained)
     // ═══════════════════════════════════════════
-    // Pass 1: Detect all vertices (corners, junctions, peaks)
+    // Pass 1: Detect all vertices, seeded with known perimeter corners
     // Pass 2: Connect vertices as classified edges
-    // This prevents line drift — every line MUST terminate at a detected vertex
-    const twoPassResult = await twoPassVertexSnappedDetection(mapboxUrl, coordinates)
+    // Repair: Drop orphan edges, ensure perimeter eaves are present
+    const perimeterPctVertices = perimeter.map(([lng, lat]) =>
+      geoToPixelPct(lng, lat, coordinates, IMAGE_SIZE, DETAIL_ZOOM)
+    )
+
+    const twoPassResult = await twoPassVertexSnappedDetection(
+      mapboxUrl,
+      coordinates,
+      perimeterPctVertices
+    )
 
     if (!twoPassResult) {
       console.error('❌ Two-pass detection returned no results')
@@ -137,10 +145,12 @@ Deno.serve(async (req) => {
       }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
-    console.log(`🔍 Two-pass result: ${twoPassResult.vertices.length} vertices, ${twoPassResult.edges.length} edges`)
+    // Repair topology: drop edges referencing missing vertices, dedupe, ensure perimeter eaves
+    const repaired = repairTopology(twoPassResult, perimeterPctVertices)
+    console.log(`🔧 Repaired: ${repaired.vertices.length} vertices, ${repaired.edges.length} edges (was ${twoPassResult.vertices.length}/${twoPassResult.edges.length})`)
 
     // Convert pixel coordinates to geo coordinates
-    const geoFeatures = convertToGeoFeatures(twoPassResult, coordinates)
+    const geoFeatures = convertToGeoFeatures(repaired, coordinates)
     console.log(`🌍 Geo features: ${geoFeatures.ridges.length} ridges, ${geoFeatures.hips.length} hips, ${geoFeatures.valleys.length} valleys, ${geoFeatures.eaves.length} eaves, ${geoFeatures.rakes.length} rakes`)
 
     // Step 5: Snap interior lines to perimeter corners
