@@ -223,6 +223,18 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
         </div>
       </div>
 
+      {/* Brand certifications / affiliations strip */}
+      {brandCertifications && (
+        <div className="mx-12 mb-16 px-5 py-3 bg-gray-50 border-l-4 rounded-sm" style={{ borderColor: 'hsl(var(--primary))' }}>
+          <div className="text-[9px] font-bold tracking-[0.3em] text-gray-500 mb-1">
+            CERTIFICATIONS & AFFILIATIONS
+          </div>
+          <p className="text-xs text-gray-700 leading-relaxed">
+            {brandCertifications}
+          </p>
+        </div>
+      )}
+
       {/* Footer guarantee bar */}
       <div
         className="absolute bottom-0 left-0 right-0 px-12 py-4 flex items-center justify-between text-white"
