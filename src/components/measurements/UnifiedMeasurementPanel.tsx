@@ -23,7 +23,7 @@ import { toast } from '@/components/ui/use-toast';
 import { ImportReportButton } from './ImportReportButton';
 import { PullMeasurementsButton } from './PullMeasurementsButton';
 import { BlueprintUploadButton } from './BlueprintUploadButton';
-import { EdgeWizardButton } from './EdgeWizardButton';
+
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
 import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
@@ -881,10 +881,6 @@ export function UnifiedMeasurementPanel({
                 <BlueprintUploadButton
                   pipelineEntryId={pipelineEntryId}
                   address={address}
-                />
-                <EdgeWizardButton
-                  pipelineEntryId={pipelineEntryId}
-                  onSuccess={handleMeasurementSuccess}
                 />
               </div>
             </CollapsibleContent>
