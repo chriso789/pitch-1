@@ -49,6 +49,8 @@ export function EdgeConfirmationWizard({
   onOpenChange,
   pipelineEntryId,
   initialEdges,
+  aerial,
+  footprintGeo,
   onSaved,
 }: EdgeConfirmationWizardProps) {
   const [edges, setEdges] = useState<PlanEdge[]>([]);
