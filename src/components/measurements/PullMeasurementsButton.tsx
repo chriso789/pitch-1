@@ -721,6 +721,8 @@ export function PullMeasurementsButton({
         onOpenChange={setShowVerifyWizard}
         pipelineEntryId={propertyId}
         initialEdges={seedEdges}
+        aerial={seedAerial}
+        footprintGeo={seedFootprint}
         onSaved={() => {
           queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
           queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
