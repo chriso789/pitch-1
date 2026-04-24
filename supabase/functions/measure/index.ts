@@ -16,6 +16,7 @@ import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-
 import { analyzeSegmentTopology, topologyToLinearFeatures, topologyToTotals } from "./segment-topology-analyzer.ts";
 import { evaluateOverlay, applyCorrections, type EvaluationResult } from "./overlay-evaluator.ts";
 import { storeCorrection, getLearnedPatterns, applyLearnedAdjustments, type CorrectionRecord } from "./correction-tracker.ts";
+import { callInternalUNet, unetResultToOverlay } from "../_shared/internal-unet-client.ts";
 import { calibrateRidgePosition, type RidgeCalibrationResult } from "./ridge-calibrator.ts";
 import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts";
 
