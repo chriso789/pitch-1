@@ -428,7 +428,7 @@ const handler = async (req: Request): Promise<Response> => {
     );
   } catch (error: unknown) {
     console.error("Error in admin-create-user function:", error);
-    const errorMessage = error instanceof Error ? error.message : "Failed to create user";
+    const errorMessage = error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Failed to create user";
     return new Response(
       JSON.stringify({ error: errorMessage }),
       {

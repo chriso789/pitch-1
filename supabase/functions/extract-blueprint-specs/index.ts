@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
           total += rows.length;
         }
       } catch (e: any) {
-        console.error(`specs page ${p.page_number} failed`, e?.message);
+        console.error(`specs page ${p.page_number} failed`, (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)));
       }
     }
 
@@ -108,7 +108,7 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error("extract-blueprint-specs error", e);
-    return new Response(JSON.stringify({ error: e?.message || String(e) }), {
+    return new Response(JSON.stringify({ error: (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) || String(e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

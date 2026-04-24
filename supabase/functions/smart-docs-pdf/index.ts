@@ -235,7 +235,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     await supabase.rpc('log_function_error', {
       p_function_name: 'smart-docs-pdf',
-      p_error_message: error.message,
+      p_error_message: (error instanceof Error ? error.message : String(error)),
       p_context: {
         instance_id: instanceId,
         tenant_id: tenantId,
@@ -247,7 +247,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: error.message 
+        error: (error instanceof Error ? error.message : String(error)) 
       }),
       {
         status: 500,

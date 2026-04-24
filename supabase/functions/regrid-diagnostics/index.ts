@@ -220,7 +220,7 @@ async function testEndpoint(url: string, apiKey: string, name: string): Promise<
       status: 0,
       success: false,
       responseTime,
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error',
     };
   }
 }

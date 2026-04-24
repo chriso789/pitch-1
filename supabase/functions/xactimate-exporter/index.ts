@@ -339,7 +339,7 @@ ${esxLines}`;
   } catch (error) {
     console.error('Xactimate export error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+      JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

@@ -140,7 +140,7 @@ Provide your diagnosis in the JSON format specified.`;
   } catch (error) {
     console.error("AI Error Fixer error:", error);
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : "Unknown error",
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Unknown error",
       diagnosis: {
         errorType: "Analysis Failed",
         rootCause: "Unable to analyze the error automatically",

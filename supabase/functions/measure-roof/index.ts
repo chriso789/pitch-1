@@ -115,7 +115,7 @@ Deno.serve(async (req) => {
     console.error('measure-roof error:', error)
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Internal error',
+      error: (error instanceof Error ? error.message : String(error)) || 'Internal error',
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -195,7 +195,7 @@ async function saveMeasurement(supabase: any, params: SaveParams) {
 
   if (error) {
     console.error('DB insert error:', error)
-    throw new Error(`Failed to save measurement: ${error.message}`)
+    throw new Error(`Failed to save measurement: ${(error instanceof Error ? error.message : String(error))}`)
   }
 
   return data

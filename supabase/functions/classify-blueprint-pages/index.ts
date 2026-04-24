@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
         }).eq("id", p.id);
         results.push({ page: p.page_number, ...cls });
       } catch (e: any) {
-        console.error(`page ${p.page_number} classify failed`, e?.message);
+        console.error(`page ${p.page_number} classify failed`, (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)));
       }
     }
 
@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error("classify-blueprint-pages error", e);
-    return new Response(JSON.stringify({ error: e?.message || String(e) }), {
+    return new Response(JSON.stringify({ error: (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) || String(e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

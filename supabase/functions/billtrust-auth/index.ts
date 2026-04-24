@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error', 
-        details: error instanceof Error ? error.message : String(error) 
+        details: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) 
       }),
       { 
         status: 500, 
@@ -341,8 +341,8 @@ Deno.serve(async (req) => {
 
 // Helper function to log audit events
 async function logAuditEvent(
-  supabase: ReturnType<typeof createClient>,
-  tenantId: string,
+  supabase: any,
+  tenantId: string | null | undefined,
   userId: string,
   action: string,
   entityId: string | null,

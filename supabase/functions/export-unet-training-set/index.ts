@@ -244,6 +244,6 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error('export-unet-training-set fatal:', e);
-    return json({ ok: false, error: String(e?.message ?? e) }, 500);
+    return json({ ok: false, error: String((e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? e) }, 500);
   }
 });

@@ -419,7 +419,7 @@ const handler = async (req: Request): Promise<Response> => {
     });
   } catch (error: unknown) {
     console.error("[send-user-invitation] Error:", error);
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage = error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error);
     return new Response(
       JSON.stringify({ error: errorMessage }),
       {

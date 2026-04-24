@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
   } catch (e) {
     console.error("[send-booking-invite] Error:", e);
     return new Response(
-      JSON.stringify({ success: false, error: e instanceof Error ? e.message : "Unknown error" }),
+      JSON.stringify({ success: false, error: e instanceof Error ? (e instanceof Error ? e.message : String(e)) : "Unknown error" }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

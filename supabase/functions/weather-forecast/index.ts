@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
     console.error('Weather forecast error:', error);
     return new Response(JSON.stringify({
       success: false,
-      error: error.message || 'Failed to fetch weather data',
+      error: (error instanceof Error ? error.message : String(error)) || 'Failed to fetch weather data',
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,

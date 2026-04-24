@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
     console.error('[proposal-webhook] Error:', error);
     return new Response(JSON.stringify({ 
       ok: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

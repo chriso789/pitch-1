@@ -124,8 +124,8 @@ export async function storeCorrection(
       .single();
 
     if (error) {
-      console.error('Failed to store correction:', error.message, error.details, error.hint);
-      return { success: false, error: `${error.message}${error.hint ? ` (${error.hint})` : ''}` };
+      console.error('Failed to store correction:', (error instanceof Error ? error.message : String(error)), error.details, error.hint);
+      return { success: false, error: `${(error instanceof Error ? error.message : String(error))}${error.hint ? ` (${error.hint})` : ''}` };
     }
 
     console.log(`✓ Stored correction ${data.id} for ${correction.originalLineType}`);

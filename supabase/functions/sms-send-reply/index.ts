@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
           sendError = telnyxData.errors?.[0]?.detail || "Telnyx send failed";
         }
       } catch (e) {
-        sendError = `Telnyx error: ${e.message}`;
+        sendError = `Telnyx error: ${(e instanceof Error ? e.message : String(e))}`;
       }
     }
 
@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
           sendError = twilioData.message || "Twilio send failed";
         }
       } catch (e) {
-        sendError = `Twilio error: ${e.message}`;
+        sendError = `Twilio error: ${(e instanceof Error ? e.message : String(e))}`;
       }
     }
 
@@ -269,7 +269,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("SMS send error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

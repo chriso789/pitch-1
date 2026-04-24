@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
     );
   } catch (e: any) {
     console.error("parse-blueprint-document error", e);
-    return new Response(JSON.stringify({ error: e?.message || String(e) }), {
+    return new Response(JSON.stringify({ error: (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) || String(e) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

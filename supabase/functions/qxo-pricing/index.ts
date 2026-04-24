@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
 
       } catch (error) {
         console.error(`Error processing SKU ${targetSku}:`, error)
-        errors.push(`Error processing ${targetSku}: ${error instanceof Error ? error.message : String(error)}`)
+        errors.push(`Error processing ${targetSku}: ${error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)}`)
       }
     }
 
@@ -205,7 +205,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error),
         timestamp: new Date().toISOString()
       }),
       {

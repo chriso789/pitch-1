@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
           }
         } catch (e: any) {
           failed++;
-          results.push({ id: r.id, status: 'error', error: e.message?.substring(0, 100) });
+          results.push({ id: r.id, status: 'error', error: (e instanceof Error ? e.message : String(e))?.substring(0, 100) });
         }
 
         await new Promise(res => setTimeout(res, 1500));
@@ -226,7 +226,7 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Error:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
   }

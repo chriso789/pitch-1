@@ -317,7 +317,7 @@ export async function runUnifiedAIPipeline(
     console.error('❌ Unified pipeline error:', error);
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown pipeline error',
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown pipeline error',
       timings: {
         polygonCleanup: timings.polygonCleanup || 0,
         facetGeneration: timings.facetGeneration || 0,

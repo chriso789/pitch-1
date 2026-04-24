@@ -13,7 +13,7 @@ async function validateSession(sessionToken: string): Promise<{ userId: string; 
       .rpc('validate_canvass_token', { p_token: sessionToken });
     
     if (error || !data || data.length === 0) {
-      console.log('Token validation failed:', error?.message || 'No session found');
+      console.log('Token validation failed:', (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)) || 'No session found');
       return null;
     }
     

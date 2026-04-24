@@ -128,7 +128,7 @@ Deno.serve(async (req) => {
     
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown segmentation error',
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown segmentation error',
       processingTimeMs: Date.now() - startTime,
     }), {
       status: 500,

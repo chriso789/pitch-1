@@ -370,7 +370,7 @@ Deno.serve(async (req) => {
     console.error('Visualization generation error:', err);
     return json({
       ok: false,
-      error: err instanceof Error ? err.message : String(err),
+      error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err),
     }, corsHeaders, 500);
   }
 });

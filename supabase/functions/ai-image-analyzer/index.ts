@@ -201,7 +201,7 @@ Deno.serve(async (req) => {
     console.error('Error in ai-image-analyzer:', error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error),
         fallback_analysis: {
           roof_type: "Requires manual inspection",
           condition_rating: "unknown",

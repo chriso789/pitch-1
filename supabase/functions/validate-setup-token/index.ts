@@ -131,7 +131,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('[validate-setup-token] Error:', error);
     return new Response(
-      JSON.stringify({ error: error.message || "An unexpected error occurred" }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) || "An unexpected error occurred" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

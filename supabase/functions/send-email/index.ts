@@ -245,7 +245,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({
         error: "Failed to send email",
-        details: error.message,
+        details: (error instanceof Error ? error.message : String(error)),
       }),
       {
         status: 500,
@@ -255,4 +255,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-serve(handler);
+Deno.serve(handler);

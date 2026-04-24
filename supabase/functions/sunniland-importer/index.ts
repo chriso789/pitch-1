@@ -139,8 +139,8 @@ Deno.serve(async (req: Request) => {
       // Download file, split lines, parse simple CSV/TSV
       const { data, error } = await supabase.storage.from('imports').download(storage_path)
       if (error) {
-        console.error('Storage download error:', error.message)
-        return resp({ error: `Download failed: ${error.message}` }, 400)
+        console.error('Storage download error:', (error instanceof Error ? error.message : String(error)))
+        return resp({ error: `Download failed: ${(error instanceof Error ? error.message : String(error))}` }, 400)
       }
       const text = await data.text()
       const lines = text.split(/\r?\n/).filter(Boolean)

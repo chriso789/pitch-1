@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({
         error: "roof-report-generator_failed",
-        message: err instanceof Error ? err.message : String(err),
+        message: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err),
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
     );

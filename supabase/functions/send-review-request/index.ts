@@ -143,7 +143,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in send-review-request:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
       {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

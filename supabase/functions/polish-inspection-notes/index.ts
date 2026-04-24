@@ -54,7 +54,7 @@ Raw field notes to polish:
     try {
       const body = await req.clone().json().catch(() => ({}));
       return new Response(
-        JSON.stringify({ polished: body.notes || "", error: error.message }),
+        JSON.stringify({ polished: body.notes || "", error: (error instanceof Error ? error.message : String(error)) }),
         { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     } catch {

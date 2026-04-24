@@ -165,7 +165,7 @@ const handler = async (req: Request): Promise<Response> => {
     console.error("Error in admin-update-password function:", error);
     return new Response(
       JSON.stringify({ 
-        error: error.message || "An unexpected error occurred" 
+        error: (error instanceof Error ? error.message : String(error)) || "An unexpected error occurred" 
       }),
       {
         status: 400,

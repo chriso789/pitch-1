@@ -280,7 +280,7 @@ Return ONLY valid JSON, no other text.`
   } catch (error) {
     console.error('AI Vision Detection error:', error)
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error',
       fallback: 'solar_bbox'
     }), {
       status: 500,

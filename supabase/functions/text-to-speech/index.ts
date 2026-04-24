@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
 
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error?.message || 'Failed to generate speech')
+      throw new Error(error.(error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)) || 'Failed to generate speech')
     }
 
     // Convert audio buffer to base64
@@ -57,7 +57,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('TTS Error:', error)
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'An unknown error occurred' }),
+      JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'An unknown error occurred' }),
       {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

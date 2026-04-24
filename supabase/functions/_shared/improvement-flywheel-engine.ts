@@ -107,13 +107,13 @@ export async function runFlywheelCycle(
       try {
         await executeAction(action, supabase, tenantId);
       } catch (error) {
-        errors.push(`Failed to execute action ${action.id}: ${error.message}`);
+        errors.push(`Failed to execute action ${action.id}: ${(error instanceof Error ? error.message : String(error))}`);
       }
     }
 
     return { success: true, metrics, actions, errors };
   } catch (error) {
-    errors.push(`Flywheel cycle failed: ${error.message}`);
+    errors.push(`Flywheel cycle failed: ${(error instanceof Error ? error.message : String(error))}`);
     return { 
       success: false, 
       metrics: createEmptyMetrics(cycleType), 
@@ -597,7 +597,7 @@ async function executeAction(action: ImprovementAction, supabase: any, tenantId:
     action.results = 'Action completed successfully';
   } catch (error) {
     action.status = 'failed';
-    action.results = `Failed: ${error.message}`;
+    action.results = `Failed: ${(error instanceof Error ? error.message : String(error))}`;
   }
 }
 
