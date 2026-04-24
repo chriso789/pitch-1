@@ -61,9 +61,7 @@ export function NotificationCenter() {
   const resolveNotificationLink = async (notification: Notification): Promise<string | null> => {
     const meta: any = (notification as any).metadata || {};
 
-    // Direct hints first
-    if (meta.action_url) return meta.action_url;
-    if (meta.link) return meta.link;
+    // Direct pipeline/project hints first
     if (meta.pipeline_entry_id) {
       return `/lead/${meta.pipeline_entry_id}?tab=documents`;
     }
@@ -73,6 +71,8 @@ export function NotificationCenter() {
     }
 
     // Envelope-based notifications: look up the linked pipeline entry
+    // (do this BEFORE action_url, since envelope notifications often have an
+    // action_url pointing to /signature-envelopes/:id which is not a route)
     if (meta.envelope_id) {
       try {
         const { data: env } = await supabase
@@ -103,6 +103,12 @@ export function NotificationCenter() {
 
     if (meta.contact_id) return `/contact/${meta.contact_id}`;
     if (meta.job_id) return `/job/${meta.job_id}`;
+
+    // Fall back to explicit hints last, and only if they point to a real route
+    const candidate = meta.action_url || meta.link;
+    if (candidate && typeof candidate === 'string' && !candidate.startsWith('/signature-envelopes/')) {
+      return candidate;
+    }
     return null;
   };
 
