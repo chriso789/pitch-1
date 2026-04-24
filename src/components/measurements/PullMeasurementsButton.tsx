@@ -508,6 +508,42 @@ export function PullMeasurementsButton({
             };
           }
 
+          // Structured diagnostic log so we can trace why imagery may be missing/incomplete
+          const urlSource = data?.mapbox_image_url
+            ? 'db.mapbox_image_url'
+            : data?.satellite_overlay_url
+              ? 'db.satellite_overlay_url'
+              : data?.google_maps_image_url
+                ? 'db.google_maps_image_url'
+                : 'live-fallback';
+          const boundsSource = normalizeAerialBounds((data as any)?.image_bounds)
+            ? 'db.image_bounds'
+            : (Number.isFinite(west) && Number.isFinite(east) && allGeoPts.length > 0)
+              ? 'derived-from-wkt'
+              : 'computed-static';
+          console.info('[verify-wizard][aerial]', {
+            propertyId,
+            measurementId: (data as any)?.id ?? null,
+            lat: fallbackLat,
+            lng: fallbackLng,
+            zoom,
+            size: { width: Number(size.width) || 640, height: Number(size.height) || 640 },
+            urlSource,
+            imageUrl: imageUrl ? String(imageUrl).slice(0, 140) + (String(imageUrl).length > 140 ? '…' : '') : null,
+            boundsSource,
+            bounds,
+            seededEdges: seeds.length,
+            footprintVertices: footprintGeo?.length ?? 0,
+            aerialReady: Boolean(imageUrl && bounds),
+            missing: {
+              imageUrl: !imageUrl,
+              bounds: !bounds,
+              dbMapboxUrl: !data?.mapbox_image_url,
+              dbBounds: !((data as any)?.image_bounds),
+              dbWkt: !((data as any)?.linear_features_wkt),
+            },
+          });
+
           setSeedEdges(seeds.length > 0 ? seeds : undefined);
           setSeedFootprint(footprintGeo);
           setSeedAerial(aerial);
