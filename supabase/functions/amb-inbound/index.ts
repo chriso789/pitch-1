@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
 
     // Store message
     const { error } = await supabase.from('messages').insert({
-      tenant_id: '', // Map from business_id
+      tenant_id: '' as any, // Map from business_id
       contact_phone: from,
       message_text: text,
       direction: 'inbound',

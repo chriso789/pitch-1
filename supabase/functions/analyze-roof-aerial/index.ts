@@ -1978,10 +1978,10 @@ Return ONLY valid JSON, no explanation.`
       rakeCornerCount: validVertices.filter((v: any) => v.cornerType === 'rake-corner').length,
       bumpOutCornerCount: validVertices.filter((v: any) => v.cornerType === 'bump-out-corner').length,
       totalCount: validVertices.length,
-      estimatedFacetCount: result.estimatedFacetCount || 4
+      estimatedFacetCount: (result as any).estimatedFacetCount || 4
     }
     
-    const segmentValidation = result.segmentValidation || {
+    const segmentValidation = (result as any).segmentValidation || {
       totalVertexCount: validVertices.length,
       estimatedPerimeterFt: 0,
       segmentLengths: []
@@ -2034,11 +2034,11 @@ Return ONLY valid JSON, no explanation.`
     
     return { 
       vertices: finalVertices,
-      roofType: result.roofType || 'complex',
-      complexity: result.complexity || 'moderate',
+      roofType: (result as any).roofType || 'complex',
+      complexity: (result as any).complexity || 'moderate',
       vertexStats,
-      estimatedFacetCount: result.estimatedFacetCount,
-      qualityCheck: result.qualityCheck,
+      estimatedFacetCount: (result as any).estimatedFacetCount,
+      qualityCheck: (result as any).qualityCheck,
       segmentValidation,
       perimeterValidation: {
         estimatedPerimeterFt: segmentValidation.estimatedPerimeterFt,
@@ -2152,11 +2152,11 @@ Return ONLY valid JSON.`
     
     return { 
       vertices: validVertices,
-      roofType: result.roofType || 'complex',
-      complexity: result.complexity || 'complex',
+      roofType: (result as any).roofType || 'complex',
+      complexity: (result as any).complexity || 'complex',
       vertexStats,
-      segmentValidation: result.segmentValidation,
-      newVerticesFound: result.newVerticesFound || newlyDetected
+      segmentValidation: (result as any).segmentValidation,
+      newVerticesFound: (result as any).newVerticesFound || newlyDetected
     }
   } catch (err) {
     console.error('Corner completion error:', err)
@@ -2247,9 +2247,9 @@ Return ONLY valid JSON.`
       junctions: validJunctions,
       ridgeEndpoints: result.ridgeEndpoints || [],
       valleyJunctions: result.valleyJunctions || [],
-      roofPeakType: result.roofPeakType,
-      ridgeCount: result.ridgeCount,
-      estimatedHipLineCount: result.estimatedHipLineCount
+      roofPeakType: (result as any).roofPeakType,
+      ridgeCount: (result as any).ridgeCount,
+      estimatedHipLineCount: (result as any).estimatedHipLineCount
     }
   } catch (err) {
     console.error('Interior junction detection error:', err)
@@ -2406,8 +2406,8 @@ IMPORTANT: Return ONLY valid JSON. Detect ALL visible ridges and hips.`;
     
     return {
       ridgeLines: ridgeLinesWithLength,
-      roofType: result.roofType || 'unknown',
-      ridgeDirection: result.ridgeDirection || 'horizontal',
+      roofType: (result as any).roofType || 'unknown',
+      ridgeDirection: (result as any).ridgeDirection || 'horizontal',
       averageConfidence: avgConfidence,
       source: 'ai_vision'
     };
@@ -5180,7 +5180,7 @@ async function processSolarFastPath(
       predominantPitch,
       undefined, // structureAnalysis
       undefined, // aiRidgeOverride
-      perimeterResult?.roofType // pass detected roof type for gable/hip branching
+      undefined // roofType (perimeterResult not in scope here)
     )
     console.log(`✅ Solar assembly: ${assembledGeometry.facets.length} facets, quality: ${assembledGeometry.quality}`)
   } catch (err) {
