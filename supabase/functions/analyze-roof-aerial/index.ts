@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
             boundingBox: null,
             isHistorical: true,
             historicalDate
-          }
+          } as any
         }
       } catch (histErr) {
         console.error('Historical lookup error:', histErr)
@@ -223,8 +223,8 @@ Deno.serve(async (req) => {
     // Target: Complete in <15 seconds when Solar segments are available
     // ═══════════════════════════════════════════════════════════════════════════
     
-    if (!forceFullAnalysis && solarData?.available && solarData?.roofSegments?.length >= 2 && solarData?.buildingFootprintSqft > 0) {
-      console.log(`🚀 SOLAR FAST PATH: ${solarData.roofSegments.length} segments, ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
+    if (!forceFullAnalysis && solarData?.available && solarData?.roofSegments?.length >= 2 && (solarData?.buildingFootprintSqft ?? 0) > 0) {
+      console.log(`🚀 SOLAR FAST PATH: ${solarData.roofSegments.length} segments, ${(solarData.buildingFootprintSqft ?? 0).toFixed(0)} sqft`)
       
       try {
         const fastResult = await processSolarFastPath(
@@ -643,7 +643,7 @@ Deno.serve(async (req) => {
       
       // NEW VERTEX-BASED DETECTION APPROACH (Roofr-quality)
       // Pass 1: Isolate target building with EXPANDED bounds for larger roofs
-      buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
+      buildingIsolation = await isolateTargetBuilding(selectedImage.url!, address, coordinates, solarData)
       console.log(`⏱️ Pass 1 (building isolation) complete: ${Date.now() - startTime}ms`)
       
       // PHASE 6: Apply Florida bounds shrinkage ONLY when using AI bounding-box isolation
@@ -666,7 +666,7 @@ Deno.serve(async (req) => {
       }
       
       // Pass 2: Detect perimeter vertices with FULL IMAGE TRACING
-      perimeterResult = await detectPerimeterVertices(selectedImage.url, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
+      perimeterResult = await detectPerimeterVertices(selectedImage.url!, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
       console.log(`⏱️ Pass 2 (perimeter vertices) complete: ${Date.now() - startTime}ms`)
       
       // NEW: FOOTPRINT SANITY CHECK - verify vertices span the full roof
@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
         
         // Re-detect with expanded bounds and explicit instructions to find missing corners
         const redetectedResult = await detectPerimeterVerticesWithCornerFocus(
-          selectedImage.url, 
+          selectedImage.url!, 
           expandedBounds, 
           perimeterResult.vertices,
           footprintCheck.longSegments,
@@ -726,10 +726,10 @@ Deno.serve(async (req) => {
     console.log(`⏱️ Starting Pass 3 & 3.5 in parallel...`)
     const [interiorVertices, aiRidgeDetection] = await Promise.all([
       // Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
-      detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds),
+      detectInteriorJunctions(selectedImage.url!, perimeterResult.vertices, buildingIsolation.bounds),
       // Pass 3.5: AI Vision Ridge Detection - detect ACTUAL ridge positions from satellite image
       detectRidgeLinesFromImage(
-        selectedImage.url,
+        selectedImage.url!,
         perimeterResult.vertices,
         buildingIsolation.bounds,
         coordinates,
@@ -1707,12 +1707,12 @@ SIZING RULES:
     
     return { 
       bounds, 
-      otherBuildings: result.otherBuildingsDetected || 0,
-      confidence: result.confidenceTargetIsCorrect || 'medium',
-      roofShape: result.roofShape || 'rectangular',
+      otherBuildings: (result as any).otherBuildingsDetected || 0,
+      confidence: (result as any).confidenceTargetIsCorrect || 'medium',
+      roofShape: (result as any).roofShape || 'rectangular',
       estimatedDimensions: {
-        widthFt: result.estimatedRoofWidthFt || 50,
-        lengthFt: result.estimatedRoofLengthFt || 60
+        widthFt: (result as any).estimatedRoofWidthFt || 50,
+        lengthFt: (result as any).estimatedRoofLengthFt || 60
       }
     }
   } catch (err) {
