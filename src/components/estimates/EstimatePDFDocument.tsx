@@ -582,6 +582,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           key="why-choose-us-page"
           companyName={companyInfo?.name || companyName}
           licenseNumber={companyInfo?.license_number}
+          establishedYear={companyInfo?.established_year}
+          brandStory={companyInfo?.brand_story}
+          brandMission={companyInfo?.brand_mission}
+          brandCertifications={companyInfo?.brand_certifications}
         />
       );
 
