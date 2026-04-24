@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
         // Get all compliance items
         const { data: items } = await supabase
-          .from("compliance_items")
+          .from("compliance_items" as any)
           .select(`
             *,
             profiles!compliance_items_assigned_to_fkey (
