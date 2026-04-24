@@ -16,6 +16,7 @@ import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-
 import { analyzeSegmentTopology, topologyToLinearFeatures, topologyToTotals } from "./segment-topology-analyzer.ts";
 import { evaluateOverlay, applyCorrections, type EvaluationResult } from "./overlay-evaluator.ts";
 import { storeCorrection, getLearnedPatterns, applyLearnedAdjustments, type CorrectionRecord } from "./correction-tracker.ts";
+import { callInternalUNet, unetResultToOverlay } from "../_shared/internal-unet-client.ts";
 import { calibrateRidgePosition, type RidgeCalibrationResult } from "./ridge-calibrator.ts";
 import { fetchMapboxFootprint, selectBestFootprint } from "./mapbox-footprint.ts";
 
@@ -2198,11 +2199,14 @@ Deno.serve(async (req) => {
 
       // Route: action=pull
       if (action === 'pull') {
-        // Phase 1: Added 'engine' parameter for baseline detection method
-        // 'skeleton' = geometric straight-skeleton algorithm (default, fast)
-        // 'vision' = AI vision-based detection from satellite imagery (more accurate)
-        // 'unified' = NEW: Full multi-source fusion pipeline (opt-in)
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
+        // Engine selection (cascading fallback):
+        //   'unet'     = trained internal U-Net (PRIMARY for AI Measurement button)
+        //   'vision'   = AI vision-based detection from satellite imagery
+        //   'skeleton' = geometric straight-skeleton algorithm (final fallback)
+        //   'unified'  = full multi-source fusion pipeline (opt-in)
+        // Default is 'unet' so every AI Measurement request runs through the
+        // trained model first, then degrades gracefully to vision and skeleton.
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'unet', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
 
         if (!propertyId) {
           return json({ 
@@ -2431,11 +2435,42 @@ Deno.serve(async (req) => {
         }
 
         // ============= ENGINE SELECTION (Phase 1) =============
-        // Vision engine: Uses AI-based detection from satellite imagery (more accurate for complex roofs)
-        // Skeleton engine: Uses geometric straight-skeleton algorithm (default, fast, works offline)
-        
+        // Engine cascade:
+        //   U-Net (trained model on Render) → Vision (AI satellite trace) → Skeleton (geometric)
+        // Every AI Measurement request runs through the trained U-Net first.
+
         let meas: MeasureResult | null = null;
-        
+
+        // ── U-Net engine (PRIMARY for AI Measurement button) ──
+        if (engine === 'unet' && !meas) {
+          console.log('[pull] 🧠 Using U-NET engine (trained internal model)');
+          try {
+            const unetOutcome = await callInternalUNet({ lat, lng, address });
+            if (unetOutcome.ok && unetOutcome.result) {
+              const overlay = unetResultToOverlay(unetOutcome.result);
+              if (overlay) {
+                meas = convertVisionOverlayToMeasureResult(overlay as any, propertyId, lat, lng);
+                if (meas) {
+                  meas.source = 'pitch-internal-unet';
+                  console.log(`[pull] ✅ U-Net measurement ready in ${unetOutcome.durationMs}ms`, {
+                    ridge_ft: meas.summary?.ridge_ft || 0,
+                    hip_ft: meas.summary?.hip_ft || 0,
+                    valley_ft: meas.summary?.valley_ft || 0,
+                  });
+                  engineUsed = 'unet';
+                }
+              }
+            }
+            if (!meas) {
+              console.warn('[pull] U-Net unavailable/empty, cascading to VISION:', unetOutcome.error || 'no-result');
+              engine = 'vision'; // cascade
+            }
+          } catch (unetErr) {
+            console.error('[pull] U-Net engine exception, cascading to VISION:', unetErr);
+            engine = 'vision';
+          }
+        }
+
         if (engine === 'vision') {
           console.log('[pull] 🔭 Using VISION engine (AI-based detection from satellite imagery)');
           
