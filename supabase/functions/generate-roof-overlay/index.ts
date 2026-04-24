@@ -592,7 +592,29 @@ function pixelPctToGeo(
   ]
 }
 
-// ═══════════════════════════════════════════════════════════════
+function geoToPixelPct(
+  lng: number,
+  lat: number,
+  center: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): { x: number; y: number } {
+  const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180)
+
+  const metersX = (lng - center.lng) * metersPerDegLng
+  const metersY = (lat - center.lat) * metersPerDegLat
+
+  const pxOffsetX = metersX / metersPerPixel
+  const pxOffsetY = -metersY / metersPerPixel
+
+  return {
+    x: ((pxOffsetX / imageSize) + 0.5) * 100,
+    y: ((pxOffsetY / imageSize) + 0.5) * 100,
+  }
+}
+
 // SNAPPING & POST-PROCESSING
 // ═══════════════════════════════════════════════════════════════
 
