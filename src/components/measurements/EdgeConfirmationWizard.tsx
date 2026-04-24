@@ -211,6 +211,46 @@ export function EdgeConfirmationWizard({
           </DialogDescription>
         </DialogHeader>
 
+        {/* Missing-data fallback: explain why aerial / traced network is missing */}
+        {(missingAerial || missingTracedNetwork) && (
+          <Alert variant="default" className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+            <ImageOff className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-900 dark:text-amber-200">
+              Latest measurement is missing data
+            </AlertTitle>
+            <AlertDescription className="text-amber-800 dark:text-amber-300 space-y-2">
+              <ul className="list-disc list-inside text-xs">
+                {missingAerial && <li>No aerial image (Mapbox/Google) was saved with this run.</li>}
+                {missingTracedNetwork && <li>No traced edge network (linear_features_wkt) was returned by the AI.</li>}
+              </ul>
+              {onRerunMeasurement && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onRerunMeasurement}
+                  className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Re-run measurement analysis
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Geometry validation issues */}
+        {geometryIssues.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Geometry issues — fix before confirming</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc list-inside text-xs mt-1">
+                {geometryIssues.map((iss, i) => <li key={i}>{iss}</li>)}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
+
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">
