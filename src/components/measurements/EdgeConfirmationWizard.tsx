@@ -21,6 +21,7 @@ interface EdgeConfirmationWizardProps {
   aerial?: AerialBackground | null;
   footprintGeo?: Array<[number, number]>;
   onSaved?: () => void;
+  onRerunMeasurement?: () => void;
 }
 
 const EDGE_TYPES: { value: EdgeType; label: string; hint: string }[] = [
