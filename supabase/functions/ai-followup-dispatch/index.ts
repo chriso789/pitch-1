@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    const errorMessage = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err);
+    const errorMessage = err instanceof Error ? err.message : String(err);
     console.error(`[ai-followup-dispatch] Error:`, errorMessage);
 
     // Try to mark queue as failed

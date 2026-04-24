@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in ai-lead-scorer:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Internal server error' }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

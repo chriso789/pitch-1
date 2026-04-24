@@ -146,7 +146,7 @@ Determine if this task should progress to the next phase and what actions should
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: (error instanceof Error ? error.message : String(error)) 
+        error: error.message 
       }),
       {
         status: 500,
@@ -156,4 +156,4 @@ Determine if this task should progress to the next phase and what actions should
   }
 };
 
-Deno.serve(handler);
+serve(handler);

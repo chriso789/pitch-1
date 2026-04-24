@@ -156,7 +156,7 @@ Deno.serve(async (req) => {
     );
   } catch (e) {
     console.error("[storm-intel-score] error", e);
-    return new Response(JSON.stringify({ error: String((e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? e) }), {
+    return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

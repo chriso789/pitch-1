@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
     console.error('Error in score-lead function:', error);
     return new Response(JSON.stringify({ 
       success: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) 
+      error: error instanceof Error ? error.message : String(error) 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -146,7 +146,7 @@ async function calculateLeadScore(supabase: any, contactData: any, tenantId: str
     .eq('is_active', true);
 
   if (error) {
-    throw new Error(`Failed to fetch scoring rules: ${(error instanceof Error ? error.message : String(error))}`);
+    throw new Error(`Failed to fetch scoring rules: ${error.message}`);
   }
 
   let totalScore = 0;

@@ -573,7 +573,7 @@ Remember: Your primary goals are (1) get their contact info, (2) understand thei
 
   } catch (err: any) {
     console.error('[AI Agent] Error:', err);
-    return new Response(JSON.stringify({ error: (err instanceof Error ? err.message : String(err)) || 'Unexpected error' }), {
+    return new Response(JSON.stringify({ error: err.message || 'Unexpected error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

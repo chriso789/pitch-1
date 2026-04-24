@@ -93,7 +93,7 @@ async function checkFunctionHealth(
       if (err.name === 'AbortError') {
         errorMessage = 'Timeout (>5s)';
       } else {
-        errorMessage = (err instanceof Error ? err.message : String(err));
+        errorMessage = err.message;
       }
     }
     
@@ -171,7 +171,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : 'Unknown error' 
+        error: err instanceof Error ? err.message : 'Unknown error' 
       }),
       { 
         status: 500, 

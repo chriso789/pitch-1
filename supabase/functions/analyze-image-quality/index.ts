@@ -188,7 +188,7 @@ Respond ONLY with valid JSON in this exact format:
     console.error('❌ Error analyzing image quality:', error)
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error',
+      error: error instanceof Error ? error.message : 'Unknown error',
       result: {
         shadow_coverage_pct: 20,
         brightness_score: 50,

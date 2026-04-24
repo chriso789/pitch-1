@@ -722,7 +722,7 @@ export function generateValidationSummary(result: ValidationResult): string {
   if (result.blockingErrors.length > 0) {
     lines.push(`## Blocking Errors (${result.blockingErrors.length})`);
     for (const error of result.blockingErrors) {
-      lines.push(`- [${error.severity.toUpperCase()}] ${error.code}: ${(error instanceof Error ? error.message : String(error))}`);
+      lines.push(`- [${error.severity.toUpperCase()}] ${error.code}: ${error.message}`);
       if (error.suggestedFix) {
         lines.push(`  Fix: ${error.suggestedFix}`);
       }

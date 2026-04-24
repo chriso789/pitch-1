@@ -290,7 +290,7 @@ Generate a helpful reply. Keep it under 160 characters for SMS.`;
   } catch (err) {
     console.error("[ai-inbound-router] Error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : "Unknown error" }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -54,7 +54,7 @@ Deno.serve(async (req) => {
     if (error) {
       console.error('Failed to insert metrics:', error);
       return new Response(
-        JSON.stringify({ error: 'Failed to store metrics', details: (error instanceof Error ? error.message : String(error)) }),
+        JSON.stringify({ error: 'Failed to store metrics', details: error.message }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error processing metrics:', error);
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ error: error.message }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 

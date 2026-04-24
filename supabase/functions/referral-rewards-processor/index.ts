@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
             console.error(`[referral-rewards-processor] Failed to process reward ${reward.id}:`, err);
             await supabase
               .from('referral_rewards')
-              .update({ status: 'failed', error_message: (err instanceof Error ? err.message : String(err)) })
+              .update({ status: 'failed', error_message: err.message })
               .eq('id', reward.id);
           }
         }
@@ -117,6 +117,6 @@ Deno.serve(async (req: Request) => {
     }
   } catch (error: any) {
     console.error('[referral-rewards-processor] Error:', error);
-    return new Response(JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    return new Response(JSON.stringify({ success: false, error: error.message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });

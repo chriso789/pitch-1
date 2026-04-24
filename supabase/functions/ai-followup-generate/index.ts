@@ -211,7 +211,7 @@ Generate the next best follow-up message. Keep SMS under 320 characters. For ema
   } catch (err) {
     console.error("[ai-followup-generate] Error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : "Unknown error" }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

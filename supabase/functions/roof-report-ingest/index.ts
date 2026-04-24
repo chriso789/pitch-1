@@ -1250,7 +1250,7 @@ Deno.serve(async (req) => {
 
     if (!file_url && bucket && path) {
       const { data: signed, error } = await supabase.storage.from(bucket).createSignedUrl(path, 60);
-      if (error) throw new Error(`createSignedUrl_failed: ${(error instanceof Error ? error.message : String(error))}`);
+      if (error) throw new Error(`createSignedUrl_failed: ${error.message}`);
       file_url = signed.signedUrl;
     }
 
@@ -1735,7 +1735,7 @@ If no diagram is found, return: {"diagram_found": false}`;
   } catch (err) {
     console.error("roof-report-ingest error:", err);
     return new Response(
-      JSON.stringify({ error: "roof-report-ingest_failed", message: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err) }),
+      JSON.stringify({ error: "roof-report-ingest_failed", message: err instanceof Error ? err.message : String(err) }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 500 },
     );
   }

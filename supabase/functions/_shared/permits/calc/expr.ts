@@ -24,7 +24,7 @@ export function evalExpr(expr: string, context: any): EvalResult {
     }
     return { value: evalNode(node, context), errors: [] };
   } catch (e: any) {
-    return { value: null, errors: [{ message: (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? "Expression error" }] };
+    return { value: null, errors: [{ message: e?.message ?? "Expression error" }] };
   }
 }
 

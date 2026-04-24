@@ -207,7 +207,7 @@ Deno.serve(async (req: Request) => {
           document_id: doc.id,
           file_name: doc.filename,
           status: 'failed',
-          error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
     }
@@ -244,7 +244,7 @@ Deno.serve(async (req: Request) => {
     console.error("[scope-backfill] Error:", error);
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }

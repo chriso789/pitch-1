@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
       console.error('Error handling message:', error);
       socket.send(JSON.stringify({
         type: 'error',
-        message: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+        message: error instanceof Error ? error.message : 'Unknown error'
       }));
     }
   };

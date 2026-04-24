@@ -764,7 +764,7 @@ Deno.serve(async (req) => {
     console.error('[generate-proposal] Error:', error);
     return new Response(JSON.stringify({
       ok: false,
-      error: (error instanceof Error ? error.message : String(error))
+      error: error.message
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

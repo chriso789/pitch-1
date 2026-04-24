@@ -79,7 +79,7 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: (error instanceof Error ? error.message : String(error)),
+        error: error.message,
       }),
       {
         status: 500,
@@ -89,4 +89,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-Deno.serve(handler);
+serve(handler);

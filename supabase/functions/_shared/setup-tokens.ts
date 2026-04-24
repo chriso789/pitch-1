@@ -29,7 +29,7 @@ export async function createSetupToken(
 
   if (error) {
     console.error('[createSetupToken] Insert error:', error);
-    throw new Error(`Failed to create setup token: ${(error instanceof Error ? error.message : String(error))}`);
+    throw new Error(`Failed to create setup token: ${error.message}`);
   }
 
   const setupUrl = `${APP_URL}/setup-account?setup_token=${encodeURIComponent(token)}&type=setup`;

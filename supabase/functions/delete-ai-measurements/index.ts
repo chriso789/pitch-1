@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
     console.error('delete-ai-measurements error:', error);
     return jsonResponse({
       success: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unexpected error deleting measurements',
+      error: error instanceof Error ? error.message : 'Unexpected error deleting measurements',
     }, 500);
   }
 });

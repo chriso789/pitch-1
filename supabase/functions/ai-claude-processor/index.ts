@@ -281,7 +281,7 @@ Deno.serve(async (req) => {
               0,
               0,
               'error',
-              error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+              error instanceof Error ? error.message : 'Unknown error'
             )
           }
         }
@@ -293,7 +293,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false,
-        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error occurred' 
+        error: error instanceof Error ? error.message : 'Unknown error occurred' 
       }),
       {
         status: 400,

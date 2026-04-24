@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("[ai-followup-runner] Error:", err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : "Unknown error" }),
+      JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

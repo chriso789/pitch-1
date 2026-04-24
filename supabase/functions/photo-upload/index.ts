@@ -378,7 +378,7 @@ Deno.serve(async (req: Request) => {
 
             uploadedPhotos.push(photo);
           } catch (err: any) {
-            errors.push({ file_name: file.file_name, error: (err instanceof Error ? err.message : String(err)) || 'Unknown error' });
+            errors.push({ file_name: file.file_name, error: err.message || 'Unknown error' });
           }
         }
 

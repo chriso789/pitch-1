@@ -171,7 +171,7 @@ Check if proper patterns are followed.`
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: (error instanceof Error ? error.message : String(error)) 
+        error: error.message 
       }),
       {
         status: 500,
@@ -181,4 +181,4 @@ Check if proper patterns are followed.`
   }
 };
 
-Deno.serve(handler);
+serve(handler);

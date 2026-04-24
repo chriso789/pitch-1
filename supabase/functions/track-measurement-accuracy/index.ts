@@ -296,7 +296,7 @@ Deno.serve(async (req) => {
     console.error('Accuracy tracking error:', error);
     return new Response(JSON.stringify({
       ok: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

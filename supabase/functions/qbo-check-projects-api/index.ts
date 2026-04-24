@@ -107,7 +107,7 @@ Deno.serve(async (req) => {
     console.error('Error in qbo-check-projects-api:', error);
     return new Response(
       JSON.stringify({ 
-        error: (error instanceof Error ? error.message : String(error)),
+        error: error.message,
         projectsApiAvailable: false,
         useSubCustomerFallback: true,
       }),

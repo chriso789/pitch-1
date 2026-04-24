@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('Error in estimates-preview function:', error);
-    return new Response(JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

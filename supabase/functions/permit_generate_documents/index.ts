@@ -235,6 +235,6 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error('permit_generate_documents error:', e);
-    return jsonErr(500, 'INTERNAL_ERROR', (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? 'Unknown error');
+    return jsonErr(500, 'INTERNAL_ERROR', e?.message ?? 'Unknown error');
   }
 });

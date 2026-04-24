@@ -275,7 +275,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("CRM AI Agent error:", error);
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Unknown error",
+      error: error instanceof Error ? error.message : "Unknown error",
       response: "I'm having trouble processing your request. Please try again.",
       actions: [],
     }), {

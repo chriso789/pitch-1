@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
     );
   } catch (error: unknown) {
     console.error('[admin-delete-user] Error:', error);
-    const errorMessage = error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Internal server error';
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return new Response(
       JSON.stringify({ 
         error: errorMessage

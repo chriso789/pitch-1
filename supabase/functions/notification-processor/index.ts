@@ -87,7 +87,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('Notification processor error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { 
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -310,7 +310,7 @@ async function processNotificationExecution(supabase: any, executionData: any) {
       .from('notification_executions')
       .update({
         status: 'failed',
-        error_message: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)
+        error_message: error instanceof Error ? error.message : String(error)
       })
       .eq('automation_rule_id', executionData.automation_rule_id)
       .eq('recipient_email', recipient.email);

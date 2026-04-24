@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
           }
         } catch (err) {
           console.error(`[material-order-processor] Supplier API error:`, err);
-          supplierError = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : 'Unknown supplier error';
+          supplierError = err instanceof Error ? err.message : 'Unknown supplier error';
           
           // Update order with error but don't fail - manual follow-up needed
           await supabaseAdmin

@@ -435,7 +435,7 @@ Deno.serve(async (req) => {
     console.error('Customer portal error:', error);
     return new Response(JSON.stringify({
       success: false,
-      error: (error instanceof Error ? error.message : String(error)) || 'An error occurred',
+      error: error.message || 'An error occurred',
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       status: 500,

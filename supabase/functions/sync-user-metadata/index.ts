@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('[sync-user-metadata] Unexpected error:', error);
     return new Response(
-      JSON.stringify({ error: 'Internal server error', details: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ error: 'Internal server error', details: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

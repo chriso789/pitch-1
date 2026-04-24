@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
         console.error(`Error syncing payment ${payment.id}:`, error);
         errors.push({
           paymentId: payment.id,
-          error: (error instanceof Error ? error.message : String(error)),
+          error: error.message,
         });
       }
     }
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
     console.error('Error syncing payment status:', error);
     return new Response(
       JSON.stringify({
-        error: (error instanceof Error ? error.message : String(error)) || 'Failed to sync payment status',
+        error: error.message || 'Failed to sync payment status',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

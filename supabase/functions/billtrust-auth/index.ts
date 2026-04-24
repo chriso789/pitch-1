@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
       console.error('Billtrust login failed with status:', billtrustResponse.status);
       
       // Log failed attempt
-      await logAuditEvent(supabase, profile.tenant_id, user.id, 'billtrust_auth_failed', supplierAccountId, {
+      await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_failed', supplierAccountId ?? null, {
         billtrust_email: email,
         status_code: billtrustResponse.status,
         ip_address: req.headers.get('x-forwarded-for') || 'unknown'
@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
 
     if (!isSuccess) {
       // Log failed attempt
-      await logAuditEvent(supabase, profile.tenant_id, user.id, 'billtrust_auth_failed', supplierAccountId, {
+      await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_failed', supplierAccountId ?? null, {
         billtrust_email: email,
         ip_address: req.headers.get('x-forwarded-for') || 'unknown'
       });
@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
     }
 
     // Log successful authentication
-    await logAuditEvent(supabase, profile.tenant_id, user.id, 'billtrust_auth_success', supplierAccountId, {
+    await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_success', supplierAccountId ?? null, {
       billtrust_email: email,
       ip_address: req.headers.get('x-forwarded-for') || 'unknown'
     });
@@ -329,7 +329,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error', 
-        details: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) 
+        details: error instanceof Error ? error.message : String(error) 
       }),
       { 
         status: 500, 
@@ -342,7 +342,7 @@ Deno.serve(async (req) => {
 // Helper function to log audit events
 async function logAuditEvent(
   supabase: any,
-  tenantId: string | null | undefined,
+  tenantId: string | null,
   userId: string,
   action: string,
   entityId: string | null,

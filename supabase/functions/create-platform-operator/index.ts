@@ -179,7 +179,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error("Error creating platform operator:", error);
     return new Response(
-      JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ success: false, error: error.message }),
       { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

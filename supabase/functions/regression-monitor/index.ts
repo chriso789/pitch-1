@@ -264,7 +264,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Regression monitor error:', error);
     return new Response(
-      JSON.stringify({ ok: false, error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ ok: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

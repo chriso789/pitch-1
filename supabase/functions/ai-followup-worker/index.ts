@@ -408,7 +408,7 @@ Deno.serve(async (req) => {
           throw new Error(`Unsupported channel: ${row.channel}`);
         }
       } catch (err) {
-        const msg = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         console.error(`Queue item ${row.id} failed:`, msg);
         
         await admin.from('ai_outreach_queue').update({

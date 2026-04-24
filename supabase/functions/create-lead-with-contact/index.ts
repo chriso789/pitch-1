@@ -496,7 +496,7 @@ Deno.serve(async (req: Request) => {
     return new Response(
       JSON.stringify({
         success: false,
-        error: (error instanceof Error ? error.message : String(error)) || "An unexpected error occurred",
+        error: error.message || "An unexpected error occurred",
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

@@ -253,4 +253,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-Deno.serve(handler);
+serve(handler);

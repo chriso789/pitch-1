@@ -121,7 +121,7 @@ Deno.serve(async (req: Request) => {
         found: !!data,
         estimate_id: data?.id,
         estimate_tenant_id: data?.tenant_id,
-        error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)),
+        error: error?.message,
       });
       estimate = data;
     }
@@ -140,7 +140,7 @@ Deno.serve(async (req: Request) => {
         found: !!data,
         estimate_id: data?.id,
         estimate_tenant_id: data?.tenant_id,
-        error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)),
+        error: error?.message,
       });
       estimate = data;
     }
@@ -405,7 +405,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error("[send-quote-email] Error:", error);
     return new Response(
-      JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ success: false, error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -207,7 +207,7 @@ const handler = async (req: Request): Promise<Response> => {
         await supabase
           .from('demo_requests')
           .update({ 
-            email_error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error),
+            email_error: error instanceof Error ? error.message : String(error),
           })
           .eq('email', requestData.email)
           .order('created_at', { ascending: false })
@@ -219,7 +219,7 @@ const handler = async (req: Request): Promise<Response> => {
     
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error),
+        error: error instanceof Error ? error.message : String(error),
         success: false 
       }),
       {

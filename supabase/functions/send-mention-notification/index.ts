@@ -183,7 +183,7 @@ Deno.serve(async (req: Request) => {
   } catch (error) {
     console.error('Error in send-mention-notification:', error);
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

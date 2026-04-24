@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     
     return new Response(
       JSON.stringify({ 
-        error: (error instanceof Error ? error.message : String(error)),
+        error: error.message,
         rateLimitExceeded: status === 429
       }),
       { status, headers }

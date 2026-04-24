@@ -176,7 +176,7 @@ Deno.serve(async (req) => {
           pipeline_entry_id: pipelineEntry.id,
           original_imagery_date: measurement.imagery_date,
           status: 'failed',
-          error_message: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error',
+          error_message: error instanceof Error ? error.message : 'Unknown error',
           triggered_by
         } as any);
 
@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
           pipeline_entry_id: pipelineEntry.id,
           status: 'failed',
           original_imagery_date: measurement.imagery_date,
-          error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
         failedCount++;
       }
@@ -208,7 +208,7 @@ Deno.serve(async (req) => {
     console.error('Batch re-measurement error:', error);
     return new Response(JSON.stringify({
       ok: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

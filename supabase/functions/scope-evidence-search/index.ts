@@ -284,7 +284,7 @@ Deno.serve(async (req: Request) => {
     console.error("[evidence-search] Error:", error);
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Unknown error"
+      error: error instanceof Error ? error.message : "Unknown error"
     }), {
       status: 400,
       headers: { ...corsHeaders, "Content-Type": "application/json" }

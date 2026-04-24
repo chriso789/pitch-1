@@ -67,12 +67,12 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     // Dedupe collision -> treat as success (idempotent)
-    if (error && (error.code === '23505' || /duplicate/i.test((error instanceof Error ? error.message : String(error))))) {
+    if (error && (error.code === '23505' || /duplicate/i.test(error.message))) {
       return json({ deduped: true }, 200);
     }
     if (error) {
       console.error('[emit-domain-event] insert failed', error);
-      return json({ error: (error instanceof Error ? error.message : String(error)) }, 500);
+      return json({ error: error.message }, 500);
     }
 
     // Fire-and-forget dispatcher kick (best-effort, don't block caller)

@@ -145,7 +145,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("Error processing achievement unlock:", error);
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ error: error.message }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
         status: 400,

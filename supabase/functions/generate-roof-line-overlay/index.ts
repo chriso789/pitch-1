@@ -436,7 +436,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('generate-roof-line-overlay error', err)
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err) }),
+      JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     )
   }

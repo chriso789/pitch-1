@@ -129,7 +129,7 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error('telnyx-start-recording error:', err);
     return new Response(
-      JSON.stringify({ error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err) }),
+      JSON.stringify({ error: err instanceof Error ? err.message : String(err) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

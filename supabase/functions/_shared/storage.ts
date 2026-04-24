@@ -22,7 +22,7 @@ export async function uploadBytes(
   });
   
   if (error) {
-    throw new Error(`Storage upload failed: ${(error instanceof Error ? error.message : String(error))}`);
+    throw new Error(`Storage upload failed: ${error.message}`);
   }
 }
 
@@ -42,7 +42,7 @@ export async function signedUrlForPath(
     .createSignedUrl(args.path, args.expiresInSec);
   
   if (error) {
-    throw new Error(`Signed URL failed: ${(error instanceof Error ? error.message : String(error))}`);
+    throw new Error(`Signed URL failed: ${error.message}`);
   }
   
   return data.signedUrl;
@@ -71,6 +71,6 @@ export async function deleteFile(
   const { error } = await sb.storage.from(bucket).remove([path]);
   
   if (error) {
-    throw new Error(`Storage delete failed: ${(error instanceof Error ? error.message : String(error))}`);
+    throw new Error(`Storage delete failed: ${error.message}`);
   }
 }

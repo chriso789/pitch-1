@@ -225,7 +225,7 @@ Deno.serve(async (req: Request) => {
           sentCount++;
           console.log(`✓ Sent to ${targetEmail}`);
         } catch (error: any) {
-          console.error(`✗ Failed to send to ${targetEmail}:`, (error instanceof Error ? error.message : String(error)));
+          console.error(`✗ Failed to send to ${targetEmail}:`, error.message);
           errorCount++;
         }
       }
@@ -262,7 +262,7 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error('Platform announcement error:', error);
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

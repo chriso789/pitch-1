@@ -1136,7 +1136,7 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('❌ Error:', error)
-    return new Response(JSON.stringify({ success: false, error: (error instanceof Error ? error.message : String(error)), stack: error.stack }), {
+    return new Response(JSON.stringify({ success: false, error: error.message, stack: error.stack }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
@@ -4185,7 +4185,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
 
   if (error) {
     console.error('Failed to save measurement:', error)
-    throw new Error(`Database save failed: ${(error instanceof Error ? error.message : String(error))}`)
+    throw new Error(`Database save failed: ${error.message}`)
   }
 
   console.log('💾 Saved measurement:', data.id)
@@ -4281,7 +4281,7 @@ async function saveVerticesToDatabase(
   if (vertexRecords.length > 0) {
     const { error } = await supabase.from('roof_measurement_vertices').insert(vertexRecords)
     if (error) {
-      console.error('⚠️ Failed to save vertices:', (error instanceof Error ? error.message : String(error)))
+      console.error('⚠️ Failed to save vertices:', error.message)
     } else {
       console.log(`💾 Saved ${vertexRecords.length} vertices`)
     }
@@ -4357,7 +4357,7 @@ async function saveEdgesToDatabase(
   if (edgeRecords.length > 0) {
     const { error } = await supabase.from('roof_measurement_edges').insert(edgeRecords)
     if (error) {
-      console.error('⚠️ Failed to save edges:', (error instanceof Error ? error.message : String(error)))
+      console.error('⚠️ Failed to save edges:', error.message)
     } else {
       console.log(`💾 Saved ${edgeRecords.length} edges`)
       await supabase.from('roof_measurements').update({ edge_count: edgeRecords.length }).eq('id', measurementId)
@@ -4721,7 +4721,7 @@ async function saveFacetsToDatabase(
   const { error } = await supabase.from('roof_measurement_facets').insert(facetRecords)
   
   if (error) {
-    console.error('⚠️ Failed to save facets:', (error instanceof Error ? error.message : String(error)))
+    console.error('⚠️ Failed to save facets:', error.message)
   } else {
     console.log(`💾 Saved ${facetRecords.length} facet records`)
   }

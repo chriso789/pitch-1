@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('[approve-cost-reconciliation] Error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error' }),
+      JSON.stringify({ error: error.message }),
       { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

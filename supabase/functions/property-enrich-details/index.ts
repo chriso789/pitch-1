@@ -299,7 +299,7 @@ Deno.serve(async (req) => {
   } catch (e: any) {
     console.error("[property-enrich-details] Error:", e);
     return new Response(
-      JSON.stringify({ error: String((e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? e) }),
+      JSON.stringify({ error: String(e?.message ?? e) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );
   }

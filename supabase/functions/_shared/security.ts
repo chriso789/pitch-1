@@ -95,7 +95,7 @@ export async function verifyTelnyxSignatureOrThrow(req: Request, rawBody: string
     console.log('[Security] Telnyx signature verified successfully');
   } catch (err) {
     console.error('[Security] Signature verification error:', err);
-    throw new Error(`Telnyx signature verification failed: ${err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err)}`);
+    throw new Error(`Telnyx signature verification failed: ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

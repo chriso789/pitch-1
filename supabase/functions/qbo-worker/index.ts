@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
     if (op === 'setLocation') return resp(await setLocation(args))
     return resp({ error: 'Unknown op' }, 400)
   } catch (e) {
-    return resp({ error: e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e) }, 500)
+    return resp({ error: e instanceof Error ? e.message : String(e) }, 500)
   }
 })
 

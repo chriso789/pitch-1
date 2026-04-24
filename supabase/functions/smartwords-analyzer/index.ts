@@ -120,7 +120,7 @@ Deno.serve(async (req) => {
         actionsExecuted.push({
           ruleId: rule.id,
           ruleName: rule.name,
-          error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)
+          error: error instanceof Error ? error.message : String(error)
         });
       }
     }
@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     console.error('Error in smartwords-analyzer:', error);
     return new Response(
       JSON.stringify({ 
-        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error) 
+        error: error instanceof Error ? error.message : String(error) 
       }),
       {
         status: 500,

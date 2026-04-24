@@ -88,7 +88,7 @@ Deno.serve(async (req) => {
         subject: '',
         html: '',
         status: 'render_failed',
-        errorMessage: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err),
+        errorMessage: err instanceof Error ? err.message : String(err),
       })
     }
   }

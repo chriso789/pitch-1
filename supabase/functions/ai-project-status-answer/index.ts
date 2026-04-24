@@ -287,7 +287,7 @@ Provide a friendly status update for the homeowner.`,
   } catch (error) {
     console.error("[ai-project-status] Error:", error);
     return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Unknown error" }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

@@ -197,7 +197,7 @@ Deno.serve(async (req) => {
               .eq("id", move.contact_id)
               .eq("tenant_id", tenant_id);
 
-            return { contact_id: move.contact_id, success: !error, error: (error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)) };
+            return { contact_id: move.contact_id, success: !error, error: error?.message };
           })
         );
 
@@ -391,7 +391,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[sales-territory-balancer] Error:", error);
     return new Response(
-      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

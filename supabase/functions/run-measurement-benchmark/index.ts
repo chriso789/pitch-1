@@ -185,7 +185,7 @@ Deno.serve(async (req) => {
           vendorPitch: '', aiPitch: '', pitchMatch: false,
           overallAccuracyPct: 0,
           processingTimeMs: Date.now() - caseStart,
-          error: (err instanceof Error ? err.message : String(err))
+          error: err.message
         });
       }
     }
@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
 
   } catch (error: any) {
     console.error('Benchmark error:', error);
-    return new Response(JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }), {
+    return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

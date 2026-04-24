@@ -12,7 +12,7 @@ const corsHeaders = {
 
 export type AuthResult =
   | { error: Response }
-  | { error: null; userId: string; tenantId: string; isMaster: boolean; supabase: ReturnType<typeof createClient> };
+  | { error: null; userId: string; tenantId: string; isMaster: boolean; supabase: any };
 
 function jsonError(message: string, status: number): Response {
   return new Response(JSON.stringify({ error: message }), {

@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
     console.error('Error creating customer portal session:', error);
     return new Response(
       JSON.stringify({
-        error: (error instanceof Error ? error.message : String(error)) || 'Failed to create customer portal session',
+        error: error.message || 'Failed to create customer portal session',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
