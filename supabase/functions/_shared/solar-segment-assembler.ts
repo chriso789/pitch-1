@@ -212,7 +212,7 @@ export function assembleFacetsFromSolarSegments(
   
   // Use center positions if available (more accurate than bounding box)
   if (segmentsWithCenter.length >= 2) {
-    return assembleFromCenters(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
+    return assembleFromCenters(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis, roofType);
   }
   
   // Fall back to bounding box positioning
@@ -278,7 +278,8 @@ function assembleFromCenters(
   segments: SolarSegment[],
   pitch: string,
   warnings: string[],
-  structureAnalysis?: StructureAnalysis
+  structureAnalysis?: StructureAnalysis,
+  roofType?: string
 ): AssembledGeometry {
   const centroid = getCentroid(perimeter);
   const bounds = getBounds(perimeter);
