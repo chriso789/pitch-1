@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
         });
 
         // Create notifications for each alert
-        const notificationPromises = alertsToSend.map(async (alert) => {
+        const notificationPromises = alertsToSend.map(async (alert: any) => {
           if (alert.recipient?.id) {
             await supabase
               .from("user_notifications")
