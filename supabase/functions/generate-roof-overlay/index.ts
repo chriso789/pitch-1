@@ -64,8 +64,8 @@ interface DetectedEdge {
   description: string
 }
 
-const IMAGE_SIZE = 640
-const DETAIL_ZOOM = 19
+const IMAGE_SIZE = 1024
+const DETAIL_ZOOM = 20
 const SNAP_THRESHOLD_FT = 5
 const FT_TO_DEG = 1 / 364000
 
