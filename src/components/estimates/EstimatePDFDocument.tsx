@@ -8,6 +8,8 @@ import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { EstimateCoverPage } from './EstimateCoverPage';
+import { ProcessTimelinePage } from './ProcessTimelinePage';
+import { WhyChooseUsPage } from './WhyChooseUsPage';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
@@ -567,6 +569,22 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           estimateName={estimateName}
         />
       );
+
+      // Trust / Why-Choose-Us page (only when cover is shown — i.e. customer-facing)
+      currentPage++;
+      totalPageCount++;
+      pageList.push(
+        <WhyChooseUsPage
+          key="why-choose-us-page"
+          companyName={companyInfo?.name || companyName}
+          licenseNumber={companyInfo?.license_number}
+        />
+      );
+
+      // Process Timeline page
+      currentPage++;
+      totalPageCount++;
+      pageList.push(<ProcessTimelinePage key="process-timeline-page" />);
     }
 
     // Page 1: Customer info + first chunk of items + summary
