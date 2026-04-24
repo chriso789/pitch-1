@@ -469,7 +469,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
       {/* Main Navigation Bar */}
       <nav 
-        className="flex justify-space-evenly bg-card border border-border rounded-lg p-2"
+        className="flex flex-wrap justify-between gap-1 bg-card border border-border rounded-lg p-2 w-full"
         role="navigation"
         aria-label="Estimate sections"
       >
@@ -487,7 +487,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
                 onSectionChange(link.id);
               }}
               className={cn(
-                "flex-1 flex flex-col items-center p-3 rounded-md text-center transition-all duration-200",
+                "flex-1 min-w-0 flex flex-col items-center p-3 rounded-md text-center transition-all duration-200",
                 "hover:bg-accent hover:text-accent-foreground",
                 "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 isActive && "bg-primary text-primary-foreground",
@@ -496,9 +496,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
               aria-current={isActive ? "page" : undefined}
               title={link.description}
             >
-              <div className="flex items-center space-x-1 mb-1">
-                <IconComponent className="h-4 w-4" />
-                <span className="text-sm font-medium truncate">{link.label}</span>
+              <div className="flex items-center space-x-1 mb-1 min-w-0 max-w-full">
+                <IconComponent className="h-4 w-4 shrink-0" />
+                <span className="text-sm font-medium truncate min-w-0">{link.label}</span>
               </div>
               
               <div className="flex items-center space-x-1">

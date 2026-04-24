@@ -505,8 +505,10 @@ export function UnifiedMeasurementPanel({
   };
 
   // Separate active from other measurements
-  const activeMeasurement = approvals?.find(a => a.id === activeApprovalId);
-  const otherMeasurements = approvals?.filter(a => a.id !== activeApprovalId) || [];
+  // Default to most recently approved measurement when none is explicitly selected,
+  // so we always show the one being used for estimates rather than 2 cards.
+  const activeMeasurement = approvals?.find(a => a.id === activeApprovalId) || approvals?.[0];
+  const otherMeasurements = approvals?.filter(a => a.id !== (activeMeasurement?.id || activeApprovalId)) || [];
   const hasAnyMeasurements = approvals && approvals.length > 0;
 
   // Find the latest AI measurement that hasn't been saved as an approval yet
@@ -792,8 +794,8 @@ export function UnifiedMeasurementPanel({
             );
           })()}
 
-          {/* Other Measurements */}
-          {otherMeasurements.length > 0 && (
+          {/* Other Measurements - hidden: only show the active measurement being used for estimates */}
+          {false && otherMeasurements.length > 0 && (
             <div className="space-y-2">
               {activeMeasurement && (
                 <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
