@@ -2202,7 +2202,79 @@ Deno.serve(async (req) => {
         // 'skeleton' = geometric straight-skeleton algorithm (default, fast)
         // 'vision' = AI vision-based detection from satellite imagery (more accurate)
         // 'unified' = NEW: Full multi-source fusion pipeline (opt-in)
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth, disableVisionFallback = false } = body;
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
+
+        if (!propertyId) {
+          return json({ 
+            ok: false, 
+            error: 'Missing propertyId',
+            details: 'propertyId is required' 
+          }, corsHeaders, 400);
+        }
+
+        if (!lat || !lng || (lat === 0 && lng === 0)) {
+          return json({ 
+            ok: false, 
+            error: 'Missing coordinates',
+            details: 'lat and lng must be provided and non-zero. Verify the property address first.' 
+          }, corsHeaders, 400);
+        }
+
+        let linkedVendorReport: any = null;
+
+        if (!training_session_id) {
+          const { data: linkedTrainingSession } = await adminSupabase
+            .from('roof_training_sessions')
+            .select('id, vendor_report_id')
+            .eq('pipeline_entry_id', propertyId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (linkedTrainingSession?.id) {
+            training_session_id = linkedTrainingSession.id;
+            console.log(`[pull] Auto-detected training session ${training_session_id} for property ${propertyId}`);
+
+            if (linkedTrainingSession.vendor_report_id) {
+              const { data: reportBySession } = await adminSupabase
+                .from('roof_vendor_reports')
+                .select('id, parsed, provider, geocoded_lat, geocoded_lng, diagram_geometry')
+                .eq('id', linkedTrainingSession.vendor_report_id)
+                .maybeSingle();
+              linkedVendorReport = reportBySession;
+            }
+          }
+        }
+
+        if (!linkedVendorReport) {
+          const { data: reportByLead } = await adminSupabase
+            .from('roof_vendor_reports')
+            .select('id, parsed, provider, geocoded_lat, geocoded_lng, diagram_geometry')
+            .eq('lead_id', propertyId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          linkedVendorReport = reportByLead;
+        }
+
+        if (!vendorTruth && linkedVendorReport?.parsed) {
+          vendorTruth = buildVendorTruthFromParsedReport(linkedVendorReport.parsed, linkedVendorReport.provider);
+          if (vendorTruth) {
+            console.log(`[pull] Loaded linked vendor truth from ${linkedVendorReport.provider || 'vendor'} report ${linkedVendorReport.id}`);
+          }
+        }
+
+        if (!vendorGeometry && linkedVendorReport?.diagram_geometry) {
+          vendorGeometry = convertDiagramGeometryToVendorGeometry(linkedVendorReport.diagram_geometry);
+          if (vendorGeometry) {
+            console.log(`[pull] Loaded linked vendor diagram geometry from report ${linkedVendorReport.id}`);
+          }
+        }
+
+        if (!apply_corrections && training_session_id) {
+          apply_corrections = true;
+          console.log(`[pull] Auto-enabled training corrections for session ${training_session_id}`);
+        }
 
         // --- Unified Pipeline Delegation (opt-in) ---
         if (useUnifiedPipeline || engine === 'unified') {
@@ -2214,6 +2286,7 @@ Deno.serve(async (req) => {
               lng: Number(lng),
               address,
               vendorTruth: vendorTruth || undefined,
+              vendorGeometry: vendorGeometry || undefined,
               fetchDataLayers: true,
               enableDebugLogs: true,
             });
@@ -2272,38 +2345,6 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (!propertyId) {
-          return json({ 
-            ok: false, 
-            error: 'Missing propertyId',
-            details: 'propertyId is required' 
-          }, corsHeaders, 400);
-        }
-
-        if (!lat || !lng || (lat === 0 && lng === 0)) {
-          return json({ 
-            ok: false, 
-            error: 'Missing coordinates',
-            details: 'lat and lng must be provided and non-zero. Verify the property address first.' 
-          }, corsHeaders, 400);
-        }
-
-        // Phase 10: Auto-detect training session if apply_corrections is true but no session provided
-        if (apply_corrections && !training_session_id) {
-          const { data: trainingSession } = await supabase
-            .from('roof_training_sessions')
-            .select('id')
-            .eq('pipeline_entry_id', propertyId)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .single();
-          
-          if (trainingSession?.id) {
-            training_session_id = trainingSession.id;
-            console.log(`[pull] Auto-detected training session ${training_session_id} for property ${propertyId}`);
-          }
-        }
-        
         // Track which engine was actually used (may fallback)
         let engineUsed = engine;
 
