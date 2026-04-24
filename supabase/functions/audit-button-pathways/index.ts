@@ -181,4 +181,4 @@ Check if proper patterns are followed.`
   }
 };
 
-serve(handler);
+Deno.serve(handler);
