@@ -5139,6 +5139,56 @@ function json(payload: unknown, headers: Record<string,string>, status = 200) {
   });
 }
 
+function toFiniteNumber(value: unknown): number | undefined {
+  const num = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(num) ? num : undefined;
+}
+
+function convertDiagramGeometryToVendorGeometry(diagram: any, imgSize = 512) {
+  if (!diagram?.vertices || !diagram?.edges) return null;
+
+  const vertexMap: Record<string, number[]> = {};
+  for (const vertex of diagram.vertices) {
+    if (vertex?.id) {
+      vertexMap[vertex.id] = [Number(vertex.x || 0) * imgSize, Number(vertex.y || 0) * imgSize];
+    }
+  }
+
+  const geometry: Record<'ridge' | 'valley' | 'hip' | 'eave' | 'rake', number[][][]> = {
+    ridge: [], valley: [], hip: [], eave: [], rake: []
+  };
+
+  for (const edge of diagram.edges || []) {
+    const type = String(edge?.type || '').toLowerCase() as keyof typeof geometry;
+    if (!(type in geometry)) continue;
+    if (!vertexMap[edge?.from] || !vertexMap[edge?.to]) continue;
+    geometry[type].push([vertexMap[edge.from], vertexMap[edge.to]]);
+  }
+
+  const totalSegments = Object.values(geometry).reduce((sum, segments) => sum + segments.length, 0);
+  return totalSegments > 0 ? geometry : null;
+}
+
+function buildVendorTruthFromParsedReport(parsed: any, provider?: string | null) {
+  if (!parsed || typeof parsed !== 'object') return null;
+
+  const vendorTruth = {
+    source: String(provider || 'vendor').toLowerCase(),
+    areaSqft: toFiniteNumber(parsed.total_area_sqft ?? parsed.roof_area_sqft ?? parsed.totalRoofAreaSqft),
+    pitchRatio: parsed.predominant_pitch || parsed.pitch || undefined,
+    ridgeFt: toFiniteNumber(parsed.ridges_ft ?? parsed.ridge_ft),
+    hipFt: toFiniteNumber(parsed.hips_ft ?? parsed.hip_ft),
+    valleyFt: toFiniteNumber(parsed.valleys_ft ?? parsed.valley_ft),
+    eaveFt: toFiniteNumber(parsed.eaves_ft ?? parsed.eave_ft),
+    rakeFt: toFiniteNumber(parsed.rakes_ft ?? parsed.rake_ft),
+    facetCount: toFiniteNumber(parsed.facet_count ?? parsed.facets)?.valueOf(),
+    confidence: 0.98,
+  };
+
+  const hasTruth = Object.entries(vendorTruth).some(([key, value]) => key !== 'source' && key !== 'confidence' && value !== undefined);
+  return hasTruth ? vendorTruth : null;
+}
+
 // ============= VISION OVERLAY CONVERTER (Phase 1) =============
 // Converts the output from generate-roof-overlay to MeasureResult format
 function convertVisionOverlayToMeasureResult(
