@@ -607,6 +607,20 @@ export function PullMeasurementsButton({
           onReportGenerated={handleReportGenerated}
         />
       )}
+
+      {/* Edge-by-edge Verification Wizard — auto-opens after AI completes */}
+      <EdgeConfirmationWizard
+        open={showVerifyWizard}
+        onOpenChange={setShowVerifyWizard}
+        pipelineEntryId={propertyId}
+        initialEdges={seedEdges}
+        onSaved={() => {
+          queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
+          queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
+          queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
+          onSuccess?.({}, {});
+        }}
+      />
     </>
   );
 }
