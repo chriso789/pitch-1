@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
     console.error('Error creating payment link:', error);
     return new Response(
       JSON.stringify({
-        error: error.message || 'Failed to create payment link',
+        error: error instanceof Error ? error.message : String(error) || 'Failed to create payment link',
       }),
       {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

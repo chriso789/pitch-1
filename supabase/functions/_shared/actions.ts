@@ -60,7 +60,7 @@ async function createTask(admin: SupabaseClient, p: any, run: any): Promise<Acti
     status: 'pending',
   };
   const { data, error } = await admin.from('workflow_tasks').insert(insert).select('id').maybeSingle();
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   await trackGenerated(admin, run, 'workflow_tasks', data?.id);
   return { status: 'success', detail: { task_id: data?.id } };
 }
@@ -78,7 +78,7 @@ async function createInternalNote(admin: SupabaseClient, p: any, run: any): Prom
     metadata: { source: 'automation', run_id: run.id },
   };
   const { data, error } = await admin.from('communication_history').insert(insert).select('id').maybeSingle();
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   await trackGenerated(admin, run, 'communication_history', data?.id);
   return { status: 'success', detail: { note_id: data?.id } };
 }
@@ -90,7 +90,7 @@ async function assignUser(admin: SupabaseClient, p: any, run: any): Promise<Acti
   if (!table) return { status: 'skipped', detail: { reason: 'entity_not_assignable' } };
   const col = p.field ?? 'assigned_to';
   const { error } = await admin.from(table).update({ [col]: userId }).eq('id', run.entity_id);
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { table, field: col, user_id: userId } };
 }
 
@@ -100,7 +100,7 @@ async function changeStatus(admin: SupabaseClient, p: any, run: any): Promise<Ac
   const col = p.field ?? 'status';
   if (!p.value) return { status: 'failed', error: 'value required' };
   const { error } = await admin.from(table).update({ [col]: p.value }).eq('id', run.entity_id);
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { table, field: col, value: p.value } };
 }
 
@@ -109,7 +109,7 @@ async function updateField(admin: SupabaseClient, p: any, run: any): Promise<Act
   if (!table) return { status: 'skipped', detail: { reason: 'no_table' } };
   if (!p.field) return { status: 'failed', error: 'field required' };
   const { error } = await admin.from(table).update({ [p.field]: p.value ?? null }).eq('id', run.entity_id);
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { table, field: p.field } };
 }
 
@@ -120,7 +120,7 @@ async function queueSmartTagRebuild(admin: SupabaseClient, _p: any, run: any): P
     .eq('company_id', run.company_id)
     .eq('entity_type', run.entity_type)
     .eq('entity_id', run.entity_id);
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { invalidated: true } };
 }
 
@@ -135,7 +135,7 @@ async function queueAiRebuild(admin: SupabaseClient, p: any, run: any): Promise<
     priority: p.priority ?? 5,
     status: 'queued',
   });
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { scope_type, scope_id } };
 }
 
@@ -152,7 +152,7 @@ async function notifyChannel(admin: SupabaseClient, p: any, run: any): Promise<A
     status: 'open',
     metadata: { run_id: run.id, channel: p.channel ?? 'default' },
   }).select('id').maybeSingle();
-  if (error) return { status: 'failed', error: error.message };
+  if (error) return { status: 'failed', error: error instanceof Error ? error.message : String(error) };
   return { status: 'success', detail: { insight_id: data?.id } };
 }
 

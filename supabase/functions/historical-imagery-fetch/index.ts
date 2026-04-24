@@ -207,7 +207,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('❌ Historical imagery fetch error:', error);
     return new Response(
-      JSON.stringify({ ok: false, error: error.message || 'Failed to fetch historical imagery' }),
+      JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) || 'Failed to fetch historical imagery' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

@@ -30,7 +30,7 @@ export function resolveFieldsAndCalcs(templateJson: any, context: any) {
 
     const r = evalExpr(String(expr), context);
     if (r.errors.length) {
-      calcErrors.push(...r.errors.map((e) => ({ key, message: e.message })));
+      calcErrors.push(...r.errors.map((e) => ({ key, message: e instanceof Error ? e.message : String(e) })));
       fieldValues[key] = null;
       continue;
     }

@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
     console.error('[export-company-data] Error:', error);
     return new Response(JSON.stringify({
       success: false,
-      error: error.message
+      error: error instanceof Error ? error.message : String(error)
     }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }

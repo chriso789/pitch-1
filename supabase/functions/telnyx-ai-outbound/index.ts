@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
 
   } catch (err) {
     console.error('[AI Outbound] Error:', err);
-    return new Response(JSON.stringify({ error: err.message || 'Unexpected error' }), {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) || 'Unexpected error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

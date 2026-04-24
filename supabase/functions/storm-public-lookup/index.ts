@@ -336,7 +336,7 @@ Deno.serve(async (req) => {
     );
   } catch (e) {
     console.error("[storm-public-lookup] error", e);
-    return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
+    return new Response(JSON.stringify({ error: String(e instanceof Error ? e.message : e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

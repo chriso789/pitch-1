@@ -142,7 +142,7 @@ If you cannot answer a question confidently, set shouldEscalate to true in your 
     console.error('Homeowner AI chat error:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         response: "I'm sorry, I'm having technical difficulties. Would you like to speak with someone from our team?",
         shouldEscalate: true
       }),

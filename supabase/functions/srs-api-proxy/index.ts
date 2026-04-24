@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
             })
             .eq("id", connection.id);
 
-          result = { success: false, error: err.message };
+          result = { success: false, error: err instanceof Error ? err.message : String(err) };
         }
         break;
       }
@@ -300,7 +300,7 @@ Deno.serve(async (req) => {
     });
   } catch (err: any) {
     console.error("SRS API Proxy error:", err);
-    return new Response(JSON.stringify({ error: err.message }), {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });

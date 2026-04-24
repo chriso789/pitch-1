@@ -186,7 +186,7 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error('Error in scrape-county-permits:', error);
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : String(error) }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
@@ -288,4 +288,4 @@ function extractPermitInfo(content: string, countyName: string): {
   };
 }
 
-serve(handler);
+Deno.serve(handler);

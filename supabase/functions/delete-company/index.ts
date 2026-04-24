@@ -427,9 +427,9 @@ Deno.serve(async (req) => {
     console.error('[delete-company] Unexpected error:', error);
     await logAudit('DELETE_ATTEMPT_FAILED', false, { 
       reason: 'Unexpected error', 
-      error: error.message 
+      error: error instanceof Error ? error.message : String(error) 
     });
-    return new Response(JSON.stringify({ error: error.message || 'Internal server error' }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) || 'Internal server error' }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });

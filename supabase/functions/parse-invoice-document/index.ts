@@ -219,7 +219,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("[parse-invoice] Error:", error);
     return new Response(
-      JSON.stringify({ error: error.message, parsed: null }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error), parsed: null }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
