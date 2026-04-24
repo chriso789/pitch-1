@@ -8,6 +8,8 @@ import React, { useMemo } from 'react';
 import { type LineItem } from '@/hooks/useEstimatePricing';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { EstimateCoverPage } from './EstimateCoverPage';
+import { ProcessTimelinePage } from './ProcessTimelinePage';
+import { WhyChooseUsPage } from './WhyChooseUsPage';
 import { AttachmentPagesRenderer } from './AttachmentPagesRenderer';
 // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
 const PAGE_WIDTH = 816;
@@ -567,6 +569,22 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           estimateName={estimateName}
         />
       );
+
+      // Trust / Why-Choose-Us page (only when cover is shown — i.e. customer-facing)
+      currentPage++;
+      totalPageCount++;
+      pageList.push(
+        <WhyChooseUsPage
+          key="why-choose-us-page"
+          companyName={companyInfo?.name || companyName}
+          licenseNumber={companyInfo?.license_number}
+        />
+      );
+
+      // Process Timeline page
+      currentPage++;
+      totalPageCount++;
+      pageList.push(<ProcessTimelinePage key="process-timeline-page" />);
     }
 
     // Page 1: Customer info + first chunk of items + summary
@@ -672,16 +690,16 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
       letterSpacing: '0.01em',
     }}>
       {pages.pages.map((pageContent, idx) => {
-        // Cover page already has its own data-report-page attribute, don't wrap in PageShell
-        // Only treat idx 0 as cover page when this instance actually rendered one (not skipped for added estimates)
+        // Cover page + the two new editorial pages (Why Choose Us, Process Timeline)
+        // already include their own data-report-page wrapper and full-bleed design.
+        // Skip PageShell for them so we don't double-wrap headers/footers.
         const hasRenderedCoverPage = opts.showCoverPage && !skipCoverPage;
-        const isCoverPage = hasRenderedCoverPage && idx === 0;
-        
-        if (isCoverPage) {
-          // Render cover page directly without PageShell wrapper to avoid duplicate data-report-page
-          return <React.Fragment key="cover">{pageContent}</React.Fragment>;
+        const isStandalonePage = hasRenderedCoverPage && idx <= 2;
+
+        if (isStandalonePage) {
+          return <React.Fragment key={`standalone-${idx}`}>{pageContent}</React.Fragment>;
         }
-        
+
         // Wrap other pages in PageShell
         return (
           <PageShell
