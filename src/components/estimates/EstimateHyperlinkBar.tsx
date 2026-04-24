@@ -496,9 +496,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
               aria-current={isActive ? "page" : undefined}
               title={link.description}
             >
-              <div className="flex items-center space-x-1 mb-1">
-                <IconComponent className="h-4 w-4" />
-                <span className="text-sm font-medium truncate">{link.label}</span>
+              <div className="flex items-center space-x-1 mb-1 min-w-0 max-w-full">
+                <IconComponent className="h-4 w-4 shrink-0" />
+                <span className="text-sm font-medium truncate min-w-0">{link.label}</span>
               </div>
               
               <div className="flex items-center space-x-1">
