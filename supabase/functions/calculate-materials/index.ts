@@ -62,7 +62,7 @@ Deno.serve(async (req) => {
         .eq('id', requestData.measurement_id)
         .single();
 
-      if (error) throw new Error(`Failed to fetch measurement: ${error.message}`);
+      if (error) throw new Error(`Failed to fetch measurement: ${(error instanceof Error ? error.message : String(error))}`);
       if (!measurement) throw new Error('Measurement not found');
 
       // Also fetch facets for detailed calculations
@@ -159,7 +159,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         ok: false, 
-        error: error instanceof Error ? error.message : 'Unknown error' 
+        error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error' 
       }),
       {
         status: 500,

@@ -100,7 +100,7 @@ Deno.serve(async (req) => {
             console.log(`✅ Synced coordinates for ${entry.id}`);
           }
         } catch (err: any) {
-          errors.push(`Error processing ${entry.id}: ${err.message}`);
+          errors.push(`Error processing ${entry.id}: ${(err instanceof Error ? err.message : String(err))}`);
           errorCount++;
         }
       }
@@ -184,7 +184,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message 
+        error: (error instanceof Error ? error.message : String(error)) 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

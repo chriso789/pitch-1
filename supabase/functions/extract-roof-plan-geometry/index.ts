@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
           }).eq("id", p.id);
         }
       } catch (e: any) {
-        console.error(`geometry page ${p.page_number} failed`, e?.message);
+        console.error(`geometry page ${p.page_number} failed`, (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)));
       }
     }
 
@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
     });
   } catch (e: any) {
     console.error("extract-roof-plan-geometry error", e);
-    return new Response(JSON.stringify({ error: e?.message || String(e) }), {
+    return new Response(JSON.stringify({ error: (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) || String(e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

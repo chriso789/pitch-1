@@ -70,7 +70,7 @@ Deno.serve(async (req) => {
         default:
           console.error('Webhook verification failed', {
             code: error.code,
-            message: error.message,
+            message: (error instanceof Error ? error.message : String(error)),
           })
           return jsonResponse({ error: 'Verification failed' }, 401)
       }

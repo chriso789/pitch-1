@@ -767,7 +767,7 @@ Deno.serve(async (req: Request) => {
           
           if (emailResult.error) {
             console.error(`[send-company-onboarding] Attempt ${attempts} failed:`, emailResult.error);
-            emailError = emailResult.error.message || 'Resend API error';
+            emailError = emailResult.(error instanceof Error ? error.message : String(error)) || 'Resend API error';
           } else {
             resendMessageId = emailResult?.data?.id || null;
             emailError = null;
@@ -828,7 +828,7 @@ Deno.serve(async (req: Request) => {
   } catch (error: any) {
     console.error("[send-company-onboarding] Error:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)) }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }

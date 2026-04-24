@@ -212,7 +212,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (emailResponse.error) {
       console.error("Resend API error:", emailResponse.error);
-      throw new Error(`Failed to send email: ${emailResponse.error.message}`);
+      throw new Error(`Failed to send email: ${emailResponse.(error instanceof Error ? error.message : String(error))}`);
     }
 
     console.log("Password reset email sent successfully to:", email, "ID:", emailResponse.data?.id);

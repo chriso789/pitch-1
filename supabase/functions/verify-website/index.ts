@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
           return response;
         } catch (error: any) {
           clearTimeout(timeoutId);
-          console.log(`Attempt ${attempt + 1} failed for ${url}:`, error.message);
+          console.log(`Attempt ${attempt + 1} failed for ${url}:`, (error instanceof Error ? error.message : String(error)));
           if (attempt === retries) throw error;
           // Wait before retry
           await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
@@ -246,7 +246,7 @@ Deno.serve(async (req) => {
   } catch (error: any) {
     console.error('Error verifying website:', error);
     return new Response(
-      JSON.stringify({ error: error.message, verified: false }),
+      JSON.stringify({ error: (error instanceof Error ? error.message : String(error)), verified: false }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

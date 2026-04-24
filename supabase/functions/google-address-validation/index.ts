@@ -93,7 +93,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Address validation failed',
-        details: error instanceof Error ? error.message : 'Unknown error'
+        details: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
       }),
       { 
         status: 500, 

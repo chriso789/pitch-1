@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Call forwarding error:', error);
     return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : 'Unknown error' }),
+      JSON.stringify({ error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error' }),
       { 
         status: 500, 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -420,7 +420,7 @@ async function attemptTelnyxTransfer(
     await logCallActivity(supabase, params.fromNumber, params.toNumber, 'transferred', params.tenantId, params.locationId);
     return true;
   } catch (error) {
-    console.error(`Transfer error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error(`Transfer error: ${error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'}`);
     return false;
   }
 }

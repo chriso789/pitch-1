@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
           console.warn(`Weather function error: ${weatherError.message}`);
         }
       } catch (error) {
-        console.warn(`Failed to get weather data: ${error instanceof Error ? error.message : String(error)}`);
+        console.warn(`Failed to get weather data: ${error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error)}`);
       }
     }
 
@@ -239,7 +239,7 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error('Error in dynamic-pricing-calculator:', error);
     return new Response(JSON.stringify({ 
-      error: error instanceof Error ? error.message : String(error),
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : String(error),
       details: 'Failed to calculate dynamic pricing'
     }), {
       status: 500,

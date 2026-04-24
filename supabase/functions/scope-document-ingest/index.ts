@@ -116,7 +116,7 @@ async function computeHash(data: Uint8Array): Promise<string> {
 
 function formatStorageError(err: unknown): string {
   if (!err) return 'unknown';
-  if (err instanceof Error) return `${err.name}: ${err.message}`;
+  if (err instanceof Error) return `${err.name}: ${(err instanceof Error ? err.message : String(err))}`;
   try {
     return JSON.stringify(err);
   } catch {
@@ -569,7 +569,7 @@ For Xactimate format, pay attention to the item codes starting with 3-letter tra
   } catch (error) {
     console.error("[scope-ingest] Error:", error);
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Unknown error"
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : "Unknown error"
     }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" }

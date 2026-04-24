@@ -195,7 +195,7 @@ Return as structured JSON with all numerical values as numbers, not strings.`;
       parsingErrors: errors
     };
   } catch (error) {
-    errors.push(`Parsing error: ${error.message}`);
+    errors.push(`Parsing error: ${(error instanceof Error ? error.message : String(error))}`);
     return createEmptyReport('eagleview', errors, extractedFields, totalFields);
   }
 }
@@ -301,7 +301,7 @@ Return as structured JSON.`;
       parsingErrors: errors
     };
   } catch (error) {
-    errors.push(`Parsing error: ${error.message}`);
+    errors.push(`Parsing error: ${(error instanceof Error ? error.message : String(error))}`);
     return createEmptyReport('roofr', errors, extractedFields, totalFields);
   }
 }
@@ -401,7 +401,7 @@ export async function parseXactimateReport(
       };
     }
   } catch (error) {
-    errors.push(`Parsing error: ${error.message}`);
+    errors.push(`Parsing error: ${(error instanceof Error ? error.message : String(error))}`);
     return createEmptyReport('xactimate', errors, extractedFields, totalFields);
   }
 }
@@ -495,7 +495,7 @@ Return as structured JSON.`;
       parsingErrors: errors
     };
   } catch (error) {
-    errors.push(`Parsing error: ${error.message}`);
+    errors.push(`Parsing error: ${(error instanceof Error ? error.message : String(error))}`);
     return createEmptyReport('hover', errors, extractedFields, totalFields);
   }
 }

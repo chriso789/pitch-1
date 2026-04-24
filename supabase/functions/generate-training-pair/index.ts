@@ -280,7 +280,7 @@ Deno.serve(async (req) => {
         }).select('id').single();
 
         if (error) {
-          console.error('DB insert error:', error.message);
+          console.error('DB insert error:', (error instanceof Error ? error.message : String(error)));
         } else {
           trainingPairId = data.id;
           console.log(`✅ Stored training pair: ${trainingPairId} (quality: ${qualityScore.toFixed(3)}, segments: ${totalSegments})`);
@@ -309,7 +309,7 @@ Deno.serve(async (req) => {
     });
 
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Unknown error';
+    const message = error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error';
     console.error('❌ Training pair generation failed:', message);
     return new Response(JSON.stringify({ success: false, error: message }), {
       status: 500,

@@ -43,7 +43,7 @@ export function notFound(message = 'Not found'): Response {
 }
 
 export function serverError(err: unknown): Response {
-  const msg = err instanceof Error ? err.message : String(err);
+  const msg = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err);
   console.error('[ServerError]', msg, err);
   return json({ ok: false, error: 'Server error', message: msg }, 500);
 }

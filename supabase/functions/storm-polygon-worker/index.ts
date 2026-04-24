@@ -81,7 +81,7 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("[storm-polygon-worker] error", e);
-    return new Response(JSON.stringify({ error: String(e?.message ?? e) }), {
+    return new Response(JSON.stringify({ error: String((e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? e) }), {
       status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }

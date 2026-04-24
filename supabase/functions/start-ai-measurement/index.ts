@@ -259,7 +259,7 @@ Deno.serve(async (req) => {
         console.log('[start-ai-measurement] ✅ Job completed:', job.id)
 
       } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error'
+        const errorMessage = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : 'Unknown error'
         console.error('[start-ai-measurement] Background processing error:', errorMessage)
         await supabaseAdmin
           .from('measurement_jobs')
@@ -292,7 +292,7 @@ Deno.serve(async (req) => {
     })
 
   } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    const errorMessage = error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
     console.error('start-ai-measurement error:', errorMessage)
     return new Response(JSON.stringify({
       success: false,

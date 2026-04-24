@@ -122,7 +122,7 @@ export async function callInternalUNet(opts: UNetCallOptions): Promise<UNetCallO
     return { ok: true, result: json, durationMs, configured: true, isStub: false };
   } catch (err) {
     const durationMs = Date.now() - started;
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err);
     return { ok: false, error: msg, durationMs, configured: true, isStub: false };
   } finally {
     clearTimeout(timer);

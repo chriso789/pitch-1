@@ -195,7 +195,7 @@ Deno.serve(async (req) => {
     console.error('❌ Generate roof overlay error:', error)
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? (error instanceof Error ? error.message : String(error)) : 'Unknown error'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -750,10 +750,10 @@ async function callAnalyzeRoofAerial(
     const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
       body: { address, coordinates }
     })
-    if (error) return { success: false, error: error.message }
+    if (error) return { success: false, error: (error instanceof Error ? error.message : String(error)) }
     return { success: data?.success || false, data: data?.data, error: data?.error }
   } catch (err) {
-    return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
+    return { success: false, error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : 'Unknown error' }
   }
 }
 

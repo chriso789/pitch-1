@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
         status: 'dropped',
         dropped_by: user.id,
       }).then(({ error }) => {
-        if (error) console.error('[voicemail-drop] Failed to log voicemail_recordings:', error.message);
+        if (error) console.error('[voicemail-drop] Failed to log voicemail_recordings:', (error instanceof Error ? error.message : String(error)));
       });
     }
 

@@ -284,7 +284,7 @@ Deno.serve(async (req) => {
     return jsonOK(response);
   } catch (e: any) {
     console.error('permit_build_case error:', e);
-    return jsonErr(500, 'INTERNAL_ERROR', e?.message ?? 'Unknown error', { stack: e?.stack });
+    return jsonErr(500, 'INTERNAL_ERROR', (e instanceof Error ? (e instanceof Error ? e.message : String(e)) : String(e)) ?? 'Unknown error', { stack: e?.stack });
   }
 });
 
@@ -333,7 +333,7 @@ async function upsertPermitCase(
     .select('id')
     .single();
 
-  if (error) throw new Error(`permit_cases insert failed: ${error.message}`);
+  if (error) throw new Error(`permit_cases insert failed: ${(error instanceof Error ? error.message : String(error))}`);
   return { id: data.id };
 }
 
@@ -380,7 +380,7 @@ async function persistPermitCaseSummary(
     .eq('tenant_id', args.tenant_id)
     .eq('id', args.permit_case_id);
 
-  if (error) throw new Error(`permit_cases update failed: ${error.message}`);
+  if (error) throw new Error(`permit_cases update failed: ${(error instanceof Error ? error.message : String(error))}`);
 }
 
 async function emitPermitEvent(
@@ -406,7 +406,7 @@ async function emitPermitEvent(
     });
   
   if (error) {
-    console.error('permit_case_events insert failed:', error.message);
+    console.error('permit_case_events insert failed:', (error instanceof Error ? error.message : String(error)));
   }
 }
 
@@ -436,7 +436,7 @@ async function insertPermitDocument(
     .select('id')
     .single();
 
-  if (error) throw new Error(`permit_documents insert failed: ${error.message}`);
+  if (error) throw new Error(`permit_documents insert failed: ${(error instanceof Error ? error.message : String(error))}`);
   return { id: data.id };
 }
 

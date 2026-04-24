@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
       });
 
       if (smsRes.error) {
-        throw new Error(`SMS send failed: ${smsRes.error.message}`);
+        throw new Error(`SMS send failed: ${smsRes.(error instanceof Error ? error.message : String(error))}`);
       }
 
       console.log(`[ai-followup-dispatch] SMS sent to ${contact.phone}`);
@@ -276,7 +276,7 @@ Deno.serve(async (req) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : String(err);
+    const errorMessage = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err);
     console.error(`[ai-followup-dispatch] Error:`, errorMessage);
 
     // Try to mark queue as failed

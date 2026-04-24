@@ -1809,7 +1809,7 @@ async function openBuildingsFGBFootprint(
     const faceWKT = polygonWKT(best);
     return { faceWKT, plan_sqft };
   } catch (error) {
-    console.warn('OpenBuildings FGB not available:', error.message);
+    console.warn('OpenBuildings FGB not available:', (error instanceof Error ? error.message : String(error)));
     return null;
   }
 }
@@ -1970,7 +1970,7 @@ async function persistMeasurement(
 
   if (error) {
     console.error('[persistMeasurement] insert_measurement RPC failed:', error);
-    throw new Error(`DB insert failed: ${error.message}`);
+    throw new Error(`DB insert failed: ${(error instanceof Error ? error.message : String(error))}`);
   }
   if (!data) throw new Error('DB insert returned no row');
   return data;
@@ -2070,7 +2070,7 @@ async function persistFacets(supabase: any, measurementId: string, faces: RoofFa
     .from('roof_facets')
     .insert(facetRecords);
 
-  if (error) console.error('Failed to persist facets:', error.message);
+  if (error) console.error('Failed to persist facets:', (error instanceof Error ? error.message : String(error)));
 }
 
 async function persistWasteCalculations(supabase: any, measurementId: string, baseAreaSqft: number, baseSquares: number, linearFeatures: any) {
@@ -2103,7 +2103,7 @@ async function persistWasteCalculations(supabase: any, measurementId: string, ba
     .from('roof_waste_calculations')
     .insert(wasteRecords);
 
-  if (error) console.error('Failed to persist waste calculations:', error.message);
+  if (error) console.error('Failed to persist waste calculations:', (error instanceof Error ? error.message : String(error)));
 }
 
 async function persistTags(supabase: any, measurementId: string, propertyId: string, tags: Record<string,any>, userId?: string) {
@@ -2118,7 +2118,7 @@ async function persistTags(supabase: any, measurementId: string, propertyId: str
     .select()
     .single();
 
-  if (error) throw new Error(`Tags insert failed: ${error.message}`);
+  if (error) throw new Error(`Tags insert failed: ${(error instanceof Error ? error.message : String(error))}`);
   return data;
 }
 
@@ -3626,7 +3626,7 @@ Deno.serve(async (req) => {
           console.error('Generate overlay error:', err);
           return json({ 
             ok: false, 
-            error: err instanceof Error ? err.message : String(err),
+            error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err),
             manualReviewRecommended: true
           }, corsHeaders, 500);
         }
@@ -3888,7 +3888,7 @@ Deno.serve(async (req) => {
           }, corsHeaders);
         } catch (err) {
           console.error('Evaluate overlay error:', err);
-          return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders, 500);
+          return json({ ok: false, error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err) }, corsHeaders, 500);
         }
       }
 
@@ -3972,7 +3972,7 @@ Deno.serve(async (req) => {
             }
           } catch (err) {
             storedCount.failed++;
-            const reason = `Exception ${correction.original_line_type}: ${err instanceof Error ? err.message : String(err)}`;
+            const reason = `Exception ${correction.original_line_type}: ${err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err)}`;
             failureReasons.push(reason);
             console.error('Correction store error:', err);
           }
@@ -4019,7 +4019,7 @@ Deno.serve(async (req) => {
           }, corsHeaders);
         } catch (err) {
           console.error('Get patterns error:', err);
-          return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders, 500);
+          return json({ ok: false, error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err) }, corsHeaders, 500);
         }
       }
 
@@ -4053,7 +4053,7 @@ Deno.serve(async (req) => {
           }, corsHeaders);
         } catch (err) {
           console.error('Apply corrections error:', err);
-          return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders, 500);
+          return json({ ok: false, error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err) }, corsHeaders, 500);
         }
       }
 
@@ -4371,7 +4371,7 @@ Deno.serve(async (req) => {
           } catch (err) {
             console.error(`  Error hydrating session ${session.id}:`, err);
             results.failed++;
-            results.errors.push(`${session.id}: ${err instanceof Error ? err.message : String(err)}`);
+            results.errors.push(`${session.id}: ${err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err)}`);
           }
         }
 
@@ -5101,7 +5101,7 @@ Deno.serve(async (req) => {
             await new Promise(r => setTimeout(r, 1000));
           } catch (err) {
             console.error(`Error verifying session ${session.id}:`, err);
-            const msg = err instanceof Error ? err.message : String(err);
+            const msg = err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err);
             const lower = msg.toLowerCase();
             const failureStage = lower.includes('timeout') || lower.includes('504') ? 'ai_segmentation' : 'verification';
             const failureReason = lower.includes('timeout') ? 'unet_timeout' : 'verification_exception';
@@ -5120,7 +5120,7 @@ Deno.serve(async (req) => {
               sessionId: session.id,
               address: session.property_address,
               verdict: 'error',
-              reason: err instanceof Error ? err.message : String(err),
+              reason: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err),
             });
           }
         }
@@ -5202,7 +5202,7 @@ Deno.serve(async (req) => {
     console.error('Measure error:', err);
     return json({ 
       ok: false, 
-      error: err instanceof Error ? err.message : String(err),
+      error: err instanceof Error ? (err instanceof Error ? err.message : String(err)) : String(err),
       details: err instanceof Error ? err.stack : undefined
     }, corsHeaders, 400);
   }
