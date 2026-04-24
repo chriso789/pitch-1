@@ -186,7 +186,7 @@ const handler = async (req: Request): Promise<Response> => {
       return new Response(
         JSON.stringify({
           error: "Email failed to send",
-          details: emailResponse.(error instanceof Error ? error.message : String(error)),
+          details: emailResponse.error.message,
           code: emailResponse.error.name,
         }),
         {

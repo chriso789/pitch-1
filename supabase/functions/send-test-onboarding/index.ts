@@ -701,7 +701,7 @@ Deno.serve(async (req: Request) => {
         console.error(`[send-test-onboarding] Resend error:`, emailResult.error);
         return new Response(
           JSON.stringify({ 
-            error: emailResult.(error instanceof Error ? error.message : String(error)) || "Resend API error",
+            error: emailResult.error.message || "Resend API error",
             resend_error: emailResult.error
           }),
           { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

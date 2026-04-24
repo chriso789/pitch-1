@@ -147,7 +147,7 @@ Deno.serve(async (req) => {
 
         if (result.error) {
           return new Response(
-            JSON.stringify({ error: result.(error instanceof Error ? error.message : String(error)) }),
+            JSON.stringify({ error: result.error.message }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
@@ -217,7 +217,7 @@ Deno.serve(async (req) => {
 
         if (result.error) {
           return new Response(
-            JSON.stringify({ error: result.(error instanceof Error ? error.message : String(error)) }),
+            JSON.stringify({ error: result.error.message }),
             { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }

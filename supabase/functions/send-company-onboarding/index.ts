@@ -767,7 +767,7 @@ Deno.serve(async (req: Request) => {
           
           if (emailResult.error) {
             console.error(`[send-company-onboarding] Attempt ${attempts} failed:`, emailResult.error);
-            emailError = emailResult.(error instanceof Error ? error.message : String(error)) || 'Resend API error';
+            emailError = emailResult.error.message || 'Resend API error';
           } else {
             resendMessageId = emailResult?.data?.id || null;
             emailError = null;

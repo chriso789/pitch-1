@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
       });
 
       if (smsRes.error) {
-        throw new Error(`SMS send failed: ${smsRes.(error instanceof Error ? error.message : String(error))}`);
+        throw new Error(`SMS send failed: ${smsRes.error.message}`);
       }
 
       console.log(`[ai-followup-dispatch] SMS sent to ${contact.phone}`);
