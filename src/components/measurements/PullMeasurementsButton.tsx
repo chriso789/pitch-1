@@ -13,7 +13,7 @@ import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
-import type { PlanEdge, EdgeType } from './DimensionedPlanDrawing';
+import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
