@@ -183,7 +183,12 @@ export function EdgeConfirmationWizard({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden flex-1">
           {/* Plan drawing */}
           <ScrollArea className="border rounded-lg p-2">
-            <DimensionedPlanDrawing edges={edges} highlightEdgeId={current?.id} />
+            <DimensionedPlanDrawing
+              edges={edges}
+              highlightEdgeId={current?.id}
+              aerial={aerial ?? null}
+              footprintGeo={footprintGeo}
+            />
             <div className="grid grid-cols-5 gap-2 mt-3 text-xs">
               {(Object.keys(totals) as EdgeType[]).map(t => (
                 <div key={t} className="text-center p-2 bg-muted/40 rounded">
