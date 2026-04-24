@@ -723,6 +723,10 @@ export function PullMeasurementsButton({
         initialEdges={seedEdges}
         aerial={seedAerial}
         footprintGeo={seedFootprint}
+        onRerunMeasurement={() => {
+          setShowVerifyWizard(false);
+          handleOpenStructureSelector();
+        }}
         onSaved={() => {
           queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
           queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });

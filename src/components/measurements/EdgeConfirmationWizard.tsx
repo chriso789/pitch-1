@@ -7,9 +7,10 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Plus, Sparkles } from 'lucide-react';
+import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Plus, Sparkles, AlertTriangle, RefreshCw, ImageOff } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { DimensionedPlanDrawing, type PlanEdge, type EdgeType, type AerialBackground } from './DimensionedPlanDrawing';
 
 interface EdgeConfirmationWizardProps {
@@ -20,6 +21,7 @@ interface EdgeConfirmationWizardProps {
   aerial?: AerialBackground | null;
   footprintGeo?: Array<[number, number]>;
   onSaved?: () => void;
+  onRerunMeasurement?: () => void;
 }
 
 const EDGE_TYPES: { value: EdgeType; label: string; hint: string }[] = [
@@ -52,6 +54,7 @@ export function EdgeConfirmationWizard({
   aerial,
   footprintGeo,
   onSaved,
+  onRerunMeasurement,
 }: EdgeConfirmationWizardProps) {
   const [edges, setEdges] = useState<PlanEdge[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -73,10 +76,42 @@ export function EdgeConfirmationWizard({
     return t;
   }, [edges]);
 
+  // Geometry validation — runs on every edit so we can block bad confirms.
+  const geometryIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (edges.length < 3) {
+      issues.push('Roof outline needs at least 3 edges to form a closed boundary.');
+    }
+    // Check for zero-length / impossible edges
+    const bad = edges.filter(e => !Number.isFinite(e.length_ft) || e.length_ft <= 0.5);
+    if (bad.length > 0) {
+      issues.push(`${bad.length} edge(s) have a zero or impossible length (< 0.5 ft).`);
+    }
+    // Check for disconnected boundary using endpoint coincidence (1 ft tolerance)
+    const TOL = 1.0;
+    const endpoints = edges.flatMap(e => [e.p1, e.p2]);
+    const orphanCount = endpoints.filter(pt => {
+      const matches = endpoints.filter(o => o !== pt && Math.hypot(o[0] - pt[0], o[1] - pt[1]) <= TOL).length;
+      return matches === 0;
+    }).length;
+    if (orphanCount > 0 && edges.length >= 3) {
+      issues.push(`${orphanCount} edge endpoint(s) don't connect to another edge — boundary has gaps.`);
+    }
+    // Eaves must exist on a real roof
+    const hasEave = edges.some(e => e.type === 'eave');
+    if (edges.length >= 3 && !hasEave) {
+      issues.push('No eaves marked — every roof needs at least one eave (gutter line).');
+    }
+    return issues;
+  }, [edges]);
+
   const confirmedCount = edges.filter(e => e.confirmed).length;
   const progress = edges.length > 0 ? (confirmedCount / edges.length) * 100 : 0;
   const current = edges[currentIdx];
   const allConfirmed = confirmedCount === edges.length && edges.length > 0;
+  const canSave = allConfirmed && geometryIssues.length === 0;
+  const missingAerial = !aerial?.imageUrl;
+  const missingTracedNetwork = !initialEdges || initialEdges.length === 0;
 
   const updateCurrent = (patch: Partial<PlanEdge>) => {
     setEdges(prev => prev.map((e, i) => i === currentIdx ? { ...e, ...patch } : e));
@@ -105,6 +140,14 @@ export function EdgeConfirmationWizard({
   const handleSave = async () => {
     if (!allConfirmed) {
       toast({ title: 'Confirm all edges first', variant: 'destructive' });
+      return;
+    }
+    if (geometryIssues.length > 0) {
+      toast({
+        title: 'Geometry checks failed',
+        description: geometryIssues[0],
+        variant: 'destructive',
+      });
       return;
     }
     setSaving(true);
@@ -167,6 +210,46 @@ export function EdgeConfirmationWizard({
             Confirm each edge's type and exact length. Once all edges are confirmed, the measurement is locked at 100% accuracy.
           </DialogDescription>
         </DialogHeader>
+
+        {/* Missing-data fallback: explain why aerial / traced network is missing */}
+        {(missingAerial || missingTracedNetwork) && (
+          <Alert variant="default" className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
+            <ImageOff className="h-4 w-4 text-amber-600" />
+            <AlertTitle className="text-amber-900 dark:text-amber-200">
+              Latest measurement is missing data
+            </AlertTitle>
+            <AlertDescription className="text-amber-800 dark:text-amber-300 space-y-2">
+              <ul className="list-disc list-inside text-xs">
+                {missingAerial && <li>No aerial image (Mapbox/Google) was saved with this run.</li>}
+                {missingTracedNetwork && <li>No traced edge network (linear_features_wkt) was returned by the AI.</li>}
+              </ul>
+              {onRerunMeasurement && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={onRerunMeasurement}
+                  className="border-amber-400 text-amber-900 hover:bg-amber-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                  Re-run measurement analysis
+                </Button>
+              )}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* Geometry validation issues */}
+        {geometryIssues.length > 0 && (
+          <Alert variant="destructive">
+            <AlertTriangle className="h-4 w-4" />
+            <AlertTitle>Geometry issues — fix before confirming</AlertTitle>
+            <AlertDescription>
+              <ul className="list-disc list-inside text-xs mt-1">
+                {geometryIssues.map((iss, i) => <li key={i}>{iss}</li>)}
+              </ul>
+            </AlertDescription>
+          </Alert>
+        )}
 
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
@@ -298,8 +381,14 @@ export function EdgeConfirmationWizard({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSave} disabled={!allConfirmed || saving}>
-            {saving ? 'Saving…' : allConfirmed ? '✓ Save 100% Verified Plan' : `Confirm ${edges.length - confirmedCount} more edge(s)`}
+          <Button onClick={handleSave} disabled={!canSave || saving}>
+            {saving
+              ? 'Saving…'
+              : geometryIssues.length > 0
+                ? `Fix ${geometryIssues.length} geometry issue(s)`
+                : allConfirmed
+                  ? '✓ Save 100% Verified Plan'
+                  : `Confirm ${edges.length - confirmedCount} more edge(s)`}
           </Button>
         </DialogFooter>
       </DialogContent>

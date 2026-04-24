@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
 
         // Get all compliance items
         const { data: items } = await supabase
-          .from("compliance_items")
+          .from("compliance_items" as any)
           .select(`
             *,
             profiles!compliance_items_assigned_to_fkey (
@@ -39,12 +39,12 @@ Deno.serve(async (req) => {
           .eq("tenant_id", tenant_id);
 
         // Categorize by status
-        const expired = items?.filter(i => new Date(i.expiry_date) < today) || [];
-        const expiringSoon = items?.filter(i => {
+        const expired = (items as any[])?.filter((i: any) => new Date(i.expiry_date) < today) || [];
+        const expiringSoon = (items as any[])?.filter((i: any) => {
           const expiry = new Date(i.expiry_date);
           return expiry >= today && expiry <= thirtyDaysFromNow;
         }) || [];
-        const active = items?.filter(i => new Date(i.expiry_date) > thirtyDaysFromNow) || [];
+        const active = (items as any[])?.filter((i: any) => new Date(i.expiry_date) > thirtyDaysFromNow) || [];
 
         // Calculate compliance score
         const totalItems = items?.length || 0;
@@ -55,13 +55,13 @@ Deno.serve(async (req) => {
 
         // Group by type
         const byType: Record<string, { total: number; expired: number; expiring: number; active: number }> = {};
-        items?.forEach(item => {
+        (items as any[])?.forEach((item: any) => {
           if (!byType[item.item_type]) {
             byType[item.item_type] = { total: 0, expired: 0, expiring: 0, active: 0 };
           }
           byType[item.item_type].total++;
-          if (expired.some(e => e.id === item.id)) byType[item.item_type].expired++;
-          else if (expiringSoon.some(e => e.id === item.id)) byType[item.item_type].expiring++;
+          if (expired.some((e: any) => e.id === item.id)) byType[item.item_type].expired++;
+          else if (expiringSoon.some((e: any) => e.id === item.id)) byType[item.item_type].expiring++;
           else byType[item.item_type].active++;
         });
 
@@ -81,8 +81,8 @@ Deno.serve(async (req) => {
               },
               by_type: byType,
               critical_items: [
-                ...expired.map(i => ({ ...i, urgency: "expired" })),
-                ...expiringSoon.map(i => ({ ...i, urgency: "expiring_soon" }))
+                ...expired.map((i: any) => ({ ...i, urgency: "expired" })),
+                ...expiringSoon.map((i: any) => ({ ...i, urgency: "expiring_soon" }))
               ].slice(0, 10)
             }
           }),
@@ -267,14 +267,14 @@ Deno.serve(async (req) => {
 
         const today = new Date();
         const categorized = {
-          expired: items?.filter(i => new Date(i.expiry_date) < today) || [],
-          expiring_this_week: items?.filter(i => {
+          expired: (items as any[])?.filter((i: any) => new Date(i.expiry_date) < today) || [],
+          expiring_this_week: (items as any[])?.filter((i: any) => {
             const expiry = new Date(i.expiry_date);
             const weekFromNow = new Date();
             weekFromNow.setDate(weekFromNow.getDate() + 7);
             return expiry >= today && expiry <= weekFromNow;
           }) || [],
-          expiring_this_month: items?.filter(i => {
+          expiring_this_month: (items as any[])?.filter((i: any) => {
             const expiry = new Date(i.expiry_date);
             const weekFromNow = new Date();
             weekFromNow.setDate(weekFromNow.getDate() + 7);
@@ -323,19 +323,19 @@ Deno.serve(async (req) => {
           company_name: tenant?.name || "Unknown",
           summary: {
             total_items: items?.length || 0,
-            active: items?.filter(i => i.status === "active" && new Date(i.expiry_date) > today).length || 0,
-            expired: items?.filter(i => new Date(i.expiry_date) < today).length || 0,
-            pending_renewal: items?.filter(i => i.status === "pending_renewal").length || 0
+            active: (items as any[])?.filter((i: any) => i.status === "active" && new Date(i.expiry_date) > today).length || 0,
+            expired: (items as any[])?.filter((i: any) => new Date(i.expiry_date) < today).length || 0,
+            pending_renewal: (items as any[])?.filter((i: any) => i.status === "pending_renewal").length || 0
           },
           by_type: {} as Record<string, unknown[]>,
           upcoming_expirations: items
-            ?.filter(i => {
+            ?.filter((i: any) => {
               const expiry = new Date(i.expiry_date);
               const sixtyDays = new Date();
               sixtyDays.setDate(sixtyDays.getDate() + 60);
               return expiry >= today && expiry <= sixtyDays;
             })
-            .map(i => ({
+            .map((i: any) => ({
               name: i.name,
               type: i.item_type,
               expires: i.expiry_date,
@@ -345,7 +345,7 @@ Deno.serve(async (req) => {
         };
 
         // Group by type
-        items?.forEach(item => {
+        (items as any[])?.forEach((item: any) => {
           if (!report.by_type[item.item_type]) {
             report.by_type[item.item_type] = [];
           }
@@ -394,7 +394,7 @@ Deno.serve(async (req) => {
           recipient: unknown;
         }> = [];
 
-        items?.forEach(item => {
+        (items as any[])?.forEach((item: any) => {
           const daysUntilExpiry = Math.ceil(
             (new Date(item.expiry_date).getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
           );
@@ -409,7 +409,7 @@ Deno.serve(async (req) => {
         });
 
         // Create notifications for each alert
-        const notificationPromises = alertsToSend.map(async (alert) => {
+        const notificationPromises = alertsToSend.map(async (alert: any) => {
           if (alert.recipient?.id) {
             await supabase
               .from("user_notifications")
