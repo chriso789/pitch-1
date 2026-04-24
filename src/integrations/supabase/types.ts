@@ -38313,10 +38313,14 @@ export type Database = {
           address_street: string | null
           address_zip: string | null
           billing_email: string | null
+          brand_certifications: string | null
+          brand_mission: string | null
+          brand_story: string | null
           company_overhead_rate: number | null
           created_at: string | null
           deleted_at: string | null
           email: string | null
+          established_year: number | null
           features_enabled: string[] | null
           id: string
           insurance_info: string | null
@@ -38353,10 +38357,14 @@ export type Database = {
           address_street?: string | null
           address_zip?: string | null
           billing_email?: string | null
+          brand_certifications?: string | null
+          brand_mission?: string | null
+          brand_story?: string | null
           company_overhead_rate?: number | null
           created_at?: string | null
           deleted_at?: string | null
           email?: string | null
+          established_year?: number | null
           features_enabled?: string[] | null
           id?: string
           insurance_info?: string | null
@@ -38393,10 +38401,14 @@ export type Database = {
           address_street?: string | null
           address_zip?: string | null
           billing_email?: string | null
+          brand_certifications?: string | null
+          brand_mission?: string | null
+          brand_story?: string | null
           company_overhead_rate?: number | null
           created_at?: string | null
           deleted_at?: string | null
           email?: string | null
+          established_year?: number | null
           features_enabled?: string[] | null
           id?: string
           insurance_info?: string | null
