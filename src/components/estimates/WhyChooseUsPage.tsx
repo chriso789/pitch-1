@@ -58,7 +58,15 @@ const PROMISES = [
 export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
   companyName = 'Our Team',
   licenseNumber,
+  establishedYear,
+  brandStory,
+  brandMission,
+  brandCertifications,
 }) => {
+  const stats = buildStats(establishedYear);
+  const heroBlurb = brandStory
+    ? brandStory
+    : "You're not just hiring a contractor — you're hiring a team obsessed with doing it right the first time.";
   return (
     <div
       data-report-page
@@ -82,11 +90,11 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
           className="text-[10px] font-bold tracking-[0.4em] mb-3"
           style={{ color: 'hsl(var(--primary))' }}
         >
-          WHY HOMEOWNERS CHOOSE US
+          {establishedYear ? `EST. ${establishedYear} · ` : ''}WHY HOMEOWNERS CHOOSE {companyName.toUpperCase()}
         </div>
         <h2
           className="font-black leading-[0.88]"
-          style={{ fontSize: '62px', letterSpacing: '-0.03em' }}
+          style={{ fontSize: '54px', letterSpacing: '-0.03em' }}
         >
           Built on
           <br />
@@ -94,10 +102,14 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
           <br />
           Backed by results.
         </h2>
-        <p className="text-sm text-white/70 max-w-[520px] mt-4 leading-relaxed">
-          You're not just hiring a contractor — you're hiring a team obsessed
-          with doing it right the first time.
+        <p className="text-sm text-white/80 max-w-[560px] mt-4 leading-relaxed">
+          {heroBlurb}
         </p>
+        {brandMission && (
+          <p className="text-xs text-white/60 max-w-[560px] mt-3 leading-relaxed italic">
+            Our mission: {brandMission}
+          </p>
+        )}
 
         {/* Star strip */}
         <div className="flex items-center gap-1.5 mt-6">
@@ -116,7 +128,7 @@ export const WhyChooseUsPage: React.FC<WhyChooseUsPageProps> = ({
 
       {/* Stats grid */}
       <div className="grid grid-cols-4 border-b border-gray-200">
-        {STATS.map((s, i) => (
+        {stats.map((s, i) => (
           <div
             key={i}
             className={`px-4 py-7 text-center ${
