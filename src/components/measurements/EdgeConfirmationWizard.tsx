@@ -142,6 +142,14 @@ export function EdgeConfirmationWizard({
       toast({ title: 'Confirm all edges first', variant: 'destructive' });
       return;
     }
+    if (geometryIssues.length > 0) {
+      toast({
+        title: 'Geometry checks failed',
+        description: geometryIssues[0],
+        variant: 'destructive',
+      });
+      return;
+    }
     setSaving(true);
     try {
       const tags = {
