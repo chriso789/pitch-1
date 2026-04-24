@@ -216,7 +216,7 @@ Deno.serve(async (req) => {
       console.error('Billtrust login failed with status:', billtrustResponse.status);
       
       // Log failed attempt
-      await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_failed', supplierAccountId, {
+      await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_failed', supplierAccountId ?? null, {
         billtrust_email: email,
         status_code: billtrustResponse.status,
         ip_address: req.headers.get('x-forwarded-for') || 'unknown'
@@ -255,7 +255,7 @@ Deno.serve(async (req) => {
 
     if (!isSuccess) {
       // Log failed attempt
-      await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_failed', supplierAccountId, {
+      await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_failed', supplierAccountId ?? null, {
         billtrust_email: email,
         ip_address: req.headers.get('x-forwarded-for') || 'unknown'
       });
@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
     }
 
     // Log successful authentication
-    await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_success', supplierAccountId, {
+    await logAuditEvent(supabase, profile.tenant_id ?? null, user.id, 'billtrust_auth_success', supplierAccountId ?? null, {
       billtrust_email: email,
       ip_address: req.headers.get('x-forwarded-for') || 'unknown'
     });
