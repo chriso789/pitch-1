@@ -398,34 +398,42 @@ Deno.serve(async (req) => {
     }
 
     // Recalculate manager overrides if this user is a manager
+    // NOTE: commission_earnings table does not currently have manager_id /
+    // manager_override_rate / manager_override_amount columns. Wrap in try/catch
+    // so a missing-column error never blocks the main save.
     let managerOverridesRecalculated = 0;
     if (is_manager && manager_override_rate !== undefined && manager_override_rate > 0) {
-      // Find earnings where this user is the manager getting an override
-      const { data: managerOverrides, error: overrideError } = await serviceClient
-        .from('commission_earnings')
-        .select('*')
-        .eq('manager_id', target_user_id)
-        .in('status', ['pending', 'approved']);
-      
-      if (!overrideError && managerOverrides && managerOverrides.length > 0) {
-        for (const earning of managerOverrides) {
-          const newOverrideAmount = (earning.contract_value || 0) * (manager_override_rate / 100);
-          
-          const { error: updateError } = await serviceClient
-            .from('commission_earnings')
-            .update({
-              manager_override_rate: manager_override_rate,
-              manager_override_amount: Math.round(newOverrideAmount * 100) / 100,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', earning.id);
-          
-          if (!updateError) {
-            managerOverridesRecalculated++;
+      try {
+        const { data: managerOverrides, error: overrideError } = await serviceClient
+          .from('commission_earnings')
+          .select('*')
+          .eq('manager_id', target_user_id)
+          .in('status', ['pending', 'approved']);
+
+        if (overrideError) {
+          console.warn('[save-commission-settings] Manager override recalc skipped:', overrideError.message);
+        } else if (managerOverrides && managerOverrides.length > 0) {
+          for (const earning of managerOverrides) {
+            const newOverrideAmount = (earning.contract_value || 0) * (manager_override_rate / 100);
+
+            const { error: updateError } = await serviceClient
+              .from('commission_earnings')
+              .update({
+                manager_override_rate: manager_override_rate,
+                manager_override_amount: Math.round(newOverrideAmount * 100) / 100,
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', earning.id);
+
+            if (!updateError) {
+              managerOverridesRecalculated++;
+            }
           }
+
+          console.log(`[save-commission-settings] Recalculated ${managerOverridesRecalculated} manager overrides`);
         }
-        
-        console.log(`[save-commission-settings] Recalculated ${managerOverridesRecalculated} manager overrides`);
+      } catch (mgrErr) {
+        console.warn('[save-commission-settings] Manager override recalc threw (non-fatal):', mgrErr);
       }
     }
 
