@@ -1,27 +1,27 @@
- /**
-  * EstimateCoverPage - Professional cover page for estimate PDFs
-  * 
-  * A full-page cover that displays company branding, customer info,
-  * and optional property photo for a polished presentation.
-  */
- import React from 'react';
- 
- // Letter size: 8.5" x 11" at 96 DPI = 816 x 1056 pixels
- const PAGE_WIDTH = 816;
- const PAGE_HEIGHT = 1056;
- 
- interface CompanyInfo {
-   name: string;
-   logo_url?: string | null;
-   phone?: string | null;
-   email?: string | null;
-   address_street?: string | null;
-   address_city?: string | null;
-   address_state?: string | null;
-   address_zip?: string | null;
-   license_number?: string | null;
- }
- 
+/**
+ * EstimateCoverPage — Bold, magazine-style cover page for estimate PDFs.
+ *
+ * Visual style: full-bleed property hero, oversized editorial typography,
+ * brand color blocks, asymmetric layout. Designed for "wow" first impression
+ * on both the printed PDF and the embedded online quote viewer.
+ */
+import React from 'react';
+
+const PAGE_WIDTH = 816;
+const PAGE_HEIGHT = 1056;
+
+interface CompanyInfo {
+  name: string;
+  logo_url?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address_street?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_zip?: string | null;
+  license_number?: string | null;
+}
+
 interface EstimateCoverPageProps {
   companyInfo?: CompanyInfo;
   companyLogo?: string;
@@ -33,7 +33,7 @@ interface EstimateCoverPageProps {
   propertyPhoto?: string;
   estimateName?: string;
 }
- 
+
 export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
   companyInfo,
   companyLogo,
@@ -45,130 +45,216 @@ export const EstimateCoverPage: React.FC<EstimateCoverPageProps> = ({
   propertyPhoto,
   estimateName,
 }) => {
-   const dateStr = createdAt 
-     ? new Date(createdAt).toLocaleDateString('en-US', { 
-         year: 'numeric', 
-         month: 'long', 
-         day: 'numeric' 
-       })
-     : new Date().toLocaleDateString('en-US', { 
-         year: 'numeric', 
-         month: 'long', 
-         day: 'numeric' 
-       });
- 
-   const companyAddressParts = [
-     companyInfo?.address_street,
-     [companyInfo?.address_city, companyInfo?.address_state].filter(Boolean).join(', '),
-     companyInfo?.address_zip
-   ].filter(Boolean);
-   const companyAddressStr = companyAddressParts.join(' • ');
- 
-   const logoUrl = companyLogo || companyInfo?.logo_url;
- 
-   return (
-     <div 
-       data-report-page
-       className="bg-white text-black flex flex-col"
-       style={{ 
-         width: `${PAGE_WIDTH}px`, 
-         minHeight: `${PAGE_HEIGHT}px`,
-         maxHeight: `${PAGE_HEIGHT}px`,
-         fontFamily: 'Inter, system-ui, sans-serif',
-         overflow: 'hidden'
-       }}
-     >
-       {/* Top accent bar */}
-       <div 
-        className="w-full h-3 bg-primary"
-       />
-       
-       {/* Main content area */}
-       <div className="flex-1 flex flex-col items-center justify-between px-12 py-8">
-         
-         {/* Company Logo & Name Section */}
-         <div className="text-center space-y-4 mt-4">
-           {logoUrl && (
-             <img 
-               src={logoUrl} 
-               alt={companyInfo?.name || companyName}
-               className="h-40 object-contain mx-auto"
-             />
-           )}
-           {!logoUrl && (
-             <h1 className="text-3xl font-bold text-gray-900">
-               {companyInfo?.name || companyName}
-             </h1>
-           )}
-         </div>
- 
-         {/* Title Section */}
-         <div className="text-center my-6">
-           <div className="inline-block">
-             <h2 
-               className="text-4xl font-bold text-gray-900 tracking-tight leading-tight pb-2"
-             >
-               {companyInfo?.name || companyName} Estimate
-             </h2>
-             <div className="h-1 w-full bg-primary mt-1" />
-           </div>
-         </div>
- 
-         {/* Customer Info Section */}
-         <div className="text-center space-y-1 bg-gray-50 rounded-xl px-12 py-6 w-full max-w-lg">
-           <p className="text-xs uppercase tracking-wider text-gray-500 mb-3">Prepared For</p>
-           <h3 className="text-2xl font-semibold text-gray-900">{customerName}</h3>
-           <p className="text-gray-600">{customerAddress}</p>
-         </div>
- 
-         {/* Property Photo (if provided) */}
-         {propertyPhoto && (
-           <div className="w-full max-w-md rounded-xl overflow-hidden shadow-lg border border-gray-200 my-6">
-             <img 
-               src={propertyPhoto} 
-               alt="Property" 
-               className="w-full h-56 object-cover"
-             />
-           </div>
-         )}
- 
-         {/* Estimate Meta */}
-         <div className="flex gap-12 text-center my-4">
-           <div>
-             <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">Estimate #</p>
-             <p className="text-lg font-semibold text-gray-900">{estimateNumber}</p>
-           </div>
-           <div>
-             <p className="text-xs uppercase tracking-wider text-gray-500 mb-1">Date</p>
-             <p className="text-lg font-semibold text-gray-900">{dateStr}</p>
-           </div>
-         </div>
- 
-         {/* Company Footer Info */}
-         <div className="text-center space-y-2 mt-auto pt-6 border-t border-gray-200 w-full">
-           <p className="text-xs uppercase tracking-wider text-gray-500">Prepared By</p>
-           <h4 className="text-lg font-semibold text-gray-900">
-             {companyInfo?.name || companyName}
-           </h4>
-           {companyAddressStr && (
-             <p className="text-sm text-gray-600">{companyAddressStr}</p>
-           )}
-           <div className="flex justify-center gap-4 text-sm text-gray-600">
-             {companyInfo?.phone && <span>{companyInfo.phone}</span>}
-             {companyInfo?.email && <span>{companyInfo.email}</span>}
-           </div>
-           {companyInfo?.license_number && (
-             <p className="text-xs text-gray-500">License #{companyInfo.license_number}</p>
-           )}
-         </div>
-       </div>
- 
-       {/* Bottom accent bar */}
-       <div 
-        className="w-full h-2 bg-primary"
-       />
-     </div>
-   );
- };
- 
- export default EstimateCoverPage;
+  const dateStr = createdAt
+    ? new Date(createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+    : new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+
+  const yearStr = (createdAt ? new Date(createdAt) : new Date()).getFullYear();
+
+  const companyAddressParts = [
+    companyInfo?.address_street,
+    [companyInfo?.address_city, companyInfo?.address_state].filter(Boolean).join(', '),
+    companyInfo?.address_zip,
+  ].filter(Boolean);
+  const companyAddressStr = companyAddressParts.join(' • ');
+
+  const logoUrl = companyLogo || companyInfo?.logo_url;
+  const displayCompanyName = companyInfo?.name || companyName;
+
+  return (
+    <div
+      data-report-page
+      className="relative bg-white text-black overflow-hidden"
+      style={{
+        width: `${PAGE_WIDTH}px`,
+        minHeight: `${PAGE_HEIGHT}px`,
+        maxHeight: `${PAGE_HEIGHT}px`,
+        fontFamily: "'Inter', system-ui, sans-serif",
+      }}
+    >
+      {/* HERO IMAGE — top 60% of the page, full-bleed */}
+      <div className="absolute top-0 left-0 right-0" style={{ height: '60%' }}>
+        {propertyPhoto ? (
+          <img
+            src={propertyPhoto}
+            alt="Property"
+            className="w-full h-full object-cover"
+          />
+        ) : (
+          <div
+            className="w-full h-full"
+            style={{
+              background:
+                'linear-gradient(135deg, hsl(var(--primary)) 0%, #1a1a2e 100%)',
+            }}
+          />
+        )}
+
+        {/* Dark gradient scrim for text legibility */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background:
+              'linear-gradient(180deg, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0.15) 35%, rgba(0,0,0,0.05) 60%, rgba(0,0,0,0.85) 100%)',
+          }}
+        />
+
+        {/* Top bar — logo + year tag */}
+        <div className="absolute top-0 left-0 right-0 flex items-start justify-between p-8">
+          <div className="flex items-center gap-3">
+            {logoUrl ? (
+              <img
+                src={logoUrl}
+                alt={displayCompanyName}
+                className="h-14 object-contain drop-shadow-lg"
+                style={{ filter: 'drop-shadow(0 2px 8px rgba(0,0,0,0.5))' }}
+              />
+            ) : (
+              <div className="text-white text-xl font-bold tracking-tight drop-shadow-lg">
+                {displayCompanyName}
+              </div>
+            )}
+          </div>
+          <div className="text-right">
+            <div
+              className="inline-block px-3 py-1 text-[10px] font-bold tracking-[0.3em] text-white border border-white/60 rounded-sm backdrop-blur-sm"
+              style={{ background: 'rgba(255,255,255,0.08)' }}
+            >
+              EST. {yearStr}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom of hero — oversized PROPOSAL wordmark */}
+        <div className="absolute bottom-0 left-0 right-0 px-10 pb-10">
+          <div className="text-white">
+            <div className="text-[11px] font-semibold tracking-[0.4em] opacity-80 mb-2">
+              PROJECT PROPOSAL
+            </div>
+            <h1
+              className="font-black leading-[0.85] tracking-tight drop-shadow-xl"
+              style={{
+                fontSize: '92px',
+                letterSpacing: '-0.04em',
+                lineHeight: 0.85,
+              }}
+            >
+              YOUR
+              <br />
+              <span style={{ color: 'hsl(var(--primary))' }}>HOME.</span>{' '}
+              REIMAGINED.
+            </h1>
+          </div>
+        </div>
+      </div>
+
+      {/* WHITE LOWER PANEL — 40% of the page */}
+      <div
+        className="absolute bottom-0 left-0 right-0 bg-white"
+        style={{ height: '40%' }}
+      >
+        {/* Brand color slash */}
+        <div
+          className="absolute top-0 left-0 right-0"
+          style={{
+            height: '10px',
+            background:
+              'linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary)) 65%, #1a1a2e 65%, #1a1a2e 100%)',
+          }}
+        />
+
+        <div className="px-10 pt-10 pb-8 h-full flex flex-col justify-between">
+          {/* Two-column block: PREPARED FOR | PROJECT META */}
+          <div className="grid grid-cols-12 gap-6">
+            <div className="col-span-7">
+              <div className="text-[10px] font-bold tracking-[0.3em] text-gray-400 mb-3">
+                PREPARED EXCLUSIVELY FOR
+              </div>
+              <h2
+                className="font-bold text-gray-900 leading-tight mb-2"
+                style={{ fontSize: '34px', letterSpacing: '-0.02em' }}
+              >
+                {customerName}
+              </h2>
+              <p className="text-gray-600 text-base leading-snug max-w-[320px]">
+                {customerAddress}
+              </p>
+            </div>
+
+            <div className="col-span-5 border-l-2 border-gray-100 pl-6">
+              <div className="space-y-4">
+                <div>
+                  <div className="text-[9px] font-bold tracking-[0.25em] text-gray-400 mb-1">
+                    PROPOSAL №
+                  </div>
+                  <div className="text-2xl font-bold text-gray-900 tracking-tight">
+                    {estimateNumber}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[9px] font-bold tracking-[0.25em] text-gray-400 mb-1">
+                    ISSUED
+                  </div>
+                  <div className="text-base font-semibold text-gray-900">
+                    {dateStr}
+                  </div>
+                </div>
+                {estimateName && (
+                  <div>
+                    <div className="text-[9px] font-bold tracking-[0.25em] text-gray-400 mb-1">
+                      SCOPE
+                    </div>
+                    <div className="text-sm font-medium text-gray-700 leading-tight">
+                      {estimateName}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* PREPARED BY — bottom strip */}
+          <div className="border-t border-gray-200 pt-5 mt-4">
+            <div className="flex items-end justify-between gap-6">
+              <div className="flex-1 min-w-0">
+                <div className="text-[10px] font-bold tracking-[0.3em] text-gray-400 mb-1.5">
+                  PREPARED BY
+                </div>
+                <div
+                  className="font-bold text-gray-900 leading-tight"
+                  style={{ fontSize: '20px', letterSpacing: '-0.01em' }}
+                >
+                  {displayCompanyName}
+                </div>
+                {companyAddressStr && (
+                  <p className="text-xs text-gray-500 mt-1 truncate">
+                    {companyAddressStr}
+                  </p>
+                )}
+              </div>
+              <div className="text-right shrink-0 space-y-0.5">
+                {companyInfo?.phone && (
+                  <div className="text-sm font-semibold text-gray-800">
+                    {companyInfo.phone}
+                  </div>
+                )}
+                {companyInfo?.email && (
+                  <div className="text-xs text-gray-600">
+                    {companyInfo.email}
+                  </div>
+                )}
+                {companyInfo?.license_number && (
+                  <div className="text-[10px] text-gray-400 tracking-wider">
+                    LIC #{companyInfo.license_number}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default EstimateCoverPage;
