@@ -54,6 +54,7 @@ export function EdgeConfirmationWizard({
   aerial,
   footprintGeo,
   onSaved,
+  onRerunMeasurement,
 }: EdgeConfirmationWizardProps) {
   const [edges, setEdges] = useState<PlanEdge[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
@@ -75,10 +76,42 @@ export function EdgeConfirmationWizard({
     return t;
   }, [edges]);
 
+  // Geometry validation — runs on every edit so we can block bad confirms.
+  const geometryIssues = useMemo(() => {
+    const issues: string[] = [];
+    if (edges.length < 3) {
+      issues.push('Roof outline needs at least 3 edges to form a closed boundary.');
+    }
+    // Check for zero-length / impossible edges
+    const bad = edges.filter(e => !Number.isFinite(e.length_ft) || e.length_ft <= 0.5);
+    if (bad.length > 0) {
+      issues.push(`${bad.length} edge(s) have a zero or impossible length (< 0.5 ft).`);
+    }
+    // Check for disconnected boundary using endpoint coincidence (1 ft tolerance)
+    const TOL = 1.0;
+    const endpoints = edges.flatMap(e => [e.p1, e.p2]);
+    const orphanCount = endpoints.filter(pt => {
+      const matches = endpoints.filter(o => o !== pt && Math.hypot(o[0] - pt[0], o[1] - pt[1]) <= TOL).length;
+      return matches === 0;
+    }).length;
+    if (orphanCount > 0 && edges.length >= 3) {
+      issues.push(`${orphanCount} edge endpoint(s) don't connect to another edge — boundary has gaps.`);
+    }
+    // Eaves must exist on a real roof
+    const hasEave = edges.some(e => e.type === 'eave');
+    if (edges.length >= 3 && !hasEave) {
+      issues.push('No eaves marked — every roof needs at least one eave (gutter line).');
+    }
+    return issues;
+  }, [edges]);
+
   const confirmedCount = edges.filter(e => e.confirmed).length;
   const progress = edges.length > 0 ? (confirmedCount / edges.length) * 100 : 0;
   const current = edges[currentIdx];
   const allConfirmed = confirmedCount === edges.length && edges.length > 0;
+  const canSave = allConfirmed && geometryIssues.length === 0;
+  const missingAerial = !aerial?.imageUrl;
+  const missingTracedNetwork = !initialEdges || initialEdges.length === 0;
 
   const updateCurrent = (patch: Partial<PlanEdge>) => {
     setEdges(prev => prev.map((e, i) => i === currentIdx ? { ...e, ...patch } : e));
