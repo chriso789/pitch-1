@@ -69,6 +69,10 @@ interface CompanyInfo {
   address_state?: string | null;
   address_zip?: string | null;
   license_number?: string | null;
+  established_year?: number | null;
+  brand_story?: string | null;
+  brand_mission?: string | null;
+  brand_certifications?: string | null;
 }
 
 interface Template {
@@ -852,7 +856,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Fetch tenant info for company branding
       const { data: tenant } = await supabaseClient
         .from('tenants')
-        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms')
+        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number, warranty_terms, established_year, brand_story, brand_mission, brand_certifications')
         .eq('id', tenantId)
         .single();
 

@@ -38,6 +38,10 @@ interface CompanyInfo {
   address_state?: string | null;
   address_zip?: string | null;
   license_number?: string | null;
+  established_year?: number | null;
+  brand_story?: string | null;
+  brand_mission?: string | null;
+  brand_certifications?: string | null;
 }
 
 interface CompanyLocation {
@@ -578,6 +582,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
           key="why-choose-us-page"
           companyName={companyInfo?.name || companyName}
           licenseNumber={companyInfo?.license_number}
+          establishedYear={companyInfo?.established_year}
+          brandStory={companyInfo?.brand_story}
+          brandMission={companyInfo?.brand_mission}
+          brandCertifications={companyInfo?.brand_certifications}
         />
       );
 

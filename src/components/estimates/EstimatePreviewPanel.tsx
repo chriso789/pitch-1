@@ -70,6 +70,10 @@ interface CompanyInfo {
   address_state?: string | null;
   address_zip?: string | null;
   license_number?: string | null;
+  established_year?: number | null;
+  brand_story?: string | null;
+  brand_mission?: string | null;
+  brand_certifications?: string | null;
 }
 
 interface MeasurementSummary {
@@ -385,13 +389,33 @@ export function EstimatePreviewPanel({
     fetchCoords();
   }, [open, contactId, googleMapsApiKey, customerAddress]);
 
-  // Generate Street View URL when coords + API key available
+  // Generate Street View URL — verify imagery exists via Metadata API first.
+  // If Google reports ZERO_RESULTS / no imagery, leave streetViewUrl null so
+  // the cover automatically falls through to aerial.
   useEffect(() => {
-    if (propertyCoords && googleMapsApiKey) {
-      setStreetViewUrl(
-        `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`
-      );
-    }
+    if (!propertyCoords || !googleMapsApiKey) return;
+    let cancelled = false;
+    const checkAndSet = async () => {
+      try {
+        const metaUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`;
+        const resp = await fetch(metaUrl);
+        const meta = await resp.json();
+        if (cancelled) return;
+        if (meta.status === 'OK') {
+          setStreetViewUrl(
+            `https://maps.googleapis.com/maps/api/streetview?size=800x400&location=${propertyCoords.lat},${propertyCoords.lng}&key=${googleMapsApiKey}`
+          );
+        } else {
+          // No street view imagery available — clear so aerial wins.
+          setStreetViewUrl(null);
+        }
+      } catch (err) {
+        console.warn('Street View metadata check failed:', err);
+        if (!cancelled) setStreetViewUrl(null);
+      }
+    };
+    checkAndSet();
+    return () => { cancelled = true; };
   }, [propertyCoords, googleMapsApiKey]);
 
   // Fetch aerial URL from roof_measurements, fallback to Google Static Maps
@@ -420,7 +444,9 @@ export function EstimatePreviewPanel({
     fetchAerialUrl();
   }, [open, contactId, propertyCoords, googleMapsApiKey]);
 
-  // Auto-default cover photo source
+  // Auto-default cover photo source — prefer uploaded > street view (only if
+  // imagery actually exists) > aerial. If street view becomes unavailable
+  // after selection, auto-fall through to aerial.
   useEffect(() => {
     if (!open) return;
     if (jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
@@ -435,16 +461,17 @@ export function EstimatePreviewPanel({
     }
   }, [open, jobPhotos, streetViewUrl, aerialUrl]);
 
-  // Wire coverPagePropertyPhoto based on source selection
+  // Wire coverPagePropertyPhoto based on source selection.
+  // Auto-fall through if the requested source isn't actually available.
   useEffect(() => {
     let photoUrl: string | undefined;
     if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
       const photo = jobPhotos.find(p => p.id === selectedUploadedPhotoId);
       photoUrl = photo?.file_url;
     } else if (coverPhotoSource === 'streetview') {
-      photoUrl = streetViewUrl || undefined;
+      photoUrl = streetViewUrl || aerialUrl || undefined;
     } else if (coverPhotoSource === 'aerial') {
-      photoUrl = aerialUrl || undefined;
+      photoUrl = aerialUrl || streetViewUrl || undefined;
     }
     setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
   }, [coverPhotoSource, selectedUploadedPhotoId, jobPhotos, streetViewUrl, aerialUrl]);
