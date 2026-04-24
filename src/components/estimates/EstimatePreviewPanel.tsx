@@ -440,7 +440,9 @@ export function EstimatePreviewPanel({
     fetchAerialUrl();
   }, [open, contactId, propertyCoords, googleMapsApiKey]);
 
-  // Auto-default cover photo source
+  // Auto-default cover photo source — prefer uploaded > street view (only if
+  // imagery actually exists) > aerial. If street view becomes unavailable
+  // after selection, auto-fall through to aerial.
   useEffect(() => {
     if (!open) return;
     if (jobPhotos.length > 0 && jobPhotos[0].id !== 'aerial') {
@@ -455,16 +457,17 @@ export function EstimatePreviewPanel({
     }
   }, [open, jobPhotos, streetViewUrl, aerialUrl]);
 
-  // Wire coverPagePropertyPhoto based on source selection
+  // Wire coverPagePropertyPhoto based on source selection.
+  // Auto-fall through if the requested source isn't actually available.
   useEffect(() => {
     let photoUrl: string | undefined;
     if (coverPhotoSource === 'uploaded' && selectedUploadedPhotoId) {
       const photo = jobPhotos.find(p => p.id === selectedUploadedPhotoId);
       photoUrl = photo?.file_url;
     } else if (coverPhotoSource === 'streetview') {
-      photoUrl = streetViewUrl || undefined;
+      photoUrl = streetViewUrl || aerialUrl || undefined;
     } else if (coverPhotoSource === 'aerial') {
-      photoUrl = aerialUrl || undefined;
+      photoUrl = aerialUrl || streetViewUrl || undefined;
     }
     setOptions(prev => ({ ...prev, coverPagePropertyPhoto: photoUrl }));
   }, [coverPhotoSource, selectedUploadedPhotoId, jobPhotos, streetViewUrl, aerialUrl]);
