@@ -103,6 +103,12 @@ export function NotificationCenter() {
 
     if (meta.contact_id) return `/contact/${meta.contact_id}`;
     if (meta.job_id) return `/job/${meta.job_id}`;
+
+    // Fall back to explicit hints last, and only if they point to a real route
+    const candidate = meta.action_url || meta.link;
+    if (candidate && typeof candidate === 'string' && !candidate.startsWith('/signature-envelopes/')) {
+      return candidate;
+    }
     return null;
   };
 
