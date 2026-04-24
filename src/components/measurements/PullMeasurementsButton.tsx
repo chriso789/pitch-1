@@ -166,6 +166,8 @@ export function PullMeasurementsButton({
     finalCoords?: { lat: number; lng: number };
   } | null>(null);
   const [showReportPreview, setShowReportPreview] = useState(false);
+  const [showVerifyWizard, setShowVerifyWizard] = useState(false);
+  const [seedEdges, setSeedEdges] = useState<PlanEdge[] | undefined>(undefined);
   const [companyInfo, setCompanyInfo] = useState<{
     name: string;
     logo?: string;
