@@ -218,6 +218,8 @@ export function PullMeasurementsButton({
 
   // Use measurement job hook for async processing
   const { job, isActive: jobIsActive, startJob } = useMeasurementJob(propertyId);
+  const [trackedJobId, setTrackedJobId] = useState<string | null>(null);
+  const [shouldNotifyJobStatus, setShouldNotifyJobStatus] = useState(false);
 
   // Run AI analysis with the confirmed coordinates from PIN selection — now ASYNC
   async function handlePull(confirmedLat: number, confirmedLng: number, pitchOverride?: string) {
@@ -249,7 +251,7 @@ export function PullMeasurementsButton({
       }
 
       // Start async job — returns immediately
-      await startJob({
+      const jobId = await startJob({
         lat: pullLat,
         lng: pullLng,
         address: address || undefined,
@@ -257,6 +259,10 @@ export function PullMeasurementsButton({
         tenantId,
         userId: user?.id,
       });
+
+      setTrackedJobId(jobId);
+      setShouldNotifyJobStatus(true);
+      setPrevJobStatus(null);
 
       toast({
         title: "🚀 Measurement Started",
@@ -282,10 +288,13 @@ export function PullMeasurementsButton({
   
   useEffect(() => {
     if (!job) return;
+    if (!shouldNotifyJobStatus) return;
+    if (!trackedJobId || job.id !== trackedJobId) return;
     if (job.status === prevJobStatus) return;
     
     if (job.status === 'completed' && prevJobStatus !== 'completed') {
       setSuccess(true);
+      setShouldNotifyJobStatus(false);
       setTimeout(() => setSuccess(false), 5000);
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
@@ -338,6 +347,7 @@ export function PullMeasurementsButton({
         }
       })();
     } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
+      setShouldNotifyJobStatus(false);
       toast({
         title: "Analysis Failed",
         description: job.error || "AI measurement could not complete.",
@@ -346,7 +356,7 @@ export function PullMeasurementsButton({
     }
     
     setPrevJobStatus(job.status);
-  }, [job?.status, job?.error, prevJobStatus, propertyId, queryClient, toast]);
+  }, [job, prevJobStatus, propertyId, queryClient, shouldNotifyJobStatus, toast, trackedJobId]);
 
   const handleAcceptMeasurements = async (adjustedMeasurement?: any) => {
     if (!verificationData) return;
