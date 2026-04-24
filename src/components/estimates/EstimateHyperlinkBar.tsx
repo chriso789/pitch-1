@@ -469,7 +469,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
       {/* Main Navigation Bar */}
       <nav 
-        className="flex justify-space-evenly bg-card border border-border rounded-lg p-2"
+        className="flex flex-wrap justify-between gap-1 bg-card border border-border rounded-lg p-2 w-full"
         role="navigation"
         aria-label="Estimate sections"
       >
