@@ -10,13 +10,15 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Plus, Sparkles } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { DimensionedPlanDrawing, type PlanEdge, type EdgeType } from './DimensionedPlanDrawing';
+import { DimensionedPlanDrawing, type PlanEdge, type EdgeType, type AerialBackground } from './DimensionedPlanDrawing';
 
 interface EdgeConfirmationWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pipelineEntryId: string;
   initialEdges?: PlanEdge[];
+  aerial?: AerialBackground | null;
+  footprintGeo?: Array<[number, number]>;
   onSaved?: () => void;
 }
 
@@ -47,6 +49,8 @@ export function EdgeConfirmationWizard({
   onOpenChange,
   pipelineEntryId,
   initialEdges,
+  aerial,
+  footprintGeo,
   onSaved,
 }: EdgeConfirmationWizardProps) {
   const [edges, setEdges] = useState<PlanEdge[]>([]);
@@ -179,7 +183,12 @@ export function EdgeConfirmationWizard({
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 overflow-hidden flex-1">
           {/* Plan drawing */}
           <ScrollArea className="border rounded-lg p-2">
-            <DimensionedPlanDrawing edges={edges} highlightEdgeId={current?.id} />
+            <DimensionedPlanDrawing
+              edges={edges}
+              highlightEdgeId={current?.id}
+              aerial={aerial ?? null}
+              footprintGeo={footprintGeo}
+            />
             <div className="grid grid-cols-5 gap-2 mt-3 text-xs">
               {(Object.keys(totals) as EdgeType[]).map(t => (
                 <div key={t} className="text-center p-2 bg-muted/40 rounded">

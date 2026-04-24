@@ -13,7 +13,7 @@ import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 import { triggerAutomation, AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
 import { useMeasurementJob } from '@/hooks/useMeasurementJob';
 import { EdgeConfirmationWizard } from './EdgeConfirmationWizard';
-import type { PlanEdge, EdgeType } from './DimensionedPlanDrawing';
+import type { PlanEdge, EdgeType, AerialBackground } from './DimensionedPlanDrawing';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -168,6 +168,8 @@ export function PullMeasurementsButton({
   const [showReportPreview, setShowReportPreview] = useState(false);
   const [showVerifyWizard, setShowVerifyWizard] = useState(false);
   const [seedEdges, setSeedEdges] = useState<PlanEdge[] | undefined>(undefined);
+  const [seedAerial, setSeedAerial] = useState<AerialBackground | null>(null);
+  const [seedFootprint, setSeedFootprint] = useState<Array<[number, number]> | undefined>(undefined);
   const [companyInfo, setCompanyInfo] = useState<{
     name: string;
     logo?: string;
@@ -304,44 +306,139 @@ export function PullMeasurementsButton({
         description: "Confirm each edge to lock in the measurement.",
       });
 
-      // Fetch the latest AI measurement and seed the verification wizard
+      // Fetch the latest AI measurement and seed the verification wizard with
+      // the ACTUAL traced edges (linear_features_wkt) and the aerial image.
       (async () => {
         try {
           const { data } = await supabase
             .from('roof_measurements')
-            .select('total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length')
+            .select(`
+              id,
+              total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length,
+              linear_features_wkt, perimeter_wkt, footprint_vertices_geo,
+              mapbox_image_url, google_maps_image_url, satellite_overlay_url,
+              gps_coordinates, analysis_zoom, analysis_image_size, image_bounds
+            `)
             .eq('customer_id', propertyId)
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
 
-          const seeds: PlanEdge[] = [];
-          // Build a simple rectangular plan from the AI's totals so the user
-          // can confirm/correct each edge type and length.
-          const addRun = (type: EdgeType, total: number) => {
-            const len = Number(total) || 0;
-            if (len <= 0) return;
-            // Split each total into a single representative edge per type
-            seeds.push({
-              id: `ai-${type}-${seeds.length}`,
-              type,
-              p1: [0, seeds.length * 8],
-              p2: [len, seeds.length * 8],
-              length_ft: len,
-              confirmed: false,
+          let seeds: PlanEdge[] = [];
+          let footprintGeo: Array<[number, number]> | undefined;
+          let aerial: AerialBackground | null = null;
+
+          // 1) Parse linear_features_wkt → real geo-anchored edges
+          const features: Array<{ wkt: string; type: string; length_ft: number }> =
+            Array.isArray(data?.linear_features_wkt) ? (data!.linear_features_wkt as any[]) : [];
+
+          const parseLineString = (wkt: string): Array<[number, number]> | null => {
+            const m = wkt?.match(/LINESTRING\s*\(([^)]+)\)/i);
+            if (!m) return null;
+            return m[1].split(',').map(pair => {
+              const [lng, lat] = pair.trim().split(/\s+/).map(Number);
+              return [lng, lat] as [number, number];
             });
           };
-          if (data) {
+
+          // Helper: convert lng/lat → relative feet (equirectangular projection
+          // around the local centroid — accurate for parcel-size areas).
+          const FT_PER_DEG_LAT = 364000; // ≈ feet
+          const allGeoPts: Array<[number, number]> = [];
+          features.forEach(f => {
+            const pts = parseLineString(f.wkt);
+            if (pts && pts.length >= 2) allGeoPts.push(...pts);
+          });
+
+          // 2) Parse footprint vertices
+          const fp = data?.footprint_vertices_geo as any;
+          if (Array.isArray(fp) && fp.length >= 3) {
+            footprintGeo = fp
+              .map((v: any) => [Number(v.lng ?? v[0]), Number(v.lat ?? v[1])] as [number, number])
+              .filter(([lng, lat]) => Number.isFinite(lng) && Number.isFinite(lat));
+            allGeoPts.push(...footprintGeo);
+          }
+
+          // Compute geographic bounds from all points
+          let west = Infinity, south = Infinity, east = -Infinity, north = -Infinity;
+          allGeoPts.forEach(([lng, lat]) => {
+            if (lng < west) west = lng;
+            if (lng > east) east = lng;
+            if (lat < south) south = lat;
+            if (lat > north) north = lat;
+          });
+
+          const centerLat = Number.isFinite(south) ? (south + north) / 2 : (data?.gps_coordinates as any)?.lat ?? 0;
+          const ftPerDegLng = Math.cos((centerLat * Math.PI) / 180) * FT_PER_DEG_LAT;
+
+          const geoToFt = (lng: number, lat: number): [number, number] => [
+            (lng - west) * ftPerDegLng,
+            (north - lat) * FT_PER_DEG_LAT, // y grows downward
+          ];
+
+          // Build PlanEdges from geo features
+          features.forEach((f, i) => {
+            const pts = parseLineString(f.wkt);
+            if (!pts || pts.length < 2) return;
+            const a = pts[0];
+            const b = pts[pts.length - 1];
+            const type = (['ridge', 'hip', 'valley', 'eave', 'rake'].includes(f.type) ? f.type : 'eave') as EdgeType;
+            seeds.push({
+              id: `geo-${i}`,
+              type,
+              p1: geoToFt(a[0], a[1]),
+              p2: geoToFt(b[0], b[1]),
+              geo_p1: a,
+              geo_p2: b,
+              length_ft: Number(f.length_ft) || Math.hypot(geoToFt(b[0], b[1])[0] - geoToFt(a[0], a[1])[0], geoToFt(b[0], b[1])[1] - geoToFt(a[0], a[1])[1]),
+              confirmed: false,
+            });
+          });
+
+          // 3) Fallback: synthetic edges from totals if no WKT features
+          if (seeds.length === 0 && data) {
+            const addRun = (type: EdgeType, total: number) => {
+              const len = Number(total) || 0;
+              if (len <= 0) return;
+              seeds.push({
+                id: `ai-${type}-${seeds.length}`,
+                type,
+                p1: [0, seeds.length * 8],
+                p2: [len, seeds.length * 8],
+                length_ft: len,
+                confirmed: false,
+              });
+            };
             addRun('eave', data.total_eave_length || 0);
             addRun('rake', data.total_rake_length || 0);
             addRun('ridge', data.total_ridge_length || 0);
             addRun('hip', data.total_hip_length || 0);
             addRun('valley', data.total_valley_length || 0);
           }
+
+          // 4) Build aerial background if we have an image + geographic bounds
+          const imageUrl = data?.mapbox_image_url || data?.satellite_overlay_url || data?.google_maps_image_url || null;
+          if (imageUrl && Number.isFinite(west) && Number.isFinite(east) && allGeoPts.length > 0) {
+            // Pad bounds 15% so edges don't touch the image border
+            const lngPad = Math.max((east - west) * 0.15, 0.0002);
+            const latPad = Math.max((north - south) * 0.15, 0.0002);
+            const size = (data?.analysis_image_size as any) || { width: 640, height: 640 };
+            aerial = {
+              imageUrl,
+              imageWidth: Number(size.width) || 640,
+              imageHeight: Number(size.height) || 640,
+              bounds: [west - lngPad, south - latPad, east + lngPad, north + latPad],
+            };
+          }
+
           setSeedEdges(seeds.length > 0 ? seeds : undefined);
+          setSeedFootprint(footprintGeo);
+          setSeedAerial(aerial);
         } catch (e) {
           console.warn('Could not seed verify wizard from AI measurement:', e);
           setSeedEdges(undefined);
+          setSeedAerial(null);
+          setSeedFootprint(undefined);
         } finally {
           setShowVerifyWizard(true);
         }
@@ -624,6 +721,8 @@ export function PullMeasurementsButton({
         onOpenChange={setShowVerifyWizard}
         pipelineEntryId={propertyId}
         initialEdges={seedEdges}
+        aerial={seedAerial}
+        footprintGeo={seedFootprint}
         onSaved={() => {
           queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
           queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
