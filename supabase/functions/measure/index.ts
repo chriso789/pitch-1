@@ -2435,11 +2435,42 @@ Deno.serve(async (req) => {
         }
 
         // ============= ENGINE SELECTION (Phase 1) =============
-        // Vision engine: Uses AI-based detection from satellite imagery (more accurate for complex roofs)
-        // Skeleton engine: Uses geometric straight-skeleton algorithm (default, fast, works offline)
-        
+        // Engine cascade:
+        //   U-Net (trained model on Render) → Vision (AI satellite trace) → Skeleton (geometric)
+        // Every AI Measurement request runs through the trained U-Net first.
+
         let meas: MeasureResult | null = null;
-        
+
+        // ── U-Net engine (PRIMARY for AI Measurement button) ──
+        if (engine === 'unet' && !meas) {
+          console.log('[pull] 🧠 Using U-NET engine (trained internal model)');
+          try {
+            const unetOutcome = await callInternalUNet({ lat, lng, address });
+            if (unetOutcome.ok && unetOutcome.result) {
+              const overlay = unetResultToOverlay(unetOutcome.result);
+              if (overlay) {
+                meas = convertVisionOverlayToMeasureResult(overlay as any, propertyId, lat, lng);
+                if (meas) {
+                  meas.source = 'pitch-internal-unet';
+                  console.log(`[pull] ✅ U-Net measurement ready in ${unetOutcome.durationMs}ms`, {
+                    ridge_ft: meas.summary?.ridge_ft || 0,
+                    hip_ft: meas.summary?.hip_ft || 0,
+                    valley_ft: meas.summary?.valley_ft || 0,
+                  });
+                  engineUsed = 'unet';
+                }
+              }
+            }
+            if (!meas) {
+              console.warn('[pull] U-Net unavailable/empty, cascading to VISION:', unetOutcome.error || 'no-result');
+              engine = 'vision'; // cascade
+            }
+          } catch (unetErr) {
+            console.error('[pull] U-Net engine exception, cascading to VISION:', unetErr);
+            engine = 'vision';
+          }
+        }
+
         if (engine === 'vision') {
           console.log('[pull] 🔭 Using VISION engine (AI-based detection from satellite imagery)');
           
