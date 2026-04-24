@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
             boundingBox: null,
             isHistorical: true,
             historicalDate
-          }
+          } as any
         }
       } catch (histErr) {
         console.error('Historical lookup error:', histErr)
@@ -223,8 +223,8 @@ Deno.serve(async (req) => {
     // Target: Complete in <15 seconds when Solar segments are available
     // ═══════════════════════════════════════════════════════════════════════════
     
-    if (!forceFullAnalysis && solarData?.available && solarData?.roofSegments?.length >= 2 && solarData?.buildingFootprintSqft > 0) {
-      console.log(`🚀 SOLAR FAST PATH: ${solarData.roofSegments.length} segments, ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
+    if (!forceFullAnalysis && solarData?.available && solarData?.roofSegments?.length >= 2 && (solarData?.buildingFootprintSqft ?? 0) > 0) {
+      console.log(`🚀 SOLAR FAST PATH: ${solarData.roofSegments.length} segments, ${(solarData.buildingFootprintSqft ?? 0).toFixed(0)} sqft`)
       
       try {
         const fastResult = await processSolarFastPath(
@@ -643,7 +643,7 @@ Deno.serve(async (req) => {
       
       // NEW VERTEX-BASED DETECTION APPROACH (Roofr-quality)
       // Pass 1: Isolate target building with EXPANDED bounds for larger roofs
-      buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
+      buildingIsolation = await isolateTargetBuilding(selectedImage.url!, address, coordinates, solarData)
       console.log(`⏱️ Pass 1 (building isolation) complete: ${Date.now() - startTime}ms`)
       
       // PHASE 6: Apply Florida bounds shrinkage ONLY when using AI bounding-box isolation
@@ -666,7 +666,7 @@ Deno.serve(async (req) => {
       }
       
       // Pass 2: Detect perimeter vertices with FULL IMAGE TRACING
-      perimeterResult = await detectPerimeterVertices(selectedImage.url, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
+      perimeterResult = await detectPerimeterVertices(selectedImage.url!, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
       console.log(`⏱️ Pass 2 (perimeter vertices) complete: ${Date.now() - startTime}ms`)
       
       // NEW: FOOTPRINT SANITY CHECK - verify vertices span the full roof
@@ -688,7 +688,7 @@ Deno.serve(async (req) => {
         
         // Re-detect with expanded bounds and explicit instructions to find missing corners
         const redetectedResult = await detectPerimeterVerticesWithCornerFocus(
-          selectedImage.url, 
+          selectedImage.url!, 
           expandedBounds, 
           perimeterResult.vertices,
           footprintCheck.longSegments,
@@ -726,10 +726,10 @@ Deno.serve(async (req) => {
     console.log(`⏱️ Starting Pass 3 & 3.5 in parallel...`)
     const [interiorVertices, aiRidgeDetection] = await Promise.all([
       // Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
-      detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds),
+      detectInteriorJunctions(selectedImage.url!, perimeterResult.vertices, buildingIsolation.bounds),
       // Pass 3.5: AI Vision Ridge Detection - detect ACTUAL ridge positions from satellite image
       detectRidgeLinesFromImage(
-        selectedImage.url,
+        selectedImage.url!,
         perimeterResult.vertices,
         buildingIsolation.bounds,
         coordinates,
@@ -1707,12 +1707,12 @@ SIZING RULES:
     
     return { 
       bounds, 
-      otherBuildings: result.otherBuildingsDetected || 0,
-      confidence: result.confidenceTargetIsCorrect || 'medium',
-      roofShape: result.roofShape || 'rectangular',
+      otherBuildings: (result as any).otherBuildingsDetected || 0,
+      confidence: (result as any).confidenceTargetIsCorrect || 'medium',
+      roofShape: (result as any).roofShape || 'rectangular',
       estimatedDimensions: {
-        widthFt: result.estimatedRoofWidthFt || 50,
-        lengthFt: result.estimatedRoofLengthFt || 60
+        widthFt: (result as any).estimatedRoofWidthFt || 50,
+        lengthFt: (result as any).estimatedRoofLengthFt || 60
       }
     }
   } catch (err) {
@@ -1978,10 +1978,10 @@ Return ONLY valid JSON, no explanation.`
       rakeCornerCount: validVertices.filter((v: any) => v.cornerType === 'rake-corner').length,
       bumpOutCornerCount: validVertices.filter((v: any) => v.cornerType === 'bump-out-corner').length,
       totalCount: validVertices.length,
-      estimatedFacetCount: result.estimatedFacetCount || 4
+      estimatedFacetCount: (result as any).estimatedFacetCount || 4
     }
     
-    const segmentValidation = result.segmentValidation || {
+    const segmentValidation = (result as any).segmentValidation || {
       totalVertexCount: validVertices.length,
       estimatedPerimeterFt: 0,
       segmentLengths: []
@@ -2034,11 +2034,11 @@ Return ONLY valid JSON, no explanation.`
     
     return { 
       vertices: finalVertices,
-      roofType: result.roofType || 'complex',
-      complexity: result.complexity || 'moderate',
+      roofType: (result as any).roofType || 'complex',
+      complexity: (result as any).complexity || 'moderate',
       vertexStats,
-      estimatedFacetCount: result.estimatedFacetCount,
-      qualityCheck: result.qualityCheck,
+      estimatedFacetCount: (result as any).estimatedFacetCount,
+      qualityCheck: (result as any).qualityCheck,
       segmentValidation,
       perimeterValidation: {
         estimatedPerimeterFt: segmentValidation.estimatedPerimeterFt,
@@ -2152,11 +2152,11 @@ Return ONLY valid JSON.`
     
     return { 
       vertices: validVertices,
-      roofType: result.roofType || 'complex',
-      complexity: result.complexity || 'complex',
+      roofType: (result as any).roofType || 'complex',
+      complexity: (result as any).complexity || 'complex',
       vertexStats,
-      segmentValidation: result.segmentValidation,
-      newVerticesFound: result.newVerticesFound || newlyDetected
+      segmentValidation: (result as any).segmentValidation,
+      newVerticesFound: (result as any).newVerticesFound || newlyDetected
     }
   } catch (err) {
     console.error('Corner completion error:', err)
@@ -2247,9 +2247,9 @@ Return ONLY valid JSON.`
       junctions: validJunctions,
       ridgeEndpoints: result.ridgeEndpoints || [],
       valleyJunctions: result.valleyJunctions || [],
-      roofPeakType: result.roofPeakType,
-      ridgeCount: result.ridgeCount,
-      estimatedHipLineCount: result.estimatedHipLineCount
+      roofPeakType: (result as any).roofPeakType,
+      ridgeCount: (result as any).ridgeCount,
+      estimatedHipLineCount: (result as any).estimatedHipLineCount
     }
   } catch (err) {
     console.error('Interior junction detection error:', err)
@@ -2406,8 +2406,8 @@ IMPORTANT: Return ONLY valid JSON. Detect ALL visible ridges and hips.`;
     
     return {
       ridgeLines: ridgeLinesWithLength,
-      roofType: result.roofType || 'unknown',
-      ridgeDirection: result.ridgeDirection || 'horizontal',
+      roofType: (result as any).roofType || 'unknown',
+      ridgeDirection: (result as any).ridgeDirection || 'horizontal',
       averageConfidence: avgConfidence,
       source: 'ai_vision'
     };
@@ -4962,7 +4962,7 @@ async function processSolarFastPath(
   footprintPromises.push(
     (async () => {
       try {
-        const osmFootprint = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng)
+        const osmFootprint = await fetchOSMBuildingFootprintLegacy(coordinates.lat, coordinates.lng)
         if (osmFootprint && osmFootprint.vertices.length >= 4) {
           const coords = osmFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
           footprintCandidates.push({ source: 'osm_overpass', coordinates: coords, confidence: osmFootprint.confidence, vertexCount: osmFootprint.vertices.length })
@@ -5180,7 +5180,7 @@ async function processSolarFastPath(
       predominantPitch,
       undefined, // structureAnalysis
       undefined, // aiRidgeOverride
-      perimeterResult?.roofType // pass detected roof type for gable/hip branching
+      undefined // roofType (perimeterResult not in scope here)
     )
     console.log(`✅ Solar assembly: ${assembledGeometry.facets.length} facets, quality: ${assembledGeometry.quality}`)
   } catch (err) {
@@ -5629,17 +5629,17 @@ function degreesToPitchFast(degrees: number): string {
 // Free API, no key required - backup when Mapbox and Regrid fail
 // ═══════════════════════════════════════════════════════════════════════════
 
-interface OSMFootprint {
+interface LegacyOSMFootprint {
   vertices: Array<{ lat: number; lng: number }>;
   confidence: number;
   source: 'osm_overpass';
   osmId?: string;
 }
 
-async function fetchOSMBuildingFootprint(
+async function fetchOSMBuildingFootprintLegacy(
   lat: number,
   lng: number
-): Promise<OSMFootprint | null> {
+): Promise<LegacyOSMFootprint | null> {
   try {
     // Query buildings within ~50m of the point
     const radius = 50; // meters

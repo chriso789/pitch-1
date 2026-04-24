@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
 
     // Store message
     const { error } = await supabase.from('messages').insert({
-      tenant_id: '', // Map from business_id
+      tenant_id: '' as any, // Map from business_id
       contact_phone: from,
       message_text: text,
       direction: 'inbound',
@@ -39,10 +39,11 @@ Deno.serve(async (req) => {
       JSON.stringify({ success: true }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('AMB inbound error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: errorMessage }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
