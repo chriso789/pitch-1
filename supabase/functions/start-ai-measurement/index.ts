@@ -105,8 +105,17 @@ Deno.serve(async (req) => {
         const measureResult = await measureResponse.json()
         console.log('[start-ai-measurement] Measure result:', JSON.stringify(measureResult).substring(0, 500))
 
+        // Detect timeout / gateway-level errors that don't follow our { ok, data } envelope
+        if (measureResult?.code === 'IDLE_TIMEOUT' || measureResult?.code === 'BOOT_ERROR') {
+          throw new Error(
+            `AI measurement timed out (${measureResult.code}). The roof analysis took longer than the 150s limit. ` +
+            `Try "Verify to 100%" for a manual edge-by-edge measurement, or upload a blueprint/EagleView report.`
+          )
+        }
+
         if (!measureResult?.ok || !measureResult?.data?.measurement) {
-          throw new Error(measureResult?.error || 'Measure function returned no data')
+          const detail = measureResult?.error || measureResult?.message || 'no payload returned'
+          throw new Error(`AI measurement failed: ${detail}`)
         }
 
         const measurement = measureResult.data.measurement
