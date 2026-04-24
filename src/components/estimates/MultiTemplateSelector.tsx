@@ -69,6 +69,10 @@ interface CompanyInfo {
   address_state?: string | null;
   address_zip?: string | null;
   license_number?: string | null;
+  established_year?: number | null;
+  brand_story?: string | null;
+  brand_mission?: string | null;
+  brand_certifications?: string | null;
 }
 
 interface Template {
