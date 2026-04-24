@@ -31,6 +31,59 @@ interface PullMeasurementsButtonProps {
   onSuccess?: (measurement: any, tags: Record<string, any>) => void;
 }
 
+function getLiveAerialImageUrl(lat: number, lng: number, zoom = 20, width = 640, height = 640) {
+  const googleKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+  const mapboxToken = import.meta.env.VITE_MAPBOX_PUBLIC_TOKEN;
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+
+  if (googleKey) {
+    return `https://maps.googleapis.com/maps/api/staticmap?center=${lat},${lng}&zoom=${zoom}&size=${width}x${height}&scale=2&maptype=satellite&key=${googleKey}`;
+  }
+
+  if (mapboxToken) {
+    return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${zoom}/${width}x${height}@2x?access_token=${mapboxToken}`;
+  }
+
+  if (supabaseUrl) {
+    return `${supabaseUrl}/functions/v1/satellite-tile?lat=${lat}&lng=${lng}&zoom=${zoom}&size=${Math.max(width, height)}`;
+  }
+
+  return null;
+}
+
+function normalizeAerialBounds(input: any): [number, number, number, number] | null {
+  if (!input) return null;
+
+  if (Array.isArray(input) && input.length === 4) {
+    const values = input.map(Number);
+    if (values.every(Number.isFinite)) {
+      return values as [number, number, number, number];
+    }
+  }
+
+  if (input?.topLeft && input?.bottomRight) {
+    const west = Number(input.topLeft.lng);
+    const north = Number(input.topLeft.lat);
+    const east = Number(input.bottomRight.lng);
+    const south = Number(input.bottomRight.lat);
+    if ([west, south, east, north].every(Number.isFinite)) {
+      return [west, south, east, north];
+    }
+  }
+
+  return null;
+}
+
+function computeStaticAerialBounds(lat: number, lng: number, zoom = 20, width = 640, height = 640): [number, number, number, number] {
+  const metersPerPixel = 156543.03392 * Math.cos((lat * Math.PI) / 180) / Math.pow(2, zoom);
+  const widthInMeters = width * metersPerPixel;
+  const heightInMeters = height * metersPerPixel;
+  const latOffset = (heightInMeters / 2) / 111320;
+  const lngOffset = (widthInMeters / 2) / (111320 * Math.cos((lat * Math.PI) / 180));
+
+  return [lng - lngOffset, lat - latOffset, lng + lngOffset, lat + latOffset];
+}
+
 /**
  * Transform new analyze-roof-aerial response to legacy format for MeasurementVerificationDialog
  */
@@ -368,7 +421,7 @@ export function PullMeasurementsButton({
             if (lat > north) north = lat;
           });
 
-          const centerLat = Number.isFinite(south) ? (south + north) / 2 : (data?.gps_coordinates as any)?.lat ?? 0;
+          const centerLat = Number.isFinite(south) ? (south + north) / 2 : (data?.gps_coordinates as any)?.lat ?? lat;
           const ftPerDegLng = Math.cos((centerLat * Math.PI) / 180) * FT_PER_DEG_LAT;
 
           const geoToFt = (lng: number, lat: number): [number, number] => [
@@ -416,18 +469,42 @@ export function PullMeasurementsButton({
             addRun('valley', data.total_valley_length || 0);
           }
 
-          // 4) Build aerial background if we have an image + geographic bounds
-          const imageUrl = data?.mapbox_image_url || data?.satellite_overlay_url || data?.google_maps_image_url || null;
-          if (imageUrl && Number.isFinite(west) && Number.isFinite(east) && allGeoPts.length > 0) {
-            // Pad bounds 15% so edges don't touch the image border
+          // 4) Build aerial background. If the DB row missed the cached URL,
+          // fetch a live static aerial because existing properties should still render.
+          const size = (data?.analysis_image_size as any) || { width: 640, height: 640 };
+          const zoom = Number(data?.analysis_zoom) || 20;
+          const fallbackLat = Number((data?.gps_coordinates as any)?.lat ?? lat);
+          const fallbackLng = Number((data?.gps_coordinates as any)?.lng ?? lng);
+          const imageUrl = data?.mapbox_image_url || data?.satellite_overlay_url || data?.google_maps_image_url || getLiveAerialImageUrl(
+            fallbackLat,
+            fallbackLng,
+            zoom,
+            Number(size.width) || 640,
+            Number(size.height) || 640,
+          );
+
+          let bounds = normalizeAerialBounds((data as any)?.image_bounds);
+          if (!bounds && Number.isFinite(west) && Number.isFinite(east) && allGeoPts.length > 0) {
             const lngPad = Math.max((east - west) * 0.15, 0.0002);
             const latPad = Math.max((north - south) * 0.15, 0.0002);
-            const size = (data?.analysis_image_size as any) || { width: 640, height: 640 };
+            bounds = [west - lngPad, south - latPad, east + lngPad, north + latPad];
+          }
+          if (!bounds && Number.isFinite(fallbackLat) && Number.isFinite(fallbackLng)) {
+            bounds = computeStaticAerialBounds(
+              fallbackLat,
+              fallbackLng,
+              zoom,
+              Number(size.width) || 640,
+              Number(size.height) || 640,
+            );
+          }
+
+          if (imageUrl && bounds) {
             aerial = {
               imageUrl,
               imageWidth: Number(size.width) || 640,
               imageHeight: Number(size.height) || 640,
-              bounds: [west - lngPad, south - latPad, east + lngPad, north + latPad],
+              bounds,
             };
           }
 
@@ -453,7 +530,7 @@ export function PullMeasurementsButton({
     }
     
     setPrevJobStatus(job.status);
-  }, [job, prevJobStatus, propertyId, queryClient, shouldNotifyJobStatus, toast, trackedJobId]);
+  }, [job, lat, lng, prevJobStatus, propertyId, queryClient, shouldNotifyJobStatus, toast, trackedJobId]);
 
   const handleAcceptMeasurements = async (adjustedMeasurement?: any) => {
     if (!verificationData) return;

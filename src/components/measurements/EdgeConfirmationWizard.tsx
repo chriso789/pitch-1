@@ -215,13 +215,13 @@ export function EdgeConfirmationWizard({
         {(missingAerial || missingTracedNetwork) && (
           <Alert variant="default" className="border-amber-300 bg-amber-50 dark:bg-amber-950/30">
             <ImageOff className="h-4 w-4 text-amber-600" />
-            <AlertTitle className="text-amber-900 dark:text-amber-200">
-              Latest measurement is missing data
+             <AlertTitle className="text-amber-900 dark:text-amber-200">
+               Latest measurement is incomplete
             </AlertTitle>
             <AlertDescription className="text-amber-800 dark:text-amber-300 space-y-2">
               <ul className="list-disc list-inside text-xs">
-                {missingAerial && <li>No aerial image (Mapbox/Google) was saved with this run.</li>}
-                {missingTracedNetwork && <li>No traced edge network (linear_features_wkt) was returned by the AI.</li>}
+                 {missingAerial && <li>Could not build a live aerial background from the property coordinates for this run.</li>}
+                 {missingTracedNetwork && <li>No traced edge network was returned by the AI for this measurement.</li>}
               </ul>
               {onRerunMeasurement && (
                 <Button
