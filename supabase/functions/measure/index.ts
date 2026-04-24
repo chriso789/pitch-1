@@ -2198,11 +2198,14 @@ Deno.serve(async (req) => {
 
       // Route: action=pull
       if (action === 'pull') {
-        // Phase 1: Added 'engine' parameter for baseline detection method
-        // 'skeleton' = geometric straight-skeleton algorithm (default, fast)
-        // 'vision' = AI vision-based detection from satellite imagery (more accurate)
-        // 'unified' = NEW: Full multi-source fusion pipeline (opt-in)
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
+        // Engine selection (cascading fallback):
+        //   'unet'     = trained internal U-Net (PRIMARY for AI Measurement button)
+        //   'vision'   = AI vision-based detection from satellite imagery
+        //   'skeleton' = geometric straight-skeleton algorithm (final fallback)
+        //   'unified'  = full multi-source fusion pipeline (opt-in)
+        // Default is 'unet' so every AI Measurement request runs through the
+        // trained model first, then degrades gracefully to vision and skeleton.
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'unet', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
 
         if (!propertyId) {
           return json({ 
