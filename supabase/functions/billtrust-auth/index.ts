@@ -341,7 +341,7 @@ Deno.serve(async (req) => {
 
 // Helper function to log audit events
 async function logAuditEvent(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   tenantId: string,
   userId: string,
   action: string,
