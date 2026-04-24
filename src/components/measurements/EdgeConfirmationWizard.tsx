@@ -10,13 +10,15 @@ import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { CheckCircle2, ChevronLeft, ChevronRight, Trash2, Plus, Sparkles } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { DimensionedPlanDrawing, type PlanEdge, type EdgeType } from './DimensionedPlanDrawing';
+import { DimensionedPlanDrawing, type PlanEdge, type EdgeType, type AerialBackground } from './DimensionedPlanDrawing';
 
 interface EdgeConfirmationWizardProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pipelineEntryId: string;
   initialEdges?: PlanEdge[];
+  aerial?: AerialBackground | null;
+  footprintGeo?: Array<[number, number]>;
   onSaved?: () => void;
 }
 
