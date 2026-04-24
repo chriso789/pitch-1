@@ -168,6 +168,8 @@ export function PullMeasurementsButton({
   const [showReportPreview, setShowReportPreview] = useState(false);
   const [showVerifyWizard, setShowVerifyWizard] = useState(false);
   const [seedEdges, setSeedEdges] = useState<PlanEdge[] | undefined>(undefined);
+  const [seedAerial, setSeedAerial] = useState<AerialBackground | null>(null);
+  const [seedFootprint, setSeedFootprint] = useState<Array<[number, number]> | undefined>(undefined);
   const [companyInfo, setCompanyInfo] = useState<{
     name: string;
     logo?: string;
