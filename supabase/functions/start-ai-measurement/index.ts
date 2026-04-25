@@ -318,8 +318,8 @@ Deno.serve(async (req) => {
             overlay_schema: measurement.overlay_schema || null,
             // Confidence
             measurement_confidence: 0.85,
-            requires_manual_review: requiresManualReview,
-            validation_status: validationStatus,
+            requires_manual_review: requiresManualReview || Boolean(areaSanityWarning),
+            validation_status: areaSanityWarning ? 'flagged' : validationStatus,
             // Organization
             tenant_id: effectiveTenantId,
           })
