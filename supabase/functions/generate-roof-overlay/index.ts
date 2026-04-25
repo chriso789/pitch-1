@@ -290,7 +290,7 @@ Return ONLY a JSON object matching this shape (no markdown):
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'google/gemini-3-flash-preview',
         messages: [
           {
             role: 'system',
@@ -394,7 +394,7 @@ Return ONLY valid JSON (no markdown):
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-pro',
+        model: 'google/gemini-3-flash-preview',
         messages: [
           {
             role: 'system',
