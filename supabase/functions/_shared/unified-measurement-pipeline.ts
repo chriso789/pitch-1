@@ -192,7 +192,7 @@ function pitchRatioToDegrees(ratio: string): number {
  * Extract ridge points from topology for terrain elevation sampling.
  */
 function extractRidgePoints(topology: RoofTopology): [number, number][] {
-  const ridgeEdges = topology.skeleton.filter(e => e.edgeType === 'ridge');
+  const ridgeEdges = topology.skeleton.filter(e => e.type === 'ridge');
   const points: [number, number][] = [];
   for (const edge of ridgeEdges) {
     points.push(edge.start);
@@ -214,7 +214,7 @@ function skeletonToDetectedEdges(topology: RoofTopology): DetectedEdge[] {
   return topology.skeleton.map(e => ({
     start: e.start,
     end: e.end,
-    type: (e.edgeType as DetectedEdge['type']) || 'unknown',
+    type: (e.type as DetectedEdge['type']) || 'unknown',
     confidence: 0.8,
     source: 'skeleton',
   }));
@@ -370,7 +370,7 @@ export async function runUnifiedMeasurementPipeline(
   let snapResult: SnapResult | null = null;
   try {
     const detectedEdges = skeletonToDetectedEdges(topology);
-    snapResult = snapEdgesToFootprint(detectedEdges, footprint.vertices, 3.0, 5.0);
+    snapResult = snapEdgesToFootprint(detectedEdges, footprint.vertices.map(v => [v.lng, v.lat] as [number, number]), 3.0, 5.0);
     log(`✅ Snapping: ${snapResult.snapStats.edgesSnapped}/${snapResult.snapStats.totalEdges} edges snapped, ${snapResult.discardedCount} discarded`);
     if (snapResult.discardedCount > 0) {
       warnings.push(`${snapResult.discardedCount} detected edges discarded (outside footprint)`);
@@ -400,7 +400,7 @@ export async function runUnifiedMeasurementPipeline(
     (async () => {
       if (!keys.MAPBOX_ACCESS_TOKEN) return null;
       return await fetchTerrainElevation(
-        footprint!.vertices as [number, number][],
+        footprint!.vertices.map(v => [v.lng, v.lat] as [number, number]),
         ridgePoints,
         keys.MAPBOX_ACCESS_TOKEN
       );
@@ -667,7 +667,7 @@ export async function runUnifiedMeasurementPipeline(
           
           const spatialResult = alignVendorToAerial({
             vendorGeometry: cleaned,
-            footprintVertices: footprint.vertices as [number, number][],
+            footprintVertices: footprint.vertices.map(v => [v.lng, v.lat] as [number, number]),
             imageBounds,
             imageDims,
           });
@@ -692,7 +692,7 @@ export async function runUnifiedMeasurementPipeline(
       
       // Use footprint bbox as roof bbox if available
       const roofBbox: BBox | null = footprint
-        ? bboxFromPoints(footprint.vertices.map(v => [v[0], v[1]]))
+        ? bboxFromPoints(footprint.vertices.map(v => [v.lng, v.lat] as [number, number]))
         : null;
       
       const alignmentDebug = estimateControlPointAlignment(
