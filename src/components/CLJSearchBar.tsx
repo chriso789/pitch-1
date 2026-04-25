@@ -281,20 +281,20 @@ export const CLJSearchBar = () => {
 
               {/* Recent Searches */}
               {recents.length > 0 && searchTerm.length < 2 && (
-                <CommandGroup heading={
-                  <div className="flex items-center justify-between w-full">
-                    <div className="flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-muted-foreground" />
+                <>
+                  <div className="flex items-center justify-between px-2 py-1.5">
+                    <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                      <Clock className="h-3.5 w-3.5" />
                       <span>Recent</span>
                     </div>
                     <button
-                      onClick={(e) => { e.stopPropagation(); clearRecents(); }}
+                      onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); clearRecents(); }}
                       className="text-xs text-muted-foreground hover:text-foreground transition-colors px-1"
                     >
                       Clear
                     </button>
                   </div>
-                }>
+                  <CommandGroup>
                   {recents.map((result) => {
                     const config = ENTITY_CONFIG[result.entity_type];
                     const Icon = config.icon;
@@ -322,6 +322,7 @@ export const CLJSearchBar = () => {
                     );
                   })}
                 </CommandGroup>
+                </>
               )}
               
               {/* Contacts Group */}
