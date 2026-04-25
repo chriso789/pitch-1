@@ -648,12 +648,14 @@ export function UnifiedMeasurementPanel({
         'lf.rake': rakeLength,
         'lf.perimeter': eaveLength + rakeLength,
         'source': 'ai_pulled',
+        'measurement_id': measurement.id,
         'imported_at': measurement.created_at,
       };
 
       await supabase.from('measurement_approvals').insert({
         tenant_id: entry.tenant_id,
         pipeline_entry_id: pipelineEntryId,
+        measurement_id: measurement.id,
         approved_at: new Date().toISOString(),
         saved_tags: savedTags,
         approval_notes: `AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
@@ -1571,12 +1573,14 @@ function MeasurementHistorySection({
         'lf.rake': rakeLength,
         'lf.perimeter': perimeter,
         'source': 'ai_pulled',
+        'measurement_id': measurement.id,
         'imported_at': measurement.created_at,
       };
 
       await supabase.from('measurement_approvals').insert({
         tenant_id: entry.tenant_id,
         pipeline_entry_id: pipelineEntryId,
+        measurement_id: measurement.id,
         approved_at: new Date().toISOString(),
         saved_tags: savedTags,
         approval_notes: `Saved from AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
