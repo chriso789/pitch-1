@@ -80,7 +80,6 @@ const handler = async (req: Request): Promise<Response> => {
       });
     }
 
-    const tenantId = profile.tenant_id;
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + expires_in_days);
 
