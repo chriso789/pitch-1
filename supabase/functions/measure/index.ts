@@ -3295,6 +3295,74 @@ Deno.serve(async (req) => {
           console.error('Roof line overlay trigger exception:', overlayErr);
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // 🗺️ MIRROR GEO-ANCHORED EDGES INTO roof_measurements
+        // The lead-screen UI (PullMeasurementsButton → DimensionedPlanDrawing)
+        // reads linear_features_wkt + perimeter_wkt + footprint_vertices_geo
+        // from roof_measurements to overlay each ridge/hip/valley/eave/rake on
+        // the aerial. Without these, it falls back to stacked horizontal lines.
+        // The legacy persistMeasurement RPC writes to a different table, so we
+        // explicitly upsert the geo features here.
+        // ═══════════════════════════════════════════════════════════════════
+        try {
+          const features = (meas.linear_features || []).filter((f: any) =>
+            f && typeof f.wkt === 'string' && /LINESTRING/i.test(f.wkt)
+          );
+          const perimWkt = meas.geom_wkt || null;
+          if (features.length > 0 || perimWkt) {
+            const ridgeTot = features.filter((f: any) => f.type === 'ridge').reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0);
+            const hipTot = features.filter((f: any) => f.type === 'hip').reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0);
+            const valleyTot = features.filter((f: any) => f.type === 'valley').reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0);
+            const eaveTot = features.filter((f: any) => f.type === 'eave').reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0);
+            const rakeTot = features.filter((f: any) => f.type === 'rake').reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0);
+
+            // Derive footprint vertices from perimeter WKT for the overlay viewer
+            let footprintVerts: Array<{ lat: number; lng: number }> | null = null;
+            if (perimWkt) {
+              const m = perimWkt.match(/POLYGON\s*\(\s*\(([^)]+)\)/i);
+              if (m) {
+                footprintVerts = m[1].split(',').map((pair: string) => {
+                  const [lng, lat] = pair.trim().split(/\s+/).map(Number);
+                  return { lat, lng };
+                }).filter((v: any) => Number.isFinite(v.lat) && Number.isFinite(v.lng));
+              }
+            }
+
+            const rmRow: Record<string, any> = {
+              customer_id: propertyId,
+              tenant_id: row.tenant_id || null,
+              target_lat: lat,
+              target_lng: lng,
+              gps_coordinates: { lat, lng },
+              property_address: address || null,
+              detection_method: 'vision',
+              footprint_source: meas.source || 'vision_overlay',
+              linear_features_wkt: features as any,
+              perimeter_wkt: perimWkt,
+              footprint_vertices_geo: footprintVerts as any,
+              total_ridge_length: ridgeTot,
+              total_hip_length: hipTot,
+              total_valley_length: valleyTot,
+              total_eave_length: eaveTot,
+              total_rake_length: rakeTot,
+              ai_detection_data: { engine: engineUsed, source: meas.source, feature_count: features.length },
+            };
+
+            const { error: rmErr } = await adminSupabase
+              .from('roof_measurements')
+              .insert(rmRow);
+            if (rmErr) {
+              console.error('[pull] roof_measurements geo-mirror insert failed:', rmErr.message);
+            } else {
+              console.log(`[pull] ✅ Mirrored ${features.length} geo-anchored edges into roof_measurements for ${propertyId}`);
+            }
+          } else {
+            console.warn('[pull] No geo features or perimeter to mirror into roof_measurements');
+          }
+        } catch (mirrorErr) {
+          console.error('[pull] roof_measurements mirror exception:', mirrorErr);
+        }
+
         return json({ 
           ok: true, 
           data: {
