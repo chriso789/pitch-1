@@ -47,7 +47,7 @@ const plans = [
   },
   {
     name: "CRM + AI Measuring",
-    price: "$100",
+    price: "$120",
     period: "/user/month",
     description: "Full platform with AI-powered measurements",
     icon: Building2,
