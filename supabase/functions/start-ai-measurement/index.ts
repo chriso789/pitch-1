@@ -305,7 +305,10 @@ Deno.serve(async (req) => {
             detection_method: engineUsed,
             target_lat: Number(lat),
             target_lng: Number(lng),
-            perimeter_wkt: measurement.geom_wkt || null,
+            perimeter_wkt: perimWktGeo,
+            // 🗺️ Geo overlay payload — required for the lead-screen aerial trace
+            linear_features_wkt: linearFeaturesGeo as any,
+            footprint_vertices_geo: footprintVertsGeo as any,
             // Imagery
             google_maps_image_url: measurement.google_maps_image_url || null,
             mapbox_image_url: measurement.mapbox_image_url || null,
