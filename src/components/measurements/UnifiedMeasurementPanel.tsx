@@ -607,7 +607,15 @@ export function UnifiedMeasurementPanel({
         variant: 'destructive',
       });
     }
-  }, [address, latitude, longitude, pipelineEntryId]);
+  }, [latitude, longitude, pipelineEntryId]);
+
+  const handleViewAiHistoryReport = useCallback((measurement: any) => {
+    setReportState({
+      open: true,
+      measurement: buildReportMeasurementFromRoofMeasurement(measurement, pipelineEntryId),
+      tags: buildReportTagsFromRoofMeasurement(measurement),
+    });
+  }, [pipelineEntryId]);
 
   // Quick save an AI measurement directly from the banner
   const [isSavingDirect, setIsSavingDirect] = useState(false);
@@ -734,6 +742,7 @@ export function UnifiedMeasurementPanel({
               onSetActive={() => {}}
               onDelete={() => handleDeleteClick(activeMeasurement.id)}
               onEdit={() => handleEditMeasurement(activeMeasurement)}
+              onViewReport={() => handleViewSavedReport(activeMeasurement)}
               isSettingActive={false}
             />
           )}
@@ -1001,6 +1010,7 @@ export function UnifiedMeasurementPanel({
             aiMeasurements={aiMeasurements || []}
             pipelineEntryId={pipelineEntryId}
             onSaveToApprovals={handleMeasurementSuccess}
+            onViewAiReport={handleViewAiHistoryReport}
             isPhone={layout.isPhone}
           />
 
@@ -1091,6 +1101,16 @@ export function UnifiedMeasurementPanel({
           editMode={true}
           approvalId={editingApproval.id}
           initialValues={getInitialValuesFromTags(editingApproval.saved_tags)}
+        />
+      )}
+
+      {reportState.measurement && (
+        <MeasurementReportDialog
+          open={reportState.open}
+          onOpenChange={(open) => setReportState((current) => ({ ...current, open }))}
+          measurement={reportState.measurement}
+          tags={reportState.tags}
+          address={address}
         />
       )}
     </>
