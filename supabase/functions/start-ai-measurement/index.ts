@@ -67,8 +67,28 @@ Deno.serve(async (req) => {
 
     if (insertError) throw insertError
 
+    // Helper: poll roof_measurements for a row written by `measure` after the job started.
+    // Used when the gateway kills our fetch with IDLE_TIMEOUT even though `measure`
+    // actually completed and persisted a row.
+    const pollForCompletedMeasurement = async (jobStartIso: string, maxAttempts = 30) => {
+      for (let i = 0; i < maxAttempts; i++) {
+        await new Promise((r) => setTimeout(r, 4000)) // 4s × 30 = 2 min
+        const { data: rm } = await supabaseAdmin
+          .from('roof_measurements')
+          .select('id, total_area_flat_sqft, total_squares, predominant_pitch, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, ai_detection_data, detection_method, requires_manual_review')
+          .eq('customer_id', pipelineEntryId)
+          .gte('created_at', jobStartIso)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (rm?.id) return rm
+      }
+      return null
+    }
+
     // Fire-and-forget background processing
     const processJob = async () => {
+      const jobStartIso = new Date().toISOString()
       try {
         // Update status to processing
         await supabaseAdmin
@@ -76,41 +96,68 @@ Deno.serve(async (req) => {
           .update({ 
             status: 'processing', 
             progress_message: 'Running AI measurement analysis...',
-            started_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            started_at: jobStartIso,
+            updated_at: jobStartIso,
           })
           .eq('id', job.id)
 
         // Call the canonical measure function with action=pull
-        const measureResponse = await fetch(
-          `${SUPABASE_URL}/functions/v1/measure`,
-          {
-            method: 'POST',
-            headers: {
-              'Authorization': authHeader || `Bearer ${SUPABASE_ANON_KEY}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              action: 'pull',
-              propertyId: pipelineEntryId,
-              lat: Number(lat),
-              lng: Number(lng),
-              address: address || 'Unknown Address',
-              // Gemini-vision tracing as PRIMARY (proves capability without U-Net dependency).
-              // Cascades to skeleton automatically inside `measure` if vision returns nothing.
-              engine: 'vision',
-              pitchOverride: pitchOverride || undefined,
-            }),
+        let measureResult: any = null
+        let gatewayTimedOut = false
+        try {
+          const measureResponse = await fetch(
+            `${SUPABASE_URL}/functions/v1/measure`,
+            {
+              method: 'POST',
+              headers: {
+                'Authorization': authHeader || `Bearer ${SUPABASE_ANON_KEY}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                action: 'pull',
+                propertyId: pipelineEntryId,
+                lat: Number(lat),
+                lng: Number(lng),
+                address: address || 'Unknown Address',
+                engine: 'vision',
+                pitchOverride: pitchOverride || undefined,
+              }),
+            }
+          )
+          measureResult = await measureResponse.json()
+          console.log('[start-ai-measurement] Measure result:', JSON.stringify(measureResult).substring(0, 500))
+        } catch (fetchErr) {
+          console.warn('[start-ai-measurement] measure fetch failed (likely gateway timeout):', fetchErr)
+          gatewayTimedOut = true
+        }
+
+        // Detect timeout / gateway-level errors that don't follow our { ok, data } envelope.
+        // The `measure` function commonly finishes its work AND persists `roof_measurements`
+        // right at the 150s gateway cap, so we poll for the saved row before giving up.
+        if (gatewayTimedOut || measureResult?.code === 'IDLE_TIMEOUT' || measureResult?.code === 'BOOT_ERROR') {
+          await supabaseAdmin
+            .from('measurement_jobs')
+            .update({ progress_message: 'Finalizing — measure timed out at gateway, checking for saved row...', updated_at: new Date().toISOString() })
+            .eq('id', job.id)
+
+          const saved = await pollForCompletedMeasurement(jobStartIso)
+          if (saved?.id) {
+            console.log('[start-ai-measurement] ✅ Recovered from gateway timeout — found saved row', saved.id)
+            await supabaseAdmin
+              .from('measurement_jobs')
+              .update({
+                status: 'completed',
+                progress_message: 'Measurement complete (recovered after gateway timeout)',
+                measurement_id: saved.id,
+                completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+              })
+              .eq('id', job.id)
+            return
           }
-        )
 
-        const measureResult = await measureResponse.json()
-        console.log('[start-ai-measurement] Measure result:', JSON.stringify(measureResult).substring(0, 500))
-
-        // Detect timeout / gateway-level errors that don't follow our { ok, data } envelope
-        if (measureResult?.code === 'IDLE_TIMEOUT' || measureResult?.code === 'BOOT_ERROR') {
           throw new Error(
-            `AI measurement timed out (${measureResult.code}). The roof analysis took longer than the 150s limit. ` +
+            `AI measurement timed out (${measureResult?.code || 'GATEWAY_TIMEOUT'}). The roof analysis took longer than the 150s limit. ` +
             `Try "Verify to 100%" for a manual edge-by-edge measurement, or upload a blueprint/EagleView report.`
           )
         }
