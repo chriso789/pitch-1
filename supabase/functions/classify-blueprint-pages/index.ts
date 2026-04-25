@@ -1,6 +1,6 @@
 // Classifies each plan_pages row using Lovable AI Gateway (text-based for now).
 // Updates page_type, sheet_name, sheet_number, scale_text on each page.
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
