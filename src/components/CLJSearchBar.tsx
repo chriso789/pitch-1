@@ -322,6 +322,7 @@ export const CLJSearchBar = () => {
                     );
                   })}
                 </CommandGroup>
+                </>
               )}
               
               {/* Contacts Group */}
