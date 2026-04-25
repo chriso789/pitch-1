@@ -27,6 +27,8 @@ export interface DeviationResult {
   alignmentScore: number; // 0-1 where 1 is perfect alignment
   needsCorrection: boolean;
   correctedWkt?: string;
+  isMissingFeature?: boolean;
+  tracedLengthFt?: number;
 }
 
 export interface EvaluationResult {

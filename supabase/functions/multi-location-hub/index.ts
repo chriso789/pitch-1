@@ -124,7 +124,7 @@ Deno.serve(async (req) => {
 
         // Get metrics for each location
         const metrics = await Promise.all(
-          (locations || []).map(async (location) => {
+          (locations || []).map(async (location: any) => {
             // Get leads/contacts for this location (by territory or assignment)
             const { count: leadCount } = await supabase
               .from("pipeline_entries")
@@ -141,7 +141,7 @@ Deno.serve(async (req) => {
               .eq("status", "won")
               .gte("created_at", startDate.toISOString());
 
-            const revenue = wonDeals?.reduce((sum, d) => sum + (d.estimated_value || 0), 0) || 0;
+            const revenue = wonDeals?.reduce((sum: number, d: any) => sum + (d.estimated_value || 0), 0) || 0;
 
             const { count: projectCount } = await supabase
               .from("projects")
@@ -301,7 +301,7 @@ Deno.serve(async (req) => {
 
         // Get comparison metrics
         const comparison = await Promise.all(
-          (locations || []).map(async (location) => {
+          (locations || []).map(async (location: any) => {
             // Current period
             const { data: currentDeals } = await supabase
               .from("pipeline_entries")
@@ -320,19 +320,19 @@ Deno.serve(async (req) => {
               .lt("created_at", startDate.toISOString());
 
             const currentRevenue = currentDeals
-              ?.filter(d => d.status === "won")
-              .reduce((s, d) => s + (d.estimated_value || 0), 0) || 0;
+              ?.filter((d: any) => d.status === "won")
+              .reduce((s: number, d: any) => s + (d.estimated_value || 0), 0) || 0;
 
             const previousRevenue = previousDeals
-              ?.filter(d => d.status === "won")
-              .reduce((s, d) => s + (d.estimated_value || 0), 0) || 0;
+              ?.filter((d: any) => d.status === "won")
+              .reduce((s: number, d: any) => s + (d.estimated_value || 0), 0) || 0;
 
             const currentConversion = currentDeals?.length 
-              ? (currentDeals.filter(d => d.status === "won").length / currentDeals.length * 100)
+              ? (currentDeals.filter((d: any) => d.status === "won").length / currentDeals.length * 100)
               : 0;
 
             const previousConversion = previousDeals?.length 
-              ? (previousDeals.filter(d => d.status === "won").length / previousDeals.length * 100)
+              ? (previousDeals.filter((d: any) => d.status === "won").length / previousDeals.length * 100)
               : 0;
 
             return {
@@ -341,13 +341,13 @@ Deno.serve(async (req) => {
               current_period: {
                 revenue: currentRevenue,
                 leads: currentDeals?.length || 0,
-                won: currentDeals?.filter(d => d.status === "won").length || 0,
+                won: currentDeals?.filter((d: any) => d.status === "won").length || 0,
                 conversion_rate: currentConversion.toFixed(1)
               },
               previous_period: {
                 revenue: previousRevenue,
                 leads: previousDeals?.length || 0,
-                won: previousDeals?.filter(d => d.status === "won").length || 0,
+                won: previousDeals?.filter((d: any) => d.status === "won").length || 0,
                 conversion_rate: previousConversion.toFixed(1)
               },
               growth: {
@@ -415,10 +415,10 @@ Deno.serve(async (req) => {
           company_wide: {
             total_leads: allLeads?.length || 0,
             total_revenue: allLeads
-              ?.filter(l => l.status === "won")
-              .reduce((s, l) => s + (l.estimated_value || 0), 0) || 0,
+              ?.filter((l: any) => l.status === "won")
+              .reduce((s: number, l: any) => s + (l.estimated_value || 0), 0) || 0,
             total_projects: allProjects?.length || 0,
-            project_value: allProjects?.reduce((s, p) => s + (p.contract_amount || 0), 0) || 0,
+            project_value: allProjects?.reduce((s: number, p: any) => s + (p.contract_amount || 0), 0) || 0,
             location_count: locations?.length || 0
           },
           by_location: (locations || []).map(loc => {
@@ -431,7 +431,7 @@ Deno.serve(async (req) => {
               leads: locLeads.length,
               revenue: locLeads
                 .filter(l => l.status === "won")
-                .reduce((s, l) => s + (l.estimated_value || 0), 0),
+                .reduce((s: number, l: any) => s + (l.estimated_value || 0), 0),
               projects: locProjects.length
             };
           }),
@@ -444,7 +444,7 @@ Deno.serve(async (req) => {
             top_location_by_revenue: locations?.reduce((top, loc) => {
               const revenue = allLeads
                 ?.filter(l => l.location_id === loc.id && l.status === "won")
-                .reduce((s, l) => s + (l.estimated_value || 0), 0) || 0;
+                .reduce((s: number, l: any) => s + (l.estimated_value || 0), 0) || 0;
               return revenue > (top?.revenue || 0) ? { name: loc.name, revenue } : top;
             }, null as { name: string; revenue: number } | null)
           }

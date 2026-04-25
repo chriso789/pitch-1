@@ -528,22 +528,23 @@ function parseLinearFeatures(features: Array<{ wkt: string; type: string; length
     const parsed = parseWKTLinestring(feature.wkt);
     if (!parsed) continue;
 
+    const enhanced = {
+      id: '',
+      wkt: feature.wkt,
+      length_ft: feature.length_ft,
+      type: feature.type as EnhancedLinearFeature['type'],
+      source: 'skeleton' as EnhancedLinearFeature['source'],
+      confidence: 1,
+      start: parsed.start,
+      end: parsed.end,
+    } as unknown as EnhancedLinearFeature;
+
     switch (feature.type) {
-      case 'ridge':
-        edges.ridges.push(parsed);
-        break;
-      case 'hip':
-        edges.hips.push(parsed);
-        break;
-      case 'valley':
-        edges.valleys.push(parsed);
-        break;
-      case 'eave':
-        edges.eaves.push(parsed);
-        break;
-      case 'rake':
-        edges.rakes.push(parsed);
-        break;
+      case 'ridge': edges.ridges.push(enhanced); break;
+      case 'hip': edges.hips.push(enhanced); break;
+      case 'valley': edges.valleys.push(enhanced); break;
+      case 'eave': edges.eaves.push(enhanced); break;
+      case 'rake': edges.rakes.push(enhanced); break;
     }
   }
 
