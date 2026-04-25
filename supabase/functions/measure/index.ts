@@ -2763,7 +2763,7 @@ Deno.serve(async (req) => {
               
               // ============= PHASE 2: STORE CORRECTIONS FOR LEARNING =============
               let correctionsStored = 0;
-              const tenantIdForCorrections = (typeof tenantId !== 'undefined' && tenantId) ? tenantId : 'default';
+              const tenantIdForCorrections: string = ((globalThis as any).tenantId) || 'default';
               
               for (const correction of evaluation.autoCorrections) {
                 // Find original feature type
@@ -3572,7 +3572,7 @@ Deno.serve(async (req) => {
               valley_ft: outputSchema.totals['lf.valley'],
               eave_ft: outputSchema.totals['lf.eave'],
               rake_ft: outputSchema.totals['lf.rake'],
-            },
+            } as any,
             geom_wkt: ensureMultiPolygon(toPolygonWKT(coords)),
           };
 
@@ -5027,7 +5027,7 @@ Deno.serve(async (req) => {
 
             for (const type of featureTypes) {
               const vendorVal = vendorTotals[type] ?? vendorTotals[`${type}_ft`] ?? 0;
-              const aiVal = aiTotals[type] ?? aiTotals[`${type}_ft`] ?? 0;
+              const aiVal = (aiTotals as any)?.[type] ?? (aiTotals as any)?.[`${type}_ft`] ?? 0;
 
               if (vendorVal > 0) {
                 const variancePct = ((aiVal - vendorVal) / vendorVal) * 100;
