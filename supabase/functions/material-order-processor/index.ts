@@ -97,7 +97,7 @@ Deno.serve(async (req: Request) => {
             project_id: estimate.project_id,
             status: 'draft',
             items: materials,
-            delivery_address: estimate.job?.address,
+            delivery_address: (estimate.job as any)?.address ?? (Array.isArray(estimate.job) ? estimate.job[0]?.address : undefined),
             created_by: userId
           })
           .select()

@@ -190,7 +190,7 @@ Deno.serve(async (req) => {
       });
 
     return new Response(
-      JSON.stringify({ success: true, messageId: emailResponse.id }),
+      JSON.stringify({ success: true, messageId: (emailResponse as any)?.data?.id ?? (emailResponse as any)?.id }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {

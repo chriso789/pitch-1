@@ -27,7 +27,7 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) throw new Error('Unauthorized');
 
-    const { orderId, action, vendors, subject, message } = await req.json();
+    const { orderId, action, vendors, subject: bulkSubject, message } = await req.json();
     console.log('Processing material order email:', { orderId, action });
 
     // Handle bulk vendor notification
@@ -56,11 +56,11 @@ Deno.serve(async (req) => {
           const emailResponse = await resend.emails.send({
             from: 'PITCH CRM <orders@pitch.app>',
             to: [vendor.email],
-            subject: subject,
+            subject: bulkSubject,
             html: emailHtml,
           });
 
-          results.push({ vendor: vendor.name, success: true, messageId: emailResponse.id });
+          results.push({ vendor: vendor.name, success: true, messageId: (emailResponse as any)?.data?.id ?? (emailResponse as any)?.id });
           
           // Log communication
           const serviceClient = createClient(
@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
               type: 'email',
               direction: 'outbound',
               recipient: vendor.email,
-              subject: subject,
+              subject: bulkSubject,
               body: emailHtml,
               status: 'sent',
               metadata: {
@@ -133,8 +133,8 @@ Deno.serve(async (req) => {
     }
 
     // Generate email content based on action
-    let subject = '';
-    let html = '';
+    let subject: string = '';
+    let html: string = '';
     const projectName = order.estimates?.projects?.name || 'Project';
     const projectNumber = order.estimates?.projects?.clj_formatted_number || '';
 
@@ -182,7 +182,7 @@ Deno.serve(async (req) => {
       });
 
     return new Response(
-      JSON.stringify({ success: true, messageId: emailResponse.id }),
+      JSON.stringify({ success: true, messageId: (emailResponse as any)?.data?.id ?? (emailResponse as any)?.id }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   } catch (error) {
