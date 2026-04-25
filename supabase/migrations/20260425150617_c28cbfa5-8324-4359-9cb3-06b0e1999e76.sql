@@ -1,0 +1,1 @@
+UPDATE public.measurement_jobs SET status = 'failed', error = 'Cancelled — vision pipeline upgraded to faster model. Please re-run.', progress_message = 'Cancelled', completed_at = NOW(), updated_at = NOW() WHERE status IN ('processing','queued') AND started_at < NOW() - INTERVAL '5 minutes';
