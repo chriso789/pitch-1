@@ -1125,6 +1125,7 @@ interface MeasurementCardProps {
   onSetActive: () => void;
   onDelete: () => void;
   onEdit?: () => void;
+  onViewReport?: () => void;
   isSettingActive: boolean;
 }
 
@@ -1135,6 +1136,7 @@ function MeasurementCard({
   onSetActive, 
   onDelete,
   onEdit,
+  onViewReport,
   isSettingActive 
 }: MeasurementCardProps) {
   const tags = measurement.saved_tags || {};
@@ -1263,6 +1265,18 @@ function MeasurementCard({
             className="text-muted-foreground hover:text-foreground"
           >
             <Pencil className="h-4 w-4" />
+          </Button>
+        )}
+        {onViewReport && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onViewReport}
+            style={{ minHeight: isPhone ? 44 : 32 }}
+            className="flex-1"
+          >
+            <Eye className="h-4 w-4 mr-1.5" />
+            View Report
           </Button>
         )}
         <Button
