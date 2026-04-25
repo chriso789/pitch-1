@@ -359,8 +359,9 @@ export function PullMeasurementsButton({
         description: "Confirm each edge to lock in the measurement.",
       });
 
-      // Fetch the latest AI measurement and seed the verification wizard with
-      // the ACTUAL traced edges (linear_features_wkt) and the aerial image.
+      // Fetch the latest AI measurement to validate it exists, but do not auto-open
+      // the heavy verification/report UI after completion. Users can open the report
+      // from the latest measurement card; auto-opening was causing blank-page crashes.
       (async () => {
         try {
           const { data } = await supabase
@@ -553,7 +554,7 @@ export function PullMeasurementsButton({
           setSeedAerial(null);
           setSeedFootprint(undefined);
         } finally {
-          setShowVerifyWizard(true);
+          setShowVerifyWizard(false);
         }
       })();
     } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
