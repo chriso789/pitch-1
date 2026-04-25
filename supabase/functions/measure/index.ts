@@ -1064,7 +1064,7 @@ function buildSmartTags(meas: MeasureResult) {
     tags[`facet.${num}.plan_area_sqft`] = round(facet_plan_sqft);
     tags[`facet.${num}.pitch`] = facet_pitch;
     tags[`facet.${num}.pitch_degrees`] = round(facet_pitch_degrees, 2);
-    tags[`facet.${num}.direction`] = getDirection(face.azimuth_degrees);
+    tags[`facet.${num}.direction`] = getDirection((face as any).azimuth_degrees);
     tags[`facet.${num}.squares`] = round(facet_area_sqft / 100, 2);
   });
 
@@ -1126,7 +1126,7 @@ function buildSmartTags(meas: MeasureResult) {
     tags[`rolls.underlayment.waste_${pct}pct`] = Math.ceil(adj_squares);
   });
   [10, 15].forEach(pct => {
-    const adj_lf = (tags["lf.eave"] as number + tags["lf.rake"] as number) * (1 + pct / 100);
+    const adj_lf = ((tags["lf.eave"] as number) + (tags["lf.rake"] as number)) * (1 + pct / 100);
     tags[`sticks.drip_edge.waste_${pct}pct`] = Math.ceil(adj_lf / 10);
   });
 
@@ -1233,7 +1233,7 @@ function calculateComplexity(faces: RoofFace[], linear: LinearFeature[]): number
   if (valleys + hips > 3) score += 0.5;
   
   // Steep pitches add complexity
-  const steepFaces = faces.filter(f => pitchToDegrees(f.pitch) > 30).length;
+  const steepFaces = faces.filter(f => pitchToDegrees(f.pitch || '4/12') > 30).length;
   if (steepFaces > 0) score += 0.5;
   
   return Math.min(Math.round(score * 2) / 2, 5); // Round to nearest 0.5, max 5
@@ -1375,7 +1375,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
         { lat, lng }, 
         footprintBounds
       );
-      topologyFeatures = topologyToLinearFeatures(segmentTopology);
+      topologyFeatures = topologyToLinearFeatures(segmentTopology) as LinearFeature[];
       topologyTotals = topologyToTotals(segmentTopology);
       console.log(`📊 Segment topology results: ridge=${topologyTotals.ridge_ft?.toFixed(0)}ft, hip=${topologyTotals.hip_ft?.toFixed(0)}ft, valley=${topologyTotals.valley_ft?.toFixed(0)}ft`);
     }
@@ -1522,7 +1522,7 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   if (roofSegments.length > 0) {
     console.log(`🔍 Analyzing ${roofSegments.length} roof segments for topology`);
     const segmentTopology = analyzeSegmentTopology(roofSegments, { lat, lng }, footprintBounds);
-    topologyFeatures = topologyToLinearFeatures(segmentTopology);
+    topologyFeatures = topologyToLinearFeatures(segmentTopology) as LinearFeature[];
     topologyTotals = topologyToTotals(segmentTopology);
     derivedFacetCount = segmentTopology.facetCount;
     roofType = segmentTopology.roofType;
@@ -1809,7 +1809,7 @@ async function openBuildingsFGBFootprint(
     const faceWKT = polygonWKT(best);
     return { faceWKT, plan_sqft };
   } catch (error) {
-    console.warn('OpenBuildings FGB not available:', error.message);
+    console.warn('OpenBuildings FGB not available:', error instanceof Error ? error.message : String(error));
     return null;
   }
 }
@@ -2058,8 +2058,8 @@ async function persistFacets(supabase: any, measurementId: string, faces: RoofFa
     pitch: face.pitch || 'unknown',
     pitch_degrees: pitchToDegrees(face.pitch || '4/12'),
     pitch_factor: pitchFactor(face.pitch || '4/12'),
-    direction: getDirection(face.azimuth_degrees),
-    azimuth_degrees: face.azimuth_degrees,
+    direction: getDirection((face as any).azimuth_degrees),
+    azimuth_degrees: (face as any).azimuth_degrees,
     is_flat: face.pitch === 'flat',
     geometry_wkt: face.wkt,
   }));
@@ -2345,7 +2345,7 @@ Deno.serve(async (req) => {
             }, corsHeaders);
           } catch (unifiedErr) {
             console.error('[pull] Unified pipeline failed, falling back to legacy:', unifiedErr);
-            warnings.push(`Unified pipeline failed: ${unifiedErr.message}`);
+            console.warn(`Unified pipeline failed: ${unifiedErr instanceof Error ? unifiedErr.message : String(unifiedErr)}`);
             // Fall through to legacy engine
           }
         }
@@ -2525,8 +2525,8 @@ Deno.serve(async (req) => {
           for (const fn of tryOrder) {
             try {
               const r = await fn();
-              meas = { ...r, property_id: propertyId };
-              console.log(`Provider success: ${meas.source}`);
+              meas = { ...(r as any), property_id: propertyId } as MeasureResult;
+              console.log(`Provider success: ${meas?.source}`);
               break;
             } catch (err) {
               console.log(`Provider failed: ${err}`);
@@ -2763,7 +2763,7 @@ Deno.serve(async (req) => {
               
               // ============= PHASE 2: STORE CORRECTIONS FOR LEARNING =============
               let correctionsStored = 0;
-              const tenantIdForCorrections = tenantId || 'default';
+              const tenantIdForCorrections = (typeof tenantId !== 'undefined' && tenantId) ? tenantId : 'default';
               
               for (const correction of evaluation.autoCorrections) {
                 // Find original feature type
@@ -2781,7 +2781,7 @@ Deno.serve(async (req) => {
                   deviationPct: originalLength > 0 ? (correction.deviationFt / originalLength) * 100 : 100,
                   correctionSource: 'user_trace',
                   trainingSessionId: training_session_id,
-                  propertyId: property_id,
+                  propertyId: propertyId,
                   isFeatureInjection: isInjection,
                   lat,
                   lng,
@@ -3083,9 +3083,8 @@ Deno.serve(async (req) => {
                   type: type as any,
                   wkt: injection.wkt,
                   length_ft: injection.length_ft,
-                  source: 'training_injection',
-                  confidence: 0.95 // High confidence - user traced
-                });
+                  label: 'training_injection',
+                } as LinearFeature);
                 
                 totalInjectedLength += injection.length_ft;
               }
@@ -3314,7 +3313,7 @@ Deno.serve(async (req) => {
 
       // Route: action=manual
       if (action === 'manual') {
-        const { propertyId, faces, linear_features, waste_pct = 12 } = body;
+        const { propertyId, faces, linear_features, waste_pct = 12, lat, lng } = body;
 
         if (!propertyId || !faces || faces.length === 0) {
           return json({ ok: false, error: 'propertyId and faces required' }, corsHeaders, 400);
@@ -3525,7 +3524,7 @@ Deno.serve(async (req) => {
               rakeLength: edges.rakes.reduce((s, e) => s + calculateGeodesicLength(e.start, e.end, midLat), 0),
             },
             googleSolarTotalArea: googleSolarTotalArea > 0 ? googleSolarTotalArea : undefined,
-          });
+          } as any);
           console.log('QA validation:', validationResult.overallScore, 'manual review:', validationResult.manualReviewRecommended);
 
           // Step 8: Transform to output schema
