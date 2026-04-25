@@ -43,7 +43,7 @@ Deno.serve(async (req) => {
     }
     
     const imageBuffer = await response.arrayBuffer()
-    const base64Image = base64Encode(new Uint8Array(imageBuffer))
+    const base64Image = base64Encode(imageBuffer as ArrayBuffer)
     
     // Calculate the geographic bounds of this image using Web Mercator projection
     const metersPerPixel = 156543.03392 * Math.cos(latitude * Math.PI / 180) / Math.pow(2, zoom)

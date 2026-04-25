@@ -39,7 +39,7 @@ Deno.serve(async (req) => {
     const candidates: FootprintCandidate[] = []
     
     // If existing footprint provided, add it as a candidate
-    if (existingFootprint?.vertices?.length >= 3) {
+    if (existingFootprint && existingFootprint.vertices && existingFootprint.vertices.length >= 3) {
       const area = calculatePolygonArea(existingFootprint.vertices)
       candidates.push({
         vertices: existingFootprint.vertices,

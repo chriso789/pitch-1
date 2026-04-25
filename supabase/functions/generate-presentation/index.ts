@@ -142,13 +142,13 @@ function resolveTagValue(tagKey: string, context: TagContext, tagDefs: SmartTagD
     const parts = tagDef.field_path.split('||').map(p => p.trim());
     value = parts.map(part => {
       if (part.startsWith("'") && part.endsWith("'")) return part.slice(1, -1);
-      return getNestedValue(sourceData, part) || sourceData[part] || '';
+      return getNestedValue(sourceData, part) || (sourceData as any)[part] || '';
     }).join('');
   } else if (tagDef.field_path.includes('.')) {
     // Handle nested paths like "summary.total_area"
     value = getNestedValue(sourceData, tagDef.field_path);
   } else {
-    value = sourceData[tagDef.field_path];
+    value = (sourceData as any)[tagDef.field_path];
   }
   
   return value !== null && value !== undefined ? formatValue(value, tagDef.format_type) : (tagDef.default_value || '');
