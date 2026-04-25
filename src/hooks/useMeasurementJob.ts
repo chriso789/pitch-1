@@ -19,6 +19,22 @@ export interface MeasurementJob {
 export function useMeasurementJob(pipelineEntryId: string) {
   const queryClient = useQueryClient();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const markStaleJobFailed = useCallback(async (job: MeasurementJob) => {
+    const startedAt = job.started_at || job.created_at;
+    const ageMs = Date.now() - new Date(startedAt).getTime();
+    if (ageMs < 8 * 60 * 1000) return false;
+
+    const failedJob: MeasurementJob = {
+      ...job,
+      status: 'failed',
+      progress_message: 'Timed out — please re-run AI measurement',
+      error: job.error || 'AI measurement exceeded the 8 minute safety limit.',
+      completed_at: new Date().toISOString(),
+    };
+    queryClient.setQueryData(['measurement-job', pipelineEntryId], failedJob);
+    setActiveJobId(null);
+    return true;
+  }, [pipelineEntryId, queryClient]);
 
   // Query latest job for this pipeline entry
   const { data: latestJob, refetch: refetchJob } = useQuery({
@@ -55,6 +71,9 @@ export function useMeasurementJob(pipelineEntryId: string) {
         .single();
 
       if (data) {
+        if ((data.status === 'queued' || data.status === 'processing') && await markStaleJobFailed(data as MeasurementJob)) {
+          return;
+        }
         // Update the query cache
         queryClient.setQueryData(['measurement-job', pipelineEntryId], data);
 
@@ -70,7 +89,7 @@ export function useMeasurementJob(pipelineEntryId: string) {
     }, 3000); // Poll every 3 seconds
 
     return () => clearInterval(interval);
-  }, [activeJobId, pipelineEntryId, queryClient, latestJob]);
+  }, [activeJobId, pipelineEntryId, queryClient, latestJob, markStaleJobFailed]);
 
   const startJob = useCallback(async (params: {
     lat: number;
