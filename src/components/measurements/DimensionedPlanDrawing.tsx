@@ -58,6 +58,10 @@ export function DimensionedPlanDrawing({
   // When we have a satellite image + geo edges, render the image and project
   // edges from geo coordinates straight to image pixels.
   const aerialMode = !!(aerial && edges.some(e => e.geo_p1 && e.geo_p2));
+  // Backdrop-only mode: we have the satellite image but the AI did not return
+  // geo-anchored edges. Show the roof photo behind the schematic so the user
+  // can still visually identify each edge.
+  const aerialBackdropOnly = !aerialMode && !!aerial?.imageUrl;
 
   const aerialProjection = useMemo(() => {
     if (!aerial) return null;
