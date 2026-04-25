@@ -130,18 +130,15 @@ export function DimensionedPlanDrawing({
         {/* Aerial backdrop only (no geo-anchored edges) — show the roof photo
             so the user can visually identify each edge while confirming. */}
         {aerialBackdropOnly && aerial && (
-          <>
-            <image
-              href={aerial.imageUrl}
-              x={0}
-              y={0}
-              width={width}
-              height={height}
-              preserveAspectRatio="xMidYMid slice"
-              opacity={0.55}
-            />
-            <rect width={width} height={height} fill="rgba(255,255,255,0.35)" />
-          </>
+          <image
+            href={aerial.imageUrl}
+            x={0}
+            y={0}
+            width={width}
+            height={height}
+            preserveAspectRatio="xMidYMid slice"
+            opacity={1}
+          />
         )}
 
         {/* Grid background (only when no aerial at all) */}
