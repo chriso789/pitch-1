@@ -23,6 +23,9 @@ Deno.serve(async (req) => {
     const lng = parseFloat(url.searchParams.get('lng') ?? '')
     const zoom = Math.min(22, Math.max(1, parseInt(url.searchParams.get('zoom') ?? '20', 10)))
     const size = Math.min(1280, Math.max(64, parseInt(url.searchParams.get('size') ?? '640', 10)))
+    // bearing: 0 = north up (default). 180 = south up (front-of-house facing down/south).
+    const bearingRaw = parseFloat(url.searchParams.get('bearing') ?? '0')
+    const bearing = Number.isFinite(bearingRaw) ? ((bearingRaw % 360) + 360) % 360 : 0
 
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return new Response(JSON.stringify({ error: 'lat and lng required' }), {
@@ -37,7 +40,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const tileUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${zoom},0/${size}x${size}@2x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
+    const tileUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${zoom},${bearing},0/${size}x${size}@2x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 
     const resp = await fetch(tileUrl)
     if (!resp.ok) {
