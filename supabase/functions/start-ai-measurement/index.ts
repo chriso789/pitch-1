@@ -288,12 +288,12 @@ Deno.serve(async (req) => {
             // Pitch
             predominant_pitch: summary.pitch || tags['roof.predominant_pitch'] || '6/12',
             pitch_multiplier: 1.0,
-            // Linear totals
-            total_ridge_length: summary.ridge_ft || 0,
-            total_hip_length: summary.hip_ft || 0,
-            total_valley_length: summary.valley_ft || 0,
-            total_eave_length: summary.eave_ft || 0,
-            total_rake_length: summary.rake_ft || 0,
+            // Linear totals — prefer geo-derived totals when present (matches the overlay)
+            total_ridge_length: ridgeTotGeo > 0 ? ridgeTotGeo : (summary.ridge_ft || 0),
+            total_hip_length: hipTotGeo > 0 ? hipTotGeo : (summary.hip_ft || 0),
+            total_valley_length: valleyTotGeo > 0 ? valleyTotGeo : (summary.valley_ft || 0),
+            total_eave_length: eaveTotGeo > 0 ? eaveTotGeo : (summary.eave_ft || 0),
+            total_rake_length: rakeTotGeo > 0 ? rakeTotGeo : (summary.rake_ft || 0),
             // Facets
             facet_count: (measurement.faces || []).length || 2,
             // Geometry
