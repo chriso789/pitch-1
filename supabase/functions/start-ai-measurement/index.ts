@@ -70,9 +70,9 @@ Deno.serve(async (req) => {
     // Helper: poll roof_measurements for a row written by `measure` after the job started.
     // Used when the gateway kills our fetch with IDLE_TIMEOUT even though `measure`
     // actually completed and persisted a row.
-    const pollForCompletedMeasurement = async (jobStartIso: string, maxAttempts = 30) => {
+    const pollForCompletedMeasurement = async (jobStartIso: string, maxAttempts = 75) => {
       for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 4000)) // 4s × 30 = 2 min
+        await new Promise((r) => setTimeout(r, 4000)) // 4s × 75 = 5 min
         const { data: rm } = await supabaseAdmin
           .from('roof_measurements')
           .select('id, total_area_flat_sqft, total_squares, predominant_pitch, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, ai_detection_data, detection_method, requires_manual_review')
@@ -157,8 +157,8 @@ Deno.serve(async (req) => {
           }
 
           throw new Error(
-            `AI measurement timed out (${measureResult?.code || 'GATEWAY_TIMEOUT'}). The roof analysis took longer than the 150s limit. ` +
-            `Try "Verify to 100%" for a manual edge-by-edge measurement, or upload a blueprint/EagleView report.`
+            `AI analysis is taking longer than expected for this roof. ` +
+            `Please use "Draw" to trace the perimeter, "Enter Manually" to type measurements, or "Upload Blueprint" for an EagleView report.`
           )
         }
 
