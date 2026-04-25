@@ -1319,6 +1319,7 @@ interface MeasurementHistorySectionProps {
   }>;
   pipelineEntryId: string;
   onSaveToApprovals: () => void;
+  onViewAiReport: (measurement: any) => void;
   isPhone: boolean;
 }
 
@@ -1327,6 +1328,7 @@ function MeasurementHistorySection({
   aiMeasurements,
   pipelineEntryId,
   onSaveToApprovals,
+  onViewAiReport,
   isPhone,
 }: MeasurementHistorySectionProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
