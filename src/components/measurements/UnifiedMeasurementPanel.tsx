@@ -224,6 +224,11 @@ export function UnifiedMeasurementPanel({
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
+  const [reportState, setReportState] = useState<{
+    open: boolean;
+    measurement: any | null;
+    tags: Record<string, any>;
+  }>({ open: false, measurement: null, tags: {} });
 
   // Track async measurement jobs
   const { job: activeJob, isActive: jobIsActive } = useMeasurementJob(pipelineEntryId);
@@ -284,7 +289,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('measurement_approvals')
-        .select('id, approved_at, saved_tags, approval_notes, report_generated, report_document_id')
+        .select('id, approved_at, measurement_id, saved_tags, approval_notes, report_generated, report_document_id')
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('approved_at', { ascending: false });
 
@@ -532,6 +537,77 @@ export function UnifiedMeasurementPanel({
     onMeasurementChange?.();
     setAddOptionsOpen(false);
   };
+
+  const handleViewSavedReport = useCallback(async (approval: SavedMeasurement) => {
+    try {
+      const linkedMeasurementId = getApprovalMeasurementId(approval);
+      const approvalTags = approval.saved_tags || {};
+
+      if (!linkedMeasurementId) {
+        setReportState({
+          open: true,
+          measurement: buildReportMeasurementFromRoofMeasurement({
+            id: approval.id,
+            total_area_adjusted_sqft: approvalTags['roof.total_sqft'] || approvalTags['roof.plan_area'] || 0,
+            total_area_flat_sqft: approvalTags['roof.plan_area'] || 0,
+            total_squares: approvalTags['roof.squares'] || 0,
+            predominant_pitch: approvalTags['roof.predominant_pitch'],
+            facet_count: approvalTags['roof.faces_count'],
+            total_ridge_length: approvalTags['lf.ridge'] || 0,
+            total_hip_length: approvalTags['lf.hip'] || 0,
+            total_valley_length: approvalTags['lf.valley'] || 0,
+            total_eave_length: approvalTags['lf.eave'] || 0,
+            total_rake_length: approvalTags['lf.rake'] || 0,
+            target_lat: latitude,
+            target_lng: longitude,
+            gps_coordinates: { lat: latitude, lng: longitude },
+            footprint_source: approvalTags.source,
+          }, pipelineEntryId),
+          tags: approvalTags,
+        });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('roof_measurements')
+        .select('id, created_at, customer_id, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data, waste_factor_percent')
+        .eq('id', linkedMeasurementId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const sourceMeasurement = data || {
+        id: linkedMeasurementId,
+        total_area_adjusted_sqft: approvalTags['roof.total_sqft'] || approvalTags['roof.plan_area'] || 0,
+        total_area_flat_sqft: approvalTags['roof.plan_area'] || 0,
+        total_squares: approvalTags['roof.squares'] || 0,
+        predominant_pitch: approvalTags['roof.predominant_pitch'],
+        facet_count: approvalTags['roof.faces_count'],
+        total_ridge_length: approvalTags['lf.ridge'] || 0,
+        total_hip_length: approvalTags['lf.hip'] || 0,
+        total_valley_length: approvalTags['lf.valley'] || 0,
+        total_eave_length: approvalTags['lf.eave'] || 0,
+        total_rake_length: approvalTags['lf.rake'] || 0,
+        target_lat: latitude,
+        target_lng: longitude,
+        gps_coordinates: { lat: latitude, lng: longitude },
+        footprint_source: approvalTags.source,
+      };
+
+      setReportState({
+        open: true,
+        measurement: buildReportMeasurementFromRoofMeasurement(sourceMeasurement, pipelineEntryId),
+        tags: { ...buildReportTagsFromRoofMeasurement(sourceMeasurement), ...approvalTags },
+      });
+    } catch (error: any) {
+      console.error('Error opening measurement report:', error);
+      toast({
+        title: 'Report Unavailable',
+        description: error.message || 'Could not load the aerial trace report for this measurement',
+        variant: 'destructive',
+      });
+    }
+  }, [address, latitude, longitude, pipelineEntryId]);
 
   // Quick save an AI measurement directly from the banner
   const [isSavingDirect, setIsSavingDirect] = useState(false);
