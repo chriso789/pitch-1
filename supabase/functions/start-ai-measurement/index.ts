@@ -170,6 +170,81 @@ Deno.serve(async (req) => {
         const measurement = measureResult.data.measurement
         const tags = measureResult.data.tags || {}
         const engineUsed = measureResult.data.engine_used || 'skeleton'
+
+        // Pull raw geometry returned alongside the persisted row. The lead-screen
+        // aerial overlay reads linear_features_wkt + footprint_vertices_geo from
+        // roof_measurements; without these the overlay renders blank.
+        const measRaw: any = measureResult.data.meas || {}
+        const linearFeaturesRaw: any[] = Array.isArray(measRaw.linear_features) ? measRaw.linear_features : (measurement.linear_features || [])
+        const linearFeaturesGeo = linearFeaturesRaw.filter((f: any) =>
+          f && typeof f.wkt === 'string' && /LINESTRING/i.test(f.wkt)
+        )
+        const perimWktGeo: string | null = measRaw.geom_wkt || measurement.geom_wkt || null
+
+        // Derive footprint vertices from perimeter WKT for the overlay viewer
+        let footprintVertsGeo: Array<{ lat: number; lng: number }> | null = null
+        if (perimWktGeo) {
+          const m = perimWktGeo.match(/POLYGON\s*\(\s*\(([^)]+)\)/i)
+          if (m) {
+            footprintVertsGeo = m[1].split(',').map((pair: string) => {
+              const [lng, lat] = pair.trim().split(/\s+/).map(Number)
+              return { lat, lng }
+            }).filter((v: any) => Number.isFinite(v.lat) && Number.isFinite(v.lng))
+          }
+        }
+
+        // Sanity gate: cross-check vision area against OSM building footprint.
+        // If vision claims >2× the OSM area, the AI is almost certainly tracing
+        // beyond the building (driveway, neighbor, etc.) — flag for manual review.
+        let areaSanityWarning: string | null = null
+        try {
+          const summaryArea = Number(measurement?.summary?.total_area_sqft || measurement?.total_area_flat_sqft || 0)
+          if (summaryArea > 0) {
+            const osmResp = await fetch(
+              `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(
+                `[out:json][timeout:10];way(around:25,${lat},${lng})["building"];out geom;`
+              )}`
+            )
+            if (osmResp.ok) {
+              const osmJson: any = await osmResp.json()
+              const ways = osmJson?.elements || []
+              if (ways.length > 0) {
+                // Compute area for the largest building polygon (rough, lat-corrected)
+                const mPerDegLat = 111320
+                const mPerDegLng = 111320 * Math.cos(lat * Math.PI / 180)
+                let maxArea = 0
+                for (const way of ways) {
+                  const geom = way.geometry || []
+                  if (geom.length < 3) continue
+                  let s = 0
+                  for (let i = 0; i < geom.length; i++) {
+                    const a = geom[i]
+                    const b = geom[(i + 1) % geom.length]
+                    s += (a.lon * mPerDegLng) * (b.lat * mPerDegLat) - (b.lon * mPerDegLng) * (a.lat * mPerDegLat)
+                  }
+                  const sqft = Math.abs(s / 2) * 10.7639
+                  if (sqft > maxArea) maxArea = sqft
+                }
+                if (maxArea > 100 && summaryArea > maxArea * 2) {
+                  areaSanityWarning = `AI reported ${Math.round(summaryArea)} sqft but OSM building footprint is only ${Math.round(maxArea)} sqft. AI likely traced beyond the building outline — please verify.`
+                  console.warn('[start-ai-measurement] ⚠️ Area sanity check failed:', areaSanityWarning)
+                }
+              }
+            }
+          }
+        } catch (sanityErr) {
+          console.warn('[start-ai-measurement] OSM sanity check failed (non-fatal):', sanityErr)
+        }
+
+        // Per-feature totals (used for both columns and tags)
+        const sumByType = (t: string) => linearFeaturesGeo
+          .filter((f: any) => f.type === t)
+          .reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0)
+        const ridgeTotGeo = sumByType('ridge')
+        const hipTotGeo = sumByType('hip')
+        const valleyTotGeo = sumByType('valley')
+        const eaveTotGeo = sumByType('eave')
+        const rakeTotGeo = sumByType('rake')
         const requiresManualReview = Boolean(
           measureResult.data.manualReviewRecommended ??
           measureResult.data.manual_review_recommended ??
@@ -213,12 +288,12 @@ Deno.serve(async (req) => {
             // Pitch
             predominant_pitch: summary.pitch || tags['roof.predominant_pitch'] || '6/12',
             pitch_multiplier: 1.0,
-            // Linear totals
-            total_ridge_length: summary.ridge_ft || 0,
-            total_hip_length: summary.hip_ft || 0,
-            total_valley_length: summary.valley_ft || 0,
-            total_eave_length: summary.eave_ft || 0,
-            total_rake_length: summary.rake_ft || 0,
+            // Linear totals — prefer geo-derived totals when present (matches the overlay)
+            total_ridge_length: ridgeTotGeo > 0 ? ridgeTotGeo : (summary.ridge_ft || 0),
+            total_hip_length: hipTotGeo > 0 ? hipTotGeo : (summary.hip_ft || 0),
+            total_valley_length: valleyTotGeo > 0 ? valleyTotGeo : (summary.valley_ft || 0),
+            total_eave_length: eaveTotGeo > 0 ? eaveTotGeo : (summary.eave_ft || 0),
+            total_rake_length: rakeTotGeo > 0 ? rakeTotGeo : (summary.rake_ft || 0),
             // Facets
             facet_count: (measurement.faces || []).length || 2,
             // Geometry
@@ -230,7 +305,10 @@ Deno.serve(async (req) => {
             detection_method: engineUsed,
             target_lat: Number(lat),
             target_lng: Number(lng),
-            perimeter_wkt: measurement.geom_wkt || null,
+            perimeter_wkt: perimWktGeo,
+            // 🗺️ Geo overlay payload — required for the lead-screen aerial trace
+            linear_features_wkt: linearFeaturesGeo as any,
+            footprint_vertices_geo: footprintVertsGeo as any,
             // Imagery
             google_maps_image_url: measurement.google_maps_image_url || null,
             mapbox_image_url: measurement.mapbox_image_url || null,
@@ -240,8 +318,8 @@ Deno.serve(async (req) => {
             overlay_schema: measurement.overlay_schema || null,
             // Confidence
             measurement_confidence: 0.85,
-            requires_manual_review: requiresManualReview,
-            validation_status: validationStatus,
+            requires_manual_review: requiresManualReview || Boolean(areaSanityWarning),
+            validation_status: areaSanityWarning ? 'flagged' : validationStatus,
             // Organization
             tenant_id: effectiveTenantId,
           })
@@ -283,7 +361,7 @@ Deno.serve(async (req) => {
             pipeline_entry_id: pipelineEntryId,
             approved_at: new Date().toISOString(),
             saved_tags: savedTags,
-            approval_notes: `AI measurement (${engineUsed}) - ${Math.round(summary.total_area_sqft || 0).toLocaleString()} sqft`,
+            approval_notes: `AI measurement (${engineUsed}) - ${Math.round(summary.total_area_sqft || 0).toLocaleString()} sqft${areaSanityWarning ? ` ⚠️ ${areaSanityWarning}` : ''}`,
           })
 
         if (approvalError) {
