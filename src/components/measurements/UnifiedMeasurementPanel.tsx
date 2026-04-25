@@ -44,6 +44,7 @@ import {
 interface SavedMeasurement {
   id: string;
   approved_at: string;
+  measurement_id?: string | null;
   saved_tags: Record<string, any>;
   approval_notes: string | null;
   report_generated?: boolean;
@@ -123,6 +124,87 @@ const getSourceConfig = (savedTags: Record<string, any>): SourceConfig => {
 const formatValue = (val: number | null | undefined): string => {
   if (val === null || val === undefined) return '—';
   return val.toLocaleString(undefined, { maximumFractionDigits: 1 });
+};
+
+const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
+  const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
+  const lng = measurement?.target_lng ?? measurement?.center_lng ?? measurement?.gps_coordinates?.lng;
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return undefined;
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://alxelfrbjzkmtnsulcei.supabase.co';
+  const zoom = measurement?.analysis_zoom || 20;
+  return `${supabaseUrl}/functions/v1/satellite-tile?lat=${lat}&lng=${lng}&zoom=${zoom}&size=640`;
+};
+
+const getMeasurementSatelliteUrl = (measurement: any): string | undefined => {
+  const selectedSource = (measurement?.selected_image_source || measurement?.image_source || '').toLowerCase();
+  if (selectedSource.includes('mapbox') && measurement?.mapbox_image_url) return measurement.mapbox_image_url;
+  if (selectedSource.includes('google') && measurement?.google_maps_image_url) return measurement.google_maps_image_url;
+  return measurement?.satellite_overlay_url || measurement?.google_maps_image_url || measurement?.mapbox_image_url || getFallbackSatelliteTileUrl(measurement);
+};
+
+const buildReportTagsFromRoofMeasurement = (measurement: any): Record<string, any> => ({
+  'roof.plan_area': measurement?.total_area_flat_sqft || measurement?.total_area_adjusted_sqft || 0,
+  'roof.total_sqft': measurement?.total_area_adjusted_sqft || 0,
+  'roof.squares': measurement?.total_squares || 0,
+  'roof.predominant_pitch': measurement?.predominant_pitch || '—',
+  'roof.faces_count': measurement?.facet_count || 0,
+  'lf.ridge': measurement?.total_ridge_length || 0,
+  'lf.hip': measurement?.total_hip_length || 0,
+  'lf.valley': measurement?.total_valley_length || 0,
+  'lf.eave': measurement?.total_eave_length || 0,
+  'lf.rake': measurement?.total_rake_length || 0,
+});
+
+const buildReportMeasurementFromRoofMeasurement = (measurement: any, pipelineEntryId: string) => {
+  const linearFeatures = Array.isArray(measurement?.linear_features_wkt) && measurement.linear_features_wkt.length > 0
+    ? measurement.linear_features_wkt
+    : (Array.isArray(measurement?.ai_detection_data?.linear_features) ? measurement.ai_detection_data.linear_features : []);
+  const faces = Array.isArray(measurement?.faces_wkt) && measurement.faces_wkt.length > 0
+    ? measurement.faces_wkt
+    : (Array.isArray(measurement?.ai_detection_data?.faces) ? measurement.ai_detection_data.faces : []);
+  const satelliteUrl = getMeasurementSatelliteUrl(measurement);
+
+  return {
+    id: measurement?.id,
+    property_id: pipelineEntryId,
+    summary: {
+      total_area_sqft: measurement?.total_area_adjusted_sqft || 0,
+      total_squares: measurement?.total_squares || 0,
+      waste_pct: measurement?.waste_factor_percent || measurement?.waste_factor_pct || 10,
+      ridge_ft: measurement?.total_ridge_length || 0,
+      hip_ft: measurement?.total_hip_length || 0,
+      valley_ft: measurement?.total_valley_length || 0,
+      eave_ft: measurement?.total_eave_length || 0,
+      rake_ft: measurement?.total_rake_length || 0,
+      perimeter_ft: (measurement?.total_eave_length || 0) + (measurement?.total_rake_length || 0),
+    },
+    linear_features: linearFeatures,
+    faces,
+    perimeter_wkt: measurement?.perimeter_wkt || measurement?.ai_detection_data?.perimeter_wkt,
+    center_lat: measurement?.target_lat,
+    center_lng: measurement?.target_lng,
+    gps_coordinates: measurement?.gps_coordinates || { lat: measurement?.target_lat, lng: measurement?.target_lng },
+    analysis_zoom: measurement?.analysis_zoom || 20,
+    analysis_image_size: measurement?.analysis_image_size || { width: 640, height: 640 },
+    image_bounds: measurement?.image_bounds,
+    google_maps_image_url: measurement?.google_maps_image_url,
+    satellite_overlay_url: satelliteUrl,
+    mapbox_image_url: measurement?.mapbox_image_url,
+    selected_image_source: measurement?.selected_image_source,
+    image_source: measurement?.image_source,
+    footprint_vertices_geo: measurement?.footprint_vertices_geo,
+    footprint_source: measurement?.footprint_source,
+    footprint_confidence: measurement?.footprint_confidence,
+    detection_method: measurement?.detection_method,
+    solar_building_footprint_sqft: measurement?.solar_building_footprint_sqft,
+    measurement_confidence: measurement?.measurement_confidence,
+    requires_manual_review: measurement?.requires_manual_review,
+  };
+};
+
+const getApprovalMeasurementId = (measurement: SavedMeasurement): string | null => {
+  return measurement.measurement_id || (measurement.saved_tags as any)?.measurement_id || null;
 };
 
 export function UnifiedMeasurementPanel({ 
