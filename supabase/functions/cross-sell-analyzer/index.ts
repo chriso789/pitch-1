@@ -88,22 +88,23 @@ Deno.serve(async (req) => {
           estimated_value: number;
         }> = [];
 
-        const contactProjects: Record<string, typeof completedProjects> = {};
-        completedProjects?.forEach(project => {
+        const contactProjects: Record<string, any[]> = {};
+        completedProjects?.forEach((project: any) => {
           if (project.contact_id) {
             if (!contactProjects[project.contact_id]) {
               contactProjects[project.contact_id] = [];
             }
-            contactProjects[project.contact_id].push(project);
+            contactProjects[project.contact_id]!.push(project);
           }
         });
 
-        Object.entries(contactProjects).forEach(([contactId, projects]) => {
+        Object.entries(contactProjects).forEach(([contactId, projects]: [string, any[]]) => {
+          if (!projects || projects.length === 0) return;
           const contact = projects[0]?.contacts;
           if (!contact) return;
 
-          const completedServices = projects.map(p => p.project_type).filter(Boolean);
-          const totalSpent = projects.reduce((sum, p) => sum + (p.contract_amount || 0), 0);
+          const completedServices = projects.map((p: any) => p.project_type).filter(Boolean);
+          const totalSpent = projects.reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0);
           const lastProjectDate = projects[0]?.completed_at;
           const daysSinceLastProject = lastProjectDate 
             ? Math.floor((Date.now() - new Date(lastProjectDate).getTime()) / (1000 * 60 * 60 * 24))

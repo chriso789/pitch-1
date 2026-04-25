@@ -183,7 +183,7 @@ Deno.serve(async (req) => {
     }
 
     // Ensure params is a plain object for URLSearchParams
-    const searchParams = params && typeof params === 'object' ? new URLSearchParams(params) : '';
+    const searchParams: URLSearchParams = params && typeof params === 'object' ? new URLSearchParams(params) : new URLSearchParams();
     let url = '';
     
     switch (endpoint) {

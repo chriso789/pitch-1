@@ -374,7 +374,7 @@ Deno.serve(async (req) => {
             },
             quantity: 1,
           },
-        ],
+        ] as any,
         after_completion: {
           type: 'hosted_confirmation',
           hosted_confirmation: {

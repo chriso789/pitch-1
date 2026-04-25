@@ -67,11 +67,13 @@ Deno.serve(async (req: Request) => {
           errors: 0
         };
 
-        for (const enrollment of dueEnrollments || []) {
+        for (const enrollmentRaw of dueEnrollments || []) {
+          const enrollment: any = enrollmentRaw;
           results.processed++;
           
           // Skip if sequence is not active
-          if (!enrollment.sequence?.is_active) {
+          const sequence: any = Array.isArray(enrollment.sequence) ? enrollment.sequence[0] : enrollment.sequence;
+          if (!sequence?.is_active) {
             await supabaseAdmin
               .from('email_sequence_enrollments')
               .update({ status: 'paused' })
@@ -102,7 +104,7 @@ Deno.serve(async (req: Request) => {
           }
 
           // Send email using messaging-send-email function
-          const contact = enrollment.contact;
+          const contact: any = Array.isArray(enrollment.contact) ? enrollment.contact[0] : enrollment.contact;
           if (!contact?.email) {
             results.errors++;
             continue;
