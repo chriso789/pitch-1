@@ -797,7 +797,7 @@ export function UnifiedMeasurementPanel({
               const src = (ai.selected_image_source || ai.image_source || '').toLowerCase();
               if (src.includes('mapbox') && ai.mapbox_image_url) return ai.mapbox_image_url;
               if (src.includes('google') && ai.google_maps_image_url) return ai.google_maps_image_url;
-              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url;
+              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url || getFallbackSatelliteTileUrl(ai);
             })();
 
             return (
@@ -944,7 +944,7 @@ export function UnifiedMeasurementPanel({
                     analysis_image_size: ai.analysis_image_size || { width: 640, height: 640 },
                     image_bounds: ai.image_bounds,
                     google_maps_image_url: ai.google_maps_image_url,
-                    satellite_overlay_url: ai.satellite_overlay_url,
+                    satellite_overlay_url: satUrl,
                     mapbox_image_url: ai.mapbox_image_url,
                     selected_image_source: ai.selected_image_source,
                     image_source: ai.image_source,
