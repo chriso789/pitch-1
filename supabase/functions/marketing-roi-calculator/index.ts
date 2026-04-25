@@ -28,7 +28,7 @@ Deno.serve(async (req) => {
     if (eventsErr) return serverError(eventsErr);
 
     // 2. Get pipeline entries that converted to projects for revenue
-    const entryIds = [...new Set((events || []).map(e => e.pipeline_entry_id).filter(Boolean))];
+    const entryIds = [...new Set((events || []).map((e: any) => e.pipeline_entry_id).filter(Boolean))];
     let entryRevenue: Record<string, number> = {};
 
     if (entryIds.length > 0) {
