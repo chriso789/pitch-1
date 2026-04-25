@@ -127,8 +127,25 @@ export function DimensionedPlanDrawing({
           />
         )}
 
-        {/* Grid background (only when no aerial) */}
-        {!aerialMode && (
+        {/* Aerial backdrop only (no geo-anchored edges) — show the roof photo
+            so the user can visually identify each edge while confirming. */}
+        {aerialBackdropOnly && aerial && (
+          <>
+            <image
+              href={aerial.imageUrl}
+              x={0}
+              y={0}
+              width={width}
+              height={height}
+              preserveAspectRatio="xMidYMid slice"
+              opacity={0.55}
+            />
+            <rect width={width} height={height} fill="rgba(255,255,255,0.35)" />
+          </>
+        )}
+
+        {/* Grid background (only when no aerial at all) */}
+        {!aerialMode && !aerialBackdropOnly && (
           <>
             <defs>
               <pattern id="plan-grid" width="20" height="20" patternUnits="userSpaceOnUse">
@@ -141,12 +158,18 @@ export function DimensionedPlanDrawing({
 
         {/* Title block */}
         <g>
-          <rect x={8} y={8} width={aerialMode ? 320 : 260} height={36} rx={4} fill="rgba(0,0,0,0.55)" />
+          <rect x={8} y={8} width={aerialMode ? 320 : aerialBackdropOnly ? 360 : 260} height={36} rx={4} fill="rgba(0,0,0,0.65)" />
           <text x={20} y={26} fill="#fff" fontSize="12" fontWeight="700">
-            {aerialMode ? 'AERIAL TRACE — DIMENSIONED' : 'ROOF PLAN — DIMENSIONED'}
+            {aerialMode
+              ? 'AERIAL TRACE — DIMENSIONED'
+              : aerialBackdropOnly
+                ? 'ROOF PHOTO — AI DID NOT TRACE EDGES'
+                : 'ROOF PLAN — DIMENSIONED'}
           </text>
           <text x={20} y={40} fill="#e5e7eb" fontSize="10">
-            All measurements in linear feet
+            {aerialBackdropOnly
+              ? 'Lines below are approximate — confirm types & lengths from the photo'
+              : 'All measurements in linear feet'}
           </text>
         </g>
 
