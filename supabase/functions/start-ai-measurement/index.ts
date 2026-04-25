@@ -96,7 +96,9 @@ Deno.serve(async (req) => {
               lat: Number(lat),
               lng: Number(lng),
               address: address || 'Unknown Address',
-              engine: 'skeleton',
+              // Gemini-vision tracing as PRIMARY (proves capability without U-Net dependency).
+              // Cascades to skeleton automatically inside `measure` if vision returns nothing.
+              engine: 'vision',
               pitchOverride: pitchOverride || undefined,
             }),
           }
