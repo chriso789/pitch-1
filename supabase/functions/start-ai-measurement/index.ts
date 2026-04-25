@@ -361,7 +361,7 @@ Deno.serve(async (req) => {
             pipeline_entry_id: pipelineEntryId,
             approved_at: new Date().toISOString(),
             saved_tags: savedTags,
-            approval_notes: `AI measurement (${engineUsed}) - ${Math.round(summary.total_area_sqft || 0).toLocaleString()} sqft`,
+            approval_notes: `AI measurement (${engineUsed}) - ${Math.round(summary.total_area_sqft || 0).toLocaleString()} sqft${areaSanityWarning ? ` ⚠️ ${areaSanityWarning}` : ''}`,
           })
 
         if (approvalError) {
