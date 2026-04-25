@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 const plans = [
   {
     name: "CRM",
-    price: "$40",
+    price: "$60",
     period: "/user/month",
     description: "Full CRM platform for your team",
     icon: Zap,
