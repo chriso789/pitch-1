@@ -244,11 +244,11 @@ Deno.serve(async (req: Request) => {
     }
 
     // Parse address - prefer Google Maps data if available
-    if (body.selectedAddress?.address_components?.length > 0) {
+    if (body.selectedAddress && (body.selectedAddress.address_components?.length ?? 0) > 0) {
       console.log("[create-lead-with-contact] Using Google Maps verified address");
-      addressComponents = extractAddressComponents(body.selectedAddress.address_components);
-      latitude = body.selectedAddress.geometry?.location?.lat || null;
-      longitude = body.selectedAddress.geometry?.location?.lng || null;
+      addressComponents = extractAddressComponents(body.selectedAddress.address_components!);
+      latitude = body.selectedAddress.geometry?.location?.lat ?? null;
+      longitude = body.selectedAddress.geometry?.location?.lng ?? null;
     } else {
       console.log("[create-lead-with-contact] Parsing manual address");
       addressComponents = parseAddressString(body.address);
