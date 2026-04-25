@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
         }
       } catch (error) {
         results.failed++;
-        results.errors.push(`${message.id}: ${error.message}`);
+        results.errors.push(`${message.id}: ${error instanceof Error ? error.message : String(error)}`);
         console.error(`Failed to process message ${message.id}:`, error);
       }
     }
