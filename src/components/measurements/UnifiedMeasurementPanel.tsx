@@ -1856,6 +1856,15 @@ function MeasurementHistorySection({
               </div>
               {!selectMode && (
                 <div className="flex gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onViewAiReport(measurement)}
+                    title="View aerial trace report"
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    View Report
+                  </Button>
                   <Button 
                     size="sm" 
                     variant="outline" 
