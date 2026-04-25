@@ -2200,13 +2200,14 @@ Deno.serve(async (req) => {
       // Route: action=pull
       if (action === 'pull') {
         // Engine selection (cascading fallback):
-        //   'unet'     = trained internal U-Net (PRIMARY for AI Measurement button)
-        //   'vision'   = AI vision-based detection from satellite imagery
+        //   'vision'   = Gemini-vision satellite trace (PRIMARY — proves AI capability today)
+        //   'unet'     = trained internal U-Net (gated; enable once training is verified)
         //   'skeleton' = geometric straight-skeleton algorithm (final fallback)
         //   'unified'  = full multi-source fusion pipeline (opt-in)
-        // Default is 'unet' so every AI Measurement request runs through the
-        // trained model first, then degrades gracefully to vision and skeleton.
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'unet', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
+        // U-Net is currently NOT default because training is incomplete and cold-start +
+        // partial accuracy were causing 150s IDLE_TIMEOUTs. Gemini vision can trace the
+        // visible roof edges directly from Mapbox aerials with no warm-up cost.
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'vision', useUnifiedPipeline = false, vendorTruth, vendorGeometry, disableVisionFallback = false } = body;
 
         if (!propertyId) {
           return json({ 
