@@ -9,6 +9,15 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
 
+const buildSatelliteTileUrl = (lat: number, lng: number, zoom = 20, size = 640) =>
+  `${SUPABASE_URL}/functions/v1/satellite-tile?lat=${lat}&lng=${lng}&zoom=${zoom}&size=${size}`
+
+const getPersistedSatelliteUrl = (measurement: any, lat: number, lng: number) =>
+  measurement.satellite_overlay_url ||
+  measurement.google_maps_image_url ||
+  measurement.mapbox_image_url ||
+  buildSatelliteTileUrl(lat, lng)
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })

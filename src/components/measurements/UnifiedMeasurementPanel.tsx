@@ -44,6 +44,7 @@ import {
 interface SavedMeasurement {
   id: string;
   approved_at: string;
+  measurement_id?: string | null;
   saved_tags: Record<string, any>;
   approval_notes: string | null;
   report_generated?: boolean;
@@ -125,6 +126,87 @@ const formatValue = (val: number | null | undefined): string => {
   return val.toLocaleString(undefined, { maximumFractionDigits: 1 });
 };
 
+const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
+  const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
+  const lng = measurement?.target_lng ?? measurement?.center_lng ?? measurement?.gps_coordinates?.lng;
+  if (!Number.isFinite(Number(lat)) || !Number.isFinite(Number(lng))) return undefined;
+
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://alxelfrbjzkmtnsulcei.supabase.co';
+  const zoom = measurement?.analysis_zoom || 20;
+  return `${supabaseUrl}/functions/v1/satellite-tile?lat=${lat}&lng=${lng}&zoom=${zoom}&size=640`;
+};
+
+const getMeasurementSatelliteUrl = (measurement: any): string | undefined => {
+  const selectedSource = (measurement?.selected_image_source || measurement?.image_source || '').toLowerCase();
+  if (selectedSource.includes('mapbox') && measurement?.mapbox_image_url) return measurement.mapbox_image_url;
+  if (selectedSource.includes('google') && measurement?.google_maps_image_url) return measurement.google_maps_image_url;
+  return measurement?.satellite_overlay_url || measurement?.google_maps_image_url || measurement?.mapbox_image_url || getFallbackSatelliteTileUrl(measurement);
+};
+
+const buildReportTagsFromRoofMeasurement = (measurement: any): Record<string, any> => ({
+  'roof.plan_area': measurement?.total_area_flat_sqft || measurement?.total_area_adjusted_sqft || 0,
+  'roof.total_sqft': measurement?.total_area_adjusted_sqft || 0,
+  'roof.squares': measurement?.total_squares || 0,
+  'roof.predominant_pitch': measurement?.predominant_pitch || '—',
+  'roof.faces_count': measurement?.facet_count || 0,
+  'lf.ridge': measurement?.total_ridge_length || 0,
+  'lf.hip': measurement?.total_hip_length || 0,
+  'lf.valley': measurement?.total_valley_length || 0,
+  'lf.eave': measurement?.total_eave_length || 0,
+  'lf.rake': measurement?.total_rake_length || 0,
+});
+
+const buildReportMeasurementFromRoofMeasurement = (measurement: any, pipelineEntryId: string) => {
+  const linearFeatures = Array.isArray(measurement?.linear_features_wkt) && measurement.linear_features_wkt.length > 0
+    ? measurement.linear_features_wkt
+    : (Array.isArray(measurement?.ai_detection_data?.linear_features) ? measurement.ai_detection_data.linear_features : []);
+  const faces = Array.isArray(measurement?.faces_wkt) && measurement.faces_wkt.length > 0
+    ? measurement.faces_wkt
+    : (Array.isArray(measurement?.ai_detection_data?.faces) ? measurement.ai_detection_data.faces : []);
+  const satelliteUrl = getMeasurementSatelliteUrl(measurement);
+
+  return {
+    id: measurement?.id,
+    property_id: pipelineEntryId,
+    summary: {
+      total_area_sqft: measurement?.total_area_adjusted_sqft || 0,
+      total_squares: measurement?.total_squares || 0,
+      waste_pct: measurement?.waste_factor_percent || measurement?.waste_factor_pct || 10,
+      ridge_ft: measurement?.total_ridge_length || 0,
+      hip_ft: measurement?.total_hip_length || 0,
+      valley_ft: measurement?.total_valley_length || 0,
+      eave_ft: measurement?.total_eave_length || 0,
+      rake_ft: measurement?.total_rake_length || 0,
+      perimeter_ft: (measurement?.total_eave_length || 0) + (measurement?.total_rake_length || 0),
+    },
+    linear_features: linearFeatures,
+    faces,
+    perimeter_wkt: measurement?.perimeter_wkt || measurement?.ai_detection_data?.perimeter_wkt,
+    center_lat: measurement?.target_lat,
+    center_lng: measurement?.target_lng,
+    gps_coordinates: measurement?.gps_coordinates || { lat: measurement?.target_lat, lng: measurement?.target_lng },
+    analysis_zoom: measurement?.analysis_zoom || 20,
+    analysis_image_size: measurement?.analysis_image_size || { width: 640, height: 640 },
+    image_bounds: measurement?.image_bounds,
+    google_maps_image_url: measurement?.google_maps_image_url,
+    satellite_overlay_url: satelliteUrl,
+    mapbox_image_url: measurement?.mapbox_image_url,
+    selected_image_source: measurement?.selected_image_source,
+    image_source: measurement?.image_source,
+    footprint_vertices_geo: measurement?.footprint_vertices_geo,
+    footprint_source: measurement?.footprint_source,
+    footprint_confidence: measurement?.footprint_confidence,
+    detection_method: measurement?.detection_method,
+    solar_building_footprint_sqft: measurement?.solar_building_footprint_sqft,
+    measurement_confidence: measurement?.measurement_confidence,
+    requires_manual_review: measurement?.requires_manual_review,
+  };
+};
+
+const getApprovalMeasurementId = (measurement: SavedMeasurement): string | null => {
+  return measurement.measurement_id || (measurement.saved_tags as any)?.measurement_id || null;
+};
+
 export function UnifiedMeasurementPanel({ 
   pipelineEntryId, 
   latitude = 0,
@@ -142,6 +224,11 @@ export function UnifiedMeasurementPanel({
   const [addOptionsOpen, setAddOptionsOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editingApproval, setEditingApproval] = useState<SavedMeasurement | null>(null);
+  const [reportState, setReportState] = useState<{
+    open: boolean;
+    measurement: any | null;
+    tags: Record<string, any>;
+  }>({ open: false, measurement: null, tags: {} });
 
   // Track async measurement jobs
   const { job: activeJob, isActive: jobIsActive } = useMeasurementJob(pipelineEntryId);
@@ -202,7 +289,7 @@ export function UnifiedMeasurementPanel({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('measurement_approvals')
-        .select('id, approved_at, saved_tags, approval_notes, report_generated, report_document_id')
+        .select('id, approved_at, measurement_id, saved_tags, approval_notes, report_generated, report_document_id')
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('approved_at', { ascending: false });
 
@@ -451,6 +538,85 @@ export function UnifiedMeasurementPanel({
     setAddOptionsOpen(false);
   };
 
+  const handleViewSavedReport = useCallback(async (approval: SavedMeasurement) => {
+    try {
+      const linkedMeasurementId = getApprovalMeasurementId(approval);
+      const approvalTags = approval.saved_tags || {};
+
+      if (!linkedMeasurementId) {
+        setReportState({
+          open: true,
+          measurement: buildReportMeasurementFromRoofMeasurement({
+            id: approval.id,
+            total_area_adjusted_sqft: approvalTags['roof.total_sqft'] || approvalTags['roof.plan_area'] || 0,
+            total_area_flat_sqft: approvalTags['roof.plan_area'] || 0,
+            total_squares: approvalTags['roof.squares'] || 0,
+            predominant_pitch: approvalTags['roof.predominant_pitch'],
+            facet_count: approvalTags['roof.faces_count'],
+            total_ridge_length: approvalTags['lf.ridge'] || 0,
+            total_hip_length: approvalTags['lf.hip'] || 0,
+            total_valley_length: approvalTags['lf.valley'] || 0,
+            total_eave_length: approvalTags['lf.eave'] || 0,
+            total_rake_length: approvalTags['lf.rake'] || 0,
+            target_lat: latitude,
+            target_lng: longitude,
+            gps_coordinates: { lat: latitude, lng: longitude },
+            footprint_source: approvalTags.source,
+          }, pipelineEntryId),
+          tags: approvalTags,
+        });
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from('roof_measurements')
+        .select('id, created_at, customer_id, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data, waste_factor_percent')
+        .eq('id', linkedMeasurementId)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      const sourceMeasurement = data || {
+        id: linkedMeasurementId,
+        total_area_adjusted_sqft: approvalTags['roof.total_sqft'] || approvalTags['roof.plan_area'] || 0,
+        total_area_flat_sqft: approvalTags['roof.plan_area'] || 0,
+        total_squares: approvalTags['roof.squares'] || 0,
+        predominant_pitch: approvalTags['roof.predominant_pitch'],
+        facet_count: approvalTags['roof.faces_count'],
+        total_ridge_length: approvalTags['lf.ridge'] || 0,
+        total_hip_length: approvalTags['lf.hip'] || 0,
+        total_valley_length: approvalTags['lf.valley'] || 0,
+        total_eave_length: approvalTags['lf.eave'] || 0,
+        total_rake_length: approvalTags['lf.rake'] || 0,
+        target_lat: latitude,
+        target_lng: longitude,
+        gps_coordinates: { lat: latitude, lng: longitude },
+        footprint_source: approvalTags.source,
+      };
+
+      setReportState({
+        open: true,
+        measurement: buildReportMeasurementFromRoofMeasurement(sourceMeasurement, pipelineEntryId),
+        tags: { ...buildReportTagsFromRoofMeasurement(sourceMeasurement), ...approvalTags },
+      });
+    } catch (error: any) {
+      console.error('Error opening measurement report:', error);
+      toast({
+        title: 'Report Unavailable',
+        description: error.message || 'Could not load the aerial trace report for this measurement',
+        variant: 'destructive',
+      });
+    }
+  }, [latitude, longitude, pipelineEntryId]);
+
+  const handleViewAiHistoryReport = useCallback((measurement: any) => {
+    setReportState({
+      open: true,
+      measurement: buildReportMeasurementFromRoofMeasurement(measurement, pipelineEntryId),
+      tags: buildReportTagsFromRoofMeasurement(measurement),
+    });
+  }, [pipelineEntryId]);
+
   // Quick save an AI measurement directly from the banner
   const [isSavingDirect, setIsSavingDirect] = useState(false);
   const [showAiReport, setShowAiReport] = useState(false);
@@ -482,12 +648,14 @@ export function UnifiedMeasurementPanel({
         'lf.rake': rakeLength,
         'lf.perimeter': eaveLength + rakeLength,
         'source': 'ai_pulled',
+        'measurement_id': measurement.id,
         'imported_at': measurement.created_at,
       };
 
       await supabase.from('measurement_approvals').insert({
         tenant_id: entry.tenant_id,
         pipeline_entry_id: pipelineEntryId,
+        measurement_id: measurement.id,
         approved_at: new Date().toISOString(),
         saved_tags: savedTags,
         approval_notes: `AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
@@ -576,6 +744,7 @@ export function UnifiedMeasurementPanel({
               onSetActive={() => {}}
               onDelete={() => handleDeleteClick(activeMeasurement.id)}
               onEdit={() => handleEditMeasurement(activeMeasurement)}
+              onViewReport={() => handleViewSavedReport(activeMeasurement)}
               isSettingActive={false}
             />
           )}
@@ -630,7 +799,7 @@ export function UnifiedMeasurementPanel({
               const src = (ai.selected_image_source || ai.image_source || '').toLowerCase();
               if (src.includes('mapbox') && ai.mapbox_image_url) return ai.mapbox_image_url;
               if (src.includes('google') && ai.google_maps_image_url) return ai.google_maps_image_url;
-              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url;
+              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url || getFallbackSatelliteTileUrl(ai);
             })();
 
             return (
@@ -777,7 +946,7 @@ export function UnifiedMeasurementPanel({
                     analysis_image_size: ai.analysis_image_size || { width: 640, height: 640 },
                     image_bounds: ai.image_bounds,
                     google_maps_image_url: ai.google_maps_image_url,
-                    satellite_overlay_url: ai.satellite_overlay_url,
+                    satellite_overlay_url: satUrl,
                     mapbox_image_url: ai.mapbox_image_url,
                     selected_image_source: ai.selected_image_source,
                     image_source: ai.image_source,
@@ -843,6 +1012,7 @@ export function UnifiedMeasurementPanel({
             aiMeasurements={aiMeasurements || []}
             pipelineEntryId={pipelineEntryId}
             onSaveToApprovals={handleMeasurementSuccess}
+            onViewAiReport={handleViewAiHistoryReport}
             isPhone={layout.isPhone}
           />
 
@@ -935,6 +1105,16 @@ export function UnifiedMeasurementPanel({
           initialValues={getInitialValuesFromTags(editingApproval.saved_tags)}
         />
       )}
+
+      {reportState.measurement && (
+        <MeasurementReportDialog
+          open={reportState.open}
+          onOpenChange={(open) => setReportState((current) => ({ ...current, open }))}
+          measurement={reportState.measurement}
+          tags={reportState.tags}
+          address={address}
+        />
+      )}
     </>
   );
 }
@@ -947,6 +1127,7 @@ interface MeasurementCardProps {
   onSetActive: () => void;
   onDelete: () => void;
   onEdit?: () => void;
+  onViewReport?: () => void;
   isSettingActive: boolean;
 }
 
@@ -957,6 +1138,7 @@ function MeasurementCard({
   onSetActive, 
   onDelete,
   onEdit,
+  onViewReport,
   isSettingActive 
 }: MeasurementCardProps) {
   const tags = measurement.saved_tags || {};
@@ -1087,6 +1269,18 @@ function MeasurementCard({
             <Pencil className="h-4 w-4" />
           </Button>
         )}
+        {onViewReport && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onViewReport}
+            style={{ minHeight: isPhone ? 44 : 32 }}
+            className="flex-1"
+          >
+            <Eye className="h-4 w-4 mr-1.5" />
+            View Report
+          </Button>
+        )}
         <Button
           size="sm"
           variant="ghost"
@@ -1127,6 +1321,7 @@ interface MeasurementHistorySectionProps {
   }>;
   pipelineEntryId: string;
   onSaveToApprovals: () => void;
+  onViewAiReport: (measurement: any) => void;
   isPhone: boolean;
 }
 
@@ -1135,6 +1330,7 @@ function MeasurementHistorySection({
   aiMeasurements,
   pipelineEntryId,
   onSaveToApprovals,
+  onViewAiReport,
   isPhone,
 }: MeasurementHistorySectionProps) {
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -1377,12 +1573,14 @@ function MeasurementHistorySection({
         'lf.rake': rakeLength,
         'lf.perimeter': perimeter,
         'source': 'ai_pulled',
+        'measurement_id': measurement.id,
         'imported_at': measurement.created_at,
       };
 
       await supabase.from('measurement_approvals').insert({
         tenant_id: entry.tenant_id,
         pipeline_entry_id: pipelineEntryId,
+        measurement_id: measurement.id,
         approved_at: new Date().toISOString(),
         saved_tags: savedTags,
         approval_notes: `Saved from AI measurement - ${measurement.total_area_adjusted_sqft?.toLocaleString() || 0} sqft`,
@@ -1662,6 +1860,15 @@ function MeasurementHistorySection({
               </div>
               {!selectMode && (
                 <div className="flex gap-1 shrink-0">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onViewAiReport(measurement)}
+                    title="View aerial trace report"
+                  >
+                    <Eye className="h-4 w-4 mr-1" />
+                    View Report
+                  </Button>
                   <Button 
                     size="sm" 
                     variant="outline" 
