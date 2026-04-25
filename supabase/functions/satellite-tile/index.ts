@@ -40,7 +40,7 @@ Deno.serve(async (req) => {
       })
     }
 
-    const tileUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${zoom},0/${size}x${size}@2x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
+    const tileUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${zoom},${bearing},0/${size}x${size}@2x?access_token=${MAPBOX_TOKEN}&logo=false&attribution=false`
 
     const resp = await fetch(tileUrl)
     if (!resp.ok) {
