@@ -248,6 +248,14 @@ const LeadDetails = () => {
   const [currentEditingEstimateName, setCurrentEditingEstimateName] = useState<string | undefined>(undefined);
   const saveEstimateChangesRef = useRef<(() => Promise<void>) | null>(null);
   const [deletedEstimateId, setDeletedEstimateId] = useState<string | null>(null);
+  const [aiMeasurement, setAiMeasurement] = useState<any>(null);
+
+  useEffect(() => {
+    if (!id) return;
+    getLatestAiMeasurement({ recordId: id, recordType: "lead" })
+      .then(setAiMeasurement)
+      .catch((err) => console.error("Failed to load AI measurement", err));
+  }, [id]);
   
   // Handle unsaved changes state from MultiTemplateSelector
   const handleUnsavedChangesChange = useCallback((hasChanges: boolean, estimateName?: string) => {
@@ -724,8 +732,15 @@ const LeadDetails = () => {
               onMeasurementChange={() => {
                 refetchMeasurements();
                 refetchRequirements();
+                if (id) {
+                  getLatestAiMeasurement({ recordId: id, recordType: "lead" })
+                    .then(setAiMeasurement)
+                    .catch((err) => console.error("Failed to refresh AI measurement", err));
+                }
               }}
             />
+
+            <AiMeasurementSummary measurement={aiMeasurement} />
 
             {/* Existing Template Selector */}
             <MultiTemplateSelector
