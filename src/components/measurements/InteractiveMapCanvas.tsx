@@ -76,6 +76,7 @@ export function InteractiveMapCanvas({
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [mode, setMode] = useState<'select' | 'draw' | 'footprint' | 'ridge' | 'hip' | 'valley'>('footprint');
   const [mapStyle, setMapStyle] = useState<'satellite' | 'satellite-streets'>('satellite-streets');
   const [currentZoom, setCurrentZoom] = useState(initialZoom);
@@ -159,9 +160,17 @@ export function InteractiveMapCanvas({
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), 'top-right');
 
     map.on('load', () => {
+      console.log('[Map] satellite tiles loaded for', centerLat, centerLng);
       setIsMapLoaded(true);
+      setMapError(null);
       setCurrentZoom(map.getZoom());
       setPixelsPerFoot(calculatePixelsPerFoot(map.getZoom(), centerLat));
+    });
+
+    map.on('error', (e: any) => {
+      const msg = e?.error?.message || 'Failed to load satellite imagery';
+      console.error('[Map] error:', msg, e);
+      setMapError(msg);
     });
 
     map.on('zoom', () => {
@@ -1070,8 +1079,16 @@ export function InteractiveMapCanvas({
         />
       )}
 
+      {/* Map error banner */}
+      {mapError && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 bg-destructive text-destructive-foreground px-4 py-2 rounded-lg shadow-lg text-sm max-w-md text-center">
+          <strong>Satellite imagery failed to load.</strong> {mapError}
+          <div className="text-xs mt-1 opacity-80">Check that MAPBOX_PUBLIC_TOKEN is set and valid.</div>
+        </div>
+      )}
+
       {/* Loading Overlay */}
-      {!isMapLoaded && (
+      {!isMapLoaded && !mapError && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <span className="ml-2">Loading satellite imagery...</span>
