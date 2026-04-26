@@ -37,6 +37,8 @@ import { ImportReportButton } from '@/components/measurements/ImportReportButton
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ApprovedMeasurementsList } from '@/components/measurements/ApprovedMeasurementsList';
 import { UnifiedMeasurementPanel } from '@/components/measurements/UnifiedMeasurementPanel';
+import { AiMeasurementSummary } from '@/components/aiMeasurement/AiMeasurementSummary';
+import { getLatestAiMeasurement } from '@/lib/aiMeasurement/getLatestAiMeasurement';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
 import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
