@@ -385,7 +385,7 @@ export async function buildPermitContext(
       status: jobData.status,
       address: jobAddress,
       geo: jobGeo,
-      year_built: parcel?.year_built || null,
+      year_built: (parcel as any)?.year_built || null,
       stories: measurements?.stories || null,
       structure_type: null,
       roof_deck_type: null,

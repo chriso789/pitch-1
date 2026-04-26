@@ -57,8 +57,6 @@ Deno.serve(async (req) => {
       throw new Error('User tenant not found');
     }
 
-    const tenantId = profile.tenant_id;
-
     let result;
     switch (action) {
       case 'initialize_default_stages':

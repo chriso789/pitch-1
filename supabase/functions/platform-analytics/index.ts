@@ -181,7 +181,7 @@ Deno.serve(async (req: Request) => {
 
         const totalProposals = proposals?.length || 1;
         const closedProposals = proposals?.filter(p => p.status === 'accepted').length || 0;
-        const avgProposalValue = proposals?.reduce((sum, p) => sum + (p.total_amount || 0), 0) / totalProposals || 0;
+        const avgProposalValue = (proposals?.reduce((sum: number, p: any) => sum + (p.total_amount || 0), 0) || 0) / totalProposals || 0;
 
         const benchmarks = {
           avg_proposal_value: Math.round(avgProposalValue),

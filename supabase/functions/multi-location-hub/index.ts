@@ -421,29 +421,29 @@ Deno.serve(async (req) => {
             project_value: allProjects?.reduce((s: number, p: any) => s + (p.contract_amount || 0), 0) || 0,
             location_count: locations?.length || 0
           },
-          by_location: (locations || []).map(loc => {
-            const locLeads = allLeads?.filter(l => l.location_id === loc.id) || [];
-            const locProjects = allProjects?.filter(p => p.location_id === loc.id) || [];
+          by_location: (locations || []).map((loc: any) => {
+            const locLeads = allLeads?.filter((l: any) => l.location_id === loc.id) || [];
+            const locProjects = allProjects?.filter((p: any) => p.location_id === loc.id) || [];
             
             return {
               location_id: loc.id,
               name: loc.name,
               leads: locLeads.length,
               revenue: locLeads
-                .filter(l => l.status === "won")
+                .filter((l: any) => l.status === "won")
                 .reduce((s: number, l: any) => s + (l.estimated_value || 0), 0),
               projects: locProjects.length
             };
           }),
           trends: {
             // Simplified trend data
-            top_location_by_leads: locations?.reduce((top, loc) => {
-              const count = allLeads?.filter(l => l.location_id === loc.id).length || 0;
+            top_location_by_leads: locations?.reduce((top: any, loc: any) => {
+              const count = allLeads?.filter((l: any) => l.location_id === loc.id).length || 0;
               return count > (top?.count || 0) ? { name: loc.name, count } : top;
             }, null as { name: string; count: number } | null),
-            top_location_by_revenue: locations?.reduce((top, loc) => {
+            top_location_by_revenue: locations?.reduce((top: any, loc: any) => {
               const revenue = allLeads
-                ?.filter(l => l.location_id === loc.id && l.status === "won")
+                ?.filter((l: any) => l.location_id === loc.id && l.status === "won")
                 .reduce((s: number, l: any) => s + (l.estimated_value || 0), 0) || 0;
               return revenue > (top?.revenue || 0) ? { name: loc.name, revenue } : top;
             }, null as { name: string; revenue: number } | null)

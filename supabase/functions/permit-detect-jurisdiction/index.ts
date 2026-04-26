@@ -125,7 +125,7 @@ Deno.serve(async (req) => {
             continue;
           }
 
-          if (turf.booleanPointInPolygon(point, polygon)) {
+          if (turf.booleanPointInPolygon(point, polygon as any)) {
             matchedAuthority = auth;
             jurisdictionType = "CITY";
             console.log(`Matched city: ${auth.name}`);
