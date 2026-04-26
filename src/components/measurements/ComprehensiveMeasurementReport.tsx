@@ -280,6 +280,11 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
         customerPhone={customerPhone}
       />
 
+      {/* EagleView-style generated diagrams (Outline / Length / Pitch / Area / Notes) */}
+      {pipelineEntryId && (
+        <RoofDiagramViewer leadId={pipelineEntryId} />
+      )}
+
       {/* Roof Diagram */}
       <Card>
         <CardHeader>
