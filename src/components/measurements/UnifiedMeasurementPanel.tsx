@@ -27,6 +27,7 @@ import { BlueprintUploadButton } from './BlueprintUploadButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
 import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
+import { RoofDiagramViewer } from '@/components/measurements/RoofDiagramViewer';
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
