@@ -1482,8 +1482,10 @@ export type Database = {
       ai_measurement_diagrams: {
         Row: {
           ai_measurement_job_id: string | null
+          blocked_reason: string | null
           company_id: string | null
           created_at: string | null
+          customer_safe: boolean
           diagram_json: Json | null
           diagram_type: string
           height: number | null
@@ -1502,8 +1504,10 @@ export type Database = {
         }
         Insert: {
           ai_measurement_job_id?: string | null
+          blocked_reason?: string | null
           company_id?: string | null
           created_at?: string | null
+          customer_safe?: boolean
           diagram_json?: Json | null
           diagram_type: string
           height?: number | null
@@ -1522,8 +1526,10 @@ export type Database = {
         }
         Update: {
           ai_measurement_job_id?: string | null
+          blocked_reason?: string | null
           company_id?: string | null
           created_at?: string | null
+          customer_safe?: boolean
           diagram_json?: Json | null
           diagram_type?: string
           height?: number | null
@@ -1624,6 +1630,7 @@ export type Database = {
           confidence_score: number | null
           created_at: string
           engine_version: string | null
+          entrypoint: string
           failure_reason: string | null
           geocode_location_type: string | null
           geometry_quality_score: number | null
@@ -1636,10 +1643,13 @@ export type Database = {
           logical_image_width: number | null
           longitude: number | null
           measurement_quality_score: number | null
+          needs_review: boolean
           project_id: string | null
           property_address: string
           raster_scale: number | null
+          report_blocked: boolean
           source_button: string | null
+          source_context: Json | null
           source_priority: Json | null
           source_record_id: string | null
           source_record_type: string | null
@@ -1659,6 +1669,7 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           engine_version?: string | null
+          entrypoint?: string
           failure_reason?: string | null
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
@@ -1671,10 +1682,13 @@ export type Database = {
           logical_image_width?: number | null
           longitude?: number | null
           measurement_quality_score?: number | null
+          needs_review?: boolean
           project_id?: string | null
           property_address: string
           raster_scale?: number | null
+          report_blocked?: boolean
           source_button?: string | null
+          source_context?: Json | null
           source_priority?: Json | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -1694,6 +1708,7 @@ export type Database = {
           confidence_score?: number | null
           created_at?: string
           engine_version?: string | null
+          entrypoint?: string
           failure_reason?: string | null
           geocode_location_type?: string | null
           geometry_quality_score?: number | null
@@ -1706,10 +1721,13 @@ export type Database = {
           logical_image_width?: number | null
           longitude?: number | null
           measurement_quality_score?: number | null
+          needs_review?: boolean
           project_id?: string | null
           property_address?: string
           raster_scale?: number | null
+          report_blocked?: boolean
           source_button?: string | null
+          source_context?: Json | null
           source_priority?: Json | null
           source_record_id?: string | null
           source_record_type?: string | null
@@ -1763,18 +1781,27 @@ export type Database = {
       }
       ai_measurement_results: {
         Row: {
+          blocked_reason: string | null
           confidence_score: number | null
           created_at: string
           dominant_pitch: number | null
           eave_length_ft: number | null
+          edge_source: string | null
+          geometry_quality_score: number | null
+          geometry_source: string | null
           hip_length_ft: number | null
           id: string
           job_id: string
           line_breakdown: Json | null
+          measurement_quality_score: number | null
+          needs_review: boolean
           perimeter_length_ft: number | null
           pitch_breakdown: Json | null
           plane_breakdown: Json | null
+          publishable_at: string | null
+          qa_breakdown: Json | null
           rake_length_ft: number | null
+          report_blocked: boolean
           report_json: Json | null
           ridge_length_ft: number | null
           roof_square_count: number | null
@@ -1785,18 +1812,27 @@ export type Database = {
           waste_factor_percent: number | null
         }
         Insert: {
+          blocked_reason?: string | null
           confidence_score?: number | null
           created_at?: string
           dominant_pitch?: number | null
           eave_length_ft?: number | null
+          edge_source?: string | null
+          geometry_quality_score?: number | null
+          geometry_source?: string | null
           hip_length_ft?: number | null
           id?: string
           job_id: string
           line_breakdown?: Json | null
+          measurement_quality_score?: number | null
+          needs_review?: boolean
           perimeter_length_ft?: number | null
           pitch_breakdown?: Json | null
           plane_breakdown?: Json | null
+          publishable_at?: string | null
+          qa_breakdown?: Json | null
           rake_length_ft?: number | null
+          report_blocked?: boolean
           report_json?: Json | null
           ridge_length_ft?: number | null
           roof_square_count?: number | null
@@ -1807,18 +1843,27 @@ export type Database = {
           waste_factor_percent?: number | null
         }
         Update: {
+          blocked_reason?: string | null
           confidence_score?: number | null
           created_at?: string
           dominant_pitch?: number | null
           eave_length_ft?: number | null
+          edge_source?: string | null
+          geometry_quality_score?: number | null
+          geometry_source?: string | null
           hip_length_ft?: number | null
           id?: string
           job_id?: string
           line_breakdown?: Json | null
+          measurement_quality_score?: number | null
+          needs_review?: boolean
           perimeter_length_ft?: number | null
           pitch_breakdown?: Json | null
           plane_breakdown?: Json | null
+          publishable_at?: string | null
+          qa_breakdown?: Json | null
           rake_length_ft?: number | null
+          report_blocked?: boolean
           report_json?: Json | null
           ridge_length_ft?: number | null
           roof_square_count?: number | null
@@ -23950,11 +23995,18 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           description: string | null
+          error_count: number
           execution_count: number | null
           id: string
           is_active: boolean | null
+          last_error: string | null
+          last_error_at: string | null
           last_executed_at: string | null
           name: string
+          priority: number
+          rule_type: string
+          scope: string
+          scope_id: string | null
           tenant_id: string
           trigger_conditions: Json | null
           trigger_event: string
@@ -23965,11 +24017,18 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          error_count?: number
           execution_count?: number | null
           id?: string
           is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_executed_at?: string | null
           name: string
+          priority?: number
+          rule_type?: string
+          scope?: string
+          scope_id?: string | null
           tenant_id: string
           trigger_conditions?: Json | null
           trigger_event: string
@@ -23980,11 +24039,18 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          error_count?: number
           execution_count?: number | null
           id?: string
           is_active?: boolean | null
+          last_error?: string | null
+          last_error_at?: string | null
           last_executed_at?: string | null
           name?: string
+          priority?: number
+          rule_type?: string
+          scope?: string
+          scope_id?: string | null
           tenant_id?: string
           trigger_conditions?: Json | null
           trigger_event?: string
@@ -42125,6 +42191,62 @@ export type Database = {
             columns: ["task_id"]
             isOneToOne: false
             referencedRelation: "workflow_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_rule_executions: {
+        Row: {
+          actions_executed: Json | null
+          conditions_evaluated: Json | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          id: string
+          matched: boolean
+          rule_id: string
+          source_record_id: string | null
+          source_record_type: string | null
+          status: string
+          tenant_id: string
+          trigger_event: string
+        }
+        Insert: {
+          actions_executed?: Json | null
+          conditions_evaluated?: Json | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          matched?: boolean
+          rule_id: string
+          source_record_id?: string | null
+          source_record_type?: string | null
+          status?: string
+          tenant_id: string
+          trigger_event: string
+        }
+        Update: {
+          actions_executed?: Json | null
+          conditions_evaluated?: Json | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          id?: string
+          matched?: boolean
+          rule_id?: string
+          source_record_id?: string | null
+          source_record_type?: string | null
+          status?: string
+          tenant_id?: string
+          trigger_event?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_rule_executions_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_automation_rules"
             referencedColumns: ["id"]
           },
         ]
