@@ -99,28 +99,29 @@ export function useMeasurementJob(pipelineEntryId: string) {
     tenantId: string;
     userId?: string;
   }) => {
-    // Route to the new geometry-first AI Measurement pipeline.
-    // Tied to the current lead/project (pipelineEntryId) the user was viewing.
-    const { data, error } = await supabase.functions.invoke('ai-measurement', {
+    // Canonical AI Measurement entrypoint: async job flow that writes to
+    // measurement_jobs (polled below) and publishes to roof_measurements +
+    // measurement_approvals so the lead/project page picks it up automatically.
+    const { data, error } = await supabase.functions.invoke('start-ai-measurement', {
       body: {
-        lead_id: pipelineEntryId,
-        project_id: pipelineEntryId,
-        tenant_id: params.tenantId,
-        user_id: params.userId,
-        property_address: params.address || `${params.lat},${params.lng}`,
-        latitude: params.lat,
-        longitude: params.lng,
-        waste_factor_percent: 10,
+        pipelineEntryId,
+        lat: params.lat,
+        lng: params.lng,
+        address: params.address,
+        pitchOverride: params.pitchOverride,
+        tenantId: params.tenantId,
+        userId: params.userId,
       }
     });
 
     if (error) throw error;
-    if (!data?.success) throw new Error(data?.error || 'Failed to start measurement job');
+    const jobId = data?.jobId || data?.job_id;
+    if (!jobId) throw new Error(data?.error || 'Failed to start measurement job');
 
-    setActiveJobId(data.jobId);
+    setActiveJobId(jobId);
     // Immediately refetch to show the new job
     await refetchJob();
-    return data.jobId as string;
+    return jobId as string;
   }, [pipelineEntryId, refetchJob]);
 
   const isActive = latestJob?.status === 'queued' || latestJob?.status === 'processing';
