@@ -36,7 +36,7 @@ export default function ProfessionalMeasurement() {
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   
   // Fetch Mapbox token
-  const { token: mapboxToken, loading: tokenLoading } = useMapboxToken();
+  const { token: mapboxToken, loading: tokenLoading, error: tokenError } = useMapboxToken();
   
   // Fetch pipeline entry with contact data
   const { data: pipelineEntry, isLoading: entryLoading } = useQuery({
@@ -256,6 +256,11 @@ export default function ProfessionalMeasurement() {
                       <Button onClick={() => navigate(`/lead/${id}`)}>
                         Go to Lead to Verify Address
                       </Button>
+                    </div>
+                  ) : tokenError ? (
+                    <div className="flex flex-col items-center justify-center h-full bg-muted gap-3 p-6 text-center">
+                      <p className="text-destructive font-semibold">Satellite imagery unavailable</p>
+                      <p className="text-sm text-muted-foreground max-w-md">{tokenError}</p>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center h-full bg-muted">
