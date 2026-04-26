@@ -1479,6 +1479,77 @@ export type Database = {
           },
         ]
       }
+      ai_measurement_diagrams: {
+        Row: {
+          ai_measurement_job_id: string | null
+          company_id: string | null
+          created_at: string | null
+          diagram_json: Json | null
+          diagram_type: string
+          height: number | null
+          id: string
+          lead_id: string | null
+          measurement_result_id: string | null
+          page_number: number | null
+          pdf_storage_path: string | null
+          png_storage_path: string | null
+          project_id: string | null
+          roof_measurement_id: string | null
+          svg_markup: string | null
+          tenant_id: string | null
+          title: string
+          width: number | null
+        }
+        Insert: {
+          ai_measurement_job_id?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          diagram_json?: Json | null
+          diagram_type: string
+          height?: number | null
+          id?: string
+          lead_id?: string | null
+          measurement_result_id?: string | null
+          page_number?: number | null
+          pdf_storage_path?: string | null
+          png_storage_path?: string | null
+          project_id?: string | null
+          roof_measurement_id?: string | null
+          svg_markup?: string | null
+          tenant_id?: string | null
+          title: string
+          width?: number | null
+        }
+        Update: {
+          ai_measurement_job_id?: string | null
+          company_id?: string | null
+          created_at?: string | null
+          diagram_json?: Json | null
+          diagram_type?: string
+          height?: number | null
+          id?: string
+          lead_id?: string | null
+          measurement_result_id?: string | null
+          page_number?: number | null
+          pdf_storage_path?: string | null
+          png_storage_path?: string | null
+          project_id?: string | null
+          roof_measurement_id?: string | null
+          svg_markup?: string | null
+          tenant_id?: string | null
+          title?: string
+          width?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_measurement_diagrams_ai_measurement_job_id_fkey"
+            columns: ["ai_measurement_job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_measurement_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_measurement_images: {
         Row: {
           bearing: number | null
@@ -40514,6 +40585,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      vendor_report_diagram_pages: {
+        Row: {
+          company_id: string | null
+          confidence: number | null
+          created_at: string | null
+          extracted_text: string | null
+          id: string
+          image_storage_path: string | null
+          lead_id: string | null
+          page_number: number
+          page_type: string
+          parsed_values: Json | null
+          project_id: string | null
+          report_file_path: string
+          tenant_id: string | null
+          vendor: string | null
+        }
+        Insert: {
+          company_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          extracted_text?: string | null
+          id?: string
+          image_storage_path?: string | null
+          lead_id?: string | null
+          page_number: number
+          page_type: string
+          parsed_values?: Json | null
+          project_id?: string | null
+          report_file_path: string
+          tenant_id?: string | null
+          vendor?: string | null
+        }
+        Update: {
+          company_id?: string | null
+          confidence?: number | null
+          created_at?: string | null
+          extracted_text?: string | null
+          id?: string
+          image_storage_path?: string | null
+          lead_id?: string | null
+          page_number?: number
+          page_type?: string
+          parsed_values?: Json | null
+          project_id?: string | null
+          report_file_path?: string
+          tenant_id?: string | null
+          vendor?: string | null
+        }
+        Relationships: []
       }
       vendor_scorecards: {
         Row: {

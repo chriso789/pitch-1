@@ -21,6 +21,7 @@
 // ===================================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
+import { generateRoofDiagrams } from '../_shared/roof-diagram-renderer.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -889,6 +890,61 @@ Deno.serve(async (req) => {
           confidence_score: qc.overall,
           report_json: reportJson,
         })
+
+        // 2i.5) Generate EagleView-style diagram pages from measured geometry.
+        // Hard rule: only when geometry passed quality checks (not needs_manual_measurement)
+        // and we have real planes — never from placeholders.
+        if (qc.status !== 'needs_manual_measurement' && planes.length > 0 && !hasPlaceholder) {
+          try {
+            const diagrams = generateRoofDiagrams({
+              propertyAddress: resolved.address,
+              planes: planes.map((p) => ({
+                plane_index: p.plane_index,
+                polygon_px: p.polygon_px as any,
+                pitch: p.pitch,
+                pitch_degrees: p.pitch_degrees,
+                area_2d_sqft: p.area_2d_sqft,
+                area_pitch_adjusted_sqft: p.area_pitch_adjusted_sqft,
+                confidence: p.confidence,
+              })),
+              edges: edges.map((e) => ({
+                edge_type: e.edge_type as any,
+                line_px: e.line_px as any,
+                length_ft: e.length_ft,
+                confidence: e.confidence,
+              })),
+              totals: reportJson.totals,
+              width: 1000,
+              height: 1000,
+            })
+
+            if (diagrams.length > 0) {
+              await supa.from('ai_measurement_diagrams').insert(
+                diagrams.map((d) => ({
+                  ai_measurement_job_id: aiJob.id,
+                  lead_id: resolved.leadId,
+                  project_id: resolved.projectId,
+                  tenant_id: resolved.tenantId,
+                  diagram_type: d.diagram_type,
+                  title: d.title,
+                  page_number: d.page_number,
+                  svg_markup: d.svg_markup,
+                  diagram_json: {
+                    generated_from: 'ai_roof_planes_and_ai_roof_edges',
+                    engine_version: `${ENGINE_VERSION}_diagrams`,
+                    property_address: resolved.address,
+                    totals: reportJson.totals,
+                  },
+                  width: 1000,
+                  height: 1000,
+                })),
+              )
+            }
+          } catch (diagErr) {
+            console.error('[start-ai-measurement] diagram generation failed', diagErr)
+            // Non-fatal: do not block job completion on diagram rendering.
+          }
+        }
 
         await supa
           .from('ai_measurement_jobs')
