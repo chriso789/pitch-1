@@ -30,10 +30,15 @@ export type DiagramInput = {
   totals: any;
   width?: number;
   height?: number;
+  /** Optional satellite raster (Mapbox/Google) to overlay geometry on. */
+  satelliteImageUrl?: string | null;
+  /** Source image dims that the polygon_px coordinates were authored against. */
+  sourceImageWidth?: number | null;
+  sourceImageHeight?: number | null;
 };
 
 export type GeneratedDiagram = {
-  diagram_type: "outline" | "length" | "pitch" | "area" | "notes";
+  diagram_type: "outline" | "length" | "pitch" | "area" | "notes" | "satellite";
   title: string;
   page_number: number;
   svg_markup: string;
