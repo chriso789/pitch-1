@@ -76,6 +76,7 @@ export function InteractiveMapCanvas({
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   
   const [isMapLoaded, setIsMapLoaded] = useState(false);
+  const [mapError, setMapError] = useState<string | null>(null);
   const [mode, setMode] = useState<'select' | 'draw' | 'footprint' | 'ridge' | 'hip' | 'valley'>('footprint');
   const [mapStyle, setMapStyle] = useState<'satellite' | 'satellite-streets'>('satellite-streets');
   const [currentZoom, setCurrentZoom] = useState(initialZoom);
