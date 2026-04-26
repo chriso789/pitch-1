@@ -102,13 +102,16 @@ export const UnifiedCommunicationsTimeline: React.FC<UnifiedCommunicationsTimeli
     queryFn: async () => {
       const timeline: TimelineEvent[] = [];
 
-      // Fetch call logs
+      // Fetch call logs scoped to this lead/project/contact
       if (pipelineEntryId || contactId) {
-        const { data: calls } = await (supabase
+        let q: any = supabase
           .from('call_logs')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(maxItems) as any);
+          .limit(maxItems);
+        if (pipelineEntryId) q = q.eq('pipeline_entry_id', pipelineEntryId);
+        else if (contactId) q = q.eq('contact_id', contactId);
+        const { data: calls } = await q;
 
         calls?.forEach((call: any) => {
           timeline.push({
@@ -124,7 +127,7 @@ export const UnifiedCommunicationsTimeline: React.FC<UnifiedCommunicationsTimeli
         });
       }
 
-      // Fetch customer messages (from portal)
+      // Fetch customer messages (from portal) scoped to this project
       if (projectId) {
         const { data: customerMessages } = await (supabase
           .from('customer_messages')
@@ -146,13 +149,17 @@ export const UnifiedCommunicationsTimeline: React.FC<UnifiedCommunicationsTimeli
         });
       }
 
-      // Fetch communication history
-      if (pipelineEntryId || contactId) {
-        const { data: communications } = await (supabase
+      // Fetch communication history scoped to this lead/project/contact
+      if (pipelineEntryId || projectId || contactId) {
+        let q: any = supabase
           .from('communication_history')
           .select('*')
           .order('created_at', { ascending: false })
-          .limit(maxItems) as any);
+          .limit(maxItems);
+        if (pipelineEntryId) q = q.eq('pipeline_entry_id', pipelineEntryId);
+        else if (projectId) q = q.eq('project_id', projectId);
+        else if (contactId) q = q.eq('contact_id', contactId);
+        const { data: communications } = await q;
 
         communications?.forEach((comm: any) => {
           timeline.push({
