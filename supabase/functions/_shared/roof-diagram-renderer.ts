@@ -62,7 +62,7 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
 
   const normalized = normalizeGeometryToViewport(input.planes, input.edges || [], width, height);
 
-  return [
+  const pages: GeneratedDiagram[] = [
     {
       diagram_type: "outline",
       title: "Roof Outline Diagram",
@@ -94,6 +94,44 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
       svg_markup: renderNotesDiagram(input, normalized, width, height),
     },
   ];
+
+  // Optional satellite overlay — only when we have the source raster + its native dims.
+  if (input.satelliteImageUrl && input.sourceImageWidth && input.sourceImageHeight) {
+    pages.push({
+      diagram_type: "satellite",
+      title: "Satellite Overlay",
+      page_number: 6,
+      svg_markup: renderSatelliteOverlay(input, width, height),
+    });
+  }
+
+  return pages;
+}
+
+/** Render geometry directly on top of the satellite raster, preserving native pixel coords. */
+function renderSatelliteOverlay(input: DiagramInput, width: number, height: number) {
+  const srcW = input.sourceImageWidth!;
+  const srcH = input.sourceImageHeight!;
+  const scale = Math.min(width / srcW, height / srcH);
+  const offsetX = (width - srcW * scale) / 2;
+  const offsetY = (height - srcH * scale) / 2 + 30;
+
+  const tx = (p: Point) => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY });
+  const planes = input.planes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) }));
+  const edges = (input.edges || []).map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) }));
+
+  const body = `
+    <image href="${escapeXml(input.satelliteImageUrl!)}" x="${offsetX}" y="${offsetY}" width="${srcW * scale}" height="${srcH * scale}" preserveAspectRatio="xMidYMid meet" />
+    ${planes
+      .map((p) => {
+        const pts = p.polygon_px.map((pt) => `${pt.x},${pt.y}`).join(" ");
+        return `<polygon points="${pts}" fill="rgba(255,255,255,0.18)" stroke="#ffffff" stroke-width="2" />`;
+      })
+      .join("\n")}
+    ${edges.map((e) => renderEdgeWithLength(e as Edge, true)).join("\n")}
+  `;
+
+  return svgShell(input.propertyAddress, "Satellite Overlay", width, height, body);
 }
 
 function renderOutlineDiagram(input: DiagramInput, g: any, width: number, height: number) {
