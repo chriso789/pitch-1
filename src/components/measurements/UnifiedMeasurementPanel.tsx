@@ -1115,6 +1115,7 @@ export function UnifiedMeasurementPanel({
           measurement={reportState.measurement}
           tags={reportState.tags}
           address={address}
+          pipelineEntryId={pipelineEntryId}
         />
       )}
     </>
