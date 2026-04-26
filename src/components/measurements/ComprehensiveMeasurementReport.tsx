@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Edit, Save, Share2, MapPin, Loader2, Pencil } from 'lucide-react';
+import { Eye, Edit, Save, Share2, MapPin, Loader2, Pencil, Download } from 'lucide-react';
 import { MeasurementShareDialog } from './MeasurementShareDialog';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 import { RoofDiagramViewer } from './RoofDiagramViewer';
