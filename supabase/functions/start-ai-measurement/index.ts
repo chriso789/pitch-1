@@ -21,6 +21,7 @@
 // ===================================================================
 
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
+import { generateRoofDiagrams } from '../_shared/roof-diagram-renderer.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
