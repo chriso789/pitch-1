@@ -14,6 +14,8 @@ interface MeasurementReportDialogProps {
   measurement: any;
   tags?: Record<string, any>;
   address?: string;
+  pipelineEntryId?: string;
+  tenantId?: string;
   onMeasurementUpdate?: (measurement: any, tags: any) => void;
 }
 
@@ -23,6 +25,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   measurement,
   tags,
   address,
+  pipelineEntryId,
+  tenantId,
   onMeasurementUpdate,
 }) => {
   return (
@@ -36,6 +40,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             measurement={measurement}
             tags={tags}
             address={address}
+            pipelineEntryId={pipelineEntryId}
+            tenantId={tenantId}
             onMeasurementUpdate={onMeasurementUpdate}
           />
         </ScrollArea>
