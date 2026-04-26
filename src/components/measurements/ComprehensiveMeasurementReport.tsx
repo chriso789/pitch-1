@@ -6,6 +6,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Eye, Edit, Save, Share2, MapPin, Loader2, Pencil } from 'lucide-react';
 import { MeasurementShareDialog } from './MeasurementShareDialog';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
+import { RoofDiagramViewer } from './RoofDiagramViewer';
 import { SegmentHoverProvider } from '@/contexts/SegmentHoverContext';
 import ManualPinDropEditor from './ManualPinDropEditor';
 import { useToast } from '@/hooks/use-toast';
@@ -278,6 +279,11 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
         customerEmail={customerEmail}
         customerPhone={customerPhone}
       />
+
+      {/* EagleView-style generated diagrams (Outline / Length / Pitch / Area / Notes) */}
+      {pipelineEntryId && (
+        <RoofDiagramViewer leadId={pipelineEntryId} />
+      )}
 
       {/* Roof Diagram */}
       <Card>

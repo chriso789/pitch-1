@@ -961,6 +961,7 @@ export function UnifiedMeasurementPanel({
                   }}
                   tags={diagramTags}
                   address={address}
+                  pipelineEntryId={pipelineEntryId}
                 />
               </div>
             );
@@ -1115,6 +1116,7 @@ export function UnifiedMeasurementPanel({
           measurement={reportState.measurement}
           tags={reportState.tags}
           address={address}
+          pipelineEntryId={pipelineEntryId}
         />
       )}
     </>
