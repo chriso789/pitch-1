@@ -961,6 +961,7 @@ export function UnifiedMeasurementPanel({
                   }}
                   tags={diagramTags}
                   address={address}
+                  pipelineEntryId={pipelineEntryId}
                 />
               </div>
             );
