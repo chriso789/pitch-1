@@ -249,17 +249,21 @@ function renderPlaneOutlines(planes: Plane[]) {
     .join("\n");
 }
 
-function renderEdgeWithLength(edge: Edge) {
-  const style = EDGE_STYLES[edge.edge_type] || EDGE_STYLES.unknown;
+function renderEdgeWithLength(edge: Edge, onSatellite = false) {
+  const baseStyle = EDGE_STYLES[edge.edge_type] || EDGE_STYLES.unknown;
+  // On satellite, brighten ridge/valley/hip and white-out neutral edges for contrast.
+  const stroke = onSatellite && edge.edge_type === "eave" ? "#ffffff" : baseStyle.stroke;
   const d = polylinePath(edge.line_px);
   const mid = polylineMidpoint(edge.line_px);
   const len = round(edge.length_ft || 0, 0);
+  const labelFill = onSatellite ? "#ffffff" : "#111111";
+  const labelStroke = onSatellite ? `paint-order="stroke" stroke="#000000" stroke-width="3"` : "";
 
   return `
-    <path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" ${
-    style.dash ? `stroke-dasharray="${style.dash}"` : ""
+    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="${baseStyle.width + (onSatellite ? 1 : 0)}" ${
+    baseStyle.dash ? `stroke-dasharray="${baseStyle.dash}"` : ""
   } />
-    <text x="${mid.x}" y="${mid.y - 8}" font-size="20" text-anchor="middle" font-weight="700" fill="#111">${len}</text>
+    <text x="${mid.x}" y="${mid.y - 8}" font-size="20" text-anchor="middle" font-weight="700" fill="${labelFill}" ${labelStroke}>${len}</text>
   `;
 }
 
