@@ -1,3 +1,25 @@
+// ===================================================================
+// start-ai-measurement — geometry_first_v2 pipeline
+//
+// Canonical CRM-facing entrypoint for the "AI Measurement" button on
+// lead/project detail pages. Runs the geometry-first protocol:
+//   1. Resolve property (lead_id/project_id → address + lat/lng)
+//   2. Geocode if coordinates missing
+//   3. Pull Mapbox satellite (@2x)  + Google Solar (when available)
+//   4. Calibrate pixel→feet using @2x raster_scale correction
+//   5. Build roof planes (Solar segments preferred)
+//   6. Compute area (shoelace) + pitch multiplier + line lengths
+//   7. Run quality checks → status (completed | needs_review | needs_manual_measurement)
+//   8. Persist forensic geometry (ai_measurement_*) AND publish customer
+//      summary (roof_measurements + measurement_approvals)
+//   9. Update measurement_jobs for UI polling
+//
+// HARD RULES enforced here:
+//   - Never mark a job "completed" with placeholder geometry
+//   - @2x raster correction is mandatory before any pixel→feet math
+//   - Lead/project linkage is enforced (single page only)
+// ===================================================================
+
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 
 const corsHeaders = {
@@ -7,435 +29,1027 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!
+const MAPBOX_TOKEN =
+  Deno.env.get('MAPBOX_PUBLIC_TOKEN') || Deno.env.get('MAPBOX_ACCESS_TOKEN') || ''
+const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY') || ''
+const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
 
-const buildSatelliteTileUrl = (lat: number, lng: number, zoom = 20, size = 640) =>
-  `${SUPABASE_URL}/functions/v1/satellite-tile?lat=${lat}&lng=${lng}&zoom=${zoom}&size=${size}`
+const ENGINE_VERSION = 'geometry_first_v2'
 
-const getPersistedSatelliteUrl = (measurement: any, lat: number, lng: number) =>
-  measurement.satellite_overlay_url ||
-  measurement.google_maps_image_url ||
-  measurement.mapbox_image_url ||
-  buildSatelliteTileUrl(lat, lng)
+// ─────────────────────────────────────────────────────────────────────
+// Geometry helpers (pure, unit-tested via acceptance tests)
+// ─────────────────────────────────────────────────────────────────────
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+type Pt = { x: number; y: number }
+type GeoPt = { lat: number; lng: number }
+
+/** Logical (Web Mercator) meters-per-pixel at given lat/zoom. */
+export function logicalMetersPerPixel(lat: number, zoom: number): number {
+  return (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom)
+}
+
+/** ACTUAL meters/feet per pixel after accounting for @2x raster scaling. */
+export function calibrate(lat: number, zoom: number, rasterScale: number) {
+  const mppLogical = logicalMetersPerPixel(lat, zoom)
+  const mppActual = mppLogical / rasterScale
+  return {
+    meters_per_pixel_logical: mppLogical,
+    meters_per_pixel_actual: mppActual,
+    feet_per_pixel_actual: mppActual * 3.280839895,
+  }
+}
+
+/** Shoelace area in pixel² for a closed polygon (last == first not required). */
+export function shoelaceAreaPx(poly: Pt[]): number {
+  if (!poly || poly.length < 3) return 0
+  let s = 0
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    s += a.x * b.y - b.x * a.y
+  }
+  return Math.abs(s) / 2
+}
+
+/** Convert r/12 pitch (rise) → degrees + slope multiplier. */
+export function pitchInfo(rise: number) {
+  const r = Math.max(0, rise)
+  return {
+    pitch_degrees: (Math.atan(r / 12) * 180) / Math.PI,
+    pitch_multiplier: Math.sqrt(144 + r * r) / 12,
+  }
+}
+
+/** Polyline length in pixels. */
+export function polylineLengthPx(line: Pt[]): number {
+  if (!line || line.length < 2) return 0
+  let len = 0
+  for (let i = 1; i < line.length; i++) {
+    const dx = line[i].x - line[i - 1].x
+    const dy = line[i].y - line[i - 1].y
+    len += Math.sqrt(dx * dx + dy * dy)
+  }
+  return len
+}
+
+/** Pixel (image) → GeoJSON lat/lng using image center + actual mpp. */
+export function pixelToLatLng(
+  x: number,
+  y: number,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+): GeoPt {
+  const dx_m = (x - imgW / 2) * actualMpp
+  const dy_m = (y - imgH / 2) * actualMpp
+  const dLat = -((dy_m / 6378137) * 180) / Math.PI
+  const dLng =
+    ((dx_m / (6378137 * Math.cos((centerLat * Math.PI) / 180))) * 180) / Math.PI
+  return { lat: centerLat + dLat, lng: centerLng + dLng }
+}
+
+/** Bow-tie / self-intersection check (segments share endpoints excepted). */
+export function hasSelfIntersection(poly: Pt[]): boolean {
+  const n = poly.length
+  if (n < 4) return false
+  const segs: [Pt, Pt][] = []
+  for (let i = 0; i < n; i++) segs.push([poly[i], poly[(i + 1) % n]])
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      // skip adjacent segments
+      if (j === i + 1 || (i === 0 && j === segs.length - 1)) continue
+      if (segIntersect(segs[i][0], segs[i][1], segs[j][0], segs[j][1])) return true
+    }
+  }
+  return false
+}
+
+function segIntersect(p1: Pt, p2: Pt, p3: Pt, p4: Pt): boolean {
+  const d = (p2.x - p1.x) * (p4.y - p3.y) - (p2.y - p1.y) * (p4.x - p3.x)
+  if (Math.abs(d) < 1e-9) return false
+  const t = ((p3.x - p1.x) * (p4.y - p3.y) - (p3.y - p1.y) * (p4.x - p3.x)) / d
+  const u = ((p3.x - p1.x) * (p2.y - p1.y) - (p3.y - p1.y) * (p2.x - p1.x)) / d
+  return t > 1e-6 && t < 1 - 1e-6 && u > 1e-6 && u < 1 - 1e-6
+}
+
+/** Convert a geographic polygon (lat/lng around centerLat/Lng) to image pixels. */
+function latLngToPixel(
+  pt: GeoPt,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+): Pt {
+  const dLatRad = ((pt.lat - centerLat) * Math.PI) / 180
+  const dLngRad = ((pt.lng - centerLng) * Math.PI) / 180
+  const dy_m = -dLatRad * 6378137
+  const dx_m = dLngRad * 6378137 * Math.cos((centerLat * Math.PI) / 180)
+  return { x: imgW / 2 + dx_m / actualMpp, y: imgH / 2 + dy_m / actualMpp }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Source loaders
+// ─────────────────────────────────────────────────────────────────────
+
+async function geocodeAddress(address: string) {
+  if (!GOOGLE_MAPS_API_KEY) return null
+  const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}`
+  const r = await fetch(url)
+  if (!r.ok) return null
+  const j: any = await r.json()
+  const top = j?.results?.[0]
+  if (!top) return null
+  return {
+    lat: top.geometry?.location?.lat,
+    lng: top.geometry?.location?.lng,
+    location_type: top.geometry?.location_type || 'APPROXIMATE',
+    formatted: top.formatted_address,
+  }
+}
+
+async function fetchMapbox(lat: number, lng: number, zoom = 20, logicalSize = 640) {
+  if (!MAPBOX_TOKEN) return null
+  // @2x → returned raster is 2× logicalSize
+  const url =
+    `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
+    `${lng},${lat},${zoom}/${logicalSize}x${logicalSize}@2x?access_token=${MAPBOX_TOKEN}`
+  const r = await fetch(url)
+  if (!r.ok) return null
+  return {
+    image_url: url,
+    logical_w: logicalSize,
+    logical_h: logicalSize,
+    actual_w: logicalSize * 2,
+    actual_h: logicalSize * 2,
+    raster_scale: 2,
+    zoom,
+  }
+}
+
+async function fetchGoogleSolar(lat: number, lng: number) {
+  if (!GOOGLE_SOLAR_API_KEY) return null
+  const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&requiredQuality=HIGH&key=${GOOGLE_SOLAR_API_KEY}`
+  const r = await fetch(url)
+  if (!r.ok) return null
+  return await r.json()
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Plane / edge derivation
+// ─────────────────────────────────────────────────────────────────────
+
+interface RoofPlane {
+  plane_index: number
+  source: string
+  polygon_px: Pt[]
+  polygon_geojson: GeoPt[]
+  pitch: number | null // r/12 rise
+  pitch_degrees: number | null
+  azimuth: number | null
+  area_2d_sqft: number
+  pitch_multiplier: number
+  area_pitch_adjusted_sqft: number
+  confidence: number
+}
+
+interface RoofEdge {
+  edge_type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'unknown'
+  source: string
+  line_px: Pt[]
+  line_geojson: GeoPt[]
+  length_px: number
+  length_ft: number
+  confidence: number
+}
+
+/** Build planes from Google Solar roofSegmentStats (preferred path). */
+function planesFromSolar(
+  solar: any,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofPlane[] {
+  const segs: any[] = solar?.solarPotential?.roofSegmentStats || []
+  return segs
+    .map((seg: any, idx: number) => {
+      const bb = seg.boundingBox
+      if (!bb?.sw || !bb?.ne) return null
+      const sw = { lat: bb.sw.latitude, lng: bb.sw.longitude }
+      const ne = { lat: bb.ne.latitude, lng: bb.ne.longitude }
+      const nw = { lat: ne.lat, lng: sw.lng }
+      const se = { lat: sw.lat, lng: ne.lng }
+      const polyGeo = [sw, se, ne, nw]
+      const polyPx = polyGeo.map((p) =>
+        latLngToPixel(p, centerLat, centerLng, imgW, imgH, actualMpp),
+      )
+      const pitchDeg = seg.pitchDegrees ?? null
+      const rise =
+        pitchDeg != null ? Math.tan((pitchDeg * Math.PI) / 180) * 12 : null
+      const pmInfo =
+        rise != null
+          ? pitchInfo(rise)
+          : { pitch_degrees: pitchDeg ?? 0, pitch_multiplier: 1 }
+
+      // Trust Solar's stats.areaMeters2 for sloped area (it's on-roof area).
+      const areaSlopedSqft = (seg?.stats?.areaMeters2 ?? 0) * 10.7639
+      const areaPxFlat = shoelaceAreaPx(polyPx)
+      const area2dSqft = areaPxFlat * feetPerPixel * feetPerPixel
+      // If we have sloped area from Solar, derive multiplier consistency
+      const finalSlopedSqft =
+        areaSlopedSqft > 0
+          ? areaSlopedSqft
+          : area2dSqft * pmInfo.pitch_multiplier
+
+      return {
+        plane_index: idx,
+        source: 'google_solar',
+        polygon_px: polyPx,
+        polygon_geojson: polyGeo,
+        pitch: rise,
+        pitch_degrees: pmInfo.pitch_degrees,
+        azimuth: seg.azimuthDegrees ?? null,
+        area_2d_sqft: area2dSqft,
+        pitch_multiplier: pmInfo.pitch_multiplier,
+        area_pitch_adjusted_sqft: finalSlopedSqft,
+        confidence: 0.85,
+      } as RoofPlane
+    })
+    .filter(Boolean) as RoofPlane[]
+}
+
+/** Derive perimeter eaves/rakes from a single union footprint when no facets exist. */
+function edgesFromPerimeter(
+  perimPx: Pt[],
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofEdge[] {
+  if (perimPx.length < 3) return []
+  const out: RoofEdge[] = []
+  for (let i = 0; i < perimPx.length; i++) {
+    const a = perimPx[i]
+    const b = perimPx[(i + 1) % perimPx.length]
+    const lpx = polylineLengthPx([a, b])
+    out.push({
+      edge_type: 'eave', // unclassified perimeter → assumed eave; needs_review
+      source: 'perimeter_fallback',
+      line_px: [a, b],
+      line_geojson: [
+        pixelToLatLng(a.x, a.y, centerLat, centerLng, imgW, imgH, actualMpp),
+        pixelToLatLng(b.x, b.y, centerLat, centerLng, imgW, imgH, actualMpp),
+      ],
+      length_px: lpx,
+      length_ft: lpx * feetPerPixel,
+      confidence: 0.4,
+    })
+  }
+  return out
+}
+
+/** Detect shared edges between adjacent planes → ridges/hips/valleys (best-effort). */
+function edgesFromPlanes(
+  planes: RoofPlane[],
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofEdge[] {
+  const out: RoofEdge[] = []
+  const eps = 6 // px tolerance for shared vertex
+  const planeSegs = planes.map((p) => {
+    const segs: { a: Pt; b: Pt }[] = []
+    for (let i = 0; i < p.polygon_px.length; i++) {
+      segs.push({
+        a: p.polygon_px[i],
+        b: p.polygon_px[(i + 1) % p.polygon_px.length],
+      })
+    }
+    return { plane: p, segs }
+  })
+  const shared = new Set<string>()
+  for (let i = 0; i < planeSegs.length; i++) {
+    for (let j = i + 1; j < planeSegs.length; j++) {
+      const A = planeSegs[i], B = planeSegs[j]
+      for (const sa of A.segs) {
+        for (const sb of B.segs) {
+          if (segMatch(sa, sb, eps)) {
+            const key = sortedKey(sa.a, sa.b)
+            if (shared.has(key)) continue
+            shared.add(key)
+            const lpx = polylineLengthPx([sa.a, sa.b])
+            // Convex-vs-concave heuristic via azimuths
+            const azA = A.plane.azimuth ?? 0
+            const azB = B.plane.azimuth ?? 0
+            const diff = Math.abs(((azA - azB + 540) % 360) - 180)
+            const isOpposing = diff < 30 // facing each other → ridge
+            const edgeType: RoofEdge['edge_type'] = isOpposing
+              ? 'ridge'
+              : diff > 60
+              ? 'hip'
+              : 'valley'
+            out.push({
+              edge_type: edgeType,
+              source: 'plane_topology',
+              line_px: [sa.a, sa.b],
+              line_geojson: [
+                pixelToLatLng(sa.a.x, sa.a.y, centerLat, centerLng, imgW, imgH, actualMpp),
+                pixelToLatLng(sa.b.x, sa.b.y, centerLat, centerLng, imgW, imgH, actualMpp),
+              ],
+              length_px: lpx,
+              length_ft: lpx * feetPerPixel,
+              confidence: 0.6,
+            })
+          }
+        }
+      }
+    }
+  }
+  return out
+}
+
+function ptNear(a: Pt, b: Pt, eps: number) {
+  return Math.abs(a.x - b.x) < eps && Math.abs(a.y - b.y) < eps
+}
+function segMatch(s1: { a: Pt; b: Pt }, s2: { a: Pt; b: Pt }, eps: number) {
+  return (
+    (ptNear(s1.a, s2.a, eps) && ptNear(s1.b, s2.b, eps)) ||
+    (ptNear(s1.a, s2.b, eps) && ptNear(s1.b, s2.a, eps))
+  )
+}
+function sortedKey(a: Pt, b: Pt) {
+  const [p, q] = a.x + a.y < b.x + b.y ? [a, b] : [b, a]
+  return `${Math.round(p.x)},${Math.round(p.y)}|${Math.round(q.x)},${Math.round(q.y)}`
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Quality checks → status
+// ─────────────────────────────────────────────────────────────────────
+
+interface QC {
+  check_name: string
+  passed: boolean
+  score: number
+  details: any
+}
+
+function runQualityChecks(input: {
+  geocoded: boolean
+  geocodeType: string | null
+  calibrated: boolean
+  mapboxOk: boolean
+  solarOk: boolean
+  planes: RoofPlane[]
+  edges: RoofEdge[]
+  imgW: number
+  imgH: number
+  totalAreaSqft: number
+  hasPitch: boolean
+  hasPlaceholder: boolean
+}): { checks: QC[]; overall: number; status: 'completed' | 'needs_review' | 'needs_manual_measurement' } {
+  const checks: QC[] = []
+  const push = (n: string, ok: boolean, s: number, d: any = {}) =>
+    checks.push({ check_name: n, passed: ok, score: s, details: d })
+
+  push('valid_geocode', input.geocoded, input.geocoded ? 1 : 0, { type: input.geocodeType })
+  push('valid_calibration', input.calibrated, input.calibrated ? 1 : 0)
+  push('mapbox_image_available', input.mapboxOk, input.mapboxOk ? 1 : 0)
+  push('google_solar_available', input.solarOk, input.solarOk ? 1 : 0.5, { note: 'optional' })
+  push('roof_planes_exist', input.planes.length > 0, input.planes.length > 0 ? 1 : 0, {
+    count: input.planes.length,
+  })
+
+  const allInside = input.planes.every((p) =>
+    p.polygon_px.every((pt) => pt.x >= 0 && pt.x <= input.imgW && pt.y >= 0 && pt.y <= input.imgH),
+  )
+  push('footprint_inside_image', allInside, allInside ? 1 : 0)
+
+  const noSelfInt = input.planes.every((p) => !hasSelfIntersection(p.polygon_px))
+  push('no_self_intersections', noSelfInt, noSelfInt ? 1 : 0)
+
+  const reasonable = input.totalAreaSqft >= 200 && input.totalAreaSqft <= 30000
+  push('area_reasonable', reasonable, reasonable ? 1 : 0, { sqft: input.totalAreaSqft })
+
+  push('pitch_data_available', input.hasPitch, input.hasPitch ? 1 : 0)
+  push('line_features_available', input.edges.length > 0, input.edges.length > 0 ? 1 : 0)
+
+  const avgConf =
+    input.planes.length > 0
+      ? input.planes.reduce((s, p) => s + p.confidence, 0) / input.planes.length
+      : 0
+  push('avg_plane_confidence', avgConf >= 0.5, avgConf, { avg: avgConf })
+
+  push('source_is_not_placeholder', !input.hasPlaceholder, input.hasPlaceholder ? 0 : 1)
+
+  const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
+  let status: 'completed' | 'needs_review' | 'needs_manual_measurement'
+  if (input.hasPlaceholder || !input.calibrated || !input.mapboxOk || input.planes.length === 0)
+    status = 'needs_manual_measurement'
+  else if (overall >= 0.8) status = 'completed'
+  else if (overall >= 0.6) status = 'needs_review'
+  else status = 'needs_manual_measurement'
+  return { checks, overall, status }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Property resolution from lead/project
+// ─────────────────────────────────────────────────────────────────────
+
+async function resolveProperty(
+  supa: any,
+  payload: {
+    lead_id?: string | null
+    project_id?: string | null
+    pipelineEntryId?: string | null
+    address?: string | null
+    lat?: number | null
+    lng?: number | null
+  },
+) {
+  const leadId = payload.lead_id || payload.pipelineEntryId || null
+  const projectId = payload.project_id || null
+  let address = payload.address || null
+  let lat = payload.lat ?? null
+  let lng = payload.lng ?? null
+  let tenantId: string | null = null
+  let sourceType: 'lead' | 'project' | null = null
+  let sourceId: string | null = null
+
+  if (leadId) {
+    sourceType = 'lead'
+    sourceId = leadId
+    const { data: lead } = await supa
+      .from('pipeline_entries')
+      .select('id, tenant_id, contact_id')
+      .eq('id', leadId)
+      .maybeSingle()
+    if (lead) {
+      tenantId = lead.tenant_id
+      if (lead.contact_id) {
+        const { data: c } = await supa
+          .from('contacts')
+          .select(
+            'address, address_line_1, city, state, zip_code, latitude, longitude',
+          )
+          .eq('id', lead.contact_id)
+          .maybeSingle()
+        if (c) {
+          if (!address)
+            address =
+              c.address ||
+              [c.address_line_1, c.city, c.state, c.zip_code]
+                .filter(Boolean)
+                .join(', ')
+          if (lat == null && c.latitude != null) lat = Number(c.latitude)
+          if (lng == null && c.longitude != null) lng = Number(c.longitude)
+        }
+      }
+    }
+  } else if (projectId) {
+    sourceType = 'project'
+    sourceId = projectId
+    const { data: proj } = await supa
+      .from('projects')
+      .select('id, tenant_id, address, latitude, longitude')
+      .eq('id', projectId)
+      .maybeSingle()
+    if (proj) {
+      tenantId = proj.tenant_id
+      if (!address) address = proj.address
+      if (lat == null && proj.latitude != null) lat = Number(proj.latitude)
+      if (lng == null && proj.longitude != null) lng = Number(proj.longitude)
+    }
   }
 
+  return { tenantId, sourceType, sourceId, leadId, projectId, address, lat, lng }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Main handler
+// ─────────────────────────────────────────────────────────────────────
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
+
   try {
-    const authHeader = req.headers.get('authorization') || '';
-    const { pipelineEntryId, lat, lng, address, pitchOverride, tenantId, userId } = await req.json()
+    const body = await req.json()
+    // Backwards-compat: accept old (pipelineEntryId) and new (lead_id/project_id) shapes
+    const supa = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const resolved = await resolveProperty(supa, body)
 
-    if (!pipelineEntryId || lat == null || lng == null) {
-      return new Response(JSON.stringify({ error: 'pipelineEntryId, lat, lng required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
+    if (!resolved.tenantId || !resolved.sourceType || !resolved.sourceId) {
+      return new Response(
+        JSON.stringify({ error: 'lead_id or project_id required and must resolve' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
     }
 
-    const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    const sourceButton = body.source_button || 'AI Measurement'
+    const wasteFactor = Number(body.waste_factor_percent ?? 10)
+    const pitchOverride = body.pitchOverride || body.pitch_override || null
 
-    // 🔒 Authoritative tenant_id: derive from the lead itself, not the client.
-    // This prevents measurements from being saved under the user's "default" tenant
-    // when the lead actually belongs to a different company (multi-tenant users).
-    const { data: leadRow, error: leadError } = await supabaseAdmin
-      .from('pipeline_entries')
-      .select('tenant_id')
-      .eq('id', pipelineEntryId)
-      .maybeSingle()
-
-    if (leadError || !leadRow?.tenant_id) {
-      return new Response(JSON.stringify({ error: 'Lead not found or missing tenant_id' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      })
-    }
-
-    const effectiveTenantId = leadRow.tenant_id
-    if (tenantId && tenantId !== effectiveTenantId) {
-      console.warn(`[start-ai-measurement] tenant mismatch: client sent ${tenantId}, lead is ${effectiveTenantId} — using lead's tenant`)
-    }
-
-    // Create job row
-    const { data: job, error: insertError } = await supabaseAdmin
-      .from('measurement_jobs')
+    // 1) Insert measurement_jobs (UI polling) + ai_measurement_jobs (audit)
+    const { data: aiJob, error: aiErr } = await supa
+      .from('ai_measurement_jobs')
       .insert({
-        tenant_id: effectiveTenantId,
-        pipeline_entry_id: pipelineEntryId,
-        user_id: userId || null,
+        tenant_id: resolved.tenantId,
+        lead_id: resolved.leadId,
+        project_id: resolved.projectId,
+        source_record_type: resolved.sourceType,
+        source_record_id: resolved.sourceId,
+        source_button: sourceButton,
+        property_address: resolved.address,
+        latitude: resolved.lat,
+        longitude: resolved.lng,
         status: 'queued',
-        progress_message: 'Queued for processing',
-        lat,
-        lng,
-        address: address || null,
-        pitch_override: pitchOverride || null,
+        status_message: 'Queued for geometry_first_v2',
+        waste_factor_percent: wasteFactor,
+        engine_version: ENGINE_VERSION,
       })
       .select('id')
       .single()
+    if (aiErr) throw aiErr
 
-    if (insertError) throw insertError
+    const { data: job, error: jobErr } = await supa
+      .from('measurement_jobs')
+      .insert({
+        tenant_id: resolved.tenantId,
+        pipeline_entry_id: resolved.leadId,
+        lead_id: resolved.leadId,
+        project_id: resolved.projectId,
+        source_record_type: resolved.sourceType,
+        source_record_id: resolved.sourceId,
+        source_button: sourceButton,
+        ai_measurement_job_id: aiJob.id,
+        engine_version: ENGINE_VERSION,
+        user_id: body.userId || null,
+        status: 'queued',
+        progress_message: 'Queued — geometry_first_v2',
+        lat: resolved.lat,
+        lng: resolved.lng,
+        address: resolved.address,
+        pitch_override: pitchOverride,
+      })
+      .select('id')
+      .single()
+    if (jobErr) throw jobErr
 
-    // Helper: poll roof_measurements for a row written by `measure` after the job started.
-    // Used when the gateway kills our fetch with IDLE_TIMEOUT even though `measure`
-    // actually completed and persisted a row.
-    const pollForCompletedMeasurement = async (jobStartIso: string, maxAttempts = 75) => {
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 4000)) // 4s × 75 = 5 min
-        const { data: rm } = await supabaseAdmin
-          .from('roof_measurements')
-          .select('id, total_area_flat_sqft, total_squares, predominant_pitch, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, ai_detection_data, detection_method, requires_manual_review')
-          .eq('customer_id', pipelineEntryId)
-          .gte('created_at', jobStartIso)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (rm?.id) return rm
-      }
-      return null
-    }
-
-    // Fire-and-forget background processing
-    const processJob = async () => {
-      const jobStartIso = new Date().toISOString()
+    // 2) Background processing
+    const run = async () => {
+      const startIso = new Date().toISOString()
       try {
-        // Update status to processing
-        await supabaseAdmin
+        await supa
           .from('measurement_jobs')
-          .update({ 
-            status: 'processing', 
-            progress_message: 'Running AI measurement analysis...',
-            started_at: jobStartIso,
-            updated_at: jobStartIso,
-          })
+          .update({ status: 'processing', progress_message: 'Resolving property…', started_at: startIso, updated_at: startIso })
           .eq('id', job.id)
+        await supa
+          .from('ai_measurement_jobs')
+          .update({ status: 'processing', status_message: 'Resolving property…', started_at: startIso, updated_at: startIso })
+          .eq('id', aiJob.id)
 
-        // Call the canonical measure function with action=pull
-        let measureResult: any = null
-        let gatewayTimedOut = false
-        try {
-          const measureResponse = await fetch(
-            `${SUPABASE_URL}/functions/v1/measure`,
-            {
-              method: 'POST',
-              headers: {
-                'Authorization': authHeader || `Bearer ${SUPABASE_ANON_KEY}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({
-                action: 'pull',
-                propertyId: pipelineEntryId,
-                lat: Number(lat),
-                lng: Number(lng),
-                address: address || 'Unknown Address',
-                engine: 'vision',
-                pitchOverride: pitchOverride || undefined,
-              }),
-            }
-          )
-          measureResult = await measureResponse.json()
-          console.log('[start-ai-measurement] Measure result:', JSON.stringify(measureResult).substring(0, 500))
-        } catch (fetchErr) {
-          console.warn('[start-ai-measurement] measure fetch failed (likely gateway timeout):', fetchErr)
-          gatewayTimedOut = true
-        }
-
-        // Detect timeout / gateway-level errors that don't follow our { ok, data } envelope.
-        // The `measure` function commonly finishes its work AND persists `roof_measurements`
-        // right at the 150s gateway cap, so we poll for the saved row before giving up.
-        if (gatewayTimedOut || measureResult?.code === 'IDLE_TIMEOUT' || measureResult?.code === 'BOOT_ERROR') {
-          await supabaseAdmin
-            .from('measurement_jobs')
-            .update({ progress_message: 'Finalizing — measure timed out at gateway, checking for saved row...', updated_at: new Date().toISOString() })
-            .eq('id', job.id)
-
-          const saved = await pollForCompletedMeasurement(jobStartIso)
-          if (saved?.id) {
-            console.log('[start-ai-measurement] ✅ Recovered from gateway timeout — found saved row', saved.id)
-            await supabaseAdmin
-              .from('measurement_jobs')
-              .update({
-                status: 'completed',
-                progress_message: 'Measurement complete (recovered after gateway timeout)',
-                measurement_id: saved.id,
-                completed_at: new Date().toISOString(),
-                updated_at: new Date().toISOString(),
-              })
-              .eq('id', job.id)
-            return
-          }
-
-          throw new Error(
-            `AI analysis is taking longer than expected for this roof. ` +
-            `Please use "Draw" to trace the perimeter, "Enter Manually" to type measurements, or "Upload Blueprint" for an EagleView report.`
-          )
-        }
-
-        if (!measureResult?.ok || !measureResult?.data?.measurement) {
-          const detail = measureResult?.error || measureResult?.message || 'no payload returned'
-          throw new Error(`AI measurement failed: ${detail}`)
-        }
-
-        const measurement = measureResult.data.measurement
-        const tags = measureResult.data.tags || {}
-        const engineUsed = measureResult.data.engine_used || 'skeleton'
-
-        // Pull raw geometry returned alongside the persisted row. The lead-screen
-        // aerial overlay reads linear_features_wkt + footprint_vertices_geo from
-        // roof_measurements; without these the overlay renders blank.
-        const measRaw: any = measureResult.data.meas || {}
-        const linearFeaturesRaw: any[] = Array.isArray(measRaw.linear_features) ? measRaw.linear_features : (measurement.linear_features || [])
-        const linearFeaturesGeo = linearFeaturesRaw.filter((f: any) =>
-          f && typeof f.wkt === 'string' && /LINESTRING/i.test(f.wkt)
-        )
-        const perimWktGeo: string | null = measRaw.geom_wkt || measurement.geom_wkt || null
-
-        // Derive footprint vertices from perimeter WKT for the overlay viewer
-        let footprintVertsGeo: Array<{ lat: number; lng: number }> | null = null
-        if (perimWktGeo) {
-          const m = perimWktGeo.match(/POLYGON\s*\(\s*\(([^)]+)\)/i)
-          if (m) {
-            footprintVertsGeo = m[1].split(',').map((pair: string) => {
-              const [lng, lat] = pair.trim().split(/\s+/).map(Number)
-              return { lat, lng }
-            }).filter((v: any) => Number.isFinite(v.lat) && Number.isFinite(v.lng))
+        // 2a) Geocode if needed
+        let lat = resolved.lat,
+          lng = resolved.lng,
+          geocodeType: string | null = lat != null && lng != null ? 'CLIENT_PROVIDED' : null
+        let geocoded = lat != null && lng != null
+        if ((lat == null || lng == null) && resolved.address) {
+          const g = await geocodeAddress(resolved.address)
+          if (g) {
+            lat = g.lat
+            lng = g.lng
+            geocodeType = g.location_type
+            geocoded = true
           }
         }
+        if (lat == null || lng == null) throw new Error('Could not resolve coordinates for property')
 
-        // Sanity gate: cross-check vision area against OSM building footprint.
-        // If vision claims >2× the OSM area, the AI is almost certainly tracing
-        // beyond the building (driveway, neighbor, etc.) — flag for manual review.
-        let areaSanityWarning: string | null = null
-        try {
-          const summaryArea = Number(measurement?.summary?.total_area_sqft || measurement?.total_area_flat_sqft || 0)
-          if (summaryArea > 0) {
-            const osmResp = await fetch(
-              `https://overpass-api.de/api/interpreter?data=${encodeURIComponent(
-                `[out:json][timeout:10];way(around:25,${lat},${lng})["building"];out geom;`
-              )}`
-            )
-            if (osmResp.ok) {
-              const osmJson: any = await osmResp.json()
-              const ways = osmJson?.elements || []
-              if (ways.length > 0) {
-                // Compute area for the largest building polygon (rough, lat-corrected)
-                const mPerDegLat = 111320
-                const mPerDegLng = 111320 * Math.cos(lat * Math.PI / 180)
-                let maxArea = 0
-                for (const way of ways) {
-                  const geom = way.geometry || []
-                  if (geom.length < 3) continue
-                  let s = 0
-                  for (let i = 0; i < geom.length; i++) {
-                    const a = geom[i]
-                    const b = geom[(i + 1) % geom.length]
-                    s += (a.lon * mPerDegLng) * (b.lat * mPerDegLat) - (b.lon * mPerDegLng) * (a.lat * mPerDegLat)
-                  }
-                  const sqft = Math.abs(s / 2) * 10.7639
-                  if (sqft > maxArea) maxArea = sqft
-                }
-                if (maxArea > 100 && summaryArea > maxArea * 2) {
-                  areaSanityWarning = `AI reported ${Math.round(summaryArea)} sqft but OSM building footprint is only ${Math.round(maxArea)} sqft. AI likely traced beyond the building outline — please verify.`
-                  console.warn('[start-ai-measurement] ⚠️ Area sanity check failed:', areaSanityWarning)
-                }
-              }
-            }
-          }
-        } catch (sanityErr) {
-          console.warn('[start-ai-measurement] OSM sanity check failed (non-fatal):', sanityErr)
-        }
+        // 2b) Imagery + calibration
+        await supa.from('measurement_jobs').update({ progress_message: 'Pulling satellite imagery…' }).eq('id', job.id)
+        const mb = await fetchMapbox(lat, lng, 20, 640)
+        const mapboxOk = !!mb
+        const zoom = mb?.zoom ?? 20
+        const rasterScale = mb?.raster_scale ?? 2
+        const imgW = mb?.actual_w ?? 1280
+        const imgH = mb?.actual_h ?? 1280
+        const cal = calibrate(lat, zoom, rasterScale)
+        const feetPerPixel = cal.feet_per_pixel_actual
 
-        // Per-feature totals (used for both columns and tags)
-        const sumByType = (t: string) => linearFeaturesGeo
-          .filter((f: any) => f.type === t)
-          .reduce((s: number, f: any) => s + (Number(f.length_ft) || 0), 0)
-        const ridgeTotGeo = sumByType('ridge')
-        const hipTotGeo = sumByType('hip')
-        const valleyTotGeo = sumByType('valley')
-        const eaveTotGeo = sumByType('eave')
-        const rakeTotGeo = sumByType('rake')
-        const requiresManualReview = Boolean(
-          measureResult.data.manualReviewRecommended ??
-          measureResult.data.manual_review_recommended ??
-          measurement.manual_review_recommended ??
-          measurement.requires_manual_review ??
-          tags['meta.manual_review_recommended'] ??
-          false
-        )
-        const validationStatus = requiresManualReview ? 'flagged' : 'validated'
-
-        // === BRIDGE STEP: Publish to roof_measurements ===
-        // This is the table the lead page UI actually reads
-        const summary = measurement.summary || {}
-        const roofMeasurementId = crypto.randomUUID()
-
-        const { error: roofInsertError } = await supabaseAdmin
-          .from('roof_measurements')
-          .insert({
-            id: roofMeasurementId,
-            customer_id: pipelineEntryId,
-            measured_by: userId || null,
-            property_address: address || 'Unknown Address',
-            gps_coordinates: { lat: Number(lat), lng: Number(lng) },
-            ai_detection_data: {
-              source: measurement.source || engineUsed,
-              faces: measurement.faces || [],
-              linear_features: measurement.linear_features || [],
-              summary,
-              engine_used: engineUsed,
-              canonical_measurement_id: measurement.id,
+        if (mb) {
+          await supa.from('ai_measurement_images').insert({
+            job_id: aiJob.id,
+            source: 'mapbox',
+            image_url: mb.image_url,
+            width: mb.actual_w,
+            height: mb.actual_h,
+            zoom: mb.zoom,
+            meters_per_pixel: cal.meters_per_pixel_actual,
+            feet_per_pixel: feetPerPixel,
+            calibration: {
+              meters_per_pixel_logical: cal.meters_per_pixel_logical,
+              meters_per_pixel_actual: cal.meters_per_pixel_actual,
+              feet_per_pixel_actual: feetPerPixel,
+              raster_scale: rasterScale,
+              logical_w: mb.logical_w,
+              logical_h: mb.logical_h,
             },
-            ai_model_version: engineUsed,
-            detection_timestamp: new Date().toISOString(),
-            detection_confidence: 0.85,
-            // Area totals
-            total_area_flat_sqft: summary.total_area_sqft || 0,
-            total_area_adjusted_sqft: summary.total_area_sqft || 0,
-            total_squares: summary.total_squares || 0,
-            waste_factor_percent: summary.waste_pct || 10,
-            total_squares_with_waste: (summary.total_squares || 0) * (1 + (summary.waste_pct || 10) / 100),
-            // Pitch
-            predominant_pitch: summary.pitch || tags['roof.predominant_pitch'] || '6/12',
-            pitch_multiplier: 1.0,
-            // Linear totals — prefer geo-derived totals when present (matches the overlay)
-            total_ridge_length: ridgeTotGeo > 0 ? ridgeTotGeo : (summary.ridge_ft || 0),
-            total_hip_length: hipTotGeo > 0 ? hipTotGeo : (summary.hip_ft || 0),
-            total_valley_length: valleyTotGeo > 0 ? valleyTotGeo : (summary.valley_ft || 0),
-            total_eave_length: eaveTotGeo > 0 ? eaveTotGeo : (summary.eave_ft || 0),
-            total_rake_length: rakeTotGeo > 0 ? rakeTotGeo : (summary.rake_ft || 0),
-            // Facets
-            facet_count: (measurement.faces || []).length || 2,
-            // Geometry
-            footprint_source: (() => {
-              const allowed = ['mapbox_vector','regrid_parcel','osm_overpass','microsoft_buildings','solar_api_footprint','solar_bbox_fallback','manual_trace','manual_entry','imported','user_drawn','ai_detection','esri_buildings','google_solar_api','osm','google_maps','satellite','unknown'];
-              const src = measurement.source || 'google_solar_api';
-              return allowed.includes(src) ? src : 'google_solar_api';
-            })(),
-            detection_method: engineUsed,
-            target_lat: Number(lat),
-            target_lng: Number(lng),
-            perimeter_wkt: perimWktGeo,
-            // 🗺️ Geo overlay payload — required for the lead-screen aerial trace
-            linear_features_wkt: linearFeaturesGeo as any,
-            footprint_vertices_geo: footprintVertsGeo as any,
-            // Imagery
-            google_maps_image_url: measurement.google_maps_image_url || null,
-            mapbox_image_url: measurement.mapbox_image_url || null,
-            satellite_overlay_url: measurement.satellite_overlay_url || null,
-            solar_building_footprint_sqft: summary.total_area_sqft || null,
-            // Overlay schema for diagram
-            overlay_schema: measurement.overlay_schema || null,
-            // Confidence
-            measurement_confidence: 0.85,
-            requires_manual_review: requiresManualReview || Boolean(areaSanityWarning),
-            validation_status: areaSanityWarning ? 'flagged' : validationStatus,
-            // Organization
-            tenant_id: effectiveTenantId,
+            is_primary: true,
           })
-
-        if (roofInsertError) {
-          console.error('[start-ai-measurement] roof_measurements insert error:', roofInsertError)
-          throw new Error(`Failed to publish to roof_measurements: ${roofInsertError.message}`)
         }
 
-        console.log('[start-ai-measurement] ✅ Published to roof_measurements:', roofMeasurementId)
-
-        // === AUTO-SAVE: Create measurement_approvals row ===
-        // So the "Saved Measurements" panel shows the result immediately
-        const eaveLength = summary.eave_ft || 0
-        const rakeLength = summary.rake_ft || 0
-
-        const savedTags = {
-          'roof.plan_area': summary.total_area_sqft || 0,
-          'roof.total_sqft': summary.total_area_sqft || 0,
-          'roof.squares': summary.total_squares || 0,
-          'roof.predominant_pitch': summary.pitch || tags['roof.predominant_pitch'] || '6/12',
-          'roof.faces_count': (measurement.faces || []).length || 2,
-          'lf.ridge': summary.ridge_ft || 0,
-          'lf.hip': summary.hip_ft || 0,
-          'lf.valley': summary.valley_ft || 0,
-          'lf.eave': eaveLength,
-          'lf.rake': rakeLength,
-          'lf.perimeter': eaveLength + rakeLength,
-          'source': `ai_pulled_${engineUsed}`,
-          'measurement_id': roofMeasurementId,
-          'canonical_measurement_id': measurement.id,
-          'imported_at': new Date().toISOString(),
-        }
-
-        const { error: approvalError } = await supabaseAdmin
-          .from('measurement_approvals')
-          .insert({
-            tenant_id: effectiveTenantId,
-            pipeline_entry_id: pipelineEntryId,
-            approved_at: new Date().toISOString(),
-            saved_tags: savedTags,
-            approval_notes: `AI measurement (${engineUsed}) - ${Math.round(summary.total_area_sqft || 0).toLocaleString()} sqft${areaSanityWarning ? ` ⚠️ ${areaSanityWarning}` : ''}`,
+        await supa
+          .from('ai_measurement_jobs')
+          .update({
+            latitude: lat,
+            longitude: lng,
+            geocode_location_type: geocodeType,
+            logical_image_width: mb?.logical_w ?? null,
+            logical_image_height: mb?.logical_h ?? null,
+            actual_image_width: imgW,
+            actual_image_height: imgH,
+            raster_scale: rasterScale,
           })
+          .eq('id', aiJob.id)
 
-        if (approvalError) {
-          console.warn('[start-ai-measurement] measurement_approvals insert warning:', approvalError)
-          // Non-fatal: roof_measurements already written
-        } else {
-          console.log('[start-ai-measurement] ✅ Auto-saved to measurement_approvals')
+        // 2c) Google Solar
+        await supa.from('measurement_jobs').update({ progress_message: 'Fetching Google Solar data…' }).eq('id', job.id)
+        const solar = await fetchGoogleSolar(lat, lng)
+        const solarOk = !!solar?.solarPotential?.roofSegmentStats?.length
+
+        // 2d) Build planes
+        const planes: RoofPlane[] = solarOk
+          ? planesFromSolar(solar, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel)
+          : []
+
+        // 2e) Apply pitch override (single rise replaces per-plane pitch)
+        if (pitchOverride) {
+          const r = parseFloat(String(pitchOverride).split('/')[0])
+          if (Number.isFinite(r)) {
+            const pi = pitchInfo(r)
+            for (const p of planes) {
+              p.pitch = r
+              p.pitch_degrees = pi.pitch_degrees
+              p.pitch_multiplier = pi.pitch_multiplier
+              p.area_pitch_adjusted_sqft = p.area_2d_sqft * pi.pitch_multiplier
+            }
+          }
         }
 
-        // Mark job completed with the roof_measurements ID
-        await supabaseAdmin
+        // 2f) Edges from topology + perimeter fallback
+        let edges: RoofEdge[] = edgesFromPlanes(
+          planes, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
+        )
+        if (edges.length === 0 && planes.length > 0) {
+          // Use first (largest) plane perimeter as fallback eaves
+          const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+          edges = edgesFromPerimeter(
+            largest.polygon_px, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
+          )
+        }
+
+        // 2g) Persist planes + edges
+        if (planes.length > 0) {
+          await supa.from('ai_roof_planes').insert(
+            planes.map((p) => ({
+              job_id: aiJob.id,
+              plane_index: p.plane_index,
+              source: p.source,
+              polygon_px: p.polygon_px,
+              polygon_geojson: p.polygon_geojson,
+              pitch: p.pitch,
+              pitch_degrees: p.pitch_degrees,
+              azimuth: p.azimuth,
+              area_2d_sqft: p.area_2d_sqft,
+              pitch_multiplier: p.pitch_multiplier,
+              area_pitch_adjusted_sqft: p.area_pitch_adjusted_sqft,
+              confidence: p.confidence,
+            })),
+          )
+        }
+        if (edges.length > 0) {
+          await supa.from('ai_roof_edges').insert(
+            edges.map((e) => ({
+              job_id: aiJob.id,
+              edge_type: e.edge_type,
+              source: e.source,
+              line_px: e.line_px,
+              line_geojson: e.line_geojson,
+              length_px: e.length_px,
+              length_ft: e.length_ft,
+              confidence: e.confidence,
+            })),
+          )
+        }
+
+        // 2h) Aggregate results
+        const totalArea2d = planes.reduce((s, p) => s + p.area_2d_sqft, 0)
+        const totalAreaSloped = planes.reduce((s, p) => s + p.area_pitch_adjusted_sqft, 0)
+        const sumByEdge = (t: RoofEdge['edge_type']) =>
+          edges.filter((e) => e.edge_type === t).reduce((s, e) => s + e.length_ft, 0)
+        const ridge_ft = sumByEdge('ridge')
+        const hip_ft = sumByEdge('hip')
+        const valley_ft = sumByEdge('valley')
+        const eave_ft = sumByEdge('eave')
+        const rake_ft = sumByEdge('rake')
+        const perimeter_ft = eave_ft + rake_ft
+
+        // Dominant pitch (area-weighted)
+        let dominantPitch: string | null = null
+        if (planes.length > 0) {
+          const buckets = new Map<number, number>()
+          for (const p of planes) {
+            if (p.pitch == null) continue
+            const r = Math.round(p.pitch)
+            buckets.set(r, (buckets.get(r) || 0) + p.area_2d_sqft)
+          }
+          if (buckets.size > 0) {
+            const [r] = [...buckets.entries()].sort((a, b) => b[1] - a[1])[0]
+            dominantPitch = `${r}/12`
+          }
+        }
+        if (!dominantPitch && pitchOverride) dominantPitch = pitchOverride
+        if (!dominantPitch) dominantPitch = '6/12'
+
+        const roofSquares = totalAreaSloped / 100
+        const wasteSquares = roofSquares * (1 + wasteFactor / 100)
+
+        const hasPlaceholder = planes.length === 0 // never publish placeholder
+
+        // 2i) Quality checks
+        const qc = runQualityChecks({
+          geocoded,
+          geocodeType,
+          calibrated: !!mapboxOk,
+          mapboxOk,
+          solarOk,
+          planes,
+          edges,
+          imgW,
+          imgH,
+          totalAreaSqft: totalAreaSloped,
+          hasPitch: planes.some((p) => p.pitch != null) || !!pitchOverride,
+          hasPlaceholder,
+        })
+
+        await supa.from('ai_measurement_quality_checks').insert(
+          qc.checks.map((c) => ({
+            job_id: aiJob.id,
+            check_name: c.check_name,
+            passed: c.passed,
+            score: c.score,
+            details: c.details,
+          })),
+        )
+
+        const reportJson = {
+          engine: ENGINE_VERSION,
+          generated_at: new Date().toISOString(),
+          property: { address: resolved.address, lat, lng, geocode_location_type: geocodeType },
+          calibration: {
+            zoom,
+            raster_scale: rasterScale,
+            meters_per_pixel_logical: cal.meters_per_pixel_logical,
+            meters_per_pixel_actual: cal.meters_per_pixel_actual,
+            feet_per_pixel_actual: feetPerPixel,
+            image: { logical_w: mb?.logical_w, logical_h: mb?.logical_h, actual_w: imgW, actual_h: imgH },
+          },
+          planes,
+          edges,
+          totals: {
+            total_area_2d_sqft: totalArea2d,
+            total_area_pitch_adjusted_sqft: totalAreaSloped,
+            roof_square_count: roofSquares,
+            waste_factor_percent: wasteFactor,
+            waste_adjusted_squares: wasteSquares,
+            ridge_length_ft: ridge_ft,
+            hip_length_ft: hip_ft,
+            valley_length_ft: valley_ft,
+            eave_length_ft: eave_ft,
+            rake_length_ft: rake_ft,
+            perimeter_length_ft: perimeter_ft,
+            dominant_pitch: dominantPitch,
+          },
+          quality_checks: qc.checks,
+          overall_score: qc.overall,
+          final_status: qc.status,
+        }
+
+        await supa.from('ai_measurement_results').insert({
+          job_id: aiJob.id,
+          total_area_2d_sqft: totalArea2d,
+          total_area_pitch_adjusted_sqft: totalAreaSloped,
+          roof_square_count: roofSquares,
+          waste_factor_percent: wasteFactor,
+          waste_adjusted_squares: wasteSquares,
+          ridge_length_ft: ridge_ft,
+          hip_length_ft: hip_ft,
+          valley_length_ft: valley_ft,
+          eave_length_ft: eave_ft,
+          rake_length_ft: rake_ft,
+          perimeter_length_ft: perimeter_ft,
+          dominant_pitch: dominantPitch,
+          pitch_breakdown: planes.map((p) => ({
+            plane_index: p.plane_index,
+            pitch: p.pitch,
+            area_2d_sqft: p.area_2d_sqft,
+          })),
+          line_breakdown: { ridge_ft, hip_ft, valley_ft, eave_ft, rake_ft },
+          plane_breakdown: planes.map((p) => ({
+            plane_index: p.plane_index,
+            area_2d_sqft: p.area_2d_sqft,
+            area_pitch_adjusted_sqft: p.area_pitch_adjusted_sqft,
+            pitch_degrees: p.pitch_degrees,
+            azimuth: p.azimuth,
+          })),
+          confidence_score: qc.overall,
+          report_json: reportJson,
+        })
+
+        await supa
+          .from('ai_measurement_jobs')
+          .update({
+            status: qc.status,
+            status_message:
+              qc.status === 'completed'
+                ? 'Geometry pipeline complete'
+                : qc.status === 'needs_review'
+                ? 'Result needs review'
+                : 'Manual measurement required',
+            confidence_score: qc.overall,
+            geometry_quality_score: qc.overall,
+            measurement_quality_score: qc.overall,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', aiJob.id)
+
+        // 2j) Block placeholder/failed from publishing
+        if (qc.status === 'needs_manual_measurement') {
+          await supa
+            .from('measurement_jobs')
+            .update({
+              status: 'failed',
+              progress_message: 'Manual measurement required — geometry pipeline did not pass quality checks',
+              error: 'needs_manual_measurement',
+              completed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            })
+            .eq('id', job.id)
+          return
+        }
+
+        // 2k) Publish customer-facing roof_measurements
+        const roofId = crypto.randomUUID()
+        await supa.from('roof_measurements').insert({
+          id: roofId,
+          customer_id: resolved.leadId, // legacy column
+          lead_id: resolved.leadId,
+          project_id: resolved.projectId,
+          source_record_type: resolved.sourceType,
+          source_record_id: resolved.sourceId,
+          source_button: sourceButton,
+          ai_measurement_job_id: aiJob.id,
+          engine_version: ENGINE_VERSION,
+          tenant_id: resolved.tenantId,
+          measured_by: body.userId || null,
+          property_address: resolved.address || 'Unknown Address',
+          gps_coordinates: { lat, lng },
+          ai_detection_data: {
+            source: solarOk ? 'google_solar_api' : 'geometry_first_v2',
+            engine: ENGINE_VERSION,
+            planes: planes.length,
+            edges: edges.length,
+          },
+          ai_model_version: ENGINE_VERSION,
+          detection_timestamp: new Date().toISOString(),
+          detection_confidence: qc.overall,
+          total_area_flat_sqft: totalArea2d,
+          total_area_adjusted_sqft: totalAreaSloped,
+          total_squares: roofSquares,
+          waste_factor_percent: wasteFactor,
+          total_squares_with_waste: wasteSquares,
+          predominant_pitch: dominantPitch,
+          pitch_multiplier: planes[0]?.pitch_multiplier ?? 1,
+          total_ridge_length: ridge_ft,
+          total_hip_length: hip_ft,
+          total_valley_length: valley_ft,
+          total_eave_length: eave_ft,
+          total_rake_length: rake_ft,
+          facet_count: planes.length,
+          footprint_source: solarOk ? 'google_solar_api' : 'mapbox_vector',
+          detection_method: ENGINE_VERSION,
+          target_lat: lat,
+          target_lng: lng,
+          mapbox_image_url: mb?.image_url || null,
+          measurement_confidence: qc.overall,
+          requires_manual_review: qc.status === 'needs_review',
+          validation_status: qc.status === 'completed' ? 'validated' : 'flagged',
+          geometry_report_json: reportJson,
+          geometry_quality_score: qc.overall,
+          measurement_quality_score: qc.overall,
+        })
+
+        // 2l) measurement_approvals smart tags
+        await supa.from('measurement_approvals').insert({
+          tenant_id: resolved.tenantId,
+          pipeline_entry_id: resolved.leadId,
+          lead_id: resolved.leadId,
+          project_id: resolved.projectId,
+          source_record_type: resolved.sourceType,
+          source_record_id: resolved.sourceId,
+          ai_measurement_job_id: aiJob.id,
+          approved_at: new Date().toISOString(),
+          saved_tags: {
+            'roof.plan_area': totalArea2d,
+            'roof.total_sqft': totalAreaSloped,
+            'roof.squares': roofSquares,
+            'roof.predominant_pitch': dominantPitch,
+            'roof.faces_count': planes.length,
+            'lf.ridge': ridge_ft,
+            'lf.hip': hip_ft,
+            'lf.valley': valley_ft,
+            'lf.eave': eave_ft,
+            'lf.rake': rake_ft,
+            'lf.perimeter': perimeter_ft,
+            source: ENGINE_VERSION,
+            measurement_id: roofId,
+            ai_measurement_job_id: aiJob.id,
+            imported_at: new Date().toISOString(),
+          },
+          approval_notes: `geometry_first_v2 • ${Math.round(totalAreaSloped).toLocaleString()} sqft • ${qc.status}`,
+        })
+
+        // 2m) Mark CRM job complete
+        await supa
           .from('measurement_jobs')
           .update({
             status: 'completed',
-            progress_message: 'Measurement complete and published',
-            measurement_id: roofMeasurementId,
+            progress_message:
+              qc.status === 'completed'
+                ? 'Measurement complete'
+                : 'Measurement complete — review recommended',
+            measurement_id: roofId,
+            geocode_location_type: geocodeType,
             completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', job.id)
-
-        console.log('[start-ai-measurement] ✅ Job completed:', job.id)
-
-      } catch (err: unknown) {
-        const errorMessage = err instanceof Error ? err.message : 'Unknown error'
-        console.error('[start-ai-measurement] Background processing error:', errorMessage)
-        await supabaseAdmin
+      } catch (err: any) {
+        const msg = err?.message || String(err)
+        console.error('[start-ai-measurement] failed:', msg)
+        await supa
           .from('measurement_jobs')
           .update({
             status: 'failed',
             progress_message: 'Processing error',
-            error: errorMessage,
+            error: msg,
             completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
           .eq('id', job.id)
+        await supa
+          .from('ai_measurement_jobs')
+          .update({
+            status: 'failed',
+            status_message: msg,
+            failure_reason: msg,
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', aiJob.id)
       }
     }
 
-    // Fire background processing without blocking the response
     if (typeof (globalThis as any).EdgeRuntime?.waitUntil === 'function') {
-      (globalThis as any).EdgeRuntime.waitUntil(processJob())
+      ;(globalThis as any).EdgeRuntime.waitUntil(run())
     } else {
-      processJob().catch(console.error)
+      run().catch(console.error)
     }
 
-    // Return immediately with job ID
-    return new Response(JSON.stringify({
-      success: true,
-      jobId: job.id,
-      status: 'queued',
-      message: 'Measurement job started',
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-    })
-
-  } catch (error: unknown) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('start-ai-measurement error:', errorMessage)
-    return new Response(JSON.stringify({
-      success: false,
-      error: errorMessage,
-    }), {
+    return new Response(
+      JSON.stringify({
+        success: true,
+        jobId: job.id,
+        ai_measurement_job_id: aiJob.id,
+        status: 'queued',
+        engine: ENGINE_VERSION,
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+    )
+  } catch (error: any) {
+    console.error('start-ai-measurement error:', error?.message || error)
+    return new Response(JSON.stringify({ success: false, error: error?.message || String(error) }), {
       status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     })
   }
 })

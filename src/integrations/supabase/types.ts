@@ -1546,22 +1546,33 @@ export type Database = {
       }
       ai_measurement_jobs: {
         Row: {
+          actual_image_height: number | null
+          actual_image_width: number | null
           company_id: string | null
           completed_at: string | null
           confidence_score: number | null
           created_at: string
+          engine_version: string | null
           failure_reason: string | null
+          geocode_location_type: string | null
           geometry_quality_score: number | null
           id: string
           latitude: number | null
           lead_id: string | null
           legacy_measurement_job_id: string | null
           legacy_roof_measurement_id: string | null
+          logical_image_height: number | null
+          logical_image_width: number | null
           longitude: number | null
           measurement_quality_score: number | null
           project_id: string | null
           property_address: string
+          raster_scale: number | null
+          source_button: string | null
           source_priority: Json | null
+          source_record_id: string | null
+          source_record_type: string | null
+          started_at: string | null
           status: string
           status_message: string | null
           tenant_id: string | null
@@ -1570,22 +1581,33 @@ export type Database = {
           waste_factor_percent: number | null
         }
         Insert: {
+          actual_image_height?: number | null
+          actual_image_width?: number | null
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
           created_at?: string
+          engine_version?: string | null
           failure_reason?: string | null
+          geocode_location_type?: string | null
           geometry_quality_score?: number | null
           id?: string
           latitude?: number | null
           lead_id?: string | null
           legacy_measurement_job_id?: string | null
           legacy_roof_measurement_id?: string | null
+          logical_image_height?: number | null
+          logical_image_width?: number | null
           longitude?: number | null
           measurement_quality_score?: number | null
           project_id?: string | null
           property_address: string
+          raster_scale?: number | null
+          source_button?: string | null
           source_priority?: Json | null
+          source_record_id?: string | null
+          source_record_type?: string | null
+          started_at?: string | null
           status?: string
           status_message?: string | null
           tenant_id?: string | null
@@ -1594,22 +1616,33 @@ export type Database = {
           waste_factor_percent?: number | null
         }
         Update: {
+          actual_image_height?: number | null
+          actual_image_width?: number | null
           company_id?: string | null
           completed_at?: string | null
           confidence_score?: number | null
           created_at?: string
+          engine_version?: string | null
           failure_reason?: string | null
+          geocode_location_type?: string | null
           geometry_quality_score?: number | null
           id?: string
           latitude?: number | null
           lead_id?: string | null
           legacy_measurement_job_id?: string | null
           legacy_roof_measurement_id?: string | null
+          logical_image_height?: number | null
+          logical_image_width?: number | null
           longitude?: number | null
           measurement_quality_score?: number | null
           project_id?: string | null
           property_address?: string
+          raster_scale?: number | null
+          source_button?: string | null
           source_priority?: Json | null
+          source_record_id?: string | null
+          source_record_type?: string | null
+          started_at?: string | null
           status?: string
           status_message?: string | null
           tenant_id?: string | null
@@ -20129,42 +20162,57 @@ export type Database = {
       }
       measurement_approvals: {
         Row: {
+          ai_measurement_job_id: string | null
           approval_notes: string | null
           approved_at: string | null
           approved_by: string | null
           created_at: string | null
           id: string
+          lead_id: string | null
           measurement_id: string | null
           pipeline_entry_id: string | null
+          project_id: string | null
           report_document_id: string | null
           report_generated: boolean | null
           saved_tags: Json
+          source_record_id: string | null
+          source_record_type: string | null
           tenant_id: string | null
         }
         Insert: {
+          ai_measurement_job_id?: string | null
           approval_notes?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
           id?: string
+          lead_id?: string | null
           measurement_id?: string | null
           pipeline_entry_id?: string | null
+          project_id?: string | null
           report_document_id?: string | null
           report_generated?: boolean | null
           saved_tags?: Json
+          source_record_id?: string | null
+          source_record_type?: string | null
           tenant_id?: string | null
         }
         Update: {
+          ai_measurement_job_id?: string | null
           approval_notes?: string | null
           approved_at?: string | null
           approved_by?: string | null
           created_at?: string | null
           id?: string
+          lead_id?: string | null
           measurement_id?: string | null
           pipeline_entry_id?: string | null
+          project_id?: string | null
           report_document_id?: string | null
           report_generated?: boolean | null
           saved_tags?: Json
+          source_record_id?: string | null
+          source_record_type?: string | null
           tenant_id?: string | null
         }
         Relationships: [
@@ -21011,16 +21059,24 @@ export type Database = {
       measurement_jobs: {
         Row: {
           address: string | null
+          ai_measurement_job_id: string | null
           completed_at: string | null
           created_at: string
+          engine_version: string | null
           error: string | null
+          geocode_location_type: string | null
           id: string
           lat: number | null
+          lead_id: string | null
           lng: number | null
           measurement_id: string | null
           pipeline_entry_id: string
           pitch_override: string | null
           progress_message: string | null
+          project_id: string | null
+          source_button: string | null
+          source_record_id: string | null
+          source_record_type: string | null
           started_at: string | null
           status: string
           tenant_id: string
@@ -21029,16 +21085,24 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          ai_measurement_job_id?: string | null
           completed_at?: string | null
           created_at?: string
+          engine_version?: string | null
           error?: string | null
+          geocode_location_type?: string | null
           id?: string
           lat?: number | null
+          lead_id?: string | null
           lng?: number | null
           measurement_id?: string | null
           pipeline_entry_id: string
           pitch_override?: string | null
           progress_message?: string | null
+          project_id?: string | null
+          source_button?: string | null
+          source_record_id?: string | null
+          source_record_type?: string | null
           started_at?: string | null
           status?: string
           tenant_id: string
@@ -21047,16 +21111,24 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          ai_measurement_job_id?: string | null
           completed_at?: string | null
           created_at?: string
+          engine_version?: string | null
           error?: string | null
+          geocode_location_type?: string | null
           id?: string
           lat?: number | null
+          lead_id?: string | null
           lng?: number | null
           measurement_id?: string | null
           pipeline_entry_id?: string
           pitch_override?: string | null
           progress_message?: string | null
+          project_id?: string | null
+          source_button?: string | null
+          source_record_id?: string | null
+          source_record_type?: string | null
           started_at?: string | null
           status?: string
           tenant_id?: string
@@ -31407,6 +31479,7 @@ export type Database = {
           accuracy_vs_manual_percent: number | null
           ai_analysis: Json | null
           ai_detection_data: Json
+          ai_measurement_job_id: string | null
           ai_model_version: string | null
           ai_vision_detection_attempts: number | null
           ai_vision_footprint_confidence: number | null
@@ -31428,6 +31501,7 @@ export type Database = {
           edge_segments: Json | null
           engine_requested: string | null
           engine_used: string | null
+          engine_version: string | null
           facet_closure_score: number | null
           facet_count: number | null
           facets_json: Json | null
@@ -31440,6 +31514,8 @@ export type Database = {
           footprint_vertex_count: number | null
           footprint_vertices_geo: Json | null
           gable_peak_count: number | null
+          geometry_quality_score: number | null
+          geometry_report_json: Json | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
           gps_accuracy_meters: number | null
@@ -31470,6 +31546,7 @@ export type Database = {
           measurement_confidence: number | null
           measurement_data: Json | null
           measurement_method: string | null
+          measurement_quality_score: number | null
           metadata: Json | null
           meters_per_pixel: number | null
           model_version: string | null
@@ -31483,6 +31560,7 @@ export type Database = {
           pixels_per_foot: number | null
           predominant_pitch: string | null
           preprocessing_applied: Json | null
+          project_id: string | null
           property_address: string
           property_city: string | null
           property_state: string | null
@@ -31506,6 +31584,9 @@ export type Database = {
           solar_api_response: Json | null
           solar_building_footprint_sqft: number | null
           solar_panel_count: number | null
+          source_button: string | null
+          source_record_id: string | null
+          source_record_type: string | null
           stories: number | null
           tags: string[] | null
           target_lat: number | null
@@ -31543,6 +31624,7 @@ export type Database = {
           accuracy_vs_manual_percent?: number | null
           ai_analysis?: Json | null
           ai_detection_data: Json
+          ai_measurement_job_id?: string | null
           ai_model_version?: string | null
           ai_vision_detection_attempts?: number | null
           ai_vision_footprint_confidence?: number | null
@@ -31564,6 +31646,7 @@ export type Database = {
           edge_segments?: Json | null
           engine_requested?: string | null
           engine_used?: string | null
+          engine_version?: string | null
           facet_closure_score?: number | null
           facet_count?: number | null
           facets_json?: Json | null
@@ -31576,6 +31659,8 @@ export type Database = {
           footprint_vertex_count?: number | null
           footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
+          geometry_quality_score?: number | null
+          geometry_report_json?: Json | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
@@ -31606,6 +31691,7 @@ export type Database = {
           measurement_confidence?: number | null
           measurement_data?: Json | null
           measurement_method?: string | null
+          measurement_quality_score?: number | null
           metadata?: Json | null
           meters_per_pixel?: number | null
           model_version?: string | null
@@ -31619,6 +31705,7 @@ export type Database = {
           pixels_per_foot?: number | null
           predominant_pitch?: string | null
           preprocessing_applied?: Json | null
+          project_id?: string | null
           property_address: string
           property_city?: string | null
           property_state?: string | null
@@ -31642,6 +31729,9 @@ export type Database = {
           solar_api_response?: Json | null
           solar_building_footprint_sqft?: number | null
           solar_panel_count?: number | null
+          source_button?: string | null
+          source_record_id?: string | null
+          source_record_type?: string | null
           stories?: number | null
           tags?: string[] | null
           target_lat?: number | null
@@ -31679,6 +31769,7 @@ export type Database = {
           accuracy_vs_manual_percent?: number | null
           ai_analysis?: Json | null
           ai_detection_data?: Json
+          ai_measurement_job_id?: string | null
           ai_model_version?: string | null
           ai_vision_detection_attempts?: number | null
           ai_vision_footprint_confidence?: number | null
@@ -31700,6 +31791,7 @@ export type Database = {
           edge_segments?: Json | null
           engine_requested?: string | null
           engine_used?: string | null
+          engine_version?: string | null
           facet_closure_score?: number | null
           facet_count?: number | null
           facets_json?: Json | null
@@ -31712,6 +31804,8 @@ export type Database = {
           footprint_vertex_count?: number | null
           footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
+          geometry_quality_score?: number | null
+          geometry_report_json?: Json | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
@@ -31742,6 +31836,7 @@ export type Database = {
           measurement_confidence?: number | null
           measurement_data?: Json | null
           measurement_method?: string | null
+          measurement_quality_score?: number | null
           metadata?: Json | null
           meters_per_pixel?: number | null
           model_version?: string | null
@@ -31755,6 +31850,7 @@ export type Database = {
           pixels_per_foot?: number | null
           predominant_pitch?: string | null
           preprocessing_applied?: Json | null
+          project_id?: string | null
           property_address?: string
           property_city?: string | null
           property_state?: string | null
@@ -31778,6 +31874,9 @@ export type Database = {
           solar_api_response?: Json | null
           solar_building_footprint_sqft?: number | null
           solar_panel_count?: number | null
+          source_button?: string | null
+          source_record_id?: string | null
+          source_record_type?: string | null
           stories?: number | null
           tags?: string[] | null
           target_lat?: number | null
