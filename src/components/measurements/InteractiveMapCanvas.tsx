@@ -160,9 +160,17 @@ export function InteractiveMapCanvas({
     map.addControl(new mapboxgl.NavigationControl({ visualizePitch: false }), 'top-right');
 
     map.on('load', () => {
+      console.log('[Map] satellite tiles loaded for', centerLat, centerLng);
       setIsMapLoaded(true);
+      setMapError(null);
       setCurrentZoom(map.getZoom());
       setPixelsPerFoot(calculatePixelsPerFoot(map.getZoom(), centerLat));
+    });
+
+    map.on('error', (e: any) => {
+      const msg = e?.error?.message || 'Failed to load satellite imagery';
+      console.error('[Map] error:', msg, e);
+      setMapError(msg);
     });
 
     map.on('zoom', () => {
