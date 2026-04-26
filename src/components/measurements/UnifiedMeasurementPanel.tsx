@@ -713,6 +713,7 @@ export function UnifiedMeasurementPanel({
 
   return (
     <>
+      <RoofDiagramViewer leadId={pipelineEntryId} />
       <Card>
         <CardHeader className="pb-2 pt-4 px-4">
           <div className="flex items-center justify-between">
