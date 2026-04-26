@@ -313,9 +313,22 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
             )}
             {isSaving ? 'Saving...' : 'Save Report'}
           </Button>
-          <Button 
-            variant="outline" 
-            size="sm" 
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleDownloadReport}
+            disabled={isDownloading}
+          >
+            {isDownloading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Download className="h-4 w-4 mr-2" />
+            )}
+            {isDownloading ? 'Generating...' : 'Download PDF'}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => setShowShareDialog(true)}
           >
             <Share2 className="h-4 w-4 mr-2" />
