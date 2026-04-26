@@ -986,6 +986,9 @@ Deno.serve(async (req) => {
               totals: reportJson.totals,
               width: 1000,
               height: 1000,
+              satelliteImageUrl: mb?.image_url || null,
+              sourceImageWidth: imgW,
+              sourceImageHeight: imgH,
             })
 
             if (diagrams.length > 0) {
