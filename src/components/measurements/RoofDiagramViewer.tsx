@@ -85,8 +85,27 @@ export function RoofDiagramViewer({
               <Badge variant="secondary">{d.diagram_type}</Badge>
             </div>
             <div
-              className="w-full overflow-auto bg-white"
-              dangerouslySetInnerHTML={{ __html: d.svg_markup || "" }}
+              className="w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[70vh] [&_svg]:block"
+              dangerouslySetInnerHTML={{
+                __html: (d.svg_markup || "").replace(
+                  /<svg([^>]*)>/i,
+                  (_m, attrs) => {
+                    // Ensure viewBox exists; strip fixed width/height so CSS controls size
+                    let a = attrs as string;
+                    const hasViewBox = /viewBox=/.test(a);
+                    const widthMatch = a.match(/\bwidth="(\d+(?:\.\d+)?)"/);
+                    const heightMatch = a.match(/\bheight="(\d+(?:\.\d+)?)"/);
+                    if (!hasViewBox && widthMatch && heightMatch) {
+                      a += ` viewBox="0 0 ${widthMatch[1]} ${heightMatch[1]}"`;
+                    }
+                    a = a.replace(/\s(width|height)="[^"]*"/g, "");
+                    if (!/preserveAspectRatio=/.test(a)) {
+                      a += ' preserveAspectRatio="xMidYMid meet"';
+                    }
+                    return `<svg${a}>`;
+                  }
+                ),
+              }}
             />
           </div>
         ))}
