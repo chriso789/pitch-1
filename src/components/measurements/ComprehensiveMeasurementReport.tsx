@@ -93,9 +93,63 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
   const { toast } = useToast();
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [isSaving, setIsSaving] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
   const [showShareDialog, setShowShareDialog] = useState(false);
   const [savedReportUrl, setSavedReportUrl] = useState<string | null>(null);
   const [editKey, setEditKey] = useState(0); // Force re-mount editor on re-enter
+
+  const handleDownloadReport = async () => {
+    setIsDownloading(true);
+    try {
+      const element = document.getElementById('measurement-report-content');
+      if (!element) throw new Error('Report content not found');
+
+      const canvas = await html2canvas(element, {
+        scale: 1.5,
+        useCORS: true,
+        logging: false,
+        backgroundColor: '#ffffff',
+      });
+
+      const imgData = canvas.toDataURL('image/jpeg', 0.85);
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+      const pageWidth = 210;
+      const pageHeight = 297;
+      const imgWidth = pageWidth;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      let heightLeft = imgHeight;
+      let position = 0;
+
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const safeAddr = (address || 'property').replace(/[^a-z0-9]+/gi, '-').toLowerCase().slice(0, 60);
+      pdf.save(`measurement-report-${safeAddr}-${measurement.id.slice(0, 8)}.pdf`);
+
+      toast({
+        title: 'Report Downloaded',
+        description: 'PDF saved to your downloads folder',
+      });
+    } catch (error: any) {
+      console.error('PDF download error:', error);
+      toast({
+        title: 'Download Failed',
+        description: error.message || 'Could not download report',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleSaveReport = async () => {
     setIsSaving(true);
