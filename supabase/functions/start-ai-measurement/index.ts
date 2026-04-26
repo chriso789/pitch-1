@@ -191,10 +191,26 @@ async function fetchMapbox(lat: number, lng: number, zoom = 20, logicalSize = 64
 
 async function fetchGoogleSolar(lat: number, lng: number) {
   if (!GOOGLE_SOLAR_API_KEY) return null
-  const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&requiredQuality=HIGH&key=${GOOGLE_SOLAR_API_KEY}`
-  const r = await fetch(url)
-  if (!r.ok) return null
-  return await r.json()
+  // Use LOW as the floor — Solar's API returns the best available imagery at
+  // or above this threshold (HIGH/MEDIUM/LOW). Hardcoding HIGH causes 404s on
+  // most US suburban addresses where only MEDIUM coverage exists.
+  // Try HIGH first, fall back through MEDIUM to LOW so we always get the
+  // best available data without blocking the pipeline.
+  for (const quality of ['HIGH', 'MEDIUM', 'LOW']) {
+    const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&requiredQuality=${quality}&key=${GOOGLE_SOLAR_API_KEY}`
+    const r = await fetch(url)
+    if (r.ok) {
+      const data = await r.json()
+      console.log(`[fetchGoogleSolar] success at quality=${quality}, segments=${data?.solarPotential?.roofSegmentStats?.length || 0}`)
+      return data
+    }
+    if (r.status !== 404) {
+      console.warn(`[fetchGoogleSolar] non-404 error at quality=${quality}: ${r.status}`)
+      return null
+    }
+  }
+  console.log(`[fetchGoogleSolar] no Solar coverage at any quality for ${lat},${lng}`)
+  return null
 }
 
 // ─────────────────────────────────────────────────────────────────────
