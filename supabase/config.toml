@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.ai-measurement]
+verify_jwt = false
+
 [functions.reconcile-contacts]
 verify_jwt = false
 

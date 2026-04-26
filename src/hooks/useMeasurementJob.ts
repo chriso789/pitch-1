@@ -99,10 +99,18 @@ export function useMeasurementJob(pipelineEntryId: string) {
     tenantId: string;
     userId?: string;
   }) => {
-    const { data, error } = await supabase.functions.invoke('start-ai-measurement', {
+    // Route to the new geometry-first AI Measurement pipeline.
+    // Tied to the current lead/project (pipelineEntryId) the user was viewing.
+    const { data, error } = await supabase.functions.invoke('ai-measurement', {
       body: {
-        pipelineEntryId,
-        ...params,
+        lead_id: pipelineEntryId,
+        project_id: pipelineEntryId,
+        tenant_id: params.tenantId,
+        user_id: params.userId,
+        property_address: params.address || `${params.lat},${params.lng}`,
+        latitude: params.lat,
+        longitude: params.lng,
+        waste_factor_percent: 10,
       }
     });
 
