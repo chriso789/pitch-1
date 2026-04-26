@@ -1479,6 +1479,261 @@ export type Database = {
           },
         ]
       }
+      ai_measurement_images: {
+        Row: {
+          bearing: number | null
+          calibration: Json | null
+          created_at: string
+          feet_per_pixel: number | null
+          height: number | null
+          id: string
+          image_url: string | null
+          is_primary: boolean | null
+          job_id: string
+          meters_per_pixel: number | null
+          pitch: number | null
+          source: string
+          storage_path: string | null
+          transform: Json | null
+          width: number | null
+          zoom: number | null
+        }
+        Insert: {
+          bearing?: number | null
+          calibration?: Json | null
+          created_at?: string
+          feet_per_pixel?: number | null
+          height?: number | null
+          id?: string
+          image_url?: string | null
+          is_primary?: boolean | null
+          job_id: string
+          meters_per_pixel?: number | null
+          pitch?: number | null
+          source: string
+          storage_path?: string | null
+          transform?: Json | null
+          width?: number | null
+          zoom?: number | null
+        }
+        Update: {
+          bearing?: number | null
+          calibration?: Json | null
+          created_at?: string
+          feet_per_pixel?: number | null
+          height?: number | null
+          id?: string
+          image_url?: string | null
+          is_primary?: boolean | null
+          job_id?: string
+          meters_per_pixel?: number | null
+          pitch?: number | null
+          source?: string
+          storage_path?: string | null
+          transform?: Json | null
+          width?: number | null
+          zoom?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_measurement_images_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_measurement_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_measurement_jobs: {
+        Row: {
+          company_id: string | null
+          completed_at: string | null
+          confidence_score: number | null
+          created_at: string
+          failure_reason: string | null
+          geometry_quality_score: number | null
+          id: string
+          latitude: number | null
+          lead_id: string | null
+          legacy_measurement_job_id: string | null
+          legacy_roof_measurement_id: string | null
+          longitude: number | null
+          measurement_quality_score: number | null
+          project_id: string | null
+          property_address: string
+          source_priority: Json | null
+          status: string
+          status_message: string | null
+          tenant_id: string | null
+          updated_at: string
+          user_id: string | null
+          waste_factor_percent: number | null
+        }
+        Insert: {
+          company_id?: string | null
+          completed_at?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          failure_reason?: string | null
+          geometry_quality_score?: number | null
+          id?: string
+          latitude?: number | null
+          lead_id?: string | null
+          legacy_measurement_job_id?: string | null
+          legacy_roof_measurement_id?: string | null
+          longitude?: number | null
+          measurement_quality_score?: number | null
+          project_id?: string | null
+          property_address: string
+          source_priority?: Json | null
+          status?: string
+          status_message?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+          waste_factor_percent?: number | null
+        }
+        Update: {
+          company_id?: string | null
+          completed_at?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          failure_reason?: string | null
+          geometry_quality_score?: number | null
+          id?: string
+          latitude?: number | null
+          lead_id?: string | null
+          legacy_measurement_job_id?: string | null
+          legacy_roof_measurement_id?: string | null
+          longitude?: number | null
+          measurement_quality_score?: number | null
+          project_id?: string | null
+          property_address?: string
+          source_priority?: Json | null
+          status?: string
+          status_message?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string | null
+          waste_factor_percent?: number | null
+        }
+        Relationships: []
+      }
+      ai_measurement_quality_checks: {
+        Row: {
+          check_name: string
+          created_at: string
+          details: Json | null
+          id: string
+          job_id: string
+          passed: boolean
+          score: number | null
+        }
+        Insert: {
+          check_name: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          job_id: string
+          passed: boolean
+          score?: number | null
+        }
+        Update: {
+          check_name?: string
+          created_at?: string
+          details?: Json | null
+          id?: string
+          job_id?: string
+          passed?: boolean
+          score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_measurement_quality_checks_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_measurement_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_measurement_results: {
+        Row: {
+          confidence_score: number | null
+          created_at: string
+          dominant_pitch: number | null
+          eave_length_ft: number | null
+          hip_length_ft: number | null
+          id: string
+          job_id: string
+          line_breakdown: Json | null
+          perimeter_length_ft: number | null
+          pitch_breakdown: Json | null
+          plane_breakdown: Json | null
+          rake_length_ft: number | null
+          report_json: Json | null
+          ridge_length_ft: number | null
+          roof_square_count: number | null
+          total_area_2d_sqft: number | null
+          total_area_pitch_adjusted_sqft: number | null
+          valley_length_ft: number | null
+          waste_adjusted_squares: number | null
+          waste_factor_percent: number | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          created_at?: string
+          dominant_pitch?: number | null
+          eave_length_ft?: number | null
+          hip_length_ft?: number | null
+          id?: string
+          job_id: string
+          line_breakdown?: Json | null
+          perimeter_length_ft?: number | null
+          pitch_breakdown?: Json | null
+          plane_breakdown?: Json | null
+          rake_length_ft?: number | null
+          report_json?: Json | null
+          ridge_length_ft?: number | null
+          roof_square_count?: number | null
+          total_area_2d_sqft?: number | null
+          total_area_pitch_adjusted_sqft?: number | null
+          valley_length_ft?: number | null
+          waste_adjusted_squares?: number | null
+          waste_factor_percent?: number | null
+        }
+        Update: {
+          confidence_score?: number | null
+          created_at?: string
+          dominant_pitch?: number | null
+          eave_length_ft?: number | null
+          hip_length_ft?: number | null
+          id?: string
+          job_id?: string
+          line_breakdown?: Json | null
+          perimeter_length_ft?: number | null
+          pitch_breakdown?: Json | null
+          plane_breakdown?: Json | null
+          rake_length_ft?: number | null
+          report_json?: Json | null
+          ridge_length_ft?: number | null
+          roof_square_count?: number | null
+          total_area_2d_sqft?: number | null
+          total_area_pitch_adjusted_sqft?: number | null
+          valley_length_ft?: number | null
+          waste_adjusted_squares?: number | null
+          waste_factor_percent?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_measurement_results_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_measurement_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_messages: {
         Row: {
           content: string
@@ -1591,6 +1846,115 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_roof_edges: {
+        Row: {
+          adjacent_plane_ids: Json | null
+          confidence: number | null
+          created_at: string
+          edge_type: string
+          id: string
+          job_id: string
+          length_ft: number | null
+          length_px: number | null
+          line_geojson: Json | null
+          line_px: Json | null
+          source: string
+        }
+        Insert: {
+          adjacent_plane_ids?: Json | null
+          confidence?: number | null
+          created_at?: string
+          edge_type: string
+          id?: string
+          job_id: string
+          length_ft?: number | null
+          length_px?: number | null
+          line_geojson?: Json | null
+          line_px?: Json | null
+          source: string
+        }
+        Update: {
+          adjacent_plane_ids?: Json | null
+          confidence?: number | null
+          created_at?: string
+          edge_type?: string
+          id?: string
+          job_id?: string
+          length_ft?: number | null
+          length_px?: number | null
+          line_geojson?: Json | null
+          line_px?: Json | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_roof_edges_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_measurement_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_roof_planes: {
+        Row: {
+          area_2d_sqft: number | null
+          area_pitch_adjusted_sqft: number | null
+          azimuth: number | null
+          confidence: number | null
+          created_at: string
+          id: string
+          job_id: string
+          pitch: number | null
+          pitch_degrees: number | null
+          pitch_multiplier: number | null
+          plane_index: number | null
+          polygon_geojson: Json | null
+          polygon_px: Json | null
+          source: string
+        }
+        Insert: {
+          area_2d_sqft?: number | null
+          area_pitch_adjusted_sqft?: number | null
+          azimuth?: number | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          job_id: string
+          pitch?: number | null
+          pitch_degrees?: number | null
+          pitch_multiplier?: number | null
+          plane_index?: number | null
+          polygon_geojson?: Json | null
+          polygon_px?: Json | null
+          source: string
+        }
+        Update: {
+          area_2d_sqft?: number | null
+          area_pitch_adjusted_sqft?: number | null
+          azimuth?: number | null
+          confidence?: number | null
+          created_at?: string
+          id?: string
+          job_id?: string
+          pitch?: number | null
+          pitch_degrees?: number | null
+          pitch_multiplier?: number | null
+          plane_index?: number | null
+          polygon_geojson?: Json | null
+          polygon_px?: Json | null
+          source?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_roof_planes_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "ai_measurement_jobs"
             referencedColumns: ["id"]
           },
         ]
