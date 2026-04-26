@@ -30,10 +30,15 @@ export type DiagramInput = {
   totals: any;
   width?: number;
   height?: number;
+  /** Optional satellite raster (Mapbox/Google) to overlay geometry on. */
+  satelliteImageUrl?: string | null;
+  /** Source image dims that the polygon_px coordinates were authored against. */
+  sourceImageWidth?: number | null;
+  sourceImageHeight?: number | null;
 };
 
 export type GeneratedDiagram = {
-  diagram_type: "outline" | "length" | "pitch" | "area" | "notes";
+  diagram_type: "outline" | "length" | "pitch" | "area" | "notes" | "satellite";
   title: string;
   page_number: number;
   svg_markup: string;
@@ -57,7 +62,7 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
 
   const normalized = normalizeGeometryToViewport(input.planes, input.edges || [], width, height);
 
-  return [
+  const pages: GeneratedDiagram[] = [
     {
       diagram_type: "outline",
       title: "Roof Outline Diagram",
@@ -89,6 +94,44 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
       svg_markup: renderNotesDiagram(input, normalized, width, height),
     },
   ];
+
+  // Optional satellite overlay — only when we have the source raster + its native dims.
+  if (input.satelliteImageUrl && input.sourceImageWidth && input.sourceImageHeight) {
+    pages.push({
+      diagram_type: "satellite",
+      title: "Satellite Overlay",
+      page_number: 6,
+      svg_markup: renderSatelliteOverlay(input, width, height),
+    });
+  }
+
+  return pages;
+}
+
+/** Render geometry directly on top of the satellite raster, preserving native pixel coords. */
+function renderSatelliteOverlay(input: DiagramInput, width: number, height: number) {
+  const srcW = input.sourceImageWidth!;
+  const srcH = input.sourceImageHeight!;
+  const scale = Math.min(width / srcW, height / srcH);
+  const offsetX = (width - srcW * scale) / 2;
+  const offsetY = (height - srcH * scale) / 2 + 30;
+
+  const tx = (p: Point) => ({ x: p.x * scale + offsetX, y: p.y * scale + offsetY });
+  const planes = input.planes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) }));
+  const edges = (input.edges || []).map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) }));
+
+  const body = `
+    <image href="${escapeXml(input.satelliteImageUrl!)}" x="${offsetX}" y="${offsetY}" width="${srcW * scale}" height="${srcH * scale}" preserveAspectRatio="xMidYMid meet" />
+    ${planes
+      .map((p) => {
+        const pts = p.polygon_px.map((pt) => `${pt.x},${pt.y}`).join(" ");
+        return `<polygon points="${pts}" fill="rgba(255,255,255,0.18)" stroke="#ffffff" stroke-width="2" />`;
+      })
+      .join("\n")}
+    ${edges.map((e) => renderEdgeWithLength(e as Edge, true)).join("\n")}
+  `;
+
+  return svgShell(input.propertyAddress, "Satellite Overlay", width, height, body);
 }
 
 function renderOutlineDiagram(input: DiagramInput, g: any, width: number, height: number) {
@@ -206,17 +249,21 @@ function renderPlaneOutlines(planes: Plane[]) {
     .join("\n");
 }
 
-function renderEdgeWithLength(edge: Edge) {
-  const style = EDGE_STYLES[edge.edge_type] || EDGE_STYLES.unknown;
+function renderEdgeWithLength(edge: Edge, onSatellite = false) {
+  const baseStyle = EDGE_STYLES[edge.edge_type] || EDGE_STYLES.unknown;
+  // On satellite, brighten ridge/valley/hip and white-out neutral edges for contrast.
+  const stroke = onSatellite && edge.edge_type === "eave" ? "#ffffff" : baseStyle.stroke;
   const d = polylinePath(edge.line_px);
   const mid = polylineMidpoint(edge.line_px);
   const len = round(edge.length_ft || 0, 0);
+  const labelFill = onSatellite ? "#ffffff" : "#111111";
+  const labelStroke = onSatellite ? `paint-order="stroke" stroke="#000000" stroke-width="3"` : "";
 
   return `
-    <path d="${d}" fill="none" stroke="${style.stroke}" stroke-width="${style.width}" ${
-    style.dash ? `stroke-dasharray="${style.dash}"` : ""
+    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="${baseStyle.width + (onSatellite ? 1 : 0)}" ${
+    baseStyle.dash ? `stroke-dasharray="${baseStyle.dash}"` : ""
   } />
-    <text x="${mid.x}" y="${mid.y - 8}" font-size="20" text-anchor="middle" font-weight="700" fill="#111">${len}</text>
+    <text x="${mid.x}" y="${mid.y - 8}" font-size="20" text-anchor="middle" font-weight="700" fill="${labelFill}" ${labelStroke}>${len}</text>
   `;
 }
 

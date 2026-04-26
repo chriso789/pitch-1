@@ -332,7 +332,8 @@ function edgesFromPerimeter(
   return out
 }
 
-/** Detect shared edges between adjacent planes → ridges/hips/valleys (best-effort). */
+/** Detect shared edges between adjacent planes → ridges/hips/valleys (best-effort).
+ *  Plus: emit perimeter eaves/rakes for every plane edge that is NOT shared. */
 function edgesFromPlanes(
   planes: RoofPlane[],
   centerLat: number,
@@ -343,56 +344,125 @@ function edgesFromPlanes(
   feetPerPixel: number,
 ): RoofEdge[] {
   const out: RoofEdge[] = []
-  const eps = 6 // px tolerance for shared vertex
-  const planeSegs = planes.map((p) => {
-    const segs: { a: Pt; b: Pt }[] = []
+  // Tolerance scales with image size; Solar bbox polygons can be loose by ~10-15 px.
+  const eps = Math.max(12, Math.round(Math.max(imgW, imgH) * 0.012))
+
+  type Seg = { a: Pt; b: Pt; planeIdx: number }
+  const allSegs: Seg[] = []
+  planes.forEach((p, planeIdx) => {
     for (let i = 0; i < p.polygon_px.length; i++) {
-      segs.push({
+      allSegs.push({
         a: p.polygon_px[i],
         b: p.polygon_px[(i + 1) % p.polygon_px.length],
+        planeIdx,
       })
     }
-    return { plane: p, segs }
   })
-  const shared = new Set<string>()
-  for (let i = 0; i < planeSegs.length; i++) {
-    for (let j = i + 1; j < planeSegs.length; j++) {
-      const A = planeSegs[i], B = planeSegs[j]
-      for (const sa of A.segs) {
-        for (const sb of B.segs) {
-          if (segMatch(sa, sb, eps)) {
-            const key = sortedKey(sa.a, sa.b)
-            if (shared.has(key)) continue
-            shared.add(key)
-            const lpx = polylineLengthPx([sa.a, sa.b])
-            // Convex-vs-concave heuristic via azimuths
-            const azA = A.plane.azimuth ?? 0
-            const azB = B.plane.azimuth ?? 0
-            const diff = Math.abs(((azA - azB + 540) % 360) - 180)
-            const isOpposing = diff < 30 // facing each other → ridge
-            const edgeType: RoofEdge['edge_type'] = isOpposing
-              ? 'ridge'
-              : diff > 60
-              ? 'hip'
-              : 'valley'
-            out.push({
-              edge_type: edgeType,
-              source: 'plane_topology',
-              line_px: [sa.a, sa.b],
-              line_geojson: [
-                pixelToLatLng(sa.a.x, sa.a.y, centerLat, centerLng, imgW, imgH, actualMpp),
-                pixelToLatLng(sa.b.x, sa.b.y, centerLat, centerLng, imgW, imgH, actualMpp),
-              ],
-              length_px: lpx,
-              length_ft: lpx * feetPerPixel,
-              confidence: 0.6,
-            })
-          }
-        }
-      }
+
+  const sharedFlags = new Array(allSegs.length).fill(false)
+  const ridgeKeys = new Set<string>()
+
+  // 1) Detect shared / overlapping segments between different planes
+  for (let i = 0; i < allSegs.length; i++) {
+    for (let j = i + 1; j < allSegs.length; j++) {
+      const sa = allSegs[i]
+      const sb = allSegs[j]
+      if (sa.planeIdx === sb.planeIdx) continue
+
+      const overlap = segOverlap(sa, sb, eps)
+      if (!overlap) continue
+
+      sharedFlags[i] = true
+      sharedFlags[j] = true
+
+      const key = sortedKey(overlap.a, overlap.b)
+      if (ridgeKeys.has(key)) continue
+      ridgeKeys.add(key)
+
+      const lpx = polylineLengthPx([overlap.a, overlap.b])
+      const azA = planes[sa.planeIdx].azimuth ?? 0
+      const azB = planes[sb.planeIdx].azimuth ?? 0
+      const diff = Math.abs(((azA - azB + 540) % 360) - 180)
+      // Opposing planes (gable / hip ridge) → ridge; adjacent slopes → hip/valley
+      const edgeType: RoofEdge['edge_type'] =
+        diff < 45 ? 'ridge' : diff > 120 ? 'hip' : 'valley'
+
+      out.push({
+        edge_type: edgeType,
+        source: 'plane_topology',
+        line_px: [overlap.a, overlap.b],
+        line_geojson: [
+          pixelToLatLng(overlap.a.x, overlap.a.y, centerLat, centerLng, imgW, imgH, actualMpp),
+          pixelToLatLng(overlap.b.x, overlap.b.y, centerLat, centerLng, imgW, imgH, actualMpp),
+        ],
+        length_px: lpx,
+        length_ft: lpx * feetPerPixel,
+        confidence: 0.65,
+      })
     }
   }
+
+  // 2) Every non-shared plane edge is a perimeter edge (eave or rake).
+  //    Without slope direction we default to 'eave' — good enough for diagram.
+  const perimSeen = new Set<string>()
+  for (let i = 0; i < allSegs.length; i++) {
+    if (sharedFlags[i]) continue
+    const s = allSegs[i]
+    const key = sortedKey(s.a, s.b)
+    if (perimSeen.has(key)) continue
+    perimSeen.add(key)
+    const lpx = polylineLengthPx([s.a, s.b])
+    out.push({
+      edge_type: 'eave',
+      source: 'plane_topology',
+      line_px: [s.a, s.b],
+      line_geojson: [
+        pixelToLatLng(s.a.x, s.a.y, centerLat, centerLng, imgW, imgH, actualMpp),
+        pixelToLatLng(s.b.x, s.b.y, centerLat, centerLng, imgW, imgH, actualMpp),
+      ],
+      length_px: lpx,
+      length_ft: lpx * feetPerPixel,
+      confidence: 0.55,
+    })
+  }
+
   return out
+}
+
+/** Check if two segments overlap (collinear within eps) and return the shared portion. */
+function segOverlap(
+  s1: { a: Pt; b: Pt },
+  s2: { a: Pt; b: Pt },
+  eps: number,
+): { a: Pt; b: Pt } | null {
+  // Direction vectors
+  const v1x = s1.b.x - s1.a.x
+  const v1y = s1.b.y - s1.a.y
+  const len1 = Math.hypot(v1x, v1y)
+  if (len1 < 1) return null
+  const ux = v1x / len1
+  const uy = v1y / len1
+
+  // Project s2 endpoints onto s1 line; check perpendicular distance
+  const projDist = (p: Pt) => {
+    const dx = p.x - s1.a.x
+    const dy = p.y - s1.a.y
+    const along = dx * ux + dy * uy
+    const perp = Math.abs(-dy * ux + dx * uy) // |cross|
+    return { along, perp }
+  }
+  const p2a = projDist(s2.a)
+  const p2b = projDist(s2.b)
+  if (p2a.perp > eps || p2b.perp > eps) return null
+
+  // Overlap range along s1 direction
+  const lo = Math.max(0, Math.min(p2a.along, p2b.along))
+  const hi = Math.min(len1, Math.max(p2a.along, p2b.along))
+  if (hi - lo < Math.max(8, len1 * 0.25)) return null // need meaningful overlap
+
+  const a: Pt = { x: s1.a.x + ux * lo, y: s1.a.y + uy * lo }
+  const b: Pt = { x: s1.a.x + ux * hi, y: s1.a.y + uy * hi }
+  return { a, b }
 }
 
 function ptNear(a: Pt, b: Pt, eps: number) {
@@ -916,6 +986,9 @@ Deno.serve(async (req) => {
               totals: reportJson.totals,
               width: 1000,
               height: 1000,
+              satelliteImageUrl: mb?.image_url || null,
+              sourceImageWidth: imgW,
+              sourceImageHeight: imgH,
             })
 
             if (diagrams.length > 0) {
