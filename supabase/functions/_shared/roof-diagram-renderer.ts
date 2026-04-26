@@ -306,9 +306,12 @@ function normalizeGeometryToViewport(planes: Plane[], edges: Edge[], width: numb
   const pad = 140;
   const scale = Math.min((width - pad * 2) / sourceW, (height - pad * 2) / sourceH);
 
+  // Source polygon_px coords are authored in geographic/world space where +Y = north.
+  // SVG Y grows downward, so flip Y to make north appear at the top of the diagram
+  // (matches the compass rose: N at top, S at bottom).
   const transform = (p: Point) => ({
     x: (p.x - minX) * scale + pad,
-    y: (p.y - minY) * scale + pad + 60,
+    y: (maxY - p.y) * scale + pad + 60,
   });
 
   return {
