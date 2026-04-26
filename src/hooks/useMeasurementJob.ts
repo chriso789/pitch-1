@@ -104,6 +104,12 @@ export function useMeasurementJob(pipelineEntryId: string) {
     // measurement_approvals so the lead/project page picks it up automatically.
     const { data, error } = await supabase.functions.invoke('start-ai-measurement', {
       body: {
+        // Canonical (geometry_first_v2) payload
+        lead_id: pipelineEntryId,
+        source_button: 'AI Measurement',
+        source_record_type: 'lead',
+        source_record_id: pipelineEntryId,
+        // Backwards-compat
         pipelineEntryId,
         lat: params.lat,
         lng: params.lng,
