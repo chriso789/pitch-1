@@ -36,7 +36,7 @@ export default function ProfessionalMeasurement() {
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   
   // Fetch Mapbox token
-  const { token: mapboxToken, loading: tokenLoading } = useMapboxToken();
+  const { token: mapboxToken, loading: tokenLoading, error: tokenError } = useMapboxToken();
   
   // Fetch pipeline entry with contact data
   const { data: pipelineEntry, isLoading: entryLoading } = useQuery({
