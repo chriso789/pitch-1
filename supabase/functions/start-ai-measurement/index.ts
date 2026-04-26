@@ -946,7 +946,8 @@ Deno.serve(async (req) => {
           }
         }
 
-
+        await supa
+          .from('ai_measurement_jobs')
           .update({
             status: qc.status,
             status_message:
