@@ -146,9 +146,29 @@ export function InteractiveMapCanvas({
 
     mapboxgl.accessToken = mapboxToken;
 
+    // Use raw satellite raster tiles at 512px (retina) for the sharpest possible aerial.
+    // The styled `satellite-streets-v12` adds labels and is slightly softer at z20+.
     const map = new mapboxgl.Map({
       container: mapContainerRef.current,
-      style: `mapbox://styles/mapbox/${mapStyle}-v12`,
+      style: {
+        version: 8,
+        sources: {
+          'mapbox-satellite': {
+            type: 'raster',
+            url: 'mapbox://mapbox.satellite',
+            tileSize: 512,
+            maxzoom: 22,
+          },
+        },
+        layers: [
+          {
+            id: 'satellite',
+            type: 'raster',
+            source: 'mapbox-satellite',
+            paint: { 'raster-resampling': 'nearest' },
+          },
+        ],
+      } as any,
       center: [centerLng, centerLat],
       zoom: initialZoom,
       pitch: 0,
