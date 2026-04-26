@@ -257,6 +257,11 @@ export default function ProfessionalMeasurement() {
                         Go to Lead to Verify Address
                       </Button>
                     </div>
+                  ) : tokenError ? (
+                    <div className="flex flex-col items-center justify-center h-full bg-muted gap-3 p-6 text-center">
+                      <p className="text-destructive font-semibold">Satellite imagery unavailable</p>
+                      <p className="text-sm text-muted-foreground max-w-md">{tokenError}</p>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full bg-muted">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />
