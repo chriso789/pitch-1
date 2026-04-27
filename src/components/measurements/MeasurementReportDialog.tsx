@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import DOMPurify from 'dompurify';
 import {
   Dialog,
   DialogContent,
@@ -9,9 +10,12 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import PatentRoofReport from './PatentRoofReport';
+import { overlayToPatentModel } from '@/lib/measurements/overlayToPatentModel';
 
 interface MeasurementReportDialogProps {
   open: boolean;
