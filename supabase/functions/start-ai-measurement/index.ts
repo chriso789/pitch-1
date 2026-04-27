@@ -48,8 +48,8 @@ const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
 
 const ENGINE_VERSION = 'geometry_first_v2'
 const MAX_AUTO_ROOF_AREA_SQFT = 30000
-const MAX_FOOTPRINT_FRAME_FRACTION = 0.35
-const FOOTPRINT_EDGE_MARGIN_PX = 8
+const MAX_FOOTPRINT_FRAME_FRACTION = 0.65
+const FOOTPRINT_EDGE_MARGIN_PX = 4
 
 // ─────────────────────────────────────────────────────────────────────
 // Geometry helpers (pure, unit-tested via acceptance tests)
@@ -109,42 +109,68 @@ async function resolveAuthoritativeFootprint(
 ): Promise<AuthoritativeFootprint | null> {
   const candidates: AuthoritativeFootprint[] = []
 
+  console.log(`[authoritative] starting resolve at ${lat.toFixed(6)},${lng.toFixed(6)} mapbox_token=${MAPBOX_TOKEN ? 'yes' : 'NO'}`)
+
   if (MAPBOX_TOKEN) {
-    const mapbox = await fetchMapboxVectorFootprint(lat, lng, MAPBOX_TOKEN)
-    if (mapbox.footprint?.coordinates?.length) {
-      candidates.push({
-        coordinates: mapbox.footprint.coordinates as GeoXY[],
-        source: 'mapbox_vector',
-        confidence: Number(mapbox.footprint.confidence || 0.8),
-        areaM2: mapbox.footprint.areaM2,
-        vertexCount: Number(mapbox.footprint.vertexCount || mapbox.footprint.coordinates.length || 0),
-      })
+    try {
+      const mapbox = await fetchMapboxVectorFootprint(lat, lng, MAPBOX_TOKEN)
+      if (mapbox.footprint?.coordinates?.length) {
+        candidates.push({
+          coordinates: mapbox.footprint.coordinates as GeoXY[],
+          source: 'mapbox_vector',
+          confidence: Number(mapbox.footprint.confidence || 0.8),
+          areaM2: mapbox.footprint.areaM2,
+          vertexCount: Number(mapbox.footprint.vertexCount || mapbox.footprint.coordinates.length || 0),
+        })
+        console.log(`[authoritative] mapbox returned footprint vertices=${mapbox.footprint.coordinates.length} areaM2=${mapbox.footprint.areaM2}`)
+      } else {
+        console.log(`[authoritative] mapbox returned NO footprint reason=${(mapbox as any).fallbackReason || (mapbox as any).error || 'empty'}`)
+      }
+    } catch (err) {
+      console.warn(`[authoritative] mapbox threw: ${err}`)
     }
   }
 
-  const osm = await fetchOSMBuildingFootprint(lat, lng)
-  if (osm.footprint?.coordinates?.length) {
-    candidates.push({
-      coordinates: osm.footprint.coordinates as GeoXY[],
-      source: 'osm_buildings',
-      confidence: Number(osm.footprint.confidence || 0.75),
-      areaM2: osm.footprint.areaM2,
-      vertexCount: Number(osm.footprint.vertexCount || osm.footprint.coordinates.length || 0),
-    })
+  try {
+    const osm = await fetchOSMBuildingFootprint(lat, lng)
+    if (osm.footprint?.coordinates?.length) {
+      candidates.push({
+        coordinates: osm.footprint.coordinates as GeoXY[],
+        source: 'osm_buildings',
+        confidence: Number(osm.footprint.confidence || 0.75),
+        areaM2: osm.footprint.areaM2,
+        vertexCount: Number(osm.footprint.vertexCount || osm.footprint.coordinates.length || 0),
+      })
+      console.log(`[authoritative] osm returned footprint vertices=${osm.footprint.coordinates.length} areaM2=${osm.footprint.areaM2}`)
+    } else {
+      console.log(`[authoritative] osm returned NO footprint reason=${osm.fallbackReason || osm.error || 'empty'}`)
+    }
+  } catch (err) {
+    console.warn(`[authoritative] osm threw: ${err}`)
   }
 
-  const microsoft = await fetchMicrosoftBuildingFootprint(lat, lng)
-  if (microsoft.footprint?.coordinates?.length) {
-    candidates.push({
-      coordinates: microsoft.footprint.coordinates as GeoXY[],
-      source: 'microsoft_buildings',
-      confidence: Number(microsoft.footprint.confidence || 0.75),
-      areaM2: microsoft.footprint.areaM2,
-      vertexCount: Number(microsoft.footprint.vertexCount || microsoft.footprint.coordinates.length || 0),
-    })
+  try {
+    const microsoft = await fetchMicrosoftBuildingFootprint(lat, lng)
+    if (microsoft.footprint?.coordinates?.length) {
+      candidates.push({
+        coordinates: microsoft.footprint.coordinates as GeoXY[],
+        source: 'microsoft_buildings',
+        confidence: Number(microsoft.footprint.confidence || 0.75),
+        areaM2: microsoft.footprint.areaM2,
+        vertexCount: Number(microsoft.footprint.vertexCount || microsoft.footprint.coordinates.length || 0),
+      })
+      console.log(`[authoritative] microsoft returned footprint vertices=${microsoft.footprint.coordinates.length} areaM2=${microsoft.footprint.areaM2}`)
+    } else {
+      console.log(`[authoritative] microsoft returned NO footprint reason=${(microsoft as any).fallbackReason || (microsoft as any).error || 'empty'}`)
+    }
+  } catch (err) {
+    console.warn(`[authoritative] microsoft threw: ${err}`)
   }
 
-  if (!candidates.length) return null
+  if (!candidates.length) {
+    console.warn(`[authoritative] NO candidates from any provider — falling back`)
+    return null
+  }
 
   const score = (fp: AuthoritativeFootprint) => {
     const areaSqft = (fp.areaM2 && fp.areaM2 > 0 ? fp.areaM2 : geoPolygonAreaM2(fp.coordinates)) * 10.7639
