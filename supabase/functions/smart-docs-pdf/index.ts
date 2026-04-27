@@ -195,7 +195,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Log success to database
     const duration = Date.now() - startTime;
     if (tenantId) {
-      await supabase.rpc('log_function_error', {
+      const { error: logSuccessError } = await supabase.rpc('log_function_error', {
         p_function_name: 'smart-docs-pdf',
         p_error_message: 'PDF generated successfully',
         p_context: {
@@ -205,7 +205,8 @@ const handler = async (req: Request): Promise<Response> => {
           emailed,
           upload_mode: upload
         }
-      }).catch(e => console.error('Failed to log success:', e));
+      });
+      if (logSuccessError) console.error('Failed to log success:', logSuccessError);
     }
 
     return new Response(
@@ -233,7 +234,7 @@ const handler = async (req: Request): Promise<Response> => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
     );
     
-    await supabase.rpc('log_function_error', {
+    const { error: logError } = await supabase.rpc('log_function_error', {
       p_function_name: 'smart-docs-pdf',
       p_error_message: error.message,
       p_context: {
@@ -242,7 +243,8 @@ const handler = async (req: Request): Promise<Response> => {
         duration_ms: duration
       },
       p_error_stack: error.stack
-    }).catch(e => console.error('Failed to log error:', e));
+    });
+    if (logError) console.error('Failed to log error:', logError);
     
     return new Response(
       JSON.stringify({ 

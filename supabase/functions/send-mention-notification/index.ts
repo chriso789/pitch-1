@@ -110,20 +110,23 @@ Deno.serve(async (req: Request) => {
       // Create in-app notification
       const userTenant = (await supabase.from('profiles').select('tenant_id').eq('id', user.id).single()).data?.tenant_id;
       notificationPromises.push(
-        supabase.from('user_notifications').insert({
-          tenant_id: userTenant,
-          user_id: user.id,
-          type: 'mention',
-          title: `${authorName} mentioned you`,
-          message: `On ${leadName}${leadAddress ? ` at ${leadAddress}` : ''}: "${truncatedNote}"`,
-          icon: '💬',
-          metadata: {
-            author_id,
-            pipeline_entry_id: pipeline_entry_id || null,
-            contact_id: contact_id || null,
-            note_preview: truncatedNote,
-          },
-        })
+        (async () => {
+          const { error } = await supabase.from('user_notifications').insert({
+            tenant_id: userTenant,
+            user_id: user.id,
+            type: 'mention',
+            title: `${authorName} mentioned you`,
+            message: `On ${leadName}${leadAddress ? ` at ${leadAddress}` : ''}: "${truncatedNote}"`,
+            icon: '💬',
+            metadata: {
+              author_id,
+              pipeline_entry_id: pipeline_entry_id || null,
+              contact_id: contact_id || null,
+              note_preview: truncatedNote,
+            },
+          });
+          if (error) console.error(`Failed to create notification for ${user.id}:`, error);
+        })()
       );
 
       // Send SMS if user has phone
