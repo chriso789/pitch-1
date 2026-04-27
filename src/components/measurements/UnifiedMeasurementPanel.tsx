@@ -819,39 +819,7 @@ export function UnifiedMeasurementPanel({
                   </span>
                 </div>
 
-                {/* Roof Schematic Diagram */}
-                {hasGeometry ? (
-                  <div className="rounded-lg overflow-hidden border border-border bg-background">
-                    <SegmentHoverProvider>
-                      <SchematicRoofDiagram
-                        measurement={diagramMeasurement}
-                        tags={diagramTags}
-                        measurementId={ai.id}
-                        width={400}
-                        height={350}
-                        showLengthLabels={true}
-                        showLegend={true}
-                        showCompass={false}
-                        showTotals={false}
-                        showFacets={false}
-                        showQAPanel={false}
-                        satelliteImageUrl={satUrl}
-                        showSatelliteOverlay={!!satUrl}
-                        satelliteOpacity={0.5}
-                        showDebugMarkers={false}
-                        showDebugPanel={false}
-                      />
-                    </SegmentHoverProvider>
-                  </div>
-                ) : ai.google_maps_image_url ? (
-                  <div className="rounded-lg overflow-hidden border border-border">
-                    <img 
-                      src={ai.google_maps_image_url} 
-                      alt="Satellite view of property"
-                      className="w-full h-40 object-cover"
-                    />
-                  </div>
-                ) : null}
+                {/* Diagram intentionally hidden — open via "View Report" */}
 
                 {/* Key Stats */}
                 <div className="grid grid-cols-3 gap-3 text-sm">
