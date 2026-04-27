@@ -1802,8 +1802,8 @@ Deno.serve(async (req) => {
             .from('measurement_jobs')
             .update({
               status: 'failed',
-              progress_message: 'Internal review required — automated roof geometry could not be verified',
-              error: 'needs_internal_review',
+              progress_message: 'Roof geometry could not be verified automatically. Flagged for internal review — no customer-facing report will be generated.',
+              error: 'Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review.',
               completed_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
