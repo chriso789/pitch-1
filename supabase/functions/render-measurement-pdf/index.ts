@@ -158,8 +158,8 @@ Deno.serve(async (req) => {
     if (!gate.ok) {
       return jsonResponse(
         {
-          error: 'manual_measurement_required',
-          message: 'Roof geometry did not align with the property.',
+          error: 'internal_review_required',
+          message: 'Automated roof geometry could not be verified.',
           reason: gate.reason,
           ai_measurement_job_id: jobId,
         },
