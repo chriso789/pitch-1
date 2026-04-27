@@ -205,7 +205,10 @@ const buildReportMeasurementFromRoofMeasurement = (measurement: any, pipelineEnt
     detection_method: measurement?.detection_method,
     solar_building_footprint_sqft: measurement?.solar_building_footprint_sqft,
     measurement_confidence: measurement?.measurement_confidence,
-    requires_manual_review: measurement?.requires_manual_review,
+    requires_manual_review: measurement?.requires_manual_review || false,
+    facet_count: measurement?.facet_count || 0,
+    overlay_schema: measurement?.overlay_schema || null,
+    ai_detection_data: measurement?.ai_detection_data || null,
   };
 };
 

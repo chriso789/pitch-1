@@ -45,19 +45,14 @@ const PAGE_LABELS = [
 function evaluatePreviewGate(measurement: any): { ok: boolean; reason?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
   const grj = measurement.geometry_report_json;
-  if (
-    measurement.validation_status === 'needs_internal_review' ||
-    measurement.validation_status === 'needs_manual_measurement' // legacy
-  )
-    return { ok: false, reason: 'Job flagged needs_internal_review.' };
-  if (!measurement.facet_count || measurement.facet_count <= 0)
-    return { ok: false, reason: 'No roof facets recorded.' };
-  if (!grj) return measurement.report_pdf_url ? { ok: true } : { ok: false, reason: 'geometry_report_json missing.' };
-  if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
-  if (grj.geometry_source === 'google_solar_bbox')
+  // Preview gate is intentionally lenient: we want to show diagrams whenever
+  // real geometry exists, even for needs_review / single_plane_fallback jobs.
+  // Hard blocks: placeholder, solar bbox rectangles, or no geometry+no PDF at all.
+  if (grj?.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
+  if (grj?.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
-  if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < 0.75)
-    return { ok: false, reason: 'overlay_alignment_score below 0.75.' };
+  if (!grj && !measurement.report_pdf_url && !measurement.ai_measurement_job_id)
+    return { ok: false, reason: 'No geometry, PDF, or job to preview.' };
   return { ok: true };
 }
 
