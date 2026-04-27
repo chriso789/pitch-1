@@ -46,8 +46,11 @@ const PAGE_LABELS = [
 function evaluateQc(measurement: any): { ok: boolean; reason?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
   const grj = measurement.geometry_report_json;
-  if (measurement.validation_status === 'needs_manual_measurement')
-    return { ok: false, reason: 'Job flagged needs_manual_measurement.' };
+  if (
+    measurement.validation_status === 'needs_internal_review' ||
+    measurement.validation_status === 'needs_manual_measurement' // legacy
+  )
+    return { ok: false, reason: 'Job flagged needs_internal_review.' };
   if (!measurement.facet_count || measurement.facet_count <= 0)
     return { ok: false, reason: 'No roof facets recorded.' };
   if (!grj) return { ok: false, reason: 'geometry_report_json missing.' };
@@ -126,10 +129,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         body: { ai_measurement_job_id: jobId },
       });
       if (error) throw error;
-      if ((data as any)?.error === 'manual_measurement_required') {
+      if ((data as any)?.error === 'manual_measurement_required' || (data as any)?.error === 'internal_review_required') {
         toast({
-          title: 'Manual measurement required',
-          description: 'Roof geometry did not align with the property.',
+          title: 'Internal review required',
+          description: 'Automated roof geometry could not be verified.',
           variant: 'destructive',
         });
         return;
@@ -176,10 +179,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           {!qc.ok ? (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Manual measurement required</AlertTitle>
+              <AlertTitle>Internal review required</AlertTitle>
               <AlertDescription>
-                Roof geometry did not align with the property. Re-run AI Measurement or
-                order a vendor report. ({qc.reason})
+                Automated roof geometry could not be verified. This measurement has been
+                routed to internal QA. ({qc.reason})
               </AlertDescription>
             </Alert>
           ) : loading ? (

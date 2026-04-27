@@ -817,7 +817,7 @@ function runQualityChecks(input: {
 }): {
   checks: QC[]
   overall: number
-  status: 'completed' | 'needs_review' | 'needs_manual_measurement'
+  status: 'completed' | 'needs_review' | 'needs_internal_review'
   overlayAlignmentScore: number
   geometrySourceIsReal: boolean
   planesAreAllRectangles: boolean
@@ -884,7 +884,7 @@ function runQualityChecks(input: {
   )
 
   const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
-  let status: 'completed' | 'needs_review' | 'needs_manual_measurement'
+  let status: 'completed' | 'needs_review' | 'needs_internal_review'
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
@@ -894,13 +894,13 @@ function runQualityChecks(input: {
     planesAreAllRectangles ||
     overlayAlignmentScore < 0.75
   ) {
-    status = 'needs_manual_measurement'
+    status = 'needs_internal_review'
   } else if (overall >= 0.85 && overlayAlignmentScore >= 0.85) {
     status = 'completed'
   } else if (overall >= 0.65) {
     status = 'needs_review'
   } else {
-    status = 'needs_manual_measurement'
+    status = 'needs_internal_review'
   }
   return { checks, overall, status, overlayAlignmentScore, geometrySourceIsReal, planesAreAllRectangles }
 }
@@ -1393,7 +1393,7 @@ Deno.serve(async (req) => {
         // 2i.5) Generate EagleView-style diagram pages from measured geometry.
         // Hard rule: only when geometry passed quality checks (not needs_manual_measurement)
         // and we have real planes — never from placeholders.
-        if (qc.status !== 'needs_manual_measurement' && planes.length > 0 && !hasPlaceholder) {
+        if (qc.status !== 'needs_internal_review' && planes.length > 0 && !hasPlaceholder) {
           try {
             const diagrams = generateRoofDiagrams({
               propertyAddress: resolved.address,
@@ -1457,7 +1457,7 @@ Deno.serve(async (req) => {
                 ? 'Geometry pipeline complete'
                 : qc.status === 'needs_review'
                 ? 'Result needs review'
-                : 'Manual measurement required',
+                : 'Internal review required — automated roof geometry could not be verified',
             confidence_score: qc.overall,
             geometry_quality_score: qc.overall,
             measurement_quality_score: qc.overall,
@@ -1467,13 +1467,13 @@ Deno.serve(async (req) => {
           .eq('id', aiJob.id)
 
         // 2j) Block placeholder/failed from publishing
-        if (qc.status === 'needs_manual_measurement') {
+        if (qc.status === 'needs_internal_review') {
           await supa
             .from('measurement_jobs')
             .update({
               status: 'failed',
-              progress_message: 'Manual measurement required — geometry pipeline did not pass quality checks',
-              error: 'needs_manual_measurement',
+              progress_message: 'Internal review required — automated roof geometry could not be verified',
+              error: 'needs_internal_review',
               completed_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
