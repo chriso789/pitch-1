@@ -1443,6 +1443,26 @@ const FOOTPRINT_ONLY_SOURCES = new Set([
   'google_solar_aggregate',
 ])
 
+function normalizeRoofMeasurementFootprintSource(source: string | null | undefined, solarOk: boolean): string {
+  const s = String(source || '').toLowerCase()
+  if (s === 'mapbox_vector') return 'mapbox_vector'
+  if (s === 'osm_buildings') return 'osm'
+  if (s === 'microsoft_buildings') return 'microsoft_buildings'
+  if (s === 'esri_buildings') return 'esri_buildings'
+  if (s.includes('google_solar') || s.includes('solar')) return 'google_solar_api'
+  if (s === 'manual_trace' || s === 'manual_entry' || s === 'imported' || s === 'user_drawn') return s
+  if (s.includes('image_footprint') || s.includes('ridge_split') || s === 'geometry_first_v2') return 'ai_detection'
+  return solarOk ? 'google_solar_api' : 'ai_detection'
+}
+
+function lineGeoToWkt(points: GeoPt[]): string | null {
+  if (!Array.isArray(points) || points.length < 2) return null
+  const pairs = points
+    .map((p) => `${Number(p.lng)} ${Number(p.lat)}`)
+    .filter((pair) => !pair.includes('NaN'))
+  return pairs.length >= 2 ? `LINESTRING(${pairs.join(', ')})` : null
+}
+
 function runQualityChecks(input: {
   geocoded: boolean
   geocodeType: string | null
@@ -2286,11 +2306,23 @@ Deno.serve(async (req) => {
 
         // 2k) Publish customer-facing roof_measurements
         const roofId = crypto.randomUUID()
-        const publishedFootprintSource =
-          planes[0]?.source ||
-          geometrySource ||
-          (solarOk ? 'google_solar_api' : 'geometry_first_v2')
-        await supa.from('roof_measurements').insert({
+        const publishedFootprintSource = normalizeRoofMeasurementFootprintSource(
+          planes[0]?.source || geometrySource,
+          solarOk,
+        )
+        const footprintVerticesGeo = planes.length > 0
+          ? planes[0].polygon_geojson.map((p) => ({ lat: p.lat, lng: p.lng }))
+          : null
+        const linearFeaturesWkt = edges
+          .map((e) => ({
+            type: e.edge_type,
+            wkt: lineGeoToWkt(e.line_geojson),
+            length_ft: e.length_ft,
+            confidence: e.confidence,
+            source: e.source,
+          }))
+          .filter((e) => e.wkt)
+        const roofMeasurementPayload = {
           id: roofId,
           customer_id: resolved.leadId, // legacy column
           lead_id: resolved.leadId,
@@ -2329,6 +2361,9 @@ Deno.serve(async (req) => {
           total_rake_length: rake_ft,
           facet_count: planes.length,
           footprint_source: publishedFootprintSource,
+          footprint_vertices_geo: footprintVerticesGeo,
+          linear_features_wkt: linearFeaturesWkt,
+          perimeter_wkt: footprintWkt,
           detection_method: ENGINE_VERSION,
           target_lat: lat,
           target_lng: lng,
@@ -2352,7 +2387,11 @@ Deno.serve(async (req) => {
           geometry_report_json: reportJson,
           geometry_quality_score: qc.overall,
           measurement_quality_score: qc.overall,
-        })
+        }
+        const { error: roofInsertError } = await supa.from('roof_measurements').insert(roofMeasurementPayload)
+        if (roofInsertError) {
+          throw new Error(`roof_measurements insert failed: ${roofInsertError.message}`)
+        }
 
         // 2l) measurement_approvals smart tags
         await supa.from('measurement_approvals').insert({
