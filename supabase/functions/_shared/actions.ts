@@ -193,10 +193,11 @@ function entityTable(entity_type: string): string | null {
 
 async function trackGenerated(admin: SupabaseClient, run: any, table: string, id?: string | null) {
   if (!id) return;
-  await admin.from('automation_generated_records').insert({
+  const { error } = await admin.from('automation_generated_records').insert({
     company_id: run.company_id,
     automation_run_id: run.id,
     record_table: table,
     record_id: id,
-  }).then(() => {}).catch(() => {});
+  });
+  if (error) console.warn('automation_generated_records insert failed:', error.message);
 }
