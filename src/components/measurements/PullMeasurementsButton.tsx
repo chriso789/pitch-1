@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { calculateImageBounds } from '@/utils/gpsCalculations';
 import { Loader2, CheckCircle2, Pencil, Crosshair } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useImageCache } from '@/contexts/ImageCacheContext';
@@ -75,13 +76,8 @@ function normalizeAerialBounds(input: any): [number, number, number, number] | n
 }
 
 function computeStaticAerialBounds(lat: number, lng: number, zoom = 20, width = 640, height = 640): [number, number, number, number] {
-  const metersPerPixel = 156543.03392 * Math.cos((lat * Math.PI) / 180) / Math.pow(2, zoom);
-  const widthInMeters = width * metersPerPixel;
-  const heightInMeters = height * metersPerPixel;
-  const latOffset = (heightInMeters / 2) / 111320;
-  const lngOffset = (widthInMeters / 2) / (111320 * Math.cos((lat * Math.PI) / 180));
-
-  return [lng - lngOffset, lat - latOffset, lng + lngOffset, lat + latOffset];
+  const bounds = calculateImageBounds(lat, lng, zoom, width, height);
+  return [bounds.topLeft.lng, bounds.bottomLeft.lat, bounds.topRight.lng, bounds.topLeft.lat];
 }
 
 /**
