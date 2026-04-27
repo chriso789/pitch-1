@@ -43,28 +43,29 @@ const handler = async (req: Request): Promise<Response> => {
   let requestData: DemoRequestData | null = null;
 
   try {
-    requestData = await req.json();
+    requestData = await req.json() as DemoRequestData;
+    const demoData = requestData;
     
     console.log("[send-demo-request] Received demo request:", {
-      name: `${requestData.firstName} ${requestData.lastName}`,
-      email: requestData.email,
-      company: requestData.companyName,
+      name: `${demoData.firstName} ${demoData.lastName}`,
+      email: demoData.email,
+      company: demoData.companyName,
       timestamp: new Date().toISOString()
     });
 
     // Only insert if the client didn't already persist (back-compat).
     let insertedRequest: { id: string } | null = null;
-    if (!(requestData as any).skipDbInsert) {
+    if (!(demoData as any).skipDbInsert) {
       const { data, error: insertError } = await supabase
         .from('demo_requests')
         .insert({
-          first_name: requestData.firstName,
-          last_name: requestData.lastName,
-          email: requestData.email,
-          phone: requestData.phone || null,
-          company_name: requestData.companyName,
-          job_title: requestData.jobTitle || null,
-          message: requestData.message || null,
+          first_name: demoData.firstName,
+          last_name: demoData.lastName,
+          email: demoData.email,
+          phone: demoData.phone || null,
+          company_name: demoData.companyName,
+          job_title: demoData.jobTitle || null,
+          message: demoData.message || null,
           email_sent: false,
         })
         .select()
