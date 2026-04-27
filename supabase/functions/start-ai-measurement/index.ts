@@ -1401,11 +1401,22 @@ Deno.serve(async (req) => {
             // Ridge-first segmentation: detect interior ridges and split the
             // footprint along them. If no usable ridges are found, fall back
             // to a SINGLE plane (no fake rectangles, no heuristic splits).
-            const ridges = detectRidges(
+            const rawRidges = detectRidges(
               extracted.mag, extracted.blob, extracted.dW, extracted.dH,
               extracted.scaleX, extracted.scaleY,
             )
-            const subPolys = splitFootprintAlongRidges(extracted.footprint, ridges)
+            const ridges = filterStrongRidges(rawRidges)
+            const ridgeLines: SplitLine[] = ridges
+              .sort((a, b) => b.votes - a.votes)
+              .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+            const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(extracted.footprint) * 0.08)
+            const subPolys = ridgeLines.length > 0
+              ? buildRoofPlanes(extracted.footprint, ridgeLines, {
+                minArea: minPlaneAreaPx,
+                minAreaRatio: 0.1,
+                maxPlanes: 10,
+              })
+              : [extracted.footprint]
             const isMultiPlane = subPolys.length > 1
             const planeSource = isMultiPlane
               ? 'image_footprint_ridge_split'
@@ -1420,7 +1431,7 @@ Deno.serve(async (req) => {
             )
             console.log(
               `[start-ai-measurement] ridge-first segmentation: ` +
-              `footprint=${extracted.footprint.length}pts, ridges=${ridges.length}, planes=${planes.length}`,
+              `footprint=${extracted.footprint.length}pts, raw_ridges=${rawRidges.length}, strong_ridges=${ridges.length}, planes=${planes.length}`,
             )
           } else {
             console.warn('[start-ai-measurement] image footprint extraction failed; keeping bbox planes for QC reject')
