@@ -1483,6 +1483,7 @@ export type Database = {
         Row: {
           ai_measurement_job_id: string | null
           blocked_reason: string | null
+          checksum: string | null
           company_id: string | null
           created_at: string | null
           customer_safe: boolean
@@ -1496,7 +1497,9 @@ export type Database = {
           pdf_storage_path: string | null
           png_storage_path: string | null
           project_id: string | null
+          render_version: string | null
           roof_measurement_id: string | null
+          storage_path: string | null
           svg_markup: string | null
           tenant_id: string | null
           title: string
@@ -1505,6 +1508,7 @@ export type Database = {
         Insert: {
           ai_measurement_job_id?: string | null
           blocked_reason?: string | null
+          checksum?: string | null
           company_id?: string | null
           created_at?: string | null
           customer_safe?: boolean
@@ -1518,7 +1522,9 @@ export type Database = {
           pdf_storage_path?: string | null
           png_storage_path?: string | null
           project_id?: string | null
+          render_version?: string | null
           roof_measurement_id?: string | null
+          storage_path?: string | null
           svg_markup?: string | null
           tenant_id?: string | null
           title: string
@@ -1527,6 +1533,7 @@ export type Database = {
         Update: {
           ai_measurement_job_id?: string | null
           blocked_reason?: string | null
+          checksum?: string | null
           company_id?: string | null
           created_at?: string | null
           customer_safe?: boolean
@@ -1540,7 +1547,9 @@ export type Database = {
           pdf_storage_path?: string | null
           png_storage_path?: string | null
           project_id?: string | null
+          render_version?: string | null
           roof_measurement_id?: string | null
+          storage_path?: string | null
           svg_markup?: string | null
           tenant_id?: string | null
           title?: string
@@ -1648,6 +1657,7 @@ export type Database = {
           property_address: string
           raster_scale: number | null
           report_blocked: boolean
+          report_pdf_path: string | null
           source_button: string | null
           source_context: Json | null
           source_priority: Json | null
@@ -1687,6 +1697,7 @@ export type Database = {
           property_address: string
           raster_scale?: number | null
           report_blocked?: boolean
+          report_pdf_path?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -1726,6 +1737,7 @@ export type Database = {
           property_address?: string
           raster_scale?: number | null
           report_blocked?: boolean
+          report_pdf_path?: string | null
           source_button?: string | null
           source_context?: Json | null
           source_priority?: Json | null
@@ -2002,41 +2014,62 @@ export type Database = {
       ai_roof_edges: {
         Row: {
           adjacent_plane_ids: Json | null
+          annotation_point: Json | null
           confidence: number | null
           created_at: string
+          edge_id: string | null
+          edge_label: string | null
           edge_type: string
           id: string
+          is_perimeter: boolean | null
           job_id: string
+          label_x: number | null
+          label_y: number | null
           length_ft: number | null
           length_px: number | null
           line_geojson: Json | null
           line_px: Json | null
+          orientation_degrees: number | null
           source: string
         }
         Insert: {
           adjacent_plane_ids?: Json | null
+          annotation_point?: Json | null
           confidence?: number | null
           created_at?: string
+          edge_id?: string | null
+          edge_label?: string | null
           edge_type: string
           id?: string
+          is_perimeter?: boolean | null
           job_id: string
+          label_x?: number | null
+          label_y?: number | null
           length_ft?: number | null
           length_px?: number | null
           line_geojson?: Json | null
           line_px?: Json | null
+          orientation_degrees?: number | null
           source: string
         }
         Update: {
           adjacent_plane_ids?: Json | null
+          annotation_point?: Json | null
           confidence?: number | null
           created_at?: string
+          edge_id?: string | null
+          edge_label?: string | null
           edge_type?: string
           id?: string
+          is_perimeter?: boolean | null
           job_id?: string
+          label_x?: number | null
+          label_y?: number | null
           length_ft?: number | null
           length_px?: number | null
           line_geojson?: Json | null
           line_px?: Json | null
+          orientation_degrees?: number | null
           source?: string
         }
         Relationships: [
@@ -2057,14 +2090,19 @@ export type Database = {
           confidence: number | null
           created_at: string
           id: string
+          is_placeholder: boolean | null
           job_id: string
+          label_x: number | null
+          label_y: number | null
           pitch: number | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
           plane_index: number | null
+          plane_label: string | null
           polygon_geojson: Json | null
           polygon_px: Json | null
           source: string
+          source_evidence: Json | null
         }
         Insert: {
           area_2d_sqft?: number | null
@@ -2073,14 +2111,19 @@ export type Database = {
           confidence?: number | null
           created_at?: string
           id?: string
+          is_placeholder?: boolean | null
           job_id: string
+          label_x?: number | null
+          label_y?: number | null
           pitch?: number | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           plane_index?: number | null
+          plane_label?: string | null
           polygon_geojson?: Json | null
           polygon_px?: Json | null
           source: string
+          source_evidence?: Json | null
         }
         Update: {
           area_2d_sqft?: number | null
@@ -2089,14 +2132,19 @@ export type Database = {
           confidence?: number | null
           created_at?: string
           id?: string
+          is_placeholder?: boolean | null
           job_id?: string
+          label_x?: number | null
+          label_y?: number | null
           pitch?: number | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           plane_index?: number | null
+          plane_label?: string | null
           polygon_geojson?: Json | null
           polygon_px?: Json | null
           source?: string
+          source_evidence?: Json | null
         }
         Relationships: [
           {
@@ -31631,7 +31679,9 @@ export type Database = {
           detection_confidence: number | null
           detection_method: string | null
           detection_timestamp: string | null
+          diagram_manifest: Json | null
           dsm_available: boolean | null
+          edge_breakdown: Json | null
           edge_continuity_score: number | null
           edge_count: number | null
           edge_coverage_percent: number | null
@@ -31695,6 +31745,7 @@ export type Database = {
           pitch_degrees: number | null
           pitch_multiplier: number | null
           pixels_per_foot: number | null
+          plane_breakdown: Json | null
           predominant_pitch: string | null
           preprocessing_applied: Json | null
           project_id: string | null
@@ -31706,6 +31757,7 @@ export type Database = {
           quality_checks: Json | null
           quality_score: number | null
           report_generated_at: string | null
+          report_pdf_path: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
           review_required: boolean | null
@@ -31776,7 +31828,9 @@ export type Database = {
           detection_confidence?: number | null
           detection_method?: string | null
           detection_timestamp?: string | null
+          diagram_manifest?: Json | null
           dsm_available?: boolean | null
+          edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
           edge_coverage_percent?: number | null
@@ -31840,6 +31894,7 @@ export type Database = {
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pixels_per_foot?: number | null
+          plane_breakdown?: Json | null
           predominant_pitch?: string | null
           preprocessing_applied?: Json | null
           project_id?: string | null
@@ -31851,6 +31906,7 @@ export type Database = {
           quality_checks?: Json | null
           quality_score?: number | null
           report_generated_at?: string | null
+          report_pdf_path?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
           review_required?: boolean | null
@@ -31921,7 +31977,9 @@ export type Database = {
           detection_confidence?: number | null
           detection_method?: string | null
           detection_timestamp?: string | null
+          diagram_manifest?: Json | null
           dsm_available?: boolean | null
+          edge_breakdown?: Json | null
           edge_continuity_score?: number | null
           edge_count?: number | null
           edge_coverage_percent?: number | null
@@ -31985,6 +32043,7 @@ export type Database = {
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pixels_per_foot?: number | null
+          plane_breakdown?: Json | null
           predominant_pitch?: string | null
           preprocessing_applied?: Json | null
           project_id?: string | null
@@ -31996,6 +32055,7 @@ export type Database = {
           quality_checks?: Json | null
           quality_score?: number | null
           report_generated_at?: string | null
+          report_pdf_path?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
           review_required?: boolean | null

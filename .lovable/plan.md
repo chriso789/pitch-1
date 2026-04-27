@@ -1,75 +1,106 @@
-# PITCH Automation Engine — Phase 1 Foundation Plan
+## Goal
 
-## Audit of existing schema (relevant tables)
+Transform PITCH AI Measurement reports into true EagleView-style 6-page reports rendered exclusively from real measured roof geometry. Stop publishing "two generic rectangles" diagrams generated from Google Solar bounding boxes. Keep the same single entry point (Lead/Project → AI Measurements button → `useMeasurementJob` → `start-ai-measurement`).
 
-| Existing table | Role | Decision |
-|---|---|---|
-| `tenants` | Tenant root (uses `tenant_id` everywhere) | New tables use `company_id uuid` FK → `tenants(id)`. "company" = "tenant" in this codebase. |
-| `automations` (id, tenant_id, name, trigger_type, trigger_conditions, actions jsonb, is_active) | Old simple engine | Keep, untouched. |
-| `automation_rules` (id, tenant_id, trigger_event, trigger_conditions, template_id, recipient_rules, delay_minutes…) | Newer template-based rules | **Do NOT extend.** Naming collides. New table: `automation_rules_v2`. |
-| `automation_logs` (id, tenant_id, automation_id, trigger_data, execution_result, status, error_message) | Per-rule run log | Keep. New engine writes to `automation_runs` + `automation_action_runs` (richer, per-action). |
-| `smart_tag_definitions` | Already exists | **Inspect columns first.** Likely augment by adding `smart_tag_cache` only. If shape is incompatible, create `smart_tag_definitions_v2`. |
-| `communication_history` (tenant_id, contact_id, pipeline_entry_id, project_id, rep_id, communication_type, direction, content, sentiment, delivery_status…) | System of record for comms | **Keep.** Skip new `communications` table in Phase 1 to avoid double-write. Phase 2 trigger emits domain events from this table. |
-| `outbox_events` | Existing outbox pattern | Untouched in Phase 1. New `domain_events` is purpose-built for the automation engine + AI memory, not a replacement for the outbox. |
-| `workflow_tasks`, `workflow_phase_history`, `pipeline_automation_rules` | Different domains | Untouched. |
+## Root cause (confirmed)
 
-### Naming decisions
-- `company_id uuid NOT NULL REFERENCES tenants(id) ON DELETE CASCADE` everywhere (per user choice).
-- RLS uses existing `public.get_user_tenant_ids()` helper, treating company_id as tenant_id.
+In `supabase/functions/start-ai-measurement/index.ts`:
+- `planesFromSolar()` converts each Google Solar `roofSegmentStats[].boundingBox` into a 4-corner axis-aligned rectangle (sw/se/ne/nw). That is the source of the "two rectangles" output.
+- `edgesFromPlanes()` then defaults every non-shared perimeter segment to `eave`.
+- The diagram renderer (`_shared/roof-diagram-renderer.ts`) faithfully draws those rectangles — it cannot rescue bad input.
+- The current quality gate counts Solar bbox planes as "real planes", so it does not trip `needs_manual_measurement`.
 
----
+There is already an `internal-unet-client.ts` capable of returning a real footprint polygon + classified features (ridge/hip/valley/eave/rake), but `start-ai-measurement` does not call it.
 
-## Phase 1 — Tables to create (9 total)
+## Plan
 
-1. **`event_types`** (lookup, no tenant scope, public read) — seeded with canonical event keys.
-2. **`domain_events`** — append-only event bus. Unique partial index on `(company_id, dedupe_key) WHERE dedupe_key IS NOT NULL`.
-3. **`automation_rules_v2`** — cooldown_seconds, max_runs_per_entity_per_day, trigger_scope, stop_processing_on_match, conditions/actions JSONB.
-4. **`automation_runs`** — one row per (rule × event). Unique on `(automation_rule_id, domain_event_id)`.
-5. **`automation_action_runs`** — per-action execution rows.
-6. **`smart_tag_cache`** — resolved tag values per entity, unique on `(company_id, entity_type, entity_id, tag_key)`.
-7. **`ai_context_profiles`** — per-scope (company/contact/lead/job) memory snapshot, unique on `(company_id, scope_type, scope_id)`.
-8. **`ai_context_refresh_queue`** — dirty queue for memory rebuilds (status, attempts, priority).
-9. **`automation_generated_records`** — links runs to rows they created (dedupe + traceability).
+### 1. Database migration (additive only)
 
-## Phase 1 — RLS pattern (every tenant-scoped table)
+Add the columns from the spec to `ai_roof_planes`, `ai_roof_edges`, `ai_measurement_diagrams`, `roof_measurements`. All `add column if not exists`, no destructive changes.
 
-- `SELECT/INSERT/UPDATE/DELETE` restricted to authenticated users where `company_id IN (SELECT public.get_user_tenant_ids())`.
-- `master` role: SELECT bypass via `public.has_role(auth.uid(),'master')` for cross-tenant audit. Writes still scoped to their own tenant.
-- Service role implicit bypass (workers run as service role).
-- `event_types`: public read, service-role write.
+### 2. Geometry source upgrade — `start-ai-measurement/index.ts`
 
-## Phase 1 — Indexes (per spec)
+Replace the Solar-bbox-as-truth path with a tiered geometry resolver:
 
-- `domain_events(company_id, event_type, occurred_at desc)`
-- `domain_events(company_id, entity_type, entity_id, occurred_at desc)`
-- unique partial `domain_events(company_id, dedupe_key) WHERE dedupe_key IS NOT NULL`
-- `automation_rules_v2(company_id, trigger_event, is_active)`
-- unique `automation_runs(automation_rule_id, domain_event_id)`
-- unique `smart_tag_cache(company_id, entity_type, entity_id, tag_key)`
-- unique `ai_context_profiles(company_id, scope_type, scope_id)`
-- `ai_context_refresh_queue(company_id, status, priority)`
+```text
+Priority 1: Internal U-Net (callInternalUNet)
+  → real footprint_polygon + classified RoofFeatureLine[]
+  → build planes via straight-skeleton / facet-generator (already in _shared)
+  → classified edges come straight from the model
 
-## Phase 1 — `event_types` seed (canonical keys)
+Priority 2: Mapbox/OSM/Microsoft footprint extractors (already in _shared)
+  → real footprint, then plane decomposition
+  → edges classified via ridge-detector + eave-rake-classifier + hip-valley-detector
 
-`lead.created, lead.assigned, lead.status_changed, job.created, job.status_changed, job.complete, job.closed, estimate.sent, estimate.approved, estimate.rejected, contract.signed, permit.submitted, permit.approved, materials.ordered, materials.delivered, invoice.created, invoice.overdue, payment.received, inspection.scheduled, inspection.failed, inspection.passed, communication.inbound_sms, communication.outbound_sms, communication.inbound_email, communication.outbound_email, communication.call_completed, document.uploaded, task.overdue, note.added, ai.summary_requested`
+Solar API: pitch + azimuth HINTS only
+  → never used as polygon geometry
+  → mark plane.source_evidence with solar pitch contribution
 
----
+If neither P1 nor P2 yields a footprint with ≥3 valid vertices and ≥1 classified non-eave edge, mark every plane is_placeholder=true and force qc.status = 'needs_manual_measurement'.
+```
 
-## Out of scope for Phase 1
+Persist new fields when inserting planes/edges:
+- planes: `plane_label` (P-01, P-02…), `label_x`, `label_y` (interior point), `source_evidence`, `is_placeholder`
+- edges: `edge_id`, `edge_label` (R-01, V-01…), `label_x`, `label_y` (offset normal to midpoint), `orientation_degrees`, `is_perimeter`, `annotation_point`
 
-- Edge function workers (`automation-dispatcher`, `automation-worker`, `smart-tag-resolver`, `ai-context-builder`, `communication-ingest`).
-- Triggers on `jobs` / `pipeline_entries` / `estimates` / `communication_history` to emit events.
-- Materialized views and rollups (`job_comms_rollup` etc.).
-- Seeding any `automation_rules_v2` rows.
-- Touching `outbox_events` or migrating from old `automations` / `automation_rules`.
-- Any frontend UI.
+### 3. Hard quality gate
 
-## Open question before migration
+Replace `runQualityChecks` flags with the spec's gate:
+- `has_real_planes` — ≥1 plane, no `is_placeholder`, every `polygon_px.length >= 3`
+- `has_real_edges` — ≥1 edge, every `line_px.length >= 2`, `length_ft > 0`, at least one classified non-eave edge
+- `has_valid_area` — `300 ≤ total_area_pitch_adjusted_sqft ≤ 20000`
+- `has_valid_calibration` — `feet_per_pixel > 0`, `raster_scale = 2`
+- `has_report_geometry` — `report_json` populated
 
-Inspect `public.smart_tag_definitions` columns to decide reuse vs v2 — done immediately before writing the migration.
+Any failure → `status = needs_manual_measurement`, no `roof_measurements` publish, no diagrams generated. UI shows "Manual measurement required — geometry incomplete" instead of fake report.
 
-## Next steps
+### 4. Diagram renderer rewrite — `_shared/roof-diagram-renderer.ts`
 
-1. Inspect `smart_tag_definitions` schema.
-2. Write a single migration creating all 9 tables + RLS + indexes + event_types seed.
-3. Stop. Phase 2 (workers + triggers) waits for explicit go-ahead.
+Full rewrite to produce 6 pages on a printable 8.5×11 SVG canvas (850×1100, viewBox `0 0 850 1100`). Drawing zone `x=85 y=210 w=600 h=650`, compass anchored bottom-right `(710, 850)`, header with property address + page title, footer with engine version + page number.
+
+Pages produced (in order, all sharing one normalized viewport transform so roof scale/rotation/compass match across pages):
+
+1. **Cover / Satellite Page** — address, job id, generated date, confidence, satellite image, source notes.
+2. **Image / Overlay Page** — calibrated satellite image + outline + edge labels + plane labels overlaid in the same coordinate system (no independent stretching).
+3. **Length Diagram** — black outline; ridge red, valley blue, hip orange, eave black, rake gray-dashed; midpoint-by-arc-length labels offset along the edge normal with collision detection (8px increments, leader line after 5 attempts); ridge total + valley total top-left; "rounded to nearest foot" note.
+4. **Pitch Diagram** — pitch label `r/12` at polygon visual centroid (interior-point fallback for concave); arrow marker; "Pitch units are inches per foot" note.
+5. **Area Diagram** — total top-left; rounded sqft of each plane centered inside its polygon (uses `area_pitch_adjusted_sqft`); no overlap with edge labels.
+6. **Notes Diagram** — clean outline, compass, notes header, no clutter.
+
+Style rules: white bg, light-gray plane fills, no UI chrome, no badges, no buttons.
+
+Satellite overlay fix: use original raster dims, single shared viewport transform applied to image + planes + edges + labels; satellite 100% / plane fill 15–25% / lines 100%; if image URL missing or cross-origin blocked, skip the page and mark unavailable rather than rendering blurry crop.
+
+### 5. PDF export — new edge function `render-measurement-pdf`
+
+- Loads `ai_measurement_diagrams` for a job (ordered by `page_number`).
+- Wraps each SVG into a PDF page (server-side via `pdf-lib` + SVG→PNG fallback for any unsupported nodes; vector preserved where possible).
+- Uploads to Storage at `ai-measurement-reports/{ai_measurement_job_id}/measurement-report.pdf`.
+- Writes path back to `ai_measurement_jobs.report_pdf_path` + `roof_measurements.report_pdf_path`.
+- Triggered automatically at the end of `start-ai-measurement` after successful diagram insert.
+
+### 6. Frontend cleanup
+
+No new buttons, no new entry points. Light edits only:
+
+- `src/components/measurements/MeasurementReportDialog.tsx` / `RoofDiagramViewer.tsx` — render diagrams in fixed order (Cover → Overlay → Length → Pitch → Area → Notes); "Download PDF" button now downloads `roof_measurements.report_pdf_path` instead of printing the browser screen.
+- `UnifiedMeasurementPanel.tsx` — when `ai_measurement_jobs.status = needs_manual_measurement`, replace the diagram area with the message "Geometry incomplete — manual review required." (suppress the existing "No WKT geometry available" placeholder).
+- `useMeasurementJob.ts` / `PullMeasurementsButton.tsx` — verified already calling `start-ai-measurement`; no contract change.
+
+### 7. Acceptance test pass
+
+After deploy, re-run AI Measurement on 8359 Huntsman Pl and verify the 15 acceptance checks from the spec, including: real polygon_px, classified edges, populated totals, 6 diagram rows, label placement, compass on every page, downloaded PDF clean of UI chrome, and `needs_manual_measurement` correctly returned when geometry is rectangle-only.
+
+## Files touched
+
+- **Migration** (new): add columns to `ai_roof_planes`, `ai_roof_edges`, `ai_measurement_diagrams`, `roof_measurements`.
+- **Rewrite**: `supabase/functions/_shared/roof-diagram-renderer.ts`
+- **Edit**: `supabase/functions/start-ai-measurement/index.ts` (geometry source + QC gate + diagram payload + PDF trigger)
+- **New**: `supabase/functions/render-measurement-pdf/index.ts`
+- **Edit**: `src/components/measurements/MeasurementReportDialog.tsx`, `RoofDiagramViewer.tsx`, `UnifiedMeasurementPanel.tsx`
+
+## Out of scope
+
+- No new measurement buttons or report builders.
+- No changes to `measure/`, `measure-roof/`, `roof-report/` legacy functions.
+- No model retraining — uses the existing internal U-Net deployment on Render.
