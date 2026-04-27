@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { calculateImageBounds } from '@/utils/gpsCalculations';
 import { Loader2, CheckCircle2, Pencil, Crosshair } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { useImageCache } from '@/contexts/ImageCacheContext';
@@ -75,13 +76,8 @@ function normalizeAerialBounds(input: any): [number, number, number, number] | n
 }
 
 function computeStaticAerialBounds(lat: number, lng: number, zoom = 20, width = 640, height = 640): [number, number, number, number] {
-  const metersPerPixel = 156543.03392 * Math.cos((lat * Math.PI) / 180) / Math.pow(2, zoom);
-  const widthInMeters = width * metersPerPixel;
-  const heightInMeters = height * metersPerPixel;
-  const latOffset = (heightInMeters / 2) / 111320;
-  const lngOffset = (widthInMeters / 2) / (111320 * Math.cos((lat * Math.PI) / 180));
-
-  return [lng - lngOffset, lat - latOffset, lng + lngOffset, lat + latOffset];
+  const bounds = calculateImageBounds(lat, lng, zoom, width, height);
+  return [bounds.topLeft.lng, bounds.bottomLeft.lat, bounds.topRight.lng, bounds.topLeft.lat];
 }
 
 /**
@@ -365,7 +361,7 @@ export function PullMeasurementsButton({
           const { data } = await supabase
             .from('roof_measurements')
             .select(`
-              id, requires_manual_review, gate_decision,
+              id, requires_manual_review,
               total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length,
               linear_features_wkt, perimeter_wkt, footprint_vertices_geo,
               mapbox_image_url, google_maps_image_url, satellite_overlay_url,
@@ -376,17 +372,14 @@ export function PullMeasurementsButton({
             .limit(1)
             .maybeSingle();
 
-          // Gate-aware UX: the old "requires_manual_review" flag can be raised by
-          // low-confidence diagnostics even after the AI phases complete. Do not
-          // resurrect the removed verification step unless the strict vendor-truth
-          // gate explicitly says this run failed.
-          const gateDecision = String((data as any)?.gate_decision || '').toLowerCase();
-          const strictGateFailed = gateDecision === 'review_required' || gateDecision === 'reject';
-          setVerificationReady(strictGateFailed);
-          if (strictGateFailed) {
+          // Gate-aware UX: auto-ship if 3% accuracy gate passed; only prompt
+          // for edge verification if the measurement was flagged for manual review.
+          const gateFailed = Boolean((data as any)?.requires_manual_review);
+          setVerificationReady(gateFailed);
+          if (gateFailed) {
             toast({
-              title: "⚠️ Accuracy Gate Needs Review",
-              description: "Vendor-truth comparison found a mismatch. Confirm the edges before using this run.",
+              title: "⚠️ Verify Edges — Accuracy Gate Failed",
+              description: "Confirm each edge to lock in the measurement.",
             });
           } else {
             toast({
@@ -490,6 +483,8 @@ export function PullMeasurementsButton({
           // 4) Build aerial background. If the DB row missed the cached URL,
           // fetch a live static aerial because existing properties should still render.
           const size = (data?.analysis_image_size as any) || { width: 640, height: 640 };
+          const logicalWidth = Number(size.logicalWidth || (size.width && size.rasterScale ? size.width / size.rasterScale : size.width)) || 640;
+          const logicalHeight = Number(size.logicalHeight || (size.height && size.rasterScale ? size.height / size.rasterScale : size.height)) || 640;
           const zoom = Number(data?.analysis_zoom) || 20;
           const fallbackLat = Number((data?.gps_coordinates as any)?.lat ?? lat);
           const fallbackLng = Number((data?.gps_coordinates as any)?.lng ?? lng);
@@ -497,8 +492,8 @@ export function PullMeasurementsButton({
             fallbackLat,
             fallbackLng,
             zoom,
-            Number(size.width) || 640,
-            Number(size.height) || 640,
+            logicalWidth,
+            logicalHeight,
           );
 
           let bounds = normalizeAerialBounds((data as any)?.image_bounds);
@@ -512,16 +507,16 @@ export function PullMeasurementsButton({
               fallbackLat,
               fallbackLng,
               zoom,
-              Number(size.width) || 640,
-              Number(size.height) || 640,
+              logicalWidth,
+              logicalHeight,
             );
           }
 
           if (imageUrl && bounds) {
             aerial = {
               imageUrl,
-              imageWidth: Number(size.width) || 640,
-              imageHeight: Number(size.height) || 640,
+              imageWidth: logicalWidth,
+              imageHeight: logicalHeight,
               bounds,
             };
           }
@@ -545,7 +540,7 @@ export function PullMeasurementsButton({
             lat: fallbackLat,
             lng: fallbackLng,
             zoom,
-            size: { width: Number(size.width) || 640, height: Number(size.height) || 640 },
+            size: { width: logicalWidth, height: logicalHeight },
             urlSource,
             imageUrl: imageUrl ? String(imageUrl).slice(0, 140) + (String(imageUrl).length > 140 ? '…' : '') : null,
             boundsSource,
@@ -816,11 +811,17 @@ export function PullMeasurementsButton({
 
         {(success || verificationReady) && (
           <>
-            <Badge
-              variant="outline"
-              className={verificationReady ? 'text-amber-600 border-amber-600' : 'text-green-600 border-green-600'}
+            <Button
+              onClick={() => setShowVerifyWizard(true)}
+              variant="default"
+              size="sm"
+              title="Walk through each edge to confirm the AI measurement"
             >
-              {verificationReady ? 'Review Required' : '✓ Tags Ready'}
+              <CheckCircle2 className="h-4 w-4 mr-1" />
+              Verify Edges
+            </Button>
+            <Badge variant="outline" className="text-green-600 border-green-600">
+              ✓ Tags Ready
             </Badge>
           </>
         )}

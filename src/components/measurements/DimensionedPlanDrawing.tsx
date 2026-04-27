@@ -25,8 +25,6 @@ export interface AerialBackground {
   bounds: [number, number, number, number];
 }
 
-type ProjectionFit = 'stretch' | 'contain';
-
 interface DimensionedPlanDrawingProps {
   edges: PlanEdge[];
   width?: number;
@@ -69,26 +67,14 @@ export function DimensionedPlanDrawing({
     if (!aerial) return null;
     const [west, south, east, north] = aerial.bounds;
     const lngRange = east - west || 1e-9;
-    const latRange = north - south || 1e-9;
-    const fit: ProjectionFit = 'contain';
-    const sourceRatio = Math.max(aerial.imageWidth, 1) / Math.max(aerial.imageHeight, 1);
-    const frameRatio = width / height;
-    const drawWidth = fit === 'contain'
-      ? (sourceRatio > frameRatio ? width : height * sourceRatio)
-      : width;
-    const drawHeight = fit === 'contain'
-      ? (sourceRatio > frameRatio ? width / sourceRatio : height)
-      : height;
-    const offsetX = (width - drawWidth) / 2;
-    const offsetY = (height - drawHeight) / 2;
-
-    return {
-      image: { x: offsetX, y: offsetY, width: drawWidth, height: drawHeight, fit },
-      point: (lng: number, lat: number): [number, number] => [
-        offsetX + ((lng - west) / lngRange) * drawWidth,
-        offsetY + ((north - lat) / latRange) * drawHeight,
-      ],
-    };
+    const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+    const mercTop = mercY(north);
+    const mercBottom = mercY(south);
+    const mercRange = mercTop - mercBottom || 1e-9;
+    return (lng: number, lat: number): [number, number] => [
+      ((lng - west) / lngRange) * width,
+      ((mercTop - mercY(lat)) / mercRange) * height,
+    ];
   }, [aerial, width, height]);
 
   const { transform, bounds } = useMemo(() => {
@@ -136,10 +122,10 @@ export function DimensionedPlanDrawing({
         {aerialMode && aerial && (
           <image
             href={aerial.imageUrl}
-            x={aerialProjection?.image.x ?? 0}
-            y={aerialProjection?.image.y ?? 0}
-            width={aerialProjection?.image.width ?? width}
-            height={aerialProjection?.image.height ?? height}
+            x={0}
+            y={0}
+            width={width}
+            height={height}
             preserveAspectRatio="none"
           />
         )}
@@ -149,10 +135,10 @@ export function DimensionedPlanDrawing({
         {aerialBackdropOnly && aerial && (
           <image
             href={aerial.imageUrl}
-            x={aerialProjection?.image.x ?? 0}
-            y={aerialProjection?.image.y ?? 0}
-            width={aerialProjection?.image.width ?? width}
-            height={aerialProjection?.image.height ?? height}
+            x={0}
+            y={0}
+            width={width}
+            height={height}
             preserveAspectRatio="none"
             opacity={1}
           />
@@ -190,7 +176,7 @@ export function DimensionedPlanDrawing({
         {/* Footprint outline (aerial mode) */}
         {aerialMode && aerialProjection && footprintGeo && footprintGeo.length >= 3 && (
           <polygon
-            points={footprintGeo.map(([lng, lat]) => aerialProjection.point(lng, lat).join(',')).join(' ')}
+            points={footprintGeo.map(([lng, lat]) => aerialProjection(lng, lat).join(',')).join(' ')}
             fill="rgba(255,255,0,0.08)"
             stroke="#fde047"
             strokeWidth={1.5}
@@ -202,8 +188,8 @@ export function DimensionedPlanDrawing({
         {edges.map(edge => {
           let x1: number, y1: number, x2: number, y2: number;
           if (aerialMode && aerialProjection && edge.geo_p1 && edge.geo_p2) {
-            [x1, y1] = aerialProjection.point(edge.geo_p1[0], edge.geo_p1[1]);
-            [x2, y2] = aerialProjection.point(edge.geo_p2[0], edge.geo_p2[1]);
+            [x1, y1] = aerialProjection(edge.geo_p1[0], edge.geo_p1[1]);
+            [x2, y2] = aerialProjection(edge.geo_p2[0], edge.geo_p2[1]);
           } else {
             [x1, y1] = transform(edge.p1);
             [x2, y2] = transform(edge.p2);

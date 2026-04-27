@@ -393,8 +393,8 @@ export function SchematicRoofDiagram({
     
     const zoom = measurement.analysis_zoom || 20;
     const imageSize = measurement.analysis_image_size || { width: 640, height: 640 };
-    let imgWidth = typeof imageSize === 'object' ? imageSize.width : 640;
-    let imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
+    let imgWidth = typeof imageSize === 'object' ? (imageSize.logicalWidth || imageSize.width || 640) : 640;
+    let imgHeight = typeof imageSize === 'object' ? (imageSize.logicalHeight || imageSize.height || 640) : 640;
     
     // FIX: Correct for @2x retina bug where width*2 was stored instead of tile dimensions.
     // Only apply at high zoom levels (>=19) where @2x tiles cover the same geographic area.
@@ -735,8 +735,12 @@ export function SchematicRoofDiagram({
       if (!shouldUseGeometryCrop) return null;
 
       const sourceSize = measurement?.analysis_image_size || { width: 640, height: 640 };
-      const srcW = typeof sourceSize === 'object' ? sourceSize.width || 640 : 640;
-      const srcH = typeof sourceSize === 'object' ? sourceSize.height || 640 : 640;
+      const srcW = typeof sourceSize === 'object'
+        ? sourceSize.logicalWidth || (sourceSize.width && sourceSize.rasterScale ? sourceSize.width / sourceSize.rasterScale : sourceSize.width) || 640
+        : 640;
+      const srcH = typeof sourceSize === 'object'
+        ? sourceSize.logicalHeight || (sourceSize.height && sourceSize.rasterScale ? sourceSize.height / sourceSize.rasterScale : sourceSize.height) || 640
+        : 640;
 
       const focusPixels = overlayFocusCoords.map(c =>
         gpsToPixel(c, imageBounds, { width: srcW, height: srcH })
