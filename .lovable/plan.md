@@ -1,126 +1,67 @@
-## Three implementation items to finish
+## Why AI Measurement keeps landing in "Internal Review"
 
-This is a focused implementation plan — no new buttons, no new measurement system, no U-Net dependency, no Gemini fallback. Only the three items requested.
+Three real bugs in the live `start-ai-measurement` pipeline (verified in the repo):
 
----
+1. **`_shared/mapbox-footprint-extractor.ts`** treats Mapbox Tilequery as a polygon source. Tilequery only returns **point** geometry — it can never return building rings. So the "authoritative footprint" path is dead on arrival, and jobs fall through to weaker sources.
+2. **`start-ai-measurement/index.ts` lines 41–44** prefer `MAPBOX_PUBLIC_TOKEN` over `MAPBOX_ACCESS_TOKEN` for server-side calls. URL-restricted public tokens often 403 from edge functions even when the browser UI looks fine.
+3. **QC (`runQualityChecks`, line 1336+)** hard-fails on `mapboxOk` (line 1450). When Mapbox imagery fails for any reason, there is no Google Static Maps fallback — the job is forced to `needs_internal_review`.
 
-### 1. `supabase/functions/start-ai-measurement/index.ts` — demote Solar bbox
+The frontend gating is correct; it is faithfully showing backend QA state. The JPEG/PNG decode fix did not address any of the three causes above.
 
-**Problem:** `planesFromSolar()` (lines 246–301) turns Google Solar `roofSegmentStats[i].boundingBox.{sw,ne}` into 4-corner axis-aligned rectangles and writes them to `ai_roof_planes` as if they were facets. That is the literal source of the "two rectangles" bug for 8359 Huntsman.
+## Fix
 
-**Edits to `start-ai-measurement/index.ts`:**
+### 1. Disable Mapbox Tilequery as a polygon source
+**File:** `supabase/functions/_shared/mapbox-footprint-extractor.ts`
 
-1. Add helpers above `runQualityChecks`:
-   - `isAxisAlignedRectangle(poly)` — true when polygon is a 4-pt AA rectangle (Solar bbox tell).
-   - `computeOverlayAlignment(planes, imgW, imgH)` — returns 0–1 score (centered + fully-inside the image frame).
+Replace the body of `fetchMapboxVectorFootprint` with a no-op that returns `{ footprint: null, error, fallbackReason: 'tilequery_returns_points_only' }` and logs a warning. This stops a structurally impossible call from being treated as authoritative.
 
-2. In the plane-build step (line ~776), keep `planesFromSolar()` running **but tag every produced plane** as untrusted: `source: 'google_solar_bbox'` (rename), and continue to use `pitchDegrees`/`azimuthDegrees`/`areaMeters2` only as **hints**.
+### 2. Token precedence + provider-agnostic imagery
+**File:** `supabase/functions/start-ai-measurement/index.ts`
 
-3. In `runQualityChecks` add four new checks:
-   - `geometry_source_is_real` — fails when **every** plane's source matches `google_solar_bbox|placeholder|perimeter_fallback`.
-   - `planes_are_not_all_rectangles` — fails when ≥50% of planes pass `isAxisAlignedRectangle`.
-   - `overlay_alignment_score` — score = `computeOverlayAlignment(...)`; passes at ≥ 0.75.
-   - Return the `overlayAlignmentScore` alongside `status`.
+- Replace the single `MAPBOX_TOKEN` constant with two:
+  - `MAPBOX_SERVER_TOKEN` (prefers `MAPBOX_ACCESS_TOKEN`, then `MAPBOX_TOKEN`, then `MAPBOX_PUBLIC_TOKEN`) — used for all edge-side API calls including `resolveAuthoritativeFootprint`.
+  - `MAPBOX_IMAGE_TOKEN` (same precedence, but `MAPBOX_PUBLIC_TOKEN` allowed second) — used only for Static Images.
+- Add helpers `fetchStaticRaster`, `fetchPreferredBaseImagery`, `computeImageBounds`. `fetchPreferredBaseImagery` tries Mapbox satellite-v9 static first, falls back to Google Static Maps satellite (`scale=2`).
+- Replace the existing Mapbox-only imagery fetch block with the new provider-agnostic call. Track `imageryOk` and `imagerySource` ('mapbox' | 'google_static' | 'none').
+- Pass `MAPBOX_SERVER_TOKEN` (not the public-first token) to `resolveAuthoritativeFootprint` at line 1730.
 
-4. Promotion logic becomes:
-   ```
-   if (hasPlaceholder || !calibrated || !mapboxOk || planes.length === 0
-       || !geometrySourceIsReal || planesAreAllRectangles
-       || overlayAlignmentScore < 0.75) → 'needs_manual_measurement'
-   else if (overall ≥ 0.85 && overlayAlignmentScore ≥ 0.85) → 'completed'
-   else if (overall ≥ 0.65) → 'needs_review'
-   else → 'needs_manual_measurement'
-   ```
+### 3. Make QC imagery-provider-agnostic
+Same file, `runQualityChecks`:
 
-5. Move the existing `if (qc.status === 'needs_manual_measurement')` short-circuit (line ~1041) **above** the diagram-generation block (line ~967). Result: when geometry is bad, no `ai_measurement_diagrams` rows are inserted, no `roof_measurements` row is inserted, no `measurement_approvals` row is inserted, and `measurement_jobs` is set to `failed` with `error: 'needs_manual_measurement'`.
+- Add `imageryOk: boolean` and `imagerySource: string` to the input type.
+- Add an `imagery_available` check based on `imageryOk`.
+- Replace the hard-fail on `!input.mapboxOk` (line 1450) with `!input.imageryOk`.
+- Update the call site (line 1924) to pass `imageryOk` and `imagerySource` instead of `mapboxOk`.
 
-6. Persist the new fields on the row that does get published (when `status` is `completed`/`needs_review`):
-   - `roof_measurements.geometry_quality_score = qc.overall`
-   - `roof_measurements.measurement_quality_score = qc.overall`
-   - `geometry_report_json.overlay_alignment_score = overlayAlignmentScore`
-   - `geometry_report_json.geometry_source = 'google_solar_bbox' | 'mixed' | 'unet'`
-   - `geometry_report_json.is_placeholder = false` (always, by this point)
-   - `geometry_report_json.footprint_wkt` = `POLYGON((lng lat, …))` built from the union hull of all `polygon_geojson` points (so the frontend stops printing "No WKT geometry available").
+### 4. Persist imagery metadata in `roof_measurements` insert
+Same file. Add to the insert payload:
+- `mapbox_image_url`, `google_maps_image_url`, `satellite_overlay_url`
+- `selected_image_source`, `image_source`
+- `analysis_zoom`, `analysis_image_size` (with width/height/logicalWidth/logicalHeight/rasterScale)
+- `image_bounds` (computed via `computeImageBounds` using **logical** size so Mapbox `@2x` and Google `scale=2` produce identical bounds)
 
-7. Hint-only Solar usage stays: pitch/azimuth/area continue to be read off Solar segments. No new geometry source is added — if Solar bboxes are the only geometry, the job correctly fails to `needs_manual_measurement`. This is intentional and matches the user's hard rule.
+### 5. Filter legacy bad AI rows in the panel
+**File:** `src/components/measurements/UnifiedMeasurementPanel.tsx`
 
-**Result for 8359 Huntsman:** Solar returns 2 axis-aligned rectangles → `planes_are_not_all_rectangles` fails → status = `needs_manual_measurement` → no diagrams generated, no PDF, no published roof_measurements. The dialog will show the manual-measurement banner instead of fake rectangles.
+- Add `hasCustomerSafeGeometry(measurement)` helper that wraps `isPlausibleRoofMeasurement` and additionally rejects rows where `validation_status === 'needs_internal_review'`, `geometry_report_json.is_placeholder === true`, or `geometry_report_json.geometry_source === 'google_solar_bbox'`.
+- Use it in the AI history query in place of `isPlausibleRoofMeasurement`.
+- Guard `handleSaveAiMeasurementDirect` and `handleSaveAiMeasurement` so failed-QA rows cannot be saved into estimates.
 
----
+## Secrets / config
+Confirm these exist (will check via `secrets--fetch_secrets` after approval):
+- `MAPBOX_ACCESS_TOKEN` — required as the preferred server token.
+- `GOOGLE_MAPS_API_KEY` — required for Google Static Maps fallback.
+- `MAPBOX_PUBLIC_TOKEN` — kept as a last-resort fallback only.
 
-### 2. `supabase/functions/render-measurement-pdf/index.ts` — new edge function
+If `MAPBOX_ACCESS_TOKEN` is missing, I'll prompt you to add it before deploy.
 
-Generates a clean customer PDF from the SVG pages already saved by `start-ai-measurement` into `ai_measurement_diagrams`. **Does not** screen-print the React UI. **Does not** invent geometry — it only assembles what's stored.
+## Validation after deploy
+- Re-run AI Measurement on the failing lead. Expected: `completed` or `needs_review`, not `needs_internal_review`, even if Mapbox 403s.
+- Spot-check `roof_measurements` for new rows: `selected_image_source`, `analysis_zoom`, `analysis_image_size`, `image_bounds` all populated.
+- Tail `start-ai-measurement` logs for `[ai-measurement][imagery]` lines to confirm provider used.
+- Verify legacy >30,000 sqft / `needs_internal_review` rows no longer appear in the panel history.
 
-**Behavior:**
-
-- POST body: `{ ai_measurement_job_id?, lead_id?, project_id?, measurement_id? }`. Resolves to one `ai_measurement_job_id` (latest by `created_at` for the lead/project/measurement).
-- Validates QC gate **server-side** before producing anything:
-  - The associated `roof_measurements` row exists, has `validation_status IN ('validated','flagged')` (i.e. not `needs_manual_measurement`), `facet_count > 0`, `geometry_report_json` exists, and `geometry_report_json.overlay_alignment_score >= 0.75`.
-  - At least one `ai_measurement_diagrams` row exists for the job.
-- If the gate fails → returns `{ error: 'manual_measurement_required', message: 'Roof geometry did not align with the property.' }` with status 422. No PDF is produced.
-- If the gate passes:
-  1. Loads all `ai_measurement_diagrams` for the job ordered by `page_number` (Cover, Overlay, Length, Pitch, Area, Notes — all 6 already produced by the existing renderer).
-  2. Wraps each SVG in an HTML page (Letter portrait, 8.5×11in @ 96dpi → 816×1056px) with the page title.
-  3. Calls Lovable Cloud's **PDFShift-equivalent path** — since this project does not provision a headless browser, we use a pure-Deno SVG → PDF approach: each SVG is embedded as one page in a single PDF using a hand-rolled minimal PDF writer (object stream wrapping each SVG via the `pdf-lib` npm port that runs in Deno: `npm:pdf-lib@1.17.1`). For each page, render the SVG to a PNG bitmap with `npm:resvg-js@2.6.2` at 2× scale, then `pdf-lib` embeds the PNG on a Letter page. This keeps the function fully self-contained, works in Deno, and matches what the customer expects (clean printed pages, not a screenshot of the app).
-  4. Uploads the resulting PDF to the existing public `measurement-reports` storage bucket at `reports/<tenant_id>/<ai_measurement_job_id>.pdf` (creates the bucket via migration if it does not exist — a 1-statement migration).
-  5. Updates `roof_measurements.report_pdf_url` (column added if missing — handled in the same migration) with the public URL and updates `ai_measurement_jobs.report_pdf_url`.
-  6. Returns `{ pdf_url, page_count, ai_measurement_job_id }`.
-
-- Uses `corsHeaders`; honors `OPTIONS`; auth-passthrough via service-role for Storage write; reads the user's JWT only to confirm tenant access (no SQL strings, parameterized only).
-
-**Migration (single file):**
-- Create public bucket `measurement-reports` (idempotent insert).
-- Storage policy: tenant-scoped read; service-role write.
-- `ALTER TABLE roof_measurements ADD COLUMN IF NOT EXISTS report_pdf_url text;`
-- `ALTER TABLE ai_measurement_jobs ADD COLUMN IF NOT EXISTS report_pdf_url text;`
-
----
-
-### 3. Frontend — `MeasurementReportDialog.tsx` + `UnifiedMeasurementPanel.tsx`
-
-**`MeasurementReportDialog.tsx` (currently 53 lines, just wraps `ComprehensiveMeasurementReport`):**
-
-Replace with a **6-page sequence viewer** that:
-- Reads `roof_measurements` (passed via `measurement` prop) for QC fields: `validation_status`, `facet_count`, `geometry_report_json`, `requires_manual_review`.
-- **QC gate (client mirror of the server gate):**
-  - If `validation_status === 'flagged' && requires_manual_review === true && facet_count === 0`, OR `geometry_report_json` missing, OR `geometry_report_json.overlay_alignment_score < 0.75`, OR `geometry_report_json.geometry_source === 'google_solar_bbox'`:
-    - Render a single full-dialog banner: **"Manual measurement required — roof geometry did not align with the property."** + "Re-run AI Measurement" button (calls existing `useMeasurementJob.startJob`) + "Order vendor report" link.
-    - **Disable** Download PDF.
-- Otherwise, fetch `ai_measurement_diagrams` for the linked `ai_measurement_job_id` ordered by `page_number` and render the 6 pages in a vertically scrollable list with page-number chips: **1. Cover · 2. Image / Overlay · 3. Length Diagram · 4. Pitch Diagram · 5. Area Diagram · 6. Notes Diagram**.
-- The "Download PDF" button calls `supabase.functions.invoke('render-measurement-pdf', { body: { ai_measurement_job_id } })` and opens the returned `pdf_url` in a new tab. **No more `html2canvas` / `jsPDF` browser-print path.**
-- Keeps the existing `ComprehensiveMeasurementReport` component only as a side-tab "Details / Tags" view (legacy data). The primary view is the 6-page sequence.
-
-**`UnifiedMeasurementPanel.tsx`:**
-- Pass `aiMeasurementJobId={ai.ai_measurement_job_id}` and the full `ai` row (which already has `validation_status`, `requires_manual_review`, `geometry_report_json`, `facet_count`) to `<MeasurementReportDialog />` so the QC gate has the data it needs.
-- When the latest AI measurement is in `needs_manual_measurement` state (job `failed` with `error === 'needs_manual_measurement'`), replace the "View Report" button with a small inline warning chip: "Manual measurement required" + "Re-run AI Measurement" button.
-
----
-
-### What is intentionally NOT done
-
-- **No U-Net wiring.** Per the request, U-Net is not required. The system simply refuses to publish bad Solar-bbox geometry.
-- **No Gemini fallback.** No new geometry source replaces Solar.
-- **No new "AI Measurement" button.** Same `useMeasurementJob` flow.
-- **No fake geometry.** When real footprint/planes/edges are missing, the only outcome is `needs_manual_measurement`.
-
-### Files touched
-
-```
-supabase/functions/start-ai-measurement/index.ts          (modify ~80 lines)
-supabase/functions/render-measurement-pdf/index.ts        (new)
-supabase/migrations/<ts>_measurement_reports_bucket.sql   (new, idempotent)
-src/components/measurements/MeasurementReportDialog.tsx   (rewrite, ~180 lines)
-src/components/measurements/UnifiedMeasurementPanel.tsx   (~10-line edit at the two MeasurementReportDialog call sites)
-```
-
-### Acceptance for 8359 Huntsman regression
-
-After the change, re-running AI Measurement on 8359 Huntsman Pl will:
-1. Fetch Mapbox + Solar (Solar returns 2 bboxes).
-2. QC fails: `planes_are_not_all_rectangles` → `needs_manual_measurement`.
-3. No diagrams written, no `roof_measurements` row, no approval row.
-4. `measurement_jobs.status = 'failed'`, `error = 'needs_manual_measurement'`.
-5. The lead page shows: **"Manual measurement required — roof geometry did not align with the property."** with a re-run button. Download PDF is disabled.
-
-No "two generic rectangles" customer-ready report is ever produced again.
+## What this does NOT change
+- No retraining, no new ML model.
+- No change to the frontend QA gating in `MeasurementReportDialog` or `render-measurement-pdf` — those are correct.
+- QC is not loosened; it's only made provider-agnostic.

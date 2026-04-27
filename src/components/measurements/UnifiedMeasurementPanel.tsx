@@ -143,6 +143,21 @@ const isPlausibleRoofMeasurement = (measurement: any): boolean => (
   isPlausibleRoofSqft(measurement?.total_area_adjusted_sqft || measurement?.total_area_flat_sqft)
 );
 
+// Stricter than isPlausibleRoofMeasurement: also rejects rows the backend
+// flagged for internal review, placeholder geometry, and Solar bbox-only
+// rectangles. Used to keep failed-QA rows out of customer-facing flows.
+const hasCustomerSafeGeometry = (measurement: any): boolean => {
+  if (!isPlausibleRoofMeasurement(measurement)) return false;
+  const status = String(measurement?.validation_status || '').toLowerCase();
+  if (status === 'needs_internal_review') return false;
+  const grj = measurement?.geometry_report_json || {};
+  if (grj?.is_placeholder === true) return false;
+  if (grj?.geometry_source === 'google_solar_bbox') return false;
+  const footprintSource = String(measurement?.footprint_source || '').toLowerCase();
+  if (footprintSource === 'google_solar_bbox') return false;
+  return true;
+};
+
 const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
   const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
   const lng = measurement?.target_lng ?? measurement?.center_lng ?? measurement?.gps_coordinates?.lng;
@@ -436,7 +451,7 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return (data || []).filter(isPlausibleRoofMeasurement);
+      return (data || []).filter(hasCustomerSafeGeometry);
     },
     enabled: !!pipelineEntryId,
   });
@@ -646,6 +661,14 @@ export function UnifiedMeasurementPanel({
   const [isSavingDirect, setIsSavingDirect] = useState(false);
   const [showAiReport, setShowAiReport] = useState(false);
   const handleSaveAiMeasurementDirect = async (measurement: any) => {
+    if (!hasCustomerSafeGeometry(measurement)) {
+      toast({
+        title: 'Measurement not saved',
+        description: 'This AI measurement did not pass QA and cannot be saved to estimates.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsSavingDirect(true);
     try {
       const { data: entry } = await supabase
@@ -1546,6 +1569,14 @@ function MeasurementHistorySection({
   };
 
   const handleSaveAiMeasurement = async (measurement: MeasurementHistorySectionProps['aiMeasurements'][0]) => {
+    if (!hasCustomerSafeGeometry(measurement)) {
+      toast({
+        title: 'Measurement not saved',
+        description: 'This AI measurement did not pass QA and cannot be saved to estimates.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsSaving(measurement.id);
     try {
       const { data: entry } = await supabase

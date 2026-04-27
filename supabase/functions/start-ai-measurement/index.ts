@@ -38,13 +38,24 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const MAPBOX_TOKEN =
-  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
+// Server-side token: prefer the secret/access token. Public token is a last
+// resort because URL-restricted public tokens routinely 403 from edge runtimes.
+const MAPBOX_SERVER_TOKEN =
   Deno.env.get('MAPBOX_ACCESS_TOKEN') ||
   Deno.env.get('MAPBOX_TOKEN') ||
+  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
   ''
+// Static Images token: same precedence — access token first.
+const MAPBOX_IMAGE_TOKEN =
+  Deno.env.get('MAPBOX_ACCESS_TOKEN') ||
+  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
+  Deno.env.get('MAPBOX_TOKEN') ||
+  ''
+// Backwards-compat alias for any code paths still referencing MAPBOX_TOKEN.
+const MAPBOX_TOKEN = MAPBOX_SERVER_TOKEN
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY') || ''
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
+const GOOGLE_STATIC_KEY = GOOGLE_MAPS_API_KEY
 
 const ENGINE_VERSION = 'geometry_first_v2'
 const MAX_AUTO_ROOF_AREA_SQFT = 30000
@@ -466,12 +477,13 @@ async function geocodeAddress(address: string) {
   }
 }
 
+// Legacy Mapbox-only helper kept for any callers that still expect it.
+// New code paths should use fetchPreferredBaseImagery() instead.
 async function fetchMapbox(lat: number, lng: number, zoom = 20, logicalSize = 640) {
-  if (!MAPBOX_TOKEN) return null
-  // @2x → returned raster is 2× logicalSize
+  if (!MAPBOX_IMAGE_TOKEN) return null
   const url =
     `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-    `${lng},${lat},${zoom}/${logicalSize}x${logicalSize}@2x?access_token=${MAPBOX_TOKEN}`
+    `${lng},${lat},${zoom}/${logicalSize}x${logicalSize}@2x?access_token=${MAPBOX_IMAGE_TOKEN}`
   const r = await fetch(url)
   if (!r.ok) return null
   return {
@@ -483,6 +495,104 @@ async function fetchMapbox(lat: number, lng: number, zoom = 20, logicalSize = 64
     raster_scale: 2,
     zoom,
   }
+}
+
+// ── Provider-agnostic base imagery ────────────────────────────────────
+type BaseImagery = {
+  provider: 'mapbox' | 'google_static'
+  imageUrl: string
+  rgba: Uint8Array
+  width: number
+  height: number
+  logicalWidth: number
+  logicalHeight: number
+  rasterScale: number
+  zoom: number
+}
+
+async function fetchStaticRaster(
+  url: string,
+  provider: 'mapbox' | 'google_static',
+  zoom: number,
+  logicalWidth = 640,
+  logicalHeight = 640,
+  rasterScale = 2,
+): Promise<BaseImagery | null> {
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '')
+      console.warn(`[imagery] ${provider} HTTP ${resp.status}`, detail.slice(0, 300))
+      return null
+    }
+    const contentType = resp.headers.get('content-type') || ''
+    const bytes = new Uint8Array(await resp.arrayBuffer())
+    const decoded = await decodeRaster(bytes, contentType).catch((err) => {
+      console.warn(`[imagery] ${provider} decode failed`, String(err))
+      return null
+    })
+    if (!decoded || !decoded.width || !decoded.height || !decoded.data?.length) {
+      return null
+    }
+    return {
+      provider,
+      imageUrl: url,
+      rgba: decoded.data,
+      width: decoded.width,
+      height: decoded.height,
+      logicalWidth,
+      logicalHeight,
+      rasterScale,
+      zoom,
+    }
+  } catch (err) {
+    console.warn(`[imagery] ${provider} exception`, String(err))
+    return null
+  }
+}
+
+async function fetchPreferredBaseImagery(
+  lat: number,
+  lng: number,
+  zoom: number,
+  logicalWidth = 640,
+  logicalHeight = 640,
+): Promise<BaseImagery | null> {
+  if (MAPBOX_IMAGE_TOKEN) {
+    const mapboxUrl =
+      `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
+      `${lng},${lat},${zoom},0,0/${logicalWidth}x${logicalHeight}@2x` +
+      `?access_token=${MAPBOX_IMAGE_TOKEN}&logo=false&attribution=false`
+    const mb = await fetchStaticRaster(mapboxUrl, 'mapbox', zoom, logicalWidth, logicalHeight, 2)
+    if (mb) return mb
+    console.warn('[imagery] Mapbox failed; falling back to Google Static Maps')
+  }
+  if (GOOGLE_STATIC_KEY) {
+    const googleUrl =
+      `https://maps.googleapis.com/maps/api/staticmap` +
+      `?center=${lat},${lng}` +
+      `&zoom=${zoom}` +
+      `&size=${logicalWidth}x${logicalHeight}` +
+      `&scale=2&maptype=satellite&format=png&key=${GOOGLE_STATIC_KEY}`
+    const gg = await fetchStaticRaster(googleUrl, 'google_static', zoom, logicalWidth, logicalHeight, 2)
+    if (gg) return gg
+  }
+  return null
+}
+
+function computeImageBounds(
+  lat: number,
+  lng: number,
+  zoom: number,
+  logicalWidth: number,
+  logicalHeight: number,
+): [number, number, number, number] {
+  const metersPerPixel = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom)
+  const halfW = (logicalWidth * metersPerPixel) / 2
+  const halfH = (logicalHeight * metersPerPixel) / 2
+  const latOffset = halfH / 111320
+  const lngOffset = halfW / (111320 * Math.cos((lat * Math.PI) / 180))
+  return [lng - lngOffset, lat - latOffset, lng + lngOffset, lat + latOffset]
 }
 
 async function fetchGoogleSolar(lat: number, lng: number) {
@@ -1338,6 +1448,8 @@ function runQualityChecks(input: {
   geocodeType: string | null
   calibrated: boolean
   mapboxOk: boolean
+  imageryOk?: boolean
+  imagerySource?: string
   solarOk: boolean
   planes: RoofPlane[]
   edges: RoofEdge[]
@@ -1361,7 +1473,8 @@ function runQualityChecks(input: {
 
   push('valid_geocode', input.geocoded, input.geocoded ? 1 : 0, { type: input.geocodeType })
   push('valid_calibration', input.calibrated, input.calibrated ? 1 : 0)
-  push('mapbox_image_available', input.mapboxOk, input.mapboxOk ? 1 : 0)
+  const _imageryOk = input.imageryOk ?? input.mapboxOk
+  push('imagery_available', _imageryOk, _imageryOk ? 1 : 0, { provider: input.imagerySource ?? (input.mapboxOk ? 'mapbox' : 'none') })
   push('google_solar_available', input.solarOk, input.solarOk ? 1 : 0.5, { note: 'optional' })
   push('roof_planes_exist', input.planes.length > 0, input.planes.length > 0 ? 1 : 0, {
     count: input.planes.length,
@@ -1447,7 +1560,7 @@ function runQualityChecks(input: {
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
-    !input.mapboxOk ||
+    !_imageryOk ||
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
@@ -1648,21 +1761,48 @@ Deno.serve(async (req) => {
         }
         if (lat == null || lng == null) throw new Error('Could not resolve coordinates for property')
 
-        // 2b) Imagery + calibration
+        // 2b) Imagery + calibration (provider-agnostic: Mapbox → Google Static fallback)
         await supa.from('measurement_jobs').update({ progress_message: 'Pulling satellite imagery…' }).eq('id', job.id)
-        const mb = await fetchMapbox(lat, lng, 20, 640)
-        const mapboxOk = !!mb
-        const zoom = mb?.zoom ?? 20
+        const analysisZoom = 20
+        const logicalW = 640
+        const logicalH = 640
+        const imagery = await fetchPreferredBaseImagery(lat, lng, analysisZoom, logicalW, logicalH)
+        const imageryOk = !!imagery?.rgba?.length
+        const imagerySource: 'mapbox' | 'google_static' | 'none' = imagery?.provider ?? 'none'
+        // Back-compat shim: many downstream code paths reference `mb` and `mapboxOk`.
+        const mb = imagery
+          ? {
+              image_url: imagery.imageUrl,
+              logical_w: imagery.logicalWidth,
+              logical_h: imagery.logicalHeight,
+              actual_w: imagery.width,
+              actual_h: imagery.height,
+              raster_scale: imagery.rasterScale,
+              zoom: imagery.zoom,
+            }
+          : null
+        const mapboxOk = imagerySource === 'mapbox'
+        const zoom = mb?.zoom ?? analysisZoom
         const rasterScale = mb?.raster_scale ?? 2
-        const imgW = mb?.actual_w ?? 1280
-        const imgH = mb?.actual_h ?? 1280
+        const imgW = mb?.actual_w ?? logicalW * 2
+        const imgH = mb?.actual_h ?? logicalH * 2
         const cal = calibrate(lat, zoom, rasterScale)
         const feetPerPixel = cal.feet_per_pixel_actual
+
+        console.info('[ai-measurement][imagery]', {
+          source: imagerySource,
+          imageryOk,
+          rasterW: imgW,
+          rasterH: imgH,
+          logicalW,
+          logicalH,
+          zoom: analysisZoom,
+        })
 
         if (mb) {
           await supa.from('ai_measurement_images').insert({
             job_id: aiJob.id,
-            source: 'mapbox',
+            source: imagerySource,
             image_url: mb.image_url,
             width: mb.actual_w,
             height: mb.actual_h,
@@ -1924,8 +2064,10 @@ Deno.serve(async (req) => {
         const qc = runQualityChecks({
           geocoded,
           geocodeType,
-          calibrated: !!mapboxOk,
+          calibrated: imageryOk,
           mapboxOk,
+          imageryOk,
+          imagerySource,
           solarOk,
           planes,
           edges,
@@ -2190,7 +2332,20 @@ Deno.serve(async (req) => {
           detection_method: ENGINE_VERSION,
           target_lat: lat,
           target_lng: lng,
-          mapbox_image_url: mb?.image_url || null,
+          mapbox_image_url: imagerySource === 'mapbox' ? mb?.image_url ?? null : null,
+          google_maps_image_url: imagerySource === 'google_static' ? mb?.image_url ?? null : null,
+          satellite_overlay_url: mb?.image_url ?? null,
+          selected_image_source: imagerySource !== 'none' ? imagerySource : null,
+          image_source: imagerySource !== 'none' ? imagerySource : null,
+          analysis_zoom: zoom,
+          analysis_image_size: {
+            width: imgW,
+            height: imgH,
+            logicalWidth: mb?.logical_w ?? null,
+            logicalHeight: mb?.logical_h ?? null,
+            rasterScale,
+          },
+          image_bounds: computeImageBounds(lat, lng, zoom, mb?.logical_w ?? 640, mb?.logical_h ?? 640),
           measurement_confidence: qc.overall,
           requires_manual_review: qc.status === 'needs_review',
           validation_status: qc.status === 'completed' ? 'validated' : 'flagged',
