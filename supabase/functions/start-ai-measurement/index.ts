@@ -1095,21 +1095,54 @@ async function extractRoofFootprintAndEdges(
       }
     }
 
-    // 2) Sobel edge magnitude
+    // 2) Multi-scale Sobel edge magnitude (sigma ≈ 1, 2, 3 via box-blur pyramid).
+    //    Combining scales captures both fine ridge lines and dominant roof spines.
+    const blurBox = (src: Uint8Array, radius: number): Uint8Array => {
+      if (radius <= 0) return src
+      const out = new Uint8Array(dW * dH)
+      const k = radius
+      for (let y = 0; y < dH; y++) {
+        for (let x = 0; x < dW; x++) {
+          let s = 0, n = 0
+          const y0 = Math.max(0, y - k), y1 = Math.min(dH - 1, y + k)
+          const x0 = Math.max(0, x - k), x1 = Math.min(dW - 1, x + k)
+          for (let yy = y0; yy <= y1; yy++) {
+            for (let xx = x0; xx <= x1; xx++) {
+              s += src[yy * dW + xx]; n++
+            }
+          }
+          out[y * dW + x] = (s / n) | 0
+        }
+      }
+      return out
+    }
+    const scales: Uint8Array[] = [ds, blurBox(ds, 1), blurBox(ds, 2)]
     const mag = new Uint8Array(dW * dH)
+    // Keep gradient components from the FINEST scale — most accurate direction.
+    const gxGrid = new Int16Array(dW * dH)
+    const gyGrid = new Int16Array(dW * dH)
     let magMax = 1
-    for (let y = 1; y < dH - 1; y++) {
-      for (let x = 1; x < dW - 1; x++) {
-        const i = y * dW + x
-        const gx =
-          -ds[i - dW - 1] - 2 * ds[i - 1] - ds[i + dW - 1] +
-          ds[i - dW + 1] + 2 * ds[i + 1] + ds[i + dW + 1]
-        const gy =
-          -ds[i - dW - 1] - 2 * ds[i - dW] - ds[i - dW + 1] +
-          ds[i + dW - 1] + 2 * ds[i + dW] + ds[i + dW + 1]
-        const m = Math.min(255, Math.hypot(gx, gy) | 0)
-        mag[i] = m
-        if (m > magMax) magMax = m
+    for (let si = 0; si < scales.length; si++) {
+      const src = scales[si]
+      const isFinest = si === 0
+      for (let y = 1; y < dH - 1; y++) {
+        for (let x = 1; x < dW - 1; x++) {
+          const i = y * dW + x
+          const gx =
+            -src[i - dW - 1] - 2 * src[i - 1] - src[i + dW - 1] +
+            src[i - dW + 1] + 2 * src[i + 1] + src[i + dW + 1]
+          const gy =
+            -src[i - dW - 1] - 2 * src[i - dW] - src[i - dW + 1] +
+            src[i + dW - 1] + 2 * src[i + dW] + src[i + dW + 1]
+          const m = Math.min(255, Math.hypot(gx, gy) | 0)
+          // OR-combine across scales (take max response).
+          if (m > mag[i]) mag[i] = m
+          if (m > magMax) magMax = m
+          if (isFinest) {
+            gxGrid[i] = gx
+            gyGrid[i] = gy
+          }
+        }
       }
     }
 
