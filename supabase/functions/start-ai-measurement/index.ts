@@ -70,6 +70,46 @@ interface AuthoritativeFootprint {
   vertexCount: number
 }
 
+function solarAggregatePlane(
+  solar: any,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  pitchHintRise: number | null,
+  azimuthHint: number | null,
+): RoofPlane | null {
+  const sw = solar?.boundingBox?.sw
+  const ne = solar?.boundingBox?.ne
+  const areaM2 = Number(solar?.solarPotential?.wholeRoofStats?.areaMeters2 || 0)
+  if (!sw || !ne || !Number.isFinite(areaM2) || areaM2 <= 0) return null
+
+  const polyGeo = [
+    { lat: sw.latitude, lng: sw.longitude },
+    { lat: sw.latitude, lng: ne.longitude },
+    { lat: ne.latitude, lng: ne.longitude },
+    { lat: ne.latitude, lng: sw.longitude },
+  ]
+  const polyPx = polyGeo.map((p) => latLngToPixel(p, centerLat, centerLng, imgW, imgH, actualMpp))
+  const pmInfo = pitchHintRise != null ? pitchInfo(pitchHintRise) : { pitch_degrees: 0, pitch_multiplier: 1 }
+  const area2dSqft = areaM2 * 10.7639
+
+  return {
+    plane_index: 0,
+    source: 'google_solar_aggregate',
+    polygon_px: polyPx,
+    polygon_geojson: polyGeo,
+    pitch: pitchHintRise,
+    pitch_degrees: pmInfo.pitch_degrees,
+    azimuth: azimuthHint,
+    area_2d_sqft: area2dSqft,
+    pitch_multiplier: pmInfo.pitch_multiplier,
+    area_pitch_adjusted_sqft: area2dSqft * pmInfo.pitch_multiplier,
+    confidence: 0.68,
+  }
+}
+
 function openGeoRing(coords: GeoXY[]): GeoXY[] {
   if (!coords.length) return []
   const first = coords[0]
