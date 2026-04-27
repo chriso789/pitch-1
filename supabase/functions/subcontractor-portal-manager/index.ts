@@ -155,7 +155,8 @@ Deno.serve(async (req: Request) => {
           .select('rating')
           .eq('subcontractor_id', subcontractor_id);
 
-        const avgRating = allRatings?.reduce((sum, r) => sum + r.rating, 0) / (allRatings?.length || 1);
+        const ratingRows = allRatings || [];
+        const avgRating = ratingRows.reduce((sum, r) => sum + r.rating, 0) / (ratingRows.length || 1);
         
         await supabase
           .from('subcontractors')

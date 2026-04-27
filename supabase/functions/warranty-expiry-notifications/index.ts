@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
           } catch (emailError) {
             console.error('Email error:', emailError);
             result.email_sent = false;
-            result.email_error = emailError.message;
+            result.email_error = emailError instanceof Error ? emailError.message : String(emailError);
           }
         }
 
@@ -187,7 +187,7 @@ Deno.serve(async (req) => {
           } catch (smsError) {
             console.error('SMS error:', smsError);
             result.sms_sent = false;
-            result.sms_error = smsError.message;
+            result.sms_error = smsError instanceof Error ? smsError.message : String(smsError);
           }
         }
 

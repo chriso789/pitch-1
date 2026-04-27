@@ -206,7 +206,7 @@ Deno.serve(async (req) => {
         results.email = { success: true, id: emailResult.id };
       } catch (emailError) {
         console.error('Email error:', emailError);
-        results.email = { success: false, error: emailError.message };
+        results.email = { success: false, error: emailError instanceof Error ? emailError.message : String(emailError) };
       }
     }
 
@@ -223,7 +223,7 @@ Deno.serve(async (req) => {
         results.sms = { success: true };
       } catch (smsError) {
         console.error('SMS error:', smsError);
-        results.sms = { success: false, error: smsError.message };
+        results.sms = { success: false, error: smsError instanceof Error ? smsError.message : String(smsError) };
       }
     }
 

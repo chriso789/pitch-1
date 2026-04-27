@@ -1357,7 +1357,9 @@ Deno.serve(async (req) => {
     const lead_id = body.lead_id ?? null;
 
     // Compute PDF hash for deduplication
-    const hashBuffer = await crypto.subtle.digest('SHA-256', pdfBytes);
+    const hashInput = new ArrayBuffer(pdfBytes.byteLength);
+    new Uint8Array(hashInput).set(pdfBytes);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', hashInput);
     const hashArray = Array.from(new Uint8Array(hashBuffer));
     const pdfHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     console.log("roof-report-ingest: Computed PDF hash:", pdfHash.substring(0, 16) + "...");

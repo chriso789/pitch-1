@@ -109,7 +109,9 @@ function normalizeCarrier(carrier: string | undefined): string | undefined {
 
 // Compute SHA-256 hash
 async function computeHash(data: Uint8Array): Promise<string> {
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashInput = new ArrayBuffer(data.byteLength);
+  new Uint8Array(hashInput).set(data);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', hashInput);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
@@ -125,7 +127,7 @@ function formatStorageError(err: unknown): string {
 }
 
 async function downloadPdfWithRetry(
-  supabase: ReturnType<typeof createClient>,
+  supabase: any,
   path: string,
   opts: { attempts?: number; baseDelayMs?: number } = {}
 ): Promise<Uint8Array> {
