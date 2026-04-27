@@ -85,7 +85,9 @@ async function decodeRaster(buf: Uint8Array, contentType?: string | null): Promi
 
   if (fmt === 'jpeg') {
     const jpeg = await import('npm:jpeg-js@0.4.4')
-    const decoded = (jpeg as any).decode(buf, { useTArray: true })
+    const decode = (jpeg as any).decode || (jpeg as any).default?.decode
+    if (!decode) throw new Error('JPEG decoder unavailable')
+    const decoded = decode(buf, { useTArray: true })
     if (!decoded?.width || !decoded?.height || !decoded?.data) throw new Error('JPEG decode failed')
     return { width: decoded.width, height: decoded.height, data: decoded.data as Uint8Array }
   }
