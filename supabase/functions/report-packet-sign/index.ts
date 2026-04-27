@@ -288,7 +288,7 @@ Deno.serve(async (req) => {
 
           // Save signed PDF
           const signedPdfBytes = await pdfDoc.save();
-          const hashBuffer = await crypto.subtle.digest('SHA-256', signedPdfBytes);
+          const hashBuffer = await crypto.subtle.digest('SHA-256', signedPdfBytes as BufferSource);
           signedPdfHash = Array.from(new Uint8Array(hashBuffer))
             .map(b => b.toString(16).padStart(2, '0'))
             .join('');

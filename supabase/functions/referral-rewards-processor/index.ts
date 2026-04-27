@@ -64,7 +64,7 @@ Deno.serve(async (req: Request) => {
             console.error(`[referral-rewards-processor] Failed to process reward ${reward.id}:`, err);
             await supabase
               .from('referral_rewards')
-              .update({ status: 'failed', error_message: err.message })
+              .update({ status: 'failed', error_message: err instanceof Error ? err.message : String(err) })
               .eq('id', reward.id);
           }
         }

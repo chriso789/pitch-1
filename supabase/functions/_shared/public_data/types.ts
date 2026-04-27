@@ -37,6 +37,11 @@ export type PublicPropertyResult = {
   mortgage_lender?: string;
   assessed_value?: number;
 
+  contact_phones?: string[];
+  contact_emails?: string[];
+  contact_age?: number | null;
+  contact_relatives?: string[];
+
   confidence_score: number;
   sources: Record<string, any>;
   raw: Record<string, any>;

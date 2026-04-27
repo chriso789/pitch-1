@@ -34,19 +34,19 @@ Deno.serve(async (req) => {
           .select("contract_amount, created_at, status")
           .eq("tenant_id", tenant_id);
 
-        const revenueMTD = revenueData?.filter(p => 
+        const revenueMTD = revenueData?.filter((p: any) => 
           new Date(p.created_at) >= startOfMonth && p.status === 'completed'
-        ).reduce((sum, p) => sum + (p.contract_amount || 0), 0) || 0;
+        ).reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0) || 0;
 
-        const revenueYTD = revenueData?.filter(p => 
+        const revenueYTD = revenueData?.filter((p: any) => 
           new Date(p.created_at) >= startOfYear && p.status === 'completed'
-        ).reduce((sum, p) => sum + (p.contract_amount || 0), 0) || 0;
+        ).reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0) || 0;
 
-        const revenueLastMonth = revenueData?.filter(p => 
+        const revenueLastMonth = revenueData?.filter((p: any) => 
           new Date(p.created_at) >= lastMonth && 
           new Date(p.created_at) <= endOfLastMonth && 
           p.status === 'completed'
-        ).reduce((sum, p) => sum + (p.contract_amount || 0), 0) || 0;
+        ).reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0) || 0;
 
         // Get lead metrics
         const { data: leads, count: totalLeads } = await supabase
@@ -173,14 +173,14 @@ Deno.serve(async (req) => {
           dailyData[key] = { revenue: 0, leads: 0, conversions: 0 };
         }
 
-        projects?.forEach(p => {
+        projects?.forEach((p: any) => {
           const key = new Date(p.created_at).toISOString().split("T")[0];
           if (dailyData[key]) {
             dailyData[key].revenue += p.contract_amount || 0;
           }
         });
 
-        leads?.forEach(l => {
+        leads?.forEach((l: any) => {
           const key = new Date(l.created_at).toISOString().split("T")[0];
           if (dailyData[key]) {
             dailyData[key].leads += 1;
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
           deals_closed: number 
         }> = {};
 
-        sales?.forEach(sale => {
+        sales?.forEach((sale: any) => {
           if (sale.assigned_to && sale.profiles) {
             const profile = Array.isArray(sale.profiles) ? sale.profiles[0] : sale.profiles;
             if (!userStats[sale.assigned_to]) {

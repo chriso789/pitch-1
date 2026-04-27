@@ -653,7 +653,7 @@ Deno.serve(async (req) => {
 
     // Save merged PDF
     const pdfBytes = await mergedPdf.save();
-    const pdfHash = await crypto.subtle.digest('SHA-256', pdfBytes);
+    const pdfHash = await crypto.subtle.digest('SHA-256', pdfBytes as BufferSource);
     const hashHex = Array.from(new Uint8Array(pdfHash)).map(b => b.toString(16).padStart(2, '0')).join('');
 
     // Upload to storage

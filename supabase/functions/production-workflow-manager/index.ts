@@ -278,7 +278,7 @@ async function advanceStage(supabase: any, profile: any, jobId?: string, project
     workflow, 
     workflow.current_stage, 
     newStage,
-    userId
+    userId ?? ''
   );
 
   if (!gateValidationResult.passed && !bypassGate) {
