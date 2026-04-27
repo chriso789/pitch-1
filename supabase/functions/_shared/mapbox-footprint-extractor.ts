@@ -26,160 +26,30 @@ export interface MapboxFootprintResult {
  * Fetch high-resolution building footprint from Mapbox Tilequery API
  * Uses the mapbox.mapbox-streets-v8 tileset which includes building footprints
  */
+// IMPORTANT:
+// Mapbox Tilequery does NOT return full polygon rings for vector features.
+// Per Mapbox docs, the response geometry is always a Point (closest-point);
+// the original geometry type is exposed only in `properties.tilequery.geometry`.
+// Therefore this helper cannot be used as an authoritative polygon footprint
+// source. It is intentionally disabled to stop the AI Measurement pipeline
+// from depending on a structurally impossible API behavior.
 export async function fetchMapboxVectorFootprint(
-  lat: number,
-  lng: number,
-  accessToken: string,
-  options?: {
+  _lat: number,
+  _lng: number,
+  _accessToken: string,
+  _options?: {
     radius?: number;
     tilesetId?: string;
   }
 ): Promise<MapboxFootprintResult> {
-  const tileset = options?.tilesetId || 'mapbox.mapbox-streets-v8';
-  const layers = 'building';
-  const radius = options?.radius || 25; // meters
-  
-  try {
-    // CRITICAL: Add geometry=polygon to request polygon geometries instead of centroids
-    // Also increase limit for better building coverage
-    const url = `https://api.mapbox.com/v4/${tileset}/tilequery/${lng},${lat}.json?radius=${radius}&layers=${layers}&limit=50&geometry=polygon&access_token=${accessToken}`;
-    
-    console.log(`🗺️ Mapbox Tilequery v2: ${lat.toFixed(6)}, ${lng.toFixed(6)} (radius=${radius}m, geometry=polygon)`);
-    
-    const response = await fetch(url);
-    
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.warn(`⚠️ Mapbox Tilequery failed: ${response.status} - ${errorText}`);
-      return {
-        footprint: null,
-        error: `Mapbox API error: ${response.status}`,
-        fallbackReason: 'api_error'
-      };
-    }
-    
-    const data = await response.json();
-    
-    if (!data.features || data.features.length === 0) {
-      console.log('⚠️ No building features found in Mapbox response');
-      return {
-        footprint: null,
-        fallbackReason: 'no_buildings_found'
-      };
-    }
-    
-    // Log geometry type distribution for debugging
-    const geomTypes: Record<string, number> = {};
-    data.features.forEach((f: any) => {
-      const gtype = f.geometry?.type || 'unknown';
-      geomTypes[gtype] = (geomTypes[gtype] || 0) + 1;
-    });
-    console.log(`📊 Mapbox features: ${data.features.length} total, types: ${JSON.stringify(geomTypes)}`);
-    
-    // Extract polygon rings from both Polygon and MultiPolygon features
-    type BuildingCandidate = {
-      ring: XY[];
-      distance: number;
-      containsPoint: boolean;
-      areaM2: number;
-      buildingId?: string;
-    };
-    
-    const candidates: BuildingCandidate[] = [];
-    const targetPoint: XY = [lng, lat];
-    
-    for (const feature of data.features) {
-      const geom = feature.geometry;
-      const distance = feature.properties?.tilequery?.distance || 0;
-      const buildingId = feature.properties?.id?.toString();
-      
-      if (geom?.type === 'Polygon' && geom.coordinates?.[0]?.length >= 4) {
-        const ring = geom.coordinates[0] as XY[];
-        const closed = ensureClosed(ring);
-        candidates.push({
-          ring: closed,
-          distance,
-          containsPoint: pointInPolygon(targetPoint, closed),
-          areaM2: calculatePolygonAreaM2(closed),
-          buildingId
-        });
-      } else if (geom?.type === 'MultiPolygon' && geom.coordinates?.length > 0) {
-        // Handle MultiPolygon - extract each polygon and evaluate separately
-        for (const polygonCoords of geom.coordinates) {
-          if (polygonCoords?.[0]?.length >= 4) {
-            const ring = polygonCoords[0] as XY[];
-            const closed = ensureClosed(ring);
-            candidates.push({
-              ring: closed,
-              distance,
-              containsPoint: pointInPolygon(targetPoint, closed),
-              areaM2: calculatePolygonAreaM2(closed),
-              buildingId
-            });
-          }
-        }
-      }
-    }
-    
-    console.log(`📐 Mapbox candidates: ${candidates.length} polygons extracted`);
-    
-    if (candidates.length === 0) {
-      // Retry with larger radius if no candidates found
-      if (radius < 100) {
-        console.log(`🔄 No polygons at radius ${radius}m, retrying with 100m...`);
-        return fetchMapboxVectorFootprint(lat, lng, accessToken, { ...options, radius: 100 });
-      }
-      return {
-        footprint: null,
-        fallbackReason: 'no_polygon_buildings'
-      };
-    }
-    
-    // Prioritize: 1) contains point, 2) smallest distance, 3) reasonable area (100-1000 m²)
-    candidates.sort((a, b) => {
-      // First: prefer containing the point
-      if (a.containsPoint !== b.containsPoint) return a.containsPoint ? -1 : 1;
-      // Second: prefer closer buildings
-      if (Math.abs(a.distance - b.distance) > 5) return a.distance - b.distance;
-      // Third: prefer residential-sized buildings (100-500 m²)
-      const aResidential = a.areaM2 >= 100 && a.areaM2 <= 500;
-      const bResidential = b.areaM2 >= 100 && b.areaM2 <= 500;
-      if (aResidential !== bResidential) return aResidential ? -1 : 1;
-      return 0;
-    });
-    
-    const best = candidates[0];
-    
-    // Confidence based on distance, containment, and area
-    let confidence = 0.92;
-    if (!best.containsPoint) confidence -= 0.1;
-    if (best.distance > 10) confidence -= 0.05;
-    if (best.distance > 20) confidence -= 0.1;
-    if (best.areaM2 < 50) confidence -= 0.15; // Very small building, might be wrong
-    if (best.areaM2 > 2000) confidence -= 0.05; // Very large, might be commercial
-    confidence = Math.max(0.5, Math.min(0.98, confidence));
-    
-    console.log(`✅ Mapbox footprint: ${best.ring.length} vertices, ${Math.round(best.areaM2)}m² (${Math.round(best.areaM2 * 10.764)}sqft), distance=${best.distance.toFixed(1)}m, containsPoint=${best.containsPoint}, confidence ${(confidence * 100).toFixed(0)}%`);
-    
-    return {
-      footprint: {
-        coordinates: best.ring,
-        source: 'mapbox_vector',
-        confidence,
-        buildingId: best.buildingId,
-        areaM2: best.areaM2,
-        vertexCount: best.ring.length
-      }
-    };
-    
-  } catch (error) {
-    console.error('❌ Mapbox footprint fetch error:', error);
-    return {
-      footprint: null,
-      error: String(error),
-      fallbackReason: 'fetch_error'
-    };
-  }
+  console.warn(
+    '[mapbox-footprint-extractor] disabled: Tilequery is point-only and cannot provide building polygon rings'
+  );
+  return {
+    footprint: null,
+    error: 'Mapbox Tilequery cannot provide full building polygon geometry for this extractor.',
+    fallbackReason: 'tilequery_returns_points_only',
+  };
 }
 
 /**
