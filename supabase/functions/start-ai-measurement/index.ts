@@ -1334,9 +1334,16 @@ function detectRidges(
   dH: number,
   scaleX: number,
   scaleY: number,
+  gx?: Int16Array,
+  gy?: Int16Array,
+  /** Optional sub-region mask (downsampled grid). When provided, ridge search
+   *  is restricted to pixels where mask[i] === 1 — used for RECURSIVE ridge
+   *  detection inside individual roof planes after the primary split. */
+  regionMask?: Uint8Array,
 ): RidgeLine[] {
-  // Erode blob slightly so the outline edges (which dominate Sobel response)
-  // are excluded — we want INTERIOR ridges, not the perimeter.
+  // Erode blob (or region mask) so the outline edges (which dominate Sobel
+  // response) are excluded — we want INTERIOR ridges, not the perimeter.
+  const baseMask = regionMask ?? blob
   const inside = new Uint8Array(dW * dH)
   const erodeR = 3
   for (let y = erodeR; y < dH - erodeR; y++) {
@@ -1344,7 +1351,7 @@ function detectRidges(
       let allIn = true
       for (let dy = -erodeR; dy <= erodeR && allIn; dy++) {
         for (let dx = -erodeR; dx <= erodeR && allIn; dx++) {
-          if (!blob[(y + dy) * dW + (x + dx)]) allIn = false
+          if (!baseMask[(y + dy) * dW + (x + dx)]) allIn = false
         }
       }
       if (allIn) inside[y * dW + x] = 1
@@ -1390,12 +1397,11 @@ function detectRidges(
     }
   }
 
-  // Vote threshold: a real ridge should be at least ~15% of the building's
-  // shortest axis. The blob's bounding box gives us an estimate.
+  // Vote threshold relative to building short axis.
   let bbMinX = dW, bbMinY = dH, bbMaxX = 0, bbMaxY = 0
   for (let y = 0; y < dH; y++) {
     for (let x = 0; x < dW; x++) {
-      if (blob[y * dW + x]) {
+      if (baseMask[y * dW + x]) {
         if (x < bbMinX) bbMinX = x
         if (y < bbMinY) bbMinY = y
         if (x > bbMaxX) bbMaxX = x
@@ -1404,6 +1410,7 @@ function detectRidges(
     }
   }
   const bbShort = Math.min(bbMaxX - bbMinX, bbMaxY - bbMinY)
+  const bbLong = Math.max(bbMaxX - bbMinX, bbMaxY - bbMinY)
   const VOTE_MIN = Math.max(20, (bbShort * 0.4) | 0)
 
   // Find peaks with non-maximum suppression.
@@ -1413,7 +1420,6 @@ function detectRidges(
     for (let r = 0; r < RHO_BINS; r++) {
       const v = acc[t * RHO_BINS + r]
       if (v < VOTE_MIN) continue
-      // Local max in 5x5 neighbourhood
       let isMax = true
       for (let dt = -2; dt <= 2 && isMax; dt++) {
         for (let dr = -3; dr <= 3 && isMax; dr++) {
@@ -1428,46 +1434,119 @@ function detectRidges(
     }
   }
   peaks.sort((a, b) => b.v - a.v)
-  const top = peaks.slice(0, 6)
 
-  // For each peak, project supporting interior-edge pixels onto the line
-  // and take the [min, max] along the line direction as the segment.
-  const ridges: RidgeLine[] = []
+  // ── PEAK CLUSTERING: merge near-collinear peaks (theta ±5°, rho ±diag*0.04)
+  // into a single representative (the strongest) before segment extraction.
+  const RHO_CLUSTER = Math.max(8, (diag * 0.04) | 0)
+  const THETA_CLUSTER = 3 // bins (≈6°)
+  const clustered: Peak[] = []
+  for (const p of peaks) {
+    const dup = clustered.find((c) => {
+      let dt = Math.abs(c.t - p.t)
+      if (dt > THETA_BINS / 2) dt = THETA_BINS - dt
+      return dt <= THETA_CLUSTER && Math.abs(c.r - p.r) <= RHO_CLUSTER
+    })
+    if (!dup) clustered.push(p)
+  }
+  const top = clustered.slice(0, 8)
+
+  // For each peak, project supporting interior-edge pixels onto the line, then
+  // (a) filter by gradient-direction perpendicularity and (b) compute
+  // continuity score along the segment.
+  type Scored = { ridge: RidgeLine; score: number; segLen: number }
+  const scored: Scored[] = []
   for (const pk of top) {
     const ang = (pk.t / THETA_BINS) * Math.PI
     const c = Math.cos(ang), s = Math.sin(ang)
     const rho = pk.r - diag
-    // Direction along the line is (-sin, cos)
     const ux = -s, uy = c
     let lo = Infinity, hi = -Infinity
     let loPt: Pt | null = null, hiPt: Pt | null = null
     const PERP_TOL = 1.5
+    const supports: number[] = [] // along-line positions for continuity scoring
+
+    // Edge gradient direction should be perpendicular to ridge direction:
+    // gradient . ridgeDirection ≈ 0 → |gradient . (cos a, sin a)| ≈ |gradient|.
+    // We accept edges where the angle between gradient and the line normal
+    // (cos a, sin a) is within ±25°.
     for (const p of interiorEdge) {
       const dPerp = Math.abs(p.x * c + p.y * s - rho)
       if (dPerp > PERP_TOL) continue
+
+      if (gx && gy) {
+        const i = p.y * dW + p.x
+        const ggx = gx[i], ggy = gy[i]
+        const gMag = Math.hypot(ggx, ggy)
+        if (gMag > 1e-3) {
+          // Component of gradient along the line normal (cos a, sin a).
+          const dot = Math.abs(ggx * c + ggy * s) / gMag
+          // dot ≈ 1 means gradient ⟂ ridge (good). Reject if dot < cos(25°).
+          if (dot < 0.906) continue
+        }
+      }
+
       const along = p.x * ux + p.y * uy
+      supports.push(along)
       if (along < lo) { lo = along; loPt = p }
       if (along > hi) { hi = along; hiPt = p }
     }
     if (!loPt || !hiPt) continue
     const segLen = hi - lo
-    // Reject ridge candidates that are too short (< 25% of building short axis).
     if (segLen < bbShort * 0.25) continue
-    // Reject candidates whose midpoint is outside the blob (ridges must be inside).
+
+    // Midpoint must be inside the region.
     const mx = (loPt.x + hiPt.x) / 2 | 0
     const my = (loPt.y + hiPt.y) / 2 | 0
-    if (mx < 0 || my < 0 || mx >= dW || my >= dH || !blob[my * dW + mx]) continue
+    if (mx < 0 || my < 0 || mx >= dW || my >= dH || !baseMask[my * dW + mx]) continue
 
-    ridges.push({
-      a: { x: loPt.x * scaleX, y: loPt.y * scaleY },
-      b: { x: hiPt.x * scaleX, y: hiPt.y * scaleY },
-      votes: pk.v,
+    // ── RIDGE VALIDATION: length / continuity / symmetry scoring.
+    const lengthScore = Math.min(1, segLen / Math.max(1, bbLong * 0.6))
+
+    // Continuity: bin supporting positions into 12 buckets along [lo,hi] and
+    // measure how many buckets are populated. Real ridges have continuous
+    // coverage; noise lines have sparse spikes.
+    const BUCKETS = 12
+    const filled = new Uint8Array(BUCKETS)
+    const span = Math.max(1e-3, hi - lo)
+    for (const a of supports) {
+      const b = Math.min(BUCKETS - 1, Math.max(0, ((a - lo) / span * BUCKETS) | 0))
+      filled[b] = 1
+    }
+    let filledCount = 0
+    for (let b = 0; b < BUCKETS; b++) if (filled[b]) filledCount++
+    const continuityScore = filledCount / BUCKETS
+
+    // Symmetry: how balanced is support density in the first vs. second half.
+    let firstHalf = 0, secondHalf = 0
+    const mid = (lo + hi) / 2
+    for (const a of supports) (a < mid ? firstHalf++ : secondHalf++)
+    const symMin = Math.min(firstHalf, secondHalf)
+    const symMax = Math.max(1, Math.max(firstHalf, secondHalf))
+    const symmetryScore = symMin / symMax
+
+    const score =
+      0.45 * lengthScore + 0.35 * continuityScore + 0.20 * symmetryScore
+
+    if (score < 0.55) continue
+
+    scored.push({
+      ridge: {
+        a: { x: loPt.x * scaleX, y: loPt.y * scaleY },
+        b: { x: hiPt.x * scaleX, y: hiPt.y * scaleY },
+        // Encode score into votes (× peak votes) so downstream sorting still works.
+        votes: Math.round(pk.v * (0.5 + score)),
+      },
+      score,
+      segLen,
     })
   }
 
-  // Suppress nearly-collinear duplicates (theta within 6°, rho within 5% of diag).
+  scored.sort((a, b) => b.score - a.score)
+
+  // Suppress nearly-collinear duplicates (final pass on image-space segments).
   const out: RidgeLine[] = []
-  for (const r of ridges) {
+  for (const sc of scored) {
+    const r = sc.ridge
     const dx = r.b.x - r.a.x, dy = r.b.y - r.a.y
     const ang = Math.atan2(dy, dx)
     let dup = false
@@ -1476,7 +1555,6 @@ function detectRidges(
       const oAng = Math.atan2(oy, ox)
       const dAng = Math.abs(((ang - oAng + Math.PI * 1.5) % Math.PI) - Math.PI / 2)
       if (dAng < (6 * Math.PI) / 180) {
-        // similar orientation; check distance between midpoints
         const mxA = (r.a.x + r.b.x) / 2, myA = (r.a.y + r.b.y) / 2
         const mxB = (o.a.x + o.b.x) / 2, myB = (o.a.y + o.b.y) / 2
         if (Math.hypot(mxA - mxB, myA - myB) < Math.max(dW, dH) * 0.06 * Math.max(scaleX, scaleY)) {
@@ -1487,9 +1565,89 @@ function detectRidges(
     if (!dup) out.push(r)
   }
 
-  console.log(`[ridge-detect] found ${out.length} ridge candidates (votes: ${out.map((r) => r.votes).join(',')})`)
+  console.log(
+    `[ridge-detect] ${out.length} validated ridges (peaks=${peaks.length} clustered=${clustered.length} scored=${scored.length})`,
+  )
   return out
 }
+
+/**
+ * Recursive ridge refinement: after the primary footprint split, run ridge
+ * detection INSIDE each sub-plane to recover secondary ridges (hips, smaller
+ * spines). Returns merged image-pixel-space ridges (primary + secondary).
+ */
+function detectRidgesRecursive(
+  primaryRidges: RidgeLine[],
+  subPlanesPx: Pt[][],
+  mag: Uint8Array,
+  blob: Uint8Array,
+  gx: Int16Array,
+  gy: Int16Array,
+  dW: number,
+  dH: number,
+  scaleX: number,
+  scaleY: number,
+): RidgeLine[] {
+  if (subPlanesPx.length < 2) return primaryRidges
+  const merged: RidgeLine[] = [...primaryRidges]
+  const invSx = 1 / scaleX, invSy = 1 / scaleY
+
+  for (const planePx of subPlanesPx) {
+    // Only attempt secondary detection on planes large enough to matter.
+    const areaPx = shoelaceAreaPx(planePx)
+    if (areaPx < 600) continue
+
+    // Rasterize plane polygon (in downsampled grid) → mask.
+    const dsPoly = planePx.map((p) => ({ x: p.x * invSx, y: p.y * invSy }))
+    let minX = dW, minY = dH, maxX = 0, maxY = 0
+    for (const p of dsPoly) {
+      if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x
+      if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y
+    }
+    minX = Math.max(0, Math.floor(minX)); minY = Math.max(0, Math.floor(minY))
+    maxX = Math.min(dW - 1, Math.ceil(maxX)); maxY = Math.min(dH - 1, Math.ceil(maxY))
+    const mask = new Uint8Array(dW * dH)
+    for (let y = minY; y <= maxY; y++) {
+      for (let x = minX; x <= maxX; x++) {
+        if (!blob[y * dW + x]) continue
+        if (pointInPolygon({ x, y }, dsPoly)) mask[y * dW + x] = 1
+      }
+    }
+
+    const secondary = detectRidges(mag, blob, dW, dH, scaleX, scaleY, gx, gy, mask)
+    for (const r of secondary) {
+      // De-duplicate against existing.
+      const dx = r.b.x - r.a.x, dy = r.b.y - r.a.y
+      const ang = Math.atan2(dy, dx)
+      const dup = merged.some((o) => {
+        const oAng = Math.atan2(o.b.y - o.a.y, o.b.x - o.a.x)
+        const dAng = Math.abs(((ang - oAng + Math.PI * 1.5) % Math.PI) - Math.PI / 2)
+        if (dAng > (8 * Math.PI) / 180) return false
+        const mxA = (r.a.x + r.b.x) / 2, myA = (r.a.y + r.b.y) / 2
+        const mxB = (o.a.x + o.b.x) / 2, myB = (o.a.y + o.b.y) / 2
+        return Math.hypot(mxA - mxB, myA - myB) < Math.max(dW, dH) * 0.06 * Math.max(scaleX, scaleY)
+      })
+      if (!dup) merged.push(r)
+    }
+  }
+  console.log(`[ridge-detect][recursive] primary=${primaryRidges.length} → merged=${merged.length}`)
+  return merged
+}
+
+/** Standard ray-casting point-in-polygon test (pixel coords). */
+function pointInPolygon(p: Pt, poly: Pt[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y
+    const xj = poly[j].x, yj = poly[j].y
+    const intersect =
+      yi > p.y !== yj > p.y &&
+      p.x < ((xj - xi) * (p.y - yi)) / (yj - yi + 1e-12) + xi
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
 
 /** Build a single roof plane from an extracted footprint polygon. */
 function planeFromFootprint(
