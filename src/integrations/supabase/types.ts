@@ -20111,6 +20111,60 @@ export type Database = {
           },
         ]
       }
+      measurement_accuracy_snapshots: {
+        Row: {
+          algorithm_version: string | null
+          auto_ship_count: number
+          auto_ship_rate: number | null
+          avg_area_error_pct: number | null
+          avg_eave_error_pct: number | null
+          avg_pitch_error_deg: number | null
+          avg_ridge_error_pct: number | null
+          created_at: string
+          id: string
+          per_class_pass_rates: Json | null
+          reject_count: number
+          review_required_count: number
+          snapshot_date: string
+          tenant_id: string | null
+          total_measurements: number
+        }
+        Insert: {
+          algorithm_version?: string | null
+          auto_ship_count?: number
+          auto_ship_rate?: number | null
+          avg_area_error_pct?: number | null
+          avg_eave_error_pct?: number | null
+          avg_pitch_error_deg?: number | null
+          avg_ridge_error_pct?: number | null
+          created_at?: string
+          id?: string
+          per_class_pass_rates?: Json | null
+          reject_count?: number
+          review_required_count?: number
+          snapshot_date?: string
+          tenant_id?: string | null
+          total_measurements?: number
+        }
+        Update: {
+          algorithm_version?: string | null
+          auto_ship_count?: number
+          auto_ship_rate?: number | null
+          avg_area_error_pct?: number | null
+          avg_eave_error_pct?: number | null
+          avg_pitch_error_deg?: number | null
+          avg_ridge_error_pct?: number | null
+          created_at?: string
+          id?: string
+          per_class_pass_rates?: Json | null
+          reject_count?: number
+          review_required_count?: number
+          snapshot_date?: string
+          tenant_id?: string | null
+          total_measurements?: number
+        }
+        Relationships: []
+      }
       measurement_accuracy_tracking: {
         Row: {
           ai_hip_ft: number | null
@@ -21301,6 +21355,69 @@ export type Database = {
           tenant_id?: string
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      measurement_learning_events: {
+        Row: {
+          area_error_pct: number | null
+          created_at: string
+          eave_error_pct: number | null
+          event_type: string
+          gate_decision: string | null
+          hip_error_pct: number | null
+          id: string
+          measurement_id: string | null
+          payload: Json | null
+          per_class_errors: Json | null
+          pitch_error_deg: number | null
+          rake_error_pct: number | null
+          ridge_error_pct: number | null
+          source: string | null
+          tenant_id: string | null
+          used_for_training: boolean | null
+          valley_error_pct: number | null
+          weighted_score: number | null
+        }
+        Insert: {
+          area_error_pct?: number | null
+          created_at?: string
+          eave_error_pct?: number | null
+          event_type: string
+          gate_decision?: string | null
+          hip_error_pct?: number | null
+          id?: string
+          measurement_id?: string | null
+          payload?: Json | null
+          per_class_errors?: Json | null
+          pitch_error_deg?: number | null
+          rake_error_pct?: number | null
+          ridge_error_pct?: number | null
+          source?: string | null
+          tenant_id?: string | null
+          used_for_training?: boolean | null
+          valley_error_pct?: number | null
+          weighted_score?: number | null
+        }
+        Update: {
+          area_error_pct?: number | null
+          created_at?: string
+          eave_error_pct?: number | null
+          event_type?: string
+          gate_decision?: string | null
+          hip_error_pct?: number | null
+          id?: string
+          measurement_id?: string | null
+          payload?: Json | null
+          per_class_errors?: Json | null
+          pitch_error_deg?: number | null
+          rake_error_pct?: number | null
+          ridge_error_pct?: number | null
+          source?: string | null
+          tenant_id?: string | null
+          used_for_training?: boolean | null
+          valley_error_pct?: number | null
+          weighted_score?: number | null
         }
         Relationships: []
       }
