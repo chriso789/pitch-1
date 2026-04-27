@@ -661,6 +661,14 @@ export function UnifiedMeasurementPanel({
   const [isSavingDirect, setIsSavingDirect] = useState(false);
   const [showAiReport, setShowAiReport] = useState(false);
   const handleSaveAiMeasurementDirect = async (measurement: any) => {
+    if (!hasCustomerSafeGeometry(measurement)) {
+      toast({
+        title: 'Measurement not saved',
+        description: 'This AI measurement did not pass QA and cannot be saved to estimates.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsSavingDirect(true);
     try {
       const { data: entry } = await supabase
@@ -1561,6 +1569,14 @@ function MeasurementHistorySection({
   };
 
   const handleSaveAiMeasurement = async (measurement: MeasurementHistorySectionProps['aiMeasurements'][0]) => {
+    if (!hasCustomerSafeGeometry(measurement)) {
+      toast({
+        title: 'Measurement not saved',
+        description: 'This AI measurement did not pass QA and cannot be saved to estimates.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsSaving(measurement.id);
     try {
       const { data: entry } = await supabase
