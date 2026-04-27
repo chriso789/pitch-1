@@ -120,8 +120,8 @@ const PipelineEntryReview = () => {
 
       // Check for signatures
       // @ts-ignore - Supabase type inference issue
-      const signaturesQuery = await supabase
-        .from('digital_signatures')
+      const signaturesQuery = await (supabase
+        .from('digital_signatures') as any)
         .select('id')
         .eq('pipeline_entry_id', entryId)
         .eq('is_signed', true);

@@ -43,8 +43,8 @@ export const CreateContactDialog = ({
     mutationFn: async () => {
       if (!tenantId) throw new Error('No tenant');
 
-      const { data, error } = await supabase
-        .from('contacts')
+      const { data, error } = await (supabase
+        .from('contacts') as any)
         .insert({
           tenant_id: tenantId,
           first_name: firstName.trim(),

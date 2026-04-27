@@ -107,8 +107,8 @@ export const CreateCompanyFromDemoDialog: React.FC<CreateCompanyFromDemoDialogPr
       }
 
       // 2. Create the default location
-      const { error: locationError } = await supabase
-        .from("locations")
+      const { error: locationError } = await (supabase
+        .from("locations") as any)
         .insert({
           tenant_id: tenant.id,
           name: formData.locationName,

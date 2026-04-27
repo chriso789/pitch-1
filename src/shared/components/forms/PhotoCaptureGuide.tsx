@@ -221,8 +221,8 @@ const PhotoCaptureGuide: React.FC = () => {
         if (uploadError) throw uploadError;
 
         // Save photo record to database
-        const { data: photoRecord, error: dbError } = await supabase
-          .from('documents')
+        const { data: photoRecord, error: dbError } = await (supabase
+          .from('documents') as any)
           .insert({
             tenant_id: user.user.user_metadata?.tenant_id,
             filename: fileName,

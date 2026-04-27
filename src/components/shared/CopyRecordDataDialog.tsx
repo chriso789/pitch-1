@@ -53,8 +53,8 @@ export const CopyRecordDataDialog: React.FC<CopyRecordDataDialogProps> = ({
     if (!searchQuery.trim() || !activeTenantId) return;
     setLoading(true);
 
-    const { data } = await supabase
-      .from('contacts')
+    const { data } = await (supabase
+      .from('contacts') as any)
       .select('id, first_name, last_name, email, phone, address_street, address_city, address_state, address_zip, notes')
       .eq('tenant_id', activeTenantId)
       .or(`first_name.ilike.%${searchQuery}%,last_name.ilike.%${searchQuery}%,email.ilike.%${searchQuery}%,phone.ilike.%${searchQuery}%`)

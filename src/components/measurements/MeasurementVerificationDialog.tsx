@@ -1701,8 +1701,8 @@ export function MeasurementVerificationDialog({
                               // Cast to JSON-compatible format for Supabase
                               const linearFeaturesJson = convertedData.linear_features_wkt as unknown as Record<string, any>[];
                               
-                              const { error: updateError } = await supabase
-                                .from('roof_measurements')
+                              const { error: updateError } = await (supabase
+                                .from('roof_measurements') as any)
                                 .update({
                                   linear_features_wkt: linearFeaturesJson,
                                   linear_features: linearFeaturesJson,
@@ -1838,8 +1838,8 @@ export function MeasurementVerificationDialog({
                           };
                           
                           // Update the roof_measurements record with correct column names
-                          const { error } = await supabase
-                            .from('roof_measurements')
+                          const { error } = await (supabase
+                            .from('roof_measurements') as any)
                             .update({
                               linear_features_wkt: linearFeatures, // Correct column name
                               linear_features: linearFeatures, // Also update legacy column
@@ -1958,8 +1958,8 @@ export function MeasurementVerificationDialog({
                           const mergedFeatures = [...correctedLines, ...eavesRakes];
                           
                           // Update the roof_measurements record
-                          const { error } = await supabase
-                            .from('roof_measurements')
+                          const { error } = await (supabase
+                            .from('roof_measurements') as any)
                             .update({
                               linear_features: mergedFeatures,
                               total_ridge_length: Math.round(totals.ridge_ft),

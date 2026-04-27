@@ -194,8 +194,8 @@ export const useCalcTemplateEditor = (templateId?: string) => {
       if (updates.overhead_percentage !== undefined) updatePayload.overhead_percentage = updates.overhead_percentage;
       if (updates.target_profit_percentage !== undefined) updatePayload.target_profit_percentage = updates.target_profit_percentage;
 
-      const { error } = await supabase
-        .from('estimate_calculation_templates')
+      const { error } = await (supabase
+        .from('estimate_calculation_templates') as any)
         .update(updatePayload)
         .eq('id', template.id);
 

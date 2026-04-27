@@ -160,8 +160,8 @@ export function MeasurementCorrectionSystem({
         const facetId = (value as any).facetId
         const field = key.replace(`facet_${facetId}_`, '')
         
-        const { error: facetError } = await supabase
-          .from('roof_measurement_facets')
+        const { error: facetError } = await (supabase
+          .from('roof_measurement_facets') as any)
           .update({ [field]: (value as any).corrected })
           .eq('id', facetId)
 

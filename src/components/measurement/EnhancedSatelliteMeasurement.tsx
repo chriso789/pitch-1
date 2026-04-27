@@ -199,8 +199,8 @@ export const EnhancedSatelliteMeasurement: React.FC<EnhancedSatelliteMeasurement
     setSaving(true);
     try {
       // Save comprehensive measurements to pipeline_entries
-      const { error } = await supabase
-        .from('pipeline_entries')
+      const { error } = await (supabase
+        .from('pipeline_entries') as any)
         .update({
           roof_area_sq_ft: measurement.adjustedArea,
           metadata: {

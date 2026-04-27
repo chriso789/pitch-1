@@ -122,8 +122,8 @@ export default function AccountsReceivable() {
     queryKey: ['ar-estimates', activeTenantId, projectIds],
     queryFn: async () => {
       if (projectIds.length === 0) return [];
-      const { data, error } = await supabase
-        .from('enhanced_estimates')
+      const { data, error } = await (supabase
+        .from('enhanced_estimates') as any)
         .select('id, pipeline_entry_id, selling_price, material_cost, labor_cost')
         .in('pipeline_entry_id', projectIds);
       if (error) throw error;

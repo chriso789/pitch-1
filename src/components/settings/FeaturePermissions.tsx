@@ -109,8 +109,8 @@ const FeaturePermissions: React.FC = () => {
 
     setSaving(true);
     try {
-      const { error } = await supabase
-        .from('feature_permissions')
+      const { error } = await (supabase
+        .from('feature_permissions') as any)
         .upsert({
           tenant_id: currentUser.tenant_id,
           role: role as any,

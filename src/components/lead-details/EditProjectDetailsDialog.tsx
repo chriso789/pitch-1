@@ -121,8 +121,8 @@ export function EditProjectDetailsDialog({
         },
       };
 
-      const { error } = await supabase
-        .from('pipeline_entries')
+      const { error } = await (supabase
+        .from('pipeline_entries') as any)
         .update(updateData)
         .eq('id', pipelineEntryId);
 

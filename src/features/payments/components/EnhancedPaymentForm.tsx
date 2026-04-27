@@ -38,8 +38,8 @@ export default function EnhancedPaymentForm({
 
     try {
       // Create payment record first
-      const { data: payment, error: paymentError } = await supabase
-        .from("payments")
+      const { data: payment, error: paymentError } = await (supabase
+        .from("payments") as any)
         .insert({
           contact_id: contactId || selectedJob?.contact_id,
           project_id: projectId || selectedJob?.id,

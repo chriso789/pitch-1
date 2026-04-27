@@ -208,8 +208,8 @@ export const ProductionWorkflow: React.FC<ProductionWorkflowProps> = ({
     if (!workflow) return;
 
     try {
-      const { error } = await supabase
-        .from('production_workflows')
+      const { error } = await (supabase
+        .from('production_workflows') as any)
         .update({ 
           [field]: value,
           updated_at: new Date().toISOString()
