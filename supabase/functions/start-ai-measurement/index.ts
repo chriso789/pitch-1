@@ -285,7 +285,10 @@ function planesFromSolar(
 
       return {
         plane_index: idx,
-        source: 'google_solar',
+        // HARD RULE: Solar boundingBox is an axis-aligned rectangle hint, NOT
+        // real facet geometry. Tag it as bbox so the QC gate can refuse to
+        // publish a customer-ready report from it.
+        source: 'google_solar_bbox',
         polygon_px: polyPx,
         polygon_geojson: polyGeo,
         pitch: rise,
@@ -294,7 +297,7 @@ function planesFromSolar(
         area_2d_sqft: area2dSqft,
         pitch_multiplier: pmInfo.pitch_multiplier,
         area_pitch_adjusted_sqft: finalSlopedSqft,
-        confidence: 0.85,
+        confidence: 0.5,
       } as RoofPlane
     })
     .filter(Boolean) as RoofPlane[]
@@ -490,6 +493,42 @@ interface QC {
   details: any
 }
 
+/** Detects axis-aligned 4-corner rectangles. Google Solar boundingBox planes
+ *  are always axis-aligned rectangles — that's the literal "two boxes" tell. */
+function isAxisAlignedRectangle(poly: Pt[]): boolean {
+  if (!poly || poly.length !== 4) return false
+  const [a, b, c, d] = poly
+  const horiz = (p: Pt, q: Pt) => Math.abs(p.y - q.y) < 0.5
+  const vert = (p: Pt, q: Pt) => Math.abs(p.x - q.x) < 0.5
+  return (
+    (horiz(a, b) && vert(b, c) && horiz(c, d) && vert(d, a)) ||
+    (vert(a, b) && horiz(b, c) && vert(c, d) && horiz(d, a))
+  )
+}
+
+/** Structural overlay alignment 0..1: planes inside the image and centered. */
+function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number): number {
+  if (!planes.length || imgW <= 0 || imgH <= 0) return 0
+  let allInside = true
+  let cx = 0, cy = 0, n = 0
+  for (const p of planes) {
+    for (const pt of p.polygon_px) {
+      if (pt.x < 0 || pt.x > imgW || pt.y < 0 || pt.y > imgH) allInside = false
+      cx += pt.x; cy += pt.y; n++
+    }
+  }
+  if (n === 0) return 0
+  cx /= n; cy /= n
+  const dx = Math.abs(cx - imgW / 2) / imgW
+  const dy = Math.abs(cy - imgH / 2) / imgH
+  const offset = Math.sqrt(dx * dx + dy * dy)
+  const centerScore = Math.max(0, 1 - offset / 0.25)
+  const insideScore = allInside ? 1 : 0.4
+  return Math.min(1, 0.6 * centerScore + 0.4 * insideScore)
+}
+
+const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perimeter_fallback'])
+
 function runQualityChecks(input: {
   geocoded: boolean
   geocodeType: string | null
@@ -503,7 +542,14 @@ function runQualityChecks(input: {
   totalAreaSqft: number
   hasPitch: boolean
   hasPlaceholder: boolean
-}): { checks: QC[]; overall: number; status: 'completed' | 'needs_review' | 'needs_manual_measurement' } {
+}): {
+  checks: QC[]
+  overall: number
+  status: 'completed' | 'needs_review' | 'needs_manual_measurement'
+  overlayAlignmentScore: number
+  geometrySourceIsReal: boolean
+  planesAreAllRectangles: boolean
+} {
   const checks: QC[] = []
   const push = (n: string, ok: boolean, s: number, d: any = {}) =>
     checks.push({ check_name: n, passed: ok, score: s, details: d })
@@ -538,14 +584,53 @@ function runQualityChecks(input: {
 
   push('source_is_not_placeholder', !input.hasPlaceholder, input.hasPlaceholder ? 0 : 1)
 
+  // ── HARD GEOMETRY-SOURCE GATE ─────────────────────────────────────
+  // Reject any result whose only geometry comes from Solar bbox / placeholder /
+  // perimeter fallback. These are not real facets.
+  const realPlanes = input.planes.filter((p) => !PLACEHOLDER_SOURCES.has(String(p.source)))
+  const geometrySourceIsReal = realPlanes.length > 0
+  push('geometry_source_is_real', geometrySourceIsReal, geometrySourceIsReal ? 1 : 0, {
+    real_plane_count: realPlanes.length,
+    total_plane_count: input.planes.length,
+  })
+
+  // Reject the literal "two rectangles" case.
+  const rectCount = input.planes.filter((p) => isAxisAlignedRectangle(p.polygon_px)).length
+  const planesAreAllRectangles =
+    input.planes.length > 0 && rectCount / input.planes.length >= 0.5
+  push('planes_are_not_all_rectangles', !planesAreAllRectangles, planesAreAllRectangles ? 0 : 1, {
+    rect_count: rectCount,
+    total: input.planes.length,
+  })
+
+  const overlayAlignmentScore = computeOverlayAlignment(input.planes, input.imgW, input.imgH)
+  push(
+    'overlay_alignment_score',
+    overlayAlignmentScore >= 0.75,
+    overlayAlignmentScore,
+    { score: overlayAlignmentScore, threshold: 0.75 },
+  )
+
   const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
   let status: 'completed' | 'needs_review' | 'needs_manual_measurement'
-  if (input.hasPlaceholder || !input.calibrated || !input.mapboxOk || input.planes.length === 0)
+  if (
+    input.hasPlaceholder ||
+    !input.calibrated ||
+    !input.mapboxOk ||
+    input.planes.length === 0 ||
+    !geometrySourceIsReal ||
+    planesAreAllRectangles ||
+    overlayAlignmentScore < 0.75
+  ) {
     status = 'needs_manual_measurement'
-  else if (overall >= 0.8) status = 'completed'
-  else if (overall >= 0.6) status = 'needs_review'
-  else status = 'needs_manual_measurement'
-  return { checks, overall, status }
+  } else if (overall >= 0.85 && overlayAlignmentScore >= 0.85) {
+    status = 'completed'
+  } else if (overall >= 0.65) {
+    status = 'needs_review'
+  } else {
+    status = 'needs_manual_measurement'
+  }
+  return { checks, overall, status, overlayAlignmentScore, geometrySourceIsReal, planesAreAllRectangles }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -897,6 +982,39 @@ Deno.serve(async (req) => {
           })),
         )
 
+        // Build a footprint WKT (union hull of all plane geo points) so the
+        // frontend never prints "No WKT geometry available".
+        let footprintWkt: string | null = null
+        try {
+          const allGeo: GeoPt[] = []
+          for (const p of planes) {
+            for (const g of (p.polygon_geojson as GeoPt[]) || []) allGeo.push(g)
+          }
+          if (allGeo.length >= 3) {
+            // Simple convex-hull-ish: order points around centroid (good enough
+            // for a coarse property footprint diagnostic — not load-bearing).
+            const cx = allGeo.reduce((s, p) => s + p.lng, 0) / allGeo.length
+            const cy = allGeo.reduce((s, p) => s + p.lat, 0) / allGeo.length
+            const ordered = [...allGeo].sort(
+              (a, b) => Math.atan2(a.lat - cy, a.lng - cx) - Math.atan2(b.lat - cy, b.lng - cx),
+            )
+            const ring = [...ordered, ordered[0]]
+              .map((p) => `${p.lng} ${p.lat}`)
+              .join(', ')
+            footprintWkt = `POLYGON((${ring}))`
+          }
+        } catch (_e) { /* non-fatal */ }
+
+        const planeSources = Array.from(new Set(planes.map((p) => String(p.source))))
+        const geometrySource =
+          planeSources.length === 0
+            ? 'none'
+            : planeSources.every((s) => PLACEHOLDER_SOURCES.has(s))
+            ? 'google_solar_bbox'
+            : planeSources.length === 1
+            ? planeSources[0]
+            : 'mixed'
+
         const reportJson = {
           engine: ENGINE_VERSION,
           generated_at: new Date().toISOString(),
@@ -928,6 +1046,12 @@ Deno.serve(async (req) => {
           quality_checks: qc.checks,
           overall_score: qc.overall,
           final_status: qc.status,
+          // ── Hard-gate geometry provenance fields (consumed by frontend & PDF function) ──
+          geometry_source: geometrySource,
+          overlay_alignment_score: qc.overlayAlignmentScore,
+          is_placeholder: hasPlaceholder || !qc.geometrySourceIsReal,
+          planes_are_all_rectangles: qc.planesAreAllRectangles,
+          footprint_wkt: footprintWkt,
         }
 
         await supa.from('ai_measurement_results').insert({

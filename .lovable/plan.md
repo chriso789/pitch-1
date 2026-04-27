@@ -1,106 +1,126 @@
-## Goal
+## Three implementation items to finish
 
-Transform PITCH AI Measurement reports into true EagleView-style 6-page reports rendered exclusively from real measured roof geometry. Stop publishing "two generic rectangles" diagrams generated from Google Solar bounding boxes. Keep the same single entry point (Lead/Project → AI Measurements button → `useMeasurementJob` → `start-ai-measurement`).
+This is a focused implementation plan — no new buttons, no new measurement system, no U-Net dependency, no Gemini fallback. Only the three items requested.
 
-## Root cause (confirmed)
+---
 
-In `supabase/functions/start-ai-measurement/index.ts`:
-- `planesFromSolar()` converts each Google Solar `roofSegmentStats[].boundingBox` into a 4-corner axis-aligned rectangle (sw/se/ne/nw). That is the source of the "two rectangles" output.
-- `edgesFromPlanes()` then defaults every non-shared perimeter segment to `eave`.
-- The diagram renderer (`_shared/roof-diagram-renderer.ts`) faithfully draws those rectangles — it cannot rescue bad input.
-- The current quality gate counts Solar bbox planes as "real planes", so it does not trip `needs_manual_measurement`.
+### 1. `supabase/functions/start-ai-measurement/index.ts` — demote Solar bbox
 
-There is already an `internal-unet-client.ts` capable of returning a real footprint polygon + classified features (ridge/hip/valley/eave/rake), but `start-ai-measurement` does not call it.
+**Problem:** `planesFromSolar()` (lines 246–301) turns Google Solar `roofSegmentStats[i].boundingBox.{sw,ne}` into 4-corner axis-aligned rectangles and writes them to `ai_roof_planes` as if they were facets. That is the literal source of the "two rectangles" bug for 8359 Huntsman.
 
-## Plan
+**Edits to `start-ai-measurement/index.ts`:**
 
-### 1. Database migration (additive only)
+1. Add helpers above `runQualityChecks`:
+   - `isAxisAlignedRectangle(poly)` — true when polygon is a 4-pt AA rectangle (Solar bbox tell).
+   - `computeOverlayAlignment(planes, imgW, imgH)` — returns 0–1 score (centered + fully-inside the image frame).
 
-Add the columns from the spec to `ai_roof_planes`, `ai_roof_edges`, `ai_measurement_diagrams`, `roof_measurements`. All `add column if not exists`, no destructive changes.
+2. In the plane-build step (line ~776), keep `planesFromSolar()` running **but tag every produced plane** as untrusted: `source: 'google_solar_bbox'` (rename), and continue to use `pitchDegrees`/`azimuthDegrees`/`areaMeters2` only as **hints**.
 
-### 2. Geometry source upgrade — `start-ai-measurement/index.ts`
+3. In `runQualityChecks` add four new checks:
+   - `geometry_source_is_real` — fails when **every** plane's source matches `google_solar_bbox|placeholder|perimeter_fallback`.
+   - `planes_are_not_all_rectangles` — fails when ≥50% of planes pass `isAxisAlignedRectangle`.
+   - `overlay_alignment_score` — score = `computeOverlayAlignment(...)`; passes at ≥ 0.75.
+   - Return the `overlayAlignmentScore` alongside `status`.
 
-Replace the Solar-bbox-as-truth path with a tiered geometry resolver:
+4. Promotion logic becomes:
+   ```
+   if (hasPlaceholder || !calibrated || !mapboxOk || planes.length === 0
+       || !geometrySourceIsReal || planesAreAllRectangles
+       || overlayAlignmentScore < 0.75) → 'needs_manual_measurement'
+   else if (overall ≥ 0.85 && overlayAlignmentScore ≥ 0.85) → 'completed'
+   else if (overall ≥ 0.65) → 'needs_review'
+   else → 'needs_manual_measurement'
+   ```
 
-```text
-Priority 1: Internal U-Net (callInternalUNet)
-  → real footprint_polygon + classified RoofFeatureLine[]
-  → build planes via straight-skeleton / facet-generator (already in _shared)
-  → classified edges come straight from the model
+5. Move the existing `if (qc.status === 'needs_manual_measurement')` short-circuit (line ~1041) **above** the diagram-generation block (line ~967). Result: when geometry is bad, no `ai_measurement_diagrams` rows are inserted, no `roof_measurements` row is inserted, no `measurement_approvals` row is inserted, and `measurement_jobs` is set to `failed` with `error: 'needs_manual_measurement'`.
 
-Priority 2: Mapbox/OSM/Microsoft footprint extractors (already in _shared)
-  → real footprint, then plane decomposition
-  → edges classified via ridge-detector + eave-rake-classifier + hip-valley-detector
+6. Persist the new fields on the row that does get published (when `status` is `completed`/`needs_review`):
+   - `roof_measurements.geometry_quality_score = qc.overall`
+   - `roof_measurements.measurement_quality_score = qc.overall`
+   - `geometry_report_json.overlay_alignment_score = overlayAlignmentScore`
+   - `geometry_report_json.geometry_source = 'google_solar_bbox' | 'mixed' | 'unet'`
+   - `geometry_report_json.is_placeholder = false` (always, by this point)
+   - `geometry_report_json.footprint_wkt` = `POLYGON((lng lat, …))` built from the union hull of all `polygon_geojson` points (so the frontend stops printing "No WKT geometry available").
 
-Solar API: pitch + azimuth HINTS only
-  → never used as polygon geometry
-  → mark plane.source_evidence with solar pitch contribution
+7. Hint-only Solar usage stays: pitch/azimuth/area continue to be read off Solar segments. No new geometry source is added — if Solar bboxes are the only geometry, the job correctly fails to `needs_manual_measurement`. This is intentional and matches the user's hard rule.
 
-If neither P1 nor P2 yields a footprint with ≥3 valid vertices and ≥1 classified non-eave edge, mark every plane is_placeholder=true and force qc.status = 'needs_manual_measurement'.
+**Result for 8359 Huntsman:** Solar returns 2 axis-aligned rectangles → `planes_are_not_all_rectangles` fails → status = `needs_manual_measurement` → no diagrams generated, no PDF, no published roof_measurements. The dialog will show the manual-measurement banner instead of fake rectangles.
+
+---
+
+### 2. `supabase/functions/render-measurement-pdf/index.ts` — new edge function
+
+Generates a clean customer PDF from the SVG pages already saved by `start-ai-measurement` into `ai_measurement_diagrams`. **Does not** screen-print the React UI. **Does not** invent geometry — it only assembles what's stored.
+
+**Behavior:**
+
+- POST body: `{ ai_measurement_job_id?, lead_id?, project_id?, measurement_id? }`. Resolves to one `ai_measurement_job_id` (latest by `created_at` for the lead/project/measurement).
+- Validates QC gate **server-side** before producing anything:
+  - The associated `roof_measurements` row exists, has `validation_status IN ('validated','flagged')` (i.e. not `needs_manual_measurement`), `facet_count > 0`, `geometry_report_json` exists, and `geometry_report_json.overlay_alignment_score >= 0.75`.
+  - At least one `ai_measurement_diagrams` row exists for the job.
+- If the gate fails → returns `{ error: 'manual_measurement_required', message: 'Roof geometry did not align with the property.' }` with status 422. No PDF is produced.
+- If the gate passes:
+  1. Loads all `ai_measurement_diagrams` for the job ordered by `page_number` (Cover, Overlay, Length, Pitch, Area, Notes — all 6 already produced by the existing renderer).
+  2. Wraps each SVG in an HTML page (Letter portrait, 8.5×11in @ 96dpi → 816×1056px) with the page title.
+  3. Calls Lovable Cloud's **PDFShift-equivalent path** — since this project does not provision a headless browser, we use a pure-Deno SVG → PDF approach: each SVG is embedded as one page in a single PDF using a hand-rolled minimal PDF writer (object stream wrapping each SVG via the `pdf-lib` npm port that runs in Deno: `npm:pdf-lib@1.17.1`). For each page, render the SVG to a PNG bitmap with `npm:resvg-js@2.6.2` at 2× scale, then `pdf-lib` embeds the PNG on a Letter page. This keeps the function fully self-contained, works in Deno, and matches what the customer expects (clean printed pages, not a screenshot of the app).
+  4. Uploads the resulting PDF to the existing public `measurement-reports` storage bucket at `reports/<tenant_id>/<ai_measurement_job_id>.pdf` (creates the bucket via migration if it does not exist — a 1-statement migration).
+  5. Updates `roof_measurements.report_pdf_url` (column added if missing — handled in the same migration) with the public URL and updates `ai_measurement_jobs.report_pdf_url`.
+  6. Returns `{ pdf_url, page_count, ai_measurement_job_id }`.
+
+- Uses `corsHeaders`; honors `OPTIONS`; auth-passthrough via service-role for Storage write; reads the user's JWT only to confirm tenant access (no SQL strings, parameterized only).
+
+**Migration (single file):**
+- Create public bucket `measurement-reports` (idempotent insert).
+- Storage policy: tenant-scoped read; service-role write.
+- `ALTER TABLE roof_measurements ADD COLUMN IF NOT EXISTS report_pdf_url text;`
+- `ALTER TABLE ai_measurement_jobs ADD COLUMN IF NOT EXISTS report_pdf_url text;`
+
+---
+
+### 3. Frontend — `MeasurementReportDialog.tsx` + `UnifiedMeasurementPanel.tsx`
+
+**`MeasurementReportDialog.tsx` (currently 53 lines, just wraps `ComprehensiveMeasurementReport`):**
+
+Replace with a **6-page sequence viewer** that:
+- Reads `roof_measurements` (passed via `measurement` prop) for QC fields: `validation_status`, `facet_count`, `geometry_report_json`, `requires_manual_review`.
+- **QC gate (client mirror of the server gate):**
+  - If `validation_status === 'flagged' && requires_manual_review === true && facet_count === 0`, OR `geometry_report_json` missing, OR `geometry_report_json.overlay_alignment_score < 0.75`, OR `geometry_report_json.geometry_source === 'google_solar_bbox'`:
+    - Render a single full-dialog banner: **"Manual measurement required — roof geometry did not align with the property."** + "Re-run AI Measurement" button (calls existing `useMeasurementJob.startJob`) + "Order vendor report" link.
+    - **Disable** Download PDF.
+- Otherwise, fetch `ai_measurement_diagrams` for the linked `ai_measurement_job_id` ordered by `page_number` and render the 6 pages in a vertically scrollable list with page-number chips: **1. Cover · 2. Image / Overlay · 3. Length Diagram · 4. Pitch Diagram · 5. Area Diagram · 6. Notes Diagram**.
+- The "Download PDF" button calls `supabase.functions.invoke('render-measurement-pdf', { body: { ai_measurement_job_id } })` and opens the returned `pdf_url` in a new tab. **No more `html2canvas` / `jsPDF` browser-print path.**
+- Keeps the existing `ComprehensiveMeasurementReport` component only as a side-tab "Details / Tags" view (legacy data). The primary view is the 6-page sequence.
+
+**`UnifiedMeasurementPanel.tsx`:**
+- Pass `aiMeasurementJobId={ai.ai_measurement_job_id}` and the full `ai` row (which already has `validation_status`, `requires_manual_review`, `geometry_report_json`, `facet_count`) to `<MeasurementReportDialog />` so the QC gate has the data it needs.
+- When the latest AI measurement is in `needs_manual_measurement` state (job `failed` with `error === 'needs_manual_measurement'`), replace the "View Report" button with a small inline warning chip: "Manual measurement required" + "Re-run AI Measurement" button.
+
+---
+
+### What is intentionally NOT done
+
+- **No U-Net wiring.** Per the request, U-Net is not required. The system simply refuses to publish bad Solar-bbox geometry.
+- **No Gemini fallback.** No new geometry source replaces Solar.
+- **No new "AI Measurement" button.** Same `useMeasurementJob` flow.
+- **No fake geometry.** When real footprint/planes/edges are missing, the only outcome is `needs_manual_measurement`.
+
+### Files touched
+
+```
+supabase/functions/start-ai-measurement/index.ts          (modify ~80 lines)
+supabase/functions/render-measurement-pdf/index.ts        (new)
+supabase/migrations/<ts>_measurement_reports_bucket.sql   (new, idempotent)
+src/components/measurements/MeasurementReportDialog.tsx   (rewrite, ~180 lines)
+src/components/measurements/UnifiedMeasurementPanel.tsx   (~10-line edit at the two MeasurementReportDialog call sites)
 ```
 
-Persist new fields when inserting planes/edges:
-- planes: `plane_label` (P-01, P-02…), `label_x`, `label_y` (interior point), `source_evidence`, `is_placeholder`
-- edges: `edge_id`, `edge_label` (R-01, V-01…), `label_x`, `label_y` (offset normal to midpoint), `orientation_degrees`, `is_perimeter`, `annotation_point`
+### Acceptance for 8359 Huntsman regression
 
-### 3. Hard quality gate
+After the change, re-running AI Measurement on 8359 Huntsman Pl will:
+1. Fetch Mapbox + Solar (Solar returns 2 bboxes).
+2. QC fails: `planes_are_not_all_rectangles` → `needs_manual_measurement`.
+3. No diagrams written, no `roof_measurements` row, no approval row.
+4. `measurement_jobs.status = 'failed'`, `error = 'needs_manual_measurement'`.
+5. The lead page shows: **"Manual measurement required — roof geometry did not align with the property."** with a re-run button. Download PDF is disabled.
 
-Replace `runQualityChecks` flags with the spec's gate:
-- `has_real_planes` — ≥1 plane, no `is_placeholder`, every `polygon_px.length >= 3`
-- `has_real_edges` — ≥1 edge, every `line_px.length >= 2`, `length_ft > 0`, at least one classified non-eave edge
-- `has_valid_area` — `300 ≤ total_area_pitch_adjusted_sqft ≤ 20000`
-- `has_valid_calibration` — `feet_per_pixel > 0`, `raster_scale = 2`
-- `has_report_geometry` — `report_json` populated
-
-Any failure → `status = needs_manual_measurement`, no `roof_measurements` publish, no diagrams generated. UI shows "Manual measurement required — geometry incomplete" instead of fake report.
-
-### 4. Diagram renderer rewrite — `_shared/roof-diagram-renderer.ts`
-
-Full rewrite to produce 6 pages on a printable 8.5×11 SVG canvas (850×1100, viewBox `0 0 850 1100`). Drawing zone `x=85 y=210 w=600 h=650`, compass anchored bottom-right `(710, 850)`, header with property address + page title, footer with engine version + page number.
-
-Pages produced (in order, all sharing one normalized viewport transform so roof scale/rotation/compass match across pages):
-
-1. **Cover / Satellite Page** — address, job id, generated date, confidence, satellite image, source notes.
-2. **Image / Overlay Page** — calibrated satellite image + outline + edge labels + plane labels overlaid in the same coordinate system (no independent stretching).
-3. **Length Diagram** — black outline; ridge red, valley blue, hip orange, eave black, rake gray-dashed; midpoint-by-arc-length labels offset along the edge normal with collision detection (8px increments, leader line after 5 attempts); ridge total + valley total top-left; "rounded to nearest foot" note.
-4. **Pitch Diagram** — pitch label `r/12` at polygon visual centroid (interior-point fallback for concave); arrow marker; "Pitch units are inches per foot" note.
-5. **Area Diagram** — total top-left; rounded sqft of each plane centered inside its polygon (uses `area_pitch_adjusted_sqft`); no overlap with edge labels.
-6. **Notes Diagram** — clean outline, compass, notes header, no clutter.
-
-Style rules: white bg, light-gray plane fills, no UI chrome, no badges, no buttons.
-
-Satellite overlay fix: use original raster dims, single shared viewport transform applied to image + planes + edges + labels; satellite 100% / plane fill 15–25% / lines 100%; if image URL missing or cross-origin blocked, skip the page and mark unavailable rather than rendering blurry crop.
-
-### 5. PDF export — new edge function `render-measurement-pdf`
-
-- Loads `ai_measurement_diagrams` for a job (ordered by `page_number`).
-- Wraps each SVG into a PDF page (server-side via `pdf-lib` + SVG→PNG fallback for any unsupported nodes; vector preserved where possible).
-- Uploads to Storage at `ai-measurement-reports/{ai_measurement_job_id}/measurement-report.pdf`.
-- Writes path back to `ai_measurement_jobs.report_pdf_path` + `roof_measurements.report_pdf_path`.
-- Triggered automatically at the end of `start-ai-measurement` after successful diagram insert.
-
-### 6. Frontend cleanup
-
-No new buttons, no new entry points. Light edits only:
-
-- `src/components/measurements/MeasurementReportDialog.tsx` / `RoofDiagramViewer.tsx` — render diagrams in fixed order (Cover → Overlay → Length → Pitch → Area → Notes); "Download PDF" button now downloads `roof_measurements.report_pdf_path` instead of printing the browser screen.
-- `UnifiedMeasurementPanel.tsx` — when `ai_measurement_jobs.status = needs_manual_measurement`, replace the diagram area with the message "Geometry incomplete — manual review required." (suppress the existing "No WKT geometry available" placeholder).
-- `useMeasurementJob.ts` / `PullMeasurementsButton.tsx` — verified already calling `start-ai-measurement`; no contract change.
-
-### 7. Acceptance test pass
-
-After deploy, re-run AI Measurement on 8359 Huntsman Pl and verify the 15 acceptance checks from the spec, including: real polygon_px, classified edges, populated totals, 6 diagram rows, label placement, compass on every page, downloaded PDF clean of UI chrome, and `needs_manual_measurement` correctly returned when geometry is rectangle-only.
-
-## Files touched
-
-- **Migration** (new): add columns to `ai_roof_planes`, `ai_roof_edges`, `ai_measurement_diagrams`, `roof_measurements`.
-- **Rewrite**: `supabase/functions/_shared/roof-diagram-renderer.ts`
-- **Edit**: `supabase/functions/start-ai-measurement/index.ts` (geometry source + QC gate + diagram payload + PDF trigger)
-- **New**: `supabase/functions/render-measurement-pdf/index.ts`
-- **Edit**: `src/components/measurements/MeasurementReportDialog.tsx`, `RoofDiagramViewer.tsx`, `UnifiedMeasurementPanel.tsx`
-
-## Out of scope
-
-- No new measurement buttons or report builders.
-- No changes to `measure/`, `measure-roof/`, `roof-report/` legacy functions.
-- No model retraining — uses the existing internal U-Net deployment on Render.
+No "two generic rectangles" customer-ready report is ever produced again.
