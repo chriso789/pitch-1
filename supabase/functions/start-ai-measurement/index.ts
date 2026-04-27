@@ -483,6 +483,278 @@ function sortedKey(a: Pt, b: Pt) {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// Image-based footprint extraction (Canny-lite + contour + simplify)
+// Used as a fallback when Solar yields only bounding boxes.
+// ─────────────────────────────────────────────────────────────────────
+
+/** Perpendicular distance from point to segment (for Douglas–Peucker). */
+function perpDist(p: Pt, a: Pt, b: Pt): number {
+  const dx = b.x - a.x, dy = b.y - a.y
+  const L2 = dx * dx + dy * dy
+  if (L2 === 0) return Math.hypot(p.x - a.x, p.y - a.y)
+  const t = ((p.x - a.x) * dx + (p.y - a.y) * dy) / L2
+  const cx = a.x + t * dx, cy = a.y + t * dy
+  return Math.hypot(p.x - cx, p.y - cy)
+}
+
+function douglasPeucker(pts: Pt[], eps: number): Pt[] {
+  if (pts.length < 3) return pts.slice()
+  const keep = new Array(pts.length).fill(false)
+  keep[0] = keep[pts.length - 1] = true
+  const stack: [number, number][] = [[0, pts.length - 1]]
+  while (stack.length) {
+    const [s, e] = stack.pop()!
+    let maxD = 0, idx = -1
+    for (let i = s + 1; i < e; i++) {
+      const d = perpDist(pts[i], pts[s], pts[e])
+      if (d > maxD) { maxD = d; idx = i }
+    }
+    if (maxD > eps && idx > 0) {
+      keep[idx] = true
+      stack.push([s, idx], [idx, e])
+    }
+  }
+  return pts.filter((_, i) => keep[i])
+}
+
+/**
+ * Extract a roof-like footprint polygon from the satellite image bytes.
+ * Pure-TS pipeline: decode → grayscale → Sobel → threshold → flood-fill
+ * connected component containing the image center → contour trace →
+ * Douglas-Peucker simplify. Returns polygon in pixel space (image_url's
+ * actual pixel grid) or null if no plausible building blob found.
+ */
+async function extractRoofFootprintFromImage(
+  imageUrl: string,
+  imgW: number,
+  imgH: number,
+): Promise<Pt[] | null> {
+  try {
+    const resp = await fetch(imageUrl)
+    if (!resp.ok) {
+      console.warn('[footprint-extract] image fetch failed', resp.status)
+      return null
+    }
+    const buf = new Uint8Array(await resp.arrayBuffer())
+
+    // Decode PNG (Mapbox static API returns PNG by default)
+    const { PNG } = await import('npm:pngjs@7.0.0')
+    let png: any
+    try {
+      png = PNG.sync.read(buf as any)
+    } catch (e) {
+      console.warn('[footprint-extract] PNG decode failed', String(e))
+      return null
+    }
+    const W = png.width, H = png.height
+    const data = png.data as Uint8Array // RGBA
+
+    // 1) Grayscale (luminance)
+    const gray = new Uint8Array(W * H)
+    for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+      gray[i] = (0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2]) | 0
+    }
+
+    // Downsample 2x for speed
+    const dW = Math.floor(W / 2), dH = Math.floor(H / 2)
+    const ds = new Uint8Array(dW * dH)
+    for (let y = 0; y < dH; y++) {
+      for (let x = 0; x < dW; x++) {
+        const sx = x * 2, sy = y * 2
+        ds[y * dW + x] = (
+          gray[sy * W + sx] +
+          gray[sy * W + sx + 1] +
+          gray[(sy + 1) * W + sx] +
+          gray[(sy + 1) * W + sx + 1]
+        ) >> 2
+      }
+    }
+
+    // 2) Sobel edge magnitude
+    const mag = new Uint8Array(dW * dH)
+    let magMax = 1
+    for (let y = 1; y < dH - 1; y++) {
+      for (let x = 1; x < dW - 1; x++) {
+        const i = y * dW + x
+        const gx =
+          -ds[i - dW - 1] - 2 * ds[i - 1] - ds[i + dW - 1] +
+          ds[i - dW + 1] + 2 * ds[i + 1] + ds[i + dW + 1]
+        const gy =
+          -ds[i - dW - 1] - 2 * ds[i - dW] - ds[i - dW + 1] +
+          ds[i + dW - 1] + 2 * ds[i + dW] + ds[i + dW + 1]
+        const m = Math.min(255, Math.hypot(gx, gy) | 0)
+        mag[i] = m
+        if (m > magMax) magMax = m
+      }
+    }
+
+    // 3) Build a "non-edge" mask = pixels with low gradient magnitude.
+    //    Roof faces are typically large smooth-ish regions bordered by edges.
+    //    Threshold via Otsu-lite on magnitude.
+    const hist = new Uint32Array(256)
+    for (let i = 0; i < mag.length; i++) hist[mag[i]]++
+    const total = mag.length
+    let sumAll = 0
+    for (let t = 0; t < 256; t++) sumAll += t * hist[t]
+    let wB = 0, sumB = 0, varMax = 0, edgeT = 32
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t]; if (!wB) continue
+      const wF = total - wB; if (!wF) break
+      sumB += t * hist[t]
+      const mB = sumB / wB, mF = (sumAll - sumB) / wF
+      const v = wB * wF * (mB - mF) * (mB - mF)
+      if (v > varMax) { varMax = v; edgeT = t }
+    }
+    edgeT = Math.max(20, Math.min(80, edgeT))
+
+    const solid = new Uint8Array(dW * dH)
+    for (let i = 0; i < mag.length; i++) solid[i] = mag[i] < edgeT ? 1 : 0
+
+    // 4) Flood-fill connected component containing the image center.
+    const cx0 = (dW / 2) | 0, cy0 = (dH / 2) | 0
+    const visited = new Uint8Array(dW * dH)
+    // Expand search if center pixel is on an edge
+    let seed = -1
+    for (let r = 0; r < 30 && seed < 0; r++) {
+      for (let dy = -r; dy <= r && seed < 0; dy++) {
+        for (let dx = -r; dx <= r && seed < 0; dx++) {
+          const x = cx0 + dx, y = cy0 + dy
+          if (x < 0 || y < 0 || x >= dW || y >= dH) continue
+          if (solid[y * dW + x]) seed = y * dW + x
+        }
+      }
+    }
+    if (seed < 0) {
+      console.warn('[footprint-extract] no seed near center')
+      return null
+    }
+
+    const stack = [seed]
+    const blob = new Uint8Array(dW * dH)
+    let count = 0
+    while (stack.length) {
+      const idx = stack.pop()!
+      if (visited[idx]) continue
+      visited[idx] = 1
+      if (!solid[idx]) continue
+      blob[idx] = 1; count++
+      const x = idx % dW, y = (idx / dW) | 0
+      if (x > 0) stack.push(idx - 1)
+      if (x < dW - 1) stack.push(idx + 1)
+      if (y > 0) stack.push(idx - dW)
+      if (y < dH - 1) stack.push(idx + dW)
+    }
+
+    const totalArea = dW * dH
+    const blobFrac = count / totalArea
+    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.85) {
+      console.warn(`[footprint-extract] implausible blob frac=${blobFrac.toFixed(3)} count=${count}`)
+      return null
+    }
+
+    // 5) Trace contour with Moore-neighbor algorithm.
+    // Find a boundary starting pixel (top-left of blob)
+    let sx = -1, sy = -1
+    outer: for (let y = 0; y < dH; y++) {
+      for (let x = 0; x < dW; x++) {
+        if (blob[y * dW + x]) { sx = x; sy = y; break outer }
+      }
+    }
+    if (sx < 0) return null
+
+    const dirs = [
+      [1, 0], [1, 1], [0, 1], [-1, 1],
+      [-1, 0], [-1, -1], [0, -1], [1, -1],
+    ]
+    const isB = (x: number, y: number) =>
+      x >= 0 && y >= 0 && x < dW && y < dH && blob[y * dW + x] === 1
+
+    const contour: Pt[] = [{ x: sx, y: sy }]
+    let cx = sx, cy = sy, dir = 0
+    const maxSteps = 8 * count
+    for (let step = 0; step < maxSteps; step++) {
+      let found = false
+      for (let k = 0; k < 8; k++) {
+        const nd = (dir + 6 + k) % 8
+        const [ddx, ddy] = dirs[nd]
+        const nx = cx + ddx, ny = cy + ddy
+        if (isB(nx, ny)) {
+          cx = nx; cy = ny; dir = nd
+          contour.push({ x: cx, y: cy })
+          found = true
+          break
+        }
+      }
+      if (!found) break
+      if (cx === sx && cy === sy && contour.length > 4) break
+    }
+
+    if (contour.length < 8) {
+      console.warn('[footprint-extract] contour too short', contour.length)
+      return null
+    }
+
+    // 6) Simplify with Douglas–Peucker (~1% of image diagonal).
+    const eps = Math.max(2, Math.hypot(dW, dH) * 0.01)
+    const simp = douglasPeucker(contour, eps)
+    // Ensure closed-ring uniqueness
+    const ring: Pt[] = []
+    for (const p of simp) {
+      const last = ring[ring.length - 1]
+      if (!last || last.x !== p.x || last.y !== p.y) ring.push(p)
+    }
+    if (ring.length >= 4 && ring[0].x === ring[ring.length - 1].x &&
+        ring[0].y === ring[ring.length - 1].y) {
+      ring.pop()
+    }
+    if (ring.length < 4) return null
+
+    // Map back from downsampled pixel coords to actual image coords.
+    const sxScale = imgW / dW, syScale = imgH / dH
+    return ring.map((p) => ({ x: p.x * sxScale, y: p.y * syScale }))
+  } catch (e) {
+    console.warn('[footprint-extract] error', String(e))
+    return null
+  }
+}
+
+/** Build a single roof plane from an extracted footprint polygon. */
+function planeFromFootprint(
+  polyPx: Pt[],
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+  pitchHintRise: number | null,
+  azimuthHint: number | null,
+): RoofPlane {
+  const polyGeo = polyPx.map((p) =>
+    pixelToLatLng(p.x, p.y, centerLat, centerLng, imgW, imgH, actualMpp),
+  )
+  const areaPxFlat = shoelaceAreaPx(polyPx)
+  const area2dSqft = areaPxFlat * feetPerPixel * feetPerPixel
+  const pmInfo =
+    pitchHintRise != null
+      ? pitchInfo(pitchHintRise)
+      : { pitch_degrees: 0, pitch_multiplier: 1 }
+  return {
+    plane_index: 0,
+    source: 'image_footprint_extraction',
+    polygon_px: polyPx,
+    polygon_geojson: polyGeo,
+    pitch: pitchHintRise,
+    pitch_degrees: pmInfo.pitch_degrees,
+    azimuth: azimuthHint,
+    area_2d_sqft: area2dSqft,
+    pitch_multiplier: pmInfo.pitch_multiplier,
+    area_pitch_adjusted_sqft: area2dSqft * pmInfo.pitch_multiplier,
+    confidence: 0.6,
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Quality checks → status
 // ─────────────────────────────────────────────────────────────────────
 
@@ -858,9 +1130,42 @@ Deno.serve(async (req) => {
         const solarOk = !!solar?.solarPotential?.roofSegmentStats?.length
 
         // 2d) Build planes
-        const planes: RoofPlane[] = solarOk
+        let planes: RoofPlane[] = solarOk
           ? planesFromSolar(solar, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel)
           : []
+
+        // 2d.5) FALLBACK: if Solar gave us only bbox planes (or nothing real),
+        // attempt to extract a real footprint from the satellite image before
+        // failing to manual measurement. Solar pitch/azimuth become hints only.
+        const onlyBboxPlanes =
+          planes.length > 0 && planes.every((p) => p.source === 'google_solar_bbox')
+        if ((planes.length === 0 || onlyBboxPlanes) && mb?.image_url) {
+          await supa
+            .from('measurement_jobs')
+            .update({ progress_message: 'Extracting roof footprint from imagery…' })
+            .eq('id', job.id)
+          const footprintPx = await extractRoofFootprintFromImage(
+            mb.image_url, imgW, imgH,
+          )
+          if (footprintPx && footprintPx.length >= 4) {
+            // Pull pitch/azimuth hints from the largest Solar bbox if any.
+            const hint = onlyBboxPlanes
+              ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+              : null
+            const fpPlane = planeFromFootprint(
+              footprintPx, lat, lng, imgW, imgH,
+              cal.meters_per_pixel_actual, feetPerPixel,
+              hint?.pitch ?? null, hint?.azimuth ?? null,
+            )
+            console.log(
+              `[start-ai-measurement] image footprint extracted: ${footprintPx.length} pts, ` +
+              `area=${fpPlane.area_2d_sqft.toFixed(0)} sqft (replacing ${planes.length} bbox planes)`,
+            )
+            planes = [fpPlane]
+          } else {
+            console.warn('[start-ai-measurement] image footprint extraction failed; keeping bbox planes for QC reject')
+          }
+        }
 
         // 2e) Apply pitch override (single rise replaces per-plane pitch)
         if (pitchOverride) {
