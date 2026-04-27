@@ -1443,6 +1443,26 @@ const FOOTPRINT_ONLY_SOURCES = new Set([
   'google_solar_aggregate',
 ])
 
+function normalizeRoofMeasurementFootprintSource(source: string | null | undefined, solarOk: boolean): string {
+  const s = String(source || '').toLowerCase()
+  if (s === 'mapbox_vector') return 'mapbox_vector'
+  if (s === 'osm_buildings') return 'osm'
+  if (s === 'microsoft_buildings') return 'microsoft_buildings'
+  if (s === 'esri_buildings') return 'esri_buildings'
+  if (s.includes('google_solar') || s.includes('solar')) return 'google_solar_api'
+  if (s === 'manual_trace' || s === 'manual_entry' || s === 'imported' || s === 'user_drawn') return s
+  if (s.includes('image_footprint') || s.includes('ridge_split') || s === 'geometry_first_v2') return 'ai_detection'
+  return solarOk ? 'google_solar_api' : 'ai_detection'
+}
+
+function lineGeoToWkt(points: GeoPt[]): string | null {
+  if (!Array.isArray(points) || points.length < 2) return null
+  const pairs = points
+    .map((p) => `${Number(p.lng)} ${Number(p.lat)}`)
+    .filter((pair) => !pair.includes('NaN'))
+  return pairs.length >= 2 ? `LINESTRING(${pairs.join(', ')})` : null
+}
+
 function runQualityChecks(input: {
   geocoded: boolean
   geocodeType: string | null
