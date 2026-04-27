@@ -22,6 +22,11 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 import { generateRoofDiagrams } from '../_shared/roof-diagram-renderer.ts'
+import {
+  buildRoofPlanes,
+  filterStrongRidges,
+  type Line as SplitLine,
+} from '../_shared/plane-split.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -930,80 +935,6 @@ function detectRidges(
   return out
 }
 
-/**
- * Split a polygon along an infinite line defined by ridge endpoints.
- * Returns [left, right] sub-polygons (or null if the ridge doesn't actually
- * cut the polygon into two non-trivial pieces).
- */
-function splitPolygonByLine(poly: Pt[], la: Pt, lb: Pt): [Pt[], Pt[]] | null {
-  if (poly.length < 3) return null
-  const nx = lb.y - la.y
-  const ny = -(lb.x - la.x)
-  const d = -(nx * la.x + ny * la.y)
-  const sideOf = (p: Pt) => nx * p.x + ny * p.y + d
-  const eps = 1e-6
-
-  const left: Pt[] = []
-  const right: Pt[] = []
-  for (let i = 0; i < poly.length; i++) {
-    const p = poly[i]
-    const q = poly[(i + 1) % poly.length]
-    const sp = sideOf(p)
-    const sq = sideOf(q)
-    if (sp >= -eps) left.push(p)
-    if (sp <= eps) right.push(p)
-    if ((sp > eps && sq < -eps) || (sp < -eps && sq > eps)) {
-      const t = sp / (sp - sq)
-      const ix = p.x + t * (q.x - p.x)
-      const iy = p.y + t * (q.y - p.y)
-      left.push({ x: ix, y: iy })
-      right.push({ x: ix, y: iy })
-    }
-  }
-
-  if (left.length < 3 || right.length < 3) return null
-  // Reject splits that don't really partition (one side ~= original)
-  const aOrig = shoelaceAreaPx(poly)
-  const aL = shoelaceAreaPx(left), aR = shoelaceAreaPx(right)
-  if (aL < aOrig * 0.1 || aR < aOrig * 0.1) return null
-  return [left, right]
-}
-
-/**
- * Recursively split the footprint polygon along detected ridge lines into
- * roof planes. Each split uses the longest-supporting ridge that actually
- * cuts the current polygon into two meaningful pieces.
- *
- * Returns at least 1 polygon (the footprint itself if no usable ridge cuts).
- */
-function splitFootprintAlongRidges(footprint: Pt[], ridges: RidgeLine[]): Pt[][] {
-  if (!ridges.length) return [footprint]
-  // Sort by votes desc — strongest first
-  const queue: Pt[][] = [footprint]
-  const remaining = [...ridges].sort((a, b) => b.votes - a.votes)
-  const out: Pt[][] = []
-  const MAX_PLANES = 8
-
-  while (queue.length && out.length + queue.length < MAX_PLANES) {
-    const poly = queue.shift()!
-    let split: [Pt[], Pt[]] | null = null
-    let usedIdx = -1
-    for (let i = 0; i < remaining.length; i++) {
-      const r = remaining[i]
-      const s = splitPolygonByLine(poly, r.a, r.b)
-      if (s) { split = s; usedIdx = i; break }
-    }
-    if (!split) {
-      out.push(poly)
-      continue
-    }
-    remaining.splice(usedIdx, 1)
-    queue.push(split[0], split[1])
-  }
-  out.push(...queue)
-  return out
-}
-
 /** Build a single roof plane from an extracted footprint polygon. */
 function planeFromFootprint(
   polyPx: Pt[],
@@ -1109,6 +1040,7 @@ function runQualityChecks(input: {
   overlayAlignmentScore: number
   geometrySourceIsReal: boolean
   planesAreAllRectangles: boolean
+  singlePlaneFallback: boolean
 } {
   const checks: QC[] = []
   const push = (n: string, ok: boolean, s: number, d: any = {}) =>
@@ -1470,11 +1402,22 @@ Deno.serve(async (req) => {
             // Ridge-first segmentation: detect interior ridges and split the
             // footprint along them. If no usable ridges are found, fall back
             // to a SINGLE plane (no fake rectangles, no heuristic splits).
-            const ridges = detectRidges(
+            const rawRidges = detectRidges(
               extracted.mag, extracted.blob, extracted.dW, extracted.dH,
               extracted.scaleX, extracted.scaleY,
             )
-            const subPolys = splitFootprintAlongRidges(extracted.footprint, ridges)
+            const ridges = filterStrongRidges(rawRidges)
+            const ridgeLines: SplitLine[] = ridges
+              .sort((a, b) => b.votes - a.votes)
+              .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+            const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(extracted.footprint) * 0.08)
+            const subPolys = ridgeLines.length > 0
+              ? buildRoofPlanes(extracted.footprint, ridgeLines, {
+                minArea: minPlaneAreaPx,
+                minAreaRatio: 0.1,
+                maxPlanes: 10,
+              })
+              : [extracted.footprint]
             const isMultiPlane = subPolys.length > 1
             const planeSource = isMultiPlane
               ? 'image_footprint_ridge_split'
@@ -1489,7 +1432,7 @@ Deno.serve(async (req) => {
             )
             console.log(
               `[start-ai-measurement] ridge-first segmentation: ` +
-              `footprint=${extracted.footprint.length}pts, ridges=${ridges.length}, planes=${planes.length}`,
+              `footprint=${extracted.footprint.length}pts, raw_ridges=${rawRidges.length}, strong_ridges=${ridges.length}, planes=${planes.length}`,
             )
           } else {
             console.warn('[start-ai-measurement] image footprint extraction failed; keeping bbox planes for QC reject')
@@ -1726,7 +1669,7 @@ Deno.serve(async (req) => {
         if (qc.status !== 'needs_internal_review' && planes.length > 0 && !hasPlaceholder) {
           try {
             const diagrams = generateRoofDiagrams({
-              propertyAddress: resolved.address,
+              propertyAddress: resolved.address || 'Unknown property',
               planes: planes.map((p) => ({
                 plane_index: p.plane_index,
                 polygon_px: p.polygon_px as any,
@@ -1743,8 +1686,6 @@ Deno.serve(async (req) => {
                 confidence: e.confidence,
               })),
               totals: reportJson.totals,
-              width: 1000,
-              height: 1000,
               satelliteImageUrl: mb?.image_url || null,
               sourceImageWidth: imgW,
               sourceImageHeight: imgH,
