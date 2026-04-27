@@ -68,14 +68,14 @@ Deno.serve(async (req) => {
     // when playback finishes via Telnyx's playback_ended event, or we schedule it
     // For now, the rep is freed up immediately and we don't wait for completion.
 
-    // Update usage count
-    await admin.rpc('increment_voicemail_usage', { template_id: template.id }).catch(() => {
-      // Non-critical; the RPC may not exist yet
-      admin.from('voicemail_templates')
+    // Update usage count (non-critical)
+    const { error: rpcError } = await admin.rpc('increment_voicemail_usage', { template_id: template.id });
+    if (rpcError) {
+      // RPC may not exist yet; fall back to direct update
+      await admin.from('voicemail_templates')
         .update({ usage_count: (template as any).usage_count ? (template as any).usage_count + 1 : 1 })
-        .eq('id', template.id)
-        .then(() => {});
-    });
+        .eq('id', template.id);
+    }
 
     // Update call record if provided
     if (body.call_id) {

@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     console.log('Processing webhook event:', event.type);
 
     // Extract tenant_id from metadata
-    const metadata = event.data.object.metadata || {};
+    const metadata = ((event.data.object as any).metadata || {}) as Record<string, string>;
     const tenantId = metadata.tenant_id;
 
     if (!tenantId) {
@@ -89,14 +89,14 @@ Deno.serve(async (req) => {
         break;
       }
 
-      case 'transfer.paid': {
-        const transfer = event.data.object as Stripe.Transfer;
+      case 'transfer.paid' as any: {
+        const transfer = (event as any).data.object as Stripe.Transfer;
         await handleTransferPaid(supabase, transfer, tenantId);
         break;
       }
 
-      case 'transfer.failed': {
-        const transfer = event.data.object as Stripe.Transfer;
+      case 'transfer.failed' as any: {
+        const transfer = (event as any).data.object as Stripe.Transfer;
         await handleTransferFailed(supabase, transfer, tenantId);
         break;
       }
@@ -367,13 +367,14 @@ async function handleTransferFailed(
   transfer: Stripe.Transfer,
   tenantId: string
 ) {
-  console.log('Transfer failed:', transfer.id, transfer.failure_message);
+  const failureMessage = (transfer as any).failure_message || (transfer as any).description || 'Transfer failed';
+  console.log('Transfer failed:', transfer.id, failureMessage);
 
   const { data: payoutTransaction } = await supabase
     .from('payout_transactions')
     .update({
       status: 'failed',
-      failure_reason: transfer.failure_message || 'Transfer failed',
+      failure_reason: failureMessage,
     })
     .eq('stripe_transfer_id', transfer.id)
     .select()
@@ -384,7 +385,7 @@ async function handleTransferFailed(
       .from('achievement_rewards')
       .update({
         status: 'pending',
-        notes: `Transfer failed: ${transfer.failure_message}`,
+        notes: `Transfer failed: ${failureMessage}`,
       })
       .eq('id', payoutTransaction.reward_id);
   }
