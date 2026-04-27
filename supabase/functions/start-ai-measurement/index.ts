@@ -1175,6 +1175,10 @@ function runQualityChecks(input: {
 
   const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
   let status: 'completed' | 'needs_review' | 'needs_internal_review'
+  // Absolute sanity cap on total roof area. A residential satellite tile at
+  // z20 cannot legitimately produce >30k sqft of roof — anything beyond means
+  // the footprint extractor leaked into neighbors / road / canopy.
+  const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= 30000
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
@@ -1182,7 +1186,9 @@ function runQualityChecks(input: {
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
-    overlayAlignmentScore < 0.75
+    overlayAlignmentScore < 0.75 ||
+    !allInside ||
+    !areaWithinHardCap
   ) {
     status = 'needs_internal_review'
   } else if (singlePlaneFallback) {
