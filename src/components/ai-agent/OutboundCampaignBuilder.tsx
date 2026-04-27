@@ -109,8 +109,8 @@ export function OutboundCampaignBuilder({ onCampaignCreated }: OutboundCampaignB
     setIsCreating(true);
     try {
       // Store campaign configuration
-      const { data, error } = await supabase
-        .from('dialer_campaigns')
+      const { data, error } = await (supabase
+        .from('dialer_campaigns') as any)
         .insert({
           tenant_id: tenantId,
           name: config.name,

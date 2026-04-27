@@ -134,8 +134,8 @@ const GhostAccountManager: React.FC = () => {
 
       if (authData.user) {
         // Update profile to mark as ghost account
-        const { error: profileError } = await supabase
-          .from("profiles")
+        const { error: profileError } = await (supabase
+          .from("profiles") as any)
           .update({
             is_ghost_account: true,
             tenant_id: newAccount.tenant_id,

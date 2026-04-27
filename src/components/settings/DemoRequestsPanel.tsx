@@ -141,8 +141,8 @@ export const DemoRequestsPanel: React.FC = () => {
         updateData.contacted_at = new Date().toISOString();
       }
 
-      const { error } = await supabase
-        .from('demo_requests')
+      const { error } = await (supabase
+        .from('demo_requests') as any)
         .update(updateData)
         .eq('id', requestId);
 

@@ -491,8 +491,8 @@ export function EstimatePreviewPanel({
     // If not already fetched, fetch it
     if (!fetchedEstimates.has(estId)) {
       try {
-        const { data: est } = await supabase
-          .from('enhanced_estimates')
+        const { data: est } = await (supabase
+          .from('enhanced_estimates') as any)
           .select('estimate_number, display_name, line_items, selling_price, material_total, labor_total, overhead_amount, overhead_percent, actual_profit_amount, actual_profit_percent, rep_commission_amount, rep_commission_percent, sales_tax_amount, sales_tax_rate, total_with_tax')
           .eq('id', estId)
           .single();
@@ -582,7 +582,7 @@ export function EstimatePreviewPanel({
 
       const { data: urlData } = supabase.storage.from('customer-photos').getPublicUrl(storagePath);
 
-      await supabase.from('customer_photos').insert({
+      await (supabase.from('customer_photos') as any).insert({
         lead_id: leadId || null,
         contact_id: contactId || null,
         tenant_id: tid,

@@ -232,8 +232,8 @@ const Estimates = () => {
   // Send estimate (update status)
   const handleSendEstimate = async (estimate: any) => {
     try {
-      const { error } = await supabase
-        .from('enhanced_estimates')
+      const { error } = await (supabase
+        .from('enhanced_estimates') as any)
         .update({
           status: 'sent',
           sent_at: new Date().toISOString()

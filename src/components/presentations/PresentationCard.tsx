@@ -96,8 +96,8 @@ export const PresentationCard = ({
       if (!user) throw new Error("Not authenticated");
 
       // Duplicate presentation
-      const { data: newPresentation, error: presentationError } = await supabase
-        .from("presentations")
+      const { data: newPresentation, error: presentationError } = await (supabase
+        .from("presentations") as any)
         .insert({
           tenant_id: presentation.tenant_id,
           name: `${presentation.name} (Copy)`,

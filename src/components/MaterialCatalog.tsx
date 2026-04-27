@@ -192,7 +192,7 @@ const MaterialCatalog = () => {
         .insert([{
           ...newProduct,
           tenant_id: profile.tenant_id
-        }]);
+        }] as any);
 
       if (error) throw error;
 

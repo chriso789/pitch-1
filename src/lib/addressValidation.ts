@@ -24,8 +24,8 @@ export async function saveValidatedAddress(
   addressData: ValidatedAddressData
 ): Promise<{ success: boolean; error?: string }> {
   try {
-    const { error } = await supabase
-      .from('contacts')
+    const { error } = await (supabase
+      .from('contacts') as any)
       .update({
         address_street: addressData.address_line1,
         address_street_2: addressData.address_line2 || null,

@@ -120,14 +120,14 @@ export const RoutingRulesManager = () => {
       };
 
       if (editingRule) {
-        const { error } = await supabase
-          .from("conversation_routing_rules")
+        const { error } = await (supabase
+          .from("conversation_routing_rules") as any)
           .update(payload)
           .eq("id", editingRule.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
-          .from("conversation_routing_rules")
+        const { error } = await (supabase
+          .from("conversation_routing_rules") as any)
           .insert(payload);
         if (error) throw error;
       }

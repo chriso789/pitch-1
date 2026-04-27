@@ -451,8 +451,8 @@ export function useVertexEditing(initialVertices: Vertex[] = [], initialLines: I
         type: v.type,
       }));
       
-      const { error } = await supabase
-        .from('roof_measurements')
+      const { error } = await (supabase
+        .from('roof_measurements') as any)
         .update({
           perimeter_wkt: perimeterWkt,
           perimeter_vertices: perimeterVertices,

@@ -172,8 +172,8 @@ export function MeasurementHistoryDialog({
       };
       
       // @ts-ignore - Deep type instantiation issue with Supabase
-      const metadataResult: any = await supabase
-        .from('pipeline_entries')
+      const metadataResult: any = await (supabase
+        .from('pipeline_entries') as any)
         .update({ metadata: updatedMetadata })
         .eq('property_id', currentMeasurement.property_id);
       

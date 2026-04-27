@@ -220,8 +220,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
 
       // Only update cost columns and line_items — do NOT touch selling_price
       // The selling_price is set by the estimate builder and must not be overwritten
-      const { error } = await supabase
-        .from('enhanced_estimates')
+      const { error } = await (supabase
+        .from('enhanced_estimates') as any)
         .update({
           line_items: updatedLineItems as any,
           [costKey]: total,

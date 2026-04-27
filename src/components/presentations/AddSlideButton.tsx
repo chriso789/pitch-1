@@ -61,8 +61,8 @@ export const AddSlideButton = ({
         signature: { document_title: "Agreement", legal_text: "", require_date: true, require_printed_name: true },
       };
 
-      const { error } = await supabase
-        .from("presentation_slides")
+      const { error } = await (supabase
+        .from("presentation_slides") as any)
         .insert({
           tenant_id: profile.tenant_id,
           presentation_id: presentationId,

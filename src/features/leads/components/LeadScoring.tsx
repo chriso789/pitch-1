@@ -185,13 +185,13 @@ export const LeadScoring = () => {
 
       let result;
       if (editingRule) {
-        result = await supabase
-          .from('lead_scoring_rules')
+        result = await (supabase
+          .from('lead_scoring_rules') as any)
           .update(payload)
           .eq('id', editingRule.id);
       } else {
-        result = await supabase
-          .from('lead_scoring_rules')
+        result = await (supabase
+          .from('lead_scoring_rules') as any)
           .insert(payload);
       }
 
