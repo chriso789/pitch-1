@@ -377,7 +377,7 @@ serve(async (req) => {
         ? "completed"
         : quality.overall_score >= 0.4
           ? "needs_review"
-          : "needs_manual_measurement";
+          : "needs_internal_review";
 
     await supabase
       .from("ai_measurement_jobs")
