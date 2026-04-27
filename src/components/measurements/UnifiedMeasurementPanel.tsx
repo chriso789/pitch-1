@@ -1563,7 +1563,7 @@ function MeasurementHistorySection({
       const perimeter = eaveLength + rakeLength;
 
       const savedTags = {
-        'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+        'roof.plan_area': (measurement as any).total_area_flat_sqft || measurement.total_area_adjusted_sqft || 0,
         'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
         'roof.squares': totalSquares,
         'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
