@@ -921,9 +921,15 @@ export function UnifiedMeasurementPanel({
                 <MeasurementReportDialog
                   open={showAiReport}
                   onOpenChange={setShowAiReport}
+                  aiMeasurementJobId={(ai as any).ai_measurement_job_id || null}
                   measurement={{
                     id: ai.id,
                     property_id: pipelineEntryId,
+                    ai_measurement_job_id: (ai as any).ai_measurement_job_id,
+                    validation_status: (ai as any).validation_status,
+                    requires_manual_review: (ai as any).requires_manual_review,
+                    facet_count: (ai as any).facet_count,
+                    geometry_report_json: (ai as any).geometry_report_json,
                     summary: {
                       total_area_sqft: ai.total_area_adjusted_sqft || 0,
                       total_squares: ai.total_squares || 0,
