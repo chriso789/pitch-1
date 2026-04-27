@@ -1333,7 +1333,7 @@ Deno.serve(async (req) => {
         parsed = parseRoofr(extractedText);
       } else if (provider === "eagleview") {
         parsed = parseEagleView(extractedText);
-      } else if (provider === "xactimate") {
+      } else if ((provider as string) === "xactimate") {
         console.log("roof-report-ingest: Using Xactimate parser...");
         parsed = parseXactimate(extractedText);
       } else {
@@ -1672,7 +1672,7 @@ If no diagram is found, return: {"diagram_found": false}`;
           .single();
 
         if (leadData?.tenant_id) {
-          const isInsurance = provider === 'xactimate' || parsed.provider === 'xactimate';
+          const isInsurance = (provider as string) === 'xactimate' || parsed.provider === 'xactimate';
           const docType = isInsurance ? 'insurance' : 'other';
           const timestamp = Date.now();
           const providerLabel: Record<string, string> = {
@@ -1688,7 +1688,7 @@ If no diagram is found, return: {"diagram_found": false}`;
           const sqft = parsed.total_area_sqft?.toLocaleString() || '0';
           
           // Store PDF in job's folder (tenant_id must be first for RLS)
-          const safeFileName = (fileName || 'report').replace(/[^a-zA-Z0-9._-]/g, '_');
+          const safeFileName = ((body.file_name as string | undefined) || 'report').replace(/[^a-zA-Z0-9._-]/g, '_');
           const docPath = `${leadData.tenant_id}/${lead_id}/measurements/${timestamp}_${safeFileName}.pdf`;
           
           const { error: uploadErr } = await supabase.storage

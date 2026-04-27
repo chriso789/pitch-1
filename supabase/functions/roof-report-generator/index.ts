@@ -170,7 +170,7 @@ function deriveLinears(m: RoofMeasurements) {
     ridge_plus_hip_ft: ridge_plus_hip,
     eaves_plus_rakes_ft: eaves_plus_rakes,
     drip_edge_ft: eaves_plus_rakes,
-    ice_and_water_lf_base,
+    ice_and_water_lf_base: ice_water_lf_base,
   };
 }
 
