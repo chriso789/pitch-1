@@ -25,6 +25,7 @@ import { generateRoofDiagrams } from '../_shared/roof-diagram-renderer.ts'
 import {
   buildRoofPlanes,
   filterStrongRidges,
+  intersectSegments,
   type Line as SplitLine,
 } from '../_shared/plane-split.ts'
 import { fetchMapboxVectorFootprint } from '../_shared/mapbox-footprint-extractor.ts'
