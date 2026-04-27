@@ -315,14 +315,6 @@ function isLowDetailAuthoritativeFootprint(footprint: AuthoritativeFootprint | n
   return vertexCount <= 6 || footprint.confidence < 0.82
 }
 
-function polygonCentroidPx(poly: Pt[]): Pt {
-  if (!poly.length) return { x: 0, y: 0 }
-  return {
-    x: poly.reduce((s, p) => s + p.x, 0) / poly.length,
-    y: poly.reduce((s, p) => s + p.y, 0) / poly.length,
-  }
-}
-
 function sniffRasterFormat(buf: Uint8Array): 'png' | 'jpeg' | 'unknown' {
   if (
     buf.length >= 8 &&
