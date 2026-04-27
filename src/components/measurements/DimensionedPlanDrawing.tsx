@@ -136,11 +136,11 @@ export function DimensionedPlanDrawing({
         {aerialMode && aerial && (
           <image
             href={aerial.imageUrl}
-            x={0}
-            y={0}
-            width={width}
-            height={height}
-            preserveAspectRatio="xMidYMid slice"
+            x={aerialProjection?.image.x ?? 0}
+            y={aerialProjection?.image.y ?? 0}
+            width={aerialProjection?.image.width ?? width}
+            height={aerialProjection?.image.height ?? height}
+            preserveAspectRatio="none"
           />
         )}
 
@@ -149,11 +149,11 @@ export function DimensionedPlanDrawing({
         {aerialBackdropOnly && aerial && (
           <image
             href={aerial.imageUrl}
-            x={0}
-            y={0}
-            width={width}
-            height={height}
-            preserveAspectRatio="xMidYMid slice"
+            x={aerialProjection?.image.x ?? 0}
+            y={aerialProjection?.image.y ?? 0}
+            width={aerialProjection?.image.width ?? width}
+            height={aerialProjection?.image.height ?? height}
+            preserveAspectRatio="none"
             opacity={1}
           />
         )}
@@ -190,7 +190,7 @@ export function DimensionedPlanDrawing({
         {/* Footprint outline (aerial mode) */}
         {aerialMode && aerialProjection && footprintGeo && footprintGeo.length >= 3 && (
           <polygon
-            points={footprintGeo.map(([lng, lat]) => aerialProjection(lng, lat).join(',')).join(' ')}
+            points={footprintGeo.map(([lng, lat]) => aerialProjection.point(lng, lat).join(',')).join(' ')}
             fill="rgba(255,255,0,0.08)"
             stroke="#fde047"
             strokeWidth={1.5}
@@ -202,8 +202,8 @@ export function DimensionedPlanDrawing({
         {edges.map(edge => {
           let x1: number, y1: number, x2: number, y2: number;
           if (aerialMode && aerialProjection && edge.geo_p1 && edge.geo_p2) {
-            [x1, y1] = aerialProjection(edge.geo_p1[0], edge.geo_p1[1]);
-            [x2, y2] = aerialProjection(edge.geo_p2[0], edge.geo_p2[1]);
+            [x1, y1] = aerialProjection.point(edge.geo_p1[0], edge.geo_p1[1]);
+            [x2, y2] = aerialProjection.point(edge.geo_p2[0], edge.geo_p2[1]);
           } else {
             [x1, y1] = transform(edge.p1);
             [x2, y2] = transform(edge.p2);
