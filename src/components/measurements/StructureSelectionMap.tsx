@@ -25,7 +25,7 @@ export function StructureSelectionMap({
 }: StructureSelectionMapProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPitch, setSelectedPitch] = useState(defaultPitch);
+  
   const [satelliteUrl, setSatelliteUrl] = useState<string | null>(null);
   const [hasInvalidCoords, setHasInvalidCoords] = useState(false);
 
