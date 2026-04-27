@@ -1889,22 +1889,86 @@ Deno.serve(async (req) => {
           // First deterministic fallback: authoritative vector building footprints.
           const authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
           if (authoritative) {
-            planes = [
-              planeFromAuthoritativeFootprint(
-                authoritative,
-                lat,
-                lng,
-                imgW,
-                imgH,
-                cal.meters_per_pixel_actual,
-                hint?.pitch ?? null,
-                hint?.azimuth ?? null,
-                0,
-              ),
-            ]
+            const basePlane = planeFromAuthoritativeFootprint(
+              authoritative,
+              lat,
+              lng,
+              imgW,
+              imgH,
+              cal.meters_per_pixel_actual,
+              hint?.pitch ?? null,
+              hint?.azimuth ?? null,
+              0,
+            )
+            planes = [basePlane]
             console.log(
               `[start-ai-measurement] using authoritative footprint fallback: ${authoritative.source}`
             )
+
+            // Try to split the authoritative footprint into multiple planes using
+            // image-derived ridge detection so we can recover ridge/hip/valley edges
+            // (a single plane only yields perimeter eaves via topology).
+            if (mb?.image_url) {
+              try {
+                const extracted = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+                if (extracted) {
+                  const rawRidges = detectRidges(
+                    extracted.mag,
+                    extracted.blob,
+                    extracted.dW,
+                    extracted.dH,
+                    extracted.scaleX,
+                    extracted.scaleY,
+                  )
+                  const ridges = filterStrongRidges(rawRidges)
+                  const ridgeLines: SplitLine[] = ridges
+                    .sort((a, b) => b.votes - a.votes)
+                    .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+
+                  if (ridgeLines.length > 0) {
+                    const minPlaneAreaPx = Math.max(
+                      25,
+                      shoelaceAreaPx(basePlane.polygon_px) * 0.08,
+                    )
+                    const subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
+                      minArea: minPlaneAreaPx,
+                      minAreaRatio: 0.1,
+                      maxPlanes: 10,
+                    })
+                    if (subPolys.length > 1) {
+                      planes = subPolys.map((poly, idx) =>
+                        planeFromFootprint(
+                          poly,
+                          lat,
+                          lng,
+                          imgW,
+                          imgH,
+                          cal.meters_per_pixel_actual,
+                          feetPerPixel,
+                          hint?.pitch ?? null,
+                          hint?.azimuth ?? null,
+                          'authoritative_footprint_ridge_split',
+                          idx,
+                        ),
+                      )
+                      console.log(
+                        `[start-ai-measurement] authoritative footprint split with image ridges: ${ridges.length} ridges → ${planes.length} planes`,
+                      )
+                    } else {
+                      console.log(
+                        `[start-ai-measurement] ridge split produced ${subPolys.length} polys; keeping single authoritative plane`,
+                      )
+                    }
+                  } else {
+                    console.log(
+                      `[start-ai-measurement] no strong ridges detected on authoritative footprint (raw=${rawRidges.length})`,
+                    )
+                  }
+                }
+              } catch (err) {
+                console.warn('[start-ai-measurement] ridge split on authoritative footprint failed:', err)
+              }
+            }
           } else if (mb?.image_url) {
             // Secondary fallback only when no authoritative footprint is available:
             // image-derived footprint + optional pure-TS ridge split.
