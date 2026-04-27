@@ -129,10 +129,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         body: { ai_measurement_job_id: jobId },
       });
       if (error) throw error;
-      if ((data as any)?.error === 'manual_measurement_required') {
+      if ((data as any)?.error === 'manual_measurement_required' || (data as any)?.error === 'internal_review_required') {
         toast({
-          title: 'Manual measurement required',
-          description: 'Roof geometry did not align with the property.',
+          title: 'Internal review required',
+          description: 'Automated roof geometry could not be verified.',
           variant: 'destructive',
         });
         return;
