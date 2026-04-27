@@ -309,6 +309,38 @@ function planeFromAuthoritativeFootprint(
   }
 }
 
+function isLowDetailAuthoritativeFootprint(footprint: AuthoritativeFootprint | null): boolean {
+  if (!footprint) return true
+  const vertexCount = Number(footprint.vertexCount || openGeoRing(footprint.coordinates).length || 0)
+  return vertexCount <= 6 || footprint.confidence < 0.82
+}
+
+function polygonCentroidPx(poly: Pt[]): Pt {
+  if (!poly.length) return { x: 0, y: 0 }
+  return {
+    x: poly.reduce((s, p) => s + p.x, 0) / poly.length,
+    y: poly.reduce((s, p) => s + p.y, 0) / poly.length,
+  }
+}
+
+function shouldPreferImageFootprint(authoritative: AuthoritativeFootprint | null, imageFootprint: Pt[] | null, authoritativePlane: RoofPlane | null): boolean {
+  if (!imageFootprint || imageFootprint.length < 4) return false
+  if (!authoritative || !authoritativePlane) return true
+
+  const imageArea = shoelaceAreaPx(imageFootprint)
+  const authArea = shoelaceAreaPx(authoritativePlane.polygon_px)
+  const areaRatio = Math.max(imageArea, authArea) / Math.max(1, Math.min(imageArea, authArea))
+  const imageCentroid = polygonCentroidPx(imageFootprint)
+  const authCentroid = polygonCentroidPx(authoritativePlane.polygon_px)
+  const centroidDelta = Math.hypot(imageCentroid.x - authCentroid.x, imageCentroid.y - authCentroid.y)
+  const authDiag = Math.hypot(
+    Math.max(...authoritativePlane.polygon_px.map((p) => p.x)) - Math.min(...authoritativePlane.polygon_px.map((p) => p.x)),
+    Math.max(...authoritativePlane.polygon_px.map((p) => p.y)) - Math.min(...authoritativePlane.polygon_px.map((p) => p.y)),
+  )
+
+  return isLowDetailAuthoritativeFootprint(authoritative) || areaRatio > 1.18 || centroidDelta > authDiag * 0.12
+}
+
 function sniffRasterFormat(buf: Uint8Array): 'png' | 'jpeg' | 'unknown' {
   if (
     buf.length >= 8 &&
