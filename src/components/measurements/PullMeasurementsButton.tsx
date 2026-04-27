@@ -559,10 +559,14 @@ export function PullMeasurementsButton({
       })();
     } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
       setShouldNotifyJobStatus(false);
+      const errMsg = job.error || "AI measurement could not complete.";
+      const isInternalReview = /internal review|needs_internal_review/i.test(errMsg);
       toast({
-        title: "Analysis Failed",
-        description: job.error || "AI measurement could not complete.",
-        variant: "destructive",
+        title: isInternalReview ? "Flagged for Internal Review" : "Analysis Failed",
+        description: isInternalReview
+          ? "Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review — no customer-facing report will be generated."
+          : errMsg,
+        variant: isInternalReview ? "default" : "destructive",
       });
     }
     
