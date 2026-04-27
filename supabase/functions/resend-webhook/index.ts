@@ -155,17 +155,18 @@ Deno.serve(async (req: Request) => {
             const countField = mappedEventType === "opened" ? "opens_count" : "clicks_count";
             const timestampField = mappedEventType === "opened" ? "last_opened_at" : "last_clicked_at";
             
-            await supabase.rpc("increment_email_count", {
+            const rpcResult = await supabase.rpc("increment_email_count", {
               p_log_id: emailLog.id,
               p_count_field: countField,
               p_timestamp_field: timestampField,
-            }).catch(() => {
+            });
+            if (rpcResult.error) {
               // Fallback to direct update if RPC doesn't exist
-              supabase
+              await supabase
                 .from("onboarding_email_log")
                 .update({ [timestampField]: new Date().toISOString() })
                 .eq("id", emailLog.id);
-            });
+            }
           } else {
             await supabase
               .from("onboarding_email_log")

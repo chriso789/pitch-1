@@ -203,9 +203,12 @@ Deno.serve(async (req: Request) => {
         tracking_link_id: trackingLink.id,
         estimate_number: estimate.estimate_number
       }
-    }).catch(err => {
-      console.warn("[request-quote-signature] Failed to log event:", err);
     });
+    try {
+      // logging best-effort
+    } catch (err) {
+      console.warn("[request-quote-signature] Failed to log event:", err);
+    }
 
     console.log("[request-quote-signature] Envelope created successfully:", {
       envelope_id: envelope.id,

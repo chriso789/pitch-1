@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
           results.sms = { success: true, ...smsResponse.data };
         } catch (smsError) {
           console.error('SMS send error:', smsError);
-          results.sms = { success: false, error: smsError.message };
+          results.sms = { success: false, error: smsError instanceof Error ? smsError.message : String(smsError) };
         }
       } else {
         results.sms = { success: false, error: 'No phone number available' };
@@ -211,7 +211,7 @@ Deno.serve(async (req) => {
           results.email = { success: true, ...emailResult };
         } catch (emailError) {
           console.error('Email send error:', emailError);
-          results.email = { success: false, error: emailError.message };
+          results.email = { success: false, error: emailError instanceof Error ? emailError.message : String(emailError) };
         }
       } else {
         results.email = { success: false, error: 'No email address available' };
