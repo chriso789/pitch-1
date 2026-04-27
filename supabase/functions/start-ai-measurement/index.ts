@@ -1978,6 +1978,7 @@ Deno.serve(async (req) => {
               : []
             ).reduce((s: number, seg: any) => s + Number(seg?.stats?.areaMeters2 || 0), 0) * 10.7639
           )
+        let detectedRidgeLines: SplitLine[] = []
 
         if (needsRealGeometry) {
           const hint =
@@ -2023,6 +2024,7 @@ Deno.serve(async (req) => {
                   const ridgeLines: SplitLine[] = ridges
                     .sort((a, b) => b.votes - a.votes)
                     .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+                  detectedRidgeLines = ridgeLines
 
                   if (ridgeLines.length > 0) {
                     const minPlaneAreaPx = Math.max(
@@ -2090,6 +2092,7 @@ Deno.serve(async (req) => {
               const ridgeLines: SplitLine[] = ridges
                 .sort((a, b) => b.votes - a.votes)
                 .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+              detectedRidgeLines = ridgeLines
 
               const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(extracted.footprint) * 0.08)
               const subPolys =
