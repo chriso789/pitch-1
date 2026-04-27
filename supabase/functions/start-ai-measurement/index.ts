@@ -22,6 +22,11 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 import { generateRoofDiagrams } from '../_shared/roof-diagram-renderer.ts'
+import {
+  buildRoofPlanes,
+  filterStrongRidges,
+  type Line as SplitLine,
+} from '../_shared/plane-split.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -927,80 +932,6 @@ function detectRidges(
   }
 
   console.log(`[ridge-detect] found ${out.length} ridge candidates (votes: ${out.map((r) => r.votes).join(',')})`)
-  return out
-}
-
-/**
- * Split a polygon along an infinite line defined by ridge endpoints.
- * Returns [left, right] sub-polygons (or null if the ridge doesn't actually
- * cut the polygon into two non-trivial pieces).
- */
-function splitPolygonByLine(poly: Pt[], la: Pt, lb: Pt): [Pt[], Pt[]] | null {
-  if (poly.length < 3) return null
-  const nx = lb.y - la.y
-  const ny = -(lb.x - la.x)
-  const d = -(nx * la.x + ny * la.y)
-  const sideOf = (p: Pt) => nx * p.x + ny * p.y + d
-  const eps = 1e-6
-
-  const left: Pt[] = []
-  const right: Pt[] = []
-  for (let i = 0; i < poly.length; i++) {
-    const p = poly[i]
-    const q = poly[(i + 1) % poly.length]
-    const sp = sideOf(p)
-    const sq = sideOf(q)
-    if (sp >= -eps) left.push(p)
-    if (sp <= eps) right.push(p)
-    if ((sp > eps && sq < -eps) || (sp < -eps && sq > eps)) {
-      const t = sp / (sp - sq)
-      const ix = p.x + t * (q.x - p.x)
-      const iy = p.y + t * (q.y - p.y)
-      left.push({ x: ix, y: iy })
-      right.push({ x: ix, y: iy })
-    }
-  }
-
-  if (left.length < 3 || right.length < 3) return null
-  // Reject splits that don't really partition (one side ~= original)
-  const aOrig = shoelaceAreaPx(poly)
-  const aL = shoelaceAreaPx(left), aR = shoelaceAreaPx(right)
-  if (aL < aOrig * 0.1 || aR < aOrig * 0.1) return null
-  return [left, right]
-}
-
-/**
- * Recursively split the footprint polygon along detected ridge lines into
- * roof planes. Each split uses the longest-supporting ridge that actually
- * cuts the current polygon into two meaningful pieces.
- *
- * Returns at least 1 polygon (the footprint itself if no usable ridge cuts).
- */
-function splitFootprintAlongRidges(footprint: Pt[], ridges: RidgeLine[]): Pt[][] {
-  if (!ridges.length) return [footprint]
-  // Sort by votes desc — strongest first
-  const queue: Pt[][] = [footprint]
-  const remaining = [...ridges].sort((a, b) => b.votes - a.votes)
-  const out: Pt[][] = []
-  const MAX_PLANES = 8
-
-  while (queue.length && out.length + queue.length < MAX_PLANES) {
-    const poly = queue.shift()!
-    let split: [Pt[], Pt[]] | null = null
-    let usedIdx = -1
-    for (let i = 0; i < remaining.length; i++) {
-      const r = remaining[i]
-      const s = splitPolygonByLine(poly, r.a, r.b)
-      if (s) { split = s; usedIdx = i; break }
-    }
-    if (!split) {
-      out.push(poly)
-      continue
-    }
-    remaining.splice(usedIdx, 1)
-    queue.push(split[0], split[1])
-  }
-  out.push(...queue)
   return out
 }
 
