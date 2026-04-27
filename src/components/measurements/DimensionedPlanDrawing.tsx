@@ -25,6 +25,8 @@ export interface AerialBackground {
   bounds: [number, number, number, number];
 }
 
+type ProjectionFit = 'stretch' | 'contain';
+
 interface DimensionedPlanDrawingProps {
   edges: PlanEdge[];
   width?: number;
@@ -68,10 +70,25 @@ export function DimensionedPlanDrawing({
     const [west, south, east, north] = aerial.bounds;
     const lngRange = east - west || 1e-9;
     const latRange = north - south || 1e-9;
-    return (lng: number, lat: number): [number, number] => [
-      ((lng - west) / lngRange) * width,
-      ((north - lat) / latRange) * height,
-    ];
+    const fit: ProjectionFit = 'contain';
+    const sourceRatio = Math.max(aerial.imageWidth, 1) / Math.max(aerial.imageHeight, 1);
+    const frameRatio = width / height;
+    const drawWidth = fit === 'contain'
+      ? (sourceRatio > frameRatio ? width : height * sourceRatio)
+      : width;
+    const drawHeight = fit === 'contain'
+      ? (sourceRatio > frameRatio ? width / sourceRatio : height)
+      : height;
+    const offsetX = (width - drawWidth) / 2;
+    const offsetY = (height - drawHeight) / 2;
+
+    return {
+      image: { x: offsetX, y: offsetY, width: drawWidth, height: drawHeight, fit },
+      point: (lng: number, lat: number): [number, number] => [
+        offsetX + ((lng - west) / lngRange) * drawWidth,
+        offsetY + ((north - lat) / latRange) * drawHeight,
+      ],
+    };
   }, [aerial, width, height]);
 
   const { transform, bounds } = useMemo(() => {
