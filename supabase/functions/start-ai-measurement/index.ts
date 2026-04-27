@@ -1743,11 +1743,15 @@ async function resolveProperty(
     sourceId = leadId
     const { data: lead } = await supa
       .from('pipeline_entries')
-      .select('id, tenant_id, contact_id')
+      .select('id, tenant_id, contact_id, metadata')
       .eq('id', leadId)
       .maybeSingle()
     if (lead) {
       tenantId = lead.tenant_id
+      const verified = lead.metadata?.verified_address
+      if (!address && verified?.formatted_address) address = verified.formatted_address
+      if (lat == null && verified?.geometry?.location?.lat != null) lat = Number(verified.geometry.location.lat)
+      if (lng == null && verified?.geometry?.location?.lng != null) lng = Number(verified.geometry.location.lng)
       if (lead.contact_id) {
         const { data: c } = await supa
           .from('contacts')
