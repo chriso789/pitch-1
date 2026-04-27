@@ -97,6 +97,45 @@ interface SchematicRoofDiagramProps {
   showDebugPanel?: boolean;
 }
 
+function normalizeStoredImageBounds(input: any, fallbackZoom?: number): ImageBounds | null {
+  if (!input) return null;
+
+  if (Array.isArray(input) && input.length === 4) {
+    const [west, south, east, north] = input.map(Number);
+    if ([west, south, east, north].every(Number.isFinite)) {
+      return {
+        topLeft: { lat: north, lng: west },
+        topRight: { lat: north, lng: east },
+        bottomLeft: { lat: south, lng: west },
+        bottomRight: { lat: south, lng: east },
+        centerLat: (north + south) / 2,
+        centerLng: (west + east) / 2,
+        zoom: fallbackZoom || 20,
+      };
+    }
+  }
+
+  if (input?.topLeft && input?.topRight && input?.bottomLeft && input?.bottomRight) {
+    const topLeft = { lat: Number(input.topLeft.lat), lng: Number(input.topLeft.lng) };
+    const topRight = { lat: Number(input.topRight.lat), lng: Number(input.topRight.lng) };
+    const bottomLeft = { lat: Number(input.bottomLeft.lat), lng: Number(input.bottomLeft.lng) };
+    const bottomRight = { lat: Number(input.bottomRight.lat), lng: Number(input.bottomRight.lng) };
+    if ([topLeft.lat, topLeft.lng, topRight.lat, topRight.lng, bottomLeft.lat, bottomLeft.lng, bottomRight.lat, bottomRight.lng].every(Number.isFinite)) {
+      return {
+        topLeft,
+        topRight,
+        bottomLeft,
+        bottomRight,
+        centerLat: Number(input.centerLat) || (topLeft.lat + bottomLeft.lat) / 2,
+        centerLng: Number(input.centerLng) || (topLeft.lng + topRight.lng) / 2,
+        zoom: Number(input.zoom) || fallbackZoom || 20,
+      };
+    }
+  }
+
+  return null;
+}
+
 // Calculate distance between two points in feet (haversine)
 function calculateSegmentLength(p1: { lat: number; lng: number }, p2: { lat: number; lng: number }): number {
   const R = 20902231; // Earth's radius in feet
@@ -339,10 +378,10 @@ export function SchematicRoofDiagram({
     if (!measurement) return null;
     
     // Priority 1: Stored image_bounds from the measurement pipeline
-    const storedBounds = measurement.image_bounds;
-    if (storedBounds && storedBounds.topLeft && storedBounds.bottomLeft) {
+    const storedBounds = normalizeStoredImageBounds(measurement.image_bounds, measurement.analysis_zoom || 20);
+    if (storedBounds) {
       console.log('🗺️ Using stored image_bounds from measurement');
-      return storedBounds as ImageBounds;
+      return storedBounds;
     }
     
     // Priority 2: Compute from center + zoom using Mercator projection
