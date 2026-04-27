@@ -34,19 +34,19 @@ Deno.serve(async (req) => {
           .select("contract_amount, created_at, status")
           .eq("tenant_id", tenant_id);
 
-        const revenueMTD = revenueData?.filter(p => 
+        const revenueMTD = revenueData?.filter((p: any) => 
           new Date(p.created_at) >= startOfMonth && p.status === 'completed'
-        ).reduce((sum, p) => sum + (p.contract_amount || 0), 0) || 0;
+        ).reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0) || 0;
 
-        const revenueYTD = revenueData?.filter(p => 
+        const revenueYTD = revenueData?.filter((p: any) => 
           new Date(p.created_at) >= startOfYear && p.status === 'completed'
-        ).reduce((sum, p) => sum + (p.contract_amount || 0), 0) || 0;
+        ).reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0) || 0;
 
-        const revenueLastMonth = revenueData?.filter(p => 
+        const revenueLastMonth = revenueData?.filter((p: any) => 
           new Date(p.created_at) >= lastMonth && 
           new Date(p.created_at) <= endOfLastMonth && 
           p.status === 'completed'
-        ).reduce((sum, p) => sum + (p.contract_amount || 0), 0) || 0;
+        ).reduce((sum: number, p: any) => sum + (p.contract_amount || 0), 0) || 0;
 
         // Get lead metrics
         const { data: leads, count: totalLeads } = await supabase
