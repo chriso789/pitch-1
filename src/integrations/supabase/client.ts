@@ -9,12 +9,7 @@ const SUPABASE_PUBLISHABLE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiO
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 
-// NOTE: The generated `Database` types in ./types.ts are out of sync with the live
-// schema for several tables (missing tenant_id, renamed columns, etc.) and that
-// file is auto-managed and cannot be hand-edited. Until types are regenerated, we
-// expose the client with a loose `from()` signature so insert/update payloads are
-// not rejected as `never`. Read paths still work the same at runtime.
-const _client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
     storage: localStorage,
     persistSession: true,
@@ -24,9 +19,3 @@ const _client = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     fetch: createSupabaseFetch()
   }
 });
-
-type LooseSupabase = Omit<typeof _client, 'from'> & {
-  from: (table: string) => any;
-};
-
-export const supabase: LooseSupabase = _client as unknown as LooseSupabase;
