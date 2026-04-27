@@ -1583,7 +1583,7 @@ Deno.serve(async (req) => {
         source_record_type: resolved.sourceType,
         source_record_id: resolved.sourceId,
         source_button: sourceButton,
-        property_address: resolved.address,
+        property_address: resolved.address || body.address || 'Unknown Address',
         latitude: resolved.lat,
         longitude: resolved.lng,
         status: 'queued',
@@ -1612,7 +1612,7 @@ Deno.serve(async (req) => {
         progress_message: 'Queued — geometry_first_v2',
         lat: resolved.lat,
         lng: resolved.lng,
-        address: resolved.address,
+        address: resolved.address || body.address || 'Unknown Address',
         pitch_override: pitchOverride,
       })
       .select('id')
