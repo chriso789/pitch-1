@@ -48,8 +48,8 @@ const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
 
 const ENGINE_VERSION = 'geometry_first_v2'
 const MAX_AUTO_ROOF_AREA_SQFT = 30000
-const MAX_FOOTPRINT_FRAME_FRACTION = 0.35
-const FOOTPRINT_EDGE_MARGIN_PX = 8
+const MAX_FOOTPRINT_FRAME_FRACTION = 0.65
+const FOOTPRINT_EDGE_MARGIN_PX = 4
 
 // ─────────────────────────────────────────────────────────────────────
 // Geometry helpers (pure, unit-tested via acceptance tests)
