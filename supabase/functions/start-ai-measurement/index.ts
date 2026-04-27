@@ -477,12 +477,13 @@ async function geocodeAddress(address: string) {
   }
 }
 
+// Legacy Mapbox-only helper kept for any callers that still expect it.
+// New code paths should use fetchPreferredBaseImagery() instead.
 async function fetchMapbox(lat: number, lng: number, zoom = 20, logicalSize = 640) {
-  if (!MAPBOX_TOKEN) return null
-  // @2x → returned raster is 2× logicalSize
+  if (!MAPBOX_IMAGE_TOKEN) return null
   const url =
     `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
-    `${lng},${lat},${zoom}/${logicalSize}x${logicalSize}@2x?access_token=${MAPBOX_TOKEN}`
+    `${lng},${lat},${zoom}/${logicalSize}x${logicalSize}@2x?access_token=${MAPBOX_IMAGE_TOKEN}`
   const r = await fetch(url)
   if (!r.ok) return null
   return {
@@ -494,6 +495,104 @@ async function fetchMapbox(lat: number, lng: number, zoom = 20, logicalSize = 64
     raster_scale: 2,
     zoom,
   }
+}
+
+// ── Provider-agnostic base imagery ────────────────────────────────────
+type BaseImagery = {
+  provider: 'mapbox' | 'google_static'
+  imageUrl: string
+  rgba: Uint8Array
+  width: number
+  height: number
+  logicalWidth: number
+  logicalHeight: number
+  rasterScale: number
+  zoom: number
+}
+
+async function fetchStaticRaster(
+  url: string,
+  provider: 'mapbox' | 'google_static',
+  zoom: number,
+  logicalWidth = 640,
+  logicalHeight = 640,
+  rasterScale = 2,
+): Promise<BaseImagery | null> {
+  try {
+    const resp = await fetch(url)
+    if (!resp.ok) {
+      const detail = await resp.text().catch(() => '')
+      console.warn(`[imagery] ${provider} HTTP ${resp.status}`, detail.slice(0, 300))
+      return null
+    }
+    const contentType = resp.headers.get('content-type') || ''
+    const bytes = new Uint8Array(await resp.arrayBuffer())
+    const decoded = await decodeRaster(bytes, contentType).catch((err) => {
+      console.warn(`[imagery] ${provider} decode failed`, String(err))
+      return null
+    })
+    if (!decoded || !decoded.width || !decoded.height || !decoded.data?.length) {
+      return null
+    }
+    return {
+      provider,
+      imageUrl: url,
+      rgba: decoded.data,
+      width: decoded.width,
+      height: decoded.height,
+      logicalWidth,
+      logicalHeight,
+      rasterScale,
+      zoom,
+    }
+  } catch (err) {
+    console.warn(`[imagery] ${provider} exception`, String(err))
+    return null
+  }
+}
+
+async function fetchPreferredBaseImagery(
+  lat: number,
+  lng: number,
+  zoom: number,
+  logicalWidth = 640,
+  logicalHeight = 640,
+): Promise<BaseImagery | null> {
+  if (MAPBOX_IMAGE_TOKEN) {
+    const mapboxUrl =
+      `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/` +
+      `${lng},${lat},${zoom},0,0/${logicalWidth}x${logicalHeight}@2x` +
+      `?access_token=${MAPBOX_IMAGE_TOKEN}&logo=false&attribution=false`
+    const mb = await fetchStaticRaster(mapboxUrl, 'mapbox', zoom, logicalWidth, logicalHeight, 2)
+    if (mb) return mb
+    console.warn('[imagery] Mapbox failed; falling back to Google Static Maps')
+  }
+  if (GOOGLE_STATIC_KEY) {
+    const googleUrl =
+      `https://maps.googleapis.com/maps/api/staticmap` +
+      `?center=${lat},${lng}` +
+      `&zoom=${zoom}` +
+      `&size=${logicalWidth}x${logicalHeight}` +
+      `&scale=2&maptype=satellite&format=png&key=${GOOGLE_STATIC_KEY}`
+    const gg = await fetchStaticRaster(googleUrl, 'google_static', zoom, logicalWidth, logicalHeight, 2)
+    if (gg) return gg
+  }
+  return null
+}
+
+function computeImageBounds(
+  lat: number,
+  lng: number,
+  zoom: number,
+  logicalWidth: number,
+  logicalHeight: number,
+): [number, number, number, number] {
+  const metersPerPixel = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom)
+  const halfW = (logicalWidth * metersPerPixel) / 2
+  const halfH = (logicalHeight * metersPerPixel) / 2
+  const latOffset = halfH / 111320
+  const lngOffset = halfW / (111320 * Math.cos((lat * Math.PI) / 180))
+  return [lng - lngOffset, lat - latOffset, lng + lngOffset, lat + latOffset]
 }
 
 async function fetchGoogleSolar(lat: number, lng: number) {
