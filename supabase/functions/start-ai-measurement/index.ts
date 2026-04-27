@@ -741,6 +741,104 @@ function edgesFromPerimeter(
   return out
 }
 
+function lineToRoofEdge(
+  line: SplitLine,
+  edgeType: RoofEdge['edge_type'],
+  source: string,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+  confidence: number,
+): RoofEdge {
+  const lpx = polylineLengthPx([line.p1, line.p2])
+  return {
+    edge_type: edgeType,
+    source,
+    line_px: [line.p1, line.p2],
+    line_geojson: [
+      pixelToLatLng(line.p1.x, line.p1.y, centerLat, centerLng, imgW, imgH, actualMpp),
+      pixelToLatLng(line.p2.x, line.p2.y, centerLat, centerLng, imgW, imgH, actualMpp),
+    ],
+    length_px: lpx,
+    length_ft: lpx * feetPerPixel,
+    confidence,
+  }
+}
+
+function clipLineToPolygonSegment(polygon: Pt[], line: SplitLine): SplitLine | null {
+  if (polygon.length < 3) return null
+  const dx = line.p2.x - line.p1.x
+  const dy = line.p2.y - line.p1.y
+  const len = Math.hypot(dx, dy)
+  if (len <= 1e-6) return null
+  const ux = dx / len
+  const uy = dy / len
+  const minX = Math.min(...polygon.map((p) => p.x))
+  const maxX = Math.max(...polygon.map((p) => p.x))
+  const minY = Math.min(...polygon.map((p) => p.y))
+  const maxY = Math.max(...polygon.map((p) => p.y))
+  const reach = Math.hypot(maxX - minX, maxY - minY) * 2 + len
+  const extended = {
+    p1: { x: line.p1.x - ux * reach, y: line.p1.y - uy * reach },
+    p2: { x: line.p2.x + ux * reach, y: line.p2.y + uy * reach },
+  }
+  const hits: Array<{ p: Pt; t: number }> = []
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i]
+    const b = polygon[(i + 1) % polygon.length]
+    const hit = intersectSegments(extended.p1, extended.p2, a, b)
+    if (!hit) continue
+    const t = (hit.x - extended.p1.x) * ux + (hit.y - extended.p1.y) * uy
+    if (!hits.some((h) => Math.hypot(h.p.x - hit.x, h.p.y - hit.y) < 2)) hits.push({ p: hit, t })
+  }
+  if (hits.length < 2) return null
+  hits.sort((a, b) => a.t - b.t)
+  return { p1: hits[0].p, p2: hits[hits.length - 1].p, votes: line.votes }
+}
+
+function synthesizeCentralRidgeFromFootprint(
+  plane: RoofPlane,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofEdge | null {
+  const poly = plane.polygon_px
+  if (poly.length < 4) return null
+  const minX = Math.min(...poly.map((p) => p.x))
+  const maxX = Math.max(...poly.map((p) => p.x))
+  const minY = Math.min(...poly.map((p) => p.y))
+  const maxY = Math.max(...poly.map((p) => p.y))
+  const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length
+  const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length
+  const widthPx = maxX - minX
+  const heightPx = maxY - minY
+  if (Math.min(widthPx, heightPx) < 20) return null
+  const inset = Math.min(widthPx, heightPx) * 0.22
+  const candidate: SplitLine = widthPx >= heightPx
+    ? { p1: { x: minX + inset, y: cy }, p2: { x: maxX - inset, y: cy }, votes: 1 }
+    : { p1: { x: cx, y: minY + inset }, p2: { x: cx, y: maxY - inset }, votes: 1 }
+  const clipped = clipLineToPolygonSegment(poly, candidate) || candidate
+  if (polylineLengthPx([clipped.p1, clipped.p2]) < Math.min(widthPx, heightPx) * 0.2) return null
+  return lineToRoofEdge(
+    clipped,
+    'ridge',
+    'solar_dsm_inferred_ridge',
+    centerLat,
+    centerLng,
+    imgW,
+    imgH,
+    actualMpp,
+    feetPerPixel,
+    0.58,
+  )
+}
+
 /** Detect shared edges between adjacent planes → ridges/hips/valleys (best-effort).
  *  Plus: emit perimeter eaves/rakes for every plane edge that is NOT shared. */
 function edgesFromPlanes(
