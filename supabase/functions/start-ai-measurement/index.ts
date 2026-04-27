@@ -1460,26 +1460,37 @@ Deno.serve(async (req) => {
         if (needsImageRecovery && mb?.image_url) {
           await supa
             .from('measurement_jobs')
-            .update({ progress_message: 'Extracting roof footprint from imagery…' })
+            .update({ progress_message: 'Extracting roof footprint + ridges from imagery…' })
             .eq('id', job.id)
-          const footprintPx = await extractRoofFootprintFromImage(
-            mb.image_url, imgW, imgH,
-          )
-          if (footprintPx && footprintPx.length >= 4) {
-            // Pull pitch/azimuth hints from the largest Solar bbox if any.
+          const extracted = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+          if (extracted && extracted.footprint.length >= 4) {
             const hint = onlyBboxPlanes
               ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
               : null
-            const fpPlane = planeFromFootprint(
-              footprintPx, lat, lng, imgW, imgH,
-              cal.meters_per_pixel_actual, feetPerPixel,
-              hint?.pitch ?? null, hint?.azimuth ?? null,
+            // Ridge-first segmentation: detect interior ridges and split the
+            // footprint along them. If no usable ridges are found, fall back
+            // to a SINGLE plane (no fake rectangles, no heuristic splits).
+            const ridges = detectRidges(
+              extracted.mag, extracted.blob, extracted.dW, extracted.dH,
+              extracted.scaleX, extracted.scaleY,
+            )
+            const subPolys = splitFootprintAlongRidges(extracted.footprint, ridges)
+            const isMultiPlane = subPolys.length > 1
+            const planeSource = isMultiPlane
+              ? 'image_footprint_ridge_split'
+              : 'image_footprint_extraction' // single_plane_fallback
+            planes = subPolys.map((poly, idx) =>
+              planeFromFootprint(
+                poly, lat, lng, imgW, imgH,
+                cal.meters_per_pixel_actual, feetPerPixel,
+                hint?.pitch ?? null, hint?.azimuth ?? null,
+                planeSource, idx,
+              ),
             )
             console.log(
-              `[start-ai-measurement] image footprint extracted: ${footprintPx.length} pts, ` +
-              `area=${fpPlane.area_2d_sqft.toFixed(0)} sqft (replacing ${planes.length} bbox planes)`,
+              `[start-ai-measurement] ridge-first segmentation: ` +
+              `footprint=${extracted.footprint.length}pts, ridges=${ridges.length}, planes=${planes.length}`,
             )
-            planes = [fpPlane]
           } else {
             console.warn('[start-ai-measurement] image footprint extraction failed; keeping bbox planes for QC reject')
           }
