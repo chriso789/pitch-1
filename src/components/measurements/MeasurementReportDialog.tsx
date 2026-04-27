@@ -125,7 +125,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         }
         if (!cancelled) setJobId(resolvedJobId);
 
-        if (qc.ok) {
+        if (previewGate.ok) {
           const { data, error } = await (supabase as any)
             .from('ai_measurement_diagrams')
             .select('id, diagram_type, title, page_number, svg_markup')
@@ -140,9 +140,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, explicitJobId, measurement, pipelineEntryId, qc.ok]);
+  }, [open, explicitJobId, measurement, pipelineEntryId, previewGate.ok]);
 
   const handleDownloadPdf = async () => {
+    const existingPdfUrl = (measurement as any)?.report_pdf_url;
+    if (existingPdfUrl && pdfGate.ok) {
+      window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
     if (!jobId) return;
     setDownloading(true);
     try {
@@ -185,7 +190,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           <Button
             size="sm"
             onClick={handleDownloadPdf}
-            disabled={!qc.ok || !jobId || downloading || diagrams.length === 0}
+            disabled={!pdfGate.ok || !jobId || downloading || diagrams.length === 0}
           >
             {downloading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -197,13 +202,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         </DialogHeader>
 
         <ScrollArea className="h-[calc(90vh-100px)] px-6 pb-6">
-          {!qc.ok ? (
+          {!previewGate.ok ? (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
               <AlertTitle>Internal review required</AlertTitle>
               <AlertDescription>
                 Automated roof geometry could not be verified. This measurement has been
-                routed to internal QA. ({qc.reason})
+                routed to internal QA. ({previewGate.reason})
               </AlertDescription>
             </Alert>
           ) : loading ? (
@@ -221,6 +226,15 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             </Alert>
           ) : (
             <div className="space-y-6">
+              {!pdfGate.ok && (
+                <Alert>
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertTitle>Preview only</AlertTitle>
+                  <AlertDescription>
+                    Diagram preview is available, but customer PDF download is blocked. ({pdfGate.reason})
+                  </AlertDescription>
+                </Alert>
+              )}
               {diagrams.map((d) => {
                 const label =
                   PAGE_LABELS[(d.page_number || 1) - 1] || d.title || d.diagram_type;
