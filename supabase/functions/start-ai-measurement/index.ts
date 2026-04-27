@@ -1040,6 +1040,7 @@ function runQualityChecks(input: {
   overlayAlignmentScore: number
   geometrySourceIsReal: boolean
   planesAreAllRectangles: boolean
+  singlePlaneFallback: boolean
 } {
   const checks: QC[] = []
   const push = (n: string, ok: boolean, s: number, d: any = {}) =>
@@ -1668,7 +1669,7 @@ Deno.serve(async (req) => {
         if (qc.status !== 'needs_internal_review' && planes.length > 0 && !hasPlaceholder) {
           try {
             const diagrams = generateRoofDiagrams({
-              propertyAddress: resolved.address,
+              propertyAddress: resolved.address || 'Unknown property',
               planes: planes.map((p) => ({
                 plane_index: p.plane_index,
                 polygon_px: p.polygon_px as any,
