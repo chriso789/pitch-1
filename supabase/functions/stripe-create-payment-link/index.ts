@@ -111,16 +111,19 @@ Deno.serve(async (req) => {
     }
 
     // 100% pass-through: no application fee. Funds route directly to the tenant's Stripe.
+    // Stripe payment links require a pre-created Price; create product+price on the fly
+    const price = await stripe.prices.create({
+      currency,
+      unit_amount: Math.round(amount * 100),
+      product_data: {
+        name: description || 'Payment',
+      },
+    }, { stripeAccount: tenantStripe.stripe_account_id });
+
     const paymentLink = await stripe.paymentLinks.create({
       line_items: [
         {
-          price_data: {
-            currency,
-            product_data: {
-              name: description || 'Payment',
-            },
-            unit_amount: Math.round(amount * 100),
-          },
+          price: price.id,
           quantity: 1,
         },
       ],

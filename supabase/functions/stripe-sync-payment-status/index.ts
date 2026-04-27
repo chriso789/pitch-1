@@ -108,7 +108,8 @@ Deno.serve(async (req) => {
         }
 
         // Check for refunds
-        if (paymentIntent.charges?.data[0]?.refunded) {
+        const piAny = paymentIntent as any;
+        if (piAny.charges?.data?.[0]?.refunded) {
           newStatus = 'refunded';
         }
 

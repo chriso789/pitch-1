@@ -307,8 +307,8 @@ ${esxLines}`;
       fileName = `xactimate-export-${Date.now()}.esx`;
     }
 
-    // Store export record
-    await supabase.from('document_exports').insert({
+    // Store export record (non-fatal)
+    const { error: exportLogError } = await supabase.from('document_exports').insert({
       tenant_id: user.id,
       export_type: 'xactimate',
       format: export_format,
@@ -318,7 +318,8 @@ ${esxLines}`;
       file_name: fileName,
       line_items_count: lineItems.length,
       created_at: new Date().toISOString(),
-    }).catch(err => console.error('Export log error (non-fatal):', err));
+    });
+    if (exportLogError) console.error('Export log error (non-fatal):', exportLogError);
 
     return new Response(
       JSON.stringify({
