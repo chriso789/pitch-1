@@ -601,17 +601,15 @@ async function extractRoofFootprintAndEdges(
     }
     const buf = new Uint8Array(await resp.arrayBuffer())
 
-    // Decode PNG (Mapbox static API returns PNG by default)
-    const { PNG } = await import('npm:pngjs@7.0.0')
-    let png: any
+    let raster: DecodedRaster
     try {
-      png = PNG.sync.read(buf as any)
+      raster = await decodeRaster(buf, resp.headers.get('content-type'))
     } catch (e) {
-      console.warn('[footprint-extract] PNG decode failed', String(e))
+      console.warn('[footprint-extract] raster decode failed', String(e))
       return null
     }
-    const W = png.width, H = png.height
-    const data = png.data as Uint8Array // RGBA
+    const W = raster.width, H = raster.height
+    const data = raster.data // RGBA
 
     // 1) Grayscale (luminance)
     const gray = new Uint8Array(W * H)
