@@ -46,8 +46,11 @@ const PAGE_LABELS = [
 function evaluateQc(measurement: any): { ok: boolean; reason?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
   const grj = measurement.geometry_report_json;
-  if (measurement.validation_status === 'needs_manual_measurement')
-    return { ok: false, reason: 'Job flagged needs_manual_measurement.' };
+  if (
+    measurement.validation_status === 'needs_internal_review' ||
+    measurement.validation_status === 'needs_manual_measurement' // legacy
+  )
+    return { ok: false, reason: 'Job flagged needs_internal_review.' };
   if (!measurement.facet_count || measurement.facet_count <= 0)
     return { ok: false, reason: 'No roof facets recorded.' };
   if (!grj) return { ok: false, reason: 'geometry_report_json missing.' };
