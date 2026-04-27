@@ -1283,7 +1283,7 @@ async function extractRoofFootprintAndEdges(
       return null
     }
 
-    return { footprint, mag, blob, dW, dH, scaleX: sxScale, scaleY: syScale }
+    return { footprint, mag, gx: gxGrid, gy: gyGrid, blob, dW, dH, scaleX: sxScale, scaleY: syScale }
   } catch (e) {
     console.warn('[footprint-extract] error', String(e))
     return null
