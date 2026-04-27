@@ -365,7 +365,7 @@ export function PullMeasurementsButton({
           const { data } = await supabase
             .from('roof_measurements')
             .select(`
-              id, requires_manual_review,
+              id, requires_manual_review, gate_decision,
               total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length,
               linear_features_wkt, perimeter_wkt, footprint_vertices_geo,
               mapbox_image_url, google_maps_image_url, satellite_overlay_url,
@@ -376,14 +376,17 @@ export function PullMeasurementsButton({
             .limit(1)
             .maybeSingle();
 
-          // Gate-aware UX: auto-ship if 3% accuracy gate passed; only prompt
-          // for edge verification if the measurement was flagged for manual review.
-          const gateFailed = Boolean((data as any)?.requires_manual_review);
-          setVerificationReady(gateFailed);
-          if (gateFailed) {
+          // Gate-aware UX: the old "requires_manual_review" flag can be raised by
+          // low-confidence diagnostics even after the AI phases complete. Do not
+          // resurrect the removed verification step unless the strict vendor-truth
+          // gate explicitly says this run failed.
+          const gateDecision = String((data as any)?.gate_decision || '').toLowerCase();
+          const strictGateFailed = gateDecision === 'review_required' || gateDecision === 'reject';
+          setVerificationReady(strictGateFailed);
+          if (strictGateFailed) {
             toast({
-              title: "⚠️ Verify Edges — Accuracy Gate Failed",
-              description: "Confirm each edge to lock in the measurement.",
+              title: "⚠️ Accuracy Gate Needs Review",
+              description: "Vendor-truth comparison found a mismatch. Confirm the edges before using this run.",
             });
           } else {
             toast({
