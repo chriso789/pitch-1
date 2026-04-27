@@ -2638,6 +2638,32 @@ Deno.serve(async (req) => {
                 requires_manual_review: g.decision !== 'auto_ship',
               }).eq('id', roofId)
               console.log(`[start-ai-measurement] 3% gate → ${g.decision} (${g.reason})`)
+
+              // Phase 6: emit learning event for the continuous-learning loop
+              try {
+                await supa.functions.invoke('measurement-learning-loop', {
+                  body: {
+                    action: 'record_event',
+                    measurement_id: roofId,
+                    tenant_id: resolved.tenantId,
+                    event_type: g.decision === 'auto_ship' ? 'auto_ship' : (g.decision === 'reject' ? 'gate_failure' : 'vendor_truth_diff'),
+                    source: 'start-ai-measurement',
+                    gate_decision: g.decision,
+                    per_class_errors: g.per_class ?? null,
+                    area_error_pct: g.area_error_pct ?? null,
+                    pitch_error_deg: g.pitch_error ?? null,
+                    ridge_error_pct: g.ridge_error_pct ?? null,
+                    hip_error_pct: g.hip_error_pct ?? null,
+                    valley_error_pct: g.valley_error_pct ?? null,
+                    eave_error_pct: g.eave_error_pct ?? null,
+                    rake_error_pct: g.rake_error_pct ?? null,
+                    weighted_score: g.weighted_accuracy_score ?? null,
+                    payload: { vendor_report_id: vendorRpt.id, reason: g.reason },
+                  },
+                })
+              } catch (mlErr) {
+                console.warn('[start-ai-measurement] learning-loop emit failed:', (mlErr as Error).message)
+              }
             }
           } else {
             console.log('[start-ai-measurement] 3% gate skipped: no vendor truth report on file')
