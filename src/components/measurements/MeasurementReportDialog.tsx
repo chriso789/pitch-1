@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -42,8 +42,7 @@ const PAGE_LABELS = [
   'Notes Diagram',
 ];
 
-/** Client mirror of the server-side QC gate enforced by render-measurement-pdf. */
-function evaluateQc(measurement: any): { ok: boolean; reason?: string } {
+function evaluatePreviewGate(measurement: any): { ok: boolean; reason?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
   const grj = measurement.geometry_report_json;
   if (
@@ -53,10 +52,31 @@ function evaluateQc(measurement: any): { ok: boolean; reason?: string } {
     return { ok: false, reason: 'Job flagged needs_internal_review.' };
   if (!measurement.facet_count || measurement.facet_count <= 0)
     return { ok: false, reason: 'No roof facets recorded.' };
+  if (!grj) return measurement.report_pdf_url ? { ok: true } : { ok: false, reason: 'geometry_report_json missing.' };
+  if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
+  if (grj.geometry_source === 'google_solar_bbox')
+    return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
+  if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < 0.75)
+    return { ok: false, reason: 'overlay_alignment_score below 0.75.' };
+  return { ok: true };
+}
+
+/** Client mirror of the PDF-specific QC gate enforced by render-measurement-pdf. */
+function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string } {
+  if (!measurement) return { ok: false, reason: 'No measurement record.' };
+  const grj = measurement.geometry_report_json;
+  if (
+    measurement.validation_status === 'needs_internal_review' ||
+    measurement.validation_status === 'needs_manual_measurement'
+  ) return { ok: false, reason: 'Job flagged needs_internal_review.' };
+  if (!measurement.facet_count || measurement.facet_count <= 0)
+    return { ok: false, reason: 'No roof facets recorded.' };
   if (!grj) return { ok: false, reason: 'geometry_report_json missing.' };
   if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
   if (grj.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
+  if (grj.single_plane_fallback === true)
+    return { ok: false, reason: 'Preview-only single-plane fallback.' };
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < 0.75)
     return { ok: false, reason: 'overlay_alignment_score below 0.75.' };
   return { ok: true };
@@ -76,7 +96,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
 
-  const qc = evaluateQc(measurement);
+  const previewGate = useMemo(() => evaluatePreviewGate(measurement), [measurement]);
+  const pdfGate = useMemo(() => evaluatePdfGate(measurement), [measurement]);
 
   useEffect(() => {
     if (!open) return;
