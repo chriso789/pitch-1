@@ -2331,11 +2331,6 @@ Deno.serve(async (req) => {
                     )
                   }
                 }
-                    console.log(
-                      `[start-ai-measurement] no strong ridges detected on authoritative footprint (raw=${rawRidges.length})`,
-                    )
-                  }
-                }
               } catch (err) {
                 console.warn('[start-ai-measurement] ridge split on authoritative footprint failed:', err)
               }
