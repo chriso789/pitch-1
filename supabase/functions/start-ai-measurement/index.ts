@@ -1127,7 +1127,7 @@ function runQualityChecks(input: {
   const noSelfInt = input.planes.every((p) => !hasSelfIntersection(p.polygon_px))
   push('no_self_intersections', noSelfInt, noSelfInt ? 1 : 0)
 
-  const reasonable = input.totalAreaSqft >= 200 && input.totalAreaSqft <= 30000
+  const reasonable = input.totalAreaSqft >= 200 && input.totalAreaSqft <= MAX_AUTO_ROOF_AREA_SQFT
   push('area_reasonable', reasonable, reasonable ? 1 : 0, { sqft: input.totalAreaSqft })
 
   push('pitch_data_available', input.hasPitch, input.hasPitch ? 1 : 0)
@@ -1195,7 +1195,7 @@ function runQualityChecks(input: {
   // Absolute sanity cap on total roof area. A residential satellite tile at
   // z20 cannot legitimately produce >30k sqft of roof — anything beyond means
   // the footprint extractor leaked into neighbors / road / canopy.
-  const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= 30000
+  const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= MAX_AUTO_ROOF_AREA_SQFT
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
