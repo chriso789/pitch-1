@@ -1803,7 +1803,24 @@ Deno.serve(async (req) => {
                 `[start-ai-measurement] image fallback used: footprint=${extracted.footprint.length}pts raw_ridges=${rawRidges.length} strong_ridges=${ridges.length} planes=${planes.length}`
               )
             } else {
-              console.warn('[start-ai-measurement] no authoritative footprint and image extraction failed; keeping placeholder planes for QC reject')
+              const aggregate = solarOk
+                ? solarAggregatePlane(
+                    solar,
+                    lat,
+                    lng,
+                    imgW,
+                    imgH,
+                    cal.meters_per_pixel_actual,
+                    hint?.pitch ?? null,
+                    hint?.azimuth ?? null,
+                  )
+                : null
+              if (aggregate) {
+                planes = [aggregate]
+                console.warn('[start-ai-measurement] authoritative/image extraction unavailable; publishing Google Solar aggregate as needs_review')
+              } else {
+                console.warn('[start-ai-measurement] no authoritative footprint and image extraction failed; keeping placeholder planes for QC reject')
+              }
             }
           }
         }
