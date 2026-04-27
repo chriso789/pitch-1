@@ -1130,9 +1130,42 @@ Deno.serve(async (req) => {
         const solarOk = !!solar?.solarPotential?.roofSegmentStats?.length
 
         // 2d) Build planes
-        const planes: RoofPlane[] = solarOk
+        let planes: RoofPlane[] = solarOk
           ? planesFromSolar(solar, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel)
           : []
+
+        // 2d.5) FALLBACK: if Solar gave us only bbox planes (or nothing real),
+        // attempt to extract a real footprint from the satellite image before
+        // failing to manual measurement. Solar pitch/azimuth become hints only.
+        const onlyBboxPlanes =
+          planes.length > 0 && planes.every((p) => p.source === 'google_solar_bbox')
+        if ((planes.length === 0 || onlyBboxPlanes) && mb?.image_url) {
+          await supa
+            .from('measurement_jobs')
+            .update({ progress_message: 'Extracting roof footprint from imagery…' })
+            .eq('id', job.id)
+          const footprintPx = await extractRoofFootprintFromImage(
+            mb.image_url, imgW, imgH,
+          )
+          if (footprintPx && footprintPx.length >= 4) {
+            // Pull pitch/azimuth hints from the largest Solar bbox if any.
+            const hint = onlyBboxPlanes
+              ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+              : null
+            const fpPlane = planeFromFootprint(
+              footprintPx, lat, lng, imgW, imgH,
+              cal.meters_per_pixel_actual, feetPerPixel,
+              hint?.pitch ?? null, hint?.azimuth ?? null,
+            )
+            console.log(
+              `[start-ai-measurement] image footprint extracted: ${footprintPx.length} pts, ` +
+              `area=${fpPlane.area_2d_sqft.toFixed(0)} sqft (replacing ${planes.length} bbox planes)`,
+            )
+            planes = [fpPlane]
+          } else {
+            console.warn('[start-ai-measurement] image footprint extraction failed; keeping bbox planes for QC reject')
+          }
+        }
 
         // 2e) Apply pitch override (single rise replaces per-plane pitch)
         if (pitchOverride) {
