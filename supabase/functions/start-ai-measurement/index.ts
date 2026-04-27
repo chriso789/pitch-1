@@ -36,7 +36,10 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const MAPBOX_TOKEN =
-  Deno.env.get('MAPBOX_PUBLIC_TOKEN') || Deno.env.get('MAPBOX_ACCESS_TOKEN') || ''
+  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
+  Deno.env.get('MAPBOX_ACCESS_TOKEN') ||
+  Deno.env.get('MAPBOX_TOKEN') ||
+  ''
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY') || ''
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
 
@@ -48,6 +51,47 @@ const ENGINE_VERSION = 'geometry_first_v2'
 
 type Pt = { x: number; y: number }
 type GeoPt = { lat: number; lng: number }
+type DecodedRaster = { width: number; height: number; data: Uint8Array }
+
+function sniffRasterFormat(buf: Uint8Array): 'png' | 'jpeg' | 'unknown' {
+  if (
+    buf.length >= 8 &&
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  ) return 'png'
+  if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xd8) return 'jpeg'
+  return 'unknown'
+}
+
+async function decodeRaster(buf: Uint8Array, contentType?: string | null): Promise<DecodedRaster> {
+  const ct = String(contentType || '').toLowerCase()
+  const fmt = ct.includes('png')
+    ? 'png'
+    : ct.includes('jpeg') || ct.includes('jpg')
+      ? 'jpeg'
+      : sniffRasterFormat(buf)
+
+  if (fmt === 'png') {
+    const { PNG } = await import('npm:pngjs@7.0.0')
+    const png = PNG.sync.read(buf as any)
+    return { width: png.width, height: png.height, data: png.data as Uint8Array }
+  }
+
+  if (fmt === 'jpeg') {
+    const jpeg = await import('npm:jpeg-js@0.4.4')
+    const decoded = (jpeg as any).decode(buf, { useTArray: true })
+    if (!decoded?.width || !decoded?.height || !decoded?.data) throw new Error('JPEG decode failed')
+    return { width: decoded.width, height: decoded.height, data: decoded.data as Uint8Array }
+  }
+
+  throw new Error(`Unsupported raster format: ${contentType || 'unknown'}`)
+}
 
 /** Logical (Web Mercator) meters-per-pixel at given lat/zoom. */
 export function logicalMetersPerPixel(lat: number, zoom: number): number {
