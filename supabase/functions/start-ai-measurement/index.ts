@@ -1317,6 +1317,7 @@ const FOOTPRINT_ONLY_SOURCES = new Set([
   'mapbox_vector',
   'osm_buildings',
   'microsoft_buildings',
+  'google_solar_aggregate',
 ])
 
 function runQualityChecks(input: {
@@ -1437,12 +1438,11 @@ function runQualityChecks(input: {
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
-    overlayAlignmentScore < 0.75 ||
     !allInside ||
     !areaWithinHardCap
   ) {
     status = 'needs_internal_review'
-  } else if (singlePlaneFallback) {
+  } else if (singlePlaneFallback || overlayAlignmentScore < 0.75) {
     // Real footprint, but no facet split — never auto-complete.
     status = 'needs_review'
   } else if (overall >= 0.85 && overlayAlignmentScore >= 0.85) {
