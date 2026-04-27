@@ -27,6 +27,9 @@ import {
   filterStrongRidges,
   type Line as SplitLine,
 } from '../_shared/plane-split.ts'
+import { fetchMapboxVectorFootprint } from '../_shared/mapbox-footprint-extractor.ts'
+import { fetchOSMBuildingFootprint } from '../_shared/osm-footprint-extractor.ts'
+import { fetchMicrosoftBuildingFootprint } from '../_shared/microsoft-footprint-extractor.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -55,6 +58,165 @@ const FOOTPRINT_EDGE_MARGIN_PX = 8
 type Pt = { x: number; y: number }
 type GeoPt = { lat: number; lng: number }
 type DecodedRaster = { width: number; height: number; data: Uint8Array }
+
+type GeoXY = [number, number] // [lng, lat]
+type FootprintSource = 'mapbox_vector' | 'osm_buildings' | 'microsoft_buildings'
+
+interface AuthoritativeFootprint {
+  coordinates: GeoXY[]
+  source: FootprintSource
+  confidence: number
+  areaM2?: number
+  vertexCount: number
+}
+
+function openGeoRing(coords: GeoXY[]): GeoXY[] {
+  if (!coords.length) return []
+  const first = coords[0]
+  const last = coords[coords.length - 1]
+  if (
+    Math.abs(first[0] - last[0]) < 1e-12 &&
+    Math.abs(first[1] - last[1]) < 1e-12
+  ) {
+    return coords.slice(0, -1)
+  }
+  return coords.slice()
+}
+
+function geoPolygonAreaM2(coords: GeoXY[]): number {
+  const ring = openGeoRing(coords)
+  if (ring.length < 3) return 0
+  const midLat = ring.reduce((s, p) => s + p[1], 0) / ring.length
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos((midLat * Math.PI) / 180)
+
+  let sum = 0
+  for (let i = 0; i < ring.length; i++) {
+    const j = (i + 1) % ring.length
+    const x1 = ring[i][0] * metersPerDegLng
+    const y1 = ring[i][1] * metersPerDegLat
+    const x2 = ring[j][0] * metersPerDegLng
+    const y2 = ring[j][1] * metersPerDegLat
+    sum += x1 * y2 - x2 * y1
+  }
+  return Math.abs(sum) / 2
+}
+
+async function resolveAuthoritativeFootprint(
+  lat: number,
+  lng: number,
+  solarAreaHintSqft: number,
+): Promise<AuthoritativeFootprint | null> {
+  const candidates: AuthoritativeFootprint[] = []
+
+  if (MAPBOX_TOKEN) {
+    const mapbox = await fetchMapboxVectorFootprint(lat, lng, MAPBOX_TOKEN)
+    if (mapbox.footprint?.coordinates?.length) {
+      candidates.push({
+        coordinates: mapbox.footprint.coordinates as GeoXY[],
+        source: 'mapbox_vector',
+        confidence: Number(mapbox.footprint.confidence || 0.8),
+        areaM2: mapbox.footprint.areaM2,
+        vertexCount: Number(mapbox.footprint.vertexCount || mapbox.footprint.coordinates.length || 0),
+      })
+    }
+  }
+
+  const osm = await fetchOSMBuildingFootprint(lat, lng)
+  if (osm.footprint?.coordinates?.length) {
+    candidates.push({
+      coordinates: osm.footprint.coordinates as GeoXY[],
+      source: 'osm_buildings',
+      confidence: Number(osm.footprint.confidence || 0.75),
+      areaM2: osm.footprint.areaM2,
+      vertexCount: Number(osm.footprint.vertexCount || osm.footprint.coordinates.length || 0),
+    })
+  }
+
+  const microsoft = await fetchMicrosoftBuildingFootprint(lat, lng)
+  if (microsoft.footprint?.coordinates?.length) {
+    candidates.push({
+      coordinates: microsoft.footprint.coordinates as GeoXY[],
+      source: 'microsoft_buildings',
+      confidence: Number(microsoft.footprint.confidence || 0.75),
+      areaM2: microsoft.footprint.areaM2,
+      vertexCount: Number(microsoft.footprint.vertexCount || microsoft.footprint.coordinates.length || 0),
+    })
+  }
+
+  if (!candidates.length) return null
+
+  const score = (fp: AuthoritativeFootprint) => {
+    const areaSqft = (fp.areaM2 && fp.areaM2 > 0 ? fp.areaM2 : geoPolygonAreaM2(fp.coordinates)) * 10.7639
+    const detailScore = Math.min(0.12, Math.max(0, fp.vertexCount - 4) * 0.01)
+    const sourceScore =
+      fp.source === 'mapbox_vector' ? 0.08 :
+      fp.source === 'osm_buildings' ? 0.05 : 0.03
+
+    let areaScore = 0
+    if (areaSqft < 100 || areaSqft > 40000) areaScore -= 0.5
+
+    if (solarAreaHintSqft > 0 && areaSqft > 0) {
+      const ratio = Math.max(areaSqft, solarAreaHintSqft) / Math.max(1, Math.min(areaSqft, solarAreaHintSqft))
+      if (ratio <= 1.25) areaScore += 0.12
+      else if (ratio <= 1.5) areaScore += 0.06
+      else if (ratio <= 2.0) areaScore += 0.02
+      else areaScore -= 0.12
+    }
+
+    return fp.confidence + detailScore + sourceScore + areaScore
+  }
+
+  const best = [...candidates].sort((a, b) => score(b) - score(a))[0]
+  console.log(
+    `[start-ai-measurement] authoritative footprint selected: ${best.source} ` +
+    `vertices=${best.vertexCount} confidence=${best.confidence.toFixed(2)} areaM2=${(best.areaM2 ?? 0).toFixed(1)}`
+  )
+  return best
+}
+
+function planeFromAuthoritativeFootprint(
+  footprint: AuthoritativeFootprint,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  pitchHintRise: number | null,
+  azimuthHint: number | null,
+  planeIndex = 0,
+): RoofPlane {
+  const ring = openGeoRing(footprint.coordinates)
+  const polyGeo = ring.map(([lng, lat]) => ({ lat, lng }))
+  const polyPx = polyGeo.map((p) =>
+    latLngToPixel(p, centerLat, centerLng, imgW, imgH, actualMpp),
+  )
+
+  const areaM2 =
+    footprint.areaM2 && footprint.areaM2 > 0
+      ? footprint.areaM2
+      : geoPolygonAreaM2(footprint.coordinates)
+
+  const area2dSqft = areaM2 * 10.7639
+  const pmInfo =
+    pitchHintRise != null
+      ? pitchInfo(pitchHintRise)
+      : { pitch_degrees: 0, pitch_multiplier: 1 }
+
+  return {
+    plane_index: planeIndex,
+    source: footprint.source,
+    polygon_px: polyPx,
+    polygon_geojson: polyGeo,
+    pitch: pitchHintRise,
+    pitch_degrees: pmInfo.pitch_degrees,
+    azimuth: azimuthHint,
+    area_2d_sqft: area2dSqft,
+    pitch_multiplier: pmInfo.pitch_multiplier,
+    area_pitch_adjusted_sqft: area2dSqft * pmInfo.pitch_multiplier,
+    confidence: Math.max(0.72, footprint.confidence),
+  }
+}
 
 function sniffRasterFormat(buf: Uint8Array): 'png' | 'jpeg' | 'unknown' {
   if (
@@ -1084,6 +1246,12 @@ function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number
 }
 
 const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perimeter_fallback'])
+const FOOTPRINT_ONLY_SOURCES = new Set([
+  'image_footprint_extraction',
+  'mapbox_vector',
+  'osm_buildings',
+  'microsoft_buildings',
+])
 
 function runQualityChecks(input: {
   geocoded: boolean
@@ -1183,7 +1351,7 @@ function runQualityChecks(input: {
   // customer-ready report is produced.
   const singlePlaneFallback =
     input.planes.length === 1 &&
-    input.planes[0].source === 'image_footprint_extraction'
+    FOOTPRINT_ONLY_SOURCES.has(String(input.planes[0].source))
   push('multi_facet_segmentation', !singlePlaneFallback, singlePlaneFallback ? 0.5 : 1, {
     note: singlePlaneFallback
       ? 'Single image-extracted footprint; no interior facets resolved.'
@@ -1458,63 +1626,106 @@ Deno.serve(async (req) => {
           ? planesFromSolar(solar, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel)
           : []
 
-        // 2d.5) FALLBACK: if Solar gave us only bbox/rectangle planes (or
-        // nothing real), attempt to extract a real footprint from the satellite
-        // image before failing. Solar pitch/azimuth survive as hints only.
-        // Trigger on EITHER source-tag (google_solar_bbox) OR shape (every
-        // plane is an axis-aligned rectangle), since both indicate "two boxes".
         const onlyBboxPlanes =
           planes.length > 0 && planes.every((p) => p.source === 'google_solar_bbox')
         const allRectangles =
           planes.length > 0 && planes.every((p) => isAxisAlignedRectangle(p.polygon_px))
-        const needsImageRecovery = planes.length === 0 || onlyBboxPlanes || allRectangles
-        if (needsImageRecovery && mb?.image_url) {
-          await supa
-            .from('measurement_jobs')
-            .update({ progress_message: 'Extracting roof footprint + ridges from imagery…' })
-            .eq('id', job.id)
-          const extracted = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
-          if (extracted && extracted.footprint.length >= 4) {
-            const hint = onlyBboxPlanes
-              ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+        const needsRealGeometry = planes.length === 0 || onlyBboxPlanes || allRectangles
+
+        const solarAreaHintSqft =
+          (Number(solar?.solarPotential?.wholeRoofStats?.areaMeters2 || 0) * 10.7639) ||
+          (
+            (Array.isArray(solar?.solarPotential?.roofSegmentStats)
+              ? solar.solarPotential.roofSegmentStats
+              : []
+            ).reduce((s: number, seg: any) => s + Number(seg?.stats?.areaMeters2 || 0), 0) * 10.7639
+          )
+
+        if (needsRealGeometry) {
+          const hint =
+            planes.length > 0
+              ? [...planes].sort((a, b) => b.area_pitch_adjusted_sqft - a.area_pitch_adjusted_sqft)[0]
               : null
-            // Ridge-first segmentation: detect interior ridges and split the
-            // footprint along them. If no usable ridges are found, fall back
-            // to a SINGLE plane (no fake rectangles, no heuristic splits).
-            const rawRidges = detectRidges(
-              extracted.mag, extracted.blob, extracted.dW, extracted.dH,
-              extracted.scaleX, extracted.scaleY,
-            )
-            const ridges = filterStrongRidges(rawRidges)
-            const ridgeLines: SplitLine[] = ridges
-              .sort((a, b) => b.votes - a.votes)
-              .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
-            const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(extracted.footprint) * 0.08)
-            const subPolys = ridgeLines.length > 0
-              ? buildRoofPlanes(extracted.footprint, ridgeLines, {
-                minArea: minPlaneAreaPx,
-                minAreaRatio: 0.1,
-                maxPlanes: 10,
-              })
-              : [extracted.footprint]
-            const isMultiPlane = subPolys.length > 1
-            const planeSource = isMultiPlane
-              ? 'image_footprint_ridge_split'
-              : 'image_footprint_extraction' // single_plane_fallback
-            planes = subPolys.map((poly, idx) =>
-              planeFromFootprint(
-                poly, lat, lng, imgW, imgH,
-                cal.meters_per_pixel_actual, feetPerPixel,
-                hint?.pitch ?? null, hint?.azimuth ?? null,
-                planeSource, idx,
+
+          // First deterministic fallback: authoritative vector building footprints.
+          const authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
+          if (authoritative) {
+            planes = [
+              planeFromAuthoritativeFootprint(
+                authoritative,
+                lat,
+                lng,
+                imgW,
+                imgH,
+                cal.meters_per_pixel_actual,
+                hint?.pitch ?? null,
+                hint?.azimuth ?? null,
+                0,
               ),
-            )
+            ]
             console.log(
-              `[start-ai-measurement] ridge-first segmentation: ` +
-              `footprint=${extracted.footprint.length}pts, raw_ridges=${rawRidges.length}, strong_ridges=${ridges.length}, planes=${planes.length}`,
+              `[start-ai-measurement] using authoritative footprint fallback: ${authoritative.source}`
             )
-          } else {
-            console.warn('[start-ai-measurement] image footprint extraction failed; keeping bbox planes for QC reject')
+          } else if (mb?.image_url) {
+            // Secondary fallback only when no authoritative footprint is available:
+            // image-derived footprint + optional pure-TS ridge split.
+            await supa
+              .from('measurement_jobs')
+              .update({ progress_message: 'Extracting roof footprint + ridges from imagery…' })
+              .eq('id', job.id)
+
+            const extracted = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+            if (extracted && extracted.footprint.length >= 4) {
+              const rawRidges = detectRidges(
+                extracted.mag,
+                extracted.blob,
+                extracted.dW,
+                extracted.dH,
+                extracted.scaleX,
+                extracted.scaleY,
+              )
+              const ridges = filterStrongRidges(rawRidges)
+              const ridgeLines: SplitLine[] = ridges
+                .sort((a, b) => b.votes - a.votes)
+                .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+
+              const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(extracted.footprint) * 0.08)
+              const subPolys =
+                ridgeLines.length > 0
+                  ? buildRoofPlanes(extracted.footprint, ridgeLines, {
+                      minArea: minPlaneAreaPx,
+                      minAreaRatio: 0.1,
+                      maxPlanes: 10,
+                    })
+                  : [extracted.footprint]
+
+              const isMultiPlane = subPolys.length > 1
+              const planeSource = isMultiPlane
+                ? 'image_footprint_ridge_split'
+                : 'image_footprint_extraction'
+
+              planes = subPolys.map((poly, idx) =>
+                planeFromFootprint(
+                  poly,
+                  lat,
+                  lng,
+                  imgW,
+                  imgH,
+                  cal.meters_per_pixel_actual,
+                  feetPerPixel,
+                  hint?.pitch ?? null,
+                  hint?.azimuth ?? null,
+                  planeSource,
+                  idx,
+                ),
+              )
+
+              console.log(
+                `[start-ai-measurement] image fallback used: footprint=${extracted.footprint.length}pts raw_ridges=${rawRidges.length} strong_ridges=${ridges.length} planes=${planes.length}`
+              )
+            } else {
+              console.warn('[start-ai-measurement] no authoritative footprint and image extraction failed; keeping placeholder planes for QC reject')
+            }
           }
         }
 
@@ -1837,6 +2048,10 @@ Deno.serve(async (req) => {
 
         // 2k) Publish customer-facing roof_measurements
         const roofId = crypto.randomUUID()
+        const publishedFootprintSource =
+          planes[0]?.source ||
+          geometrySource ||
+          (solarOk ? 'google_solar_api' : 'geometry_first_v2')
         await supa.from('roof_measurements').insert({
           id: roofId,
           customer_id: resolved.leadId, // legacy column
@@ -1852,7 +2067,9 @@ Deno.serve(async (req) => {
           property_address: resolved.address || 'Unknown Address',
           gps_coordinates: { lat, lng },
           ai_detection_data: {
-            source: solarOk ? 'google_solar_api' : 'geometry_first_v2',
+            source: publishedFootprintSource,
+            slope_hints_source: solarOk ? 'google_solar_api' : null,
+            geometry_source: geometrySource,
             engine: ENGINE_VERSION,
             planes: planes.length,
             edges: edges.length,
@@ -1873,7 +2090,7 @@ Deno.serve(async (req) => {
           total_eave_length: eave_ft,
           total_rake_length: rake_ft,
           facet_count: planes.length,
-          footprint_source: solarOk ? 'google_solar_api' : 'mapbox_vector',
+          footprint_source: publishedFootprintSource,
           detection_method: ENGINE_VERSION,
           target_lat: lat,
           target_lng: lng,

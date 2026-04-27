@@ -428,7 +428,7 @@ export function UnifiedMeasurementPanel({
       // Include both AI-pulled and manual measurements so users see full history
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data')
+        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -661,7 +661,7 @@ export function UnifiedMeasurementPanel({
       const rakeLength = measurement.total_rake_length || 0;
 
       const savedTags = {
-        'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+        'roof.plan_area': measurement.total_area_flat_sqft || measurement.total_area_adjusted_sqft || 0,
         'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
         'roof.squares': totalSquares,
         'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
@@ -1310,6 +1310,7 @@ interface MeasurementHistorySectionProps {
     id: string;
     created_at: string;
     customer_id: string;
+    total_area_flat_sqft: number | null;
     total_area_adjusted_sqft: number | null;
     total_squares: number | null;
     predominant_pitch: string | null;
@@ -1562,7 +1563,7 @@ function MeasurementHistorySection({
       const perimeter = eaveLength + rakeLength;
 
       const savedTags = {
-        'roof.plan_area': measurement.total_area_adjusted_sqft || 0,
+        'roof.plan_area': (measurement as any).total_area_flat_sqft || measurement.total_area_adjusted_sqft || 0,
         'roof.total_sqft': measurement.total_area_adjusted_sqft || 0,
         'roof.squares': totalSquares,
         'roof.predominant_pitch': measurement.predominant_pitch || '6/12',
