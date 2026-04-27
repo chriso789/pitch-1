@@ -2253,6 +2253,8 @@ Deno.serve(async (req) => {
                     extracted.dH,
                     extracted.scaleX,
                     extracted.scaleY,
+                    extracted.gx,
+                    extracted.gy,
                   )
                   const ridges = filterStrongRidges(rawRidges)
                   const ridgeLines: SplitLine[] = ridges
@@ -2265,11 +2267,40 @@ Deno.serve(async (req) => {
                       25,
                       shoelaceAreaPx(basePlane.polygon_px) * 0.08,
                     )
-                    const subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
+                    let subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
                       minArea: minPlaneAreaPx,
                       minAreaRatio: 0.1,
                       maxPlanes: 10,
                     })
+
+                    // RECURSIVE: detect secondary ridges inside each sub-plane
+                    // and re-split for richer geometry.
+                    if (subPolys.length > 1) {
+                      const merged = detectRidgesRecursive(
+                        ridges,
+                        subPolys,
+                        extracted.mag,
+                        extracted.blob,
+                        extracted.gx,
+                        extracted.gy,
+                        extracted.dW,
+                        extracted.dH,
+                        extracted.scaleX,
+                        extracted.scaleY,
+                      )
+                      if (merged.length > ridges.length) {
+                        const mergedLines: SplitLine[] = merged
+                          .sort((a, b) => b.votes - a.votes)
+                          .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+                        detectedRidgeLines = mergedLines
+                        subPolys = buildRoofPlanes(basePlane.polygon_px, mergedLines, {
+                          minArea: minPlaneAreaPx,
+                          minAreaRatio: 0.1,
+                          maxPlanes: 14,
+                        })
+                      }
+                    }
+
                     if (subPolys.length > 1) {
                       planes = subPolys.map((poly, idx) =>
                         planeFromFootprint(
@@ -2287,7 +2318,7 @@ Deno.serve(async (req) => {
                         ),
                       )
                       console.log(
-                        `[start-ai-measurement] authoritative footprint split with image ridges: ${ridges.length} ridges → ${planes.length} planes`,
+                        `[start-ai-measurement] authoritative footprint split: ${detectedRidgeLines.length} ridges → ${planes.length} planes`,
                       )
                     } else {
                       console.log(
@@ -2295,6 +2326,11 @@ Deno.serve(async (req) => {
                       )
                     }
                   } else {
+                    console.log(
+                      `[start-ai-measurement] no strong ridges detected on authoritative footprint (raw=${rawRidges.length})`,
+                    )
+                  }
+                }
                     console.log(
                       `[start-ai-measurement] no strong ridges detected on authoritative footprint (raw=${rawRidges.length})`,
                     )
