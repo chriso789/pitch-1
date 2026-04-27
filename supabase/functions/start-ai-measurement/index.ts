@@ -1448,6 +1448,8 @@ function runQualityChecks(input: {
   geocodeType: string | null
   calibrated: boolean
   mapboxOk: boolean
+  imageryOk?: boolean
+  imagerySource?: string
   solarOk: boolean
   planes: RoofPlane[]
   edges: RoofEdge[]
@@ -1471,7 +1473,8 @@ function runQualityChecks(input: {
 
   push('valid_geocode', input.geocoded, input.geocoded ? 1 : 0, { type: input.geocodeType })
   push('valid_calibration', input.calibrated, input.calibrated ? 1 : 0)
-  push('mapbox_image_available', input.mapboxOk, input.mapboxOk ? 1 : 0)
+  const _imageryOk = input.imageryOk ?? input.mapboxOk
+  push('imagery_available', _imageryOk, _imageryOk ? 1 : 0, { provider: input.imagerySource ?? (input.mapboxOk ? 'mapbox' : 'none') })
   push('google_solar_available', input.solarOk, input.solarOk ? 1 : 0.5, { note: 'optional' })
   push('roof_planes_exist', input.planes.length > 0, input.planes.length > 0 ? 1 : 0, {
     count: input.planes.length,
@@ -1557,7 +1560,7 @@ function runQualityChecks(input: {
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
-    !input.mapboxOk ||
+    !_imageryOk ||
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
