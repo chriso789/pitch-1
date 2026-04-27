@@ -376,6 +376,22 @@ export function PullMeasurementsButton({
             .limit(1)
             .maybeSingle();
 
+          // Gate-aware UX: auto-ship if 3% accuracy gate passed; only prompt
+          // for edge verification if the measurement was flagged for manual review.
+          const gateFailed = Boolean((data as any)?.requires_manual_review);
+          setVerificationReady(gateFailed);
+          if (gateFailed) {
+            toast({
+              title: "⚠️ Verify Edges — Accuracy Gate Failed",
+              description: "Confirm each edge to lock in the measurement.",
+            });
+          } else {
+            toast({
+              title: "✅ AI Measurement Complete",
+              description: "Accuracy gate passed — measurement is ready to use.",
+            });
+          }
+
           let seeds: PlanEdge[] = [];
           let footprintGeo: Array<[number, number]> | undefined;
           let aerial: AerialBackground | null = null;
