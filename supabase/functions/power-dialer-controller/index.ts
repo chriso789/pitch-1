@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
     console.error('Error in power-dialer-controller:', error);
     
     const status = (error as RateLimitError).status || 500;
-    const headers = { ...corsHeaders, 'Content-Type': 'application/json' };
+    const headers: Record<string, string> = { ...corsHeaders, 'Content-Type': 'application/json' };
     
     if ((error as RateLimitError).retryAfter) {
       headers['Retry-After'] = String((error as RateLimitError).retryAfter);
