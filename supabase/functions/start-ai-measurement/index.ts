@@ -44,6 +44,9 @@ const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY') || ''
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
 
 const ENGINE_VERSION = 'geometry_first_v2'
+const MAX_AUTO_ROOF_AREA_SQFT = 30000
+const MAX_FOOTPRINT_FRAME_FRACTION = 0.35
+const FOOTPRINT_EDGE_MARGIN_PX = 8
 
 // ─────────────────────────────────────────────────────────────────────
 // Geometry helpers (pure, unit-tested via acceptance tests)
@@ -712,7 +715,7 @@ async function extractRoofFootprintAndEdges(
     // ~35% of the satellite tile. Anything larger almost always means the
     // flood-fill leaked into neighbors / road / tree canopy and would yield
     // an inflated sqft (e.g. 80k+ sqft "roofs").
-    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.35) {
+    if (count < 400 || blobFrac < 0.02 || blobFrac > MAX_FOOTPRINT_FRAME_FRACTION) {
       console.warn(`[footprint-extract] implausible blob frac=${blobFrac.toFixed(3)} count=${count}`)
       return null
     }
@@ -774,6 +777,20 @@ async function extractRoofFootprintAndEdges(
 
     const sxScale = imgW / dW, syScale = imgH / dH
     const footprint = ring.map((p) => ({ x: p.x * sxScale, y: p.y * syScale }))
+
+    const footprintAreaFrac = shoelaceAreaPx(footprint) / Math.max(1, imgW * imgH)
+    const touchesFrame = footprint.some((p) =>
+      p.x <= FOOTPRINT_EDGE_MARGIN_PX ||
+      p.y <= FOOTPRINT_EDGE_MARGIN_PX ||
+      p.x >= imgW - FOOTPRINT_EDGE_MARGIN_PX ||
+      p.y >= imgH - FOOTPRINT_EDGE_MARGIN_PX
+    )
+    if (touchesFrame || footprintAreaFrac > MAX_FOOTPRINT_FRAME_FRACTION) {
+      console.warn(
+        `[footprint-extract] rejected tile-frame footprint area_frac=${footprintAreaFrac.toFixed(3)} touches_frame=${touchesFrame}`,
+      )
+      return null
+    }
 
     return { footprint, mag, blob, dW, dH, scaleX: sxScale, scaleY: syScale }
   } catch (e) {
