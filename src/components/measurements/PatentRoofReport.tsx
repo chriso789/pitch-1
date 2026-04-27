@@ -14,13 +14,14 @@
  *   - Pitch values on page 3 are editable via PitchDeterminationMarker
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { applyLengthOverride, recalcModelTotals } from "@/lib/measurements/patentAreaEngine";
 import { slopeFactor } from "@/lib/measurements/slopeFactor";
+import { detectImageryAbnormalities } from "@/lib/measurements/imageryQc";
 import type { PatentRoofModel } from "@/types/roofMeasurementPatent";
 
 const COLOR: Record<string, string> = {
