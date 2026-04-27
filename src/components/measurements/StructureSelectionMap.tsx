@@ -3,14 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const PITCH_OPTIONS = [
-  '0/12', '1/12', '2/12', '3/12', '4/12', '5/12', '6/12',
-  '7/12', '8/12', '9/12', '10/12', '11/12', '12/12',
-  '14/12', '16/12', '18/12'
-];
 
 interface StructureSelectionMapProps {
   open: boolean;
