@@ -42,7 +42,35 @@ Deno.serve(async (req) => {
       throw new Error(`Mapbox API error: ${response.status}`)
     }
     
+    const contentType = response.headers.get('content-type') || ''
     const imageBuffer = await response.arrayBuffer()
+
+    // ── Patent-aligned imagery QC (US 8,515,198) ────────────────────────────
+    // Server-side byte-level sanity checks. Full pixel-level abnormality
+    // detection runs client-side via lib/measurements/imageryQc.ts after the
+    // image is decoded into a canvas. Here we catch obviously broken tiles
+    // (wrong content-type, suspiciously small payload) BEFORE the client ever
+    // sees them, so downstream measurement processing can be blocked.
+    const qc_abnormalities: string[] = []
+    if (!contentType.startsWith('image/')) {
+      qc_abnormalities.push('tile_error')
+    }
+    // A 1280x1280@2x satellite tile is virtually always >40KB. Anything
+    // smaller is almost certainly a Mapbox error tile or empty response.
+    if (imageBuffer.byteLength < 40_000) {
+      qc_abnormalities.push('tile_error')
+    }
+    const qc = {
+      passed: qc_abnormalities.length === 0,
+      abnormalities: qc_abnormalities,
+      reshoot_recommended: qc_abnormalities.length > 0,
+      bytes: imageBuffer.byteLength,
+      content_type: contentType,
+    }
+    if (!qc.passed) {
+      console.warn('⚠️  Imagery QC flagged tile:', qc)
+    }
+
     const base64Image = base64Encode(imageBuffer as ArrayBuffer)
     
     // Calculate the geographic bounds of this image using Web Mercator projection
@@ -71,7 +99,8 @@ Deno.serve(async (req) => {
       center: { lat: latitude, lng: longitude },
       zoom,
       metersPerPixel,
-      dimensions: { width, height }
+      dimensions: { width, height },
+      qc,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
