@@ -483,6 +483,8 @@ export function PullMeasurementsButton({
           // 4) Build aerial background. If the DB row missed the cached URL,
           // fetch a live static aerial because existing properties should still render.
           const size = (data?.analysis_image_size as any) || { width: 640, height: 640 };
+          const logicalWidth = Number(size.logicalWidth || (size.width && size.rasterScale ? size.width / size.rasterScale : size.width)) || 640;
+          const logicalHeight = Number(size.logicalHeight || (size.height && size.rasterScale ? size.height / size.rasterScale : size.height)) || 640;
           const zoom = Number(data?.analysis_zoom) || 20;
           const fallbackLat = Number((data?.gps_coordinates as any)?.lat ?? lat);
           const fallbackLng = Number((data?.gps_coordinates as any)?.lng ?? lng);
@@ -490,8 +492,8 @@ export function PullMeasurementsButton({
             fallbackLat,
             fallbackLng,
             zoom,
-            Number(size.width) || 640,
-            Number(size.height) || 640,
+            logicalWidth,
+            logicalHeight,
           );
 
           let bounds = normalizeAerialBounds((data as any)?.image_bounds);
@@ -505,16 +507,16 @@ export function PullMeasurementsButton({
               fallbackLat,
               fallbackLng,
               zoom,
-              Number(size.width) || 640,
-              Number(size.height) || 640,
+              logicalWidth,
+              logicalHeight,
             );
           }
 
           if (imageUrl && bounds) {
             aerial = {
               imageUrl,
-              imageWidth: Number(size.width) || 640,
-              imageHeight: Number(size.height) || 640,
+              imageWidth: logicalWidth,
+              imageHeight: logicalHeight,
               bounds,
             };
           }
@@ -538,7 +540,7 @@ export function PullMeasurementsButton({
             lat: fallbackLat,
             lng: fallbackLng,
             zoom,
-            size: { width: Number(size.width) || 640, height: Number(size.height) || 640 },
+            size: { width: logicalWidth, height: logicalHeight },
             urlSource,
             imageUrl: imageUrl ? String(imageUrl).slice(0, 140) + (String(imageUrl).length > 140 ? '…' : '') : null,
             boundsSource,
