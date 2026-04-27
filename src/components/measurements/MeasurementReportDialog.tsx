@@ -98,6 +98,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   const previewGate = useMemo(() => evaluatePreviewGate(measurement), [measurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(measurement), [measurement]);
+  const canOpenExistingPdf = Boolean((measurement as any)?.report_pdf_url && pdfGate.ok);
 
   useEffect(() => {
     if (!open) return;
@@ -190,7 +191,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           <Button
             size="sm"
             onClick={handleDownloadPdf}
-            disabled={!pdfGate.ok || !jobId || downloading || diagrams.length === 0}
+            disabled={!pdfGate.ok || (!jobId && !canOpenExistingPdf) || downloading || (!canOpenExistingPdf && diagrams.length === 0)}
           >
             {downloading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
