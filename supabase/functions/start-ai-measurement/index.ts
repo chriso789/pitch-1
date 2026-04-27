@@ -883,6 +883,20 @@ function runQualityChecks(input: {
     { score: overlayAlignmentScore, threshold: 0.75 },
   )
 
+  // Single-plane fallback (image-only footprint, no facet segmentation):
+  // we recovered a real roof outline but cannot prove interior ridges/valleys.
+  // Per spec: emit one plane using Solar pitch hint and downgrade to needs_review.
+  // Never auto-complete this case — it must be reviewed internally before a
+  // customer-ready report is produced.
+  const singlePlaneFallback =
+    input.planes.length === 1 &&
+    input.planes[0].source === 'image_footprint_extraction'
+  push('multi_facet_segmentation', !singlePlaneFallback, singlePlaneFallback ? 0.5 : 1, {
+    note: singlePlaneFallback
+      ? 'Single image-extracted footprint; no interior facets resolved.'
+      : 'ok',
+  })
+
   const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
   let status: 'completed' | 'needs_review' | 'needs_internal_review'
   if (
@@ -895,6 +909,9 @@ function runQualityChecks(input: {
     overlayAlignmentScore < 0.75
   ) {
     status = 'needs_internal_review'
+  } else if (singlePlaneFallback) {
+    // Real footprint, but no facet split — never auto-complete.
+    status = 'needs_review'
   } else if (overall >= 0.85 && overlayAlignmentScore >= 0.85) {
     status = 'completed'
   } else if (overall >= 0.65) {
@@ -902,7 +919,15 @@ function runQualityChecks(input: {
   } else {
     status = 'needs_internal_review'
   }
-  return { checks, overall, status, overlayAlignmentScore, geometrySourceIsReal, planesAreAllRectangles }
+  return {
+    checks,
+    overall,
+    status,
+    overlayAlignmentScore,
+    geometrySourceIsReal,
+    planesAreAllRectangles,
+    singlePlaneFallback,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
@@ -1134,12 +1159,17 @@ Deno.serve(async (req) => {
           ? planesFromSolar(solar, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel)
           : []
 
-        // 2d.5) FALLBACK: if Solar gave us only bbox planes (or nothing real),
-        // attempt to extract a real footprint from the satellite image before
-        // failing to manual measurement. Solar pitch/azimuth become hints only.
+        // 2d.5) FALLBACK: if Solar gave us only bbox/rectangle planes (or
+        // nothing real), attempt to extract a real footprint from the satellite
+        // image before failing. Solar pitch/azimuth survive as hints only.
+        // Trigger on EITHER source-tag (google_solar_bbox) OR shape (every
+        // plane is an axis-aligned rectangle), since both indicate "two boxes".
         const onlyBboxPlanes =
           planes.length > 0 && planes.every((p) => p.source === 'google_solar_bbox')
-        if ((planes.length === 0 || onlyBboxPlanes) && mb?.image_url) {
+        const allRectangles =
+          planes.length > 0 && planes.every((p) => isAxisAlignedRectangle(p.polygon_px))
+        const needsImageRecovery = planes.length === 0 || onlyBboxPlanes || allRectangles
+        if (needsImageRecovery && mb?.image_url) {
           await supa
             .from('measurement_jobs')
             .update({ progress_message: 'Extracting roof footprint from imagery…' })
