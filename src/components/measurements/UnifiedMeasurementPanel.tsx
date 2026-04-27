@@ -27,7 +27,7 @@ import { BlueprintUploadButton } from './BlueprintUploadButton';
 import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ManualMeasurementDialog, type MeasurementFormData } from '@/components/estimates/ManualMeasurementDialog';
 import { SchematicRoofDiagram } from '@/components/measurements/SchematicRoofDiagram';
-import { RoofDiagramViewer } from '@/components/measurements/RoofDiagramViewer';
+// RoofDiagramViewer intentionally not rendered inline — diagrams only show in the View Report dialog
 import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
 
 import { useDeviceLayout } from '@/hooks/useDeviceLayout';
@@ -713,7 +713,6 @@ export function UnifiedMeasurementPanel({
 
   return (
     <>
-      <RoofDiagramViewer leadId={pipelineEntryId} />
       <Card>
         <CardHeader className="pb-2 pt-4 px-4">
           <div className="flex items-center justify-between">
