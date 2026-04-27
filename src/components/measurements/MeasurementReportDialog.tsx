@@ -179,10 +179,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           {!qc.ok ? (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Manual measurement required</AlertTitle>
+              <AlertTitle>Internal review required</AlertTitle>
               <AlertDescription>
-                Roof geometry did not align with the property. Re-run AI Measurement or
-                order a vendor report. ({qc.reason})
+                Automated roof geometry could not be verified. This measurement has been
+                routed to internal QA. ({qc.reason})
               </AlertDescription>
             </Alert>
           ) : loading ? (
