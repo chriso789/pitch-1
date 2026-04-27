@@ -816,19 +816,11 @@ export function PullMeasurementsButton({
 
         {(success || verificationReady) && (
           <>
-            {verificationReady && (
-              <Button
-                onClick={() => setShowVerifyWizard(true)}
-                variant="default"
-                size="sm"
-                title="Walk through each edge to confirm the AI measurement"
-              >
-                <CheckCircle2 className="h-4 w-4 mr-1" />
-                Verify Edges
-              </Button>
-            )}
-            <Badge variant="outline" className="text-green-600 border-green-600">
-              ✓ Tags Ready
+            <Badge
+              variant="outline"
+              className={verificationReady ? 'text-amber-600 border-amber-600' : 'text-green-600 border-green-600'}
+            >
+              {verificationReady ? 'Review Required' : '✓ Tags Ready'}
             </Badge>
           </>
         )}
