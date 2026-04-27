@@ -44,6 +44,9 @@ const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY') || ''
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
 
 const ENGINE_VERSION = 'geometry_first_v2'
+const MAX_AUTO_ROOF_AREA_SQFT = 30000
+const MAX_FOOTPRINT_FRAME_FRACTION = 0.35
+const FOOTPRINT_EDGE_MARGIN_PX = 8
 
 // ─────────────────────────────────────────────────────────────────────
 // Geometry helpers (pure, unit-tested via acceptance tests)
@@ -712,7 +715,7 @@ async function extractRoofFootprintAndEdges(
     // ~35% of the satellite tile. Anything larger almost always means the
     // flood-fill leaked into neighbors / road / tree canopy and would yield
     // an inflated sqft (e.g. 80k+ sqft "roofs").
-    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.35) {
+    if (count < 400 || blobFrac < 0.02 || blobFrac > MAX_FOOTPRINT_FRAME_FRACTION) {
       console.warn(`[footprint-extract] implausible blob frac=${blobFrac.toFixed(3)} count=${count}`)
       return null
     }
@@ -774,6 +777,20 @@ async function extractRoofFootprintAndEdges(
 
     const sxScale = imgW / dW, syScale = imgH / dH
     const footprint = ring.map((p) => ({ x: p.x * sxScale, y: p.y * syScale }))
+
+    const footprintAreaFrac = shoelaceAreaPx(footprint) / Math.max(1, imgW * imgH)
+    const touchesFrame = footprint.some((p) =>
+      p.x <= FOOTPRINT_EDGE_MARGIN_PX ||
+      p.y <= FOOTPRINT_EDGE_MARGIN_PX ||
+      p.x >= imgW - FOOTPRINT_EDGE_MARGIN_PX ||
+      p.y >= imgH - FOOTPRINT_EDGE_MARGIN_PX
+    )
+    if (touchesFrame || footprintAreaFrac > MAX_FOOTPRINT_FRAME_FRACTION) {
+      console.warn(
+        `[footprint-extract] rejected tile-frame footprint area_frac=${footprintAreaFrac.toFixed(3)} touches_frame=${touchesFrame}`,
+      )
+      return null
+    }
 
     return { footprint, mag, blob, dW, dH, scaleX: sxScale, scaleY: syScale }
   } catch (e) {
@@ -1110,7 +1127,7 @@ function runQualityChecks(input: {
   const noSelfInt = input.planes.every((p) => !hasSelfIntersection(p.polygon_px))
   push('no_self_intersections', noSelfInt, noSelfInt ? 1 : 0)
 
-  const reasonable = input.totalAreaSqft >= 200 && input.totalAreaSqft <= 30000
+  const reasonable = input.totalAreaSqft >= 200 && input.totalAreaSqft <= MAX_AUTO_ROOF_AREA_SQFT
   push('area_reasonable', reasonable, reasonable ? 1 : 0, { sqft: input.totalAreaSqft })
 
   push('pitch_data_available', input.hasPitch, input.hasPitch ? 1 : 0)
@@ -1178,7 +1195,7 @@ function runQualityChecks(input: {
   // Absolute sanity cap on total roof area. A residential satellite tile at
   // z20 cannot legitimately produce >30k sqft of roof — anything beyond means
   // the footprint extractor leaked into neighbors / road / canopy.
-  const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= 30000
+  const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= MAX_AUTO_ROOF_AREA_SQFT
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
@@ -1564,6 +1581,7 @@ Deno.serve(async (req) => {
         // 2h) Aggregate results
         const totalArea2d = planes.reduce((s, p) => s + p.area_2d_sqft, 0)
         const totalAreaSloped = planes.reduce((s, p) => s + p.area_pitch_adjusted_sqft, 0)
+        const exceedsPublishableArea = totalAreaSloped > MAX_AUTO_ROOF_AREA_SQFT || totalArea2d > MAX_AUTO_ROOF_AREA_SQFT
         const sumByEdge = (t: RoofEdge['edge_type']) =>
           edges.filter((e) => e.edge_type === t).reduce((s, e) => s + e.length_ft, 0)
         const ridge_ft = sumByEdge('ridge')
@@ -1800,13 +1818,16 @@ Deno.serve(async (req) => {
           .eq('id', aiJob.id)
 
         // 2j) Block placeholder/failed from publishing
-        if (qc.status === 'needs_internal_review') {
+        if (qc.status === 'needs_internal_review' || exceedsPublishableArea) {
+          const reason = exceedsPublishableArea
+            ? `Rejected inflated geometry: ${Math.round(totalAreaSloped).toLocaleString()} sqft exceeds ${MAX_AUTO_ROOF_AREA_SQFT.toLocaleString()} sqft publish cap.`
+            : 'Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review.'
           await supa
             .from('measurement_jobs')
             .update({
               status: 'failed',
               progress_message: 'Roof geometry could not be verified automatically. Flagged for internal review — no customer-facing report will be generated.',
-              error: 'Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review.',
+              error: reason,
               completed_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })

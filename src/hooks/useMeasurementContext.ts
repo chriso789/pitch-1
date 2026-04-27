@@ -48,6 +48,19 @@ export interface MeasurementSummary {
   approvalDate?: string;
 }
 
+const MAX_AUTO_ROOF_AREA_SQFT = 30000;
+
+function isPlausibleMeasurementTags(tags: Record<string, any> | null | undefined): boolean {
+  if (!tags) return false;
+  const sqft = Number(tags['roof.total_sqft'] || tags['roof.plan_area'] || 0);
+  return sqft > 0 && sqft <= MAX_AUTO_ROOF_AREA_SQFT;
+}
+
+function isPlausibleRoofMeasurement(data: any): boolean {
+  const sqft = Number(data?.total_area_adjusted_sqft || data?.total_area_flat_sqft || 0);
+  return sqft > 0 && sqft <= MAX_AUTO_ROOF_AREA_SQFT;
+}
+
 // Build context from saved_tags (measurement_approvals format)
 function buildContextFromTags(tags: Record<string, any>): MeasurementContext {
   // Handle different tag naming conventions - fix operator precedence
@@ -261,10 +274,14 @@ async function fetchMeasurementContext(pipelineEntryId: string): Promise<Measure
       .eq('id', selectedApprovalId);
   }
 
-  const { data: approvals, error: approvalError } = await approvalQuery.limit(1);
+  const { data: approvals, error: approvalError } = await approvalQuery.limit(10);
 
-  if (!approvalError && approvals && approvals.length > 0) {
-    const approval = approvals[0];
+  const validApproval = (!approvalError && approvals)
+    ? approvals.find((row) => isPlausibleMeasurementTags(row.saved_tags as Record<string, any>))
+    : null;
+
+  if (validApproval) {
+    const approval = validApproval;
     const savedTags = approval.saved_tags as Record<string, any>;
     
     if (savedTags && Object.keys(savedTags).length > 0) {
@@ -286,15 +303,18 @@ async function fetchMeasurementContext(pipelineEntryId: string): Promise<Measure
   }
 
   // PRIORITY 2: Try roof_measurements table
-  const { data: roofData, error: roofError } = await supabase
+  const { data: roofRows, error: roofError } = await supabase
     .from('roof_measurements')
     .select('*')
     .eq('customer_id', pipelineEntryId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
 
-  if (!roofError && roofData) {
+  const roofData = !roofError && roofRows
+    ? roofRows.find((row) => isPlausibleRoofMeasurement(row))
+    : null;
+
+  if (roofData) {
     const ctx = buildContextFromRoofMeasurements(roofData);
     console.log('🔧 MeasurementContext built from roof_measurements:', {
       source: 'roof_measurements',

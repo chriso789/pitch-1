@@ -127,6 +127,22 @@ const formatValue = (val: number | null | undefined): string => {
   return val.toLocaleString(undefined, { maximumFractionDigits: 1 });
 };
 
+const MAX_AUTO_ROOF_AREA_SQFT = 30000;
+
+const isPlausibleRoofSqft = (value: unknown): boolean => {
+  const sqft = Number(value || 0);
+  return sqft > 0 && sqft <= MAX_AUTO_ROOF_AREA_SQFT;
+};
+
+const isPlausibleSavedMeasurement = (measurement: SavedMeasurement): boolean => {
+  const tags = measurement.saved_tags || {};
+  return isPlausibleRoofSqft(tags['roof.total_sqft'] || tags['roof.plan_area']);
+};
+
+const isPlausibleRoofMeasurement = (measurement: any): boolean => (
+  isPlausibleRoofSqft(measurement?.total_area_adjusted_sqft || measurement?.total_area_flat_sqft)
+);
+
 const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
   const lat = measurement?.target_lat ?? measurement?.center_lat ?? measurement?.gps_coordinates?.lat;
   const lng = measurement?.target_lng ?? measurement?.center_lng ?? measurement?.gps_coordinates?.lng;
@@ -303,7 +319,7 @@ export function UnifiedMeasurementPanel({
         .order('approved_at', { ascending: false });
 
       if (error) throw error;
-      return data as SavedMeasurement[];
+      return ((data as SavedMeasurement[]) || []).filter(isPlausibleSavedMeasurement);
     },
     enabled: !!pipelineEntryId,
   });
@@ -420,7 +436,7 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return data || [];
+      return (data || []).filter(isPlausibleRoofMeasurement);
     },
     enabled: !!pipelineEntryId,
   });

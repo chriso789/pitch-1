@@ -11,6 +11,14 @@ export interface ApprovedMeasurement {
   approval_notes: string | null;
 }
 
+const MAX_AUTO_ROOF_AREA_SQFT = 30000;
+
+function hasPlausibleArea(measurement: ApprovedMeasurement): boolean {
+  const tags = measurement.saved_tags as Record<string, any> | null;
+  const sqft = Number(tags?.['roof.total_sqft'] || tags?.['roof.plan_area'] || 0);
+  return sqft > 0 && sqft <= MAX_AUTO_ROOF_AREA_SQFT;
+}
+
 /**
  * Hook to fetch approved measurements for a pipeline entry (lead/job)
  * Returns the most recent approved measurement with its saved_tags
@@ -28,16 +36,16 @@ export function useApprovedMeasurement(pipelineEntryId: string | undefined) {
         .select('id, approved_at, saved_tags, pipeline_entry_id, measurement_id, approval_notes')
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('approved_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .limit(10);
       
       if (error) {
         console.error('[useMeasurementForTemplate] Error:', error);
         throw error;
       }
       
-      console.log('[useMeasurementForTemplate] Found:', data?.id, 'saved_tags:', data?.saved_tags);
-      return data;
+      const measurement = (data || []).find(hasPlausibleArea) || null;
+      console.log('[useMeasurementForTemplate] Found:', measurement?.id, 'saved_tags:', measurement?.saved_tags);
+      return measurement;
     },
     enabled: !!pipelineEntryId,
   });
@@ -61,7 +69,7 @@ export function useAllApprovedMeasurements() {
         throw error;
       }
       
-      return data || [];
+      return (data || []).filter(hasPlausibleArea);
     },
   });
 }
