@@ -89,16 +89,55 @@ function PageHeader({ n, title, address }: { n: number; title: string; address?:
   );
 }
 
-function Page1Overview({ model, address }: { model: PatentRoofModel; address?: string }) {
+function Page1Overview({
+  model,
+  address,
+  onQc,
+}: {
+  model: PatentRoofModel;
+  address?: string;
+  onQc?: (qc: PatentRoofModel["imagery_qc"]) => void;
+}) {
+  const imgRef = useRef<HTMLImageElement | null>(null);
+  const [qc, setQc] = useState(model.imagery_qc);
+
+  const runQc = () => {
+    const el = imgRef.current;
+    if (!el) return;
+    const result = detectImageryAbnormalities(el);
+    const next = {
+      passed: result.passed,
+      abnormalities: result.abnormalities,
+      reshoot_requested: result.reshoot_recommended,
+    };
+    setQc(next);
+    onQc?.(next);
+  };
+
   return (
     <Card className="p-6">
       <PageHeader n={1} title="Overview" address={address} />
       {model.image.url ? (
-        <img
-          src={model.image.url}
-          alt="Roof overview"
-          className="w-full max-h-[600px] object-contain rounded border"
-        />
+        <>
+          <img
+            ref={imgRef}
+            src={model.image.url}
+            alt="Roof overview"
+            crossOrigin="anonymous"
+            onLoad={runQc}
+            className="w-full max-h-[600px] object-contain rounded border"
+          />
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            {qc.reshoot_requested ? (
+              <Badge variant="destructive">Imagery QC failed — re-shoot recommended</Badge>
+            ) : (
+              <Badge variant="secondary">Imagery QC passed (US 8,515,198)</Badge>
+            )}
+            {qc.abnormalities.length > 0 && (
+              <span className="text-destructive">{qc.abnormalities.join(", ")}</span>
+            )}
+          </div>
+        </>
       ) : (
         <p className="text-muted-foreground">No imagery available.</p>
       )}
