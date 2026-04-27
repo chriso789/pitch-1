@@ -708,7 +708,11 @@ async function extractRoofFootprintAndEdges(
 
     const totalArea = dW * dH
     const blobFrac = count / totalArea
-    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.85) {
+    // Tightened upper bound: a single residential roof at z20 rarely exceeds
+    // ~35% of the satellite tile. Anything larger almost always means the
+    // flood-fill leaked into neighbors / road / tree canopy and would yield
+    // an inflated sqft (e.g. 80k+ sqft "roofs").
+    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.35) {
       console.warn(`[footprint-extract] implausible blob frac=${blobFrac.toFixed(3)} count=${count}`)
       return null
     }
