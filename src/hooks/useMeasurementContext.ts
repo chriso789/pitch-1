@@ -274,7 +274,7 @@ async function fetchMeasurementContext(pipelineEntryId: string): Promise<Measure
       .eq('id', selectedApprovalId);
   }
 
-  const { data: approvals, error: approvalError } = await approvalQuery.limit(1);
+  const { data: approvals, error: approvalError } = await approvalQuery.limit(10);
 
   const validApproval = (!approvalError && approvals)
     ? approvals.find((row) => isPlausibleMeasurementTags(row.saved_tags as Record<string, any>))
@@ -303,15 +303,18 @@ async function fetchMeasurementContext(pipelineEntryId: string): Promise<Measure
   }
 
   // PRIORITY 2: Try roof_measurements table
-  const { data: roofData, error: roofError } = await supabase
+  const { data: roofRows, error: roofError } = await supabase
     .from('roof_measurements')
     .select('*')
     .eq('customer_id', pipelineEntryId)
     .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(10);
 
-  if (!roofError && roofData && isPlausibleRoofMeasurement(roofData)) {
+  const roofData = !roofError && roofRows
+    ? roofRows.find((row) => isPlausibleRoofMeasurement(row))
+    : null;
+
+  if (roofData) {
     const ctx = buildContextFromRoofMeasurements(roofData);
     console.log('🔧 MeasurementContext built from roof_measurements:', {
       source: 'roof_measurements',
