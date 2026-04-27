@@ -2169,6 +2169,39 @@ Deno.serve(async (req) => {
         let edges: RoofEdge[] = edgesFromPlanes(
           planes, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
         )
+        if (planes.length > 0 && !edges.some((e) => e.edge_type === 'ridge')) {
+          const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+          const clippedDetected = detectedRidgeLines
+            .map((line) => clipLineToPolygonSegment(largest.polygon_px, line))
+            .filter((line): line is SplitLine => !!line)
+            .sort((a, b) => polylineLengthPx([b.p1, b.p2]) - polylineLengthPx([a.p1, a.p2]))[0]
+          const ridgeEdge = clippedDetected
+            ? lineToRoofEdge(
+                clippedDetected,
+                'ridge',
+                'image_detected_ridge',
+                lat,
+                lng,
+                imgW,
+                imgH,
+                cal.meters_per_pixel_actual,
+                feetPerPixel,
+                0.68,
+              )
+            : synthesizeCentralRidgeFromFootprint(
+                largest,
+                lat,
+                lng,
+                imgW,
+                imgH,
+                cal.meters_per_pixel_actual,
+                feetPerPixel,
+              )
+          if (ridgeEdge) {
+            edges.push(ridgeEdge)
+            console.log(`[start-ai-measurement] added ${ridgeEdge.source} because topology emitted no ridge`)
+          }
+        }
         if (edges.length === 0 && planes.length > 0) {
           // Use first (largest) plane perimeter as fallback eaves
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
