@@ -93,8 +93,11 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
 
   if (!m) return { ok: false, reason: 'No published roof_measurements row for this job.' }
 
-  if (m.validation_status === 'needs_manual_measurement') {
-    return { ok: false, reason: 'Job is flagged needs_manual_measurement.', measurement: m }
+  if (
+    m.validation_status === 'needs_internal_review' ||
+    m.validation_status === 'needs_manual_measurement' // legacy
+  ) {
+    return { ok: false, reason: 'Job is flagged needs_internal_review.', measurement: m }
   }
   if (!m.facet_count || m.facet_count <= 0) {
     return { ok: false, reason: 'No roof facets recorded.', measurement: m }
