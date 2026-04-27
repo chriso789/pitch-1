@@ -105,13 +105,14 @@ Deno.serve(async (req) => {
         results.push({ recipient_id: recipient.id, ok: true, data });
 
         // Log reminder sent event (best-effort)
-        await supabase.rpc("log_envelope_event", {
+        const { error: logError } = await supabase.rpc("log_envelope_event", {
           p_envelope_id: envelope_id,
           p_recipient_id: recipient.id,
           p_event_type: "reminder_sent",
           p_description: `Reminder sent to ${recipient.recipient_email}`,
           p_metadata: {},
-        }).then(() => {}).catch(() => {});
+        });
+        if (logError) console.warn("Failed to log reminder event:", logError.message);
       }
     }
 

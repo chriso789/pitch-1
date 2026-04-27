@@ -160,7 +160,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Send email via Resend
     const emailResponse = await resend.emails.send({
       from: fromAddress,
-      replyTo: replyTo,
+      reply_to: replyTo,
       to,
       cc,
       bcc,

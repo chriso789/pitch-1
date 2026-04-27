@@ -44,7 +44,7 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const pipelineEntryId = typeof body.pipelineEntryId === 'string' ? body.pipelineEntryId : null;
-    const rawIds = Array.isArray(body.measurementIds)
+    const rawIds: unknown[] = Array.isArray(body.measurementIds)
       ? body.measurementIds
       : typeof body.measurementId === 'string'
         ? [body.measurementId]

@@ -170,7 +170,7 @@ Deno.serve(async (req) => {
       .eq('id', locationId);
 
     // Step 3: Submit to Telnyx Porting API
-    const portPayload = {
+    const portPayload: any = {
       phone_numbers: [e164Phone],
       connection_id: TELNYX_CONNECTION_ID,
       messaging_profile_id: TELNYX_SMS_PROFILE_ID,

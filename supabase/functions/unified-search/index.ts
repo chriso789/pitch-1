@@ -155,7 +155,7 @@ Deno.serve(async (req) => {
           else if (title.startsWith(searchTerm)) score = 80;
           else if (title.includes(searchTerm)) score = 60;
           else score = 40;
-          return { ...r, _relevance: score };
+          return { ...(r as Record<string, unknown>), _relevance: score };
         });
 
         scoredResults.sort((a, b) => (b as any)._relevance - (a as any)._relevance);

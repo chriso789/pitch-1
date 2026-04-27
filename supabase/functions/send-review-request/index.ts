@@ -113,7 +113,7 @@ Deno.serve(async (req) => {
         }
       } catch (smsErr) {
         console.error('SMS send failed:', smsErr);
-        smsResult = { success: false, error: smsErr.message };
+        smsResult = { success: false, error: smsErr instanceof Error ? smsErr.message : String(smsErr) };
       }
     }
 

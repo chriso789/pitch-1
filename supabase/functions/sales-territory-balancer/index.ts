@@ -1,5 +1,13 @@
 import { verifyAuthAndTenant, corsHeaders } from "../_shared/auth-tenant.ts";
 
+
+
+type TerritoryRow = Record<string, any>;
+type ContactRow = Record<string, any>;
+type PipelineEntryRow = Record<string, any>;
+type AnalysisRow = { metrics: { total_leads: number } } & Record<string, any>;
+type TerritoryLoadRow = { contact_count: number; pipeline_value: number } & Record<string, any>;
+
 interface TerritoryRequest {
   action: "analyze_distribution" | "recommend_rebalance" | "execute_rebalance" | "forecast_capacity" | "identify_hotspots";
   tenant_id: string;
@@ -47,16 +55,16 @@ Deno.serve(async (req) => {
           .eq("tenant_id", tenant_id);
 
         // Build territory analysis
-        const analysis = territories?.map(territory => {
-          const territoryContacts = contacts?.filter(c => c.territory_id === territory.id) || [];
-          const territoryLeads = pipelineEntries?.filter(pe => 
-            territoryContacts.some(c => c.id === pe.contact_id)
-          ) || [];
+        const analysis: AnalysisRow[] = ((territories || []) as TerritoryRow[]).map((territory: TerritoryRow) => {
+          const territoryContacts = ((contacts || []) as ContactRow[]).filter((c: ContactRow) => c.territory_id === territory.id);
+          const territoryLeads = ((pipelineEntries || []) as PipelineEntryRow[]).filter((pe: PipelineEntryRow) => 
+            territoryContacts.some((c: ContactRow) => c.id === pe.contact_id)
+          );
 
-          const totalValue = territoryLeads.reduce((sum, l) => sum + (l.estimated_value || 0), 0);
+          const totalValue = territoryLeads.reduce((sum: number, l: PipelineEntryRow) => sum + (l.estimated_value || 0), 0);
           const wonValue = territoryLeads
-            .filter(l => l.status === "won")
-            .reduce((sum, l) => sum + (l.estimated_value || 0), 0);
+            .filter((l: PipelineEntryRow) => l.status === "won")
+            .reduce((sum: number, l: PipelineEntryRow) => sum + (l.estimated_value || 0), 0);
 
           return {
             territory_id: territory.id,
@@ -68,7 +76,7 @@ Deno.serve(async (req) => {
               total_pipeline_value: totalValue,
               won_value: wonValue,
               conversion_rate: territoryLeads.length > 0 
-                ? (territoryLeads.filter(l => l.status === "won").length / territoryLeads.length * 100).toFixed(1)
+                ? (territoryLeads.filter((l: PipelineEntryRow) => l.status === "won").length / territoryLeads.length * 100).toFixed(1)
                 : 0,
               avg_deal_size: territoryLeads.length > 0 
                 ? (totalValue / territoryLeads.length).toFixed(0)
@@ -78,9 +86,9 @@ Deno.serve(async (req) => {
         }) || [];
 
         // Calculate balance score (how evenly distributed workload is)
-        const leadCounts = analysis.map(a => a.metrics.total_leads);
-        const avgLeads = leadCounts.reduce((a, b) => a + b, 0) / (leadCounts.length || 1);
-        const variance = leadCounts.reduce((sum, count) => sum + Math.pow(count - avgLeads, 2), 0) / (leadCounts.length || 1);
+        const leadCounts = analysis.map((a: AnalysisRow) => a.metrics.total_leads);
+        const avgLeads = leadCounts.reduce((a: number, b: number) => a + b, 0) / (leadCounts.length || 1);
+        const variance = leadCounts.reduce((sum: number, count: number) => sum + Math.pow(count - avgLeads, 2), 0) / (leadCounts.length || 1);
         const stdDev = Math.sqrt(variance);
         const balanceScore = avgLeads > 0 ? Math.max(0, 100 - (stdDev / avgLeads * 100)).toFixed(0) : 100;
 
@@ -119,11 +127,11 @@ Deno.serve(async (req) => {
           .eq("status", "open");
 
         // Calculate current load per territory
-        const territoryLoad = territories?.map(t => {
-          const tContacts = contacts?.filter(c => c.territory_id === t.id) || [];
-          const tValue = pipelineEntries
-            ?.filter(pe => tContacts.some(c => c.id === pe.contact_id))
-            .reduce((sum, pe) => sum + (pe.estimated_value || 0), 0) || 0;
+        const territoryLoad: TerritoryLoadRow[] = ((territories || []) as TerritoryRow[]).map((t: TerritoryRow) => {
+          const tContacts = ((contacts || []) as ContactRow[]).filter((c: ContactRow) => c.territory_id === t.id);
+          const tValue = ((pipelineEntries || []) as PipelineEntryRow[])
+            .filter((pe: PipelineEntryRow) => tContacts.some((c: ContactRow) => c.id === pe.contact_id))
+            .reduce((sum: number, pe: PipelineEntryRow) => sum + (pe.estimated_value || 0), 0);
 
           return {
             territory_id: t.id,
@@ -135,13 +143,13 @@ Deno.serve(async (req) => {
         }) || [];
 
         // Calculate ideal distribution
-        const totalValue = territoryLoad.reduce((sum, t) => sum + t.pipeline_value, 0);
+        const totalValue = territoryLoad.reduce((sum: number, t: TerritoryLoadRow) => sum + t.pipeline_value, 0);
         const idealValuePerTerritory = totalValue / (territoryLoad.length || 1);
         const totalContacts = contacts?.length || 0;
         const idealContactsPerTerritory = totalContacts / (territoryLoad.length || 1);
 
         // Generate recommendations
-        const recommendations = territoryLoad.map(t => {
+        const recommendations = territoryLoad.map((t: TerritoryLoadRow) => {
           const valueDeviation = ((t.pipeline_value - idealValuePerTerritory) / (idealValuePerTerritory || 1) * 100);
           const contactDeviation = ((t.contact_count - idealContactsPerTerritory) / (idealContactsPerTerritory || 1) * 100);
 
@@ -247,7 +255,7 @@ Deno.serve(async (req) => {
           .select("id, territory_id")
           .eq("tenant_id", tenant_id);
 
-        const activeReps = new Set(territories?.map(t => t.assigned_to).filter(Boolean)).size;
+        const activeReps = new Set(((territories || []) as TerritoryRow[]).map((t: TerritoryRow) => t.assigned_to).filter(Boolean)).size;
         const currentLeadsPerRep = contacts?.length ? contacts.length / (activeReps || 1) : 0;
         const maxCapacity = 50; // Assumed max leads per rep
 
@@ -312,7 +320,7 @@ Deno.serve(async (req) => {
           coords: { lat: number; lng: number }[]
         }> = {};
 
-        contacts?.forEach(contact => {
+        ((contacts || []) as ContactRow[]).forEach((contact: ContactRow) => {
           if (contact.zip_code) {
             if (!zipStats[contact.zip_code]) {
               zipStats[contact.zip_code] = {
@@ -333,7 +341,7 @@ Deno.serve(async (req) => {
               });
             }
 
-            const deal = wonDeals?.find(d => d.contact_id === contact.id);
+            const deal = ((wonDeals || []) as PipelineEntryRow[]).find((d: PipelineEntryRow) => d.contact_id === contact.id);
             if (deal) {
               zipStats[contact.zip_code].deals++;
               zipStats[contact.zip_code].revenue += deal.estimated_value || 0;
