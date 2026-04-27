@@ -10,7 +10,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+
 import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -217,22 +217,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               Loading diagrams…
             </div>
           ) : (
-            <Tabs defaultValue="diagrams" className="w-full">
-              <TabsList>
-                <TabsTrigger value="diagrams">Diagrams (6-page)</TabsTrigger>
-                <TabsTrigger value="patent">Patent Report</TabsTrigger>
-              </TabsList>
+            (() => {
+              const overlay = (measurement as any)?.overlay_schema
+                || (measurement as any)?.geometry_report_json?.overlay_schema;
 
-              <TabsContent value="diagrams">
-                {diagrams.length === 0 ? (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>No diagrams available</AlertTitle>
-                    <AlertDescription>
-                      The 6-page report has not been generated for this measurement yet.
-                    </AlertDescription>
-                  </Alert>
-                ) : (
+              if (overlay) {
+                const model = overlayToPatentModel(overlay, measurement);
+                return (
                   <div className="space-y-6">
                     {!pdfGate.ok && (
                       <Alert>
@@ -245,73 +236,86 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                         <AlertDescription>
                           {pdfGate.reason?.includes('single-plane')
                             ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
-                            : `Diagram preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
+                            : `Preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
                         </AlertDescription>
                       </Alert>
                     )}
-                    {diagrams.map((d) => {
-                      const label =
-                        PAGE_LABELS[(d.page_number || 1) - 1] || d.title || d.diagram_type;
-                      const normalized = (d.svg_markup || '').replace(
-                        /<svg([^>]*)>/i,
-                        (_m, attrs) => {
-                          let a = attrs as string;
-                          const hasViewBox = /viewBox=/.test(a);
-                          const w = a.match(/\bwidth="(\d+(?:\.\d+)?)"/);
-                          const h = a.match(/\bheight="(\d+(?:\.\d+)?)"/);
-                          if (!hasViewBox && w && h) {
-                            a += ` viewBox="0 0 ${w[1]} ${h[1]}"`;
-                          }
-                          a = a.replace(/\s(width|height)="[^"]*"/g, '');
-                          if (!/preserveAspectRatio=/.test(a)) {
-                            a += ' preserveAspectRatio="xMidYMid meet"';
-                          }
-                          return `<svg${a}>`;
-                        },
-                      );
-                      const safeSvg = DOMPurify.sanitize(normalized, {
-                        USE_PROFILES: { svg: true, svgFilters: true },
-                      });
-                      return (
-                        <div key={d.id} className="border rounded-lg overflow-hidden bg-background">
-                          <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
-                            <div className="font-semibold text-sm">
-                              {d.page_number}. {label}
-                            </div>
-                            <Badge variant="secondary">{d.diagram_type}</Badge>
-                          </div>
-                          <div
-                            className="w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[80vh] [&_svg]:block"
-                            dangerouslySetInnerHTML={{ __html: safeSvg }}
-                          />
-                        </div>
-                      );
-                    })}
+                    <PatentRoofReport initialModel={model} address={address} />
                   </div>
-                )}
-              </TabsContent>
+                );
+              }
 
-              <TabsContent value="patent">
-                {(() => {
-                  const overlay = (measurement as any)?.overlay_schema
-                    || (measurement as any)?.geometry_report_json?.overlay_schema;
-                  if (!overlay) {
-                    return (
-                      <Alert>
-                        <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Patent report unavailable</AlertTitle>
-                        <AlertDescription>
-                          No overlay geometry on this measurement; cannot render the
-                          patent-aligned 6-page report yet.
-                        </AlertDescription>
-                      </Alert>
+              // Fallback: legacy SVG diagrams when no overlay is available
+              if (diagrams.length === 0) {
+                return (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>No diagrams available</AlertTitle>
+                    <AlertDescription>
+                      The roof report has not been generated for this measurement yet.
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+
+              return (
+                <div className="space-y-6">
+                  {!pdfGate.ok && (
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>
+                        {pdfGate.reason?.includes('single-plane')
+                          ? 'Footprint estimate'
+                          : 'Preview only'}
+                      </AlertTitle>
+                      <AlertDescription>
+                        {pdfGate.reason?.includes('single-plane')
+                          ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
+                          : `Diagram preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  {diagrams.map((d) => {
+                    const label =
+                      PAGE_LABELS[(d.page_number || 1) - 1] || d.title || d.diagram_type;
+                    const normalized = (d.svg_markup || '').replace(
+                      /<svg([^>]*)>/i,
+                      (_m, attrs) => {
+                        let a = attrs as string;
+                        const hasViewBox = /viewBox=/.test(a);
+                        const w = a.match(/\bwidth="(\d+(?:\.\d+)?)"/);
+                        const h = a.match(/\bheight="(\d+(?:\.\d+)?)"/);
+                        if (!hasViewBox && w && h) {
+                          a += ` viewBox="0 0 ${w[1]} ${h[1]}"`;
+                        }
+                        a = a.replace(/\s(width|height)="[^"]*"/g, '');
+                        if (!/preserveAspectRatio=/.test(a)) {
+                          a += ' preserveAspectRatio="xMidYMid meet"';
+                        }
+                        return `<svg${a}>`;
+                      },
                     );
-                  }
-                  const model = overlayToPatentModel(overlay, measurement);
-                  return <PatentRoofReport initialModel={model} address={address} />;
-                })()}
-              </TabsContent>
-            </Tabs>
+                    const safeSvg = DOMPurify.sanitize(normalized, {
+                      USE_PROFILES: { svg: true, svgFilters: true },
+                    });
+                    return (
+                      <div key={d.id} className="border rounded-lg overflow-hidden bg-background">
+                        <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                          <div className="font-semibold text-sm">
+                            {d.page_number}. {label}
+                          </div>
+                          <Badge variant="secondary">{d.diagram_type}</Badge>
+                        </div>
+                        <div
+                          className="w-full bg-white p-2 [&_svg]:w-full [&_svg]:h-auto [&_svg]:max-h-[80vh] [&_svg]:block"
+                          dangerouslySetInnerHTML={{ __html: safeSvg }}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()
           )}
         </ScrollArea>
       </DialogContent>
