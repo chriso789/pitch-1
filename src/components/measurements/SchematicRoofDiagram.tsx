@@ -110,7 +110,7 @@ function normalizeStoredImageBounds(input: any, fallbackZoom?: number): ImageBou
         bottomRight: { lat: south, lng: east },
         centerLat: (north + south) / 2,
         centerLng: (west + east) / 2,
-        zoom: Number(input.zoom) || fallbackZoom || 20,
+        zoom: fallbackZoom || 20,
       };
     }
   }
