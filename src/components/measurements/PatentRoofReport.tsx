@@ -123,14 +123,17 @@ function Page1Overview({
       <PageHeader n={1} title="Overview" address={address} />
       {model.image.url ? (
         <>
+          {/* Hidden img drives QC; the report's hero diagram is the overlay */}
           <img
             ref={imgRef}
             src={model.image.url}
-            alt="Roof overview"
+            alt=""
             crossOrigin="anonymous"
             onLoad={runQc}
-            className="w-full max-h-[600px] object-contain rounded border"
+            className="hidden"
+            aria-hidden
           />
+          <ModelSvg model={model} showLengths />
           <div className="mt-2 flex items-center gap-2 text-xs">
             {qc.reshoot_requested ? (
               <Badge variant="destructive">Imagery QC failed — re-shoot recommended</Badge>
