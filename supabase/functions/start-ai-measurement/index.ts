@@ -285,7 +285,10 @@ function planesFromSolar(
 
       return {
         plane_index: idx,
-        source: 'google_solar',
+        // HARD RULE: Solar boundingBox is an axis-aligned rectangle hint, NOT
+        // real facet geometry. Tag it as bbox so the QC gate can refuse to
+        // publish a customer-ready report from it.
+        source: 'google_solar_bbox',
         polygon_px: polyPx,
         polygon_geojson: polyGeo,
         pitch: rise,
@@ -294,7 +297,7 @@ function planesFromSolar(
         area_2d_sqft: area2dSqft,
         pitch_multiplier: pmInfo.pitch_multiplier,
         area_pitch_adjusted_sqft: finalSlopedSqft,
-        confidence: 0.85,
+        confidence: 0.5,
       } as RoofPlane
     })
     .filter(Boolean) as RoofPlane[]
