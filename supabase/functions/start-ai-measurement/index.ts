@@ -38,13 +38,24 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-const MAPBOX_TOKEN =
-  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
+// Server-side token: prefer the secret/access token. Public token is a last
+// resort because URL-restricted public tokens routinely 403 from edge runtimes.
+const MAPBOX_SERVER_TOKEN =
   Deno.env.get('MAPBOX_ACCESS_TOKEN') ||
   Deno.env.get('MAPBOX_TOKEN') ||
+  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
   ''
+// Static Images token: same precedence — access token first.
+const MAPBOX_IMAGE_TOKEN =
+  Deno.env.get('MAPBOX_ACCESS_TOKEN') ||
+  Deno.env.get('MAPBOX_PUBLIC_TOKEN') ||
+  Deno.env.get('MAPBOX_TOKEN') ||
+  ''
+// Backwards-compat alias for any code paths still referencing MAPBOX_TOKEN.
+const MAPBOX_TOKEN = MAPBOX_SERVER_TOKEN
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY') || ''
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY') || ''
+const GOOGLE_STATIC_KEY = GOOGLE_MAPS_API_KEY
 
 const ENGINE_VERSION = 'geometry_first_v2'
 const MAX_AUTO_ROOF_AREA_SQFT = 30000
