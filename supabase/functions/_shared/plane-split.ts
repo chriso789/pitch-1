@@ -87,6 +87,26 @@ function hasSelfIntersection(poly: Point[], epsilon: number): boolean {
   return false
 }
 
+function extendLineToCoverPolygon(polygon: Point[], line: Line): Line {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+  for (const p of polygon) {
+    minX = Math.min(minX, p.x); minY = Math.min(minY, p.y)
+    maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y)
+  }
+  const dx = line.p2.x - line.p1.x
+  const dy = line.p2.y - line.p1.y
+  const len = Math.hypot(dx, dy)
+  if (len <= 1e-6) return line
+  const ux = dx / len
+  const uy = dy / len
+  const reach = Math.hypot(maxX - minX, maxY - minY) * 2 + len
+  return {
+    p1: { x: line.p1.x - ux * reach, y: line.p1.y - uy * reach },
+    p2: { x: line.p2.x + ux * reach, y: line.p2.y + uy * reach },
+    votes: line.votes,
+  }
+}
+
 export function intersectSegments(a1: Point, a2: Point, b1: Point, b2: Point): Point | null {
   const d =
     (a2.x - a1.x) * (b2.y - b1.y) -
@@ -125,6 +145,7 @@ export function splitPolygonByLine(
   const right: Point[] = []
   const lineLength = Math.hypot(line.p2.x - line.p1.x, line.p2.y - line.p1.y)
   if (lineLength <= epsilon) return []
+  const cutLine = extendLineToCoverPolygon(input, line)
 
   for (let i = 0; i < input.length; i++) {
     const curr = input[i]
@@ -137,7 +158,7 @@ export function splitPolygonByLine(
     if (currSide <= epsilon) right.push(curr)
 
     if ((currSide > epsilon && nextSide < -epsilon) || (currSide < -epsilon && nextSide > epsilon)) {
-      const intersection = intersectSegments(curr, next, line.p1, line.p2)
+      const intersection = intersectSegments(curr, next, cutLine.p1, cutLine.p2)
       if (intersection) {
         left.push(intersection)
         right.push(intersection)
@@ -180,7 +201,7 @@ export function buildRoofPlanes(
     const newPlanes: Point[][] = []
 
     for (const plane of planes) {
-      if (newPlanes.length + (planes.length - newPlanes.length) >= maxPlanes) {
+      if (newPlanes.length >= maxPlanes) {
         newPlanes.push(plane)
         continue
       }
