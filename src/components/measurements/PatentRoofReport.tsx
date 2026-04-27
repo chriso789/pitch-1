@@ -65,7 +65,11 @@ export default function PatentRoofReport({ initialModel, address, onChange }: Pr
 
   return (
     <div className="space-y-6">
-      <Page1Overview model={model} address={address} />
+      <Page1Overview
+        model={model}
+        address={address}
+        onQc={(qc) => update({ ...model, imagery_qc: qc })}
+      />
       <Page2Length model={model} />
       <Page3Pitch model={model} onPitchChange={handlePitchChange} />
       <Page4Area model={model} />
