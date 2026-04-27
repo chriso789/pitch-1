@@ -67,10 +67,13 @@ export function DimensionedPlanDrawing({
     if (!aerial) return null;
     const [west, south, east, north] = aerial.bounds;
     const lngRange = east - west || 1e-9;
-    const latRange = north - south || 1e-9;
+    const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
+    const mercTop = mercY(north);
+    const mercBottom = mercY(south);
+    const mercRange = mercTop - mercBottom || 1e-9;
     return (lng: number, lat: number): [number, number] => [
       ((lng - west) / lngRange) * width,
-      ((north - lat) / latRange) * height,
+      ((mercTop - mercY(lat)) / mercRange) * height,
     ];
   }, [aerial, width, height]);
 
@@ -123,7 +126,7 @@ export function DimensionedPlanDrawing({
             y={0}
             width={width}
             height={height}
-            preserveAspectRatio="xMidYMid slice"
+            preserveAspectRatio="none"
           />
         )}
 
@@ -136,7 +139,7 @@ export function DimensionedPlanDrawing({
             y={0}
             width={width}
             height={height}
-            preserveAspectRatio="xMidYMid slice"
+            preserveAspectRatio="none"
             opacity={1}
           />
         )}
