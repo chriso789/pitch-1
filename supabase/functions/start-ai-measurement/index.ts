@@ -1581,6 +1581,7 @@ Deno.serve(async (req) => {
         // 2h) Aggregate results
         const totalArea2d = planes.reduce((s, p) => s + p.area_2d_sqft, 0)
         const totalAreaSloped = planes.reduce((s, p) => s + p.area_pitch_adjusted_sqft, 0)
+        const exceedsPublishableArea = totalAreaSloped > MAX_AUTO_ROOF_AREA_SQFT || totalArea2d > MAX_AUTO_ROOF_AREA_SQFT
         const sumByEdge = (t: RoofEdge['edge_type']) =>
           edges.filter((e) => e.edge_type === t).reduce((s, e) => s + e.length_ft, 0)
         const ridge_ft = sumByEdge('ridge')
@@ -1817,13 +1818,16 @@ Deno.serve(async (req) => {
           .eq('id', aiJob.id)
 
         // 2j) Block placeholder/failed from publishing
-        if (qc.status === 'needs_internal_review') {
+        if (qc.status === 'needs_internal_review' || exceedsPublishableArea) {
+          const reason = exceedsPublishableArea
+            ? `Rejected inflated geometry: ${Math.round(totalAreaSloped).toLocaleString()} sqft exceeds ${MAX_AUTO_ROOF_AREA_SQFT.toLocaleString()} sqft publish cap.`
+            : 'Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review.'
           await supa
             .from('measurement_jobs')
             .update({
               status: 'failed',
               progress_message: 'Roof geometry could not be verified automatically. Flagged for internal review — no customer-facing report will be generated.',
-              error: 'Roof slopes could not be reliably segmented from satellite imagery. This property has been flagged for internal review.',
+              error: reason,
               completed_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
             })
