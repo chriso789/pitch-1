@@ -63,8 +63,24 @@ export function DimensionedPlanDrawing({
   // can still visually identify each edge.
   const aerialBackdropOnly = !aerialMode && !!aerial?.imageUrl;
 
-  const aerialProjection = useMemo(() => {
+  const aerialPlacement = useMemo(() => {
     if (!aerial) return null;
+    const sourceW = Math.max(Number(aerial.imageWidth) || width, 1);
+    const sourceH = Math.max(Number(aerial.imageHeight) || height, 1);
+    const scale = Math.min(width / sourceW, height / sourceH);
+    const drawWidth = sourceW * scale;
+    const drawHeight = sourceH * scale;
+
+    return {
+      x: (width - drawWidth) / 2,
+      y: (height - drawHeight) / 2,
+      width: drawWidth,
+      height: drawHeight,
+    };
+  }, [aerial, width, height]);
+
+  const aerialProjection = useMemo(() => {
+    if (!aerial || !aerialPlacement) return null;
     const [west, south, east, north] = aerial.bounds;
     const lngRange = east - west || 1e-9;
     const mercY = (lat: number) => Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360));
@@ -72,10 +88,10 @@ export function DimensionedPlanDrawing({
     const mercBottom = mercY(south);
     const mercRange = mercTop - mercBottom || 1e-9;
     return (lng: number, lat: number): [number, number] => [
-      ((lng - west) / lngRange) * width,
-      ((mercTop - mercY(lat)) / mercRange) * height,
+      aerialPlacement.x + ((lng - west) / lngRange) * aerialPlacement.width,
+      aerialPlacement.y + ((mercTop - mercY(lat)) / mercRange) * aerialPlacement.height,
     ];
-  }, [aerial, width, height]);
+  }, [aerial, aerialPlacement]);
 
   const { transform, bounds } = useMemo(() => {
     if (edges.length === 0) {
@@ -119,26 +135,26 @@ export function DimensionedPlanDrawing({
     <div className="bg-card border rounded-lg overflow-hidden">
       <svg width={width} height={height} className="w-full h-auto" viewBox={`0 0 ${width} ${height}`}>
         {/* Aerial background (when available) */}
-        {aerialMode && aerial && (
+        {aerialMode && aerial && aerialPlacement && (
           <image
             href={aerial.imageUrl}
-            x={0}
-            y={0}
-            width={width}
-            height={height}
+            x={aerialPlacement.x}
+            y={aerialPlacement.y}
+            width={aerialPlacement.width}
+            height={aerialPlacement.height}
             preserveAspectRatio="none"
           />
         )}
 
         {/* Aerial backdrop only (no geo-anchored edges) — show the roof photo
             so the user can visually identify each edge while confirming. */}
-        {aerialBackdropOnly && aerial && (
+        {aerialBackdropOnly && aerial && aerialPlacement && (
           <image
             href={aerial.imageUrl}
-            x={0}
-            y={0}
-            width={width}
-            height={height}
+            x={aerialPlacement.x}
+            y={aerialPlacement.y}
+            width={aerialPlacement.width}
+            height={aerialPlacement.height}
             preserveAspectRatio="none"
             opacity={1}
           />
