@@ -173,14 +173,14 @@ Deno.serve(async (req) => {
           dailyData[key] = { revenue: 0, leads: 0, conversions: 0 };
         }
 
-        projects?.forEach(p => {
+        projects?.forEach((p: any) => {
           const key = new Date(p.created_at).toISOString().split("T")[0];
           if (dailyData[key]) {
             dailyData[key].revenue += p.contract_amount || 0;
           }
         });
 
-        leads?.forEach(l => {
+        leads?.forEach((l: any) => {
           const key = new Date(l.created_at).toISOString().split("T")[0];
           if (dailyData[key]) {
             dailyData[key].leads += 1;
@@ -241,7 +241,7 @@ Deno.serve(async (req) => {
           deals_closed: number 
         }> = {};
 
-        sales?.forEach(sale => {
+        sales?.forEach((sale: any) => {
           if (sale.assigned_to && sale.profiles) {
             const profile = Array.isArray(sale.profiles) ? sale.profiles[0] : sale.profiles;
             if (!userStats[sale.assigned_to]) {
