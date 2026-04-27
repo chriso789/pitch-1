@@ -1386,6 +1386,7 @@ Deno.serve(async (req) => {
           overlay_alignment_score: qc.overlayAlignmentScore,
           is_placeholder: hasPlaceholder || !qc.geometrySourceIsReal,
           planes_are_all_rectangles: qc.planesAreAllRectangles,
+          single_plane_fallback: qc.singlePlaneFallback,
           footprint_wkt: footprintWkt,
         }
 
