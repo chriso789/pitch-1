@@ -2020,9 +2020,26 @@ Deno.serve(async (req) => {
 
           // First deterministic fallback: authoritative vector building footprints.
           const authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
-          if (authoritative) {
+          let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
+          if (mb?.image_url) {
+            try {
+              extractedImageGeometry = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+            } catch (err) {
+              console.warn('[start-ai-measurement] image footprint pre-extract failed:', err)
+            }
+          }
+
+          const selectedAuthoritative =
+            authoritative && !(isLowDetailAuthoritativeFootprint(authoritative) && extractedImageGeometry?.footprint?.length >= 4)
+              ? authoritative
+              : null
+          if (authoritative && !selectedAuthoritative) {
+            console.log('[start-ai-measurement] rejected low-detail authoritative footprint; using image-traced roof edge geometry')
+          }
+
+          if (selectedAuthoritative) {
             const basePlane = planeFromAuthoritativeFootprint(
-              authoritative,
+              selectedAuthoritative,
               lat,
               lng,
               imgW,
@@ -2034,15 +2051,15 @@ Deno.serve(async (req) => {
             )
             planes = [basePlane]
             console.log(
-              `[start-ai-measurement] using authoritative footprint fallback: ${authoritative.source}`
+              `[start-ai-measurement] using authoritative footprint fallback: ${selectedAuthoritative.source}`
             )
 
             // Try to split the authoritative footprint into multiple planes using
             // image-derived ridge detection so we can recover ridge/hip/valley edges
             // (a single plane only yields perimeter eaves via topology).
-            if (mb?.image_url) {
+            if (extractedImageGeometry || mb?.image_url) {
               try {
-                const extracted = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+                const extracted = extractedImageGeometry ?? await extractRoofFootprintAndEdges(mb!.image_url, imgW, imgH)
                 if (extracted) {
                   const rawRidges = detectRidges(
                     extracted.mag,
@@ -2102,7 +2119,7 @@ Deno.serve(async (req) => {
                 console.warn('[start-ai-measurement] ridge split on authoritative footprint failed:', err)
               }
             }
-          } else if (mb?.image_url) {
+          } else if (extractedImageGeometry || mb?.image_url) {
             // Secondary fallback only when no authoritative footprint is available:
             // image-derived footprint + optional pure-TS ridge split.
             await supa
@@ -2110,7 +2127,7 @@ Deno.serve(async (req) => {
               .update({ progress_message: 'Extracting roof footprint + ridges from imagery…' })
               .eq('id', job.id)
 
-            const extracted = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+            const extracted = extractedImageGeometry ?? await extractRoofFootprintAndEdges(mb!.image_url, imgW, imgH)
             if (extracted && extracted.footprint.length >= 4) {
               const rawRidges = detectRidges(
                 extracted.mag,
