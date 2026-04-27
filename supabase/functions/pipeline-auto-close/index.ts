@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
 
       // Audit log
       for (const entry of entries) {
-        await serviceClient.from('audit_log').insert({
+        const { error: auditError } = await serviceClient.from('audit_log').insert({
           tenant_id: stage.tenant_id,
           changed_by: null,
           action: 'UPDATE',
@@ -68,7 +68,8 @@ Deno.serve(async (req) => {
           record_id: entry.id,
           old_values: { status: stage.key },
           new_values: { status: 'closed', auto_closed: true, auto_close_days: stage.auto_close_days }
-        }).catch(err => console.error('Audit log error:', err));
+        });
+        if (auditError) console.error('Audit log error:', auditError);
       }
 
       totalClosed += entries.length;
