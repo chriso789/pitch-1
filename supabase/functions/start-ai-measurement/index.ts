@@ -982,6 +982,39 @@ Deno.serve(async (req) => {
           })),
         )
 
+        // Build a footprint WKT (union hull of all plane geo points) so the
+        // frontend never prints "No WKT geometry available".
+        let footprintWkt: string | null = null
+        try {
+          const allGeo: GeoPt[] = []
+          for (const p of planes) {
+            for (const g of (p.polygon_geojson as GeoPt[]) || []) allGeo.push(g)
+          }
+          if (allGeo.length >= 3) {
+            // Simple convex-hull-ish: order points around centroid (good enough
+            // for a coarse property footprint diagnostic — not load-bearing).
+            const cx = allGeo.reduce((s, p) => s + p.lng, 0) / allGeo.length
+            const cy = allGeo.reduce((s, p) => s + p.lat, 0) / allGeo.length
+            const ordered = [...allGeo].sort(
+              (a, b) => Math.atan2(a.lat - cy, a.lng - cx) - Math.atan2(b.lat - cy, b.lng - cx),
+            )
+            const ring = [...ordered, ordered[0]]
+              .map((p) => `${p.lng} ${p.lat}`)
+              .join(', ')
+            footprintWkt = `POLYGON((${ring}))`
+          }
+        } catch (_e) { /* non-fatal */ }
+
+        const planeSources = Array.from(new Set(planes.map((p) => String(p.source))))
+        const geometrySource =
+          planeSources.length === 0
+            ? 'none'
+            : planeSources.every((s) => PLACEHOLDER_SOURCES.has(s))
+            ? 'google_solar_bbox'
+            : planeSources.length === 1
+            ? planeSources[0]
+            : 'mixed'
+
         const reportJson = {
           engine: ENGINE_VERSION,
           generated_at: new Date().toISOString(),
@@ -1013,6 +1046,12 @@ Deno.serve(async (req) => {
           quality_checks: qc.checks,
           overall_score: qc.overall,
           final_status: qc.status,
+          // ── Hard-gate geometry provenance fields (consumed by frontend & PDF function) ──
+          geometry_source: geometrySource,
+          overlay_alignment_score: qc.overlayAlignmentScore,
+          is_placeholder: hasPlaceholder || !qc.geometrySourceIsReal,
+          planes_are_all_rectangles: qc.planesAreAllRectangles,
+          footprint_wkt: footprintWkt,
         }
 
         await supa.from('ai_measurement_results').insert({
