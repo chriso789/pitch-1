@@ -93,20 +93,9 @@ export function StructureSelectionMap({
             </p>
           )}
 
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t">
-            <Label className="text-xs whitespace-nowrap">Roof Pitch:</Label>
-            <Select value={selectedPitch} onValueChange={setSelectedPitch}>
-              <SelectTrigger className="w-24 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-[300]">
-                {PITCH_OPTIONS.map(p => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-xs text-muted-foreground">(affects area calculation)</span>
-          </div>
+          <p className="text-[11px] text-muted-foreground mt-2 pt-2 border-t">
+            Pitch will be auto-detected from Google Solar DSM elevation data.
+          </p>
         </DialogHeader>
 
         <div className="flex-1 relative min-h-[300px] sm:min-h-[450px] bg-muted/20 overflow-hidden">
