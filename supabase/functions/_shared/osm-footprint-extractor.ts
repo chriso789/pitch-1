@@ -41,6 +41,11 @@ export async function fetchOSMBuildingFootprint(
 ): Promise<OSMFootprintResult> {
   const searchRadius = options?.searchRadius || 50;
   const timeout = options?.timeout || 10000;
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.openstreetmap.ru/api/interpreter',
+  ];
   
   try {
     console.log(`🗺️ OSM Overpass search: ${lat.toFixed(6)}, ${lng.toFixed(6)} (radius=${searchRadius}m)`);
@@ -55,33 +60,47 @@ export async function fetchOSMBuildingFootprint(
       out body geom;
     `;
     
-    // Use public Overpass API endpoint
-    const overpassUrl = 'https://overpass-api.de/api/interpreter';
-    
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), timeout);
-    
     try {
-      const response = await fetch(overpassUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: `data=${encodeURIComponent(query)}`,
-        signal: controller.signal,
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (!response.ok) {
-        console.warn(`⚠️ OSM Overpass API failed: ${response.status}`);
+      let response: Response | null = null;
+      let lastStatus = 0;
+      let lastText = '';
+
+      for (const overpassUrl of endpoints) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeout);
+        try {
+          response = await fetch(overpassUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+              'Accept': 'application/json',
+              'User-Agent': 'PitchCRM/1.0 (roof measurement footprint lookup)',
+            },
+            body: new URLSearchParams({ data: query }).toString(),
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (response.ok) break;
+          lastStatus = response.status;
+          lastText = await response.text().catch(() => '');
+          console.warn(`⚠️ OSM Overpass API failed at ${overpassUrl}: ${lastStatus} ${lastText.slice(0, 160)}`);
+          response = null;
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          if (fetchErr.name === 'AbortError') console.warn(`⚠️ OSM Overpass request timed out at ${overpassUrl}`);
+          else console.warn(`⚠️ OSM Overpass request failed at ${overpassUrl}: ${fetchErr?.message || fetchErr}`);
+        }
+      }
+
+      if (!response?.ok) {
         return {
           footprint: null,
-          error: `API error: ${response.status}`,
-          fallbackReason: 'api_error',
+          error: `API error: ${lastStatus || 'unreachable'} ${lastText.slice(0, 160)}`,
+          fallbackReason: lastStatus ? 'api_error' : 'fetch_error',
         };
       }
-      
+
       const data = await response.json();
       
       if (!data.elements || data.elements.length === 0) {
@@ -197,15 +216,6 @@ export async function fetchOSMBuildingFootprint(
       };
       
     } catch (fetchErr: any) {
-      clearTimeout(timeoutId);
-      if (fetchErr.name === 'AbortError') {
-        console.warn('⚠️ OSM Overpass request timed out');
-        return {
-          footprint: null,
-          error: 'Request timeout',
-          fallbackReason: 'timeout',
-        };
-      }
       throw fetchErr;
     }
     

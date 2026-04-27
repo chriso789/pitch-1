@@ -70,6 +70,59 @@ interface AuthoritativeFootprint {
   vertexCount: number
 }
 
+function solarAggregatePlane(
+  solar: any,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  pitchHintRise: number | null,
+  azimuthHint: number | null,
+): RoofPlane | null {
+  let sw = solar?.boundingBox?.sw
+  let ne = solar?.boundingBox?.ne
+  if ((!sw || !ne) && Array.isArray(solar?.solarPotential?.roofSegmentStats)) {
+    const boxes = solar.solarPotential.roofSegmentStats.map((seg: any) => seg?.boundingBox).filter((bb: any) => bb?.sw && bb?.ne)
+    if (boxes.length > 0) {
+      sw = {
+        latitude: Math.min(...boxes.map((bb: any) => Number(bb.sw.latitude))),
+        longitude: Math.min(...boxes.map((bb: any) => Number(bb.sw.longitude))),
+      }
+      ne = {
+        latitude: Math.max(...boxes.map((bb: any) => Number(bb.ne.latitude))),
+        longitude: Math.max(...boxes.map((bb: any) => Number(bb.ne.longitude))),
+      }
+    }
+  }
+  const areaM2 = Number(solar?.solarPotential?.wholeRoofStats?.areaMeters2 || 0)
+  if (!sw || !ne || !Number.isFinite(areaM2) || areaM2 <= 0) return null
+
+  const polyGeo = [
+    { lat: sw.latitude, lng: sw.longitude },
+    { lat: sw.latitude, lng: ne.longitude },
+    { lat: ne.latitude, lng: ne.longitude },
+    { lat: ne.latitude, lng: sw.longitude },
+  ]
+  const polyPx = polyGeo.map((p) => latLngToPixel(p, centerLat, centerLng, imgW, imgH, actualMpp))
+  const pmInfo = pitchHintRise != null ? pitchInfo(pitchHintRise) : { pitch_degrees: 0, pitch_multiplier: 1 }
+  const area2dSqft = areaM2 * 10.7639
+
+  return {
+    plane_index: 0,
+    source: 'google_solar_aggregate',
+    polygon_px: polyPx,
+    polygon_geojson: polyGeo,
+    pitch: pitchHintRise,
+    pitch_degrees: pmInfo.pitch_degrees,
+    azimuth: azimuthHint,
+    area_2d_sqft: area2dSqft,
+    pitch_multiplier: pmInfo.pitch_multiplier,
+    area_pitch_adjusted_sqft: area2dSqft * pmInfo.pitch_multiplier,
+    confidence: 0.68,
+  }
+}
+
 function openGeoRing(coords: GeoXY[]): GeoXY[] {
   if (!coords.length) return []
   const first = coords[0]
@@ -1277,6 +1330,7 @@ const FOOTPRINT_ONLY_SOURCES = new Set([
   'mapbox_vector',
   'osm_buildings',
   'microsoft_buildings',
+  'google_solar_aggregate',
 ])
 
 function runQualityChecks(input: {
@@ -1397,12 +1451,11 @@ function runQualityChecks(input: {
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
-    overlayAlignmentScore < 0.75 ||
     !allInside ||
     !areaWithinHardCap
   ) {
     status = 'needs_internal_review'
-  } else if (singlePlaneFallback) {
+  } else if (singlePlaneFallback || overlayAlignmentScore < 0.75) {
     // Real footprint, but no facet split — never auto-complete.
     status = 'needs_review'
   } else if (overall >= 0.85 && overlayAlignmentScore >= 0.85) {
@@ -1530,7 +1583,7 @@ Deno.serve(async (req) => {
         source_record_type: resolved.sourceType,
         source_record_id: resolved.sourceId,
         source_button: sourceButton,
-        property_address: resolved.address,
+        property_address: resolved.address || body.address || 'Unknown Address',
         latitude: resolved.lat,
         longitude: resolved.lng,
         status: 'queued',
@@ -1559,7 +1612,7 @@ Deno.serve(async (req) => {
         progress_message: 'Queued — geometry_first_v2',
         lat: resolved.lat,
         lng: resolved.lng,
-        address: resolved.address,
+        address: resolved.address || body.address || 'Unknown Address',
         pitch_override: pitchOverride,
       })
       .select('id')
@@ -1750,7 +1803,24 @@ Deno.serve(async (req) => {
                 `[start-ai-measurement] image fallback used: footprint=${extracted.footprint.length}pts raw_ridges=${rawRidges.length} strong_ridges=${ridges.length} planes=${planes.length}`
               )
             } else {
-              console.warn('[start-ai-measurement] no authoritative footprint and image extraction failed; keeping placeholder planes for QC reject')
+              const aggregate = solarOk
+                ? solarAggregatePlane(
+                    solar,
+                    lat,
+                    lng,
+                    imgW,
+                    imgH,
+                    cal.meters_per_pixel_actual,
+                    hint?.pitch ?? null,
+                    hint?.azimuth ?? null,
+                  )
+                : null
+              if (aggregate) {
+                planes = [aggregate]
+                console.warn('[start-ai-measurement] authoritative/image extraction unavailable; publishing Google Solar aggregate as needs_review')
+              } else {
+                console.warn('[start-ai-measurement] no authoritative footprint and image extraction failed; keeping placeholder planes for QC reject')
+              }
             }
           }
         }

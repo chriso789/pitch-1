@@ -70,15 +70,32 @@ export async function fetchMicrosoftBuildingFootprint(
     
     // Alternative: Use the free Esri Building Footprints service
     // which also incorporates Microsoft data
-    const esriUrl = `https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Structures/FeatureServer/0/query?where=1%3D1&geometry=${bbox.minLng},${bbox.minLat},${bbox.maxLng},${bbox.maxLat}&geometryType=esriGeometryEnvelope&inSR=4326&outSR=4326&outFields=*&f=geojson`;
+    const params = new URLSearchParams({
+      where: '1=1',
+      geometry: `${bbox.minLng},${bbox.minLat},${bbox.maxLng},${bbox.maxLat}`,
+      geometryType: 'esriGeometryEnvelope',
+      spatialRel: 'esriSpatialRelIntersects',
+      inSR: '4326',
+      outSR: '4326',
+      outFields: '*',
+      returnGeometry: 'true',
+      f: 'geojson',
+    });
+    const esriUrl = `https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Structures/FeatureServer/0/query?${params.toString()}`;
     
-    const response = await fetch(esriUrl);
+    const response = await fetch(esriUrl, {
+      headers: {
+        'Accept': 'application/geo+json, application/json',
+        'User-Agent': 'PitchCRM/1.0 (roof measurement footprint lookup)',
+      },
+    });
     
     if (!response.ok) {
-      console.warn(`⚠️ Microsoft/Esri Buildings API failed: ${response.status}`);
+      const errorText = await response.text().catch(() => '');
+      console.warn(`⚠️ Microsoft/Esri Buildings API failed: ${response.status} ${errorText.slice(0, 160)}`);
       return {
         footprint: null,
-        error: `API error: ${response.status}`,
+        error: `API error: ${response.status} ${errorText.slice(0, 160)}`,
         fallbackReason: 'api_error',
       };
     }
