@@ -378,10 +378,10 @@ export function SchematicRoofDiagram({
     if (!measurement) return null;
     
     // Priority 1: Stored image_bounds from the measurement pipeline
-    const storedBounds = measurement.image_bounds;
-    if (storedBounds && storedBounds.topLeft && storedBounds.bottomLeft) {
+    const storedBounds = normalizeStoredImageBounds(measurement.image_bounds, measurement.analysis_zoom || 20);
+    if (storedBounds) {
       console.log('🗺️ Using stored image_bounds from measurement');
-      return storedBounds as ImageBounds;
+      return storedBounds;
     }
     
     // Priority 2: Compute from center + zoom using Mercator projection
