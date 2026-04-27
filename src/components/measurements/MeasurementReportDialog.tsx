@@ -237,9 +237,15 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                     {!pdfGate.ok && (
                       <Alert>
                         <AlertTriangle className="h-4 w-4" />
-                        <AlertTitle>Preview only</AlertTitle>
+                        <AlertTitle>
+                          {pdfGate.reason?.includes('single-plane')
+                            ? 'Footprint estimate'
+                            : 'Preview only'}
+                        </AlertTitle>
                         <AlertDescription>
-                          Diagram preview is available, but customer PDF download is blocked. ({pdfGate.reason})
+                          {pdfGate.reason?.includes('single-plane')
+                            ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
+                            : `Diagram preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
                         </AlertDescription>
                       </Alert>
                     )}

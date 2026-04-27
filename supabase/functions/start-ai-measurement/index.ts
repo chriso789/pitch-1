@@ -1682,7 +1682,18 @@ function runQualityChecks(input: {
   // z20 cannot legitimately produce >30k sqft of roof — anything beyond means
   // the footprint extractor leaked into neighbors / road / canopy.
   const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= MAX_AUTO_ROOF_AREA_SQFT
-  if (
+
+  // ── HARD FAILURES → needs_internal_review ─────────────────────────────
+  // Per QC spec: only escalate to internal review when something
+  // fundamental is broken. Missing ridges with a valid footprint is NOT
+  // a hard failure — it downgrades to needs_review (single-plane fallback).
+  //   - footprint missing / placeholder
+  //   - imagery / calibration unavailable (image decode failed)
+  //   - footprint outside the image (geometry extraction crashed)
+  //   - geometry source is synthetic only
+  //   - area exceeds publish cap (extractor leaked)
+  //   - alignment < 0.5 (per user spec)
+  const hardFailure =
     input.hasPlaceholder ||
     !input.calibrated ||
     !_imageryOk ||
@@ -1690,11 +1701,14 @@ function runQualityChecks(input: {
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
     !allInside ||
-    !areaWithinHardCap
-  ) {
+    !areaWithinHardCap ||
+    overlayAlignmentScore < 0.5
+
+  if (hardFailure) {
     status = 'needs_internal_review'
   } else if (singlePlaneFallback || overlayAlignmentScore < 0.75) {
-    // Real footprint, but no facet split — never auto-complete.
+    // Footprint exists but ridges/facets could not be segmented, OR
+    // alignment is mediocre. Show preview, block PDF — never auto-complete.
     status = 'needs_review'
   } else if (overall >= 0.85 && overlayAlignmentScore >= 0.85) {
     status = 'completed'
