@@ -3,14 +3,6 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, MapPin, CheckCircle2, AlertCircle } from 'lucide-react';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-
-const PITCH_OPTIONS = [
-  '0/12', '1/12', '2/12', '3/12', '4/12', '5/12', '6/12',
-  '7/12', '8/12', '9/12', '10/12', '11/12', '12/12',
-  '14/12', '16/12', '18/12'
-];
 
 interface StructureSelectionMapProps {
   open: boolean;
@@ -33,7 +25,7 @@ export function StructureSelectionMap({
 }: StructureSelectionMapProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPitch, setSelectedPitch] = useState(defaultPitch);
+  
   const [satelliteUrl, setSatelliteUrl] = useState<string | null>(null);
   const [hasInvalidCoords, setHasInvalidCoords] = useState(false);
 
@@ -80,7 +72,7 @@ export function StructureSelectionMap({
   }, [open, initialLat, initialLng]);
 
   const handleConfirm = () => {
-    onLocationConfirmed(initialLat, initialLng, selectedPitch);
+    onLocationConfirmed(initialLat, initialLng, undefined);
     onOpenChange(false);
   };
 
@@ -101,20 +93,9 @@ export function StructureSelectionMap({
             </p>
           )}
 
-          <div className="flex items-center gap-2 mt-2 pt-2 border-t">
-            <Label className="text-xs whitespace-nowrap">Roof Pitch:</Label>
-            <Select value={selectedPitch} onValueChange={setSelectedPitch}>
-              <SelectTrigger className="w-24 h-8">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-background z-[300]">
-                {PITCH_OPTIONS.map(p => (
-                  <SelectItem key={p} value={p}>{p}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-xs text-muted-foreground">(affects area calculation)</span>
-          </div>
+          <p className="text-[11px] text-muted-foreground mt-2 pt-2 border-t">
+            Pitch will be auto-detected from Google Solar DSM elevation data.
+          </p>
         </DialogHeader>
 
         <div className="flex-1 relative min-h-[300px] sm:min-h-[450px] bg-muted/20 overflow-hidden">
