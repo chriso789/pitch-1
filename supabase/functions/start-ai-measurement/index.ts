@@ -2592,6 +2592,60 @@ Deno.serve(async (req) => {
           throw new Error(`roof_measurements insert failed: ${roofInsertError.message}`)
         }
 
+        // 2k.1) EagleView Strict 3% Validation Gate
+        // If this lead/project has a vendor truth report, score the AI output
+        // against it and persist auto_ship | review_required | reject decision.
+        try {
+          const { data: vendorRpt } = await supa
+            .from('roof_vendor_reports')
+            .select('id, parsed')
+            .or(`lead_id.eq.${resolved.leadId},project_id.eq.${resolved.projectId ?? '00000000-0000-0000-0000-000000000000'}`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (vendorRpt?.parsed) {
+            const measurement_data = {
+              measurements: {
+                area_sqft: totalAreaSloped,
+                predominant_pitch: dominantPitch,
+                lengths_ft: {
+                  ridge: ridge_ft,
+                  hip: hip_ft,
+                  valley: valley_ft,
+                  eave: eave_ft,
+                  rake: rake_ft,
+                },
+              },
+            }
+            const gateResp = await supa.functions.invoke('score-roof-accuracy', {
+              body: { measurement_data, vendor_report: vendorRpt },
+            })
+            const g = gateResp.data ?? {}
+            if (g && g.decision) {
+              await supa.from('roof_measurements').update({
+                vendor_report_id: vendorRpt.id,
+                gate_decision: g.decision,
+                gate_reason: g.reason,
+                gate_per_class: g.per_class ?? null,
+                passes_strict_3pct: g.passes_strict_3pct ?? false,
+                failed_strict: g.failed_strict ?? [],
+                failed_loose: g.failed_loose ?? [],
+                weighted_accuracy_score: g.weighted_accuracy_score ?? null,
+                review_required: g.review_required ?? true,
+                accuracy_compared_at: new Date().toISOString(),
+                gate_evaluated_at: new Date().toISOString(),
+                requires_manual_review: g.decision !== 'auto_ship',
+              }).eq('id', roofId)
+              console.log(`[start-ai-measurement] 3% gate → ${g.decision} (${g.reason})`)
+            }
+          } else {
+            console.log('[start-ai-measurement] 3% gate skipped: no vendor truth report on file')
+          }
+        } catch (gateErr) {
+          console.warn('[start-ai-measurement] 3% gate evaluation failed:', (gateErr as Error).message)
+        }
+
         // 2l) measurement_approvals smart tags
         await supa.from('measurement_approvals').insert({
           tenant_id: resolved.tenantId,

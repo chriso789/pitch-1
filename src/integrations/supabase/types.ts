@@ -31695,6 +31695,8 @@ export type Database = {
           facet_closure_score: number | null
           facet_count: number | null
           facets_json: Json | null
+          failed_loose: string[] | null
+          failed_strict: string[] | null
           footprint_confidence: number | null
           footprint_detection_method: string | null
           footprint_is_rectangular: boolean | null
@@ -31704,6 +31706,10 @@ export type Database = {
           footprint_vertex_count: number | null
           footprint_vertices_geo: Json | null
           gable_peak_count: number | null
+          gate_decision: string | null
+          gate_evaluated_at: string | null
+          gate_per_class: Json | null
+          gate_reason: string | null
           geometry_quality_score: number | null
           geometry_report_json: Json | null
           google_maps_image_url: string | null
@@ -31743,6 +31749,7 @@ export type Database = {
           notes: string | null
           organization_id: string | null
           overlay_schema: Json | null
+          passes_strict_3pct: boolean | null
           perimeter_vertex_count: number | null
           perimeter_wkt: string | null
           pitch_degrees: number | null
@@ -31844,6 +31851,8 @@ export type Database = {
           facet_closure_score?: number | null
           facet_count?: number | null
           facets_json?: Json | null
+          failed_loose?: string[] | null
+          failed_strict?: string[] | null
           footprint_confidence?: number | null
           footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
@@ -31853,6 +31862,10 @@ export type Database = {
           footprint_vertex_count?: number | null
           footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
+          gate_decision?: string | null
+          gate_evaluated_at?: string | null
+          gate_per_class?: Json | null
+          gate_reason?: string | null
           geometry_quality_score?: number | null
           geometry_report_json?: Json | null
           google_maps_image_url?: string | null
@@ -31892,6 +31905,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
+          passes_strict_3pct?: boolean | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
@@ -31993,6 +32007,8 @@ export type Database = {
           facet_closure_score?: number | null
           facet_count?: number | null
           facets_json?: Json | null
+          failed_loose?: string[] | null
+          failed_strict?: string[] | null
           footprint_confidence?: number | null
           footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
@@ -32002,6 +32018,10 @@ export type Database = {
           footprint_vertex_count?: number | null
           footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
+          gate_decision?: string | null
+          gate_evaluated_at?: string | null
+          gate_per_class?: Json | null
+          gate_reason?: string | null
           geometry_quality_score?: number | null
           geometry_report_json?: Json | null
           google_maps_image_url?: string | null
@@ -32041,6 +32061,7 @@ export type Database = {
           notes?: string | null
           organization_id?: string | null
           overlay_schema?: Json | null
+          passes_strict_3pct?: boolean | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
