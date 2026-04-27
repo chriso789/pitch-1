@@ -72,7 +72,7 @@ export function StructureSelectionMap({
   }, [open, initialLat, initialLng]);
 
   const handleConfirm = () => {
-    onLocationConfirmed(initialLat, initialLng, selectedPitch);
+    onLocationConfirmed(initialLat, initialLng, undefined);
     onOpenChange(false);
   };
 
