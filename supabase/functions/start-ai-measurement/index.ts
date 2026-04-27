@@ -518,17 +518,32 @@ function douglasPeucker(pts: Pt[], eps: number): Pt[] {
 }
 
 /**
- * Extract a roof-like footprint polygon from the satellite image bytes.
- * Pure-TS pipeline: decode → grayscale → Sobel → threshold → flood-fill
+ * Extract a roof-like footprint polygon AND retain the Sobel edge magnitude
+ * grid so a downstream ridge detector can run without re-decoding the image.
+ *
+ * Pure-TS pipeline: decode → grayscale → Sobel → Otsu threshold → flood-fill
  * connected component containing the image center → contour trace →
- * Douglas-Peucker simplify. Returns polygon in pixel space (image_url's
- * actual pixel grid) or null if no plausible building blob found.
+ * Douglas-Peucker simplify.
+ *
+ * Returns { footprint (image-pixel coords), mag (downsampled edge magnitude),
+ * dW/dH (downsampled grid size), scale (to map back to image pixels) } or null.
  */
-async function extractRoofFootprintFromImage(
+async function extractRoofFootprintAndEdges(
   imageUrl: string,
   imgW: number,
   imgH: number,
-): Promise<Pt[] | null> {
+): Promise<
+  | {
+      footprint: Pt[]
+      mag: Uint8Array
+      blob: Uint8Array
+      dW: number
+      dH: number
+      scaleX: number
+      scaleY: number
+    }
+  | null
+> {
   try {
     const resp = await fetch(imageUrl)
     if (!resp.ok) {
@@ -588,9 +603,7 @@ async function extractRoofFootprintFromImage(
       }
     }
 
-    // 3) Build a "non-edge" mask = pixels with low gradient magnitude.
-    //    Roof faces are typically large smooth-ish regions bordered by edges.
-    //    Threshold via Otsu-lite on magnitude.
+    // 3) Otsu threshold on magnitude
     const hist = new Uint32Array(256)
     for (let i = 0; i < mag.length; i++) hist[mag[i]]++
     const total = mag.length
@@ -613,7 +626,6 @@ async function extractRoofFootprintFromImage(
     // 4) Flood-fill connected component containing the image center.
     const cx0 = (dW / 2) | 0, cy0 = (dH / 2) | 0
     const visited = new Uint8Array(dW * dH)
-    // Expand search if center pixel is on an edge
     let seed = -1
     for (let r = 0; r < 30 && seed < 0; r++) {
       for (let dy = -r; dy <= r && seed < 0; dy++) {
@@ -653,7 +665,6 @@ async function extractRoofFootprintFromImage(
     }
 
     // 5) Trace contour with Moore-neighbor algorithm.
-    // Find a boundary starting pixel (top-left of blob)
     let sx = -1, sy = -1
     outer: for (let y = 0; y < dH; y++) {
       for (let x = 0; x < dW; x++) {
@@ -697,7 +708,6 @@ async function extractRoofFootprintFromImage(
     // 6) Simplify with Douglas–Peucker (~1% of image diagonal).
     const eps = Math.max(2, Math.hypot(dW, dH) * 0.01)
     const simp = douglasPeucker(contour, eps)
-    // Ensure closed-ring uniqueness
     const ring: Pt[] = []
     for (const p of simp) {
       const last = ring[ring.length - 1]
@@ -709,13 +719,289 @@ async function extractRoofFootprintFromImage(
     }
     if (ring.length < 4) return null
 
-    // Map back from downsampled pixel coords to actual image coords.
     const sxScale = imgW / dW, syScale = imgH / dH
-    return ring.map((p) => ({ x: p.x * sxScale, y: p.y * syScale }))
+    const footprint = ring.map((p) => ({ x: p.x * sxScale, y: p.y * syScale }))
+
+    return { footprint, mag, blob, dW, dH, scaleX: sxScale, scaleY: syScale }
   } catch (e) {
     console.warn('[footprint-extract] error', String(e))
     return null
   }
+}
+
+/** Backwards-compat wrapper that returns just the footprint polygon. */
+async function extractRoofFootprintFromImage(
+  imageUrl: string,
+  imgW: number,
+  imgH: number,
+): Promise<Pt[] | null> {
+  const r = await extractRoofFootprintAndEdges(imageUrl, imgW, imgH)
+  return r?.footprint ?? null
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// Ridge-first segmentation: Hough transform on Sobel edges constrained
+// to the footprint blob, followed by recursive plane splitting along
+// detected ridge axes.
+// ─────────────────────────────────────────────────────────────────────
+
+interface RidgeLine {
+  /** Pixel-space endpoints (downsampled grid). */
+  a: Pt
+  b: Pt
+  /** Hough vote count (proxy for support length). */
+  votes: number
+}
+
+/**
+ * Detect ridge candidates inside the footprint blob.
+ *
+ * Strategy:
+ *   1. Mask edge magnitude to pixels inside the building blob (interior
+ *      structure only — ignore footprint outline).
+ *   2. Run a coarse Hough transform (rho/theta accumulator).
+ *   3. Pick top-K peaks above a vote threshold, suppress neighbours.
+ *   4. Trace each peak back to a (a,b) segment by finding the supporting
+ *      edge pixels along that line.
+ *
+ * Coordinates are returned in IMAGE pixel space (already scaled up).
+ */
+function detectRidges(
+  mag: Uint8Array,
+  blob: Uint8Array,
+  dW: number,
+  dH: number,
+  scaleX: number,
+  scaleY: number,
+): RidgeLine[] {
+  // Erode blob slightly so the outline edges (which dominate Sobel response)
+  // are excluded — we want INTERIOR ridges, not the perimeter.
+  const inside = new Uint8Array(dW * dH)
+  const erodeR = 3
+  for (let y = erodeR; y < dH - erodeR; y++) {
+    for (let x = erodeR; x < dW - erodeR; x++) {
+      let allIn = true
+      for (let dy = -erodeR; dy <= erodeR && allIn; dy++) {
+        for (let dx = -erodeR; dx <= erodeR && allIn; dx++) {
+          if (!blob[(y + dy) * dW + (x + dx)]) allIn = false
+        }
+      }
+      if (allIn) inside[y * dW + x] = 1
+    }
+  }
+
+  // Threshold edge mag for Hough voting: only strong interior edges.
+  const interiorEdge: Pt[] = []
+  let interiorMagMax = 0
+  for (let i = 0; i < mag.length; i++) if (inside[i]) {
+    if (mag[i] > interiorMagMax) interiorMagMax = mag[i]
+  }
+  const T = Math.max(40, (interiorMagMax * 0.45) | 0)
+  for (let y = 0; y < dH; y++) {
+    for (let x = 0; x < dW; x++) {
+      const i = y * dW + x
+      if (inside[i] && mag[i] >= T) interiorEdge.push({ x, y })
+    }
+  }
+  if (interiorEdge.length < 30) {
+    console.log(`[ridge-detect] insufficient interior edge pixels (${interiorEdge.length})`)
+    return []
+  }
+
+  // Hough accumulator.
+  const THETA_BINS = 90 // 2° per bin, 0..180°
+  const diag = Math.hypot(dW, dH) | 0
+  const RHO_BINS = diag * 2 + 1
+  const acc = new Int32Array(THETA_BINS * RHO_BINS)
+  const cosT = new Float32Array(THETA_BINS)
+  const sinT = new Float32Array(THETA_BINS)
+  for (let t = 0; t < THETA_BINS; t++) {
+    const ang = (t / THETA_BINS) * Math.PI
+    cosT[t] = Math.cos(ang)
+    sinT[t] = Math.sin(ang)
+  }
+  for (const p of interiorEdge) {
+    for (let t = 0; t < THETA_BINS; t++) {
+      const rho = (p.x * cosT[t] + p.y * sinT[t]) | 0
+      const ri = rho + diag
+      if (ri < 0 || ri >= RHO_BINS) continue
+      acc[t * RHO_BINS + ri]++
+    }
+  }
+
+  // Vote threshold: a real ridge should be at least ~15% of the building's
+  // shortest axis. The blob's bounding box gives us an estimate.
+  let bbMinX = dW, bbMinY = dH, bbMaxX = 0, bbMaxY = 0
+  for (let y = 0; y < dH; y++) {
+    for (let x = 0; x < dW; x++) {
+      if (blob[y * dW + x]) {
+        if (x < bbMinX) bbMinX = x
+        if (y < bbMinY) bbMinY = y
+        if (x > bbMaxX) bbMaxX = x
+        if (y > bbMaxY) bbMaxY = y
+      }
+    }
+  }
+  const bbShort = Math.min(bbMaxX - bbMinX, bbMaxY - bbMinY)
+  const VOTE_MIN = Math.max(20, (bbShort * 0.4) | 0)
+
+  // Find peaks with non-maximum suppression.
+  type Peak = { t: number; r: number; v: number }
+  const peaks: Peak[] = []
+  for (let t = 0; t < THETA_BINS; t++) {
+    for (let r = 0; r < RHO_BINS; r++) {
+      const v = acc[t * RHO_BINS + r]
+      if (v < VOTE_MIN) continue
+      // Local max in 5x5 neighbourhood
+      let isMax = true
+      for (let dt = -2; dt <= 2 && isMax; dt++) {
+        for (let dr = -3; dr <= 3 && isMax; dr++) {
+          if (dt === 0 && dr === 0) continue
+          const nt = (t + dt + THETA_BINS) % THETA_BINS
+          const nr = r + dr
+          if (nr < 0 || nr >= RHO_BINS) continue
+          if (acc[nt * RHO_BINS + nr] > v) isMax = false
+        }
+      }
+      if (isMax) peaks.push({ t, r, v })
+    }
+  }
+  peaks.sort((a, b) => b.v - a.v)
+  const top = peaks.slice(0, 6)
+
+  // For each peak, project supporting interior-edge pixels onto the line
+  // and take the [min, max] along the line direction as the segment.
+  const ridges: RidgeLine[] = []
+  for (const pk of top) {
+    const ang = (pk.t / THETA_BINS) * Math.PI
+    const c = Math.cos(ang), s = Math.sin(ang)
+    const rho = pk.r - diag
+    // Direction along the line is (-sin, cos)
+    const ux = -s, uy = c
+    let lo = Infinity, hi = -Infinity
+    let loPt: Pt | null = null, hiPt: Pt | null = null
+    const PERP_TOL = 1.5
+    for (const p of interiorEdge) {
+      const dPerp = Math.abs(p.x * c + p.y * s - rho)
+      if (dPerp > PERP_TOL) continue
+      const along = p.x * ux + p.y * uy
+      if (along < lo) { lo = along; loPt = p }
+      if (along > hi) { hi = along; hiPt = p }
+    }
+    if (!loPt || !hiPt) continue
+    const segLen = hi - lo
+    // Reject ridge candidates that are too short (< 25% of building short axis).
+    if (segLen < bbShort * 0.25) continue
+    // Reject candidates whose midpoint is outside the blob (ridges must be inside).
+    const mx = (loPt.x + hiPt.x) / 2 | 0
+    const my = (loPt.y + hiPt.y) / 2 | 0
+    if (mx < 0 || my < 0 || mx >= dW || my >= dH || !blob[my * dW + mx]) continue
+
+    ridges.push({
+      a: { x: loPt.x * scaleX, y: loPt.y * scaleY },
+      b: { x: hiPt.x * scaleX, y: hiPt.y * scaleY },
+      votes: pk.v,
+    })
+  }
+
+  // Suppress nearly-collinear duplicates (theta within 6°, rho within 5% of diag).
+  const out: RidgeLine[] = []
+  for (const r of ridges) {
+    const dx = r.b.x - r.a.x, dy = r.b.y - r.a.y
+    const ang = Math.atan2(dy, dx)
+    let dup = false
+    for (const o of out) {
+      const ox = o.b.x - o.a.x, oy = o.b.y - o.a.y
+      const oAng = Math.atan2(oy, ox)
+      const dAng = Math.abs(((ang - oAng + Math.PI * 1.5) % Math.PI) - Math.PI / 2)
+      if (dAng < (6 * Math.PI) / 180) {
+        // similar orientation; check distance between midpoints
+        const mxA = (r.a.x + r.b.x) / 2, myA = (r.a.y + r.b.y) / 2
+        const mxB = (o.a.x + o.b.x) / 2, myB = (o.a.y + o.b.y) / 2
+        if (Math.hypot(mxA - mxB, myA - myB) < Math.max(dW, dH) * 0.06 * Math.max(scaleX, scaleY)) {
+          dup = true; break
+        }
+      }
+    }
+    if (!dup) out.push(r)
+  }
+
+  console.log(`[ridge-detect] found ${out.length} ridge candidates (votes: ${out.map((r) => r.votes).join(',')})`)
+  return out
+}
+
+/**
+ * Split a polygon along an infinite line defined by ridge endpoints.
+ * Returns [left, right] sub-polygons (or null if the ridge doesn't actually
+ * cut the polygon into two non-trivial pieces).
+ */
+function splitPolygonByLine(poly: Pt[], la: Pt, lb: Pt): [Pt[], Pt[]] | null {
+  if (poly.length < 3) return null
+  const nx = lb.y - la.y
+  const ny = -(lb.x - la.x)
+  const d = -(nx * la.x + ny * la.y)
+  const sideOf = (p: Pt) => nx * p.x + ny * p.y + d
+  const eps = 1e-6
+
+  const left: Pt[] = []
+  const right: Pt[] = []
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i]
+    const q = poly[(i + 1) % poly.length]
+    const sp = sideOf(p)
+    const sq = sideOf(q)
+    if (sp >= -eps) left.push(p)
+    if (sp <= eps) right.push(p)
+    if ((sp > eps && sq < -eps) || (sp < -eps && sq > eps)) {
+      const t = sp / (sp - sq)
+      const ix = p.x + t * (q.x - p.x)
+      const iy = p.y + t * (q.y - p.y)
+      left.push({ x: ix, y: iy })
+      right.push({ x: ix, y: iy })
+    }
+  }
+
+  if (left.length < 3 || right.length < 3) return null
+  // Reject splits that don't really partition (one side ~= original)
+  const aOrig = shoelaceAreaPx(poly)
+  const aL = shoelaceAreaPx(left), aR = shoelaceAreaPx(right)
+  if (aL < aOrig * 0.1 || aR < aOrig * 0.1) return null
+  return [left, right]
+}
+
+/**
+ * Recursively split the footprint polygon along detected ridge lines into
+ * roof planes. Each split uses the longest-supporting ridge that actually
+ * cuts the current polygon into two meaningful pieces.
+ *
+ * Returns at least 1 polygon (the footprint itself if no usable ridge cuts).
+ */
+function splitFootprintAlongRidges(footprint: Pt[], ridges: RidgeLine[]): Pt[][] {
+  if (!ridges.length) return [footprint]
+  // Sort by votes desc — strongest first
+  const queue: Pt[][] = [footprint]
+  const remaining = [...ridges].sort((a, b) => b.votes - a.votes)
+  const out: Pt[][] = []
+  const MAX_PLANES = 8
+
+  while (queue.length && out.length + queue.length < MAX_PLANES) {
+    const poly = queue.shift()!
+    let split: [Pt[], Pt[]] | null = null
+    let usedIdx = -1
+    for (let i = 0; i < remaining.length; i++) {
+      const r = remaining[i]
+      const s = splitPolygonByLine(poly, r.a, r.b)
+      if (s) { split = s; usedIdx = i; break }
+    }
+    if (!split) {
+      out.push(poly)
+      continue
+    }
+    remaining.splice(usedIdx, 1)
+    queue.push(split[0], split[1])
+  }
+  out.push(...queue)
+  return out
 }
 
 /** Build a single roof plane from an extracted footprint polygon. */
@@ -729,6 +1015,8 @@ function planeFromFootprint(
   feetPerPixel: number,
   pitchHintRise: number | null,
   azimuthHint: number | null,
+  source = 'image_footprint_extraction',
+  planeIndex = 0,
 ): RoofPlane {
   const polyGeo = polyPx.map((p) =>
     pixelToLatLng(p.x, p.y, centerLat, centerLng, imgW, imgH, actualMpp),
@@ -740,8 +1028,8 @@ function planeFromFootprint(
       ? pitchInfo(pitchHintRise)
       : { pitch_degrees: 0, pitch_multiplier: 1 }
   return {
-    plane_index: 0,
-    source: 'image_footprint_extraction',
+    plane_index: planeIndex,
+    source,
     polygon_px: polyPx,
     polygon_geojson: polyGeo,
     pitch: pitchHintRise,
@@ -750,7 +1038,7 @@ function planeFromFootprint(
     area_2d_sqft: area2dSqft,
     pitch_multiplier: pmInfo.pitch_multiplier,
     area_pitch_adjusted_sqft: area2dSqft * pmInfo.pitch_multiplier,
-    confidence: 0.6,
+    confidence: source === 'image_footprint_extraction' ? 0.6 : 0.7,
   }
 }
 
