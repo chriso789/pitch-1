@@ -708,7 +708,11 @@ async function extractRoofFootprintAndEdges(
 
     const totalArea = dW * dH
     const blobFrac = count / totalArea
-    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.85) {
+    // Tightened upper bound: a single residential roof at z20 rarely exceeds
+    // ~35% of the satellite tile. Anything larger almost always means the
+    // flood-fill leaked into neighbors / road / tree canopy and would yield
+    // an inflated sqft (e.g. 80k+ sqft "roofs").
+    if (count < 400 || blobFrac < 0.02 || blobFrac > 0.35) {
       console.warn(`[footprint-extract] implausible blob frac=${blobFrac.toFixed(3)} count=${count}`)
       return null
     }
@@ -1171,6 +1175,10 @@ function runQualityChecks(input: {
 
   const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
   let status: 'completed' | 'needs_review' | 'needs_internal_review'
+  // Absolute sanity cap on total roof area. A residential satellite tile at
+  // z20 cannot legitimately produce >30k sqft of roof — anything beyond means
+  // the footprint extractor leaked into neighbors / road / canopy.
+  const areaWithinHardCap = input.totalAreaSqft > 0 && input.totalAreaSqft <= 30000
   if (
     input.hasPlaceholder ||
     !input.calibrated ||
@@ -1178,7 +1186,9 @@ function runQualityChecks(input: {
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
     planesAreAllRectangles ||
-    overlayAlignmentScore < 0.75
+    overlayAlignmentScore < 0.75 ||
+    !allInside ||
+    !areaWithinHardCap
   ) {
     status = 'needs_internal_review'
   } else if (singlePlaneFallback) {
