@@ -1761,21 +1761,48 @@ Deno.serve(async (req) => {
         }
         if (lat == null || lng == null) throw new Error('Could not resolve coordinates for property')
 
-        // 2b) Imagery + calibration
+        // 2b) Imagery + calibration (provider-agnostic: Mapbox → Google Static fallback)
         await supa.from('measurement_jobs').update({ progress_message: 'Pulling satellite imagery…' }).eq('id', job.id)
-        const mb = await fetchMapbox(lat, lng, 20, 640)
-        const mapboxOk = !!mb
-        const zoom = mb?.zoom ?? 20
+        const analysisZoom = 20
+        const logicalW = 640
+        const logicalH = 640
+        const imagery = await fetchPreferredBaseImagery(lat, lng, analysisZoom, logicalW, logicalH)
+        const imageryOk = !!imagery?.rgba?.length
+        const imagerySource: 'mapbox' | 'google_static' | 'none' = imagery?.provider ?? 'none'
+        // Back-compat shim: many downstream code paths reference `mb` and `mapboxOk`.
+        const mb = imagery
+          ? {
+              image_url: imagery.imageUrl,
+              logical_w: imagery.logicalWidth,
+              logical_h: imagery.logicalHeight,
+              actual_w: imagery.width,
+              actual_h: imagery.height,
+              raster_scale: imagery.rasterScale,
+              zoom: imagery.zoom,
+            }
+          : null
+        const mapboxOk = imagerySource === 'mapbox'
+        const zoom = mb?.zoom ?? analysisZoom
         const rasterScale = mb?.raster_scale ?? 2
-        const imgW = mb?.actual_w ?? 1280
-        const imgH = mb?.actual_h ?? 1280
+        const imgW = mb?.actual_w ?? logicalW * 2
+        const imgH = mb?.actual_h ?? logicalH * 2
         const cal = calibrate(lat, zoom, rasterScale)
         const feetPerPixel = cal.feet_per_pixel_actual
+
+        console.info('[ai-measurement][imagery]', {
+          source: imagerySource,
+          imageryOk,
+          rasterW: imgW,
+          rasterH: imgH,
+          logicalW,
+          logicalH,
+          zoom: analysisZoom,
+        })
 
         if (mb) {
           await supa.from('ai_measurement_images').insert({
             job_id: aiJob.id,
-            source: 'mapbox',
+            source: imagerySource,
             image_url: mb.image_url,
             width: mb.actual_w,
             height: mb.actual_h,
