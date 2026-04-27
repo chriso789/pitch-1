@@ -1086,13 +1086,21 @@ function runQualityChecks(input: {
     total_plane_count: input.planes.length,
   })
 
-  // Reject the literal "two rectangles" case.
+  // Reject the literal fake-facet case: multiple bbox/placeholder rectangles.
+  // A single image-extracted rectangle can be a valid simple footprint fallback,
+  // so it must not be treated as the old "two rectangles" failure mode.
   const rectCount = input.planes.filter((p) => isAxisAlignedRectangle(p.polygon_px)).length
+  const rectangleSourcesAreSynthetic = input.planes.every((p) =>
+    PLACEHOLDER_SOURCES.has(String(p.source)) || p.source === 'google_solar_bbox'
+  )
   const planesAreAllRectangles =
-    input.planes.length > 0 && rectCount / input.planes.length >= 0.5
+    input.planes.length > 1 &&
+    rectCount === input.planes.length &&
+    rectangleSourcesAreSynthetic
   push('planes_are_not_all_rectangles', !planesAreAllRectangles, planesAreAllRectangles ? 0 : 1, {
     rect_count: rectCount,
     total: input.planes.length,
+    synthetic_sources_only: rectangleSourcesAreSynthetic,
   })
 
   const overlayAlignmentScore = computeOverlayAlignment(input.planes, input.imgW, input.imgH)
