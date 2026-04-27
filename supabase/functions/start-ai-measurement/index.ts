@@ -2357,15 +2357,17 @@ Deno.serve(async (req) => {
                 extracted.dH,
                 extracted.scaleX,
                 extracted.scaleY,
+                extracted.gx,
+                extracted.gy,
               )
               const ridges = filterStrongRidges(rawRidges)
-              const ridgeLines: SplitLine[] = ridges
+              let ridgeLines: SplitLine[] = ridges
                 .sort((a, b) => b.votes - a.votes)
                 .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
               detectedRidgeLines = ridgeLines
 
               const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(extracted.footprint) * 0.08)
-              const subPolys =
+              let subPolys =
                 ridgeLines.length > 0
                   ? buildRoofPlanes(extracted.footprint, ridgeLines, {
                       minArea: minPlaneAreaPx,
@@ -2373,6 +2375,33 @@ Deno.serve(async (req) => {
                       maxPlanes: 10,
                     })
                   : [extracted.footprint]
+
+              // RECURSIVE: secondary ridge detection inside each sub-plane.
+              if (subPolys.length > 1) {
+                const merged = detectRidgesRecursive(
+                  ridges,
+                  subPolys,
+                  extracted.mag,
+                  extracted.blob,
+                  extracted.gx,
+                  extracted.gy,
+                  extracted.dW,
+                  extracted.dH,
+                  extracted.scaleX,
+                  extracted.scaleY,
+                )
+                if (merged.length > ridges.length) {
+                  ridgeLines = merged
+                    .sort((a, b) => b.votes - a.votes)
+                    .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+                  detectedRidgeLines = ridgeLines
+                  subPolys = buildRoofPlanes(extracted.footprint, ridgeLines, {
+                    minArea: minPlaneAreaPx,
+                    minAreaRatio: 0.1,
+                    maxPlanes: 14,
+                  })
+                }
+              }
 
               const isMultiPlane = subPolys.length > 1
               const planeSource = isMultiPlane
