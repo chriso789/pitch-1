@@ -80,8 +80,21 @@ function solarAggregatePlane(
   pitchHintRise: number | null,
   azimuthHint: number | null,
 ): RoofPlane | null {
-  const sw = solar?.boundingBox?.sw
-  const ne = solar?.boundingBox?.ne
+  let sw = solar?.boundingBox?.sw
+  let ne = solar?.boundingBox?.ne
+  if ((!sw || !ne) && Array.isArray(solar?.solarPotential?.roofSegmentStats)) {
+    const boxes = solar.solarPotential.roofSegmentStats.map((seg: any) => seg?.boundingBox).filter((bb: any) => bb?.sw && bb?.ne)
+    if (boxes.length > 0) {
+      sw = {
+        latitude: Math.min(...boxes.map((bb: any) => Number(bb.sw.latitude))),
+        longitude: Math.min(...boxes.map((bb: any) => Number(bb.sw.longitude))),
+      }
+      ne = {
+        latitude: Math.max(...boxes.map((bb: any) => Number(bb.ne.latitude))),
+        longitude: Math.max(...boxes.map((bb: any) => Number(bb.ne.longitude))),
+      }
+    }
+  }
   const areaM2 = Number(solar?.solarPotential?.wholeRoofStats?.areaMeters2 || 0)
   if (!sw || !ne || !Number.isFinite(areaM2) || areaM2 <= 0) return null
 
