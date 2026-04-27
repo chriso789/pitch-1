@@ -2048,6 +2048,10 @@ Deno.serve(async (req) => {
 
         // 2k) Publish customer-facing roof_measurements
         const roofId = crypto.randomUUID()
+        const publishedFootprintSource =
+          planes[0]?.source ||
+          geometrySource ||
+          (solarOk ? 'google_solar_api' : 'geometry_first_v2')
         await supa.from('roof_measurements').insert({
           id: roofId,
           customer_id: resolved.leadId, // legacy column
@@ -2063,7 +2067,9 @@ Deno.serve(async (req) => {
           property_address: resolved.address || 'Unknown Address',
           gps_coordinates: { lat, lng },
           ai_detection_data: {
-            source: solarOk ? 'google_solar_api' : 'geometry_first_v2',
+            source: publishedFootprintSource,
+            slope_hints_source: solarOk ? 'google_solar_api' : null,
+            geometry_source: geometrySource,
             engine: ENGINE_VERSION,
             planes: planes.length,
             edges: edges.length,
@@ -2084,7 +2090,7 @@ Deno.serve(async (req) => {
           total_eave_length: eave_ft,
           total_rake_length: rake_ft,
           facet_count: planes.length,
-          footprint_source: solarOk ? 'google_solar_api' : 'mapbox_vector',
+          footprint_source: publishedFootprintSource,
           detection_method: ENGINE_VERSION,
           target_lat: lat,
           target_lng: lng,
