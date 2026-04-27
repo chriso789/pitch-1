@@ -211,6 +211,7 @@ export function PullMeasurementsButton({
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [verificationReady, setVerificationReady] = useState(false);
   const [showStructureSelector, setShowStructureSelector] = useState(false);
   const [verificationData, setVerificationData] = useState<{
     measurement: any;
@@ -292,6 +293,7 @@ export function PullMeasurementsButton({
 
     setLoading(true);
     setSuccess(false);
+    setVerificationReady(false);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -349,6 +351,7 @@ export function PullMeasurementsButton({
     
     if (job.status === 'completed' && prevJobStatus !== 'completed') {
       setSuccess(true);
+      setVerificationReady(true);
       setShouldNotifyJobStatus(false);
       setTimeout(() => setSuccess(false), 5000);
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
@@ -559,6 +562,7 @@ export function PullMeasurementsButton({
       })();
     } else if (job.status === 'failed' && prevJobStatus !== 'failed') {
       setShouldNotifyJobStatus(false);
+      setVerificationReady(false);
       const errMsg = job.error || "AI measurement could not complete.";
       const isInternalReview = /internal review|needs_internal_review/i.test(errMsg);
       toast({
@@ -796,7 +800,7 @@ export function PullMeasurementsButton({
           Draw
         </Button>
 
-        {success && (
+        {(success || verificationReady) && (
           <>
             <Button
               onClick={() => setShowVerifyWizard(true)}
@@ -857,6 +861,7 @@ export function PullMeasurementsButton({
           handleOpenStructureSelector();
         }}
         onSaved={() => {
+          setVerificationReady(false);
           queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
           queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
           queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
