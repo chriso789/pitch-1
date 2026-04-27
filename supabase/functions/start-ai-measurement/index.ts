@@ -1046,6 +1046,8 @@ async function extractRoofFootprintAndEdges(
   | {
       footprint: Pt[]
       mag: Uint8Array
+      gx: Int16Array
+      gy: Int16Array
       blob: Uint8Array
       dW: number
       dH: number
