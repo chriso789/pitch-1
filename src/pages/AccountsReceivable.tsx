@@ -399,7 +399,7 @@ export default function AccountsReceivable() {
                             try {
                               const amount = parseFloat(prompt(`Record payment for ${item.name}\nBalance: ${fmt(item.balance)}\n\nEnter amount:`) || '');
                               if (!amount || isNaN(amount) || amount <= 0) return;
-                              const { error } = await supabase.from('project_payments').insert({
+                              const { error } = await (supabase.from('project_payments') as any).insert({
                                 tenant_id: activeTenantId!,
                                 pipeline_entry_id: item.id,
                                 amount,

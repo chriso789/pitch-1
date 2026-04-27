@@ -76,7 +76,7 @@ export const CopyRecordDataDialog: React.FC<CopyRecordDataDialogProps> = ({
     }
 
     const table = targetType === 'contact' ? 'contacts' : 'jobs';
-    const { error } = await supabase.from(table).update(updateData).eq('id', targetId);
+    const { error } = await (supabase.from(table) as any).update(updateData).eq('id', targetId);
 
     if (error) {
       toast({ title: 'Error', description: error.message, variant: 'destructive' });

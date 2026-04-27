@@ -582,7 +582,7 @@ export function EstimatePreviewPanel({
 
       const { data: urlData } = supabase.storage.from('customer-photos').getPublicUrl(storagePath);
 
-      await supabase.from('customer_photos').insert({
+      await (supabase.from('customer_photos') as any).insert({
         lead_id: leadId || null,
         contact_id: contactId || null,
         tenant_id: tid,

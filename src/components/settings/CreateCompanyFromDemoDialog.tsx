@@ -97,7 +97,7 @@ export const CreateCompanyFromDemoDialog: React.FC<CreateCompanyFromDemoDialogPr
       // 1.5 Add current master user to user_company_access for this new company
       const { data: currentUser } = await supabase.auth.getUser();
       if (currentUser?.user) {
-        await supabase.from("user_company_access").insert({
+        await (supabase.from("user_company_access") as any).insert({
           user_id: currentUser.user.id,
           tenant_id: tenant.id,
           access_level: "full",
