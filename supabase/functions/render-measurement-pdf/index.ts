@@ -116,6 +116,16 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
       measurement: m,
     }
   }
+  // Single-plane fallback: real footprint but no ridge segmentation. Per spec,
+  // never produce a customer-ready PDF from this — only summary/overlay views
+  // are allowed in the UI.
+  if (grj.single_plane_fallback === true) {
+    return {
+      ok: false,
+      reason: 'single_plane_fallback: roof slopes could not be reliably segmented.',
+      measurement: m,
+    }
+  }
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < OVERLAY_THRESHOLD) {
     return {
       ok: false,
