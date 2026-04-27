@@ -809,7 +809,7 @@ export function PullMeasurementsButton({
           Draw
         </Button>
 
-        {(success || verificationReady) && (
+        {verificationReady ? (
           <>
             <Button
               onClick={() => setShowVerifyWizard(true)}
@@ -824,7 +824,11 @@ export function PullMeasurementsButton({
               ✓ Tags Ready
             </Badge>
           </>
-        )}
+        ) : success ? (
+          <Badge variant="outline" className="border-primary text-primary">
+            ✓ Tags Ready
+          </Badge>
+        ) : null}
       </div>
 
       {/* Structure Selection Map for PIN placement - uses unified coordinates */}
