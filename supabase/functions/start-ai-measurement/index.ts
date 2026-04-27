@@ -1246,6 +1246,12 @@ function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number
 }
 
 const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perimeter_fallback'])
+const FOOTPRINT_ONLY_SOURCES = new Set([
+  'image_footprint_extraction',
+  'mapbox_vector',
+  'osm_buildings',
+  'microsoft_buildings',
+])
 
 function runQualityChecks(input: {
   geocoded: boolean
@@ -1345,7 +1351,7 @@ function runQualityChecks(input: {
   // customer-ready report is produced.
   const singlePlaneFallback =
     input.planes.length === 1 &&
-    input.planes[0].source === 'image_footprint_extraction'
+    FOOTPRINT_ONLY_SOURCES.has(String(input.planes[0].source))
   push('multi_facet_segmentation', !singlePlaneFallback, singlePlaneFallback ? 0.5 : 1, {
     note: singlePlaneFallback
       ? 'Single image-extracted footprint; no interior facets resolved.'
