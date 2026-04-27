@@ -351,16 +351,11 @@ export function PullMeasurementsButton({
     
     if (job.status === 'completed' && prevJobStatus !== 'completed') {
       setSuccess(true);
-      setVerificationReady(true);
       setShouldNotifyJobStatus(false);
       setTimeout(() => setSuccess(false), 5000);
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['ai-measurements', propertyId] });
       queryClient.invalidateQueries({ queryKey: ['measurement-context', propertyId] });
-      toast({
-        title: "✅ AI Analysis Complete — Verify for 100% Accuracy",
-        description: "Confirm each edge to lock in the measurement.",
-      });
 
       // Fetch the latest AI measurement to validate it exists, but do not auto-open
       // the heavy verification/report UI after completion. Users can open the report
@@ -370,7 +365,7 @@ export function PullMeasurementsButton({
           const { data } = await supabase
             .from('roof_measurements')
             .select(`
-              id,
+              id, requires_manual_review,
               total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length,
               linear_features_wkt, perimeter_wkt, footprint_vertices_geo,
               mapbox_image_url, google_maps_image_url, satellite_overlay_url,
@@ -380,6 +375,22 @@ export function PullMeasurementsButton({
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle();
+
+          // Gate-aware UX: auto-ship if 3% accuracy gate passed; only prompt
+          // for edge verification if the measurement was flagged for manual review.
+          const gateFailed = Boolean((data as any)?.requires_manual_review);
+          setVerificationReady(gateFailed);
+          if (gateFailed) {
+            toast({
+              title: "⚠️ Verify Edges — Accuracy Gate Failed",
+              description: "Confirm each edge to lock in the measurement.",
+            });
+          } else {
+            toast({
+              title: "✅ AI Measurement Complete",
+              description: "Accuracy gate passed — measurement is ready to use.",
+            });
+          }
 
           let seeds: PlanEdge[] = [];
           let footprintGeo: Array<[number, number]> | undefined;
