@@ -1686,8 +1686,6 @@ Deno.serve(async (req) => {
                 confidence: e.confidence,
               })),
               totals: reportJson.totals,
-              width: 1000,
-              height: 1000,
               satelliteImageUrl: mb?.image_url || null,
               sourceImageWidth: imgW,
               sourceImageHeight: imgH,
