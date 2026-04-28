@@ -501,50 +501,49 @@ function alignAuthoritativeToImage(
       return best
     }
 
-    const orientations: { flipX: boolean; flipY: boolean; pts: Pt[]; dx: number; dy: number }[] = []
+    // ============================================================
+    // PROVIDER-TRUST MODE (per user directive 2026-04-28):
+    // No auto-flip, no edge-translation hunting. We render the provider
+    // geometry exactly as returned, only translating to the image-extracted
+    // centroid (when available) and applying uniform scale. Any orientation
+    // mismatch is a data problem to fix upstream — diagnose, don't paper over.
+    // ============================================================
+    const identityPts: Pt[] = authPx.map((p) => ({
+      x: cImg.x + (p.x - cAuth.x) * scale,
+      y: cImg.y + (p.y - cAuth.y) * scale,
+    }))
+    const identityIou = hasImageFootprint ? polygonIoU(identityPts, imageFootprintPx!) : 0
+    const identityEdge = edgeEvidence ? scorePolygonEdgeSupport(identityPts, edgeEvidence) : 0
+
+    // Diagnostic: still SCORE all 4 reflections so we can see in logs if a flip
+    // would have helped — but we never apply it. This is purely observational
+    // to help find the root cause of any mirror.
+    const diagScores: { flipX: boolean; flipY: boolean; iou: number; edge: number }[] = []
     for (const flipX of [false, true]) {
       for (const flipY of [false, true]) {
         const sx = flipX ? -1 : 1
         const sy = flipY ? -1 : 1
-        const basePts = authPx.map((p) => ({
+        const pts = authPx.map((p) => ({
           x: cImg.x + sx * (p.x - cAuth.x) * scale,
           y: cImg.y + sy * (p.y - cAuth.y) * scale,
         }))
-        const fitted = edgeTranslationFit(basePts)
-        orientations.push({ flipX, flipY, pts: fitted.pts, dx: fitted.dx, dy: fitted.dy })
+        diagScores.push({
+          flipX,
+          flipY,
+          iou: hasImageFootprint ? polygonIoU(pts, imageFootprintPx!) : 0,
+          edge: edgeEvidence ? scorePolygonEdgeSupport(pts, edgeEvidence) : 0,
+        })
       }
     }
 
-    const scored = orientations.map((o) => ({
-      ...o,
-      iou: hasImageFootprint ? polygonIoU(o.pts, imageFootprintPx!) : 0,
-      edge: scorePolygonEdgeSupport(o.pts, edgeEvidence),
-    }))
-    const identity = scored[0] // flipX=false, flipY=false
-    const combinedScore = (s: typeof scored[number]) => s.iou * 0.7 + s.edge * 0.3
-    const best = scored.reduce((b, c) => (combinedScore(c) > combinedScore(b) ? c : b), scored[0])
-
-    // Adopt a flip if the visible roof edges prefer it. The prior threshold was
-    // too conservative for asymmetric L footprints: the wrong/mirrored L can
-    // have nearly identical overlap, so a small edge-support win is the correct
-    // signal. This fixes roof-slope/footprint orientation without translating
-    // the satellite image.
-    const scoreGain = combinedScore(best) - combinedScore(identity)
-    const edgeGain = best.edge - identity.edge
-    const iouGain = best.iou - identity.iou
-    const shouldAdoptFlip = best !== identity && (
-      (edgeEvidence && !hasImageFootprint && edgeGain >= 0.012) ||
-      (edgeEvidence && hasImageFootprint && edgeGain >= 0.015 && iouGain >= -0.02) ||
-      (!edgeEvidence && scoreGain >= 0.08)
-    )
-    const adopt = shouldAdoptFlip ? best : identity
+    const adopt = { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
 
     console.log(
-      `[alignment] drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
-      `iou{id=${identity.iou.toFixed(2)} fH=${scored[2].iou.toFixed(2)} fV=${scored[1].iou.toFixed(2)} fHV=${scored[3].iou.toFixed(2)}} ` +
-      `edge{id=${identity.edge.toFixed(2)} fH=${scored[2].edge.toFixed(2)} fV=${scored[1].edge.toFixed(2)} fHV=${scored[3].edge.toFixed(2)}} ` +
-      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} shift=${adopt.dx.toFixed(0)},${adopt.dy.toFixed(0)}px ` +
-      `(gain=${(combinedScore(best) - combinedScore(identity)).toFixed(2)})`,
+      `[alignment] PROVIDER-TRUST drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
+      `auth_source=${authoritative.source} ` +
+      `diag_iou{id=${diagScores[0].iou.toFixed(2)} fY=${diagScores[1].iou.toFixed(2)} fX=${diagScores[2].iou.toFixed(2)} fXY=${diagScores[3].iou.toFixed(2)}} ` +
+      `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}} ` +
+      `→ NO FLIP APPLIED (diagnostic only)`,
     )
 
     const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
