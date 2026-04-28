@@ -197,6 +197,13 @@ async function resolveAuthoritativeFootprint(
   }
 
   try {
+    const solarMask = await fetchGoogleSolarMaskFootprint(lat, lng, GOOGLE_SOLAR_API_KEY)
+    if (solarMask?.coordinates?.length) candidates.push(solarMask)
+  } catch (err) {
+    console.warn(`[authoritative] google solar mask threw: ${err}`)
+  }
+
+  try {
     const osm = await fetchOSMBuildingFootprint(lat, lng)
     if (osm.footprint?.coordinates?.length) {
       candidates.push({
@@ -241,6 +248,7 @@ async function resolveAuthoritativeFootprint(
     const areaSqft = (fp.areaM2 && fp.areaM2 > 0 ? fp.areaM2 : geoPolygonAreaM2(fp.coordinates)) * 10.7639
     const detailScore = Math.min(0.12, Math.max(0, fp.vertexCount - 4) * 0.01)
     const sourceScore =
+      fp.source === 'google_solar_mask' ? 0.12 :
       fp.source === 'mapbox_vector' ? 0.08 :
       fp.source === 'osm_buildings' ? 0.05 : 0.03
 
@@ -312,6 +320,7 @@ function planeFromAuthoritativeFootprint(
 function isLowDetailAuthoritativeFootprint(footprint: AuthoritativeFootprint | null): boolean {
   if (!footprint) return true
   const vertexCount = Number(footprint.vertexCount || openGeoRing(footprint.coordinates).length || 0)
+  if (footprint.source === 'google_solar_mask') return vertexCount <= 4 || footprint.confidence < 0.88
   return vertexCount <= 6 || footprint.confidence < 0.82
 }
 
