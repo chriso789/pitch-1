@@ -2002,10 +2002,20 @@ const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perime
 const FOOTPRINT_ONLY_SOURCES = new Set([
   'image_footprint_extraction',
   'mapbox_vector',
+  'mapbox_vector_image_aligned',
   'osm_buildings',
+  'osm_buildings_image_aligned',
   'microsoft_buildings',
+  'microsoft_buildings_image_aligned',
   'google_solar_aggregate',
 ])
+
+function isFootprintOnlySource(source: string | null | undefined): boolean {
+  const s = String(source || '')
+  return FOOTPRINT_ONLY_SOURCES.has(s) ||
+    /^authoritative_(footprint|vector)$/.test(s) ||
+    (s.endsWith('_image_aligned') && !s.includes('ridge_split'))
+}
 
 function normalizeRoofMeasurementFootprintSource(source: string | null | undefined, solarOk: boolean): string {
   const s = String(source || '').toLowerCase()
