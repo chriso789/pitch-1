@@ -2460,6 +2460,13 @@ Deno.serve(async (req) => {
               imgW,
               imgH,
               cal.meters_per_pixel_actual,
+              {
+                mag: extractedImageGeometry.mag,
+                dW: extractedImageGeometry.dW,
+                dH: extractedImageGeometry.dH,
+                scaleX: extractedImageGeometry.scaleX,
+                scaleY: extractedImageGeometry.scaleY,
+              },
             )
           }
 
