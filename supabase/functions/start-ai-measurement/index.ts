@@ -831,12 +831,38 @@ function computeImageBounds(
   logicalWidth: number,
   logicalHeight: number,
 ): [number, number, number, number] {
-  const metersPerPixel = (156543.03392 * Math.cos((lat * Math.PI) / 180)) / Math.pow(2, zoom)
-  const halfW = (logicalWidth * metersPerPixel) / 2
-  const halfH = (logicalHeight * metersPerPixel) / 2
-  const latOffset = halfH / 111320
-  const lngOffset = halfW / (111320 * Math.cos((lat * Math.PI) / 180))
-  return [lng - lngOffset, lat - latOffset, lng + lngOffset, lat + latOffset]
+  // Mapbox & Google static maps render in spherical Web Mercator (EPSG:3857).
+  // The downstream overlay renderer (overlayProjection.ts) projects geometry
+  // with Mercator math, so the bounds we hand it MUST also be Mercator —
+  // otherwise the diagram drifts vertically on the satellite tile.
+  //
+  // Convert pixel size at the center latitude into a Mercator Y span, then
+  // invert that span back to a latitude range. Longitude IS linear in
+  // Mercator, so the lng calculation is straightforward.
+  const TILE = 256
+  const worldSize = TILE * Math.pow(2, zoom) // pixels covering 360° lng
+
+  // Longitude span: linear in Mercator.
+  const lngSpan = (logicalWidth / worldSize) * 360
+  const west = lng - lngSpan / 2
+  const east = lng + lngSpan / 2
+
+  // Latitude span: invert Mercator Y. Center latitude in Mercator pixel space:
+  const sinLat = Math.sin((lat * Math.PI) / 180)
+  const centerY =
+    worldSize / 2 -
+    (worldSize / (2 * Math.PI)) * Math.log((1 + sinLat) / (1 - sinLat)) / 2
+  const topY = centerY - logicalHeight / 2
+  const bottomY = centerY + logicalHeight / 2
+
+  const yToLat = (y: number) => {
+    const n = Math.PI - (2 * Math.PI * y) / worldSize
+    return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
+  }
+  const north = yToLat(topY)
+  const south = yToLat(bottomY)
+
+  return [west, south, east, north]
 }
 
 async function fetchGoogleSolar(lat: number, lng: number) {
