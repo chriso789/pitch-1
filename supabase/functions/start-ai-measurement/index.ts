@@ -367,6 +367,45 @@ function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]
   return uni > 0 ? inter / uni : 0
 }
 
+type ImageEdgeEvidence = {
+  mag: Uint8Array
+  dW: number
+  dH: number
+  scaleX: number
+  scaleY: number
+}
+
+function scorePolygonEdgeSupport(poly: Pt[], evidence: ImageEdgeEvidence | null): number {
+  if (!evidence || poly.length < 3) return 0
+  const { mag, dW, dH, scaleX, scaleY } = evidence
+  let total = 0
+  let samples = 0
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    const steps = Math.max(3, Math.ceil(len / 8))
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps
+      const gx0 = Math.round((a.x + (b.x - a.x) * t) / scaleX)
+      const gy0 = Math.round((a.y + (b.y - a.y) * t) / scaleY)
+      let best = 0
+      for (let oy = -2; oy <= 2; oy++) {
+        const gy = gy0 + oy
+        if (gy < 1 || gy >= dH - 1) continue
+        for (let ox = -2; ox <= 2; ox++) {
+          const gx = gx0 + ox
+          if (gx < 1 || gx >= dW - 1) continue
+          best = Math.max(best, mag[gy * dW + gx] || 0)
+        }
+      }
+      total += best / 255
+      samples++
+    }
+  }
+  return samples > 0 ? total / samples : 0
+}
+
 /**
  * Align an authoritative (OSM/MS Buildings) footprint to the image-extracted
  * footprint. OSM polygons can be (a) mis-positioned by 5–30m, (b) badly scaled,
@@ -383,14 +422,16 @@ function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]
  */
 function alignAuthoritativeToImage(
   authoritative: AuthoritativeFootprint,
-  imageFootprintPx: { x: number; y: number }[],
+  imageFootprintPx: { x: number; y: number }[] | null,
   centerLat: number,
   centerLng: number,
   imgW: number,
   imgH: number,
   actualMpp: number,
+  edgeEvidence: ImageEdgeEvidence | null = null,
 ): AuthoritativeFootprint & { _alignment_transform?: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } } {
-  if (!imageFootprintPx || imageFootprintPx.length < 3) return authoritative
+  const hasImageFootprint = !!imageFootprintPx && imageFootprintPx.length >= 3
+  if (!hasImageFootprint && !edgeEvidence) return authoritative
   try {
     const ring = openGeoRing(authoritative.coordinates)
     const authPx = ring.map(([lng, lat]) =>
@@ -411,12 +452,12 @@ function alignAuthoritativeToImage(
     }
 
     const cAuth = centroid(authPx)
-    const cImg = centroid(imageFootprintPx)
+    const cImg = hasImageFootprint ? centroid(imageFootprintPx!) : cAuth
     const driftPx = Math.hypot(cImg.x - cAuth.x, cImg.y - cAuth.y)
     const driftMeters = driftPx * actualMpp
 
     const aAuth = polyAreaPx(authPx)
-    const aImg = polyAreaPx(imageFootprintPx)
+    const aImg = hasImageFootprint ? polyAreaPx(imageFootprintPx!) : 0
     const ratio = aImg > 0 && aAuth > 0 ? aImg / aAuth : 1
     const applyScale = ratio >= 0.55 && ratio <= 1.8
     const scale = applyScale ? Math.sqrt(ratio) : 1
@@ -437,21 +478,25 @@ function alignAuthoritativeToImage(
 
     const scored = orientations.map((o) => ({
       ...o,
-      iou: polygonIoU(o.pts, imageFootprintPx),
+      iou: hasImageFootprint ? polygonIoU(o.pts, imageFootprintPx!) : 0,
+      edge: scorePolygonEdgeSupport(o.pts, edgeEvidence),
     }))
     const identity = scored[0] // flipX=false, flipY=false
-    const best = scored.reduce((b, c) => (c.iou > b.iou ? c : b), scored[0])
+    const combinedScore = (s: typeof scored[number]) => s.iou * 0.7 + s.edge * 0.3
+    const best = scored.reduce((b, c) => (combinedScore(c) > combinedScore(b) ? c : b), scored[0])
 
-    // Only adopt a flip if it improves IoU by a meaningful margin.
-    const FLIP_GAIN_THRESHOLD = 0.12
-    const adopt = best === identity || best.iou - identity.iou >= FLIP_GAIN_THRESHOLD
+    // Adopt a flip if the combined silhouette+visible-edge score improves;
+    // a pure IoU check misses mirrored L-footprints when translation/scale overlap is similar.
+    const FLIP_GAIN_THRESHOLD = edgeEvidence ? 0.035 : 0.08
+    const adopt = best === identity || combinedScore(best) - combinedScore(identity) >= FLIP_GAIN_THRESHOLD
       ? best
       : identity
 
     console.log(
       `[alignment] drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `iou{id=${identity.iou.toFixed(2)} fH=${scored[2].iou.toFixed(2)} fV=${scored[1].iou.toFixed(2)} fHV=${scored[3].iou.toFixed(2)}} ` +
-      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} (gain=${(best.iou - identity.iou).toFixed(2)})`,
+      `edge{id=${identity.edge.toFixed(2)} fH=${scored[2].edge.toFixed(2)} fV=${scored[1].edge.toFixed(2)} fHV=${scored[3].edge.toFixed(2)}} ` +
+      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} (gain=${(combinedScore(best) - combinedScore(identity)).toFixed(2)})`,
     )
 
     const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
@@ -1473,6 +1518,44 @@ async function extractRoofFootprintAndEdges(
   }
 }
 
+async function extractImageEdgeEvidence(
+  imageUrl: string,
+  imgW: number,
+  imgH: number,
+): Promise<ImageEdgeEvidence | null> {
+  try {
+    const resp = await fetch(imageUrl)
+    if (!resp.ok) return null
+    const raster = await decodeRaster(new Uint8Array(await resp.arrayBuffer()), resp.headers.get('content-type'))
+    const W = raster.width, H = raster.height, data = raster.data
+    const gray = new Uint8Array(W * H)
+    for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+      gray[i] = (0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2]) | 0
+    }
+    const dW = Math.floor(W / 2), dH = Math.floor(H / 2)
+    const ds = new Uint8Array(dW * dH)
+    for (let y = 0; y < dH; y++) {
+      for (let x = 0; x < dW; x++) {
+        const sx = x * 2, sy = y * 2
+        ds[y * dW + x] = (gray[sy * W + sx] + gray[sy * W + sx + 1] + gray[(sy + 1) * W + sx] + gray[(sy + 1) * W + sx + 1]) >> 2
+      }
+    }
+    const mag = new Uint8Array(dW * dH)
+    for (let y = 1; y < dH - 1; y++) {
+      for (let x = 1; x < dW - 1; x++) {
+        const i = y * dW + x
+        const gx = -ds[i - dW - 1] - 2 * ds[i - 1] - ds[i + dW - 1] + ds[i - dW + 1] + 2 * ds[i + 1] + ds[i + dW + 1]
+        const gy = -ds[i - dW - 1] - 2 * ds[i - dW] - ds[i - dW + 1] + ds[i + dW - 1] + 2 * ds[i + dW] + ds[i + dW + 1]
+        mag[i] = Math.min(255, Math.hypot(gx, gy) | 0)
+      }
+    }
+    return { mag, dW, dH, scaleX: imgW / dW, scaleY: imgH / dH }
+  } catch (err) {
+    console.warn('[edge-evidence] extraction failed', String(err))
+    return null
+  }
+}
+
 /** Backwards-compat wrapper that returns just the footprint polygon. */
 async function extractRoofFootprintFromImage(
   imageUrl: string,
@@ -2388,9 +2471,19 @@ Deno.serve(async (req) => {
           // First deterministic fallback: authoritative vector building footprints.
           const authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
           let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
+          let extractedImageEdgeEvidence: ImageEdgeEvidence | null = null
           if (mb?.image_url) {
             try {
               extractedImageGeometry = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+              extractedImageEdgeEvidence = extractedImageGeometry
+                ? {
+                    mag: extractedImageGeometry.mag,
+                    dW: extractedImageGeometry.dW,
+                    dH: extractedImageGeometry.dH,
+                    scaleX: extractedImageGeometry.scaleX,
+                    scaleY: extractedImageGeometry.scaleY,
+                  }
+                : await extractImageEdgeEvidence(mb.image_url, imgW, imgH)
             } catch (err) {
               console.warn('[start-ai-measurement] image footprint pre-extract failed:', err)
             }
@@ -2407,15 +2500,16 @@ Deno.serve(async (req) => {
           // Align authoritative (OSM/MS) footprint to image-traced footprint.
           // OSM polygons are frequently mis-positioned 5–30m vs current aerial.
           // The diagram MUST sit on top of the actual roof in the rendered image.
-          if (selectedAuthoritative && extractedImageGeometry?.footprint?.length >= 4) {
+          if (selectedAuthoritative && ((extractedImageGeometry?.footprint?.length || 0) >= 4 || extractedImageEdgeEvidence)) {
             selectedAuthoritative = alignAuthoritativeToImage(
               selectedAuthoritative,
-              extractedImageGeometry.footprint,
+              extractedImageGeometry?.footprint ?? null,
               lat,
               lng,
               imgW,
               imgH,
               cal.meters_per_pixel_actual,
+              extractedImageEdgeEvidence,
             )
           }
 
