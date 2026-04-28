@@ -42,6 +42,19 @@ interface Props {
 export default function PatentRoofReport({ initialModel, address, onChange }: Props) {
   const [model, setModel] = useState<PatentRoofModel>(initialModel);
 
+  const initialModelSignature = useMemo(
+    () => JSON.stringify({
+      image: initialModel.image,
+      perimeter: initialModel.layer1_perimeter.map((p) => p.points),
+      structural: initialModel.layer2_structural.map((s) => [s.type, s.points]),
+    }),
+    [initialModel],
+  );
+
+  useEffect(() => {
+    setModel(initialModel);
+  }, [initialModel, initialModelSignature]);
+
   const update = (next: PatentRoofModel) => {
     setModel(next);
     onChange?.(next);
