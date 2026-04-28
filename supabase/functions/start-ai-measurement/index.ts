@@ -428,6 +428,7 @@ function alignAuthoritativeToImage(
   imgW: number,
   imgH: number,
   actualMpp: number,
+  edgeEvidence: ImageEdgeEvidence | null = null,
 ): AuthoritativeFootprint & { _alignment_transform?: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } } {
   if (!imageFootprintPx || imageFootprintPx.length < 3) return authoritative
   try {
@@ -477,20 +478,24 @@ function alignAuthoritativeToImage(
     const scored = orientations.map((o) => ({
       ...o,
       iou: polygonIoU(o.pts, imageFootprintPx),
+      edge: scorePolygonEdgeSupport(o.pts, edgeEvidence),
     }))
     const identity = scored[0] // flipX=false, flipY=false
-    const best = scored.reduce((b, c) => (c.iou > b.iou ? c : b), scored[0])
+    const combinedScore = (s: typeof scored[number]) => s.iou * 0.7 + s.edge * 0.3
+    const best = scored.reduce((b, c) => (combinedScore(c) > combinedScore(b) ? c : b), scored[0])
 
-    // Only adopt a flip if it improves IoU by a meaningful margin.
-    const FLIP_GAIN_THRESHOLD = 0.12
-    const adopt = best === identity || best.iou - identity.iou >= FLIP_GAIN_THRESHOLD
+    // Adopt a flip if the combined silhouette+visible-edge score improves;
+    // a pure IoU check misses mirrored L-footprints when translation/scale overlap is similar.
+    const FLIP_GAIN_THRESHOLD = edgeEvidence ? 0.035 : 0.08
+    const adopt = best === identity || combinedScore(best) - combinedScore(identity) >= FLIP_GAIN_THRESHOLD
       ? best
       : identity
 
     console.log(
       `[alignment] drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `iou{id=${identity.iou.toFixed(2)} fH=${scored[2].iou.toFixed(2)} fV=${scored[1].iou.toFixed(2)} fHV=${scored[3].iou.toFixed(2)}} ` +
-      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} (gain=${(best.iou - identity.iou).toFixed(2)})`,
+      `edge{id=${identity.edge.toFixed(2)} fH=${scored[2].edge.toFixed(2)} fV=${scored[1].edge.toFixed(2)} fHV=${scored[3].edge.toFixed(2)}} ` +
+      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} (gain=${(combinedScore(best) - combinedScore(identity)).toFixed(2)})`,
     )
 
     const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
