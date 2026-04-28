@@ -535,7 +535,8 @@ function alignAuthoritativeToImage(
       `[alignment] drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `iou{id=${identity.iou.toFixed(2)} fH=${scored[2].iou.toFixed(2)} fV=${scored[1].iou.toFixed(2)} fHV=${scored[3].iou.toFixed(2)}} ` +
       `edge{id=${identity.edge.toFixed(2)} fH=${scored[2].edge.toFixed(2)} fV=${scored[1].edge.toFixed(2)} fHV=${scored[3].edge.toFixed(2)}} ` +
-      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} (gain=${(combinedScore(best) - combinedScore(identity)).toFixed(2)})`,
+      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} shift=${adopt.dx.toFixed(0)},${adopt.dy.toFixed(0)}px ` +
+      `(gain=${(combinedScore(best) - combinedScore(identity)).toFixed(2)})`,
     )
 
     const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
@@ -554,6 +555,8 @@ function alignAuthoritativeToImage(
         cx: cImg.x,
         cy: cImg.y,
         scale,
+        dx: adopt.dx,
+        dy: adopt.dy,
       },
     }
     return result
