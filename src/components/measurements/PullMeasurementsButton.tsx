@@ -372,21 +372,15 @@ export function PullMeasurementsButton({
             .limit(1)
             .maybeSingle();
 
-          // Gate-aware UX: auto-ship if 3% accuracy gate passed; only prompt
-          // for edge verification if the measurement was flagged for manual review.
-          const gateFailed = Boolean((data as any)?.requires_manual_review);
-          setVerificationReady(gateFailed);
-          if (gateFailed) {
-            toast({
-              title: "⚠️ Verify Edges — Accuracy Gate Failed",
-              description: "Confirm each edge to lock in the measurement.",
-            });
-          } else {
-            toast({
-              title: "✅ AI Measurement Complete",
-              description: "Accuracy gate passed — measurement is ready to use.",
-            });
-          }
+          // The AI flow should publish the footprint-based diagram for review;
+          // do not push users back into edge-by-edge verification.
+          setVerificationReady(false);
+          toast({
+            title: "✅ AI Measurement Complete",
+            description: (data as any)?.requires_manual_review
+              ? "Footprint trace is ready for review."
+              : "Measurement is ready to use.",
+          });
 
           let seeds: PlanEdge[] = [];
           let footprintGeo: Array<[number, number]> | undefined;
@@ -809,22 +803,7 @@ export function PullMeasurementsButton({
           Draw
         </Button>
 
-        {verificationReady ? (
-          <>
-            <Button
-              onClick={() => setShowVerifyWizard(true)}
-              variant="default"
-              size="sm"
-              title="Walk through each edge to confirm the AI measurement"
-            >
-              <CheckCircle2 className="h-4 w-4 mr-1" />
-              Verify Edges
-            </Button>
-            <Badge variant="outline" className="text-green-600 border-green-600">
-              ✓ Tags Ready
-            </Badge>
-          </>
-        ) : success ? (
+        {success ? (
           <Badge variant="outline" className="border-primary text-primary">
             ✓ Tags Ready
           </Badge>
