@@ -148,7 +148,9 @@ class GlobalErrorBoundary extends Component<Props, State> {
               </div>
               <CardTitle className="text-xl">Something went wrong</CardTitle>
               <CardDescription>
-                An unexpected error occurred. Our team has been notified.
+                {this.state.isChunkLoadError
+                  ? 'The app updated while this page was open. Reloading will fetch the latest page files.'
+                  : 'An unexpected error occurred. Our team has been notified.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
