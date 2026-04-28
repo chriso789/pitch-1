@@ -85,8 +85,8 @@ export function overlayToPatentModel(
     },
   );
 
-  const footprint = measurement?.measurements.area_sqft ?? 0;
-  const pitch = measurement?.measurements.predominant_pitch ?? 0;
+  const footprint = measurement?.measurements?.area_sqft ?? 0;
+  const pitch = measurement?.measurements?.predominant_pitch ?? 0;
   const qs = quickSquare(footprint, pitch);
 
   const planes = [
