@@ -820,6 +820,13 @@ export function UnifiedMeasurementPanel({
               'linear.eave_ft': ai.total_eave_length || 0,
               'linear.rake_ft': ai.total_rake_length || 0,
             };
+            // Prefer the image source matching what was used for analysis
+            const satUrl = (() => {
+              const src = (ai.selected_image_source || ai.image_source || '').toLowerCase();
+              if (src.includes('mapbox') && ai.mapbox_image_url) return ai.mapbox_image_url;
+              if (src.includes('google') && ai.google_maps_image_url) return ai.google_maps_image_url;
+              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url || getFallbackSatelliteTileUrl(ai);
+            })();
             const diagramMeasurement = {
               id: ai.id,
               created_at: ai.created_at,
@@ -852,13 +859,6 @@ export function UnifiedMeasurementPanel({
               solar_building_footprint_sqft: ai.solar_building_footprint_sqft,
             };
             const hasGeometry = ai.linear_features_wkt && (Array.isArray(ai.linear_features_wkt) ? ai.linear_features_wkt.length > 0 : true);
-            // Prefer the image source matching what was used for analysis
-            const satUrl = (() => {
-              const src = (ai.selected_image_source || ai.image_source || '').toLowerCase();
-              if (src.includes('mapbox') && ai.mapbox_image_url) return ai.mapbox_image_url;
-              if (src.includes('google') && ai.google_maps_image_url) return ai.google_maps_image_url;
-              return ai.satellite_overlay_url || ai.google_maps_image_url || ai.mapbox_image_url || getFallbackSatelliteTileUrl(ai);
-            })();
 
             return (
               <div className="p-3 rounded-lg border-2 border-primary/40 bg-primary/5 space-y-2">
