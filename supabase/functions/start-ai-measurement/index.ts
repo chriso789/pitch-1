@@ -2298,12 +2298,27 @@ Deno.serve(async (req) => {
             }
           }
 
-          const selectedAuthoritative =
+          let selectedAuthoritative =
             authoritative && !(isLowDetailAuthoritativeFootprint(authoritative) && extractedImageGeometry?.footprint?.length >= 4)
               ? authoritative
               : null
           if (authoritative && !selectedAuthoritative) {
             console.log('[start-ai-measurement] rejected low-detail authoritative footprint; using image-traced roof edge geometry')
+          }
+
+          // Align authoritative (OSM/MS) footprint to image-traced footprint.
+          // OSM polygons are frequently mis-positioned 5–30m vs current aerial.
+          // The diagram MUST sit on top of the actual roof in the rendered image.
+          if (selectedAuthoritative && extractedImageGeometry?.footprint?.length >= 4) {
+            selectedAuthoritative = alignAuthoritativeToImage(
+              selectedAuthoritative,
+              extractedImageGeometry.footprint,
+              lat,
+              lng,
+              imgW,
+              imgH,
+              cal.meters_per_pixel_actual,
+            )
           }
 
           if (selectedAuthoritative) {
