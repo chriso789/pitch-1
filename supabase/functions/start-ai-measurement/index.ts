@@ -1517,6 +1517,44 @@ async function extractRoofFootprintAndEdges(
   }
 }
 
+async function extractImageEdgeEvidence(
+  imageUrl: string,
+  imgW: number,
+  imgH: number,
+): Promise<ImageEdgeEvidence | null> {
+  try {
+    const resp = await fetch(imageUrl)
+    if (!resp.ok) return null
+    const raster = await decodeRaster(new Uint8Array(await resp.arrayBuffer()), resp.headers.get('content-type'))
+    const W = raster.width, H = raster.height, data = raster.data
+    const gray = new Uint8Array(W * H)
+    for (let i = 0, p = 0; i < gray.length; i++, p += 4) {
+      gray[i] = (0.299 * data[p] + 0.587 * data[p + 1] + 0.114 * data[p + 2]) | 0
+    }
+    const dW = Math.floor(W / 2), dH = Math.floor(H / 2)
+    const ds = new Uint8Array(dW * dH)
+    for (let y = 0; y < dH; y++) {
+      for (let x = 0; x < dW; x++) {
+        const sx = x * 2, sy = y * 2
+        ds[y * dW + x] = (gray[sy * W + sx] + gray[sy * W + sx + 1] + gray[(sy + 1) * W + sx] + gray[(sy + 1) * W + sx + 1]) >> 2
+      }
+    }
+    const mag = new Uint8Array(dW * dH)
+    for (let y = 1; y < dH - 1; y++) {
+      for (let x = 1; x < dW - 1; x++) {
+        const i = y * dW + x
+        const gx = -ds[i - dW - 1] - 2 * ds[i - 1] - ds[i + dW - 1] + ds[i - dW + 1] + 2 * ds[i + 1] + ds[i + dW + 1]
+        const gy = -ds[i - dW - 1] - 2 * ds[i - dW] - ds[i - dW + 1] + ds[i + dW - 1] + 2 * ds[i + dW] + ds[i + dW + 1]
+        mag[i] = Math.min(255, Math.hypot(gx, gy) | 0)
+      }
+    }
+    return { mag, dW, dH, scaleX: imgW / dW, scaleY: imgH / dH }
+  } catch (err) {
+    console.warn('[edge-evidence] extraction failed', String(err))
+    return null
+  }
+}
+
 /** Backwards-compat wrapper that returns just the footprint polygon. */
 async function extractRoofFootprintFromImage(
   imageUrl: string,
