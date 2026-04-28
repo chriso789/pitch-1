@@ -329,6 +329,58 @@ function isLowDetailAuthoritativeFootprint(footprint: AuthoritativeFootprint | n
  *      well beyond the visible roof.
  * Returns a new AuthoritativeFootprint with corrected geo coordinates.
  */
+/** Point-in-polygon test (ray casting). */
+function pointInPoly(x: number, y: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y
+    const xj = poly[j].x, yj = poly[j].y
+    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi + 1e-12) + xi)
+    if (intersect) inside = !inside
+  }
+  return inside
+}
+
+/** IoU between two polygons by sampling a coarse grid over their union bbox. */
+function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]): number {
+  if (a.length < 3 || b.length < 3) return 0
+  const all = [...a, ...b]
+  const minX = Math.min(...all.map((p) => p.x))
+  const maxX = Math.max(...all.map((p) => p.x))
+  const minY = Math.min(...all.map((p) => p.y))
+  const maxY = Math.max(...all.map((p) => p.y))
+  if (!(maxX > minX) || !(maxY > minY)) return 0
+  const N = 64
+  const sx = (maxX - minX) / N
+  const sy = (maxY - minY) / N
+  let inter = 0, uni = 0
+  for (let iy = 0; iy < N; iy++) {
+    const y = minY + (iy + 0.5) * sy
+    for (let ix = 0; ix < N; ix++) {
+      const x = minX + (ix + 0.5) * sx
+      const inA = pointInPoly(x, y, a)
+      const inB = pointInPoly(x, y, b)
+      if (inA && inB) inter++
+      if (inA || inB) uni++
+    }
+  }
+  return uni > 0 ? inter / uni : 0
+}
+
+/**
+ * Align an authoritative (OSM/MS Buildings) footprint to the image-extracted
+ * footprint. OSM polygons can be (a) mis-positioned by 5–30m, (b) badly scaled,
+ * or (c) MIRRORED relative to the actual building (community traces from old
+ * tiles or hand-drawn from the wrong side). We:
+ *   1. Translate authoritative centroid → image-footprint centroid.
+ *   2. Apply uniform scale if areas are comparable.
+ *   3. Test 4 reflections (identity, flip-H, flip-V, flip-HV) about the
+ *      centroid and pick the one with the highest IoU vs the image footprint.
+ *      Only adopt a flip if it improves IoU by >12% over identity (avoids
+ *      flipping symmetric shapes pointlessly).
+ * The chosen reflection is recorded so downstream linear features (ridges,
+ * hips, valleys) can be transformed in lockstep.
+ */
 function alignAuthoritativeToImage(
   authoritative: AuthoritativeFootprint,
   imageFootprintPx: { x: number; y: number }[],
@@ -337,7 +389,7 @@ function alignAuthoritativeToImage(
   imgW: number,
   imgH: number,
   actualMpp: number,
-): AuthoritativeFootprint {
+): AuthoritativeFootprint & { _alignment_transform?: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } } {
   if (!imageFootprintPx || imageFootprintPx.length < 3) return authoritative
   try {
     const ring = openGeoRing(authoritative.coordinates)
@@ -360,44 +412,90 @@ function alignAuthoritativeToImage(
 
     const cAuth = centroid(authPx)
     const cImg = centroid(imageFootprintPx)
-    const dx = cImg.x - cAuth.x
-    const dy = cImg.y - cAuth.y
-    const driftPx = Math.hypot(dx, dy)
+    const driftPx = Math.hypot(cImg.x - cAuth.x, cImg.y - cAuth.y)
     const driftMeters = driftPx * actualMpp
 
-    // Decide on uniform scale correction
     const aAuth = polyAreaPx(authPx)
     const aImg = polyAreaPx(imageFootprintPx)
     const ratio = aImg > 0 && aAuth > 0 ? aImg / aAuth : 1
     const applyScale = ratio >= 0.55 && ratio <= 1.8
     const scale = applyScale ? Math.sqrt(ratio) : 1
 
+    // Build the 4 candidate orientations, each translated+scaled to image centroid.
+    const orientations: { flipX: boolean; flipY: boolean; pts: { x: number; y: number }[] }[] = []
+    for (const flipX of [false, true]) {
+      for (const flipY of [false, true]) {
+        const sx = flipX ? -1 : 1
+        const sy = flipY ? -1 : 1
+        const pts = authPx.map((p) => ({
+          x: cImg.x + sx * (p.x - cAuth.x) * scale,
+          y: cImg.y + sy * (p.y - cAuth.y) * scale,
+        }))
+        orientations.push({ flipX, flipY, pts })
+      }
+    }
+
+    const scored = orientations.map((o) => ({
+      ...o,
+      iou: polygonIoU(o.pts, imageFootprintPx),
+    }))
+    const identity = scored[0] // flipX=false, flipY=false
+    const best = scored.reduce((b, c) => (c.iou > b.iou ? c : b), scored[0])
+
+    // Only adopt a flip if it improves IoU by a meaningful margin.
+    const FLIP_GAIN_THRESHOLD = 0.12
+    const adopt = best === identity || best.iou - identity.iou >= FLIP_GAIN_THRESHOLD
+      ? best
+      : identity
+
     console.log(
-      `[alignment] auth→image drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)}`,
+      `[alignment] drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
+      `iou{id=${identity.iou.toFixed(2)} fH=${scored[2].iou.toFixed(2)} fV=${scored[1].iou.toFixed(2)} fHV=${scored[3].iou.toFixed(2)}} ` +
+      `→ flipX=${adopt.flipX} flipY=${adopt.flipY} (gain=${(best.iou - identity.iou).toFixed(2)})`,
     )
 
-    // Build aligned pixel polygon: translate to image centroid, scale around it
-    const alignedPx = authPx.map((p) => ({
-      x: cImg.x + (p.x - cAuth.x) * scale,
-      y: cImg.y + (p.y - cAuth.y) * scale,
-    }))
-
-    // Convert back to geo
-    const alignedGeo: GeoXY[] = alignedPx.map((p) => {
+    const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
       const g = pixelToLatLng(p.x, p.y, centerLat, centerLng, imgW, imgH, actualMpp)
       return [g.lng, g.lat] as GeoXY
     })
 
-    return {
+    const result = {
       ...authoritative,
       coordinates: alignedGeo,
       source: `${authoritative.source}_image_aligned` as AuthoritativeFootprint['source'],
       areaM2: authoritative.areaM2 ? authoritative.areaM2 * scale * scale : authoritative.areaM2,
+      _alignment_transform: {
+        flipX: adopt.flipX,
+        flipY: adopt.flipY,
+        cx: cImg.x,
+        cy: cImg.y,
+        scale,
+      },
     }
+    return result
   } catch (err) {
     console.warn('[alignment] failed, using raw authoritative footprint:', err)
     return authoritative
   }
+}
+
+/**
+ * Apply the same reflection chosen during footprint alignment to a list of
+ * pixel-space line segments (ridges, hips, valleys). This keeps interior
+ * structural lines registered to the corrected footprint.
+ */
+export function applyAlignmentTransformToLines<T extends { p1: Pt; p2: Pt }>(
+  lines: T[],
+  xform: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } | undefined,
+): T[] {
+  if (!xform || (!xform.flipX && !xform.flipY && xform.scale === 1)) return lines
+  const sx = xform.flipX ? -1 : 1
+  const sy = xform.flipY ? -1 : 1
+  const tx = (p: Pt): Pt => ({
+    x: xform.cx + sx * (p.x - xform.cx) * xform.scale,
+    y: xform.cy + sy * (p.y - xform.cy) * xform.scale,
+  })
+  return lines.map((l) => ({ ...l, p1: tx(l.p1), p2: tx(l.p2) }))
 }
 
 function sniffRasterFormat(buf: Uint8Array): 'png' | 'jpeg' | 'unknown' {
