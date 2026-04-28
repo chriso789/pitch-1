@@ -906,7 +906,19 @@ async function fetchGoogleSolarMaskFootprint(
       console.warn('[solar-mask] mask geobounds unavailable')
       return null
     }
-    const [minLng, minLat, maxLng, maxLat] = bbox
+    const mercatorToLngLat = (x: number, y: number): GeoXY => {
+      const lng = (x / 6378137) * 180 / Math.PI
+      const lat = (2 * Math.atan(Math.exp(y / 6378137)) - Math.PI / 2) * 180 / Math.PI
+      return [lng, lat]
+    }
+    const isProjectedMeters = Math.max(...bbox.map((v) => Math.abs(Number(v)))) > 1000
+    const [minLng, minLat, maxLng, maxLat] = isProjectedMeters
+      ? (() => {
+          const sw = mercatorToLngLat(bbox[0], bbox[1])
+          const ne = mercatorToLngLat(bbox[2], bbox[3])
+          return [sw[0], sw[1], ne[0], ne[1]] as [number, number, number, number]
+        })()
+      : bbox as [number, number, number, number]
     const noData = Number(image.getGDALNoData?.())
     const valid = new Uint8Array(width * height)
     for (let i = 0; i < width * height; i++) {
@@ -978,7 +990,10 @@ async function fetchGoogleSolarMaskFootprint(
       maxLat - ((p.y + 0.5) / height) * (maxLat - minLat),
     ] as GeoXY)
     const areaM2 = geoPolygonAreaM2(coordinates)
-    if (!Number.isFinite(areaM2) || areaM2 <= 20) return null
+    if (!Number.isFinite(areaM2) || areaM2 <= 20 || areaM2 > 5000) {
+      console.warn(`[solar-mask] rejected implausible footprint areaM2=${areaM2}`)
+      return null
+    }
     console.log(`[solar-mask] extracted footprint vertices=${coordinates.length} areaM2=${areaM2.toFixed(1)}`)
     return { coordinates, source: 'google_solar_mask', confidence: 0.94, areaM2, vertexCount: coordinates.length }
   } catch (err) {
