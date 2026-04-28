@@ -665,6 +665,19 @@ export function SchematicRoofDiagram({
       if (linearFeaturesData.length > 0) {
         geometrySource = 'database';
       }
+
+      const syntheticRidges = linearFeaturesData.filter((f) =>
+        f.type === 'ridge' && Array.isArray(features) && features.some((raw: any) => {
+          const rawLength = Number(raw?.length_ft || raw?.length || 0);
+          return String(raw?.type || '').toLowerCase() === 'ridge'
+            && ['solar_dsm_inferred_ridge', 'filled_perimeter'].includes(String(raw?.source || ''))
+            && Math.abs(rawLength - f.length) < 0.25;
+        })
+      );
+      if (syntheticRidges.length > 1) {
+        const keep = syntheticRidges.reduce((best, f) => f.length > best.length ? f : best);
+        linearFeaturesData = linearFeaturesData.filter((f) => f.type !== 'ridge' || !syntheticRidges.includes(f) || f === keep);
+      }
       
       // Apply the same north/south correction to all segments so corners stay connected
       if (northSouthScaleFactor < 1 && correctionCentroid) {

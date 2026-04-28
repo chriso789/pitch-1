@@ -1301,6 +1301,30 @@ function synthesizeCentralRidgeFromFootprint(
   return single ? [single] : []
 }
 
+function collapseUnverifiedSyntheticRidges(
+  edges: RoofEdge[],
+  planes: RoofPlane[],
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofEdge[] {
+  const syntheticRidges = edges.filter((e) => e.edge_type === 'ridge' && e.source === 'solar_dsm_inferred_ridge')
+  if (syntheticRidges.length <= 1) return edges
+
+  const nonSynthetic = edges.filter((e) => !(e.edge_type === 'ridge' && e.source === 'solar_dsm_inferred_ridge'))
+  if (nonSynthetic.some((e) => e.edge_type === 'ridge')) return nonSynthetic
+
+  const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+  const replacement = largest
+    ? synthesizeCentralRidgeFromFootprint(largest, centerLat, centerLng, imgW, imgH, actualMpp, feetPerPixel)[0]
+    : [...syntheticRidges].sort((a, b) => b.length_ft - a.length_ft)[0]
+  console.log(`[start-ai-measurement] collapsed ${syntheticRidges.length} unverified synthetic ridges to one footprint ridge`)
+  return replacement ? [...nonSynthetic, replacement] : nonSynthetic
+}
+
 /** Detect shared edges between adjacent planes → ridges/hips/valleys (best-effort).
  *  Plus: emit perimeter eaves/rakes for every plane edge that is NOT shared. */
 function edgesFromPlanes(
@@ -3047,6 +3071,16 @@ Deno.serve(async (req) => {
             console.log(`[start-ai-measurement] added ${ridgeEdges.length} ridge(s) (${ridgeEdges[0].source}) because topology emitted no ridge`)
           }
         }
+        edges = collapseUnverifiedSyntheticRidges(
+          edges,
+          planes,
+          lat,
+          lng,
+          imgW,
+          imgH,
+          cal.meters_per_pixel_actual,
+          feetPerPixel,
+        )
         if (edges.length === 0 && planes.length > 0) {
           // Use first (largest) plane perimeter as fallback eaves
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]

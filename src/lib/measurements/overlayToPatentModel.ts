@@ -46,10 +46,25 @@ export function overlayToPatentModel(
     });
   }
 
+  const cleanedFeatures = (() => {
+    const features = overlay.features ?? [];
+    const syntheticRidges = features.filter(
+      (f) => f.type === "ridge" && ["filled_perimeter", "solar_dsm_inferred_ridge"].includes(String((f as any).source || "")),
+    );
+    if (syntheticRidges.length <= 1) return features;
+    const keep = syntheticRidges.reduce((best, f) =>
+      (f.length_ft ?? 0) > (best.length_ft ?? 0) ? f : best,
+    );
+    return features.filter((f) => {
+      const isSyntheticRidge = f.type === "ridge" && ["filled_perimeter", "solar_dsm_inferred_ridge"].includes(String((f as any).source || ""));
+      return !isSyntheticRidge || f === keep;
+    });
+  })();
+
   // Layer 2: every existing feature becomes a structural line. Eaves/rakes
   // are flagged as overlapping the corresponding Layer 1 segment when their
   // endpoints are colinear with a perimeter edge (within 2px).
-  const layer2_structural: StructuralLine[] = (overlay.features ?? []).map(
+  const layer2_structural: StructuralLine[] = cleanedFeatures.map(
     (f, i) => {
       const dx = f.p2[0] - f.p1[0];
       const dy = f.p2[1] - f.p1[1];
