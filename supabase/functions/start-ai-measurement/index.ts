@@ -2471,9 +2471,19 @@ Deno.serve(async (req) => {
           // First deterministic fallback: authoritative vector building footprints.
           const authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
           let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
+          let extractedImageEdgeEvidence: ImageEdgeEvidence | null = null
           if (mb?.image_url) {
             try {
               extractedImageGeometry = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
+              extractedImageEdgeEvidence = extractedImageGeometry
+                ? {
+                    mag: extractedImageGeometry.mag,
+                    dW: extractedImageGeometry.dW,
+                    dH: extractedImageGeometry.dH,
+                    scaleX: extractedImageGeometry.scaleX,
+                    scaleY: extractedImageGeometry.scaleY,
+                  }
+                : await extractImageEdgeEvidence(mb.image_url, imgW, imgH)
             } catch (err) {
               console.warn('[start-ai-measurement] image footprint pre-extract failed:', err)
             }
@@ -2490,22 +2500,16 @@ Deno.serve(async (req) => {
           // Align authoritative (OSM/MS) footprint to image-traced footprint.
           // OSM polygons are frequently mis-positioned 5–30m vs current aerial.
           // The diagram MUST sit on top of the actual roof in the rendered image.
-          if (selectedAuthoritative && extractedImageGeometry?.footprint?.length >= 4) {
+          if (selectedAuthoritative && ((extractedImageGeometry?.footprint?.length || 0) >= 4 || extractedImageEdgeEvidence)) {
             selectedAuthoritative = alignAuthoritativeToImage(
               selectedAuthoritative,
-              extractedImageGeometry.footprint,
+              extractedImageGeometry?.footprint ?? null,
               lat,
               lng,
               imgW,
               imgH,
               cal.meters_per_pixel_actual,
-              {
-                mag: extractedImageGeometry.mag,
-                dW: extractedImageGeometry.dW,
-                dH: extractedImageGeometry.dH,
-                scaleX: extractedImageGeometry.scaleX,
-                scaleY: extractedImageGeometry.scaleY,
-              },
+              extractedImageEdgeEvidence,
             )
           }
 
