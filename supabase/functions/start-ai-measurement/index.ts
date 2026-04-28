@@ -367,6 +367,45 @@ function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]
   return uni > 0 ? inter / uni : 0
 }
 
+type ImageEdgeEvidence = {
+  mag: Uint8Array
+  dW: number
+  dH: number
+  scaleX: number
+  scaleY: number
+}
+
+function scorePolygonEdgeSupport(poly: Pt[], evidence: ImageEdgeEvidence | null): number {
+  if (!evidence || poly.length < 3) return 0
+  const { mag, dW, dH, scaleX, scaleY } = evidence
+  let total = 0
+  let samples = 0
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i]
+    const b = poly[(i + 1) % poly.length]
+    const len = Math.hypot(b.x - a.x, b.y - a.y)
+    const steps = Math.max(3, Math.ceil(len / 8))
+    for (let s = 0; s <= steps; s++) {
+      const t = s / steps
+      const gx0 = Math.round((a.x + (b.x - a.x) * t) / scaleX)
+      const gy0 = Math.round((a.y + (b.y - a.y) * t) / scaleY)
+      let best = 0
+      for (let oy = -2; oy <= 2; oy++) {
+        const gy = gy0 + oy
+        if (gy < 1 || gy >= dH - 1) continue
+        for (let ox = -2; ox <= 2; ox++) {
+          const gx = gx0 + ox
+          if (gx < 1 || gx >= dW - 1) continue
+          best = Math.max(best, mag[gy * dW + gx] || 0)
+        }
+      }
+      total += best / 255
+      samples++
+    }
+  }
+  return samples > 0 ? total / samples : 0
+}
+
 /**
  * Align an authoritative (OSM/MS Buildings) footprint to the image-extracted
  * footprint. OSM polygons can be (a) mis-positioned by 5–30m, (b) badly scaled,
