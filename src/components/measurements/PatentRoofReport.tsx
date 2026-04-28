@@ -136,7 +136,7 @@ function Page1Overview({
       <PageHeader n={1} title="Overview" address={address} />
       {model.image.url ? (
         <>
-          {/* Hidden img drives QC; the report's hero diagram is the overlay */}
+          {/* Hidden img drives imagery QC (US 8,515,198) */}
           <img
             ref={imgRef}
             src={model.image.url}
@@ -146,7 +146,16 @@ function Page1Overview({
             className="hidden"
             aria-hidden
           />
-          <ModelSvg model={model} showLengths />
+          {/* Overview hero: full-opacity aerial with the diagram aligned on top.
+              Both the <image> and the polygon points share the same pixel
+              coordinate space (model.image.width × model.image.height), so
+              the outline lands directly over the property in the photo. */}
+          <ModelSvg
+            model={model}
+            showLengths={false}
+            imageOpacity={1}
+            strokeBoost
+          />
           <div className="mt-2 flex items-center gap-2 text-xs">
             {qc.reshoot_requested ? (
               <Badge variant="destructive">Imagery QC failed — re-shoot recommended</Badge>
@@ -165,21 +174,56 @@ function Page1Overview({
   );
 }
 
-function ModelSvg({ model, showLengths = false }: { model: PatentRoofModel; showLengths?: boolean }) {
+function ModelSvg({
+  model,
+  showLengths = false,
+  imageOpacity = 0.55,
+  strokeBoost = false,
+}: {
+  model: PatentRoofModel;
+  showLengths?: boolean;
+  imageOpacity?: number;
+  strokeBoost?: boolean;
+}) {
   const { width, height } = model.image;
+  const perimeterStroke = strokeBoost ? 3 : 2;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-auto bg-muted/30 rounded border">
+    <svg
+      viewBox={`0 0 ${width} ${height}`}
+      preserveAspectRatio="xMidYMid meet"
+      className="w-full h-auto bg-muted/30 rounded border"
+    >
       {model.image.url && (
-        <image href={model.image.url} x={0} y={0} width={width} height={height} opacity={0.55} />
+        <image
+          href={model.image.url}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
+          opacity={imageOpacity}
+          preserveAspectRatio="xMidYMid meet"
+        />
       )}
-      {/* Layer 1 perimeter */}
+      {/* Layer 1 perimeter — drawn with a contrasting halo so the outline
+          remains legible over varied aerial imagery. */}
       {model.layer1_perimeter.map((p) => (
         <g key={p.id}>
+          {strokeBoost && (
+            <polyline
+              points={p.points.map(([x, y]) => `${x},${y}`).join(" ")}
+              fill="none"
+              stroke="hsl(0 0% 100%)"
+              strokeOpacity={0.85}
+              strokeWidth={perimeterStroke + 2}
+              strokeLinejoin="round"
+            />
+          )}
           <polyline
             points={p.points.map(([x, y]) => `${x},${y}`).join(" ")}
             fill="none"
             stroke={COLOR.perimeter}
-            strokeWidth={2}
+            strokeWidth={perimeterStroke}
+            strokeLinejoin="round"
           />
           {showLengths && (
             <text
@@ -197,16 +241,30 @@ function ModelSvg({ model, showLengths = false }: { model: PatentRoofModel; show
       ))}
       {/* Layer 2 structural */}
       {model.layer2_structural.map((s) => (
-        <line
-          key={s.id}
-          x1={s.points[0][0]}
-          y1={s.points[0][1]}
-          x2={s.points[1][0]}
-          y2={s.points[1][1]}
-          stroke={COLOR[s.type]}
-          strokeWidth={s.overlapsLayer1Id ? 3 : 2}
-          strokeDasharray={s.confidence < 0.6 ? "5,3" : undefined}
-        />
+        <g key={s.id}>
+          {strokeBoost && (
+            <line
+              x1={s.points[0][0]}
+              y1={s.points[0][1]}
+              x2={s.points[1][0]}
+              y2={s.points[1][1]}
+              stroke="hsl(0 0% 100%)"
+              strokeOpacity={0.7}
+              strokeWidth={(s.overlapsLayer1Id ? 3 : 2) + 2}
+              strokeLinecap="round"
+            />
+          )}
+          <line
+            x1={s.points[0][0]}
+            y1={s.points[0][1]}
+            x2={s.points[1][0]}
+            y2={s.points[1][1]}
+            stroke={COLOR[s.type]}
+            strokeWidth={s.overlapsLayer1Id ? 3 : 2}
+            strokeDasharray={s.confidence < 0.6 ? "5,3" : undefined}
+            strokeLinecap="round"
+          />
+        </g>
       ))}
     </svg>
   );
