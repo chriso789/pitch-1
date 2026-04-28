@@ -15,7 +15,25 @@ interface State {
   errorId: string | null;
   copied: boolean;
   detailsOpen: boolean;
+  isChunkLoadError: boolean;
 }
+
+const isDynamicImportError = (error: Error | null): boolean => {
+  const message = `${error?.name || ''} ${error?.message || ''}`;
+  return /Failed to fetch dynamically imported module|Importing a module script failed|Loading chunk \d+ failed|ChunkLoadError/i.test(message);
+};
+
+const clearRuntimeCaches = async (): Promise<void> => {
+  if ('serviceWorker' in navigator) {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+  }
+
+  if ('caches' in window) {
+    const cacheNames = await caches.keys();
+    await Promise.all(cacheNames.map((cacheName) => caches.delete(cacheName)));
+  }
+};
 
 /**
  * Global Error Boundary that catches all React component errors
@@ -29,7 +47,8 @@ class GlobalErrorBoundary extends Component<Props, State> {
       error: null,
       errorId: null,
       copied: false,
-      detailsOpen: false
+      detailsOpen: false,
+      isChunkLoadError: false
     };
   }
 
@@ -40,11 +59,23 @@ class GlobalErrorBoundary extends Component<Props, State> {
       error,
       errorId,
       copied: false,
-      detailsOpen: false
+      detailsOpen: false,
+      isChunkLoadError: isDynamicImportError(error)
     };
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
+    if (isDynamicImportError(error)) {
+      const reloadKey = `pitch-crm:chunk-reload:${window.location.pathname}`;
+      if (!sessionStorage.getItem(reloadKey)) {
+        sessionStorage.setItem(reloadKey, '1');
+        clearRuntimeCaches()
+          .catch((cacheError) => console.warn('[GlobalErrorBoundary] Cache cleanup failed:', cacheError))
+          .finally(() => window.location.reload());
+        return;
+      }
+    }
+
     // Log to monitoring system
     reportCrash({
       error_type: 'react_error_boundary',
@@ -67,6 +98,10 @@ class GlobalErrorBoundary extends Component<Props, State> {
   }
 
   handleReload = (): void => {
+    if (this.state.isChunkLoadError) {
+      clearRuntimeCaches().finally(() => window.location.reload());
+      return;
+    }
     window.location.reload();
   };
 
@@ -113,7 +148,9 @@ class GlobalErrorBoundary extends Component<Props, State> {
               </div>
               <CardTitle className="text-xl">Something went wrong</CardTitle>
               <CardDescription>
-                An unexpected error occurred. Our team has been notified.
+                {this.state.isChunkLoadError
+                  ? 'The app updated while this page was open. Reloading will fetch the latest page files.'
+                  : 'An unexpected error occurred. Our team has been notified.'}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
