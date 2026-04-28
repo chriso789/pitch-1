@@ -72,7 +72,7 @@ type GeoPt = { lat: number; lng: number }
 type DecodedRaster = { width: number; height: number; data: Uint8Array }
 
 type GeoXY = [number, number] // [lng, lat]
-type FootprintSource = 'mapbox_vector' | 'osm_buildings' | 'microsoft_buildings'
+type FootprintSource = 'google_solar_mask' | 'mapbox_vector' | 'osm_buildings' | 'microsoft_buildings'
 
 interface AuthoritativeFootprint {
   coordinates: GeoXY[]
@@ -852,6 +852,130 @@ async function fetchGoogleSolar(lat: number, lng: number) {
   }
   console.log(`[fetchGoogleSolar] no Solar coverage at any quality for ${lat},${lng}`)
   return null
+}
+
+async function fetchGoogleSolarMaskFootprint(
+  lat: number,
+  lng: number,
+  apiKey: string,
+): Promise<AuthoritativeFootprint | null> {
+  if (!apiKey) return null
+  try {
+    const layersUrl =
+      `https://solar.googleapis.com/v1/dataLayers:get?location.latitude=${lat}` +
+      `&location.longitude=${lng}&radiusMeters=50&view=FULL_LAYERS` +
+      `&requiredQuality=LOW&pixelSizeMeters=0.1&key=${apiKey}`
+    const layersResp = await fetch(layersUrl)
+    if (!layersResp.ok) {
+      console.warn(`[solar-mask] dataLayers failed ${layersResp.status}`)
+      return null
+    }
+    const layers = await layersResp.json()
+    if (!layers?.maskUrl) {
+      console.warn('[solar-mask] no maskUrl returned')
+      return null
+    }
+
+    const maskUrl = `${layers.maskUrl}${String(layers.maskUrl).includes('?') ? '&' : '?'}key=${apiKey}`
+    const maskResp = await fetch(maskUrl)
+    if (!maskResp.ok) {
+      console.warn(`[solar-mask] mask fetch failed ${maskResp.status}`)
+      return null
+    }
+
+    const { fromArrayBuffer } = await import('npm:geotiff@2.1.3')
+    const tiff = await fromArrayBuffer(await maskResp.arrayBuffer())
+    const image = await tiff.getImage()
+    const width = image.getWidth()
+    const height = image.getHeight()
+    const rasters: any = await image.readRasters({ interleave: true })
+    const values: ArrayLike<number> = ArrayBuffer.isView(rasters) ? rasters : (rasters?.[0] ?? [])
+    if (!width || !height || values.length < width * height) return null
+
+    const bbox = image.getBoundingBox?.() as number[] | undefined
+    if (!bbox || bbox.length !== 4) {
+      console.warn('[solar-mask] mask geobounds unavailable')
+      return null
+    }
+    const [minLng, minLat, maxLng, maxLat] = bbox
+    const noData = Number(image.getGDALNoData?.())
+    const valid = new Uint8Array(width * height)
+    for (let i = 0; i < width * height; i++) {
+      const v = Number(values[i])
+      valid[i] = Number.isFinite(v) && v > 0 && (!Number.isFinite(noData) || v !== noData) ? 1 : 0
+    }
+
+    const targetX = Math.max(0, Math.min(width - 1, Math.round(((lng - minLng) / (maxLng - minLng)) * (width - 1))))
+    const targetY = Math.max(0, Math.min(height - 1, Math.round(((maxLat - lat) / (maxLat - minLat)) * (height - 1))))
+    let seed = valid[targetY * width + targetX] ? targetY * width + targetX : -1
+    for (let r = 1; r <= 80 && seed < 0; r++) {
+      for (let dy = -r; dy <= r && seed < 0; dy++) {
+        for (let dx = -r; dx <= r && seed < 0; dx++) {
+          const x = targetX + dx, y = targetY + dy
+          if (x >= 0 && y >= 0 && x < width && y < height && valid[y * width + x]) seed = y * width + x
+        }
+      }
+    }
+    if (seed < 0) return null
+
+    const blob = new Uint8Array(width * height)
+    const stack = [seed]
+    let count = 0
+    while (stack.length) {
+      const idx = stack.pop()!
+      if (blob[idx] || !valid[idx]) continue
+      blob[idx] = 1; count++
+      const x = idx % width, y = (idx / width) | 0
+      if (x > 0) stack.push(idx - 1)
+      if (x < width - 1) stack.push(idx + 1)
+      if (y > 0) stack.push(idx - width)
+      if (y < height - 1) stack.push(idx + width)
+    }
+    if (count < 25) return null
+
+    let sx = -1, sy = -1
+    outer: for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const idx = y * width + x
+        if (!blob[idx]) continue
+        const boundary = x === 0 || y === 0 || x === width - 1 || y === height - 1 ||
+          !blob[idx - 1] || !blob[idx + 1] || !blob[idx - width] || !blob[idx + width]
+        if (boundary) { sx = x; sy = y; break outer }
+      }
+    }
+    if (sx < 0) return null
+
+    const dirs = [[1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1]]
+    const isB = (x: number, y: number) => x >= 0 && y >= 0 && x < width && y < height && blob[y * width + x] === 1
+    const contour: Pt[] = [{ x: sx, y: sy }]
+    let cx = sx, cy = sy, dir = 0
+    for (let step = 0; step < Math.max(200, 8 * count); step++) {
+      let found = false
+      for (let k = 0; k < 8; k++) {
+        const nd = (dir + 6 + k) % 8
+        const [ddx, ddy] = dirs[nd]
+        const nx = cx + ddx, ny = cy + ddy
+        if (isB(nx, ny)) { cx = nx; cy = ny; dir = nd; contour.push({ x: cx, y: cy }); found = true; break }
+      }
+      if (!found || (cx === sx && cy === sy && contour.length > 8)) break
+    }
+    const simplified = douglasPeucker(contour, Math.max(1.5, Math.hypot(width, height) * 0.004))
+      .filter((p, i, arr) => i === 0 || p.x !== arr[i - 1].x || p.y !== arr[i - 1].y)
+    if (simplified.length >= 4 && simplified[0].x === simplified[simplified.length - 1].x && simplified[0].y === simplified[simplified.length - 1].y) simplified.pop()
+    if (simplified.length < 4) return null
+
+    const coordinates: GeoXY[] = simplified.map((p) => [
+      minLng + ((p.x + 0.5) / width) * (maxLng - minLng),
+      maxLat - ((p.y + 0.5) / height) * (maxLat - minLat),
+    ] as GeoXY)
+    const areaM2 = geoPolygonAreaM2(coordinates)
+    if (!Number.isFinite(areaM2) || areaM2 <= 20) return null
+    console.log(`[solar-mask] extracted footprint vertices=${coordinates.length} areaM2=${areaM2.toFixed(1)}`)
+    return { coordinates, source: 'google_solar_mask', confidence: 0.94, areaM2, vertexCount: coordinates.length }
+  } catch (err) {
+    console.warn('[solar-mask] extraction failed', String(err))
+    return null
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────
