@@ -422,7 +422,7 @@ function scorePolygonEdgeSupport(poly: Pt[], evidence: ImageEdgeEvidence | null)
  */
 function alignAuthoritativeToImage(
   authoritative: AuthoritativeFootprint,
-  imageFootprintPx: { x: number; y: number }[],
+  imageFootprintPx: { x: number; y: number }[] | null,
   centerLat: number,
   centerLng: number,
   imgW: number,
@@ -430,7 +430,8 @@ function alignAuthoritativeToImage(
   actualMpp: number,
   edgeEvidence: ImageEdgeEvidence | null = null,
 ): AuthoritativeFootprint & { _alignment_transform?: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } } {
-  if (!imageFootprintPx || imageFootprintPx.length < 3) return authoritative
+  const hasImageFootprint = !!imageFootprintPx && imageFootprintPx.length >= 3
+  if (!hasImageFootprint && !edgeEvidence) return authoritative
   try {
     const ring = openGeoRing(authoritative.coordinates)
     const authPx = ring.map(([lng, lat]) =>
@@ -451,12 +452,12 @@ function alignAuthoritativeToImage(
     }
 
     const cAuth = centroid(authPx)
-    const cImg = centroid(imageFootprintPx)
+    const cImg = hasImageFootprint ? centroid(imageFootprintPx!) : cAuth
     const driftPx = Math.hypot(cImg.x - cAuth.x, cImg.y - cAuth.y)
     const driftMeters = driftPx * actualMpp
 
     const aAuth = polyAreaPx(authPx)
-    const aImg = polyAreaPx(imageFootprintPx)
+    const aImg = hasImageFootprint ? polyAreaPx(imageFootprintPx!) : 0
     const ratio = aImg > 0 && aAuth > 0 ? aImg / aAuth : 1
     const applyScale = ratio >= 0.55 && ratio <= 1.8
     const scale = applyScale ? Math.sqrt(ratio) : 1
@@ -477,7 +478,7 @@ function alignAuthoritativeToImage(
 
     const scored = orientations.map((o) => ({
       ...o,
-      iou: polygonIoU(o.pts, imageFootprintPx),
+      iou: hasImageFootprint ? polygonIoU(o.pts, imageFootprintPx!) : 0,
       edge: scorePolygonEdgeSupport(o.pts, edgeEvidence),
     }))
     const identity = scored[0] // flipX=false, flipY=false
