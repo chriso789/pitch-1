@@ -2002,10 +2002,20 @@ const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perime
 const FOOTPRINT_ONLY_SOURCES = new Set([
   'image_footprint_extraction',
   'mapbox_vector',
+  'mapbox_vector_image_aligned',
   'osm_buildings',
+  'osm_buildings_image_aligned',
   'microsoft_buildings',
+  'microsoft_buildings_image_aligned',
   'google_solar_aggregate',
 ])
+
+function isFootprintOnlySource(source: string | null | undefined): boolean {
+  const s = String(source || '')
+  return FOOTPRINT_ONLY_SOURCES.has(s) ||
+    /^authoritative_(footprint|vector)$/.test(s) ||
+    (s.endsWith('_image_aligned') && !s.includes('ridge_split'))
+}
 
 function normalizeRoofMeasurementFootprintSource(source: string | null | undefined, solarOk: boolean): string {
   const s = String(source || '').toLowerCase()
@@ -2128,11 +2138,23 @@ function runQualityChecks(input: {
   // customer-ready report is produced.
   const singlePlaneFallback =
     input.planes.length === 1 &&
-    FOOTPRINT_ONLY_SOURCES.has(String(input.planes[0].source))
+    isFootprintOnlySource(input.planes[0].source)
+  const detectedStructuralEdges = input.edges.filter((e) =>
+    ['ridge', 'hip', 'valley'].includes(String(e.edge_type)) &&
+    e.source !== 'solar_dsm_inferred_ridge'
+  )
+  const structuralGeometryResolved = input.planes.length > 1 || detectedStructuralEdges.length > 0
   push('multi_facet_segmentation', !singlePlaneFallback, singlePlaneFallback ? 0.5 : 1, {
     note: singlePlaneFallback
-      ? 'Single image-extracted footprint; no interior facets resolved.'
+      ? 'Single footprint-only outline; no verified interior facets resolved.'
       : 'ok',
+  })
+  push('structural_geometry_verified', structuralGeometryResolved, structuralGeometryResolved ? 1 : 0, {
+    plane_count: input.planes.length,
+    detected_structural_edges: detectedStructuralEdges.length,
+    note: structuralGeometryResolved
+      ? 'Interior planes or detected structural lines are present.'
+      : 'Only perimeter plus synthetic ridge; cannot place slopes on the correct roof sides.',
   })
 
   const overall = checks.reduce((s, c) => s + c.score, 0) / checks.length
@@ -2164,6 +2186,8 @@ function runQualityChecks(input: {
     overlayAlignmentScore < 0.5
 
   if (hardFailure) {
+    status = 'needs_internal_review'
+  } else if (!structuralGeometryResolved || singlePlaneFallback) {
     status = 'needs_internal_review'
   } else if (overall >= 0.65) {
     // Per CV spec: a usable result (footprint + any planes, with acceptable
