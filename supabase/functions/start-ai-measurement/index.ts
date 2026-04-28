@@ -471,17 +471,47 @@ function alignAuthoritativeToImage(
     const applyScale = ratio >= 0.55 && ratio <= 1.8
     const scale = applyScale ? Math.sqrt(ratio) : 1
 
-    // Build the 4 candidate orientations, each translated+scaled to image centroid.
-    const orientations: { flipX: boolean; flipY: boolean; pts: { x: number; y: number }[] }[] = []
+    // Build the 4 candidate orientations, each translated+scaled to the image centroid
+    // when an image footprint exists. If contour extraction failed, we still search
+    // nearby image-edge support; otherwise the vector footprint can remain on the
+    // wrong side of the visible roof with drift=0 simply because there is no image
+    // centroid to translate toward.
+    const fitsInFrame = (pts: Pt[]) => pts.every((p) => p.x >= 2 && p.y >= 2 && p.x <= imgW - 2 && p.y <= imgH - 2)
+    const translate = (pts: Pt[], dx: number, dy: number) => pts.map((p) => ({ x: p.x + dx, y: p.y + dy }))
+    const edgeTranslationFit = (pts: Pt[]) => {
+      if (!edgeEvidence) return { pts, dx: 0, dy: 0, edge: scorePolygonEdgeSupport(pts, edgeEvidence) }
+      const maxShift = hasImageFootprint ? 28 : Math.min(190, Math.max(72, Math.min(imgW, imgH) * 0.15))
+      let best = { pts, dx: 0, dy: 0, edge: scorePolygonEdgeSupport(pts, edgeEvidence), score: -Infinity }
+      const scoreAt = (dx: number, dy: number) => {
+        const shifted = translate(pts, dx, dy)
+        if (!fitsInFrame(shifted)) return
+        const edge = scorePolygonEdgeSupport(shifted, edgeEvidence)
+        const distancePenalty = Math.hypot(dx, dy) / Math.max(maxShift, 1)
+        const score = edge - distancePenalty * (hasImageFootprint ? 0.08 : 0.035)
+        if (score > best.score) best = { pts: shifted, dx, dy, edge, score }
+      }
+      const coarseStep = hasImageFootprint ? 7 : 14
+      for (let dy = -maxShift; dy <= maxShift; dy += coarseStep) {
+        for (let dx = -maxShift; dx <= maxShift; dx += coarseStep) scoreAt(dx, dy)
+      }
+      const aroundX = best.dx, aroundY = best.dy
+      for (let dy = aroundY - coarseStep; dy <= aroundY + coarseStep; dy += 2) {
+        for (let dx = aroundX - coarseStep; dx <= aroundX + coarseStep; dx += 2) scoreAt(dx, dy)
+      }
+      return best
+    }
+
+    const orientations: { flipX: boolean; flipY: boolean; pts: Pt[]; dx: number; dy: number }[] = []
     for (const flipX of [false, true]) {
       for (const flipY of [false, true]) {
         const sx = flipX ? -1 : 1
         const sy = flipY ? -1 : 1
-        const pts = authPx.map((p) => ({
+        const basePts = authPx.map((p) => ({
           x: cImg.x + sx * (p.x - cAuth.x) * scale,
           y: cImg.y + sy * (p.y - cAuth.y) * scale,
         }))
-        orientations.push({ flipX, flipY, pts })
+        const fitted = edgeTranslationFit(basePts)
+        orientations.push({ flipX, flipY, pts: fitted.pts, dx: fitted.dx, dy: fitted.dy })
       }
     }
 
