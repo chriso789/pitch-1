@@ -49,13 +49,16 @@ export function overlayToPatentModel(
   const cleanedFeatures = (() => {
     const features = overlay.features ?? [];
     const syntheticRidges = features.filter(
-      (f) => f.type === "ridge" && f.source === "filled_perimeter",
+      (f) => f.type === "ridge" && ["filled_perimeter", "solar_dsm_inferred_ridge"].includes(String((f as any).source || "")),
     );
     if (syntheticRidges.length <= 1) return features;
     const keep = syntheticRidges.reduce((best, f) =>
       (f.length_ft ?? 0) > (best.length_ft ?? 0) ? f : best,
     );
-    return features.filter((f) => f.type !== "ridge" || f.source !== "filled_perimeter" || f === keep);
+    return features.filter((f) => {
+      const isSyntheticRidge = f.type === "ridge" && ["filled_perimeter", "solar_dsm_inferred_ridge"].includes(String((f as any).source || ""));
+      return !isSyntheticRidge || f === keep;
+    });
   })();
 
   // Layer 2: every existing feature becomes a structural line. Eaves/rakes
