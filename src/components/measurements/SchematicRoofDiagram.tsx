@@ -434,6 +434,138 @@ export function SchematicRoofDiagram({
     const padding = localShowOverlay ? 0 : 60; // No padding when using satellite overlay
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
     let allLatLngs: { lat: number; lng: number }[] = [];
+
+    // In satellite mode, prefer the backend's canonical pixel overlay. This is
+    // the same coordinate space used when the measurement worker analyzed the
+    // Mapbox raster, so it cannot drift, mirror, or rescale during GPS/WKT
+    // round-tripping in the browser.
+    const overlaySchema = measurement?.overlay_schema || measurement?.geometry_report_json?.overlay_schema;
+    const overlayPolygon = Array.isArray(overlaySchema?.polygon)
+      ? overlaySchema.polygon
+          .map((p: any) => Array.isArray(p) && p.length >= 2 ? { x: Number(p[0]), y: Number(p[1]) } : null)
+          .filter((p: any): p is { x: number; y: number } => !!p && Number.isFinite(p.x) && Number.isFinite(p.y))
+      : [];
+    const overlayFeatures = Array.isArray(overlaySchema?.features) ? overlaySchema.features : [];
+
+    if (localShowOverlay && satelliteImageUrl && overlayPolygon.length >= 3) {
+      const srcW = Number(overlaySchema?.image?.width || overlaySchema?.transform?.imageWidth || measurement?.analysis_image_size?.width || 1280);
+      const srcH = Number(overlaySchema?.image?.height || overlaySchema?.transform?.imageHeight || measurement?.analysis_image_size?.height || 1280);
+      let cMinX = Math.min(...overlayPolygon.map(p => p.x));
+      let cMaxX = Math.max(...overlayPolygon.map(p => p.x));
+      let cMinY = Math.min(...overlayPolygon.map(p => p.y));
+      let cMaxY = Math.max(...overlayPolygon.map(p => p.y));
+
+      const padX = Math.max((cMaxX - cMinX) * 0.08, 12);
+      const padY = Math.max((cMaxY - cMinY) * 0.08, 12);
+      cMinX -= padX; cMaxX += padX; cMinY -= padY; cMaxY += padY;
+
+      const containerAspect = width / height;
+      const cropAspect = (cMaxX - cMinX) / Math.max(cMaxY - cMinY, 0.001);
+      if (cropAspect > containerAspect) {
+        const newH = (cMaxX - cMinX) / containerAspect;
+        const extra = (newH - (cMaxY - cMinY)) / 2;
+        cMinY -= extra; cMaxY += extra;
+      } else {
+        const newW = (cMaxY - cMinY) * containerAspect;
+        const extra = (newW - (cMaxX - cMinX)) / 2;
+        cMinX -= extra; cMaxX += extra;
+      }
+
+      cMinX = Math.max(0, cMinX); cMinY = Math.max(0, cMinY);
+      cMaxX = Math.min(srcW, cMaxX); cMaxY = Math.min(srcH, cMaxY);
+      const imgCrop = { minX: cMinX, minY: cMinY, maxX: cMaxX, maxY: cMaxY, srcW, srcH };
+      const cropW = Math.max(cMaxX - cMinX, 0.001);
+      const cropH = Math.max(cMaxY - cMinY, 0.001);
+      const toSvgPx = (p: { x: number; y: number }) => ({
+        x: ((p.x - cMinX) / cropW) * width,
+        y: ((p.y - cMinY) / cropH) * height,
+      });
+
+      const closedPolygon = (() => {
+        const first = overlayPolygon[0];
+        const last = overlayPolygon[overlayPolygon.length - 1];
+        return Math.hypot(first.x - last.x, first.y - last.y) < 0.5 ? overlayPolygon : [...overlayPolygon, first];
+      })();
+      const svgPolygon = closedPolygon.map(toSvgPx);
+      const pathD = `M ${svgPolygon.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
+      const feetPerPixel = overlayFeatures.find((f: any) => Number(f?.length_px) > 0 && Number(f?.length_ft) > 0)
+        ? Number(overlayFeatures.find((f: any) => Number(f?.length_px) > 0 && Number(f?.length_ft) > 0).length_ft) /
+          Number(overlayFeatures.find((f: any) => Number(f?.length_px) > 0 && Number(f?.length_ft) > 0).length_px)
+        : 0;
+
+      const perimSegs = closedPolygon.slice(0, -1).map((p, i) => {
+        const next = closedPolygon[i + 1];
+        const points = [toSvgPx(p), toSvgPx(next)];
+        return {
+          type: 'perimeter',
+          points,
+          length: Math.hypot(next.x - p.x, next.y - p.y) * feetPerPixel,
+          color: FEATURE_COLORS.perimeter,
+        };
+      });
+
+      const classifiedEaves: any[] = [];
+      const classifiedRakes: any[] = [];
+      const classifiedRidges: any[] = [];
+      const classifiedHips: any[] = [];
+      const classifiedValleys: any[] = [];
+      const dummyGps = { lat: 0, lng: 0 };
+      const linFeatures = overlayFeatures
+        .map((f: any) => {
+          const p1 = Array.isArray(f?.p1) ? { x: Number(f.p1[0]), y: Number(f.p1[1]) } : null;
+          const p2 = Array.isArray(f?.p2) ? { x: Number(f.p2[0]), y: Number(f.p2[1]) } : null;
+          if (!p1 || !p2 || !Number.isFinite(p1.x) || !Number.isFinite(p2.x)) return null;
+          const type = String(f.type || 'ridge').toLowerCase();
+          const points = [toSvgPx(p1), toSvgPx(p2)];
+          const length = Number(f.length_ft || 0);
+          const segData = { start: points[0], end: points[1], points, length, gpsStart: dummyGps, gpsEnd: dummyGps, gpsPoints: [dummyGps, dummyGps] };
+          if (type === 'eave') classifiedEaves.push(segData);
+          else if (type === 'rake') classifiedRakes.push(segData);
+          else if (type === 'ridge') classifiedRidges.push(segData);
+          else if (type === 'hip') classifiedHips.push(segData);
+          else if (type === 'valley') classifiedValleys.push(segData);
+          return { type, points, length, color: FEATURE_COLORS[type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge };
+        })
+        .filter(Boolean);
+
+      return {
+        perimeterPath: pathD,
+        perimeterCoords: svgPolygon.map((svg, i) => ({ lat: 0, lng: 0, svg, index: i + 1 })),
+        perimeterSegments: perimSegs,
+        linearFeatures: linFeatures,
+        bounds: { minLat: 0, maxLat: 1, minLng: 0, maxLng: 1 },
+        svgPadding: padding,
+        facetPaths: [],
+        eaveSegments: classifiedEaves,
+        rakeSegments: classifiedRakes,
+        ridgeSegments: classifiedRidges,
+        hipSegments: classifiedHips,
+        valleySegments: classifiedValleys,
+        debugInfo: {
+          transformMode: 'overlay-schema-pixel',
+          perimeterPoints: overlayPolygon.length,
+          eaveCount: classifiedEaves.length,
+          rakeCount: classifiedRakes.length,
+          hipCount: classifiedHips.length,
+          valleyCount: classifiedValleys.length,
+          ridgeCount: classifiedRidges.length,
+          imageCrop: imgCrop,
+        },
+        solarSegmentPolygons: [],
+        qaData: {
+          hasFacets: false,
+          facetCount: 0,
+          vertexCount: overlayPolygon.length,
+          linearFeatureCount: linFeatures.length,
+          plausibleLines: linFeatures.length,
+          implausibleLines: 0,
+          perimeterStatus: 'ok' as const,
+        },
+        geometrySource: 'database' as const,
+        imageCrop: imgCrop,
+        isLowConfidenceEdges: false,
+      };
+    }
     
     // NOTE: Solar API segments are BOUNDING BOXES (rectangles) - NOT accurate roof geometry!
     // They produce chaotic edges when intersected. We only use them for metadata (pitch, azimuth, area).
@@ -1002,7 +1134,7 @@ export function SchematicRoofDiagram({
       imageCrop: imgCrop,
       isLowConfidenceEdges: isLowQualityFootprint,
     };
-  }, [measurement, width, height, facets, localShowOverlay, imageBounds]);
+  }, [measurement, width, height, facets, localShowOverlay, imageBounds, satelliteImageUrl]);
   
   // Update diagram source state when geometry source changes
   useEffect(() => {
