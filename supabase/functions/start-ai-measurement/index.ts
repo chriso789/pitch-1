@@ -2134,6 +2134,8 @@ function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number
 const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perimeter_fallback'])
 const FOOTPRINT_ONLY_SOURCES = new Set([
   'image_footprint_extraction',
+  'google_solar_mask',
+  'google_solar_mask_image_aligned',
   'mapbox_vector',
   'mapbox_vector_image_aligned',
   'osm_buildings',
@@ -2152,6 +2154,7 @@ function isFootprintOnlySource(source: string | null | undefined): boolean {
 
 function normalizeRoofMeasurementFootprintSource(source: string | null | undefined, solarOk: boolean): string {
   const s = String(source || '').toLowerCase()
+  if (s.includes('google_solar_mask')) return 'google_solar_mask'
   if (s === 'mapbox_vector') return 'mapbox_vector'
   if (s === 'osm_buildings') return 'osm'
   if (s === 'microsoft_buildings') return 'microsoft_buildings'
