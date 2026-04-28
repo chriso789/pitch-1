@@ -2732,6 +2732,33 @@ Deno.serve(async (req) => {
             : planeSources.length === 1
             ? planeSources[0]
             : 'mixed'
+        const reportOverlaySchema = {
+          version: 'v1',
+          image: {
+            url: mb?.image_url ?? null,
+            width: imgW,
+            height: imgH,
+            center_lat: lat,
+            center_lng: lng,
+            zoom,
+            meters_per_pixel: cal.meters_per_pixel_actual,
+          },
+          polygon: (planes.length > 0
+            ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
+            : []
+          ).map((p) => [p.x, p.y]),
+          features: edges
+            .filter((e) => e.edge_type !== 'unknown' && e.line_px.length >= 2)
+            .map((e) => ({
+              type: e.edge_type,
+              p1: [e.line_px[0].x, e.line_px[0].y],
+              p2: [e.line_px[1].x, e.line_px[1].y],
+              length_px: e.length_px,
+              length_ft: e.length_ft,
+              confidence: e.confidence,
+              source: e.source,
+            })),
+        }
 
         const reportJson = {
           engine: ENGINE_VERSION,
@@ -2771,6 +2798,7 @@ Deno.serve(async (req) => {
           planes_are_all_rectangles: qc.planesAreAllRectangles,
           single_plane_fallback: qc.singlePlaneFallback,
           footprint_wkt: footprintWkt,
+          overlay_schema: reportOverlaySchema,
         }
 
         await supa.from('ai_measurement_results').insert({
