@@ -3037,19 +3037,21 @@ Deno.serve(async (req) => {
             .map((line) => clipLineToPolygonSegment(largest.polygon_px, line))
             .filter((line): line is SplitLine => !!line)
             .sort((a, b) => polylineLengthPx([b.p1, b.p2]) - polylineLengthPx([a.p1, a.p2]))[0]
-          const ridgeEdge = clippedDetected
-            ? lineToRoofEdge(
-                clippedDetected,
-                'ridge',
-                'image_detected_ridge',
-                lat,
-                lng,
-                imgW,
-                imgH,
-                cal.meters_per_pixel_actual,
-                feetPerPixel,
-                0.68,
-              )
+          const ridgeEdges: RoofEdge[] = clippedDetected
+            ? [
+                lineToRoofEdge(
+                  clippedDetected,
+                  'ridge',
+                  'image_detected_ridge',
+                  lat,
+                  lng,
+                  imgW,
+                  imgH,
+                  cal.meters_per_pixel_actual,
+                  feetPerPixel,
+                  0.68,
+                ),
+              ].filter((e): e is RoofEdge => !!e)
             : synthesizeCentralRidgeFromFootprint(
                 largest,
                 lat,
@@ -3059,9 +3061,9 @@ Deno.serve(async (req) => {
                 cal.meters_per_pixel_actual,
                 feetPerPixel,
               )
-          if (ridgeEdge) {
-            edges.push(ridgeEdge)
-            console.log(`[start-ai-measurement] added ${ridgeEdge.source} because topology emitted no ridge`)
+          if (ridgeEdges.length > 0) {
+            edges.push(...ridgeEdges)
+            console.log(`[start-ai-measurement] added ${ridgeEdges.length} ridge(s) (${ridgeEdges[0].source}) because topology emitted no ridge`)
           }
         }
         if (edges.length === 0 && planes.length > 0) {
