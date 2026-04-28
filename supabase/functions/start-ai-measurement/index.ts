@@ -524,12 +524,20 @@ function alignAuthoritativeToImage(
     const combinedScore = (s: typeof scored[number]) => s.iou * 0.7 + s.edge * 0.3
     const best = scored.reduce((b, c) => (combinedScore(c) > combinedScore(b) ? c : b), scored[0])
 
-    // Adopt a flip if the combined silhouette+visible-edge score improves;
-    // a pure IoU check misses mirrored L-footprints when translation/scale overlap is similar.
-    const FLIP_GAIN_THRESHOLD = edgeEvidence ? 0.035 : 0.08
-    const adopt = best === identity || combinedScore(best) - combinedScore(identity) >= FLIP_GAIN_THRESHOLD
-      ? best
-      : identity
+    // Adopt a flip if the visible roof edges prefer it. The prior threshold was
+    // too conservative for asymmetric L footprints: the wrong/mirrored L can
+    // have nearly identical overlap, so a small edge-support win is the correct
+    // signal. This fixes roof-slope/footprint orientation without translating
+    // the satellite image.
+    const scoreGain = combinedScore(best) - combinedScore(identity)
+    const edgeGain = best.edge - identity.edge
+    const iouGain = best.iou - identity.iou
+    const shouldAdoptFlip = best !== identity && (
+      (edgeEvidence && !hasImageFootprint && edgeGain >= 0.012) ||
+      (edgeEvidence && hasImageFootprint && edgeGain >= 0.015 && iouGain >= -0.02) ||
+      (!edgeEvidence && scoreGain >= 0.08)
+    )
+    const adopt = shouldAdoptFlip ? best : identity
 
     console.log(
       `[alignment] drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
