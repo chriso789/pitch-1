@@ -2188,7 +2188,11 @@ function runQualityChecks(input: {
   if (hardFailure) {
     status = 'needs_internal_review'
   } else if (!structuralGeometryResolved || singlePlaneFallback) {
-    status = 'needs_internal_review'
+    // Real, aligned footprint with no verified interior segmentation is still a
+    // usable measurement fallback. Do not fail the job or show the user an
+    // "internal review" error; publish it as review-needed so estimating can
+    // continue while customer-facing PDF generation remains gated downstream.
+    status = 'needs_review'
   } else if (overall >= 0.65) {
     // Per CV spec: a usable result (footprint + any planes, with acceptable
     // alignment) is auto-shipped. Single-plane fallback is a valid output —
