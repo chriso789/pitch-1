@@ -438,7 +438,7 @@ function alignAuthoritativeToImage(
   imgH: number,
   actualMpp: number,
   edgeEvidence: ImageEdgeEvidence | null = null,
-): AuthoritativeFootprint & { _alignment_transform?: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } } {
+): AuthoritativeFootprint & { _alignment_transform?: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number; dx?: number; dy?: number } } {
   const hasImageFootprint = !!imageFootprintPx && imageFootprintPx.length >= 3
   if (!hasImageFootprint && !edgeEvidence) return authoritative
   try {
