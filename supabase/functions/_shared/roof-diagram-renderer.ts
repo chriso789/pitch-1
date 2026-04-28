@@ -106,7 +106,7 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
   if (!input.planes?.length) return [];
 
   // ONE shared transform for every page so geometry never drifts between diagrams.
-  const transformed = normalizeToDrawZone(input.planes, input.edges || []);
+  const transformed = normalizeToDrawZone(input);
   const placedEdges = placeEdgeLabels(transformed.edges);
   const placedPlanes = placePlaneLabels(transformed.planes);
 
@@ -138,7 +138,30 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
 // Geometry normalization — single transform for ALL pages
 // ============================================================================
 
-function normalizeToDrawZone(planes: RendererPlane[], edges: RendererEdge[]) {
+function normalizeToDrawZone(input: DiagramInput) {
+  const planes = input.planes || [];
+  const edges = input.edges || [];
+  const sourceW = Number(input.sourceImageWidth || 0);
+  const sourceH = Number(input.sourceImageHeight || 0);
+
+  // Overlay pages render the full satellite raster into DRAW_ZONE using
+  // preserveAspectRatio="xMidYMid slice". Geometry must use that exact raster
+  // transform; fitting the polygon bbox separately makes the outline drift and
+  // scale incorrectly over the aerial.
+  if (sourceW > 0 && sourceH > 0) {
+    const scale = Math.max(DRAW_ZONE.w / sourceW, DRAW_ZONE.h / sourceH);
+    const drawnW = sourceW * scale;
+    const drawnH = sourceH * scale;
+    const offX = DRAW_ZONE.x + (DRAW_ZONE.w - drawnW) / 2;
+    const offY = DRAW_ZONE.y + (DRAW_ZONE.h - drawnH) / 2;
+    const tx = (p: Point): Point => ({ x: p.x * scale + offX, y: p.y * scale + offY });
+
+    return {
+      planes: planes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) })),
+      edges: edges.map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) })),
+    };
+  }
+
   const all = [
     ...planes.flatMap((p) => p.polygon_px || []),
     ...edges.flatMap((e) => e.line_px || []),
