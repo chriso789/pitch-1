@@ -384,7 +384,7 @@ function alignAuthoritativeToImage(
 
     // Convert back to geo
     const alignedGeo: GeoXY[] = alignedPx.map((p) => {
-      const g = pixelToLatLng(p, centerLat, centerLng, imgW, imgH, actualMpp)
+      const g = pixelToLatLng(p.x, p.y, centerLat, centerLng, imgW, imgH, actualMpp)
       return [g.lng, g.lat] as GeoXY
     })
 
