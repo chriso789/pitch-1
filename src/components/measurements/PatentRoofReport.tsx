@@ -136,7 +136,7 @@ function Page1Overview({
       <PageHeader n={1} title="Overview" address={address} />
       {model.image.url ? (
         <>
-          {/* Hidden img drives QC; the report's hero diagram is the overlay */}
+          {/* Hidden img drives imagery QC (US 8,515,198) */}
           <img
             ref={imgRef}
             src={model.image.url}
@@ -146,7 +146,16 @@ function Page1Overview({
             className="hidden"
             aria-hidden
           />
-          <ModelSvg model={model} showLengths />
+          {/* Overview hero: full-opacity aerial with the diagram aligned on top.
+              Both the <image> and the polygon points share the same pixel
+              coordinate space (model.image.width × model.image.height), so
+              the outline lands directly over the property in the photo. */}
+          <ModelSvg
+            model={model}
+            showLengths={false}
+            imageOpacity={1}
+            strokeBoost
+          />
           <div className="mt-2 flex items-center gap-2 text-xs">
             {qc.reshoot_requested ? (
               <Badge variant="destructive">Imagery QC failed — re-shoot recommended</Badge>
