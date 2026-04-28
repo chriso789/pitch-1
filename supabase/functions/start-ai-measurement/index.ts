@@ -2891,8 +2891,7 @@ Deno.serve(async (req) => {
                   )
                 : null
               if (aggregate) {
-                planes = [aggregate]
-                console.warn('[start-ai-measurement] authoritative/image extraction unavailable; publishing Google Solar aggregate as needs_review')
+                console.warn('[start-ai-measurement] authoritative/image extraction unavailable; refusing Google Solar aggregate bbox because it is not the actual footprint')
               } else {
                 console.warn('[start-ai-measurement] no authoritative footprint and image extraction failed; keeping placeholder planes for QC reject')
               }
