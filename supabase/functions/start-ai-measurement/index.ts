@@ -3071,6 +3071,16 @@ Deno.serve(async (req) => {
             console.log(`[start-ai-measurement] added ${ridgeEdges.length} ridge(s) (${ridgeEdges[0].source}) because topology emitted no ridge`)
           }
         }
+        edges = collapseUnverifiedSyntheticRidges(
+          edges,
+          planes,
+          lat,
+          lng,
+          imgW,
+          imgH,
+          cal.meters_per_pixel_actual,
+          feetPerPixel,
+        )
         if (edges.length === 0 && planes.length > 0) {
           // Use first (largest) plane perimeter as fallback eaves
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
