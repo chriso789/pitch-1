@@ -50,6 +50,7 @@ const DISPOSITIONS = [
   { id: 'new_roof', label: 'New Roof', icon: CheckCircle, color: 'border-amber-700 text-amber-700', bgColor: 'bg-amber-700' },
   { id: 'unqualified', label: 'Unqualified', icon: X, color: 'border-red-500 text-red-600', bgColor: 'bg-red-500' },
   { id: 'old_roof_marker', label: 'Old Roof', icon: AlertTriangle, color: 'border-red-600 text-red-600', bgColor: 'bg-red-600' },
+  { id: 'storm_damage', label: 'Storm Damage', icon: AlertTriangle, color: 'border-orange-500 text-orange-600', bgColor: 'bg-orange-500' },
   { id: 'interested', label: 'Interested', icon: DollarSign, color: 'border-green-500 text-green-600', bgColor: 'bg-green-500' },
   { id: 'not_home', label: 'Not Home', icon: Home, color: 'border-gray-400 text-gray-500', bgColor: 'bg-gray-400' },
   { id: 'not_interested', label: 'Not Interested', icon: ThumbsDown, color: 'border-red-500 text-red-600', bgColor: 'bg-red-500' },

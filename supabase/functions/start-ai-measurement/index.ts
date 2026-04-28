@@ -1291,27 +1291,8 @@ function synthesizeCentralRidgeFromFootprint(
   const poly = plane.polygon_px
   if (poly.length < 4) return []
 
-  const wings = decomposeFootprintIntoWings(poly)
-
-  // For an L/T/U-shape we expect ≥2 wings. If decomposition collapses to a
-  // single rectangle, fall back to the legacy single-ridge behavior.
-  if (wings.length >= 2) {
-    // Filter out tiny slivers (< 8% of total footprint area) that would
-    // produce noisy short ridges.
-    const totalArea = wings.reduce((s, r) => s + (r.maxX - r.minX) * (r.maxY - r.minY), 0)
-    const meaningful = wings.filter((r) => (r.maxX - r.minX) * (r.maxY - r.minY) >= totalArea * 0.08)
-    const ridges: RoofEdge[] = []
-    for (const rect of meaningful) {
-      const e = ridgeForRect(rect, poly, centerLat, centerLng, imgW, imgH, actualMpp, feetPerPixel)
-      if (e) ridges.push(e)
-    }
-    if (ridges.length > 0) {
-      console.log(`[synthesizeCentralRidgeFromFootprint] L/T/U-shape detected — emitted ${ridges.length} wing ridges`)
-      return ridges
-    }
-  }
-
-  // Fallback: single midline ridge across the entire footprint bbox.
+  // Single midline ridge across the entire footprint bbox.
+  // (Multi-wing synthesis disabled — was producing extra/false ridges.)
   const minX = Math.min(...poly.map((p) => p.x))
   const maxX = Math.max(...poly.map((p) => p.x))
   const minY = Math.min(...poly.map((p) => p.y))

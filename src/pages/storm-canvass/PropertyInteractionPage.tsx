@@ -31,6 +31,7 @@ const DISPOSITION_OPTIONS = [
   { value: 'follow_up', label: 'Follow Up', color: 'bg-yellow-500', icon: '📅' },
   { value: 'new_roof', label: 'New Roof', color: 'bg-amber-700', icon: '🏠' },
   { value: 'unqualified', label: 'Unqualified', color: 'bg-red-600', icon: '✕' },
+  { value: 'storm_damage', label: 'Storm Damage', color: 'bg-orange-500', icon: '⛈️' },
 ];
 
 export default function PropertyInteractionPage() {
