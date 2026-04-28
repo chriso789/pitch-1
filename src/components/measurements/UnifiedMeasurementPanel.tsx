@@ -822,6 +822,9 @@ export function UnifiedMeasurementPanel({
             };
             const diagramMeasurement = {
               id: ai.id,
+              created_at: ai.created_at,
+              report_pdf_url: (ai as any).report_pdf_url,
+              report_pdf_path: (ai as any).report_pdf_path,
               target_lat: ai.target_lat,
               target_lng: ai.target_lng,
               gps_coordinates: ai.gps_coordinates || { lat: ai.target_lat, lng: ai.target_lng },
@@ -839,6 +842,13 @@ export function UnifiedMeasurementPanel({
               requires_manual_review: ai.requires_manual_review,
               selected_image_source: ai.selected_image_source,
               image_source: ai.image_source,
+              google_maps_image_url: ai.google_maps_image_url,
+              satellite_overlay_url: satUrl,
+              mapbox_image_url: ai.mapbox_image_url,
+              geometry_report_json: (ai as any).geometry_report_json,
+              overlay_schema: (ai as any).overlay_schema || (ai as any).geometry_report_json?.overlay_schema,
+              validation_status: (ai as any).validation_status,
+              facet_count: (ai as any).facet_count,
               solar_building_footprint_sqft: ai.solar_building_footprint_sqft,
             };
             const hasGeometry = ai.linear_features_wkt && (Array.isArray(ai.linear_features_wkt) ? ai.linear_features_wkt.length > 0 : true);
@@ -972,6 +982,7 @@ export function UnifiedMeasurementPanel({
                     mapbox_image_url: ai.mapbox_image_url,
                     selected_image_source: ai.selected_image_source,
                     image_source: ai.image_source,
+                    overlay_schema: (ai as any).overlay_schema || (ai as any).geometry_report_json?.overlay_schema,
                     footprint_vertices_geo: ai.footprint_vertices_geo,
                     footprint_source: ai.footprint_source,
                     footprint_confidence: ai.footprint_confidence,
