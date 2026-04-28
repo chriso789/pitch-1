@@ -3005,6 +3005,7 @@ Deno.serve(async (req) => {
           requires_manual_review: qc.status === 'needs_review',
           validation_status: qc.status === 'completed' ? 'validated' : 'flagged',
           geometry_report_json: reportJson,
+          overlay_schema: reportOverlaySchema,
           geometry_quality_score: qc.overall,
           measurement_quality_score: qc.overall,
         }
