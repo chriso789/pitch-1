@@ -315,6 +315,91 @@ function isLowDetailAuthoritativeFootprint(footprint: AuthoritativeFootprint | n
   return vertexCount <= 6 || footprint.confidence < 0.82
 }
 
+/**
+ * Align an authoritative (OSM/MS Buildings) footprint to the image-extracted
+ * footprint. OSM polygons are frequently mis-positioned by 5–30m relative to
+ * current aerial imagery (community traces from outdated tiles). The image
+ * footprint, while sometimes noisy in shape, is correctly registered to the
+ * Mapbox aerial we render the overlay on top of. We therefore:
+ *   1. Compute centroid of both polygons (in pixel space).
+ *   2. Translate the authoritative polygon so its centroid matches the
+ *      image footprint's centroid → fixes positional drift.
+ *   3. If the image footprint area is comparable (within 0.55–1.8x), also
+ *      apply a uniform scale correction so the OSM shape doesn't extend
+ *      well beyond the visible roof.
+ * Returns a new AuthoritativeFootprint with corrected geo coordinates.
+ */
+function alignAuthoritativeToImage(
+  authoritative: AuthoritativeFootprint,
+  imageFootprintPx: { x: number; y: number }[],
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+): AuthoritativeFootprint {
+  if (!imageFootprintPx || imageFootprintPx.length < 3) return authoritative
+  try {
+    const ring = openGeoRing(authoritative.coordinates)
+    const authPx = ring.map(([lng, lat]) =>
+      latLngToPixel({ lat, lng }, centerLat, centerLng, imgW, imgH, actualMpp),
+    )
+
+    const centroid = (pts: { x: number; y: number }[]) => {
+      let sx = 0, sy = 0
+      for (const p of pts) { sx += p.x; sy += p.y }
+      return { x: sx / pts.length, y: sy / pts.length }
+    }
+    const polyAreaPx = (pts: { x: number; y: number }[]) => {
+      let a = 0
+      for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+        a += (pts[j].x + pts[i].x) * (pts[j].y - pts[i].y)
+      }
+      return Math.abs(a) / 2
+    }
+
+    const cAuth = centroid(authPx)
+    const cImg = centroid(imageFootprintPx)
+    const dx = cImg.x - cAuth.x
+    const dy = cImg.y - cAuth.y
+    const driftPx = Math.hypot(dx, dy)
+    const driftMeters = driftPx * actualMpp
+
+    // Decide on uniform scale correction
+    const aAuth = polyAreaPx(authPx)
+    const aImg = polyAreaPx(imageFootprintPx)
+    const ratio = aImg > 0 && aAuth > 0 ? aImg / aAuth : 1
+    const applyScale = ratio >= 0.55 && ratio <= 1.8
+    const scale = applyScale ? Math.sqrt(ratio) : 1
+
+    console.log(
+      `[alignment] auth→image drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)}`,
+    )
+
+    // Build aligned pixel polygon: translate to image centroid, scale around it
+    const alignedPx = authPx.map((p) => ({
+      x: cImg.x + (p.x - cAuth.x) * scale,
+      y: cImg.y + (p.y - cAuth.y) * scale,
+    }))
+
+    // Convert back to geo
+    const alignedGeo: GeoXY[] = alignedPx.map((p) => {
+      const g = pixelToLatLng(p, centerLat, centerLng, imgW, imgH, actualMpp)
+      return [g.lng, g.lat] as GeoXY
+    })
+
+    return {
+      ...authoritative,
+      coordinates: alignedGeo,
+      source: `${authoritative.source}_image_aligned` as AuthoritativeFootprint['source'],
+      areaM2: authoritative.areaM2 ? authoritative.areaM2 * scale * scale : authoritative.areaM2,
+    }
+  } catch (err) {
+    console.warn('[alignment] failed, using raw authoritative footprint:', err)
+    return authoritative
+  }
+}
+
 function sniffRasterFormat(buf: Uint8Array): 'png' | 'jpeg' | 'unknown' {
   if (
     buf.length >= 8 &&
