@@ -1181,8 +1181,72 @@ function clipLineToPolygonSegment(polygon: Pt[], line: SplitLine): SplitLine | n
   return { p1: hits[0].p, p2: hits[hits.length - 1].p, votes: line.votes }
 }
 
-function synthesizeCentralRidgeFromFootprint(
-  plane: RoofPlane,
+/** Decompose an axis-aligned rectilinear footprint (rectangle / L / T / U)
+ *  into its constituent rectangular wings using a sweep over distinct
+ *  x and y grid lines induced by the polygon's vertices. Each rectangular
+ *  cell whose center is inside the polygon is treated as part of the
+ *  building footprint. Adjacent cells are merged greedily into maximal
+ *  rectangles oriented along the longer dimension so that each wing of
+ *  an L/T/U gets its own ridge. */
+function decomposeFootprintIntoWings(poly: Pt[]): Array<{ minX: number; minY: number; maxX: number; maxY: number }> {
+  if (poly.length < 4) return []
+  const xs = Array.from(new Set(poly.map((p) => Math.round(p.x)))).sort((a, b) => a - b)
+  const ys = Array.from(new Set(poly.map((p) => Math.round(p.y)))).sort((a, b) => a - b)
+  if (xs.length < 2 || ys.length < 2) return []
+
+  const inside = (x: number, y: number) => {
+    let c = false
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const xi = poly[i].x, yi = poly[i].y
+      const xj = poly[j].x, yj = poly[j].y
+      const intersect = ((yi > y) !== (yj > y)) &&
+        (x < ((xj - xi) * (y - yi)) / ((yj - yi) || 1e-9) + xi)
+      if (intersect) c = !c
+    }
+    return c
+  }
+
+  // Build occupancy grid of cells defined by adjacent x/y grid lines.
+  const cols = xs.length - 1
+  const rows = ys.length - 1
+  const occ: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false))
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const cx = (xs[c] + xs[c + 1]) / 2
+      const cy = (ys[r] + ys[r + 1]) / 2
+      occ[r][c] = inside(cx, cy)
+    }
+  }
+
+  // Merge cells into maximal rectangles greedily.
+  const used: boolean[][] = Array.from({ length: rows }, () => new Array(cols).fill(false))
+  const rects: Array<{ minX: number; minY: number; maxX: number; maxY: number }> = []
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (!occ[r][c] || used[r][c]) continue
+      // Expand right
+      let c2 = c
+      while (c2 + 1 < cols && occ[r][c2 + 1] && !used[r][c2 + 1]) c2++
+      // Expand down while the entire row strip is occupied
+      let r2 = r
+      outer: while (r2 + 1 < rows) {
+        for (let cc = c; cc <= c2; cc++) {
+          if (!occ[r2 + 1][cc] || used[r2 + 1][cc]) break outer
+        }
+        r2++
+      }
+      for (let rr = r; rr <= r2; rr++) {
+        for (let cc = c; cc <= c2; cc++) used[rr][cc] = true
+      }
+      rects.push({ minX: xs[c], minY: ys[r], maxX: xs[c2 + 1], maxY: ys[r2 + 1] })
+    }
+  }
+  return rects
+}
+
+function ridgeForRect(
+  rect: { minX: number; minY: number; maxX: number; maxY: number },
+  poly: Pt[],
   centerLat: number,
   centerLng: number,
   imgW: number,
@@ -1190,21 +1254,15 @@ function synthesizeCentralRidgeFromFootprint(
   actualMpp: number,
   feetPerPixel: number,
 ): RoofEdge | null {
-  const poly = plane.polygon_px
-  if (poly.length < 4) return null
-  const minX = Math.min(...poly.map((p) => p.x))
-  const maxX = Math.max(...poly.map((p) => p.x))
-  const minY = Math.min(...poly.map((p) => p.y))
-  const maxY = Math.max(...poly.map((p) => p.y))
-  const cx = poly.reduce((s, p) => s + p.x, 0) / poly.length
-  const cy = poly.reduce((s, p) => s + p.y, 0) / poly.length
-  const widthPx = maxX - minX
-  const heightPx = maxY - minY
+  const widthPx = rect.maxX - rect.minX
+  const heightPx = rect.maxY - rect.minY
   if (Math.min(widthPx, heightPx) < 20) return null
+  const cx = (rect.minX + rect.maxX) / 2
+  const cy = (rect.minY + rect.maxY) / 2
   const inset = Math.min(widthPx, heightPx) * 0.22
   const candidate: SplitLine = widthPx >= heightPx
-    ? { p1: { x: minX + inset, y: cy }, p2: { x: maxX - inset, y: cy }, votes: 1 }
-    : { p1: { x: cx, y: minY + inset }, p2: { x: cx, y: maxY - inset }, votes: 1 }
+    ? { p1: { x: rect.minX + inset, y: cy }, p2: { x: rect.maxX - inset, y: cy }, votes: 1 }
+    : { p1: { x: cx, y: rect.minY + inset }, p2: { x: cx, y: rect.maxY - inset }, votes: 1 }
   const clipped = clipLineToPolygonSegment(poly, candidate) || candidate
   if (polylineLengthPx([clipped.p1, clipped.p2]) < Math.min(widthPx, heightPx) * 0.2) return null
   return lineToRoofEdge(
@@ -1219,6 +1277,47 @@ function synthesizeCentralRidgeFromFootprint(
     feetPerPixel,
     0.58,
   )
+}
+
+function synthesizeCentralRidgeFromFootprint(
+  plane: RoofPlane,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofEdge[] {
+  const poly = plane.polygon_px
+  if (poly.length < 4) return []
+
+  const wings = decomposeFootprintIntoWings(poly)
+
+  // For an L/T/U-shape we expect ≥2 wings. If decomposition collapses to a
+  // single rectangle, fall back to the legacy single-ridge behavior.
+  if (wings.length >= 2) {
+    // Filter out tiny slivers (< 8% of total footprint area) that would
+    // produce noisy short ridges.
+    const totalArea = wings.reduce((s, r) => s + (r.maxX - r.minX) * (r.maxY - r.minY), 0)
+    const meaningful = wings.filter((r) => (r.maxX - r.minX) * (r.maxY - r.minY) >= totalArea * 0.08)
+    const ridges: RoofEdge[] = []
+    for (const rect of meaningful) {
+      const e = ridgeForRect(rect, poly, centerLat, centerLng, imgW, imgH, actualMpp, feetPerPixel)
+      if (e) ridges.push(e)
+    }
+    if (ridges.length > 0) {
+      console.log(`[synthesizeCentralRidgeFromFootprint] L/T/U-shape detected — emitted ${ridges.length} wing ridges`)
+      return ridges
+    }
+  }
+
+  // Fallback: single midline ridge across the entire footprint bbox.
+  const minX = Math.min(...poly.map((p) => p.x))
+  const maxX = Math.max(...poly.map((p) => p.x))
+  const minY = Math.min(...poly.map((p) => p.y))
+  const maxY = Math.max(...poly.map((p) => p.y))
+  const single = ridgeForRect({ minX, minY, maxX, maxY }, poly, centerLat, centerLng, imgW, imgH, actualMpp, feetPerPixel)
+  return single ? [single] : []
 }
 
 /** Detect shared edges between adjacent planes → ridges/hips/valleys (best-effort).
@@ -2938,19 +3037,21 @@ Deno.serve(async (req) => {
             .map((line) => clipLineToPolygonSegment(largest.polygon_px, line))
             .filter((line): line is SplitLine => !!line)
             .sort((a, b) => polylineLengthPx([b.p1, b.p2]) - polylineLengthPx([a.p1, a.p2]))[0]
-          const ridgeEdge = clippedDetected
-            ? lineToRoofEdge(
-                clippedDetected,
-                'ridge',
-                'image_detected_ridge',
-                lat,
-                lng,
-                imgW,
-                imgH,
-                cal.meters_per_pixel_actual,
-                feetPerPixel,
-                0.68,
-              )
+          const ridgeEdges: RoofEdge[] = clippedDetected
+            ? [
+                lineToRoofEdge(
+                  clippedDetected,
+                  'ridge',
+                  'image_detected_ridge',
+                  lat,
+                  lng,
+                  imgW,
+                  imgH,
+                  cal.meters_per_pixel_actual,
+                  feetPerPixel,
+                  0.68,
+                ),
+              ].filter((e): e is RoofEdge => !!e)
             : synthesizeCentralRidgeFromFootprint(
                 largest,
                 lat,
@@ -2960,9 +3061,9 @@ Deno.serve(async (req) => {
                 cal.meters_per_pixel_actual,
                 feetPerPixel,
               )
-          if (ridgeEdge) {
-            edges.push(ridgeEdge)
-            console.log(`[start-ai-measurement] added ${ridgeEdge.source} because topology emitted no ridge`)
+          if (ridgeEdges.length > 0) {
+            edges.push(...ridgeEdges)
+            console.log(`[start-ai-measurement] added ${ridgeEdges.length} ridge(s) (${ridgeEdges[0].source}) because topology emitted no ridge`)
           }
         }
         if (edges.length === 0 && planes.length > 0) {
