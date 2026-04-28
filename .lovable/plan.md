@@ -1,67 +1,113 @@
-## Why AI Measurement keeps landing in "Internal Review"
+## How the documentation relates to what we have
 
-Three real bugs in the live `start-ai-measurement` pipeline (verified in the repo):
+The runtime report you shared is essentially a **forensic audit** of the same pipeline we have been patching the last few turns. It confirms the exact root causes of what you are seeing:
 
-1. **`_shared/mapbox-footprint-extractor.ts`** treats Mapbox Tilequery as a polygon source. Tilequery only returns **point** geometry — it can never return building rings. So the "authoritative footprint" path is dead on arrival, and jobs fall through to weaker sources.
-2. **`start-ai-measurement/index.ts` lines 41–44** prefer `MAPBOX_PUBLIC_TOKEN` over `MAPBOX_ACCESS_TOKEN` for server-side calls. URL-restricted public tokens often 403 from edge functions even when the browser UI looks fine.
-3. **QC (`runQualityChecks`, line 1336+)** hard-fails on `mapboxOk` (line 1450). When Mapbox imagery fails for any reason, there is no Google Static Maps fallback — the job is forced to `needs_internal_review`.
+1. **Diagram drifts on the aerial** because there are at least **three independent projection implementations** (client `DimensionedPlanDrawing`, `gpsCalculations.ts`, edge `roof-diagram-renderer.ts`). Each one re-derives geo→pixel from raw bounds, so the smallest disagreement (image was @2x, image was letterboxed, bounds were computed before decoding) produces the offset white outline you saw on the screenshot.
+2. **Perimeter shape is wrong** because the authoritative footprint can fall back to a Mapbox Tilequery point or a Google Solar `boundingBox` rectangle. We then trace edges around a rectangle and label them as eaves/rakes — that is why the lengths "almost" line up with the house but the polygon shape doesn't.
+3. **QC is bypassed** because `overlayToPatentModel.ts` hard-codes `imagery_qc.passed: true`, so even when the server flags `needs_review` / `report_blocked`, the patent report renders as if it passed.
+4. **Imagery and diagram use different rasters** because we sometimes use the requested 640×640 size to compute bounds while the actual decoded raster is 1280×1280 (@2x).
 
-The frontend gating is correct; it is faithfully showing backend QA state. The JPEG/PNG decode fix did not address any of the three causes above.
+The EagleView PDFs you uploaded show the **target end-state**: a single-source diagram where every eave/rake/ridge length is tied to the same coordinate frame as the satellite tile, so the line drawing snaps to the roof pixel-for-pixel. Their reports achieve this by (a) doing all geometry in one canonical Web-Mercator transform tied to the exact raster they ship, (b) fusing multiple footprint sources into one authoritative polygon before drawing, and (c) gating publication on QC.
 
-## Fix
+## Plan — bind the diagram to the aerial
 
-### 1. Disable Mapbox Tilequery as a polygon source
-**File:** `supabase/functions/_shared/mapbox-footprint-extractor.ts`
+### 1. One canonical overlay transform (single source of truth)
 
-Replace the body of `fetchMapboxVectorFootprint` with a no-op that returns `{ footprint: null, error, fallbackReason: 'tilequery_returns_points_only' }` and logs a warning. This stops a structurally impossible call from being treated as authoritative.
+Create `src/lib/measurements/overlayProjection.ts` and mirror it at `supabase/functions/_shared/overlay-projection.ts` with **identical** Web-Mercator math:
 
-### 2. Token precedence + provider-agnostic imagery
-**File:** `supabase/functions/start-ai-measurement/index.ts`
+```ts
+projectLngLatToImagePx(lng, lat, { imageWidth, imageHeight, bounds })
+projectImagePxToLngLat(x, y, transform)
+```
 
-- Replace the single `MAPBOX_TOKEN` constant with two:
-  - `MAPBOX_SERVER_TOKEN` (prefers `MAPBOX_ACCESS_TOKEN`, then `MAPBOX_TOKEN`, then `MAPBOX_PUBLIC_TOKEN`) — used for all edge-side API calls including `resolveAuthoritativeFootprint`.
-  - `MAPBOX_IMAGE_TOKEN` (same precedence, but `MAPBOX_PUBLIC_TOKEN` allowed second) — used only for Static Images.
-- Add helpers `fetchStaticRaster`, `fetchPreferredBaseImagery`, `computeImageBounds`. `fetchPreferredBaseImagery` tries Mapbox satellite-v9 static first, falls back to Google Static Maps satellite (`scale=2`).
-- Replace the existing Mapbox-only imagery fetch block with the new provider-agnostic call. Track `imageryOk` and `imagerySource` ('mapbox' | 'google_static' | 'none').
-- Pass `MAPBOX_SERVER_TOKEN` (not the public-first token) to `resolveAuthoritativeFootprint` at line 1730.
+Replace every inline projection in `DimensionedPlanDrawing.tsx`, `gpsCalculations.ts`, `roof-diagram-renderer.ts`, `RoofOverlayViewer.tsx`, and `render-measurement-pdf/index.ts` with calls to this helper. **No file may compute its own geo→pixel math anymore.**
 
-### 3. Make QC imagery-provider-agnostic
-Same file, `runQualityChecks`:
+### 2. Decode and persist the real raster
 
-- Add `imageryOk: boolean` and `imagerySource: string` to the input type.
-- Add an `imagery_available` check based on `imageryOk`.
-- Replace the hard-fail on `!input.mapboxOk` (line 1450) with `!input.imageryOk`.
-- Update the call site (line 1924) to pass `imageryOk` and `imagerySource` instead of `mapboxOk`.
+In `start-ai-measurement/index.ts`, after fetching the Mapbox/Google satellite tile:
 
-### 4. Persist imagery metadata in `roof_measurements` insert
-Same file. Add to the insert payload:
-- `mapbox_image_url`, `google_maps_image_url`, `satellite_overlay_url`
-- `selected_image_source`, `image_source`
-- `analysis_zoom`, `analysis_image_size` (with width/height/logicalWidth/logicalHeight/rasterScale)
-- `image_bounds` (computed via `computeImageBounds` using **logical** size so Mapbox `@2x` and Google `scale=2` produce identical bounds)
+- Decode the actual raster (`naturalWidth`/`naturalHeight` server-side via image header parse).
+- Compute `bounds = [west, south, east, north]` from the **decoded** dimensions, not the requested size.
+- Persist a single `overlay_transform` object with `{ imageWidth, imageHeight, bounds, center, zoom, devicePixelRatio, projection: 'web_mercator' }` into both `ai_measurement_images.transform` and the `overlay_schema` returned to the UI.
 
-### 5. Filter legacy bad AI rows in the panel
-**File:** `src/components/measurements/UnifiedMeasurementPanel.tsx`
+Every downstream renderer reads this object — never recomputes.
 
-- Add `hasCustomerSafeGeometry(measurement)` helper that wraps `isPlausibleRoofMeasurement` and additionally rejects rows where `validation_status === 'needs_internal_review'`, `geometry_report_json.is_placeholder === true`, or `geometry_report_json.geometry_source === 'google_solar_bbox'`.
-- Use it in the AI history query in place of `isPlausibleRoofMeasurement`.
-- Guard `handleSaveAiMeasurementDirect` and `handleSaveAiMeasurement` so failed-QA rows cannot be saved into estimates.
+### 3. Fused authoritative footprint (kill the rectangle fallback)
 
-## Secrets / config
-Confirm these exist (will check via `secrets--fetch_secrets` after approval):
-- `MAPBOX_ACCESS_TOKEN` — required as the preferred server token.
-- `GOOGLE_MAPS_API_KEY` — required for Google Static Maps fallback.
-- `MAPBOX_PUBLIC_TOKEN` — kept as a last-resort fallback only.
+Build `footprintFusion(lat, lng)` that ranks sources and **rejects rectangles**:
 
-If `MAPBOX_ACCESS_TOKEN` is missing, I'll prompt you to add it before deploy.
+```
+1. Microsoft Building Footprints / Regrid (true polygon)  → preferred
+2. OSM building polygon                                    → accepted
+3. Internal U-Net trace from the actual aerial             → accepted
+4. Google Solar buildingInsights polygons                  → accepted only if vertices > 4
+5. Solar boundingBox rectangle                             → REJECTED (flag needs_review)
+6. Mapbox Tilequery point                                  → REJECTED
+```
 
-## Validation after deploy
-- Re-run AI Measurement on the failing lead. Expected: `completed` or `needs_review`, not `needs_internal_review`, even if Mapbox 403s.
-- Spot-check `roof_measurements` for new rows: `selected_image_source`, `analysis_zoom`, `analysis_image_size`, `image_bounds` all populated.
-- Tail `start-ai-measurement` logs for `[ai-measurement][imagery]` lines to confirm provider used.
-- Verify legacy >30,000 sqft / `needs_internal_review` rows no longer appear in the panel history.
+Then **register** the chosen polygon to the aerial using the U-Net mask centroid + Procrustes scale (we already have `alignAuthoritativeToImage` — extend it to also run on the U-Net mask, not just centroid translation). Tag the chosen `geometry_source` on `ai_measurement_results`.
 
-## What this does NOT change
-- No retraining, no new ML model.
-- No change to the frontend QA gating in `MeasurementReportDialog` or `render-measurement-pdf` — those are correct.
-- QC is not loosened; it's only made provider-agnostic.
+### 4. Multi-signal ridge/edge detection on the same raster
+
+In `start-ai-measurement`, run ridge/hip/valley detection on the **same decoded raster** that produced the transform. Use the detector stack the user previously specified:
+
+- Multi-scale Canny + Sobel edges
+- Hough line voting
+- Ridge scoring (local intensity maxima)
+- Snap detected lines to the fused-footprint perimeter where they fall within ~6 px
+
+Persist every edge as `{ p1_px, p2_px, type, length_ft, confidence }` in `ai_roof_edges` using the **same** transform — `length_ft` is computed via `meters_per_pixel × 3.28084`, never from a separate projection.
+
+### 5. EagleView-style length labels bound to the aerial
+
+In `PatentRoofReport.tsx` / diagram renderer:
+
+- Render the aerial raster as the bottom SVG layer at its native `imageWidth × imageHeight` viewBox.
+- Render the fused perimeter polygon and structural lines using `projectLngLatToImagePx` (or directly from stored `*_px` coordinates — same transform).
+- Place each length label (e.g. `27' 4"`) at the midpoint of its segment in pixel space, color-coded by type (ridge red, hip orange, valley blue, eave green, rake purple), matching the EagleView report style shown in the uploaded PDFs.
+- Add the legend, totals box, and pitch arrows in the same coordinate space.
+
+Because the labels are placed in the same pixel frame as the aerial, every dimension annotation lands exactly on the visible roof feature.
+
+### 6. Honor server QC + parity tests
+
+- Patch `overlayToPatentModel.ts` to read `measurement.imagery_qc` / `measurement.quality_checks.imagery_qc` instead of hard-coding `passed: true`.
+- In `MeasurementReportDialog.tsx`, disable Save/PDF when `report_blocked` or `imagery_qc.passed === false`, but keep the overlay preview visible.
+- Add parity tests:
+  - Same `overlay_transform` produces identical pixels in browser + edge function (≤ 0.5 px).
+  - PDF embeds the overlay at the same pixel coordinates as the UI (≤ 1 px).
+  - Footprint area within 8 % of fused-source area or job is auto-flagged `needs_review`.
+
+### 7. EagleView PDF parser as a calibration ground truth (optional, high value)
+
+The 8 EagleView PDFs you uploaded are gold-standard labeled data. Add a parser in `roof-training/parser/extract_length_page.py` (already exists) → extract per-edge length + classification + a rasterized diagram, then store as `measurement_truth` rows. Use them to:
+
+- Score our own AI output (`scoring/` already scaffolded).
+- Train the U-Net edge classifier on real labeled lengths.
+- Auto-validate any new property near these addresses against EagleView ground truth.
+
+## Files that will change
+
+**New:**
+- `src/lib/measurements/overlayProjection.ts`
+- `supabase/functions/_shared/overlay-projection.ts`
+- `supabase/functions/_shared/footprint-fusion.ts` (extend existing)
+
+**Edited:**
+- `supabase/functions/start-ai-measurement/index.ts` — decode raster, persist canonical transform, run fusion, reject rectangles, run multi-signal edge detection on same raster
+- `supabase/functions/_shared/roof-diagram-renderer.ts` — use shared projector, draw aerial as base layer, place EagleView-style labels in pixel space
+- `supabase/functions/render-measurement-pdf/index.ts` — read `overlay_transform`, embed identically
+- `src/lib/measurements/overlayToPatentModel.ts` — propagate server QC
+- `src/components/measurements/DimensionedPlanDrawing.tsx` — use shared projector
+- `src/components/measurements/RoofOverlayViewer.tsx` — render with aerial underneath, length labels at midpoints
+- `src/components/measurements/MeasurementReportDialog.tsx` — gate Save/PDF on QC
+- `src/components/measurements/PatentRoofReport.tsx` — render overlay + labels on the aerial
+- `src/utils/gpsCalculations.ts` — re-export shared projector (delete duplicate math)
+
+## Risk / rollout
+
+- Ship behind feature flag `USE_SHARED_OVERLAY_TRANSFORM` (shadow → dual-render → cutover).
+- Old fields preserved one release for rollback.
+- Parity tests block merge.
+
+Reply **approve** to implement, or tell me which sections to drop/expand.

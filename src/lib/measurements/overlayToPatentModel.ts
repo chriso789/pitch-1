@@ -123,10 +123,30 @@ export function overlayToPatentModel(
       slope_factor: qs.slope_factor,
       lengths_ft: lengths,
     },
-    imagery_qc: {
-      passed: true,
-      abnormalities: [],
-      reshoot_requested: false,
-    },
+    // Honor server-side imagery QC. Never hard-code passed: true — the
+    // server is the source of truth for whether the report is publishable.
+    imagery_qc: ((): { passed: boolean; abnormalities: string[]; reshoot_requested: boolean } => {
+      const m = (measurement as any) || {};
+      const serverQc = m.imagery_qc || m.quality_checks?.imagery_qc;
+      if (serverQc && typeof serverQc === "object") {
+        return {
+          passed: !!serverQc.passed,
+          abnormalities: Array.isArray(serverQc.abnormalities) ? serverQc.abnormalities : [],
+          reshoot_requested: !!serverQc.reshoot_requested,
+        };
+      }
+      const blocked = !!(m.report_blocked || m.needs_review);
+      const score = typeof m.overall_score === "number" ? m.overall_score : null;
+      const passed = !blocked && (score == null || score >= 0.65);
+      return {
+        passed,
+        abnormalities: blocked
+          ? [m.blocked_reason || "needs_review"]
+          : score != null && score < 0.65
+            ? ["low_overall_score"]
+            : [],
+        reshoot_requested: false,
+      };
+    })(),
   };
 }

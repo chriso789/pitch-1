@@ -11,8 +11,18 @@ export interface RoofFeatureLine {
   meta?: Record<string, any>;
 }
 
+export interface OverlayCanonicalTransform {
+  imageWidth: number;
+  imageHeight: number;
+  bounds: [number, number, number, number]; // [west, south, east, north]
+  center?: { lat: number; lng: number };
+  zoom?: number;
+  devicePixelRatio?: number;
+  projection?: "web_mercator";
+}
+
 export interface RoofOverlaySchema {
-  version: "v1";
+  version: "v1" | "v2";
   image: {
     url: string | null;
     width: number;
@@ -22,6 +32,12 @@ export interface RoofOverlaySchema {
     zoom: number;
     meters_per_pixel: number;
   };
+  /**
+   * Canonical Web-Mercator transform used by every renderer. v2+.
+   * Geo→pixel projection MUST go through
+   * `src/lib/measurements/overlayProjection.ts`.
+   */
+  transform?: OverlayCanonicalTransform;
   polygon: [number, number][];
   features: RoofFeatureLine[];
 }

@@ -2732,8 +2732,31 @@ Deno.serve(async (req) => {
             : planeSources.length === 1
             ? planeSources[0]
             : 'mixed'
+        // ── Canonical overlay transform (single source of truth) ──
+        // Bounds are computed from the LOGICAL request size because the
+        // Mercator extent of an @2x raster is identical to the @1x request;
+        // imageWidth/imageHeight carry the ACTUAL decoded raster size so
+        // every renderer (UI SVG, edge diagram, PDF) can place pixel
+        // coordinates in the same frame as the satellite image.
+        // See src/lib/measurements/overlayProjection.ts (mirror).
+        const canonicalBounds = computeImageBounds(
+          lat,
+          lng,
+          zoom,
+          mb?.logical_w ?? 640,
+          mb?.logical_h ?? 640,
+        )
+        const canonicalTransform = {
+          imageWidth: imgW,
+          imageHeight: imgH,
+          bounds: canonicalBounds,
+          center: { lat, lng },
+          zoom,
+          devicePixelRatio: rasterScale,
+          projection: 'web_mercator' as const,
+        }
         const reportOverlaySchema = {
-          version: 'v1',
+          version: 'v2',
           image: {
             url: mb?.image_url ?? null,
             width: imgW,
@@ -2743,6 +2766,8 @@ Deno.serve(async (req) => {
             zoom,
             meters_per_pixel: cal.meters_per_pixel_actual,
           },
+          // Canonical transform — every overlay renderer MUST use this.
+          transform: canonicalTransform,
           polygon: (planes.length > 0
             ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
             : []
