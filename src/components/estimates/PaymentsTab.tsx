@@ -306,6 +306,48 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const totalPaid = (payments || []).reduce((sum, p) => sum + Number(p.amount), 0);
   const contractBalance = sellingPrice - totalPaid;
 
+  // Auto-populate invoice from latest estimate when dialog opens.
+  // First invoice (no payments / no prior invoices) = full estimate.
+  // Otherwise scale lines so invoice = contract − payments − outstanding invoiced.
+  useEffect(() => {
+    if (!showInvoiceDialog) return;
+
+    const enhancedEst = (enhancedEstimates || [])[0];
+    const legacyEst = (legacyEstimates || [])[0];
+    const baseItems = enhancedEst?.line_items
+      ? parseLineItems(enhancedEst, 'enhanced')
+      : legacyEst?.line_items
+        ? parseLineItems(legacyEst, 'legacy')
+        : [];
+
+    if (baseItems.length === 0) {
+      setInvoiceLineItems([]);
+      return;
+    }
+
+    const estimateTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
+    const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    const outstandingInvoiced = (invoices || [])
+      .filter((inv: any) => inv.status !== 'void')
+      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
+
+    const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
+    const scale =
+      remaining > 0 && estimateTotal > 0 && remaining < estimateTotal
+        ? remaining / estimateTotal
+        : 1;
+
+    const scaled = baseItems.map((item) => {
+      if (scale === 1) return item;
+      const newTotal = Math.round(item.line_total * scale * 100) / 100;
+      const qty = Number(item.qty) || 1;
+      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+    });
+
+    setInvoiceLineItems(scaled);
+  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice]);
+
   const createInvoiceMutation = useMutation({
     mutationFn: async () => {
       const selectedItems = invoiceLineItems.filter(i => i.selected);
