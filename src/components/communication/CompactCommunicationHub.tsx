@@ -231,11 +231,11 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
   return (
     <div className={cn("space-y-2", className)}>
       {/* Quick Actions - Always Visible */}
-      <div className="flex gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <Button 
           size="sm" 
           variant="outline" 
-          className="flex-1 h-8 text-xs"
+          className="h-10 min-w-0 text-sm sm:h-8 sm:text-xs"
           onClick={onCallClick}
           title={contactPhone ? `Call ${contactPhone}` : 'No phone number on file'}
         >
@@ -245,7 +245,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         <Button 
           size="sm" 
           variant="outline" 
-          className="flex-1 h-8 text-xs"
+          className="h-10 min-w-0 text-sm sm:h-8 sm:text-xs"
           onClick={onSMSClick}
           title={contactPhone ? `Text ${contactPhone}` : 'No phone number on file'}
         >
@@ -255,7 +255,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         <Button 
           size="sm" 
           variant="outline" 
-          className="flex-1 h-8 text-xs"
+          className="h-10 min-w-0 text-sm sm:h-8 sm:text-xs"
           onClick={onEmailClick}
           title={contactEmail ? `Email ${contactEmail}` : 'No email address on file'}
         >
@@ -295,7 +295,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ScrollArea className="h-[200px] mt-2">
+          <ScrollArea className="h-[260px] mt-2 rounded-md border border-border/60 sm:h-[200px]">
             {loading ? (
               <div className="text-sm text-muted-foreground text-center py-8">
                 Loading...
@@ -311,7 +311,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
                     key={activity.id}
                     onClick={() => handleActivityClick(activity)}
                     className={cn(
-                      "flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 text-xs transition-colors",
+                      "flex items-start gap-2 p-3 rounded-md hover:bg-muted/50 text-sm transition-colors",
                       onActivityClick && "cursor-pointer"
                     )}
                   >
