@@ -502,11 +502,13 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // FORCED 180° CORRECTION:
+    // FORCED CORNER-ANCHORED 180° CORRECTION:
     // The observed failure is explicit: the diagram's bottom-right corner is
-    // the actual roof's top-left corner. That is a 180° centroid-locked
-    // rotation (flipX+flipY), not a vertical flip and not a scored guess.
-    // Keep translation disabled so the footprint cannot walk onto a neighbor.
+    // the actual roof's top-left corner. A centroid-only 180° rotation changes
+    // orientation, but for asymmetric L-shapes it does NOT guarantee that the
+    // same physical corner lands on the roof's top-left. So we rotate 180° and
+    // then apply only the minimal in-footprint translation needed to put the
+    // pre-rotation bottom-right vertex exactly on the top-left roof vertex.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -536,21 +538,40 @@ function alignAuthoritativeToImage(
       }
     }
 
+    const nearestCorner = (pts: Pt[], corner: 'topLeft' | 'bottomRight') => {
+      const minX = Math.min(...pts.map((p) => p.x))
+      const maxX = Math.max(...pts.map((p) => p.x))
+      const minY = Math.min(...pts.map((p) => p.y))
+      const maxY = Math.max(...pts.map((p) => p.y))
+      const target = corner === 'topLeft' ? { x: minX, y: minY } : { x: maxX, y: maxY }
+      return pts.reduce((best, p) =>
+        Math.hypot(p.x - target.x, p.y - target.y) < Math.hypot(best.x - target.x, best.y - target.y) ? p : best,
+      )
+    }
+
     const rotate180 = diagScores.find((s) => s.flipX && s.flipY)
+    const targetTopLeft = nearestCorner(hasImageFootprint ? imageFootprintPx! : authPx, 'topLeft')
+    const sourceBottomRight = nearestCorner(authPx, 'bottomRight')
+    const rotatedBottomRight = {
+      x: cImg.x - (sourceBottomRight.x - cAuth.x) * scale,
+      y: cImg.y - (sourceBottomRight.y - cAuth.y) * scale,
+    }
+    const anchorDx = targetTopLeft.x - rotatedBottomRight.x
+    const anchorDy = targetTopLeft.y - rotatedBottomRight.y
     const adopt = {
       flipX: true,
       flipY: true,
-      dx: 0,
-      dy: 0,
+      dx: anchorDx,
+      dy: anchorDy,
       pts: authPx.map((p) => ({
-        x: cImg.x - (p.x - cAuth.x) * scale,
-        y: cImg.y - (p.y - cAuth.y) * scale,
+        x: cImg.x - (p.x - cAuth.x) * scale + anchorDx,
+        y: cImg.y - (p.y - cAuth.y) * scale + anchorDy,
       })),
     }
-    const adoptReason = `FORCED 180deg flipX+flipY (diagram bottom-right→roof top-left; same centroid; no translation; iou ${identityIou.toFixed(3)}→${(rotate180?.iou ?? 0).toFixed(3)}, edge ${identityEdge.toFixed(3)}→${(rotate180?.edge ?? 0).toFixed(3)})`
+    const adoptReason = `FORCED corner-anchored 180deg flipX+flipY (diagram bottom-right→roof top-left; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; iou ${identityIou.toFixed(3)}→${(rotate180?.iou ?? 0).toFixed(3)}, edge ${identityEdge.toFixed(3)}→${(rotate180?.edge ?? 0).toFixed(3)})`
 
     console.log(
-      `[alignment] FORCED-180 drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
+      `[alignment] FORCED-CORNER-180 drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `auth_source=${authoritative.source} ` +
       `diag_iou{id=${diagScores[0].iou.toFixed(2)} fY=${diagScores[1].iou.toFixed(2)} fX=${diagScores[2].iou.toFixed(2)} fXY=${diagScores[3].iou.toFixed(2)}} ` +
       `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}} ` +
