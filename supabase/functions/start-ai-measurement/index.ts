@@ -3463,8 +3463,8 @@ Deno.serve(async (req) => {
 
         // 2h) Aggregate results
         const totalArea2d = planes.reduce((s, p) => s + p.area_2d_sqft, 0)
-        const totalAreaSloped = planes.reduce((s, p) => s + p.area_pitch_adjusted_sqft, 0)
-        const exceedsPublishableArea = totalAreaSloped > MAX_AUTO_ROOF_AREA_SQFT || totalArea2d > MAX_AUTO_ROOF_AREA_SQFT
+        let totalAreaSloped = planes.reduce((s, p) => s + p.area_pitch_adjusted_sqft, 0)
+        let exceedsPublishableArea = totalAreaSloped > MAX_AUTO_ROOF_AREA_SQFT || totalArea2d > MAX_AUTO_ROOF_AREA_SQFT
         const sumByEdge = (t: RoofEdge['edge_type']) =>
           edges.filter((e) => e.edge_type === t).reduce((s, e) => s + e.length_ft, 0)
         let ridge_ft = sumByEdge('ridge')
