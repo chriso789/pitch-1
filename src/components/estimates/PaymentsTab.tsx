@@ -473,7 +473,114 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     onError: (err: Error) => toast.error(err.message || 'Failed to create invoice'),
   });
 
-  const recordPaymentMutation = useMutation({
+  // Open edit dialog
+  const openEditInvoice = (inv: any) => {
+    const items: InvoiceLineItem[] = Array.isArray(inv.line_items)
+      ? (inv.line_items as any[]).map((li) => ({
+          description: li.description || '',
+          qty: Number(li.qty) || 0,
+          unit: li.unit || 'ea',
+          unit_cost: Number(li.unit_cost) || 0,
+          line_total: Number(li.line_total) || 0,
+        }))
+      : [];
+    setEditingInvoice(inv);
+    setEditLineItems(items);
+    setEditDueDate(inv.due_date ? format(new Date(inv.due_date + 'T00:00:00'), 'yyyy-MM-dd') : '');
+    setEditNotes(inv.notes || '');
+  };
+
+  const updateEditItem = (idx: number, patch: Partial<InvoiceLineItem>) => {
+    setEditLineItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const merged = { ...it, ...patch } as InvoiceLineItem;
+        const qty = Number(merged.qty) || 0;
+        const unitCost = Number(merged.unit_cost) || 0;
+        merged.line_total = Math.round(qty * unitCost * 100) / 100;
+        return merged;
+      })
+    );
+  };
+
+  const removeEditItem = (idx: number) => {
+    setEditLineItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const editInvoiceTotal = useMemo(
+    () => editLineItems.reduce((s, i) => s + (Number(i.line_total) || 0), 0),
+    [editLineItems]
+  );
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingInvoice) throw new Error('No invoice');
+      if (editLineItems.length === 0) throw new Error('Invoice must have at least one line item');
+      const newAmount = Math.round(editInvoiceTotal * 100) / 100;
+      if (newAmount <= 0) throw new Error('Invoice total must be greater than zero');
+
+      // Preserve already-paid amount: balance = newAmount - paidSoFar
+      const paidSoFar = Math.max(0, Number(editingInvoice.amount) - Number(editingInvoice.balance));
+      const newBalance = Math.max(0, Math.round((newAmount - paidSoFar) * 100) / 100);
+      let newStatus = editingInvoice.status;
+      if (newStatus !== 'void') {
+        if (newBalance === 0 && paidSoFar > 0) newStatus = 'paid';
+        else if (paidSoFar > 0 && newBalance > 0) newStatus = 'partial';
+        else if (paidSoFar === 0) newStatus = editingInvoice.status === 'sent' ? 'sent' : 'draft';
+      }
+
+      const { error } = await supabase
+        .from('project_invoices')
+        .update({
+          amount: newAmount,
+          balance: newBalance,
+          status: newStatus,
+          due_date: editDueDate || null,
+          notes: editNotes || null,
+          line_items: editLineItems as any,
+        })
+        .eq('id', editingInvoice.id);
+      if (error) throw new Error(error.message || 'Failed to update invoice');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      toast.success('Invoice updated');
+      setEditingInvoice(null);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: async (inv: any) => {
+      const paidSoFar = Number(inv.amount) - Number(inv.balance);
+      if (paidSoFar > 0) {
+        throw new Error('Cannot delete an invoice with payments applied. Void it instead.');
+      }
+      const { error } = await supabase.from('project_invoices').delete().eq('id', inv.id);
+      if (error) throw new Error(error.message || 'Failed to delete invoice');
+
+      // Best-effort cleanup of generated PDF + document record
+      try {
+        const safeNumber = String(inv.invoice_number).replace(/[^A-Za-z0-9_-]/g, '_');
+        const filePath = `${activeTenantId}/${pipelineEntryId}/invoices/${safeNumber}.pdf`;
+        await supabase.storage.from('documents').remove([filePath]);
+        await (supabase as any).from('documents').delete().eq('file_path', filePath);
+      } catch (e) {
+        console.warn('Invoice PDF cleanup warning:', e);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
+      toast.success('Invoice deleted');
+      setDeletingInvoiceId(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setDeletingInvoiceId(null);
+    },
+  });
+
     mutationFn: async () => {
       const amount = parseFloat(paymentAmount);
       if (isNaN(amount) || amount <= 0) throw new Error('Invalid amount');
