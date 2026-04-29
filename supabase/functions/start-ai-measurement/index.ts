@@ -4060,6 +4060,14 @@ Deno.serve(async (req) => {
           patent_model: patentModel,
           geometry_quality_score: qc.overall,
           measurement_quality_score: qc.overall,
+          ...(vendorOverrideApplied
+            ? {
+                vendor_report_id: vendorOverrideReportId,
+                detection_method: 'vendor_report_override',
+                inference_source: 'vendor_truth',
+                notes: 'Geometry sourced from parsed vendor measurement report (ground truth).',
+              }
+            : {}),
         }
         const { error: roofInsertError } = await supa.from('roof_measurements').insert(roofMeasurementPayload)
         if (roofInsertError) {
