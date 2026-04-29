@@ -581,6 +581,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     },
   });
 
+  const recordPaymentMutation = useMutation({
     mutationFn: async () => {
       const amount = parseFloat(paymentAmount);
       if (isNaN(amount) || amount <= 0) throw new Error('Invalid amount');
