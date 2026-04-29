@@ -457,22 +457,22 @@ const ContactProfile = () => {
 
         {/* Tabbed Interface */}
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-5 h-12">
-            <TabsTrigger value="details" className="flex items-center gap-2">
+          <TabsList className="grid w-full grid-cols-5 h-auto sm:h-12 gap-1 p-1">
+            <TabsTrigger value="details" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <User className="h-4 w-4" />
-              Details
+              <span>Details</span>
             </TabsTrigger>
-            <TabsTrigger value="jobs" className="flex items-center gap-2">
+            <TabsTrigger value="jobs" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <Activity className="h-4 w-4" />
-              Pipeline ({pipelineEntries.length})
+              <span className="truncate">Pipeline ({pipelineEntries.length})</span>
             </TabsTrigger>
-            <TabsTrigger value="notes" className="flex items-center gap-2">
+            <TabsTrigger value="notes" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <MessageSquare className="h-4 w-4" />
-              Notes
+              <span>Notes</span>
             </TabsTrigger>
-            <TabsTrigger value="communication" className="flex items-center gap-2">
+            <TabsTrigger value="communication" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <Phone className="h-4 w-4" />
-              Communication
+              <span className="truncate">Comms</span>
             </TabsTrigger>
             <TabsTrigger value="documents" className="flex items-center gap-2">
               <FileText className="h-4 w-4" />
