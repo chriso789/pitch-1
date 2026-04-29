@@ -3467,12 +3467,71 @@ Deno.serve(async (req) => {
         const exceedsPublishableArea = totalAreaSloped > MAX_AUTO_ROOF_AREA_SQFT || totalArea2d > MAX_AUTO_ROOF_AREA_SQFT
         const sumByEdge = (t: RoofEdge['edge_type']) =>
           edges.filter((e) => e.edge_type === t).reduce((s, e) => s + e.length_ft, 0)
-        const ridge_ft = sumByEdge('ridge')
-        const hip_ft = sumByEdge('hip')
-        const valley_ft = sumByEdge('valley')
-        const eave_ft = sumByEdge('eave')
-        const rake_ft = sumByEdge('rake')
-        const perimeter_ft = eave_ft + rake_ft
+        let ridge_ft = sumByEdge('ridge')
+        let hip_ft = sumByEdge('hip')
+        let valley_ft = sumByEdge('valley')
+        let eave_ft = sumByEdge('eave')
+        let rake_ft = sumByEdge('rake')
+        let perimeter_ft = eave_ft + rake_ft
+
+        // ─────────────────────────────────────────────────────────────
+        // VENDOR-REPORT GROUND TRUTH OVERRIDE
+        // If a parsed vendor report (Roofr / EagleView) exists for this
+        // lead or project, treat its measurements as authoritative and
+        // override our synthesized totals + edges. The customer already
+        // paid for that report — we should never publish weaker numbers
+        // when ground truth is on file.
+        // ─────────────────────────────────────────────────────────────
+        let vendorOverrideApplied = false
+        let vendorOverrideReportId: string | null = null
+        let vendorTotalAreaOverride: number | null = null
+        let vendorPitchOverride: string | null = null
+        let vendorDiagramGeometry: any = null
+        let vendorDiagramImageUrl: string | null = null
+        try {
+          const orFilters: string[] = []
+          if (resolved.leadId) orFilters.push(`lead_id.eq.${resolved.leadId}`)
+          // roof_vendor_reports has no project_id column; lead is sufficient
+          const vendorQuery = supa
+            .from('roof_vendor_reports')
+            .select('id, parsed, diagram_geometry, diagram_image_url, provider')
+            .order('created_at', { ascending: false })
+            .limit(1)
+          if (orFilters.length > 0) {
+            vendorQuery.or(orFilters.join(','))
+          }
+          const { data: vRpt } = orFilters.length > 0 ? await vendorQuery.maybeSingle() : { data: null }
+          const parsed: any = vRpt?.parsed
+          const num = (v: any) => {
+            const n = typeof v === 'string' ? parseFloat(v) : v
+            return Number.isFinite(n) ? Number(n) : null
+          }
+          if (parsed && (num(parsed.ridges_ft) != null || num(parsed.eaves_ft) != null || num(parsed.total_area_sqft) != null)) {
+            const r = num(parsed.ridges_ft) ?? 0
+            const h = num(parsed.hips_ft) ?? 0
+            const v = num(parsed.valleys_ft) ?? 0
+            const e = num(parsed.eaves_ft) ?? 0
+            const k = num(parsed.rakes_ft) ?? 0
+            ridge_ft = r
+            hip_ft = h
+            valley_ft = v
+            eave_ft = e
+            rake_ft = k
+            perimeter_ft = e + k
+            vendorTotalAreaOverride = num(parsed.total_area_sqft)
+            vendorPitchOverride = typeof parsed.predominant_pitch === 'string' ? parsed.predominant_pitch : null
+            vendorOverrideApplied = true
+            vendorOverrideReportId = vRpt!.id
+            vendorDiagramGeometry = vRpt!.diagram_geometry ?? null
+            vendorDiagramImageUrl = vRpt!.diagram_image_url ?? null
+            console.log(
+              `[start-ai-measurement] vendor override applied (${vRpt!.provider} ${vRpt!.id}): ` +
+              `ridge=${r} hip=${h} valley=${v} eave=${e} rake=${k} area=${vendorTotalAreaOverride}`,
+            )
+          }
+        } catch (vErr) {
+          console.warn('[start-ai-measurement] vendor override lookup failed:', (vErr as Error).message)
+        }
 
         // Dominant pitch (area-weighted)
         let dominantPitch: string | null = null
