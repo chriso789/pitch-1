@@ -2542,12 +2542,19 @@ function runQualityChecks(input: {
   //   - footprint outside the image (geometry extraction crashed)
   //   - geometry source is synthetic only
   //   - area exceeds publish cap (extractor leaked)
-  //   - alignment < 0.5 (per user spec)
+  //   - alignment < 0.5 only when the footprint is not a real in-frame
+  //     patent-data footprint. A real footprint can sit off-center in the
+  //     analysis tile when the user pin/geocode is imperfect; that is a review
+  //     issue, not a hard no-report failure.
   // Hard failures = the result is unusable even as a fallback.
   // "Patent data only" rule: a real, aligned footprint always publishes in
   // patent shape (Layer 1 perimeter + Layer 2 eaves) with status needs_review
   // when interior structure is missing. We do NOT escalate to internal review
   // just because the segmenter could not resolve ridges.
+  const alignmentHardFailure =
+    overlayAlignmentScore < 0.5 &&
+    !(geometrySourceIsReal && allInside && input.planes.length > 0)
+
   const hardFailure =
     input.hasPlaceholder ||
     !input.calibrated ||
@@ -2556,7 +2563,7 @@ function runQualityChecks(input: {
     !geometrySourceIsReal ||
     !allInside ||
     !areaWithinHardCap ||
-    overlayAlignmentScore < 0.5
+    alignmentHardFailure
 
   if (hardFailure) {
     status = 'needs_internal_review'
