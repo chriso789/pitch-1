@@ -27,7 +27,7 @@ const buildStats = (establishedYear?: number | null) => {
       label: 'Years\nin business',
     },
     { value: '5,000+', label: 'Projects\ncompleted' },
-    { value: '4.9★', label: 'Average\ncustomer rating' },
+    { value: '5.0★', label: 'Average\ncustomer rating' },
     { value: '100%', label: 'Licensed,\nbonded, insured' },
   ];
 };
