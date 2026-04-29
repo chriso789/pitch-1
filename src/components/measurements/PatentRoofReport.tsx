@@ -132,7 +132,7 @@ function Page1Overview({
   };
 
   return (
-    <Card className="p-6">
+    <Card className="measurement-report-page p-6">
       <PageHeader n={1} title="Overview" address={address} />
       {model.image.url ? (
         <>
@@ -272,7 +272,7 @@ function ModelSvg({
 
 function Page2Length({ model }: { model: PatentRoofModel }) {
   return (
-    <Card className="p-6">
+    <Card className="measurement-report-page p-6">
       <PageHeader n={2} title="Length Diagram" />
       <p className="text-xs text-muted-foreground mb-2">
         All measurements rounded to the nearest foot.
@@ -290,7 +290,7 @@ function Page3Pitch({
   onPitchChange: (label: string, pitch: number) => void;
 }) {
   return (
-    <Card className="p-6">
+    <Card className="measurement-report-page p-6">
       <PageHeader n={3} title="Pitch Diagram" />
       <p className="text-xs text-muted-foreground mb-2">Pitch units are inches per foot.</p>
       <ModelSvg model={model} />
