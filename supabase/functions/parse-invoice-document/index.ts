@@ -5,9 +5,52 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
+function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
+  const uint8 = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < uint8.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + CHUNK)) as any);
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+// Try to download a private storage object using the service role key
+// when given either a public URL or a signed URL pointing at our Supabase storage.
+async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !SERVICE_ROLE) return null;
+
+    // Match /storage/v1/object/{public|sign|authenticated}/{bucket}/{path}
+    const m = documentUrl.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/([^?]+)/);
+    if (!m) return null;
+    const bucket = m[1];
+    const path = decodeURIComponent(m[2]);
+
+    const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+    });
+    if (!resp.ok) {
+      console.log(`[parse-invoice] service-role download failed: ${resp.status}`);
+      return null;
+    }
+    const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
+    const buf = await resp.arrayBuffer();
+    return { dataUrl: bufferToDataUrl(buf, mimeType), mimeType };
+  } catch (e) {
+    console.log("[parse-invoice] service-role download error:", (e as Error).message);
+    return null;
+  }
+}
+
 async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
   const response = await fetch(documentUrl);
   if (!response.ok) {
+    // Fallback: attempt service-role download for private buckets
+    const fallback = await tryServiceRoleDownload(documentUrl);
+    if (fallback) return fallback;
     throw new Error(`Failed to fetch document: ${response.status}`);
   }
 
