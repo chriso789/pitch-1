@@ -728,18 +728,16 @@ export function UnifiedMeasurementPanel({
   const otherMeasurements = approvals?.filter(a => a.id !== (activeMeasurement?.id || activeApprovalId)) || [];
   const hasAnyMeasurements = approvals && approvals.length > 0;
 
-  // Find the latest AI measurement that hasn't been saved as an approval yet
+  // Find the latest AI measurement that hasn't been saved as an approval yet.
+  // Suppress the "Latest AI Measurement" card whenever a saved measurement already
+  // exists for this lead — the user has already chosen what to use for estimates,
+  // so showing a duplicate raw AI row just creates noise (and is often the same
+  // run that was already saved, or an earlier inaccurate attempt).
   const latestUnapprovedAI = useMemo(() => {
     if (!aiMeasurements?.length) return null;
-    // The latest AI measurement that hasn't been saved
-    const latest = aiMeasurements[0]; // already sorted desc
-    // Check if this measurement's created_at matches any approval
-    const isSaved = (approvals || []).some(a => {
-      const tags = a.saved_tags as any;
-      return tags?.imported_at === latest.created_at || tags?.source === 'ai_pulled';
-    });
-    // Show if not saved AND has valid data
-    if (!isSaved && latest.total_area_adjusted_sqft && latest.total_area_adjusted_sqft > 0) {
+    if (approvals && approvals.length > 0) return null;
+    const latest = aiMeasurements[0];
+    if (latest?.total_area_adjusted_sqft && latest.total_area_adjusted_sqft > 0) {
       return latest;
     }
     return null;
