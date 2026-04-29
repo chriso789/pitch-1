@@ -176,13 +176,28 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         document_name: file.name
       }));
 
+      // For AI parsing we need a URL the edge function can actually fetch.
+      // The bucket is private, so create a short-lived signed URL.
+      const { data: signed, error: signErr } = await supabase.storage
+        .from('project-invoices')
+        .createSignedUrl(fileName, 60 * 10); // 10 minutes
+
+      if (signErr || !signed?.signedUrl) {
+        toast({
+          title: 'File Uploaded',
+          description: 'Could not auto-scan — please fill fields manually.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
       toast({
         title: 'File Uploaded',
         description: 'Scanning invoice with AI...'
       });
 
-      // Trigger AI parsing after upload
-      parseInvoiceWithAI(urlData.publicUrl);
+      // Trigger AI parsing using the signed URL
+      parseInvoiceWithAI(signed.signedUrl);
     } catch (error: any) {
       toast({
         title: 'Upload Failed',
