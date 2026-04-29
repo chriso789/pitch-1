@@ -503,10 +503,13 @@ function alignAuthoritativeToImage(
 
     // ============================================================
     // USER-DIRECTED CORNER TRANSLATION:
-    // The correction is NOT another flip/rotation. The existing diagram shown
-    // in the bad preview needs to be MOVED so its visible bottom-right corner
-    // lands on the actual roof's top-left corner. Preserve orientation and only
-    // translate the whole footprint from source bottom-right → target top-left.
+    // This is NOT a flip/rotation problem. The user has repeatedly described
+    // the bad overlay as one full footprint up/left of the real house: the
+    // diagram's visible bottom-right corner is the real roof's top-left corner.
+    // Therefore the fix is to move the whole diagram down/right so the
+    // diagram's TOP-LEFT lands where the old BOTTOM-RIGHT was. If a real
+    // image-traced roof footprint exists, use its top-left as the target;
+    // otherwise use the diagram's own bottom-right as the explicit target.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -553,10 +556,13 @@ function alignAuthoritativeToImage(
       })
     }
 
-    const targetTopLeft = nearestCorner(hasImageFootprint ? imageFootprintPx! : authPx, 'topLeft')
+    const sourceTopLeft = nearestCorner(identityPts, 'topLeft')
     const sourceBottomRight = nearestCorner(identityPts, 'bottomRight')
-    const anchorDx = targetTopLeft.x - sourceBottomRight.x
-    const anchorDy = targetTopLeft.y - sourceBottomRight.y
+    const targetTopLeft = hasImageFootprint
+      ? nearestCorner(imageFootprintPx!, 'topLeft')
+      : sourceBottomRight
+    const anchorDx = targetTopLeft.x - sourceTopLeft.x
+    const anchorDy = targetTopLeft.y - sourceTopLeft.y
     const adopt = {
       flipX: false,
       flipY: false,
@@ -564,7 +570,7 @@ function alignAuthoritativeToImage(
       dy: anchorDy,
       pts: identityPts.map((p) => ({ x: p.x + anchorDx, y: p.y + anchorDy })),
     }
-    const adoptReason = `FORCED translation-only anchor (diagram bottom-right→roof top-left; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; no flip/no rotation; iou ${identityIou.toFixed(3)}, edge ${identityEdge.toFixed(3)})`
+    const adoptReason = `FORCED translation-only anchor (diagram top-left→actual roof top-left; actual roof top-left=${hasImageFootprint ? 'image footprint top-left' : 'old diagram bottom-right'}; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; no flip/no rotation; iou ${identityIou.toFixed(3)}, edge ${identityEdge.toFixed(3)})`
 
     console.log(
       `[alignment] FORCED-CORNER-TRANSLATE drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
