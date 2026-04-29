@@ -2543,30 +2543,30 @@ function runQualityChecks(input: {
   //   - geometry source is synthetic only
   //   - area exceeds publish cap (extractor leaked)
   //   - alignment < 0.5 (per user spec)
+  // Hard failures = the result is unusable even as a fallback.
+  // "Patent data only" rule: a real, aligned footprint always publishes in
+  // patent shape (Layer 1 perimeter + Layer 2 eaves) with status needs_review
+  // when interior structure is missing. We do NOT escalate to internal review
+  // just because the segmenter could not resolve ridges.
   const hardFailure =
     input.hasPlaceholder ||
     !input.calibrated ||
     !_imageryOk ||
     input.planes.length === 0 ||
     !geometrySourceIsReal ||
-    planesAreAllRectangles ||
     !allInside ||
     !areaWithinHardCap ||
     overlayAlignmentScore < 0.5
 
   if (hardFailure) {
     status = 'needs_internal_review'
-  } else if (!structuralGeometryResolved || singlePlaneFallback) {
-    // Real, aligned footprint with no verified interior segmentation is still a
-    // usable measurement fallback. Do not fail the job or show the user an
-    // "internal review" error; publish it as review-needed so estimating can
-    // continue while customer-facing PDF generation remains gated downstream.
+  } else if (planesAreAllRectangles || !structuralGeometryResolved || singlePlaneFallback) {
+    // Real, aligned footprint with no verified interior segmentation is still
+    // a usable measurement fallback. Reviewer confirms before publish.
     status = 'needs_review'
   } else if (overall >= 0.65) {
-    // Per CV spec: a usable result (footprint + any planes, with acceptable
-    // alignment) is auto-shipped. Single-plane fallback is a valid output —
-    // overlay/ridge edge-count is for QA visualization, not gating.
-    // The strict 3% vendor-truth gate (downstream) is the only failure path
+    // Per CV spec: a usable result (footprint + planes + acceptable alignment)
+    // auto-ships. Strict 3% vendor-truth gate (downstream) is the only path
     // that can flip this to needs_manual_review.
     status = 'completed'
   } else {
