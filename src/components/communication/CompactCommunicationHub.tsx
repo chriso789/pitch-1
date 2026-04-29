@@ -299,7 +299,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           >
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Recent Activity ({activities.length})
+              Recent Activity ({displayActivities.length})
             </span>
             {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>
@@ -310,13 +310,13 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
               <div className="text-sm text-muted-foreground text-center py-8">
                 Loading...
               </div>
-            ) : activities.length === 0 ? (
+            ) : displayActivities.length === 0 ? (
               <div className="text-sm text-muted-foreground text-center py-8">
                 No communication history
               </div>
             ) : (
               <div className="space-y-1">
-                {activities.map((activity) => (
+                {displayActivities.map((activity) => (
                   <div 
                     key={activity.id}
                     onClick={() => handleActivityClick(activity)}
