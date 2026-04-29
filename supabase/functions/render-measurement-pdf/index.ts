@@ -77,6 +77,7 @@ async function resolveJobId(supa: any, body: Body): Promise<string | null> {
 interface QcOutcome {
   ok: boolean
   reason?: string
+  warnings?: string[]
   measurement?: any
 }
 
@@ -116,25 +117,15 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
       measurement: m,
     }
   }
-  // Single-plane fallback: real footprint but no ridge segmentation. Per spec,
-  // never produce a customer-ready PDF from this — only summary/overlay views
-  // are allowed in the UI.
+  const warnings: string[] = []
   if (grj.single_plane_fallback === true) {
-    return {
-      ok: false,
-      reason: 'single_plane_fallback: roof slopes could not be reliably segmented.',
-      measurement: m,
-    }
+    warnings.push('Footprint estimate: roof slopes could not be fully segmented and should be verified.')
   }
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < OVERLAY_THRESHOLD) {
-    return {
-      ok: false,
-      reason: `overlay_alignment_score ${grj.overlay_alignment_score.toFixed(2)} below threshold ${OVERLAY_THRESHOLD}.`,
-      measurement: m,
-    }
+    warnings.push(`Overlay alignment score ${grj.overlay_alignment_score.toFixed(2)} is below the ${OVERLAY_THRESHOLD} review threshold.`)
   }
 
-  return { ok: true, measurement: m }
+  return { ok: true, warnings, measurement: m }
 }
 
 function rasterizeSvg(svg: string, targetWidth: number): Uint8Array {
@@ -176,6 +167,7 @@ Deno.serve(async (req) => {
         422,
       )
     }
+    const reportWarnings = gate.warnings || []
 
     const { data: diagrams, error: dErr } = await supa
       .from('ai_measurement_diagrams')
@@ -206,6 +198,13 @@ Deno.serve(async (req) => {
       const x = (PAGE_W - drawW) / 2
       const y = PAGE_H - MARGIN - drawH
       page.drawImage(img, { x, y, width: drawW, height: drawH })
+      if (reportWarnings.length > 0) {
+        page.drawText('FOOTPRINT ESTIMATE — VERIFY BEFORE CUSTOMER USE', {
+          x: MARGIN,
+          y: 18,
+          size: 10,
+        })
+      }
     }
 
     const pdfBytes = await pdf.save()
@@ -239,6 +238,7 @@ Deno.serve(async (req) => {
       pdf_url: pdfUrl,
       page_count: diagrams.length,
       ai_measurement_job_id: jobId,
+      warnings: reportWarnings,
     })
   } catch (err) {
     console.error('[render-measurement-pdf] error', err)
