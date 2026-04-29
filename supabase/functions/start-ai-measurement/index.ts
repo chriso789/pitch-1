@@ -2463,15 +2463,50 @@ function isAxisAlignedRectangle(poly: Pt[]): boolean {
 }
 
 /** Structural overlay alignment 0..1: planes inside the image and centered. */
-function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number): number {
+function computeOverlayAlignment(
+  planes: RoofPlane[],
+  imgW: number,
+  imgH: number,
+  imageFootprintPx: Pt[] | null = null,
+  edgeEvidence: ImageEdgeEvidence | null = null,
+): number {
   if (!planes.length || imgW <= 0 || imgH <= 0) return 0
+
+  // Build the full-roof hull from all plane vertices so multi-plane roofs
+  // are scored against their entire footprint, not the largest facet.
+  const allPts = planes.flatMap((p) => p.polygon_px || [])
+  if (allPts.length < 3) return 0
+  const hull = convexHull(allPts)
+  if (hull.length < 3) return 0
+
+  // Image-supported score: real IoU vs the raster-extracted footprint when
+  // available, plus Sobel edge support along the polygon boundary. This
+  // replaces the old centered/in-frame heuristic, which would happily pass
+  // a mirrored or wrongly-translated footprint as long as it stayed in
+  // frame near the image center.
+  const hasImageFootprint = !!imageFootprintPx && imageFootprintPx.length >= 3
+  const iou = hasImageFootprint ? polygonIoU(hull, imageFootprintPx!) : 0
+  const edge = edgeEvidence ? scorePolygonEdgeSupport(hull, edgeEvidence) : 0
+
+  if (hasImageFootprint || edgeEvidence) {
+    // Blend: IoU is the strongest evidence; edge support is a fallback /
+    // secondary signal when only the raster (no closed footprint) is known.
+    const blended = hasImageFootprint && edgeEvidence
+      ? 0.7 * iou + 0.3 * edge
+      : hasImageFootprint
+        ? iou
+        : edge
+    return Math.max(0, Math.min(1, blended))
+  }
+
+  // Last-resort fallback: if neither evidence source is available, fall
+  // back to the legacy centered/in-frame heuristic so we still produce a
+  // non-zero score (used only when raster extraction failed entirely).
   let allInside = true
   let cx = 0, cy = 0, n = 0
-  for (const p of planes) {
-    for (const pt of p.polygon_px) {
-      if (pt.x < 0 || pt.x > imgW || pt.y < 0 || pt.y > imgH) allInside = false
-      cx += pt.x; cy += pt.y; n++
-    }
+  for (const pt of allPts) {
+    if (pt.x < 0 || pt.x > imgW || pt.y < 0 || pt.y > imgH) allInside = false
+    cx += pt.x; cy += pt.y; n++
   }
   if (n === 0) return 0
   cx /= n; cy /= n
@@ -2480,7 +2515,9 @@ function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number
   const offset = Math.sqrt(dx * dx + dy * dy)
   const centerScore = Math.max(0, 1 - offset / 0.25)
   const insideScore = allInside ? 1 : 0.4
-  return Math.min(1, 0.6 * centerScore + 0.4 * insideScore)
+  // Cap legacy fallback at 0.7 so it cannot pass the 0.75 PDF gate on its
+  // own — image-supported evidence must exist for customer-ready output.
+  return Math.min(0.7, 0.6 * centerScore + 0.4 * insideScore)
 }
 
 const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perimeter_fallback'])
