@@ -30,6 +30,7 @@ interface CompactCommunicationHubProps {
   onActivityClick?: (activity: ActivityItem) => void;
   className?: string;
   refreshKey?: number;
+  optimisticActivities?: ActivityItem[];
 }
 
 export interface ActivityItem {
@@ -54,15 +55,24 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
   onSMSClick,
   onActivityClick,
   className,
-  refreshKey
+  refreshKey,
+  optimisticActivities = []
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(false);
   const effectiveTenantId = useEffectiveTenantId();
 
+  const displayActivities = React.useMemo(() => {
+    const byId = new Map<string, ActivityItem>();
+    [...optimisticActivities, ...activities].forEach((activity) => byId.set(activity.id, activity));
+    return Array.from(byId.values())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10);
+  }, [activities, optimisticActivities]);
+
   // Count failed SMS messages for 10DLC warning
-  const failedCount = activities.filter(a => 
+  const failedCount = displayActivities.filter(a => 
     a.type === 'sms' && 
     (a.delivery_status === 'failed' || a.delivery_status === 'delivery_failed' || a.delivery_status === 'undelivered')
   ).length;
