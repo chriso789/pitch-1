@@ -99,18 +99,20 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [jobId, setJobId] = useState<string | null>(explicitJobId || null);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [fullMeasurement, setFullMeasurement] = useState<any | null>(null);
 
-  const previewGate = useMemo(() => evaluatePreviewGate(measurement), [measurement]);
-  const pdfGate = useMemo(() => evaluatePdfGate(measurement), [measurement]);
-  const canOpenExistingPdf = Boolean((measurement as any)?.report_pdf_url && pdfGate.ok);
+  const effectiveMeasurement = fullMeasurement || measurement;
+  const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
+  const pdfGate = useMemo(() => evaluatePdfGate(effectiveMeasurement), [effectiveMeasurement]);
+  const canOpenExistingPdf = Boolean((effectiveMeasurement as any)?.report_pdf_url && pdfGate.ok);
   const reportModel = useMemo(() => {
-    const serverPatent = (measurement as any)?.patent_model
-      || (measurement as any)?.geometry_report_json?.patent_model;
-    const overlay = (measurement as any)?.overlay_schema
-      || (measurement as any)?.geometry_report_json?.overlay_schema;
+    const serverPatent = (effectiveMeasurement as any)?.patent_model
+      || (effectiveMeasurement as any)?.geometry_report_json?.patent_model;
+    const overlay = (effectiveMeasurement as any)?.overlay_schema
+      || (effectiveMeasurement as any)?.geometry_report_json?.overlay_schema;
 
-    return serverPatent ?? (overlay ? overlayToPatentModel(overlay, measurement) : null);
-  }, [measurement]);
+    return serverPatent ?? (overlay ? overlayToPatentModel(overlay, effectiveMeasurement) : null);
+  }, [effectiveMeasurement]);
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0;
 
   const createExportSafeClone = (page: HTMLElement) => {
@@ -200,11 +202,15 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setFullMeasurement(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
+        setFullMeasurement(null);
         let resolvedJobId = explicitJobId || (measurement as any)?.ai_measurement_job_id || null;
         if (!resolvedJobId && pipelineEntryId) {
           const { data } = await (supabase as any)
@@ -225,7 +231,20 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         }
         if (!cancelled) setJobId(resolvedJobId);
 
-        if (previewGate.ok) {
+        const { data: roofMeasurement } = await (supabase as any)
+          .from('roof_measurements')
+          .select('id, ai_measurement_job_id, validation_status, requires_manual_review, facet_count, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, mapbox_image_url, selected_image_source, image_source, measurement_confidence, overlay_schema, patent_model')
+          .eq('ai_measurement_job_id', resolvedJobId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const mergedMeasurement = roofMeasurement
+          ? { ...(measurement as any), ...roofMeasurement }
+          : measurement;
+        if (!cancelled) setFullMeasurement(mergedMeasurement);
+
+        if (evaluatePreviewGate(mergedMeasurement).ok) {
           const { data, error } = await (supabase as any)
             .from('ai_measurement_diagrams')
             .select('id, diagram_type, title, page_number, svg_markup')
@@ -240,10 +259,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, explicitJobId, measurement, pipelineEntryId, previewGate.ok]);
+  }, [open, explicitJobId, measurement, pipelineEntryId]);
 
   const handleDownloadPdf = async () => {
-    const existingPdfUrl = (measurement as any)?.report_pdf_url;
+    const existingPdfUrl = (effectiveMeasurement as any)?.report_pdf_url;
     if (existingPdfUrl && pdfGate.ok) {
       window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
       return;
