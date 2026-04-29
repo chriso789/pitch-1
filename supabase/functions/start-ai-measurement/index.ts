@@ -3073,8 +3073,6 @@ Deno.serve(async (req) => {
               }
             }
           }
-          let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
-          let extractedImageEdgeEvidence: ImageEdgeEvidence | null = null
           if (mb?.image_url) {
             try {
               extractedImageGeometry = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
