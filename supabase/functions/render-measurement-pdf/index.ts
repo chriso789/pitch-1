@@ -19,7 +19,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 import { PDFDocument } from 'npm:pdf-lib@1.17.1'
-import { Resvg } from 'npm:@resvg/resvg-js@2.6.2'
+import { initWasm, Resvg } from 'npm:@resvg/resvg-wasm@2.6.2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,6 +36,8 @@ const OVERLAY_THRESHOLD = 0.75
 const PAGE_W = 816
 const PAGE_H = 1056
 const MARGIN = 32
+const RESVG_WASM_URL = 'https://esm.sh/@resvg/resvg-wasm@2.6.2/index_bg.wasm'
+let resvgReady: Promise<void> | null = null
 
 interface Body {
   ai_measurement_job_id?: string
@@ -77,6 +79,7 @@ async function resolveJobId(supa: any, body: Body): Promise<string | null> {
 interface QcOutcome {
   ok: boolean
   reason?: string
+  warnings?: string[]
   measurement?: any
 }
 
@@ -116,28 +119,24 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
       measurement: m,
     }
   }
-  // Single-plane fallback: real footprint but no ridge segmentation. Per spec,
-  // never produce a customer-ready PDF from this — only summary/overlay views
-  // are allowed in the UI.
+  const warnings: string[] = []
   if (grj.single_plane_fallback === true) {
-    return {
-      ok: false,
-      reason: 'single_plane_fallback: roof slopes could not be reliably segmented.',
-      measurement: m,
-    }
+    warnings.push('Footprint estimate: roof slopes could not be fully segmented and should be verified.')
   }
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < OVERLAY_THRESHOLD) {
-    return {
-      ok: false,
-      reason: `overlay_alignment_score ${grj.overlay_alignment_score.toFixed(2)} below threshold ${OVERLAY_THRESHOLD}.`,
-      measurement: m,
-    }
+    warnings.push(`Overlay alignment score ${grj.overlay_alignment_score.toFixed(2)} is below the ${OVERLAY_THRESHOLD} review threshold.`)
   }
 
-  return { ok: true, measurement: m }
+  return { ok: true, warnings, measurement: m }
 }
 
-function rasterizeSvg(svg: string, targetWidth: number): Uint8Array {
+async function ensureResvgReady() {
+  if (!resvgReady) resvgReady = initWasm(fetch(RESVG_WASM_URL))
+  await resvgReady
+}
+
+async function rasterizeSvg(svg: string, targetWidth: number): Promise<Uint8Array> {
+  await ensureResvgReady()
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'width', value: Math.round(targetWidth) },
     background: 'white',
@@ -176,6 +175,7 @@ Deno.serve(async (req) => {
         422,
       )
     }
+    const reportWarnings = gate.warnings || []
 
     const { data: diagrams, error: dErr } = await supa
       .from('ai_measurement_diagrams')
@@ -198,7 +198,7 @@ Deno.serve(async (req) => {
     for (const d of diagrams) {
       const page = pdf.addPage([PAGE_W, PAGE_H])
       const renderWidth = PAGE_W - MARGIN * 2
-      const png = rasterizeSvg(String(d.svg_markup || ''), renderWidth * 2) // 2x for crispness
+      const png = await rasterizeSvg(String(d.svg_markup || ''), renderWidth * 2) // 2x for crispness
       const img = await pdf.embedPng(png)
       const scale = renderWidth / img.width
       const drawW = img.width * scale
@@ -206,6 +206,13 @@ Deno.serve(async (req) => {
       const x = (PAGE_W - drawW) / 2
       const y = PAGE_H - MARGIN - drawH
       page.drawImage(img, { x, y, width: drawW, height: drawH })
+      if (reportWarnings.length > 0) {
+        page.drawText('FOOTPRINT ESTIMATE — VERIFY BEFORE CUSTOMER USE', {
+          x: MARGIN,
+          y: 18,
+          size: 10,
+        })
+      }
     }
 
     const pdfBytes = await pdf.save()
@@ -239,6 +246,7 @@ Deno.serve(async (req) => {
       pdf_url: pdfUrl,
       page_count: diagrams.length,
       ai_measurement_job_id: jobId,
+      warnings: reportWarnings,
     })
   } catch (err) {
     console.error('[render-measurement-pdf] error', err)

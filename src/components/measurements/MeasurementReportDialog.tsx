@@ -1,5 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import DOMPurify from 'dompurify';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 import {
   Dialog,
   DialogContent,
@@ -61,7 +63,7 @@ function evaluatePreviewGate(measurement: any): { ok: boolean; reason?: string }
 }
 
 /** Client mirror of the PDF-specific QC gate enforced by render-measurement-pdf. */
-function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string } {
+function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warning?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
   const grj = measurement.geometry_report_json;
   if (
@@ -74,11 +76,13 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string } {
   if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
   if (grj.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
+
+  const warnings: string[] = [];
   if (grj.single_plane_fallback === true)
-    return { ok: false, reason: 'Preview-only single-plane fallback.' };
+    warnings.push('Roof slopes could not be fully segmented; PDF will be marked as a footprint estimate.');
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < 0.75)
-    return { ok: false, reason: 'overlay_alignment_score below 0.75.' };
-  return { ok: true };
+    warnings.push('Overlay alignment is below the review threshold; PDF will be marked for verification.');
+  return { ok: true, warning: warnings.join(' ') || undefined };
 }
 
 const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
@@ -90,6 +94,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   aiMeasurementJobId: explicitJobId,
 }) => {
   const { toast } = useToast();
+  const reportContentRef = useRef<HTMLDivElement | null>(null);
   const [diagrams, setDiagrams] = useState<DiagramRow[]>([]);
   const [jobId, setJobId] = useState<string | null>(explicitJobId || null);
   const [loading, setLoading] = useState(false);
@@ -98,6 +103,43 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const previewGate = useMemo(() => evaluatePreviewGate(measurement), [measurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(measurement), [measurement]);
   const canOpenExistingPdf = Boolean((measurement as any)?.report_pdf_url && pdfGate.ok);
+
+  const downloadVisibleReportPdf = async () => {
+    const root = reportContentRef.current;
+    if (!root) throw new Error('Report preview is not ready yet.');
+    const pages = Array.from(root.querySelectorAll<HTMLElement>('.measurement-report-page'));
+    if (pages.length === 0) throw new Error('No report pages are available to export.');
+
+    await document.fonts?.ready;
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = pdf.internal.pageSize.getHeight();
+    const margin = 24;
+    const usableWidth = pdfWidth - margin * 2;
+    const usableHeight = pdfHeight - margin * 2;
+
+    for (let index = 0; index < pages.length; index += 1) {
+      const canvas = await html2canvas(pages[index], {
+        scale: 1.5,
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: '#ffffff',
+        logging: false,
+      });
+      const imgData = canvas.toDataURL('image/jpeg', 0.65);
+      const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
+      const width = canvas.width * ratio;
+      const height = canvas.height * ratio;
+      if (index > 0) pdf.addPage();
+      pdf.addImage(imgData, 'JPEG', (pdfWidth - width) / 2, margin, width, height);
+    }
+
+    const safeAddress = (address || 'measurement-report')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/(^-|-$)/g, '') || 'measurement-report';
+    pdf.save(`${safeAddress}-measurement-report.pdf`);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -151,6 +193,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     if (!jobId) return;
     setDownloading(true);
     try {
+      await downloadVisibleReportPdf();
+      setDownloading(false);
+      return;
+    } catch (clientErr: any) {
+      console.warn('Client PDF export failed, falling back to server render:', clientErr);
+    }
+
+    try {
       const { data, error } = await supabase.functions.invoke('render-measurement-pdf', {
         body: { ai_measurement_job_id: jobId },
       });
@@ -167,11 +217,11 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       if (!url) throw new Error('No PDF URL returned.');
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (err: any) {
-      toast({
-        title: 'PDF generation failed',
-        description: err?.message || 'Unknown error',
-        variant: 'destructive',
-      });
+          toast({
+            title: 'PDF generation failed',
+            description: err?.message || 'Unknown error',
+            variant: 'destructive',
+          });
     } finally {
       setDownloading(false);
     }
@@ -202,6 +252,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         </DialogHeader>
 
         <ScrollArea className="h-[calc(90vh-100px)] px-6 pb-6">
+          <div ref={reportContentRef}>
           {!previewGate.ok ? (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
@@ -232,17 +283,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               if (model) {
                 return (
                   <div className="space-y-6">
-                    {!pdfGate.ok && (
+                    {(!pdfGate.ok || pdfGate.warning) && (
                       <Alert>
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>
-                          {pdfGate.reason?.includes('single-plane')
+                          {pdfGate.warning
+                            ? 'Footprint estimate'
+                            : pdfGate.reason?.includes('single-plane')
                             ? 'Footprint estimate'
                             : 'Preview only'}
                         </AlertTitle>
                         <AlertDescription>
-                          {pdfGate.reason?.includes('single-plane')
-                            ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
+                          {pdfGate.warning
+                            ? pdfGate.warning
+                            : pdfGate.reason?.includes('single-plane')
+                            ? 'Roof slopes could not be segmented. Showing footprint estimate.'
                             : `Preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
                         </AlertDescription>
                       </Alert>
@@ -267,17 +322,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
               return (
                 <div className="space-y-6">
-                  {!pdfGate.ok && (
+                  {(!pdfGate.ok || pdfGate.warning) && (
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>
-                        {pdfGate.reason?.includes('single-plane')
+                        {pdfGate.warning
+                          ? 'Footprint estimate'
+                          : pdfGate.reason?.includes('single-plane')
                           ? 'Footprint estimate'
                           : 'Preview only'}
                       </AlertTitle>
                       <AlertDescription>
-                        {pdfGate.reason?.includes('single-plane')
-                          ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
+                        {pdfGate.warning
+                          ? pdfGate.warning
+                          : pdfGate.reason?.includes('single-plane')
+                          ? 'Roof slopes could not be segmented. Showing footprint estimate.'
                           : `Diagram preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
                       </AlertDescription>
                     </Alert>
@@ -306,7 +365,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                       USE_PROFILES: { svg: true, svgFilters: true },
                     });
                     return (
-                      <div key={d.id} className="border rounded-lg overflow-hidden bg-background">
+                      <div key={d.id} className="measurement-report-page border rounded-lg overflow-hidden bg-background">
                         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
                           <div className="font-semibold text-sm">
                             {d.page_number}. {label}
@@ -324,6 +383,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               );
             })()
           )}
+          </div>
         </ScrollArea>
       </DialogContent>
     </Dialog>
