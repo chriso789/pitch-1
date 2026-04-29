@@ -262,7 +262,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   }, [open, explicitJobId, measurement, pipelineEntryId]);
 
   const handleDownloadPdf = async () => {
-    const existingPdfUrl = (measurement as any)?.report_pdf_url;
+    const existingPdfUrl = (effectiveMeasurement as any)?.report_pdf_url;
     if (existingPdfUrl && pdfGate.ok) {
       window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
       return;
