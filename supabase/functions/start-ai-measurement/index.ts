@@ -376,6 +376,30 @@ function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]
   return uni > 0 ? inter / uni : 0
 }
 
+/** Andrew's monotone-chain convex hull. Returns CCW hull of input points. */
+function convexHull(points: Pt[]): Pt[] {
+  const pts = points
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+    .slice()
+    .sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x))
+  if (pts.length <= 1) return pts
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: Pt[] = []
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+    lower.push(p)
+  }
+  const upper: Pt[] = []
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
+    upper.push(p)
+  }
+  upper.pop()
+  lower.pop()
+  return [...lower, ...upper]
+}
+
 type ImageEdgeEvidence = {
   mag: Uint8Array
   dW: number
