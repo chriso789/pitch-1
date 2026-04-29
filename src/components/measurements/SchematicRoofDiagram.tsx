@@ -447,7 +447,17 @@ export function SchematicRoofDiagram({
       : [];
     const overlayFeatures = Array.isArray(overlaySchema?.features) ? overlaySchema.features : [];
 
-    if (localShowOverlay && satelliteImageUrl && overlayPolygon.length >= 3) {
+    // Canonical overlay schema is the single source of truth whenever it
+    // exists. Audit fix: if the backend already produced a canonical
+    // pixel-space polygon and transform, render it directly — never let
+    // the legacy GPS/WKT/auto-fit code recompute a different transform.
+    const overlayTransform = overlaySchema?.transform;
+    const hasCanonicalOverlay =
+      overlayPolygon.length >= 3 &&
+      Number.isFinite(Number(overlaySchema?.image?.width || overlayTransform?.imageWidth)) &&
+      Number.isFinite(Number(overlaySchema?.image?.height || overlayTransform?.imageHeight));
+
+    if (hasCanonicalOverlay) {
       const srcW = Number(overlaySchema?.image?.width || overlaySchema?.transform?.imageWidth || measurement?.analysis_image_size?.width || 1280);
       const srcH = Number(overlaySchema?.image?.height || overlaySchema?.transform?.imageHeight || measurement?.analysis_image_size?.height || 1280);
       let cMinX = Math.min(...overlayPolygon.map(p => p.x));
