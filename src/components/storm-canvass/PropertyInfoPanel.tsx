@@ -640,6 +640,7 @@ export default function PropertyInfoPanel({
 
       // Check for an existing contact at this address (duplicate trigger will block insert otherwise)
       let createdContact: any = null;
+      let wasExisting = false;
       if (newContact.first_name && newContact.address_street) {
         const { data: existing } = await supabase
           .from('contacts')
@@ -650,7 +651,10 @@ export default function PropertyInfoPanel({
           .eq('is_deleted', false)
           .limit(1)
           .maybeSingle();
-        if (existing) createdContact = existing;
+        if (existing) {
+          createdContact = existing;
+          wasExisting = true;
+        }
       }
 
       if (!createdContact) {
@@ -671,6 +675,7 @@ export default function PropertyInfoPanel({
               .limit(1)
               .maybeSingle();
             createdContact = dup;
+            wasExisting = true;
           } else {
             throw error;
           }
@@ -681,13 +686,92 @@ export default function PropertyInfoPanel({
 
       if (!createdContact) throw new Error('Could not create or locate contact');
 
+      // MERGE enrichment data into existing contact (phones/emails/metadata)
+      // so canvass-discovered phone numbers and emails don't get dropped.
+      if (wasExisting) {
+        const allNewPhones: string[] = (phoneNumbers || [])
+          .map((p: any) => (typeof p === 'string' ? p : p?.number))
+          .filter(Boolean);
+        const allNewEmails: string[] = (emails || [])
+          .map((e: any) => (typeof e === 'string' ? e : e?.address || e?.email))
+          .filter(Boolean);
+
+        const existingAdditionalPhones: string[] = Array.isArray(createdContact.additional_phones)
+          ? createdContact.additional_phones
+          : [];
+        const existingAdditionalEmails: string[] = Array.isArray(createdContact.additional_emails)
+          ? createdContact.additional_emails
+          : [];
+
+        const knownPhones = new Set<string>(
+          [createdContact.phone, createdContact.secondary_phone, ...existingAdditionalPhones].filter(Boolean) as string[]
+        );
+        const knownEmails = new Set<string>(
+          [createdContact.email, createdContact.secondary_email, ...existingAdditionalEmails].filter(Boolean) as string[]
+        );
+
+        const newUniquePhones = allNewPhones.filter((p) => !knownPhones.has(p));
+        const newUniqueEmails = allNewEmails.filter((e) => !knownEmails.has(e));
+
+        const updates: Record<string, any> = {};
+
+        // Fill primary phone if blank, else stack into additional_phones
+        if (!createdContact.phone && newUniquePhones.length > 0) {
+          updates.phone = newUniquePhones.shift();
+        }
+        if (!createdContact.secondary_phone && newUniquePhones.length > 0) {
+          updates.secondary_phone = newUniquePhones.shift();
+        }
+        if (newUniquePhones.length > 0) {
+          updates.additional_phones = [...existingAdditionalPhones, ...newUniquePhones];
+        }
+
+        if (!createdContact.email && newUniqueEmails.length > 0) {
+          updates.email = newUniqueEmails.shift();
+        }
+        if (!createdContact.secondary_email && newUniqueEmails.length > 0) {
+          updates.secondary_email = newUniqueEmails.shift();
+        }
+        if (newUniqueEmails.length > 0) {
+          updates.additional_emails = [...existingAdditionalEmails, ...newUniqueEmails];
+        }
+
+        // Always link property and merge enrichment metadata
+        if (!createdContact.canvassiq_property_id) {
+          updates.canvassiq_property_id = property.id;
+        }
+        if (!createdContact.latitude && propertyLat) updates.latitude = propertyLat;
+        if (!createdContact.longitude && propertyLng) updates.longitude = propertyLng;
+
+        const mergedMetadata = {
+          ...(createdContact.metadata || {}),
+          ...newContact.metadata,
+          enrichment_merged_at: new Date().toISOString(),
+        };
+        updates.metadata = mergedMetadata;
+
+        if (Object.keys(updates).length > 0) {
+          const { data: updated, error: updateError } = await supabase
+            .from('contacts')
+            .update(updates)
+            .eq('id', createdContact.id)
+            .select()
+            .single();
+          if (updateError) {
+            console.error('Failed to merge enrichment into existing contact:', updateError);
+          } else if (updated) {
+            createdContact = updated;
+          }
+        }
+      }
+
       // Link property to contact
       await supabase
         .from('canvassiq_properties')
         .update({ contact_id: createdContact.id })
         .eq('id', property.id);
 
-      toast.success('Customer added successfully!');
+      toast.success(wasExisting ? 'Contact updated with enrichment data' : 'Customer added successfully!');
       onOpenChange(false);
     } catch (err: any) {
       console.error('Error creating contact:', err);
