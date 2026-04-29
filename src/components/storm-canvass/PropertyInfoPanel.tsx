@@ -638,13 +638,48 @@ export default function PropertyInfoPanel({
         }
       };
 
-      const { data: createdContact, error } = await supabase
-        .from('contacts')
-        .insert([newContact])
-        .select()
-        .single();
+      // Check for an existing contact at this address (duplicate trigger will block insert otherwise)
+      let createdContact: any = null;
+      if (newContact.first_name && newContact.address_street) {
+        const { data: existing } = await supabase
+          .from('contacts')
+          .select('*')
+          .eq('tenant_id', profile.tenant_id)
+          .ilike('first_name', newContact.first_name.trim())
+          .ilike('last_name', (newContact.last_name || '').trim())
+          .eq('is_deleted', false)
+          .limit(1)
+          .maybeSingle();
+        if (existing) createdContact = existing;
+      }
 
-      if (error) throw error;
+      if (!createdContact) {
+        const { data, error } = await supabase
+          .from('contacts')
+          .insert([newContact])
+          .select()
+          .single();
+        if (error) {
+          // Duplicate trigger raised — treat as success and link the existing record
+          if (String(error.message || '').toLowerCase().includes('already exists')) {
+            const { data: dup } = await supabase
+              .from('contacts')
+              .select('*')
+              .eq('tenant_id', profile.tenant_id)
+              .ilike('first_name', newContact.first_name || '')
+              .ilike('last_name', newContact.last_name || '')
+              .limit(1)
+              .maybeSingle();
+            createdContact = dup;
+          } else {
+            throw error;
+          }
+        } else {
+          createdContact = data;
+        }
+      }
+
+      if (!createdContact) throw new Error('Could not create or locate contact');
 
       // Link property to contact
       await supabase
@@ -656,7 +691,7 @@ export default function PropertyInfoPanel({
       onOpenChange(false);
     } catch (err: any) {
       console.error('Error creating contact:', err);
-      toast.error('Failed to add customer');
+      toast.error(err?.message || 'Failed to add customer');
     }
   };
 
