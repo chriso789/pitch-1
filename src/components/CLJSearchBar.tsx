@@ -255,12 +255,12 @@ export const CLJSearchBar = () => {
           if (searchTerm.length >= 2 && results.length > 0) {
             setOpen(true);
           } else if (searchTerm.length < 2) {
-            const r = loadRecents(activeTenantId);
+            const r = loadRecents(activeTenantId, currentLocationId);
             if (r.length > 0) {
               setOpen(true);
               // Pull live names from DB on every focus so renames show up
               // immediately without requiring a tenant switch or reload.
-              refreshRecents(activeTenantId);
+              refreshRecents(activeTenantId, currentLocationId);
             }
           }
         }}
