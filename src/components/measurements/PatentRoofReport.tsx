@@ -317,7 +317,7 @@ function Page3Pitch({
 
 function Page4Area({ model }: { model: PatentRoofModel }) {
   return (
-    <Card className="p-6">
+    <Card className="measurement-report-page p-6">
       <PageHeader n={4} title="Area Diagram" />
       <p className="text-sm font-medium mb-3">
         Total Area = {model.totals.roof_area_sqft.toFixed(0)} sqft
@@ -356,7 +356,7 @@ function Page5Perimeter({
   onOverride: (id: string, value: string) => void;
 }) {
   return (
-    <Card className="p-6">
+    <Card className="measurement-report-page p-6">
       <PageHeader n={5} title="Perimeter Table" />
       <p className="text-xs text-muted-foreground mb-3">
         Edit a length value to override the computed measurement. Area
@@ -408,7 +408,7 @@ function Page6Notes({ model }: { model: PatentRoofModel }) {
   }, [model.imagery_qc]);
 
   return (
-    <Card className="p-6">
+    <Card className="measurement-report-page p-6">
       <PageHeader n={6} title="Notes & Summary" />
       <div className="space-y-3 text-sm">
         <div className="flex items-center gap-2">{qcBadge}</div>
