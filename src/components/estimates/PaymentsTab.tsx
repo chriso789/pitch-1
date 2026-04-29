@@ -65,6 +65,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
+  const [showLineDetails, setShowLineDetails] = useState(true);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
