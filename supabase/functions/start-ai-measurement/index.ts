@@ -3610,12 +3610,12 @@ Deno.serve(async (req) => {
         }
 
         // ── Patent two-layer model (US 9,329,749 / US 8,515,125 family) ──
-        // Built ONLY from real, measured geometry. Synthetic ridges
-        // (solar_dsm_inferred_ridge, filled_perimeter) and placeholder bbox
-        // planes are excluded so the report reflects patent-data only — no
-        // guesses. When the segmenter can't resolve interior structure, we
-        // emit Layer 1 perimeter + perimeter-coincident eaves only and let
-        // the QC gate downgrade to needs_review.
+        // Built from real measured geometry plus, when imagery cannot
+        // resolve interior structure, patent-shaped synthesis derived from
+        // the rectilinear footprint (ridges/hips/valleys/rakes/eaves).
+        // Truly speculative sources (Solar DSM single ridge, filled
+        // perimeter eaves) remain excluded — only the structured patent
+        // synthesis is admitted.
         const SYNTHETIC_EDGE_SOURCES = new Set([
           'solar_dsm_inferred_ridge',
           'filled_perimeter',
@@ -3626,6 +3626,9 @@ Deno.serve(async (req) => {
             e.edge_type !== 'unknown' &&
             !SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
         )
+        const patentSynthesizedCount = patentEdges.filter(
+          (e) => String((e as any).source || '') === 'patent_synthesis',
+        ).length
         const patentPlanes = planes.filter(
           (p) => !PLACEHOLDER_SOURCES.has(String(p.source)),
         )
