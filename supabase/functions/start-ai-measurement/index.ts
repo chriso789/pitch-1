@@ -3550,6 +3550,15 @@ Deno.serve(async (req) => {
         if (!dominantPitch && pitchOverride) dominantPitch = pitchOverride
         if (!dominantPitch) dominantPitch = '6/12'
 
+        // Apply vendor-report overrides for area + pitch when present.
+        if (vendorOverrideApplied) {
+          if (vendorPitchOverride) dominantPitch = vendorPitchOverride
+          if (vendorTotalAreaOverride && vendorTotalAreaOverride > 0) {
+            totalAreaSloped = vendorTotalAreaOverride
+            exceedsPublishableArea = totalAreaSloped > MAX_AUTO_ROOF_AREA_SQFT
+          }
+        }
+
         const roofSquares = totalAreaSloped / 100
         const wasteSquares = roofSquares * (1 + wasteFactor / 100)
 
