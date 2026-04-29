@@ -252,23 +252,23 @@ const ContactProfile = () => {
 
   return (
     <GlobalLayout>
-      <div className="container mx-auto p-6 space-y-6 overflow-hidden">
+      <div className="container mx-auto p-4 sm:p-6 space-y-6 overflow-hidden">
         {/* Header Section */}
-        <div className="flex items-center gap-4 mb-8">
-          <BackButton respectHistory={true} fallbackPath="/" />
-          <div className="flex-1">
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 gradient-primary rounded-full flex items-center justify-center shadow-medium">
-                <User className="h-8 w-8 text-white" />
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 mb-6 sm:mb-8 min-w-0">
+          <div className="self-start"><BackButton respectHistory={true} fallbackPath="/" /></div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-start sm:items-center gap-3 sm:gap-4 min-w-0">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 shrink-0 gradient-primary rounded-full flex items-center justify-center shadow-medium">
+                <User className="h-6 w-6 sm:h-8 sm:w-8 text-white" />
               </div>
-              <div>
-                <h1 className="text-3xl font-bold text-foreground">
+              <div className="min-w-0 flex-1">
+                <h1 className="text-xl sm:text-3xl font-bold text-foreground break-words leading-tight">
                   {contact.first_name} {contact.last_name}
                 </h1>
-                <div className="flex items-center gap-3 mt-1">
-                  <p className="text-muted-foreground text-lg">{contact.company_name || 'Homeowner'}</p>
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3 mt-1">
+                  <p className="text-muted-foreground text-sm sm:text-lg">{contact.company_name || 'Homeowner'}</p>
                   {contact.contact_number && (
-                    <Badge variant="secondary" className="text-sm">#{contact.contact_number}</Badge>
+                    <Badge variant="secondary" className="text-xs sm:text-sm">#{contact.contact_number}</Badge>
                   )}
                   <div onClick={e => e.stopPropagation()}>
                   <Select
@@ -301,23 +301,23 @@ const ContactProfile = () => {
             </div>
 
             {/* Compact contact info bar */}
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-muted-foreground">
+            <div className="flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-x-4 gap-y-1.5 mt-3 text-sm text-muted-foreground min-w-0">
               {contact.phone && (
-                <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 hover:text-foreground transition-colors">
-                  <Phone className="h-3.5 w-3.5" />
-                  <span>{contact.phone}</span>
+                <a href={`tel:${contact.phone}`} className="flex items-center gap-1.5 hover:text-foreground transition-colors min-w-0">
+                  <Phone className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{contact.phone}</span>
                 </a>
               )}
               {contact.email && (
-                <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 hover:text-foreground transition-colors">
-                  <Mail className="h-3.5 w-3.5" />
-                  <span>{contact.email}</span>
+                <a href={`mailto:${contact.email}`} className="flex items-center gap-1.5 hover:text-foreground transition-colors min-w-0">
+                  <Mail className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{contact.email}</span>
                 </a>
               )}
               {(contact.address_street || contact.address_city) && (
-                <span className="flex items-center gap-1.5">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span>
+                <span className="flex items-start gap-1.5 min-w-0">
+                  <MapPin className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                  <span className="break-words">
                     {[contact.address_street, contact.address_city, contact.address_state && contact.address_zip ? `${contact.address_state} ${contact.address_zip}` : contact.address_state || contact.address_zip].filter(Boolean).join(', ')}
                   </span>
                 </span>
