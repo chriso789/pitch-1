@@ -403,13 +403,62 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         console.error('Invoice creation error:', error);
         throw new Error(error.message || 'Failed to create invoice');
       }
+
+      // Fetch customer for the PDF (contact via pipeline_entry)
+      let customer = { name: '', address: '', email: '', phone: '' } as Record<string, string>;
+      try {
+        const { data: pe } = await supabase
+          .from('pipeline_entries')
+          .select('contact_id, contacts!pipeline_entries_contact_id_fkey(first_name,last_name,email,phone,address,city,state,zip)')
+          .eq('id', pipelineEntryId)
+          .maybeSingle();
+        const c: any = (pe as any)?.contacts;
+        if (c) {
+          customer.name = [c.first_name, c.last_name].filter(Boolean).join(' ');
+          customer.email = c.email || '';
+          customer.phone = c.phone || '';
+          customer.address = [c.address, [c.city, c.state, c.zip].filter(Boolean).join(', ')]
+            .filter(Boolean)
+            .join('\n');
+        }
+      } catch (e) {
+        console.warn('Could not load contact for invoice PDF', e);
+      }
+
+      // Generate + upload PDF (non-blocking failure — invoice is already saved)
+      try {
+        const today = new Date();
+        const due = invoiceDueDate ? new Date(invoiceDueDate + 'T00:00:00') : null;
+        const result = await generateAndSaveInvoicePdf({
+          tenantId: activeTenantId!,
+          pipelineEntryId,
+          userId: user.id,
+          data: {
+            invoiceNumber,
+            invoiceDate: format(today, 'MMM d, yyyy'),
+            dueDate: due ? format(due, 'MMM d, yyyy') : null,
+            notes: invoiceNotes || null,
+            lineItems: lineItemsPayload,
+            amount,
+            company: companyInfo,
+            customer,
+          },
+        });
+        if (result.error) {
+          console.warn('Invoice PDF saved with warning:', result.error);
+        }
+      } catch (pdfErr: any) {
+        console.error('Failed to generate invoice PDF:', pdfErr);
+        toast.warning('Invoice created, but PDF generation failed');
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
       setShowInvoiceDialog(false);
       setInvoiceNotes('');
       setInvoiceDueDate('');
-      toast.success('Invoice created');
+      toast.success('Invoice created and PDF saved to Documents');
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to create invoice'),
   });
