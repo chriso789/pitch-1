@@ -97,7 +97,7 @@ export default function CommissionReport() {
 
   const isManager = currentUser?.user_roles?.some(
     (r: { role: string }) =>
-      ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(r.role)
+      ['master', 'owner', 'admin', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(r.role)
   );
 
   // Get qualifying pipeline stage keys for this tenant
