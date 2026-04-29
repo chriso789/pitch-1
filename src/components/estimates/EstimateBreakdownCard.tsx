@@ -132,12 +132,22 @@ export function EstimateBreakdownCard({
             </span>
             <span className="font-medium">{formatCurrency(breakdown.overheadAmount)}</span>
           </div>
-          
+
+          {config.salesTaxEnabled && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="flex items-center gap-2 text-muted-foreground">
+                <Receipt className="h-4 w-4" />
+                Sales Tax on Materials ({config.salesTaxRate.toFixed(2)}%)
+              </span>
+              <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount)}</span>
+            </div>
+          )}
+
           <Separator className="my-2" />
-          
+
           <div className="flex items-center justify-between">
-            <span className="font-medium">Total Cost</span>
-            <span className="font-semibold">{formatCurrency(breakdown.totalCost)}</span>
+            <span className="font-medium">Total Cost {config.salesTaxEnabled && <span className="text-xs text-muted-foreground font-normal">(incl. tax)</span>}</span>
+            <span className="font-semibold">{formatCurrency(breakdown.totalCost + (config.salesTaxEnabled ? breakdown.salesTaxAmount : 0))}</span>
           </div>
         </div>
 
@@ -179,22 +189,6 @@ export function EstimateBreakdownCard({
 
         <Separator />
 
-        {/* Sales Tax (Internal View Only) - Applied to materials only */}
-        {config.salesTaxEnabled && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-sm">
-              <span className="flex items-center gap-2 text-muted-foreground">
-                <Receipt className="h-4 w-4" />
-                Sales Tax on Materials ({config.salesTaxRate.toFixed(2)}%)
-                <Badge variant="outline" className="text-xs">Included in Total</Badge>
-              </span>
-              <span className="font-medium">{formatCurrency(breakdown.salesTaxAmount)}</span>
-            </div>
-            <div className="text-xs text-muted-foreground pl-6">
-              Pre-tax selling price: {formatCurrency(breakdown.preTaxSellingPrice)}
-            </div>
-          </div>
-        )}
 
         {/* Selling Price - Now includes tax (customer-facing total) */}
         <div className="flex items-center justify-between py-2">
