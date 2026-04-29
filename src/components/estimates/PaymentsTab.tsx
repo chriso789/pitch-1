@@ -325,21 +325,39 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       return;
     }
 
-    const estimateTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
+    // Step 1: Scale line item COSTS up to SELLING PRICE (apply markup pro-rata).
+    // Estimate line items store internal costs; the customer-facing total is `selling_price`.
+    const costTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
+    const targetSellingPrice = enhancedEst?.selling_price
+      ? Number(enhancedEst.selling_price)
+      : sellingPrice;
+    const markupScale =
+      costTotal > 0 && targetSellingPrice > 0 ? targetSellingPrice / costTotal : 1;
+
+    const sellingPriceItems = baseItems.map((item) => {
+      if (markupScale === 1) return item;
+      const newTotal = Math.round(item.line_total * markupScale * 100) / 100;
+      const qty = Number(item.qty) || 1;
+      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+    });
+
+    // Step 2: If prior payments/invoices exist, scale further to remaining balance.
+    const sellingTotal = sellingPriceItems.reduce((s, i) => s + i.line_total, 0);
     const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
     const outstandingInvoiced = (invoices || [])
       .filter((inv: any) => inv.status !== 'void')
       .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
 
     const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
-    const scale =
-      remaining > 0 && estimateTotal > 0 && remaining < estimateTotal
-        ? remaining / estimateTotal
+    const balanceScale =
+      remaining > 0 && sellingTotal > 0 && remaining < sellingTotal
+        ? remaining / sellingTotal
         : 1;
 
-    const scaled = baseItems.map((item) => {
-      if (scale === 1) return item;
-      const newTotal = Math.round(item.line_total * scale * 100) / 100;
+    const scaled = sellingPriceItems.map((item) => {
+      if (balanceScale === 1) return item;
+      const newTotal = Math.round(item.line_total * balanceScale * 100) / 100;
       const qty = Number(item.qty) || 1;
       const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
       return { ...item, unit_cost: newUnitCost, line_total: newTotal };
