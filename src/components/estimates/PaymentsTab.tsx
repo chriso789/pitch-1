@@ -67,7 +67,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
-  // Fetch estimates from enhanced_estimates first
+  // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
   const { data: enhancedEstimates } = useQuery({
     queryKey: ['enhanced-estimate-line-items', pipelineEntryId],
     queryFn: async () => {
@@ -75,7 +75,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .from('enhanced_estimates')
         .select('id, line_items, selling_price, status')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .in('status', ['approved', 'sent', 'signed'])
+        .not('status', 'in', '(void,cancelled,rejected)')
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
@@ -91,7 +91,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .from('estimates')
         .select('id, line_items, status')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .in('status', ['approved', 'sent', 'signed'])
+        .not('status', 'in', '(void,cancelled,rejected)')
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
