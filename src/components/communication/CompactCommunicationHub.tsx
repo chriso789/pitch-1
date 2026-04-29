@@ -126,7 +126,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           direction: item.direction as 'inbound' | 'outbound',
           content: item.communication_type === 'email' 
             ? item.subject || 'No subject' 
-            : item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
+            : item.content || 'No message content',
           created_at: item.created_at,
           delivery_status: item.delivery_status,
           sms_thread_id: null,
@@ -208,7 +208,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
     
     switch (status.toLowerCase()) {
       case 'delivered':
-        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-success/10 text-success border-success/20">Delivered</Badge>
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-success/10 text-success border-success/20">Delivered</Badge>;
       case 'sent':
         return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-primary/10 text-primary border-primary/20">Sent</Badge>;
       case 'queued':
