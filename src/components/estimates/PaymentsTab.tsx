@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogTrigger 
 } from '@/components/ui/dialog';
 import { 
-  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle
+  DollarSign, Plus, CreditCard, FileText, Loader2, Receipt, ChevronDown, Trash2, Copy, Link2, CheckCircle2, Camera, Building2, AlertCircle, Pencil
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -70,6 +70,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceNotes, setInvoiceNotes] = useState('');
   const [showLineDetails, setShowLineDetails] = useState(true);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
+
+  // Edit invoice state
+  const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
+  const [editLineItems, setEditLineItems] = useState<InvoiceLineItem[]>([]);
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
 
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
   const { data: enhancedEstimates } = useQuery({
@@ -464,6 +471,114 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       toast.success('Invoice created and PDF saved to Documents');
     },
     onError: (err: Error) => toast.error(err.message || 'Failed to create invoice'),
+  });
+
+  // Open edit dialog
+  const openEditInvoice = (inv: any) => {
+    const items: InvoiceLineItem[] = Array.isArray(inv.line_items)
+      ? (inv.line_items as any[]).map((li) => ({
+          description: li.description || '',
+          qty: Number(li.qty) || 0,
+          unit: li.unit || 'ea',
+          unit_cost: Number(li.unit_cost) || 0,
+          line_total: Number(li.line_total) || 0,
+        }))
+      : [];
+    setEditingInvoice(inv);
+    setEditLineItems(items);
+    setEditDueDate(inv.due_date ? format(new Date(inv.due_date + 'T00:00:00'), 'yyyy-MM-dd') : '');
+    setEditNotes(inv.notes || '');
+  };
+
+  const updateEditItem = (idx: number, patch: Partial<InvoiceLineItem>) => {
+    setEditLineItems((prev) =>
+      prev.map((it, i) => {
+        if (i !== idx) return it;
+        const merged = { ...it, ...patch } as InvoiceLineItem;
+        const qty = Number(merged.qty) || 0;
+        const unitCost = Number(merged.unit_cost) || 0;
+        merged.line_total = Math.round(qty * unitCost * 100) / 100;
+        return merged;
+      })
+    );
+  };
+
+  const removeEditItem = (idx: number) => {
+    setEditLineItems((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const editInvoiceTotal = useMemo(
+    () => editLineItems.reduce((s, i) => s + (Number(i.line_total) || 0), 0),
+    [editLineItems]
+  );
+
+  const updateInvoiceMutation = useMutation({
+    mutationFn: async () => {
+      if (!editingInvoice) throw new Error('No invoice');
+      if (editLineItems.length === 0) throw new Error('Invoice must have at least one line item');
+      const newAmount = Math.round(editInvoiceTotal * 100) / 100;
+      if (newAmount <= 0) throw new Error('Invoice total must be greater than zero');
+
+      // Preserve already-paid amount: balance = newAmount - paidSoFar
+      const paidSoFar = Math.max(0, Number(editingInvoice.amount) - Number(editingInvoice.balance));
+      const newBalance = Math.max(0, Math.round((newAmount - paidSoFar) * 100) / 100);
+      let newStatus = editingInvoice.status;
+      if (newStatus !== 'void') {
+        if (newBalance === 0 && paidSoFar > 0) newStatus = 'paid';
+        else if (paidSoFar > 0 && newBalance > 0) newStatus = 'partial';
+        else if (paidSoFar === 0) newStatus = editingInvoice.status === 'sent' ? 'sent' : 'draft';
+      }
+
+      const { error } = await supabase
+        .from('project_invoices')
+        .update({
+          amount: newAmount,
+          balance: newBalance,
+          status: newStatus,
+          due_date: editDueDate || null,
+          notes: editNotes || null,
+          line_items: editLineItems as any,
+        })
+        .eq('id', editingInvoice.id);
+      if (error) throw new Error(error.message || 'Failed to update invoice');
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      toast.success('Invoice updated');
+      setEditingInvoice(null);
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+
+  const deleteInvoiceMutation = useMutation({
+    mutationFn: async (inv: any) => {
+      const paidSoFar = Number(inv.amount) - Number(inv.balance);
+      if (paidSoFar > 0) {
+        throw new Error('Cannot delete an invoice with payments applied. Void it instead.');
+      }
+      const { error } = await supabase.from('project_invoices').delete().eq('id', inv.id);
+      if (error) throw new Error(error.message || 'Failed to delete invoice');
+
+      // Best-effort cleanup of generated PDF + document record
+      try {
+        const safeNumber = String(inv.invoice_number).replace(/[^A-Za-z0-9_-]/g, '_');
+        const filePath = `${activeTenantId}/${pipelineEntryId}/invoices/${safeNumber}.pdf`;
+        await supabase.storage.from('documents').remove([filePath]);
+        await (supabase as any).from('documents').delete().eq('file_path', filePath);
+      } catch (e) {
+        console.warn('Invoice PDF cleanup warning:', e);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['project-ar-invoices', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['documents', pipelineEntryId] });
+      toast.success('Invoice deleted');
+      setDeletingInvoiceId(null);
+    },
+    onError: (err: Error) => {
+      toast.error(err.message);
+      setDeletingInvoiceId(null);
+    },
   });
 
   const recordPaymentMutation = useMutation({
@@ -1151,6 +1266,40 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       <Badge variant="outline" className={cn("text-xs", statusConfig[inv.status]?.className)}>
                         {statusConfig[inv.status]?.label || inv.status}
                       </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => { e.stopPropagation(); openEditInvoice(inv); }}
+                        title="Edit invoice"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        disabled={deletingInvoiceId === inv.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const paid = Number(inv.amount) - Number(inv.balance);
+                          if (paid > 0) {
+                            toast.error('Cannot delete an invoice with payments applied. Void it instead.');
+                            return;
+                          }
+                          if (confirm(`Delete invoice ${inv.invoice_number}? This cannot be undone.`)) {
+                            setDeletingInvoiceId(inv.id);
+                            deleteInvoiceMutation.mutate(inv);
+                          }
+                        }}
+                        title="Delete invoice"
+                      >
+                        {deletingInvoiceId === inv.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                   {hasLineItems && isExpanded && (
@@ -1204,6 +1353,114 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           </div>
         )}
       </div>
+      {/* Edit Invoice Dialog */}
+      <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Invoice {editingInvoice?.invoice_number}</DialogTitle>
+          </DialogHeader>
+          {editingInvoice && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Due Date</Label>
+                  <Input
+                    type="date"
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Notes</Label>
+                  <Input
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Optional notes"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs mb-2 block">Line Items</Label>
+                <div className="space-y-2">
+                  {editLineItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 border rounded-md">
+                      <Input
+                        className="col-span-5 h-8 text-xs"
+                        value={item.description}
+                        onChange={(e) => updateEditItem(idx, { description: e.target.value })}
+                        placeholder="Description"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="col-span-2 h-8 text-xs"
+                        value={item.qty}
+                        onChange={(e) => updateEditItem(idx, { qty: parseFloat(e.target.value) || 0 })}
+                        placeholder="Qty"
+                      />
+                      <Input
+                        className="col-span-1 h-8 text-xs"
+                        value={item.unit}
+                        onChange={(e) => updateEditItem(idx, { unit: e.target.value })}
+                        placeholder="Unit"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="col-span-2 h-8 text-xs"
+                        value={item.unit_cost}
+                        onChange={(e) => updateEditItem(idx, { unit_cost: parseFloat(e.target.value) || 0 })}
+                        placeholder="Price"
+                      />
+                      <div className="col-span-1 text-xs text-right font-medium">
+                        {formatCurrency(item.line_total)}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="col-span-1 h-7 w-7 text-destructive"
+                        onClick={() => removeEditItem(idx)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() =>
+                      setEditLineItems((prev) => [
+                        ...prev,
+                        { description: '', qty: 1, unit: 'ea', unit_cost: 0, line_total: 0 },
+                      ])
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Line Item
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">New Total</span>
+                <span className="text-lg font-bold">{formatCurrency(editInvoiceTotal)}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingInvoice(null)}>Cancel</Button>
+            <Button
+              onClick={() => updateInvoiceMutation.mutate()}
+              disabled={updateInvoiceMutation.isPending || editInvoiceTotal <= 0}
+            >
+              {updateInvoiceMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
