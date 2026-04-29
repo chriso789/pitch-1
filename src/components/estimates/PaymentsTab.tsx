@@ -409,7 +409,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
       try {
         const { data: pe } = await supabase
           .from('pipeline_entries')
-          .select('contact_id, contacts!pipeline_entries_contact_id_fkey(first_name,last_name,email,phone,address,city,state,zip)')
+          .select('contact_id, contacts!pipeline_entries_contact_id_fkey(first_name,last_name,email,phone,address_street,address_city,address_state,address_zip)')
           .eq('id', pipelineEntryId)
           .maybeSingle();
         const c: any = (pe as any)?.contacts;
@@ -417,7 +417,10 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           customer.name = [c.first_name, c.last_name].filter(Boolean).join(' ');
           customer.email = c.email || '';
           customer.phone = c.phone || '';
-          customer.address = [c.address, [c.city, c.state, c.zip].filter(Boolean).join(', ')]
+          customer.address = [
+            c.address_street,
+            [c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', '),
+          ]
             .filter(Boolean)
             .join('\n');
         }
