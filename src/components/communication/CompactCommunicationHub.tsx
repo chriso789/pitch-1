@@ -221,7 +221,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           variant="outline" 
           className="flex-1 h-8 text-xs"
           onClick={onCallClick}
-          disabled={!contactPhone}
+          title={contactPhone ? `Call ${contactPhone}` : 'No phone number on file'}
         >
           <Phone className="h-3 w-3 mr-1" />
           Call
@@ -231,7 +231,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           variant="outline" 
           className="flex-1 h-8 text-xs"
           onClick={onSMSClick}
-          disabled={!contactPhone}
+          title={contactPhone ? `Text ${contactPhone}` : 'No phone number on file'}
         >
           <MessageSquare className="h-3 w-3 mr-1" />
           SMS
@@ -241,7 +241,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           variant="outline" 
           className="flex-1 h-8 text-xs"
           onClick={onEmailClick}
-          disabled={!contactEmail}
+          title={contactEmail ? `Email ${contactEmail}` : 'No email address on file'}
         >
           <Mail className="h-3 w-3 mr-1" />
           Email
