@@ -257,7 +257,13 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     } catch (clientErr: any) {
       console.warn('Client PDF export failed, falling back to server render:', clientErr);
       if (!jobId || reportModel) {
-        throw clientErr;
+        toast({
+          title: 'PDF generation failed',
+          description: clientErr?.message || 'The browser could not export this report.',
+          variant: 'destructive',
+        });
+        setDownloading(false);
+        return;
       }
     }
 
