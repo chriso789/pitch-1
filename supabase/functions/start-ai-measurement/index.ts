@@ -376,6 +376,30 @@ function polygonIoU(a: { x: number; y: number }[], b: { x: number; y: number }[]
   return uni > 0 ? inter / uni : 0
 }
 
+/** Andrew's monotone-chain convex hull. Returns CCW hull of input points. */
+function convexHull(points: Pt[]): Pt[] {
+  const pts = points
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+    .slice()
+    .sort((a, b) => (a.x === b.x ? a.y - b.y : a.x - b.x))
+  if (pts.length <= 1) return pts
+  const cross = (o: Pt, a: Pt, b: Pt) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x)
+  const lower: Pt[] = []
+  for (const p of pts) {
+    while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop()
+    lower.push(p)
+  }
+  const upper: Pt[] = []
+  for (let i = pts.length - 1; i >= 0; i--) {
+    const p = pts[i]
+    while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop()
+    upper.push(p)
+  }
+  upper.pop()
+  lower.pop()
+  return [...lower, ...upper]
+}
+
 type ImageEdgeEvidence = {
   mag: Uint8Array
   dW: number
@@ -502,14 +526,15 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // USER-DIRECTED CORNER TRANSLATION:
-    // This is NOT a flip/rotation problem. The user has repeatedly described
-    // the bad overlay as one full footprint up/left of the real house: the
-    // diagram's visible bottom-right corner is the real roof's top-left corner.
-    // Therefore the fix is to move the whole diagram down/right so the
-    // diagram's TOP-LEFT lands where the old BOTTOM-RIGHT was. If a real
-    // image-traced roof footprint exists, use its top-left as the target;
-    // otherwise use the diagram's own bottom-right as the explicit target.
+    // SAFE ALIGNMENT (audit fix):
+    // Translate the authoritative footprint to the image-footprint centroid
+    // and apply the area-ratio scale, but NEVER force a horizontal mirror
+    // or corner-anchor translation. The previous "HORIZONTAL MIRROR" /
+    // "FORCED-CORNER-TRANSLATE" adoption was the highest-confidence cause
+    // of overlays landing on the wrong side of the roof.
+    //
+    // We still SCORE the 4 reflection candidates for diagnostic logging so
+    // we can see whether a flip would have helped — but we never adopt it.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -518,9 +543,6 @@ function alignAuthoritativeToImage(
     const identityIou = hasImageFootprint ? polygonIoU(identityPts, imageFootprintPx!) : 0
     const identityEdge = edgeEvidence ? scorePolygonEdgeSupport(identityPts, edgeEvidence) : 0
 
-    // Diagnostic: still SCORE all 4 reflections so we can see in logs if a flip
-    // would have helped — but we never apply it. This is purely observational
-    // to help find the root cause of any mirror.
     const diagScores: { flipX: boolean; flipY: boolean; iou: number; edge: number }[] = []
     for (const flipX of [false, true]) {
       for (const flipY of [false, true]) {
@@ -539,82 +561,33 @@ function alignAuthoritativeToImage(
       }
     }
 
-    const nearestCorner = (pts: Pt[], corner: 'topLeft' | 'bottomRight') => {
-      // For L-shaped roofs there often is no literal bbox corner vertex. Use
-      // screen-corner semantics: top-left = highest point, then leftmost;
-      // bottom-right = lowest point, then rightmost. This matches what the
-      // user sees and names in the diagram.
-      return pts.reduce((best, p) => {
-        if (corner === 'topLeft') {
-          if (p.y < best.y - 1e-6) return p
-          if (Math.abs(p.y - best.y) <= 1e-6 && p.x < best.x) return p
-          return best
-        }
-        if (p.y > best.y + 1e-6) return p
-        if (Math.abs(p.y - best.y) <= 1e-6 && p.x > best.x) return p
-        return best
-      })
-    }
-
-    // HORIZONTAL MIRROR: flip the diagram left-to-right so the right side
-    // of the original diagram lands on the left side. Mirror around the
-    // diagram's own bbox center, then re-anchor onto the actual roof
-    // footprint (image-traced if available) by aligning bbox centers.
-    const bbox = (pts: Pt[]) => {
-      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
-      const minX = Math.min(...xs), maxX = Math.max(...xs)
-      const minY = Math.min(...ys), maxY = Math.max(...ys)
-      return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 }
-    }
-    const srcBox = bbox(identityPts)
-    // Mirror horizontally around source center
-    const mirrored = identityPts.map((p) => ({ x: 2 * srcBox.cx - p.x, y: p.y }))
-    // Re-anchor to target footprint center (image trace) if available,
-    // otherwise keep at the source center (no translation).
-    const targetCenter = hasImageFootprint
-      ? (() => { const b = bbox(imageFootprintPx!); return { x: b.cx, y: b.cy } })()
-      : { x: srcBox.cx, y: srcBox.cy }
-    const mirroredBox = bbox(mirrored)
-    const anchorDx = targetCenter.x - mirroredBox.cx
-    const anchorDy = targetCenter.y - mirroredBox.cy
-    const adopt = {
-      flipX: true,
-      flipY: false,
-      dx: anchorDx,
-      dy: anchorDy,
-      pts: mirrored.map((p) => ({ x: p.x + anchorDx, y: p.y + anchorDy })),
-    }
-    const adoptReason = `HORIZONTAL MIRROR (flipX around diagram center) + center-anchor to ${hasImageFootprint ? 'image footprint center' : 'self'}; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; iou ${identityIou.toFixed(3)}, edge ${identityEdge.toFixed(3)}`
-
     console.log(
-      `[alignment] FORCED-CORNER-TRANSLATE drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
-      `auth_source=${authoritative.source} ` +
+      `[alignment] SAFE_IDENTITY drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
+      `auth_source=${authoritative.source} iou=${identityIou.toFixed(3)} edge=${identityEdge.toFixed(3)} ` +
       `diag_iou{id=${diagScores[0].iou.toFixed(2)} fY=${diagScores[1].iou.toFixed(2)} fX=${diagScores[2].iou.toFixed(2)} fXY=${diagScores[3].iou.toFixed(2)}} ` +
-      `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}} ` +
-      `→ ADOPTED: ${adoptReason}`,
+      `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}}`,
     )
 
-    const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
+    const alignedGeo: GeoXY[] = identityPts.map((p) => {
       const g = pixelToLatLng(p.x, p.y, centerLat, centerLng, imgW, imgH, actualMpp)
       return [g.lng, g.lat] as GeoXY
     })
 
-    const result = {
+    return {
       ...authoritative,
       coordinates: alignedGeo,
       source: `${authoritative.source}_image_aligned` as AuthoritativeFootprint['source'],
       areaM2: authoritative.areaM2 ? authoritative.areaM2 * scale * scale : authoritative.areaM2,
       _alignment_transform: {
-        flipX: adopt.flipX,
-        flipY: adopt.flipY,
-        cx: srcBox.cx,
-        cy: srcBox.cy,
+        flipX: false,
+        flipY: false,
+        cx: cAuth.x,
+        cy: cAuth.y,
         scale,
-        dx: adopt.dx,
-        dy: adopt.dy,
+        dx: cImg.x - cAuth.x,
+        dy: cImg.y - cAuth.y,
       },
     }
-    return result
   } catch (err) {
     console.warn('[alignment] failed, using raw authoritative footprint:', err)
     return authoritative
@@ -2490,15 +2463,50 @@ function isAxisAlignedRectangle(poly: Pt[]): boolean {
 }
 
 /** Structural overlay alignment 0..1: planes inside the image and centered. */
-function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number): number {
+function computeOverlayAlignment(
+  planes: RoofPlane[],
+  imgW: number,
+  imgH: number,
+  imageFootprintPx: Pt[] | null = null,
+  edgeEvidence: ImageEdgeEvidence | null = null,
+): number {
   if (!planes.length || imgW <= 0 || imgH <= 0) return 0
+
+  // Build the full-roof hull from all plane vertices so multi-plane roofs
+  // are scored against their entire footprint, not the largest facet.
+  const allPts = planes.flatMap((p) => p.polygon_px || [])
+  if (allPts.length < 3) return 0
+  const hull = convexHull(allPts)
+  if (hull.length < 3) return 0
+
+  // Image-supported score: real IoU vs the raster-extracted footprint when
+  // available, plus Sobel edge support along the polygon boundary. This
+  // replaces the old centered/in-frame heuristic, which would happily pass
+  // a mirrored or wrongly-translated footprint as long as it stayed in
+  // frame near the image center.
+  const hasImageFootprint = !!imageFootprintPx && imageFootprintPx.length >= 3
+  const iou = hasImageFootprint ? polygonIoU(hull, imageFootprintPx!) : 0
+  const edge = edgeEvidence ? scorePolygonEdgeSupport(hull, edgeEvidence) : 0
+
+  if (hasImageFootprint || edgeEvidence) {
+    // Blend: IoU is the strongest evidence; edge support is a fallback /
+    // secondary signal when only the raster (no closed footprint) is known.
+    const blended = hasImageFootprint && edgeEvidence
+      ? 0.7 * iou + 0.3 * edge
+      : hasImageFootprint
+        ? iou
+        : edge
+    return Math.max(0, Math.min(1, blended))
+  }
+
+  // Last-resort fallback: if neither evidence source is available, fall
+  // back to the legacy centered/in-frame heuristic so we still produce a
+  // non-zero score (used only when raster extraction failed entirely).
   let allInside = true
   let cx = 0, cy = 0, n = 0
-  for (const p of planes) {
-    for (const pt of p.polygon_px) {
-      if (pt.x < 0 || pt.x > imgW || pt.y < 0 || pt.y > imgH) allInside = false
-      cx += pt.x; cy += pt.y; n++
-    }
+  for (const pt of allPts) {
+    if (pt.x < 0 || pt.x > imgW || pt.y < 0 || pt.y > imgH) allInside = false
+    cx += pt.x; cy += pt.y; n++
   }
   if (n === 0) return 0
   cx /= n; cy /= n
@@ -2507,7 +2515,9 @@ function computeOverlayAlignment(planes: RoofPlane[], imgW: number, imgH: number
   const offset = Math.sqrt(dx * dx + dy * dy)
   const centerScore = Math.max(0, 1 - offset / 0.25)
   const insideScore = allInside ? 1 : 0.4
-  return Math.min(1, 0.6 * centerScore + 0.4 * insideScore)
+  // Cap legacy fallback at 0.7 so it cannot pass the 0.75 PDF gate on its
+  // own — image-supported evidence must exist for customer-ready output.
+  return Math.min(0.7, 0.6 * centerScore + 0.4 * insideScore)
 }
 
 const PLACEHOLDER_SOURCES = new Set(['google_solar_bbox', 'placeholder', 'perimeter_fallback'])
@@ -2567,6 +2577,8 @@ function runQualityChecks(input: {
   totalAreaSqft: number
   hasPitch: boolean
   hasPlaceholder: boolean
+  imageFootprintPx?: Pt[] | null
+  edgeEvidence?: ImageEdgeEvidence | null
 }): {
   checks: QC[]
   overall: number
@@ -2638,7 +2650,13 @@ function runQualityChecks(input: {
     synthetic_sources_only: rectangleSourcesAreSynthetic,
   })
 
-  const overlayAlignmentScore = computeOverlayAlignment(input.planes, input.imgW, input.imgH)
+  const overlayAlignmentScore = computeOverlayAlignment(
+    input.planes,
+    input.imgW,
+    input.imgH,
+    input.imageFootprintPx ?? null,
+    input.edgeEvidence ?? null,
+  )
   push(
     'overlay_alignment_score',
     overlayAlignmentScore >= 0.75,
@@ -3580,6 +3598,19 @@ Deno.serve(async (req) => {
           totalAreaSqft: totalAreaSloped,
           hasPitch: planes.some((p) => p.pitch != null) || !!pitchOverride,
           hasPlaceholder,
+          // Image-supported alignment scoring (audit fix): pass the raster
+          // footprint and Sobel evidence so overlay_alignment_score reflects
+          // actual visual agreement with the aerial, not just centeredness.
+          imageFootprintPx: extractedImageGeometry?.footprint ?? null,
+          edgeEvidence: extractedImageGeometry
+            ? {
+                mag: extractedImageGeometry.mag,
+                dW: extractedImageGeometry.dW,
+                dH: extractedImageGeometry.dH,
+                scaleX: extractedImageGeometry.scaleX,
+                scaleY: extractedImageGeometry.scaleY,
+              }
+            : null,
         })
 
         await supa.from('ai_measurement_quality_checks').insert(
@@ -3660,10 +3691,16 @@ Deno.serve(async (req) => {
           },
           // Canonical transform — every overlay renderer MUST use this.
           transform: canonicalTransform,
-          polygon: (planes.length > 0
-            ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
-            : []
-          ).map((p) => [p.x, p.y]),
+          // Full-roof footprint hull (audit fix): every plane vertex is
+          // included so multi-plane roofs render the entire footprint, not
+          // just the largest facet. Per-plane polygons are also persisted
+          // for renderers that need facet-level geometry.
+          polygon: convexHull(planes.flatMap((p) => p.polygon_px || []))
+            .map((p) => [p.x, p.y]),
+          polygons: planes.map((p) => ({
+            plane_index: p.plane_index,
+            polygon: (p.polygon_px || []).map((pt) => [pt.x, pt.y]),
+          })),
           features: edges
             .filter((e) => e.edge_type !== 'unknown' && e.line_px.length >= 2)
             .map((e) => ({

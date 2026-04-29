@@ -120,11 +120,22 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
     }
   }
   const warnings: string[] = []
+  // Audit fix: hard-block customer PDF when geometry could not be verified.
+  // Preview/inspection in the UI is unaffected — it does not pass through
+  // this function.
   if (grj.single_plane_fallback === true) {
-    warnings.push('Footprint estimate: roof slopes could not be fully segmented and should be verified.')
+    return {
+      ok: false,
+      reason: 'single_plane_fallback: roof slopes could not be segmented. Preview allowed; PDF blocked until manual verification.',
+      measurement: m,
+    }
   }
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < OVERLAY_THRESHOLD) {
-    warnings.push(`Overlay alignment score ${grj.overlay_alignment_score.toFixed(2)} is below the ${OVERLAY_THRESHOLD} review threshold.`)
+    return {
+      ok: false,
+      reason: `overlay_alignment_score ${grj.overlay_alignment_score.toFixed(2)} is below the ${OVERLAY_THRESHOLD} review threshold.`,
+      measurement: m,
+    }
   }
 
   return { ok: true, warnings, measurement: m }
