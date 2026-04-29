@@ -502,13 +502,11 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // FORCED CORNER-ANCHORED 180° CORRECTION:
-    // The observed failure is explicit: the diagram's bottom-right corner is
-    // the actual roof's top-left corner. A centroid-only 180° rotation changes
-    // orientation, but for asymmetric L-shapes it does NOT guarantee that the
-    // same physical corner lands on the roof's top-left. So we rotate 180° and
-    // then apply only the minimal in-footprint translation needed to put the
-    // pre-rotation bottom-right vertex exactly on the top-left roof vertex.
+    // USER-DIRECTED CORNER TRANSLATION:
+    // The correction is NOT another flip/rotation. The existing diagram shown
+    // in the bad preview needs to be MOVED so its visible bottom-right corner
+    // lands on the actual roof's top-left corner. Preserve orientation and only
+    // translate the whole footprint from source bottom-right → target top-left.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -555,29 +553,21 @@ function alignAuthoritativeToImage(
       })
     }
 
-    const rotate180 = diagScores.find((s) => s.flipX && s.flipY)
     const targetTopLeft = nearestCorner(hasImageFootprint ? imageFootprintPx! : authPx, 'topLeft')
-    const sourceBottomRight = nearestCorner(authPx, 'bottomRight')
-    const rotatedBottomRight = {
-      x: cImg.x - (sourceBottomRight.x - cAuth.x) * scale,
-      y: cImg.y - (sourceBottomRight.y - cAuth.y) * scale,
-    }
-    const anchorDx = targetTopLeft.x - rotatedBottomRight.x
-    const anchorDy = targetTopLeft.y - rotatedBottomRight.y
+    const sourceBottomRight = nearestCorner(identityPts, 'bottomRight')
+    const anchorDx = targetTopLeft.x - sourceBottomRight.x
+    const anchorDy = targetTopLeft.y - sourceBottomRight.y
     const adopt = {
-      flipX: true,
-      flipY: true,
+      flipX: false,
+      flipY: false,
       dx: anchorDx,
       dy: anchorDy,
-      pts: authPx.map((p) => ({
-        x: cImg.x - (p.x - cAuth.x) * scale + anchorDx,
-        y: cImg.y - (p.y - cAuth.y) * scale + anchorDy,
-      })),
+      pts: identityPts.map((p) => ({ x: p.x + anchorDx, y: p.y + anchorDy })),
     }
-    const adoptReason = `FORCED corner-anchored 180deg flipX+flipY (diagram bottom-right→roof top-left; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; iou ${identityIou.toFixed(3)}→${(rotate180?.iou ?? 0).toFixed(3)}, edge ${identityEdge.toFixed(3)}→${(rotate180?.edge ?? 0).toFixed(3)})`
+    const adoptReason = `FORCED translation-only anchor (diagram bottom-right→roof top-left; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; no flip/no rotation; iou ${identityIou.toFixed(3)}, edge ${identityEdge.toFixed(3)})`
 
     console.log(
-      `[alignment] FORCED-CORNER-180 drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
+      `[alignment] FORCED-CORNER-TRANSLATE drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `auth_source=${authoritative.source} ` +
       `diag_iou{id=${diagScores[0].iou.toFixed(2)} fY=${diagScores[1].iou.toFixed(2)} fX=${diagScores[2].iou.toFixed(2)} fXY=${diagScores[3].iou.toFixed(2)}} ` +
       `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}} ` +
@@ -618,14 +608,14 @@ function alignAuthoritativeToImage(
  */
 export function applyAlignmentTransformToLines<T extends { p1: Pt; p2: Pt }>(
   lines: T[],
-  xform: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } | undefined,
+  xform: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number; dx?: number; dy?: number } | undefined,
 ): T[] {
-  if (!xform || (!xform.flipX && !xform.flipY && xform.scale === 1)) return lines
+  if (!xform || (!xform.flipX && !xform.flipY && xform.scale === 1 && !xform.dx && !xform.dy)) return lines
   const sx = xform.flipX ? -1 : 1
   const sy = xform.flipY ? -1 : 1
   const tx = (p: Pt): Pt => ({
-    x: xform.cx + sx * (p.x - xform.cx) * xform.scale,
-    y: xform.cy + sy * (p.y - xform.cy) * xform.scale,
+    x: xform.cx + sx * (p.x - xform.cx) * xform.scale + (xform.dx || 0),
+    y: xform.cy + sy * (p.y - xform.cy) * xform.scale + (xform.dy || 0),
   })
   return lines.map((l) => ({ ...l, p1: tx(l.p1), p2: tx(l.p2) }))
 }
