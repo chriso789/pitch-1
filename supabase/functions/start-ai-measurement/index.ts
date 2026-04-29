@@ -2648,7 +2648,13 @@ function runQualityChecks(input: {
     synthetic_sources_only: rectangleSourcesAreSynthetic,
   })
 
-  const overlayAlignmentScore = computeOverlayAlignment(input.planes, input.imgW, input.imgH)
+  const overlayAlignmentScore = computeOverlayAlignment(
+    input.planes,
+    input.imgW,
+    input.imgH,
+    input.imageFootprintPx ?? null,
+    input.edgeEvidence ?? null,
+  )
   push(
     'overlay_alignment_score',
     overlayAlignmentScore >= 0.75,
