@@ -2577,6 +2577,8 @@ function runQualityChecks(input: {
   totalAreaSqft: number
   hasPitch: boolean
   hasPlaceholder: boolean
+  imageFootprintPx?: Pt[] | null
+  edgeEvidence?: ImageEdgeEvidence | null
 }): {
   checks: QC[]
   overall: number
