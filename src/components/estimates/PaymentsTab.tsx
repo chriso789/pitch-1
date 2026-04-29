@@ -21,6 +21,8 @@ import { format } from 'date-fns';
 import { 
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
+import { useCompanyInfo } from '@/hooks/useCompanyInfo';
+import { generateAndSaveInvoicePdf } from '@/lib/invoices/invoicePdfGenerator';
 
 interface PaymentsTabProps {
   pipelineEntryId: string;
