@@ -31867,6 +31867,7 @@ export type Database = {
           organization_id: string | null
           overlay_schema: Json | null
           passes_strict_3pct: boolean | null
+          patent_model: Json | null
           perimeter_vertex_count: number | null
           perimeter_wkt: string | null
           pitch_degrees: number | null
@@ -32023,6 +32024,7 @@ export type Database = {
           organization_id?: string | null
           overlay_schema?: Json | null
           passes_strict_3pct?: boolean | null
+          patent_model?: Json | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
@@ -32179,6 +32181,7 @@ export type Database = {
           organization_id?: string | null
           overlay_schema?: Json | null
           passes_strict_3pct?: boolean | null
+          patent_model?: Json | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
