@@ -539,14 +539,20 @@ function alignAuthoritativeToImage(
     }
 
     const nearestCorner = (pts: Pt[], corner: 'topLeft' | 'bottomRight') => {
-      const minX = Math.min(...pts.map((p) => p.x))
-      const maxX = Math.max(...pts.map((p) => p.x))
-      const minY = Math.min(...pts.map((p) => p.y))
-      const maxY = Math.max(...pts.map((p) => p.y))
-      const target = corner === 'topLeft' ? { x: minX, y: minY } : { x: maxX, y: maxY }
-      return pts.reduce((best, p) =>
-        Math.hypot(p.x - target.x, p.y - target.y) < Math.hypot(best.x - target.x, best.y - target.y) ? p : best,
-      )
+      // For L-shaped roofs there often is no literal bbox corner vertex. Use
+      // screen-corner semantics: top-left = highest point, then leftmost;
+      // bottom-right = lowest point, then rightmost. This matches what the
+      // user sees and names in the diagram.
+      return pts.reduce((best, p) => {
+        if (corner === 'topLeft') {
+          if (p.y < best.y - 1e-6) return p
+          if (Math.abs(p.y - best.y) <= 1e-6 && p.x < best.x) return p
+          return best
+        }
+        if (p.y > best.y + 1e-6) return p
+        if (Math.abs(p.y - best.y) <= 1e-6 && p.x > best.x) return p
+        return best
+      })
     }
 
     const rotate180 = diagScores.find((s) => s.flipX && s.flipY)
