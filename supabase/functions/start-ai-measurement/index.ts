@@ -3598,6 +3598,19 @@ Deno.serve(async (req) => {
           totalAreaSqft: totalAreaSloped,
           hasPitch: planes.some((p) => p.pitch != null) || !!pitchOverride,
           hasPlaceholder,
+          // Image-supported alignment scoring (audit fix): pass the raster
+          // footprint and Sobel evidence so overlay_alignment_score reflects
+          // actual visual agreement with the aerial, not just centeredness.
+          imageFootprintPx: extractedImageGeometry?.footprint ?? null,
+          edgeEvidence: extractedImageGeometry
+            ? {
+                mag: extractedImageGeometry.mag,
+                dW: extractedImageGeometry.dW,
+                dH: extractedImageGeometry.dH,
+                scaleX: extractedImageGeometry.scaleX,
+                scaleY: extractedImageGeometry.scaleY,
+              }
+            : null,
         })
 
         await supa.from('ai_measurement_quality_checks').insert(
