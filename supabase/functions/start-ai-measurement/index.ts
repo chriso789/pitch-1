@@ -2873,7 +2873,40 @@ Deno.serve(async (req) => {
               : null
 
           // First deterministic fallback: authoritative vector building footprints.
-          const authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
+          let authoritative = await resolveAuthoritativeFootprint(lat, lng, solarAreaHintSqft)
+          if (!authoritative) {
+            const idColumn = resolved.sourceType === 'lead' ? 'lead_id' : 'project_id'
+            const { data: priorJobs } = await supa
+              .from('ai_measurement_jobs')
+              .select('id')
+              .eq(idColumn, resolved.sourceId)
+              .order('created_at', { ascending: false })
+              .limit(8)
+            const priorIds = (priorJobs || []).map((j: any) => j.id).filter((id: any) => id !== aiJob.id)
+            if (priorIds.length > 0) {
+              const { data: priorPlanes } = await supa
+                .from('ai_roof_planes')
+                .select('source, polygon_geojson, area_2d_sqft, confidence')
+                .in('job_id', priorIds)
+                .order('created_at', { ascending: false })
+              const prior = (priorPlanes || []).find((p: any) =>
+                !PLACEHOLDER_SOURCES.has(String(p.source)) &&
+                Array.isArray(p.polygon_geojson) &&
+                p.polygon_geojson.length >= 3,
+              )
+              if (prior) {
+                const coords = prior.polygon_geojson.map((p: any) => [Number(p.lng), Number(p.lat)] as GeoXY)
+                authoritative = {
+                  coordinates: coords,
+                  source: String(prior.source).replace('_image_aligned', '') as FootprintSource,
+                  confidence: Math.max(0.7, Number(prior.confidence || 0.7)),
+                  areaM2: Number(prior.area_2d_sqft || 0) / 10.7639 || geoPolygonAreaM2(coords),
+                  vertexCount: coords.length,
+                }
+                console.log(`[start-ai-measurement] using cached patent footprint fallback: ${prior.source}`)
+              }
+            }
+          }
           let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
           let extractedImageEdgeEvidence: ImageEdgeEvidence | null = null
           if (mb?.image_url) {
