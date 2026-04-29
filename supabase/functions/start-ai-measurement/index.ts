@@ -3029,6 +3029,8 @@ Deno.serve(async (req) => {
             ).reduce((s: number, seg: any) => s + Number(seg?.stats?.areaMeters2 || 0), 0) * 10.7639
           )
         let detectedRidgeLines: SplitLine[] = []
+        let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
+        let extractedImageEdgeEvidence: ImageEdgeEvidence | null = null
 
         if (needsRealGeometry) {
           const hint =
@@ -3071,8 +3073,6 @@ Deno.serve(async (req) => {
               }
             }
           }
-          let extractedImageGeometry: Awaited<ReturnType<typeof extractRoofFootprintAndEdges>> | null = null
-          let extractedImageEdgeEvidence: ImageEdgeEvidence | null = null
           if (mb?.image_url) {
             try {
               extractedImageGeometry = await extractRoofFootprintAndEdges(mb.image_url, imgW, imgH)
