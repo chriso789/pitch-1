@@ -140,18 +140,18 @@ export const CLJSearchBar = () => {
 
       setRecents(refreshed);
       // Persist refreshed names so the next open is instant and consistent.
-      localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(refreshed));
+      localStorage.setItem(getRecentsKey(tenantId, locationId), JSON.stringify(refreshed));
     } catch (err) {
       console.warn('[CLJSearch] Failed to refresh recents from DB', err);
       setRecents(cached);
     }
   };
 
-  // Reload + refresh recents whenever the active company changes (so switching
-  // tenants immediately swaps the list to that company's history).
+  // Reload + refresh recents whenever the active company OR location changes
+  // (so switching either immediately swaps the list to that scope's history).
   useEffect(() => {
-    refreshRecents(activeTenantId);
-  }, [activeTenantId]);
+    refreshRecents(activeTenantId, currentLocationId);
+  }, [activeTenantId, currentLocationId]);
 
   // Handle clicks outside to close dropdown
   useEffect(() => {
