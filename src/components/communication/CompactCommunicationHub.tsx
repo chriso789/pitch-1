@@ -28,6 +28,7 @@ interface CompactCommunicationHubProps {
   onSMSClick?: () => void;
   onActivityClick?: (activity: ActivityItem) => void;
   className?: string;
+  refreshKey?: number;
 }
 
 export interface ActivityItem {
@@ -51,7 +52,8 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
   onEmailClick,
   onSMSClick,
   onActivityClick,
-  className
+  className,
+  refreshKey
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
@@ -141,7 +143,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
     if (contactId || pipelineEntryId) {
       fetchActivities();
     }
-  }, [contactId, pipelineEntryId]);
+  }, [contactId, pipelineEntryId, refreshKey]);
 
   // Real-time updates
   useEffect(() => {

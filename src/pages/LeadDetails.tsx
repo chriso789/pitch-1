@@ -339,6 +339,7 @@ const LeadDetails = () => {
   // Communication states
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showSMSDialog, setShowSMSDialog] = useState(false);
+  const [commsRefreshKey, setCommsRefreshKey] = useState(0);
   
   // Project details edit dialog state
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
@@ -1226,6 +1227,8 @@ const LeadDetails = () => {
             <TabsContent value="comms" className="mt-0">
               <CompactCommunicationHub 
                 contactId={lead.contact?.id}
+                pipelineEntryId={id}
+                refreshKey={commsRefreshKey}
                 contactPhone={lead.contact?.phone}
                 contactEmail={lead.contact?.email}
                 onCallClick={() => {
@@ -1415,6 +1418,8 @@ const LeadDetails = () => {
               
               console.log('✅ LeadDetails: SMS sent successfully, closing dialog');
               setShowSMSDialog(false);
+              // Refresh comms history immediately (realtime not enabled on table)
+              setTimeout(() => setCommsRefreshKey(k => k + 1), 500);
             } catch (error) {
               console.error('🔴 LeadDetails: Failed to send SMS:', error);
               // Dialog stays open on error so user can retry
