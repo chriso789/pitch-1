@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { format } from 'date-fns';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface CompactCommunicationHubProps {
   contactId?: string;
@@ -29,6 +30,7 @@ interface CompactCommunicationHubProps {
   onActivityClick?: (activity: ActivityItem) => void;
   className?: string;
   refreshKey?: number;
+  optimisticActivities?: ActivityItem[];
 }
 
 export interface ActivityItem {
@@ -53,14 +55,24 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
   onSMSClick,
   onActivityClick,
   className,
-  refreshKey
+  refreshKey,
+  optimisticActivities = []
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const effectiveTenantId = useEffectiveTenantId();
+
+  const displayActivities = React.useMemo(() => {
+    const byId = new Map<string, ActivityItem>();
+    [...optimisticActivities, ...activities].forEach((activity) => byId.set(activity.id, activity));
+    return Array.from(byId.values())
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 10);
+  }, [activities, optimisticActivities]);
 
   // Count failed SMS messages for 10DLC warning
-  const failedCount = activities.filter(a => 
+  const failedCount = displayActivities.filter(a => 
     a.type === 'sms' && 
     (a.delivery_status === 'failed' || a.delivery_status === 'delivery_failed' || a.delivery_status === 'undelivered')
   ).length;
@@ -77,6 +89,10 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         .select('id, communication_type, direction, content, subject, created_at, delivery_status')
         .order('created_at', { ascending: false })
         .limit(10);
+
+      if (effectiveTenantId) {
+        commQuery = commQuery.eq('tenant_id', effectiveTenantId);
+      }
       
       // Filter by contact_id OR pipeline_entry_id
       if (contactId && pipelineEntryId) {
@@ -87,7 +103,8 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         commQuery = commQuery.eq('pipeline_entry_id', pipelineEntryId);
       }
       
-      const { data: commHistory } = await commQuery;
+      const { data: commHistory, error: commError } = await commQuery;
+      if (commError) throw commError;
 
       // Fetch call logs
       let callQuery = supabase
@@ -95,6 +112,10 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         .select('id, direction, status, duration_seconds, created_at')
         .order('created_at', { ascending: false })
         .limit(10);
+
+      if (effectiveTenantId) {
+        callQuery = callQuery.eq('tenant_id', effectiveTenantId);
+      }
       
       if (contactId && pipelineEntryId) {
         callQuery = callQuery.or(`contact_id.eq.${contactId},pipeline_entry_id.eq.${pipelineEntryId}`);
@@ -104,7 +125,8 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         callQuery = callQuery.eq('pipeline_entry_id', pipelineEntryId);
       }
       
-      const { data: callLogs } = await callQuery;
+      const { data: callLogs, error: callError } = await callQuery;
+      if (callError) throw callError;
 
       // Combine and sort
       const combined: ActivityItem[] = [
@@ -114,7 +136,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           direction: item.direction as 'inbound' | 'outbound',
           content: item.communication_type === 'email' 
             ? item.subject || 'No subject' 
-            : item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
+            : item.content || 'No message content',
           created_at: item.created_at,
           delivery_status: item.delivery_status,
           sms_thread_id: null,
@@ -143,7 +165,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
     if (contactId || pipelineEntryId) {
       fetchActivities();
     }
-  }, [contactId, pipelineEntryId, refreshKey]);
+  }, [contactId, pipelineEntryId, refreshKey, effectiveTenantId]);
 
   // Real-time updates
   useEffect(() => {
@@ -157,6 +179,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           event: 'INSERT',
           schema: 'public',
           table: 'communication_history',
+          ...(effectiveTenantId ? { filter: `tenant_id=eq.${effectiveTenantId}` } : {}),
         },
         () => fetchActivities()
       )
@@ -166,6 +189,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           event: 'INSERT',
           schema: 'public',
           table: 'call_logs',
+          ...(effectiveTenantId ? { filter: `tenant_id=eq.${effectiveTenantId}` } : {}),
         },
         () => fetchActivities()
       )
@@ -174,7 +198,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [contactId, pipelineEntryId]);
+  }, [contactId, pipelineEntryId, effectiveTenantId]);
 
   const getActivityIcon = (type: string, direction: string) => {
     switch (type) {
@@ -194,15 +218,15 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
     
     switch (status.toLowerCase()) {
       case 'delivered':
-        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/20">Delivered</Badge>;
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-success/10 text-success border-success/20">Delivered</Badge>;
       case 'sent':
-        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-blue-500/10 text-blue-600 border-blue-500/20">Sent</Badge>;
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-primary/10 text-primary border-primary/20">Sent</Badge>;
       case 'queued':
-        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Queued</Badge>;
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-accent/20 text-accent-foreground border-accent/30">Queued</Badge>;
       case 'failed':
       case 'undelivered':
       case 'delivery_failed':
-        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-red-500/10 text-red-600 border-red-500/20">Failed</Badge>;
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-destructive/10 text-destructive border-destructive/20">Failed</Badge>;
       default:
         return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{status}</Badge>;
     }
@@ -217,11 +241,11 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
   return (
     <div className={cn("space-y-2", className)}>
       {/* Quick Actions - Always Visible */}
-      <div className="flex gap-2">
+      <div className="grid grid-cols-3 gap-2">
         <Button 
           size="sm" 
           variant="outline" 
-          className="flex-1 h-8 text-xs"
+          className="h-10 min-w-0 text-sm sm:h-8 sm:text-xs"
           onClick={onCallClick}
           title={contactPhone ? `Call ${contactPhone}` : 'No phone number on file'}
         >
@@ -231,7 +255,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         <Button 
           size="sm" 
           variant="outline" 
-          className="flex-1 h-8 text-xs"
+          className="h-10 min-w-0 text-sm sm:h-8 sm:text-xs"
           onClick={onSMSClick}
           title={contactPhone ? `Text ${contactPhone}` : 'No phone number on file'}
         >
@@ -241,7 +265,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         <Button 
           size="sm" 
           variant="outline" 
-          className="flex-1 h-8 text-xs"
+          className="h-10 min-w-0 text-sm sm:h-8 sm:text-xs"
           onClick={onEmailClick}
           title={contactEmail ? `Email ${contactEmail}` : 'No email address on file'}
         >
@@ -271,33 +295,33 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           <Button 
             variant="ghost" 
             size="sm" 
-            className="w-full justify-between h-8 text-xs text-muted-foreground hover:text-foreground"
+            className="w-full justify-between h-10 text-sm text-foreground bg-muted hover:bg-muted/80 sm:h-8 sm:text-xs"
           >
             <span className="flex items-center gap-1">
               <Clock className="h-3 w-3" />
-              Recent Activity ({activities.length})
+              Recent Activity ({displayActivities.length})
             </span>
             {isOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
           </Button>
         </CollapsibleTrigger>
         <CollapsibleContent>
-          <ScrollArea className="h-[200px] mt-2">
+          <ScrollArea className="h-[260px] mt-2 rounded-md border border-border/60 sm:h-[200px]">
             {loading ? (
-              <div className="text-xs text-muted-foreground text-center py-4">
+              <div className="text-sm text-muted-foreground text-center py-8">
                 Loading...
               </div>
-            ) : activities.length === 0 ? (
-              <div className="text-xs text-muted-foreground text-center py-4">
+            ) : displayActivities.length === 0 ? (
+              <div className="text-sm text-muted-foreground text-center py-8">
                 No communication history
               </div>
             ) : (
               <div className="space-y-1">
-                {activities.map((activity) => (
+                {displayActivities.map((activity) => (
                   <div 
                     key={activity.id}
                     onClick={() => handleActivityClick(activity)}
                     className={cn(
-                      "flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 text-xs transition-colors",
+                      "flex items-start gap-2 p-3 rounded-md hover:bg-muted/50 text-sm transition-colors",
                       onActivityClick && "cursor-pointer"
                     )}
                   >
@@ -319,12 +343,12 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
                         )}
                         {activity.type === 'sms' && activity.direction === 'outbound' && getDeliveryStatusBadge(activity.delivery_status)}
                       </div>
-                      <p className="truncate text-muted-foreground mt-0.5">
+                      <p className="line-clamp-2 break-words text-muted-foreground mt-1">
                         {activity.content}
                       </p>
                     </div>
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                      {format(new Date(activity.created_at), 'MMM d')}
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap pt-1">
+                      {format(new Date(activity.created_at), 'MMM d h:mm a')}
                     </span>
                   </div>
                 ))}
