@@ -194,6 +194,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     setDownloading(true);
     try {
       await downloadVisibleReportPdf();
+      setDownloading(false);
       return;
     } catch (clientErr: any) {
       console.warn('Client PDF export failed, falling back to server render:', clientErr);
