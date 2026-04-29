@@ -251,6 +251,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         </DialogHeader>
 
         <ScrollArea className="h-[calc(90vh-100px)] px-6 pb-6">
+          <div ref={reportContentRef}>
           {!previewGate.ok ? (
             <Alert variant="destructive">
               <AlertTriangle className="h-4 w-4" />
@@ -363,7 +364,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                       USE_PROFILES: { svg: true, svgFilters: true },
                     });
                     return (
-                      <div key={d.id} className="border rounded-lg overflow-hidden bg-background">
+                      <div key={d.id} className="measurement-report-page border rounded-lg overflow-hidden bg-background">
                         <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
                           <div className="font-semibold text-sm">
                             {d.page_number}. {label}
@@ -381,6 +382,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               );
             })()
           )}
+          </div>
         </ScrollArea>
       </DialogContent>
     </Dialog>
