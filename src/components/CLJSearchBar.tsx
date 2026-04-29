@@ -49,21 +49,25 @@ interface SearchResult {
 }
 
 const MAX_RECENTS = 5;
-const getRecentsKey = (tenantId: string) => `pitch-recent-searches-${tenantId}`;
+// Scope recents to BOTH tenant and active location so switching locations
+// doesn't surface results from a different location (e.g. East Coast jobs
+// appearing while the user is viewing West Coast).
+const getRecentsKey = (tenantId: string, locationId: string | null) =>
+  `pitch-recent-searches-${tenantId}-${locationId || 'all'}`;
 
-const loadRecents = (tenantId: string | null): SearchResult[] => {
+const loadRecents = (tenantId: string | null, locationId: string | null): SearchResult[] => {
   if (!tenantId) return [];
   try {
-    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId)) || '[]');
+    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId, locationId)) || '[]');
   } catch { return []; }
 };
 
-const saveRecent = (result: SearchResult, tenantId: string | null) => {
+const saveRecent = (result: SearchResult, tenantId: string | null, locationId: string | null) => {
   if (!tenantId) return;
-  const existing = loadRecents(tenantId);
+  const existing = loadRecents(tenantId, locationId);
   const filtered = existing.filter(r => r.entity_id !== result.entity_id);
   const updated = [result, ...filtered].slice(0, MAX_RECENTS);
-  localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(updated));
+  localStorage.setItem(getRecentsKey(tenantId, locationId), JSON.stringify(updated));
 };
 
 export const CLJSearchBar = () => {
@@ -84,8 +88,8 @@ export const CLJSearchBar = () => {
   // contact renamed from "Reed Alter" to "Brittany Jones", or a lead/project
   // renamed by a manager) immediately show the current name in the dropdown
   // instead of a stale localStorage snapshot.
-  const refreshRecents = async (tenantId: string | null) => {
-    const cached = loadRecents(tenantId);
+  const refreshRecents = async (tenantId: string | null, locationId: string | null) => {
+    const cached = loadRecents(tenantId, locationId);
     if (!tenantId || cached.length === 0) {
       setRecents(cached);
       return;
@@ -136,18 +140,18 @@ export const CLJSearchBar = () => {
 
       setRecents(refreshed);
       // Persist refreshed names so the next open is instant and consistent.
-      localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(refreshed));
+      localStorage.setItem(getRecentsKey(tenantId, locationId), JSON.stringify(refreshed));
     } catch (err) {
       console.warn('[CLJSearch] Failed to refresh recents from DB', err);
       setRecents(cached);
     }
   };
 
-  // Reload + refresh recents whenever the active company changes (so switching
-  // tenants immediately swaps the list to that company's history).
+  // Reload + refresh recents whenever the active company OR location changes
+  // (so switching either immediately swaps the list to that scope's history).
   useEffect(() => {
-    refreshRecents(activeTenantId);
-  }, [activeTenantId]);
+    refreshRecents(activeTenantId, currentLocationId);
+  }, [activeTenantId, currentLocationId]);
 
   // Handle clicks outside to close dropdown
   useEffect(() => {
@@ -217,10 +221,10 @@ export const CLJSearchBar = () => {
       job: `/lead/${result.entity_id}`
     };
 
-    saveRecent(result, activeTenantId);
+    saveRecent(result, activeTenantId, currentLocationId);
     // Re-resolve names from DB so the freshly added recent reflects any
     // rename that happened after the original cache was written.
-    refreshRecents(activeTenantId);
+    refreshRecents(activeTenantId, currentLocationId);
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
@@ -228,7 +232,7 @@ export const CLJSearchBar = () => {
 
   const clearRecents = () => {
     if (activeTenantId) {
-      localStorage.removeItem(getRecentsKey(activeTenantId));
+      localStorage.removeItem(getRecentsKey(activeTenantId, currentLocationId));
     }
     setRecents([]);
     setOpen(false);
@@ -251,12 +255,12 @@ export const CLJSearchBar = () => {
           if (searchTerm.length >= 2 && results.length > 0) {
             setOpen(true);
           } else if (searchTerm.length < 2) {
-            const r = loadRecents(activeTenantId);
+            const r = loadRecents(activeTenantId, currentLocationId);
             if (r.length > 0) {
               setOpen(true);
               // Pull live names from DB on every focus so renames show up
               // immediately without requiring a tenant switch or reload.
-              refreshRecents(activeTenantId);
+              refreshRecents(activeTenantId, currentLocationId);
             }
           }
         }}
