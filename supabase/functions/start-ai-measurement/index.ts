@@ -2378,6 +2378,11 @@ const FOOTPRINT_ONLY_SOURCES = new Set([
   'google_solar_aggregate',
 ])
 
+function hasPatentFootprintData(input: { planes: RoofPlane[]; edges: RoofEdge[] }): boolean {
+  return input.planes.some((p) => !PLACEHOLDER_SOURCES.has(String(p.source))) ||
+    input.edges.some((e) => e.edge_type !== 'unknown' && !PLACEHOLDER_SOURCES.has(String((e as any).source || '')))
+}
+
 function isFootprintOnlySource(source: string | null | undefined): boolean {
   const s = String(source || '')
   return FOOTPRINT_ONLY_SOURCES.has(s) ||
@@ -2469,10 +2474,12 @@ function runQualityChecks(input: {
   // Reject any result whose only geometry comes from Solar bbox / placeholder /
   // perimeter fallback. These are not real facets.
   const realPlanes = input.planes.filter((p) => !PLACEHOLDER_SOURCES.has(String(p.source)))
-  const geometrySourceIsReal = realPlanes.length > 0
+  const patentFootprintDataAvailable = hasPatentFootprintData({ planes: input.planes, edges: input.edges })
+  const geometrySourceIsReal = realPlanes.length > 0 || patentFootprintDataAvailable
   push('geometry_source_is_real', geometrySourceIsReal, geometrySourceIsReal ? 1 : 0, {
     real_plane_count: realPlanes.length,
     total_plane_count: input.planes.length,
+    patent_footprint_data_available: patentFootprintDataAvailable,
   })
 
   // Reject the literal fake-facet case: multiple bbox/placeholder rectangles.
