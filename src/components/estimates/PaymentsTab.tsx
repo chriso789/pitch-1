@@ -51,6 +51,7 @@ const statusConfig: Record<string, { label: string; className: string }> = {
 export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, sellingPrice }) => {
   const queryClient = useQueryClient();
   const { activeTenantId } = useActiveTenantId();
+  const { data: companyInfo } = useCompanyInfo();
   const [showInvoiceDialog, setShowInvoiceDialog] = useState(false);
   const [showPaymentDialog, setShowPaymentDialog] = useState(false);
   const [paymentAmount, setPaymentAmount] = useState('');
