@@ -2380,7 +2380,14 @@ const FOOTPRINT_ONLY_SOURCES = new Set([
 
 function hasPatentFootprintData(input: { planes: RoofPlane[]; edges: RoofEdge[] }): boolean {
   return input.planes.some((p) => !PLACEHOLDER_SOURCES.has(String(p.source))) ||
-    input.edges.some((e) => e.edge_type !== 'unknown' && !PLACEHOLDER_SOURCES.has(String((e as any).source || '')))
+    input.edges.some((e) => {
+      if (e.edge_type === 'unknown') return false
+      const source = String((e as any).source || '')
+      if (PLACEHOLDER_SOURCES.has(source)) return false
+      if (source === 'plane_topology') return true
+      if (source === 'perimeter_fallback' && e.edge_type === 'eave') return true
+      return isFootprintOnlySource(source)
+    })
 }
 
 function isFootprintOnlySource(source: string | null | undefined): boolean {
