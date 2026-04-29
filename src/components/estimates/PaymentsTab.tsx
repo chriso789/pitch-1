@@ -183,26 +183,51 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
     return items;
   };
 
-  // Build line items from estimate when dialog opens
+  // Build line items from estimate when dialog opens.
+  // Auto-scales totals to (contract − already paid − outstanding invoiced) so
+  // the first invoice = full estimate (no payments yet) and subsequent
+  // invoices only bill the remaining balance.
   useEffect(() => {
     if (!showInvoiceDialog) return;
-    
-    // Try enhanced estimates first
+
     const enhancedEst = (enhancedEstimates || [])[0];
-    if (enhancedEst?.line_items) {
-      setInvoiceLineItems(parseLineItems(enhancedEst, 'enhanced'));
-      return;
-    }
-
-    // Fallback to legacy estimates
     const legacyEst = (legacyEstimates || [])[0];
-    if (legacyEst?.line_items) {
-      setInvoiceLineItems(parseLineItems(legacyEst, 'legacy'));
+    const baseItems = enhancedEst?.line_items
+      ? parseLineItems(enhancedEst, 'enhanced')
+      : legacyEst?.line_items
+        ? parseLineItems(legacyEst, 'legacy')
+        : [];
+
+    if (baseItems.length === 0) {
+      setInvoiceLineItems([]);
       return;
     }
 
-    setInvoiceLineItems([]);
-  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates]);
+    const estimateTotal = baseItems.reduce((s, i) => s + i.line_total, 0);
+    const paidSoFar = (payments || []).reduce((s, p) => s + Number(p.amount || 0), 0);
+    // Sum of outstanding balances on prior invoices (so we don't double-bill).
+    const outstandingInvoiced = (invoices || [])
+      .filter((inv: any) => inv.status !== 'void')
+      .reduce((s: number, inv: any) => s + Number(inv.balance ?? inv.amount ?? 0), 0);
+
+    const remaining = Math.max(0, sellingPrice - paidSoFar - outstandingInvoiced);
+
+    // No deductions → bill full estimate; otherwise scale lines to remaining.
+    const scale =
+      remaining > 0 && estimateTotal > 0 && remaining < estimateTotal
+        ? remaining / estimateTotal
+        : 1;
+
+    const scaled = baseItems.map((item) => {
+      if (scale === 1) return item;
+      const newTotal = Math.round(item.line_total * scale * 100) / 100;
+      const qty = Number(item.qty) || 1;
+      const newUnitCost = qty > 0 ? Math.round((newTotal / qty) * 100) / 100 : item.unit_cost;
+      return { ...item, unit_cost: newUnitCost, line_total: newTotal };
+    });
+
+    setInvoiceLineItems(scaled);
+  }, [showInvoiceDialog, enhancedEstimates, legacyEstimates, payments, invoices, sellingPrice]);
 
   // Scan payment handler
   const handleScanPayment = async (file: File) => {
