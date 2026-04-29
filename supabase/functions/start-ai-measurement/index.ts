@@ -3434,6 +3434,7 @@ Deno.serve(async (req) => {
           (e) =>
             (e.edge_type === 'ridge' || e.edge_type === 'hip' || e.edge_type === 'valley') &&
             e.source !== 'patent_synthesis' &&
+            e.source !== 'topology_engine_v2' &&
             e.source !== 'solar_dsm_inferred_ridge' &&
             e.source !== 'filled_perimeter' &&
             e.source !== 'perimeter_fallback',
@@ -3754,9 +3755,10 @@ Deno.serve(async (req) => {
             e.edge_type !== 'unknown' &&
             !SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
         )
-        const patentSynthesizedCount = patentEdges.filter(
-          (e) => String((e as any).source || '') === 'patent_synthesis',
-        ).length
+        const patentSynthesizedCount = patentEdges.filter((e) => {
+          const s = String((e as any).source || '')
+          return s === 'patent_synthesis' || s === 'topology_engine_v2'
+        }).length
         const patentPlanes = planes.filter(
           (p) => !PLACEHOLDER_SOURCES.has(String(p.source)),
         )
