@@ -340,6 +340,7 @@ const LeadDetails = () => {
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showSMSDialog, setShowSMSDialog] = useState(false);
   const [commsRefreshKey, setCommsRefreshKey] = useState(0);
+  const [pendingCommsActivities, setPendingCommsActivities] = useState<ActivityItem[]>([]);
   
   // Project details edit dialog state
   const [showEditProjectDialog, setShowEditProjectDialog] = useState(false);
@@ -1231,6 +1232,7 @@ const LeadDetails = () => {
                 refreshKey={commsRefreshKey}
                 contactPhone={lead.contact?.phone}
                 contactEmail={lead.contact?.email}
+                optimisticActivities={pendingCommsActivities}
                 onCallClick={() => {
                   if (lead?.contact?.phone) {
                     setAvailablePhoneNumbers([
@@ -1409,17 +1411,32 @@ const LeadDetails = () => {
             });
             
             try {
-              await sendSMS({
+              const smsResult = await sendSMS({
                 to: selectedPhone,
                 message,
                 contactId: lead.contact.id,
                 jobId: id // Link to this lead
               });
+
+              const optimisticActivity: ActivityItem = {
+                id: `optimistic-sms-${smsResult?.messageId || Date.now()}`,
+                type: 'sms',
+                direction: 'outbound',
+                content: message,
+                full_content: message,
+                created_at: new Date().toISOString(),
+                delivery_status: 'sent',
+              };
+              setPendingCommsActivities((current) => [optimisticActivity, ...current].slice(0, 5));
               
               console.log('✅ LeadDetails: SMS sent successfully, closing dialog');
               setShowSMSDialog(false);
               // Refresh comms history immediately (realtime not enabled on table)
-              setTimeout(() => setCommsRefreshKey(k => k + 1), 500);
+              setCommsRefreshKey(k => k + 1);
+              setTimeout(() => {
+                setPendingCommsActivities((current) => current.filter((activity) => activity.id !== optimisticActivity.id));
+                setCommsRefreshKey(k => k + 1);
+              }, 2500);
             } catch (error) {
               console.error('🔴 LeadDetails: Failed to send SMS:', error);
               // Dialog stays open on error so user can retry
