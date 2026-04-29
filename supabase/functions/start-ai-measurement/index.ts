@@ -1415,13 +1415,82 @@ function synthesizePatentStructureFromFootprint(
   const poly = plane.polygon_px
   if (poly.length < 4) return []
 
-  const wings = decomposeFootprintIntoWings(poly)
-  if (wings.length === 0) return []
+  // ──────────────────────────────────────────────────────────────────
+  // TOPOLOGY ENGINE v2 — replaces the rectangle→ridge→done synthesis.
+  //
+  // Pipeline:
+  //   1. Project pixel polygon → lat/lng ring
+  //   2. computeStraightSkeleton(ring)  → real ridges + hips + valleys
+  //      (multi-wing aware; classifies edges by reflex topology)
+  //   3. decomposeComplexFootprint(ring) → wing rectangles for perimeter
+  //      classification (eaves on long sides, rakes on gable ends,
+  //      valleys on shared interior boundaries)
+  //   4. Project every emitted edge back to pixels for line_px
+  //
+  // Source tag is `topology_engine_v2` so the change is auditable in
+  // the persisted ai_measurement_edges table.
+  // ──────────────────────────────────────────────────────────────────
 
   const out: RoofEdge[] = []
-  const HIP_INSET_FRAC = 0.5 // hip ridge length = wing_long - 2 * inset * wing_short
 
-  // Build a quick lookup of wing rectangles for adjacency tests.
+  // 1. Project pixel polygon → [lng, lat] ring (CCW expected by skeleton)
+  const ringGeo: [number, number][] = poly.map((p) => {
+    const ll = pixelToLatLng(p.x, p.y, centerLat, centerLng, imgW, imgH, actualMpp)
+    return [ll.lng, ll.lat]
+  })
+
+  const projectGeoToPx = (lng: number, lat: number): Pt => {
+    const px = latLngToPixel({ lat, lng }, centerLat, centerLng, imgW, imgH, actualMpp)
+    return { x: px.x, y: px.y }
+  }
+
+  const pushEdge = (
+    p1: Pt,
+    p2: Pt,
+    type: RoofEdge['edge_type'],
+    confidence: number,
+  ) => {
+    const lpx = polylineLengthPx([p1, p2])
+    if (lpx < 3) return
+    out.push({
+      edge_type: type,
+      source: 'topology_engine_v2',
+      line_px: [p1, p2],
+      line_geojson: [
+        pixelToLatLng(p1.x, p1.y, centerLat, centerLng, imgW, imgH, actualMpp),
+        pixelToLatLng(p2.x, p2.y, centerLat, centerLng, imgW, imgH, actualMpp),
+      ],
+      length_px: lpx,
+      length_ft: lpx * feetPerPixel,
+      confidence,
+    })
+  }
+
+  // 2. STRAIGHT SKELETON → ridges, hips, valleys (the real topology)
+  let skeletonEdgeCount = 0
+  try {
+    const skel = computeStraightSkeleton(ringGeo, 0) // no eave offset; footprint already at roof edge
+    for (const e of skel) {
+      const p1 = projectGeoToPx(e.start[0], e.start[1])
+      const p2 = projectGeoToPx(e.end[0], e.end[1])
+      const conf = e.type === 'ridge' ? 0.7 : e.type === 'hip' ? 0.62 : 0.6
+      pushEdge(p1, p2, e.type as RoofEdge['edge_type'], conf)
+      skeletonEdgeCount++
+    }
+  } catch (err) {
+    console.warn(`[topology_engine_v2] straight-skeleton failed: ${(err as Error).message}`)
+  }
+
+  // 3. PERIMETER CLASSIFICATION via wing decomposition.
+  //    decomposeComplexFootprint gives us the wing rectangles + valley
+  //    origins; we use the wing aspect to decide which perimeter side
+  //    is a gable (rakes) vs eave, and treat shared interior boundaries
+  //    as valleys (only if the skeleton didn't already emit one there).
+  const HIP_ASPECT_THRESHOLD = 1.4
+
+  // Fall back to the legacy axis-aligned wing decomposer for pixel-space
+  // perimeter math; the geo decomposer requires lat/lng + meter math.
+  const wings = decomposeFootprintIntoWings(poly)
   const eq = (a: number, b: number) => Math.abs(a - b) < 1.5
   const wingsShareEdge = (
     w1: { minX: number; minY: number; maxX: number; maxY: number },
@@ -1441,25 +1510,6 @@ function synthesizePatentStructureFromFootprint(
     })
   }
 
-  const pushEdge = (
-    p1: Pt, p2: Pt, type: RoofEdge['edge_type'], confidence: number,
-  ) => {
-    const lpx = polylineLengthPx([p1, p2])
-    if (lpx < 3) return
-    out.push({
-      edge_type: type,
-      source: 'patent_synthesis',
-      line_px: [p1, p2],
-      line_geojson: [
-        pixelToLatLng(p1.x, p1.y, centerLat, centerLng, imgW, imgH, actualMpp),
-        pixelToLatLng(p2.x, p2.y, centerLat, centerLng, imgW, imgH, actualMpp),
-      ],
-      length_px: lpx,
-      length_ft: lpx * feetPerPixel,
-      confidence,
-    })
-  }
-
   for (const w of wings) {
     const widthPx = w.maxX - w.minX
     const heightPx = w.maxY - w.minY
@@ -1467,44 +1517,8 @@ function synthesizePatentStructureFromFootprint(
     const longLen = longIsX ? widthPx : heightPx
     const shortLen = longIsX ? heightPx : widthPx
     const aspect = longLen / Math.max(shortLen, 1)
-    const cx = (w.minX + w.maxX) / 2
-    const cy = (w.minY + w.maxY) / 2
+    const isHip = aspect <= HIP_ASPECT_THRESHOLD
 
-    // ── Hip roof when wing is near-square (aspect <= 1.4); else gable ──
-    const isHip = aspect <= 1.4
-
-    let ridgeP1: Pt, ridgeP2: Pt
-    if (isHip) {
-      const inset = (shortLen / 2) * HIP_INSET_FRAC
-      ridgeP1 = longIsX
-        ? { x: w.minX + inset, y: cy }
-        : { x: cx, y: w.minY + inset }
-      ridgeP2 = longIsX
-        ? { x: w.maxX - inset, y: cy }
-        : { x: cx, y: w.maxY - inset }
-    } else {
-      ridgeP1 = longIsX ? { x: w.minX, y: cy } : { x: cx, y: w.minY }
-      ridgeP2 = longIsX ? { x: w.maxX, y: cy } : { x: cx, y: w.maxY }
-    }
-    pushEdge(ridgeP1, ridgeP2, 'ridge', 0.6)
-
-    // Hips: from ridge endpoints to the four short-end corners.
-    if (isHip) {
-      if (longIsX) {
-        pushEdge(ridgeP1, { x: w.minX, y: w.minY }, 'hip', 0.55)
-        pushEdge(ridgeP1, { x: w.minX, y: w.maxY }, 'hip', 0.55)
-        pushEdge(ridgeP2, { x: w.maxX, y: w.minY }, 'hip', 0.55)
-        pushEdge(ridgeP2, { x: w.maxX, y: w.maxY }, 'hip', 0.55)
-      } else {
-        pushEdge(ridgeP1, { x: w.minX, y: w.minY }, 'hip', 0.55)
-        pushEdge(ridgeP1, { x: w.maxX, y: w.minY }, 'hip', 0.55)
-        pushEdge(ridgeP2, { x: w.minX, y: w.maxY }, 'hip', 0.55)
-        pushEdge(ridgeP2, { x: w.maxX, y: w.maxY }, 'hip', 0.55)
-      }
-    }
-
-    // Perimeter classification per wing side.
-    // Sides: top (y=minY), bottom (y=maxY), left (x=minX), right (x=maxX)
     const sides: Array<{
       key: 'top' | 'bottom' | 'left' | 'right'
       p1: Pt; p2: Pt; isShortSide: boolean
@@ -1516,22 +1530,29 @@ function synthesizePatentStructureFromFootprint(
     ]
     for (const s of sides) {
       if (wingsShareEdge(w, s.key)) {
-        // Shared interior boundary between two wings → valley line.
-        pushEdge(s.p1, s.p2, 'valley', 0.5)
+        // Shared interior boundary → valley (skeleton may have emitted
+        // one too; the dedup pass downstream collapses near-duplicates).
+        pushEdge(s.p1, s.p2, 'valley', 0.55)
         continue
       }
       if (isHip) {
-        // Pure hip roof → every perimeter side is an eave.
-        pushEdge(s.p1, s.p2, 'eave', 0.55)
+        pushEdge(s.p1, s.p2, 'eave', 0.6)
       } else if (s.isShortSide) {
-        // Gable end → rakes (two sloped lines from ridge endpoint to corners).
-        // Represent the rake along the short side itself for length accounting.
-        pushEdge(s.p1, s.p2, 'rake', 0.55)
+        pushEdge(s.p1, s.p2, 'rake', 0.6)
       } else {
-        pushEdge(s.p1, s.p2, 'eave', 0.55)
+        pushEdge(s.p1, s.p2, 'eave', 0.6)
       }
     }
   }
+
+  console.log(
+    `[topology_engine_v2] wings=${wings.length} skeleton_edges=${skeletonEdgeCount} ` +
+    `total_edges=${out.length} ridges=${out.filter(e => e.edge_type === 'ridge').length} ` +
+    `hips=${out.filter(e => e.edge_type === 'hip').length} ` +
+    `valleys=${out.filter(e => e.edge_type === 'valley').length} ` +
+    `rakes=${out.filter(e => e.edge_type === 'rake').length} ` +
+    `eaves=${out.filter(e => e.edge_type === 'eave').length}`
+  )
 
   return out
 }
