@@ -3552,6 +3552,7 @@ Deno.serve(async (req) => {
           single_plane_fallback: qc.singlePlaneFallback,
           footprint_wkt: footprintWkt,
           overlay_schema: reportOverlaySchema,
+          patent_model: patentModel,
         }
 
         await supa.from('ai_measurement_results').insert({
@@ -3759,6 +3760,7 @@ Deno.serve(async (req) => {
           validation_status: qc.status === 'completed' ? 'validated' : 'flagged',
           geometry_report_json: reportJson,
           overlay_schema: reportOverlaySchema,
+          patent_model: patentModel,
           geometry_quality_score: qc.overall,
           measurement_quality_score: qc.overall,
         }
