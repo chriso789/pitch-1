@@ -502,11 +502,11 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // PROVIDER-TRUST MODE WITH SAFE VERTICAL-ONLY CORRECTION:
-    // The prior edge fallback allowed flipX/flipXY and translation, which could
-    // move the outline onto the neighboring roof. For the L-orientation issue we
-    // only allow a top↔bottom reflection about the same centroid: no horizontal
-    // flip and no edge-search translation.
+    // PROVIDER-TRUST MODE WITH SAFE 180° CORRECTION:
+    // A bottom-right corner needing to become the top-left corner is not a
+    // vertical-only flip; it is a 180° centroid-locked rotation (flipX+flipY).
+    // We still forbid translation and single-axis flips so the outline cannot
+    // walk onto a neighboring roof.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -536,26 +536,27 @@ function alignAuthoritativeToImage(
       }
     }
 
-    const verticalFlip = diagScores.find((s) => !s.flipX && s.flipY)
-    const shouldAdoptVerticalFlip = !!verticalFlip && !hasImageFootprint && edgeEvidence &&
-      verticalFlip.edge >= identityEdge + 0.005 &&
-      verticalFlip.edge >= identityEdge * 1.04
+    const rotate180 = diagScores.find((s) => s.flipX && s.flipY)
+    const shouldAdoptRotate180 = !!rotate180 && (
+      (hasImageFootprint && rotate180.iou >= identityIou + 0.001) ||
+      (!!edgeEvidence && rotate180.edge >= identityEdge + 0.001)
+    )
 
-    const adopt = shouldAdoptVerticalFlip
+    const adopt = shouldAdoptRotate180
       ? {
-          flipX: false,
+          flipX: true,
           flipY: true,
           dx: 0,
           dy: 0,
           pts: authPx.map((p) => ({
-            x: cImg.x + (p.x - cAuth.x) * scale,
+            x: cImg.x - (p.x - cAuth.x) * scale,
             y: cImg.y - (p.y - cAuth.y) * scale,
           })),
         }
       : { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
-    const adoptReason = shouldAdoptVerticalFlip
-      ? `vertical-only flipY (same centroid; no horizontal flip/translation; edge ${identityEdge.toFixed(3)}→${verticalFlip!.edge.toFixed(3)})`
-      : 'identity (provider orientation; horizontal/translated flips disabled)'
+    const adoptReason = shouldAdoptRotate180
+      ? `180deg flipX+flipY (bottom-right→top-left; same centroid; no translation; iou ${identityIou.toFixed(3)}→${rotate180!.iou.toFixed(3)}, edge ${identityEdge.toFixed(3)}→${rotate180!.edge.toFixed(3)})`
+      : 'identity (provider orientation; single-axis/translated flips disabled)'
 
     console.log(
       `[alignment] PROVIDER-TRUST drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
