@@ -248,7 +248,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
       return;
     }
-    if (!jobId) return;
+    if (!hasRenderableReport && !jobId) return;
     setDownloading(true);
     try {
       await downloadVisibleReportPdf();
@@ -298,7 +298,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           <Button
             size="sm"
             onClick={handleDownloadPdf}
-            disabled={!pdfGate.ok || (!jobId && !canOpenExistingPdf) || downloading || (!canOpenExistingPdf && diagrams.length === 0)}
+            disabled={!pdfGate.ok || downloading || (!canOpenExistingPdf && !hasRenderableReport && !jobId)}
           >
             {downloading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
