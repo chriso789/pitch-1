@@ -1266,6 +1266,40 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       <Badge variant="outline" className={cn("text-xs", statusConfig[inv.status]?.className)}>
                         {statusConfig[inv.status]?.label || inv.status}
                       </Badge>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={(e) => { e.stopPropagation(); openEditInvoice(inv); }}
+                        title="Edit invoice"
+                      >
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 text-destructive hover:text-destructive"
+                        disabled={deletingInvoiceId === inv.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const paid = Number(inv.amount) - Number(inv.balance);
+                          if (paid > 0) {
+                            toast.error('Cannot delete an invoice with payments applied. Void it instead.');
+                            return;
+                          }
+                          if (confirm(`Delete invoice ${inv.invoice_number}? This cannot be undone.`)) {
+                            setDeletingInvoiceId(inv.id);
+                            deleteInvoiceMutation.mutate(inv);
+                          }
+                        }}
+                        title="Delete invoice"
+                      >
+                        {deletingInvoiceId === inv.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
                     </div>
                   </div>
                   {hasLineItems && isExpanded && (
