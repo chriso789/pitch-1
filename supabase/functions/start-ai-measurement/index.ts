@@ -31,6 +31,8 @@ import {
 import { fetchMapboxVectorFootprint } from '../_shared/mapbox-footprint-extractor.ts'
 import { fetchOSMBuildingFootprint } from '../_shared/osm-footprint-extractor.ts'
 import { fetchMicrosoftBuildingFootprint } from '../_shared/microsoft-footprint-extractor.ts'
+import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
+import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
