@@ -502,11 +502,11 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // PROVIDER-TRUST MODE:
-    // Absolutely no orientation guessing here. The previous edge-only fallback
-    // was still allowed to adopt flipX+flipY, which rotated the roof 180° and
-    // put the bottom of the L at the bottom of the aerial instead of the top.
-    // We may log diagnostic scores, but the applied transform is always identity.
+    // PROVIDER-TRUST MODE WITH SAFE VERTICAL-ONLY CORRECTION:
+    // The prior edge fallback allowed flipX/flipXY and translation, which could
+    // move the outline onto the neighboring roof. For the L-orientation issue we
+    // only allow a top↔bottom reflection about the same centroid: no horizontal
+    // flip and no edge-search translation.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -536,8 +536,26 @@ function alignAuthoritativeToImage(
       }
     }
 
-    const adopt = { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
-    const adoptReason = 'identity (provider orientation; auto-flip disabled)'
+    const verticalFlip = diagScores.find((s) => !s.flipX && s.flipY)
+    const shouldAdoptVerticalFlip = !!verticalFlip && !hasImageFootprint && edgeEvidence &&
+      verticalFlip.edge >= identityEdge + 0.005 &&
+      verticalFlip.edge >= identityEdge * 1.04
+
+    const adopt = shouldAdoptVerticalFlip
+      ? {
+          flipX: false,
+          flipY: true,
+          dx: 0,
+          dy: 0,
+          pts: authPx.map((p) => ({
+            x: cImg.x + (p.x - cAuth.x) * scale,
+            y: cImg.y - (p.y - cAuth.y) * scale,
+          })),
+        }
+      : { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
+    const adoptReason = shouldAdoptVerticalFlip
+      ? `vertical-only flipY (same centroid; no horizontal flip/translation; edge ${identityEdge.toFixed(3)}→${verticalFlip!.edge.toFixed(3)})`
+      : 'identity (provider orientation; horizontal/translated flips disabled)'
 
     console.log(
       `[alignment] PROVIDER-TRUST drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
