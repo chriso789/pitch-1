@@ -474,9 +474,9 @@ const ContactProfile = () => {
               <Phone className="h-4 w-4" />
               <span className="truncate">Comms</span>
             </TabsTrigger>
-            <TabsTrigger value="documents" className="flex items-center gap-2">
+            <TabsTrigger value="documents" className="flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 text-xs sm:text-sm py-2">
               <FileText className="h-4 w-4" />
-              Documents
+              <span>Docs</span>
             </TabsTrigger>
           </TabsList>
 
