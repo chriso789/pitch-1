@@ -3633,10 +3633,16 @@ Deno.serve(async (req) => {
           },
           // Canonical transform — every overlay renderer MUST use this.
           transform: canonicalTransform,
-          polygon: (planes.length > 0
-            ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
-            : []
-          ).map((p) => [p.x, p.y]),
+          // Full-roof footprint hull (audit fix): every plane vertex is
+          // included so multi-plane roofs render the entire footprint, not
+          // just the largest facet. Per-plane polygons are also persisted
+          // for renderers that need facet-level geometry.
+          polygon: convexHull(planes.flatMap((p) => p.polygon_px || []))
+            .map((p) => [p.x, p.y]),
+          polygons: planes.map((p) => ({
+            plane_index: p.plane_index,
+            polygon: (p.polygon_px || []).map((pt) => [pt.x, pt.y]),
+          })),
           features: edges
             .filter((e) => e.edge_type !== 'unknown' && e.line_px.length >= 2)
             .map((e) => ({
