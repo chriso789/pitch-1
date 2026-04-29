@@ -502,11 +502,11 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // PROVIDER-TRUST MODE (per user directive 2026-04-28):
-    // No auto-flip, no edge-translation hunting. We render the provider
-    // geometry exactly as returned, only translating to the image-extracted
-    // centroid (when available) and applying uniform scale. Any orientation
-    // mismatch is a data problem to fix upstream — diagnose, don't paper over.
+    // PROVIDER-TRUST MODE:
+    // Absolutely no orientation guessing here. The previous edge-only fallback
+    // was still allowed to adopt flipX+flipY, which rotated the roof 180° and
+    // put the bottom of the L at the bottom of the aerial instead of the top.
+    // We may log diagnostic scores, but the applied transform is always identity.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -536,35 +536,8 @@ function alignAuthoritativeToImage(
       }
     }
 
-    let adopt = { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
-    let adoptReason = 'identity (provider-trust default)'
-
-    // Narrow edge-only fallback: when we have NO image footprint to validate
-    // against (all IoU = 0), trust the satellite EDGE evidence if a reflection
-    // beats identity by a meaningful margin. This is *not* the old aggressive
-    // auto-flip — it only fires when there's literally no other signal and the
-    // edge winner is clearly better than identity.
-    const hasAnyIou = diagScores.some((s) => s.iou > 0.01)
-    if (!hasAnyIou && edgeEvidence) {
-      const idEdge = diagScores[0].edge // index 0 = {flipX:false, flipY:false}
-      let bestIdx = 0
-      for (let i = 1; i < diagScores.length; i++) {
-        if (diagScores[i].edge > diagScores[bestIdx].edge) bestIdx = i
-      }
-      const winner = diagScores[bestIdx]
-      const margin = winner.edge - idEdge
-      // Require both a relative win (>=25%) AND an absolute margin (>=0.03)
-      if (bestIdx !== 0 && winner.edge >= idEdge * 1.25 && margin >= 0.03) {
-        const sx = winner.flipX ? -1 : 1
-        const sy = winner.flipY ? -1 : 1
-        const flippedPts = authPx.map((p) => ({
-          x: cImg.x + sx * (p.x - cAuth.x) * scale,
-          y: cImg.y + sy * (p.y - cAuth.y) * scale,
-        }))
-        adopt = { flipX: winner.flipX, flipY: winner.flipY, dx: 0, dy: 0, pts: flippedPts }
-        adoptReason = `edge-fallback flipX=${winner.flipX} flipY=${winner.flipY} edge=${winner.edge.toFixed(2)} vs id=${idEdge.toFixed(2)} (no image footprint)`
-      }
-    }
+    const adopt = { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
+    const adoptReason = 'identity (provider orientation; auto-flip disabled)'
 
     console.log(
       `[alignment] PROVIDER-TRUST drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
