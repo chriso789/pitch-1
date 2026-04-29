@@ -232,7 +232,7 @@ export const CLJSearchBar = () => {
 
   const clearRecents = () => {
     if (activeTenantId) {
-      localStorage.removeItem(getRecentsKey(activeTenantId));
+      localStorage.removeItem(getRecentsKey(activeTenantId, currentLocationId));
     }
     setRecents([]);
     setOpen(false);
