@@ -608,14 +608,14 @@ function alignAuthoritativeToImage(
  */
 export function applyAlignmentTransformToLines<T extends { p1: Pt; p2: Pt }>(
   lines: T[],
-  xform: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number } | undefined,
+  xform: { flipX: boolean; flipY: boolean; cx: number; cy: number; scale: number; dx?: number; dy?: number } | undefined,
 ): T[] {
-  if (!xform || (!xform.flipX && !xform.flipY && xform.scale === 1)) return lines
+  if (!xform || (!xform.flipX && !xform.flipY && xform.scale === 1 && !xform.dx && !xform.dy)) return lines
   const sx = xform.flipX ? -1 : 1
   const sy = xform.flipY ? -1 : 1
   const tx = (p: Pt): Pt => ({
-    x: xform.cx + sx * (p.x - xform.cx) * xform.scale,
-    y: xform.cy + sy * (p.y - xform.cy) * xform.scale,
+    x: xform.cx + sx * (p.x - xform.cx) * xform.scale + (xform.dx || 0),
+    y: xform.cy + sy * (p.y - xform.cy) * xform.scale + (xform.dy || 0),
   })
   return lines.map((l) => ({ ...l, p1: tx(l.p1), p2: tx(l.p2) }))
 }
