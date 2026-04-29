@@ -607,8 +607,8 @@ function alignAuthoritativeToImage(
       _alignment_transform: {
         flipX: adopt.flipX,
         flipY: adopt.flipY,
-        cx: cImg.x,
-        cy: cImg.y,
+        cx: srcBox.cx,
+        cy: srcBox.cy,
         scale,
         dx: adopt.dx,
         dy: adopt.dy,
