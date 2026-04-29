@@ -3732,8 +3732,10 @@ Deno.serve(async (req) => {
               : [qc.singlePlaneFallback ? 'single_plane_fallback' : qc.status],
             reshoot_requested: false,
           },
-          // Provenance — so the viewer can explain why ridges may be missing.
-          patent_data_only: true,
+          // Provenance — viewer can explain how the structure was derived.
+          patent_data_only: patentSynthesizedCount === 0,
+          patent_synthesis_used: patentSynthesizedCount > 0,
+          patent_synthesized_edge_count: patentSynthesizedCount,
           excluded_synthetic_edges: edges.filter((e) =>
             SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
           ).length,
