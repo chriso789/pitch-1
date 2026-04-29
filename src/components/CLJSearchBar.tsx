@@ -49,21 +49,25 @@ interface SearchResult {
 }
 
 const MAX_RECENTS = 5;
-const getRecentsKey = (tenantId: string) => `pitch-recent-searches-${tenantId}`;
+// Scope recents to BOTH tenant and active location so switching locations
+// doesn't surface results from a different location (e.g. East Coast jobs
+// appearing while the user is viewing West Coast).
+const getRecentsKey = (tenantId: string, locationId: string | null) =>
+  `pitch-recent-searches-${tenantId}-${locationId || 'all'}`;
 
-const loadRecents = (tenantId: string | null): SearchResult[] => {
+const loadRecents = (tenantId: string | null, locationId: string | null): SearchResult[] => {
   if (!tenantId) return [];
   try {
-    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId)) || '[]');
+    return JSON.parse(localStorage.getItem(getRecentsKey(tenantId, locationId)) || '[]');
   } catch { return []; }
 };
 
-const saveRecent = (result: SearchResult, tenantId: string | null) => {
+const saveRecent = (result: SearchResult, tenantId: string | null, locationId: string | null) => {
   if (!tenantId) return;
-  const existing = loadRecents(tenantId);
+  const existing = loadRecents(tenantId, locationId);
   const filtered = existing.filter(r => r.entity_id !== result.entity_id);
   const updated = [result, ...filtered].slice(0, MAX_RECENTS);
-  localStorage.setItem(getRecentsKey(tenantId), JSON.stringify(updated));
+  localStorage.setItem(getRecentsKey(tenantId, locationId), JSON.stringify(updated));
 };
 
 export const CLJSearchBar = () => {
