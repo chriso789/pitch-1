@@ -103,6 +103,71 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const previewGate = useMemo(() => evaluatePreviewGate(measurement), [measurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(measurement), [measurement]);
   const canOpenExistingPdf = Boolean((measurement as any)?.report_pdf_url && pdfGate.ok);
+  const reportModel = useMemo(() => {
+    const serverPatent = (measurement as any)?.patent_model
+      || (measurement as any)?.geometry_report_json?.patent_model;
+    const overlay = (measurement as any)?.overlay_schema
+      || (measurement as any)?.geometry_report_json?.overlay_schema;
+
+    return serverPatent ?? (overlay ? overlayToPatentModel(overlay, measurement) : null);
+  }, [measurement]);
+  const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0;
+
+  const createExportSafeClone = (page: HTMLElement) => {
+    const wrapper = document.createElement('div');
+    wrapper.style.position = 'fixed';
+    wrapper.style.left = '-10000px';
+    wrapper.style.top = '0';
+    wrapper.style.width = `${page.offsetWidth || 900}px`;
+    wrapper.style.background = 'hsl(var(--background))';
+    wrapper.style.zIndex = '-1';
+
+    const clone = page.cloneNode(true) as HTMLElement;
+    clone.style.width = `${page.offsetWidth || 900}px`;
+    clone.querySelectorAll('img[aria-hidden="true"], img.hidden').forEach((img) => img.remove());
+    clone.querySelectorAll('svg image').forEach((image) => {
+      const parent = image.parentElement;
+      if (parent?.tagName.toLowerCase() === 'svg') {
+        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+        rect.setAttribute('x', '0');
+        rect.setAttribute('y', '0');
+        rect.setAttribute('width', '100%');
+        rect.setAttribute('height', '100%');
+        rect.setAttribute('fill', 'hsl(var(--muted))');
+        parent.insertBefore(rect, image);
+      }
+      image.remove();
+    });
+
+    wrapper.appendChild(clone);
+    document.body.appendChild(wrapper);
+    return { element: clone, cleanup: () => wrapper.remove() };
+  };
+
+  const capturePageImage = async (page: HTMLElement) => {
+    const captureOptions = {
+      scale: 1.5,
+      useCORS: true,
+      allowTaint: false,
+      backgroundColor: '#ffffff',
+      logging: false,
+    } as const;
+
+    try {
+      const canvas = await html2canvas(page, captureOptions);
+      return { imgData: canvas.toDataURL('image/jpeg', 0.65), width: canvas.width, height: canvas.height };
+    } catch (err) {
+      console.warn('Direct PDF page capture failed; retrying without cross-origin imagery:', err);
+    }
+
+    const safeClone = createExportSafeClone(page);
+    try {
+      const canvas = await html2canvas(safeClone.element, captureOptions);
+      return { imgData: canvas.toDataURL('image/jpeg', 0.65), width: canvas.width, height: canvas.height };
+    } finally {
+      safeClone.cleanup();
+    }
+  };
 
   const downloadVisibleReportPdf = async () => {
     const root = reportContentRef.current;
@@ -119,19 +184,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const usableHeight = pdfHeight - margin * 2;
 
     for (let index = 0; index < pages.length; index += 1) {
-      const canvas = await html2canvas(pages[index], {
-        scale: 1.5,
-        useCORS: true,
-        allowTaint: false,
-        backgroundColor: '#ffffff',
-        logging: false,
-      });
-      const imgData = canvas.toDataURL('image/jpeg', 0.65);
-      const ratio = Math.min(usableWidth / canvas.width, usableHeight / canvas.height);
-      const width = canvas.width * ratio;
-      const height = canvas.height * ratio;
+      const pageImage = await capturePageImage(pages[index]);
+      const ratio = Math.min(usableWidth / pageImage.width, usableHeight / pageImage.height);
+      const width = pageImage.width * ratio;
+      const height = pageImage.height * ratio;
       if (index > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', (pdfWidth - width) / 2, margin, width, height);
+      pdf.addImage(pageImage.imgData, 'JPEG', (pdfWidth - width) / 2, margin, width, height);
     }
 
     const safeAddress = (address || 'measurement-report')
