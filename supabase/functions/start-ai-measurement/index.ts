@@ -3381,8 +3381,46 @@ Deno.serve(async (req) => {
           cal.meters_per_pixel_actual,
           feetPerPixel,
         )
+
+        // Patent-shaped synthesis fallback: when topology resolved no real
+        // interior structure (no ridges/hips/valleys from segmentation), we
+        // synthesize a complete patent edge set (ridges, hips, valleys,
+        // rakes, eaves) from the rectilinear footprint decomposition. This
+        // matches what AccuLynx/EagleView do when imagery is ambiguous —
+        // they fill the patent shape from inferred topology rather than
+        // returning a single-plane footprint with one ridge.
+        const hasRealInteriorStructure = edges.some(
+          (e) =>
+            (e.edge_type === 'ridge' || e.edge_type === 'hip' || e.edge_type === 'valley') &&
+            e.source !== 'patent_synthesis' &&
+            e.source !== 'solar_dsm_inferred_ridge' &&
+            e.source !== 'filled_perimeter' &&
+            e.source !== 'perimeter_fallback',
+        )
+        if (!hasRealInteriorStructure && planes.length > 0) {
+          const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+          const synth = synthesizePatentStructureFromFootprint(
+            largest, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
+          )
+          if (synth.length > 0) {
+            // Drop the synthetic single ridge + perimeter_fallback eaves we
+            // may have added earlier; replace with the full patent set.
+            edges = edges.filter(
+              (e) =>
+                e.source !== 'solar_dsm_inferred_ridge' &&
+                e.source !== 'filled_perimeter' &&
+                e.source !== 'perimeter_fallback',
+            )
+            edges.push(...synth)
+            console.log(
+              `[start-ai-measurement] patent synthesis emitted ${synth.length} edges ` +
+              `(ridges/hips/valleys/rakes/eaves) from rectilinear footprint`,
+            )
+          }
+        }
+
         if (edges.length === 0 && planes.length > 0) {
-          // Use first (largest) plane perimeter as fallback eaves
+          // Last-resort perimeter eaves if even synthesis produced nothing.
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
           edges = edgesFromPerimeter(
             largest.polygon_px, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
