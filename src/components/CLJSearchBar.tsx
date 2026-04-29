@@ -221,10 +221,10 @@ export const CLJSearchBar = () => {
       job: `/lead/${result.entity_id}`
     };
 
-    saveRecent(result, activeTenantId);
+    saveRecent(result, activeTenantId, currentLocationId);
     // Re-resolve names from DB so the freshly added recent reflects any
     // rename that happened after the original cache was written.
-    refreshRecents(activeTenantId);
+    refreshRecents(activeTenantId, currentLocationId);
     navigate(routes[result.entity_type]);
     setOpen(false);
     setSearchTerm('');
