@@ -202,11 +202,15 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   };
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setFullMeasurement(null);
+      return;
+    }
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
+        setFullMeasurement(null);
         let resolvedJobId = explicitJobId || (measurement as any)?.ai_measurement_job_id || null;
         if (!resolvedJobId && pipelineEntryId) {
           const { data } = await (supabase as any)
@@ -227,7 +231,20 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         }
         if (!cancelled) setJobId(resolvedJobId);
 
-        if (previewGate.ok) {
+        const { data: roofMeasurement } = await (supabase as any)
+          .from('roof_measurements')
+          .select('id, ai_measurement_job_id, validation_status, requires_manual_review, facet_count, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, mapbox_image_url, selected_image_source, image_source, measurement_confidence, overlay_schema, patent_model')
+          .eq('ai_measurement_job_id', resolvedJobId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const mergedMeasurement = roofMeasurement
+          ? { ...(measurement as any), ...roofMeasurement }
+          : measurement;
+        if (!cancelled) setFullMeasurement(mergedMeasurement);
+
+        if (evaluatePreviewGate(mergedMeasurement).ok) {
           const { data, error } = await (supabase as any)
             .from('ai_measurement_diagrams')
             .select('id, diagram_type, title, page_number, svg_markup')
@@ -242,7 +259,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [open, explicitJobId, measurement, pipelineEntryId, previewGate.ok]);
+  }, [open, explicitJobId, measurement, pipelineEntryId]);
 
   const handleDownloadPdf = async () => {
     const existingPdfUrl = (measurement as any)?.report_pdf_url;
