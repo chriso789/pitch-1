@@ -1405,14 +1405,160 @@ function synthesizeCentralRidgeFromFootprint(
   const poly = plane.polygon_px
   if (poly.length < 4) return []
 
-  // Single midline ridge across the entire footprint bbox.
-  // (Multi-wing synthesis disabled — was producing extra/false ridges.)
+  // Single midline ridge across the entire footprint bbox (legacy path
+  // used only when no wing decomposition is requested).
   const minX = Math.min(...poly.map((p) => p.x))
   const maxX = Math.max(...poly.map((p) => p.x))
   const minY = Math.min(...poly.map((p) => p.y))
   const maxY = Math.max(...poly.map((p) => p.y))
   const single = ridgeForRect({ minX, minY, maxX, maxY }, poly, centerLat, centerLng, imgW, imgH, actualMpp, feetPerPixel)
   return single ? [single] : []
+}
+
+/**
+ * Patent-shaped synthesis from a rectilinear footprint.
+ *
+ * For each wing of the decomposed footprint we emit:
+ *   - 1 ridge along the wing's long centerline (clipped to footprint)
+ *   - 4 perimeter classifications: rakes on the two short ends (gable),
+ *     eaves on the two long sides — UNLESS the short end is shared with
+ *     another wing (then it's a valley), or unless we treat it as a hip
+ *     end (when the wing aspect ratio is near-square, hip roof).
+ *
+ * Output is patent-shaped (Layer 2 structural edges) and tagged with
+ * source 'patent_synthesis' so it survives the patent-model filter.
+ */
+function synthesizePatentStructureFromFootprint(
+  plane: RoofPlane,
+  centerLat: number,
+  centerLng: number,
+  imgW: number,
+  imgH: number,
+  actualMpp: number,
+  feetPerPixel: number,
+): RoofEdge[] {
+  const poly = plane.polygon_px
+  if (poly.length < 4) return []
+
+  const wings = decomposeFootprintIntoWings(poly)
+  if (wings.length === 0) return []
+
+  const out: RoofEdge[] = []
+  const HIP_INSET_FRAC = 0.5 // hip ridge length = wing_long - 2 * inset * wing_short
+
+  // Build a quick lookup of wing rectangles for adjacency tests.
+  const eq = (a: number, b: number) => Math.abs(a - b) < 1.5
+  const wingsShareEdge = (
+    w1: { minX: number; minY: number; maxX: number; maxY: number },
+    side: 'top' | 'bottom' | 'left' | 'right',
+  ): boolean => {
+    return wings.some((w2) => {
+      if (w2 === w1) return false
+      if (side === 'top' && eq(w2.maxY, w1.minY))
+        return Math.min(w1.maxX, w2.maxX) - Math.max(w1.minX, w2.minX) > 2
+      if (side === 'bottom' && eq(w2.minY, w1.maxY))
+        return Math.min(w1.maxX, w2.maxX) - Math.max(w1.minX, w2.minX) > 2
+      if (side === 'left' && eq(w2.maxX, w1.minX))
+        return Math.min(w1.maxY, w2.maxY) - Math.max(w1.minY, w2.minY) > 2
+      if (side === 'right' && eq(w2.minX, w1.maxX))
+        return Math.min(w1.maxY, w2.maxY) - Math.max(w1.minY, w2.minY) > 2
+      return false
+    })
+  }
+
+  const pushEdge = (
+    p1: Pt, p2: Pt, type: RoofEdge['edge_type'], confidence: number,
+  ) => {
+    const lpx = polylineLengthPx([p1, p2])
+    if (lpx < 3) return
+    out.push({
+      edge_type: type,
+      source: 'patent_synthesis',
+      line_px: [p1, p2],
+      line_geojson: [
+        pixelToLatLng(p1.x, p1.y, centerLat, centerLng, imgW, imgH, actualMpp),
+        pixelToLatLng(p2.x, p2.y, centerLat, centerLng, imgW, imgH, actualMpp),
+      ],
+      length_px: lpx,
+      length_ft: lpx * feetPerPixel,
+      confidence,
+    })
+  }
+
+  for (const w of wings) {
+    const widthPx = w.maxX - w.minX
+    const heightPx = w.maxY - w.minY
+    const longIsX = widthPx >= heightPx
+    const longLen = longIsX ? widthPx : heightPx
+    const shortLen = longIsX ? heightPx : widthPx
+    const aspect = longLen / Math.max(shortLen, 1)
+    const cx = (w.minX + w.maxX) / 2
+    const cy = (w.minY + w.maxY) / 2
+
+    // ── Hip roof when wing is near-square (aspect <= 1.4); else gable ──
+    const isHip = aspect <= 1.4
+
+    let ridgeP1: Pt, ridgeP2: Pt
+    if (isHip) {
+      const inset = (shortLen / 2) * HIP_INSET_FRAC
+      ridgeP1 = longIsX
+        ? { x: w.minX + inset, y: cy }
+        : { x: cx, y: w.minY + inset }
+      ridgeP2 = longIsX
+        ? { x: w.maxX - inset, y: cy }
+        : { x: cx, y: w.maxY - inset }
+    } else {
+      ridgeP1 = longIsX ? { x: w.minX, y: cy } : { x: cx, y: w.minY }
+      ridgeP2 = longIsX ? { x: w.maxX, y: cy } : { x: cx, y: w.maxY }
+    }
+    pushEdge(ridgeP1, ridgeP2, 'ridge', 0.6)
+
+    // Hips: from ridge endpoints to the four short-end corners.
+    if (isHip) {
+      if (longIsX) {
+        pushEdge(ridgeP1, { x: w.minX, y: w.minY }, 'hip', 0.55)
+        pushEdge(ridgeP1, { x: w.minX, y: w.maxY }, 'hip', 0.55)
+        pushEdge(ridgeP2, { x: w.maxX, y: w.minY }, 'hip', 0.55)
+        pushEdge(ridgeP2, { x: w.maxX, y: w.maxY }, 'hip', 0.55)
+      } else {
+        pushEdge(ridgeP1, { x: w.minX, y: w.minY }, 'hip', 0.55)
+        pushEdge(ridgeP1, { x: w.maxX, y: w.minY }, 'hip', 0.55)
+        pushEdge(ridgeP2, { x: w.minX, y: w.maxY }, 'hip', 0.55)
+        pushEdge(ridgeP2, { x: w.maxX, y: w.maxY }, 'hip', 0.55)
+      }
+    }
+
+    // Perimeter classification per wing side.
+    // Sides: top (y=minY), bottom (y=maxY), left (x=minX), right (x=maxX)
+    const sides: Array<{
+      key: 'top' | 'bottom' | 'left' | 'right'
+      p1: Pt; p2: Pt; isShortSide: boolean
+    }> = [
+      { key: 'top',    p1: { x: w.minX, y: w.minY }, p2: { x: w.maxX, y: w.minY }, isShortSide: !longIsX },
+      { key: 'bottom', p1: { x: w.minX, y: w.maxY }, p2: { x: w.maxX, y: w.maxY }, isShortSide: !longIsX },
+      { key: 'left',   p1: { x: w.minX, y: w.minY }, p2: { x: w.minX, y: w.maxY }, isShortSide: longIsX },
+      { key: 'right',  p1: { x: w.maxX, y: w.minY }, p2: { x: w.maxX, y: w.maxY }, isShortSide: longIsX },
+    ]
+    for (const s of sides) {
+      if (wingsShareEdge(w, s.key)) {
+        // Shared interior boundary between two wings → valley line.
+        pushEdge(s.p1, s.p2, 'valley', 0.5)
+        continue
+      }
+      if (isHip) {
+        // Pure hip roof → every perimeter side is an eave.
+        pushEdge(s.p1, s.p2, 'eave', 0.55)
+      } else if (s.isShortSide) {
+        // Gable end → rakes (two sloped lines from ridge endpoint to corners).
+        // Represent the rake along the short side itself for length accounting.
+        pushEdge(s.p1, s.p2, 'rake', 0.55)
+      } else {
+        pushEdge(s.p1, s.p2, 'eave', 0.55)
+      }
+    }
+  }
+
+  return out
 }
 
 function collapseUnverifiedSyntheticRidges(
@@ -3235,8 +3381,46 @@ Deno.serve(async (req) => {
           cal.meters_per_pixel_actual,
           feetPerPixel,
         )
+
+        // Patent-shaped synthesis fallback: when topology resolved no real
+        // interior structure (no ridges/hips/valleys from segmentation), we
+        // synthesize a complete patent edge set (ridges, hips, valleys,
+        // rakes, eaves) from the rectilinear footprint decomposition. This
+        // matches what AccuLynx/EagleView do when imagery is ambiguous —
+        // they fill the patent shape from inferred topology rather than
+        // returning a single-plane footprint with one ridge.
+        const hasRealInteriorStructure = edges.some(
+          (e) =>
+            (e.edge_type === 'ridge' || e.edge_type === 'hip' || e.edge_type === 'valley') &&
+            e.source !== 'patent_synthesis' &&
+            e.source !== 'solar_dsm_inferred_ridge' &&
+            e.source !== 'filled_perimeter' &&
+            e.source !== 'perimeter_fallback',
+        )
+        if (!hasRealInteriorStructure && planes.length > 0) {
+          const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
+          const synth = synthesizePatentStructureFromFootprint(
+            largest, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
+          )
+          if (synth.length > 0) {
+            // Drop the synthetic single ridge + perimeter_fallback eaves we
+            // may have added earlier; replace with the full patent set.
+            edges = edges.filter(
+              (e) =>
+                e.source !== 'solar_dsm_inferred_ridge' &&
+                e.source !== 'filled_perimeter' &&
+                e.source !== 'perimeter_fallback',
+            )
+            edges.push(...synth)
+            console.log(
+              `[start-ai-measurement] patent synthesis emitted ${synth.length} edges ` +
+              `(ridges/hips/valleys/rakes/eaves) from rectilinear footprint`,
+            )
+          }
+        }
+
         if (edges.length === 0 && planes.length > 0) {
-          // Use first (largest) plane perimeter as fallback eaves
+          // Last-resort perimeter eaves if even synthesis produced nothing.
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
           edges = edgesFromPerimeter(
             largest.polygon_px, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
@@ -3426,12 +3610,12 @@ Deno.serve(async (req) => {
         }
 
         // ── Patent two-layer model (US 9,329,749 / US 8,515,125 family) ──
-        // Built ONLY from real, measured geometry. Synthetic ridges
-        // (solar_dsm_inferred_ridge, filled_perimeter) and placeholder bbox
-        // planes are excluded so the report reflects patent-data only — no
-        // guesses. When the segmenter can't resolve interior structure, we
-        // emit Layer 1 perimeter + perimeter-coincident eaves only and let
-        // the QC gate downgrade to needs_review.
+        // Built from real measured geometry plus, when imagery cannot
+        // resolve interior structure, patent-shaped synthesis derived from
+        // the rectilinear footprint (ridges/hips/valleys/rakes/eaves).
+        // Truly speculative sources (Solar DSM single ridge, filled
+        // perimeter eaves) remain excluded — only the structured patent
+        // synthesis is admitted.
         const SYNTHETIC_EDGE_SOURCES = new Set([
           'solar_dsm_inferred_ridge',
           'filled_perimeter',
@@ -3442,6 +3626,9 @@ Deno.serve(async (req) => {
             e.edge_type !== 'unknown' &&
             !SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
         )
+        const patentSynthesizedCount = patentEdges.filter(
+          (e) => String((e as any).source || '') === 'patent_synthesis',
+        ).length
         const patentPlanes = planes.filter(
           (p) => !PLACEHOLDER_SOURCES.has(String(p.source)),
         )
@@ -3545,8 +3732,10 @@ Deno.serve(async (req) => {
               : [qc.singlePlaneFallback ? 'single_plane_fallback' : qc.status],
             reshoot_requested: false,
           },
-          // Provenance — so the viewer can explain why ridges may be missing.
-          patent_data_only: true,
+          // Provenance — viewer can explain how the structure was derived.
+          patent_data_only: patentSynthesizedCount === 0,
+          patent_synthesis_used: patentSynthesizedCount > 0,
+          patent_synthesized_edge_count: patentSynthesizedCount,
           excluded_synthetic_edges: edges.filter((e) =>
             SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
           ).length,
