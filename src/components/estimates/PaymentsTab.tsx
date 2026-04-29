@@ -71,6 +71,13 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [showLineDetails, setShowLineDetails] = useState(true);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
+  // Edit invoice state
+  const [editingInvoice, setEditingInvoice] = useState<any | null>(null);
+  const [editLineItems, setEditLineItems] = useState<InvoiceLineItem[]>([]);
+  const [editDueDate, setEditDueDate] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [deletingInvoiceId, setDeletingInvoiceId] = useState<string | null>(null);
+
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
   const { data: enhancedEstimates } = useQuery({
     queryKey: ['enhanced-estimate-line-items', pipelineEntryId],
