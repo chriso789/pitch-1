@@ -158,14 +158,17 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
 
       if (error) throw error;
 
+      console.log('Google Places details response:', data);
+
       if (data?.result) {
         const place = data.result;
         const addressComponents = place.address_components || [];
-        
+
         // Parse address components with better fallbacks
         let streetNumber = "";
         let route = "";
         let city = "";
+        let cityFallback = "";
         let state = "";
         let zip = "";
 
@@ -175,9 +178,22 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
             streetNumber = component.long_name;
           } else if (types.includes("route")) {
             route = component.long_name;
-          } else if (types.includes("locality") || types.includes("sublocality") || types.includes("administrative_area_level_3")) {
-            // Use first match for city (locality preferred)
-            if (!city) city = component.long_name;
+          } else if (types.includes("locality")) {
+            city = component.long_name;
+          } else if (
+            !city &&
+            (types.includes("sublocality") ||
+              types.includes("sublocality_level_1") ||
+              types.includes("postal_town") ||
+              types.includes("administrative_area_level_3"))
+          ) {
+            city = component.long_name;
+          } else if (
+            !cityFallback &&
+            (types.includes("neighborhood") ||
+              types.includes("administrative_area_level_2"))
+          ) {
+            cityFallback = component.long_name;
           } else if (types.includes("administrative_area_level_1")) {
             state = component.short_name;
           } else if (types.includes("postal_code")) {
@@ -185,8 +201,23 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
           }
         });
 
+        if (!city) city = cityFallback;
+
+        // Fallback: parse from formatted_address ("street, city, ST zip, USA")
+        if ((!city || !state || !zip) && place.formatted_address) {
+          const parts = place.formatted_address.split(",").map((p: string) => p.trim());
+          if (parts.length >= 3) {
+            if (!city) city = parts[parts.length - 3] || city;
+            const stateZip = (parts[parts.length - 2] || "").match(/^([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
+            if (stateZip) {
+              if (!state) state = stateZip[1];
+              if (!zip && stateZip[2]) zip = stateZip[2];
+            }
+          }
+        }
+
         const newAddress: AddressData = {
-          street: `${streetNumber} ${route}`.trim(),
+          street: `${streetNumber} ${route}`.trim() || (place.formatted_address?.split(",")[0] ?? ""),
           city,
           state,
           zip,
