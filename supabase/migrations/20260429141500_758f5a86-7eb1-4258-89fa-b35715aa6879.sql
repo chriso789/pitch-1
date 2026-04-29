@@ -1,0 +1,2 @@
+UPDATE public.contacts SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16' WHERE id = '3ebe0928-2f32-4610-8931-9e29aadd8870';
+UPDATE public.pipeline_entries SET location_id = 'c490231c-2a0e-4afc-8412-672e1c890c16' WHERE contact_id = '3ebe0928-2f32-4610-8931-9e29aadd8870';
