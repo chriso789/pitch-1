@@ -2859,7 +2859,7 @@ Deno.serve(async (req) => {
           }
 
           let selectedAuthoritative =
-            authoritative && !(isLowDetailAuthoritativeFootprint(authoritative) && extractedImageGeometry?.footprint?.length >= 4)
+            authoritative && !(isLowDetailAuthoritativeFootprint(authoritative) && (extractedImageGeometry?.footprint?.length ?? 0) >= 4)
               ? authoritative
               : null
           if (authoritative && !selectedAuthoritative) {
