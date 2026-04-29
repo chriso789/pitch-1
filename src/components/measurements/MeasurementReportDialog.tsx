@@ -327,18 +327,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             </div>
           ) : (
             (() => {
-              // Prefer the server-built patent model (source of truth).
-              // Fall back to client adapter only for legacy rows that
-              // pre-date the patent_model column.
-              const serverPatent = (measurement as any)?.patent_model
-                || (measurement as any)?.geometry_report_json?.patent_model;
-              const overlay = (measurement as any)?.overlay_schema
-                || (measurement as any)?.geometry_report_json?.overlay_schema;
-
-              const model = serverPatent
-                ?? (overlay ? overlayToPatentModel(overlay, measurement) : null);
-
-              if (model) {
+              if (reportModel) {
                 return (
                   <div className="space-y-6">
                     {(!pdfGate.ok || pdfGate.warning) && (
@@ -360,7 +349,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                         </AlertDescription>
                       </Alert>
                     )}
-                    <PatentRoofReport initialModel={model} address={address} />
+                    <PatentRoofReport initialModel={reportModel} address={address} />
                   </div>
                 );
               }
