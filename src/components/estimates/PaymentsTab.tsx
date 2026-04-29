@@ -719,7 +719,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                       <div>Description</div>
                       <div className="text-right">Qty</div>
                       <div>Unit</div>
-                      <div className="text-right">Cost</div>
+                      <div className="text-right">Price</div>
                       <div className="text-right">Total</div>
                       <div></div>
                     </div>
