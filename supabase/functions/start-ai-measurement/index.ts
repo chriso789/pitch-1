@@ -556,21 +556,35 @@ function alignAuthoritativeToImage(
       })
     }
 
-    const sourceTopLeft = nearestCorner(identityPts, 'topLeft')
-    const sourceBottomRight = nearestCorner(identityPts, 'bottomRight')
-    const targetTopLeft = hasImageFootprint
-      ? nearestCorner(imageFootprintPx!, 'topLeft')
-      : sourceBottomRight
-    const anchorDx = targetTopLeft.x - sourceTopLeft.x
-    const anchorDy = targetTopLeft.y - sourceTopLeft.y
+    // HORIZONTAL MIRROR: flip the diagram left-to-right so the right side
+    // of the original diagram lands on the left side. Mirror around the
+    // diagram's own bbox center, then re-anchor onto the actual roof
+    // footprint (image-traced if available) by aligning bbox centers.
+    const bbox = (pts: Pt[]) => {
+      const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y)
+      const minX = Math.min(...xs), maxX = Math.max(...xs)
+      const minY = Math.min(...ys), maxY = Math.max(...ys)
+      return { minX, maxX, minY, maxY, cx: (minX + maxX) / 2, cy: (minY + maxY) / 2 }
+    }
+    const srcBox = bbox(identityPts)
+    // Mirror horizontally around source center
+    const mirrored = identityPts.map((p) => ({ x: 2 * srcBox.cx - p.x, y: p.y }))
+    // Re-anchor to target footprint center (image trace) if available,
+    // otherwise keep at the source center (no translation).
+    const targetCenter = hasImageFootprint
+      ? (() => { const b = bbox(imageFootprintPx!); return { x: b.cx, y: b.cy } })()
+      : { x: srcBox.cx, y: srcBox.cy }
+    const mirroredBox = bbox(mirrored)
+    const anchorDx = targetCenter.x - mirroredBox.cx
+    const anchorDy = targetCenter.y - mirroredBox.cy
     const adopt = {
-      flipX: false,
+      flipX: true,
       flipY: false,
       dx: anchorDx,
       dy: anchorDy,
-      pts: identityPts.map((p) => ({ x: p.x + anchorDx, y: p.y + anchorDy })),
+      pts: mirrored.map((p) => ({ x: p.x + anchorDx, y: p.y + anchorDy })),
     }
-    const adoptReason = `FORCED translation-only anchor (diagram top-left→actual roof top-left; actual roof top-left=${hasImageFootprint ? 'image footprint top-left' : 'old diagram bottom-right'}; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; no flip/no rotation; iou ${identityIou.toFixed(3)}, edge ${identityEdge.toFixed(3)})`
+    const adoptReason = `HORIZONTAL MIRROR (flipX around diagram center) + center-anchor to ${hasImageFootprint ? 'image footprint center' : 'self'}; dx=${anchorDx.toFixed(1)} dy=${anchorDy.toFixed(1)}; iou ${identityIou.toFixed(3)}, edge ${identityEdge.toFixed(3)}`
 
     console.log(
       `[alignment] FORCED-CORNER-TRANSLATE drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
