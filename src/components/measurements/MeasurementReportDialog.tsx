@@ -61,7 +61,7 @@ function evaluatePreviewGate(measurement: any): { ok: boolean; reason?: string }
 }
 
 /** Client mirror of the PDF-specific QC gate enforced by render-measurement-pdf. */
-function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string } {
+function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warning?: string } {
   if (!measurement) return { ok: false, reason: 'No measurement record.' };
   const grj = measurement.geometry_report_json;
   if (
@@ -74,11 +74,13 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string } {
   if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
   if (grj.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
+
+  const warnings: string[] = [];
   if (grj.single_plane_fallback === true)
-    return { ok: false, reason: 'Preview-only single-plane fallback.' };
+    warnings.push('Roof slopes could not be fully segmented; PDF will be marked as a footprint estimate.');
   if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < 0.75)
-    return { ok: false, reason: 'overlay_alignment_score below 0.75.' };
-  return { ok: true };
+    warnings.push('Overlay alignment is below the review threshold; PDF will be marked for verification.');
+  return { ok: true, warning: warnings.join(' ') || undefined };
 }
 
 const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
@@ -232,17 +234,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               if (model) {
                 return (
                   <div className="space-y-6">
-                    {!pdfGate.ok && (
+                    {(!pdfGate.ok || pdfGate.warning) && (
                       <Alert>
                         <AlertTriangle className="h-4 w-4" />
                         <AlertTitle>
-                          {pdfGate.reason?.includes('single-plane')
+                          {pdfGate.warning
+                            ? 'Footprint estimate'
+                            : pdfGate.reason?.includes('single-plane')
                             ? 'Footprint estimate'
                             : 'Preview only'}
                         </AlertTitle>
                         <AlertDescription>
-                          {pdfGate.reason?.includes('single-plane')
-                            ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
+                          {pdfGate.warning
+                            ? pdfGate.warning
+                            : pdfGate.reason?.includes('single-plane')
+                            ? 'Roof slopes could not be segmented. Showing footprint estimate.'
                             : `Preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
                         </AlertDescription>
                       </Alert>
@@ -267,17 +273,21 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
               return (
                 <div className="space-y-6">
-                  {!pdfGate.ok && (
+                  {(!pdfGate.ok || pdfGate.warning) && (
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />
                       <AlertTitle>
-                        {pdfGate.reason?.includes('single-plane')
+                        {pdfGate.warning
+                          ? 'Footprint estimate'
+                          : pdfGate.reason?.includes('single-plane')
                           ? 'Footprint estimate'
                           : 'Preview only'}
                       </AlertTitle>
                       <AlertDescription>
-                        {pdfGate.reason?.includes('single-plane')
-                          ? 'Roof slopes could not be segmented. Showing footprint estimate — customer PDF download is blocked until facets are reviewed.'
+                        {pdfGate.warning
+                          ? pdfGate.warning
+                          : pdfGate.reason?.includes('single-plane')
+                          ? 'Roof slopes could not be segmented. Showing footprint estimate.'
                           : `Diagram preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
                       </AlertDescription>
                     </Alert>
