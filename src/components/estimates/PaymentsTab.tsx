@@ -75,7 +75,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .from('enhanced_estimates')
         .select('id, line_items, selling_price, status')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .not('status', 'in', '(void,cancelled,rejected)')
+        .not('status', 'in', '(rejected,expired)')
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
@@ -91,7 +91,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
         .from('estimates')
         .select('id, line_items, status')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .not('status', 'in', '(void,cancelled,rejected)')
+        .not('status', 'in', '(rejected,expired)')
         .order('created_at', { ascending: false })
         .limit(1);
       if (error) throw error;
