@@ -65,6 +65,7 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
   const [invoiceLineItems, setInvoiceLineItems] = useState<(InvoiceLineItem & { selected: boolean })[]>([]);
   const [invoiceDueDate, setInvoiceDueDate] = useState('');
   const [invoiceNotes, setInvoiceNotes] = useState('');
+  const [showLineDetails, setShowLineDetails] = useState(true);
   const [expandedInvoices, setExpandedInvoices] = useState<Set<string>>(new Set());
 
   // Fetch latest estimate from enhanced_estimates (any status except void/cancelled)
@@ -707,26 +708,43 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
 
               {/* Line Items Table */}
               <div>
-                <Label className="text-sm font-semibold">Line Items</Label>
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Line Items</Label>
+                  <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+                    <Checkbox
+                      checked={showLineDetails}
+                      onCheckedChange={(v) => setShowLineDetails(!!v)}
+                    />
+                    Show qty &amp; price
+                  </label>
+                </div>
                 {invoiceLineItems.length === 0 && (
                   <p className="text-sm text-muted-foreground py-3">No estimate found. Add line items manually.</p>
                 )}
                 <div className="mt-2 space-y-1">
                   {/* Header */}
                   {invoiceLineItems.length > 0 && (
-                    <div className="grid grid-cols-[28px_1fr_60px_60px_80px_90px_28px] gap-1 text-xs font-medium text-muted-foreground px-1">
+                    <div className={cn(
+                      "grid gap-1 text-xs font-medium text-muted-foreground px-1",
+                      showLineDetails
+                        ? "grid-cols-[28px_1fr_60px_60px_80px_90px_28px]"
+                        : "grid-cols-[28px_1fr_90px_28px]"
+                    )}>
                       <div></div>
                       <div>Description</div>
-                      <div className="text-right">Qty</div>
-                      <div>Unit</div>
-                      <div className="text-right">Price</div>
+                      {showLineDetails && <div className="text-right">Qty</div>}
+                      {showLineDetails && <div>Unit</div>}
+                      {showLineDetails && <div className="text-right">Price</div>}
                       <div className="text-right">Total</div>
                       <div></div>
                     </div>
                   )}
                   {invoiceLineItems.map((item, idx) => (
                     <div key={idx} className={cn(
-                      "grid grid-cols-[28px_1fr_60px_60px_80px_90px_28px] gap-1 items-center px-1 py-1 rounded",
+                      "grid gap-1 items-center px-1 py-1 rounded",
+                      showLineDetails
+                        ? "grid-cols-[28px_1fr_60px_60px_80px_90px_28px]"
+                        : "grid-cols-[28px_1fr_90px_28px]",
                       !item.selected && "opacity-50"
                     )}>
                       <Checkbox
@@ -739,24 +757,30 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
                         className="h-8 text-xs"
                         placeholder="Description"
                       />
-                      <Input
-                        type="number"
-                        value={item.qty}
-                        onChange={e => updateLineItem(idx, 'qty', parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs text-right"
-                      />
-                      <Input
-                        value={item.unit}
-                        onChange={e => updateLineItem(idx, 'unit', e.target.value)}
-                        className="h-8 text-xs"
-                      />
-                      <Input
-                        type="number"
-                        value={item.unit_cost}
-                        onChange={e => updateLineItem(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
-                        className="h-8 text-xs text-right"
-                        step="0.01"
-                      />
+                      {showLineDetails && (
+                        <Input
+                          type="number"
+                          value={item.qty}
+                          onChange={e => updateLineItem(idx, 'qty', parseFloat(e.target.value) || 0)}
+                          className="h-8 text-xs text-right"
+                        />
+                      )}
+                      {showLineDetails && (
+                        <Input
+                          value={item.unit}
+                          onChange={e => updateLineItem(idx, 'unit', e.target.value)}
+                          className="h-8 text-xs"
+                        />
+                      )}
+                      {showLineDetails && (
+                        <Input
+                          type="number"
+                          value={item.unit_cost}
+                          onChange={e => updateLineItem(idx, 'unit_cost', parseFloat(e.target.value) || 0)}
+                          className="h-8 text-xs text-right"
+                          step="0.01"
+                        />
+                      )}
                       <p className="text-xs text-right font-medium">{formatCurrency(item.line_total)}</p>
                       <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeLineItem(idx)}>
                         <Trash2 className="h-3 w-3 text-muted-foreground" />
