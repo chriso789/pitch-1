@@ -1353,6 +1353,114 @@ export const PaymentsTab: React.FC<PaymentsTabProps> = ({ pipelineEntryId, selli
           </div>
         )}
       </div>
+      {/* Edit Invoice Dialog */}
+      <Dialog open={!!editingInvoice} onOpenChange={(open) => !open && setEditingInvoice(null)}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Edit Invoice {editingInvoice?.invoice_number}</DialogTitle>
+          </DialogHeader>
+          {editingInvoice && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-xs">Due Date</Label>
+                  <Input
+                    type="date"
+                    value={editDueDate}
+                    onChange={(e) => setEditDueDate(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label className="text-xs">Notes</Label>
+                  <Input
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    placeholder="Optional notes"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label className="text-xs mb-2 block">Line Items</Label>
+                <div className="space-y-2">
+                  {editLineItems.map((item, idx) => (
+                    <div key={idx} className="grid grid-cols-12 gap-2 items-center p-2 border rounded-md">
+                      <Input
+                        className="col-span-5 h-8 text-xs"
+                        value={item.description}
+                        onChange={(e) => updateEditItem(idx, { description: e.target.value })}
+                        placeholder="Description"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="col-span-2 h-8 text-xs"
+                        value={item.qty}
+                        onChange={(e) => updateEditItem(idx, { qty: parseFloat(e.target.value) || 0 })}
+                        placeholder="Qty"
+                      />
+                      <Input
+                        className="col-span-1 h-8 text-xs"
+                        value={item.unit}
+                        onChange={(e) => updateEditItem(idx, { unit: e.target.value })}
+                        placeholder="Unit"
+                      />
+                      <Input
+                        type="number"
+                        step="0.01"
+                        className="col-span-2 h-8 text-xs"
+                        value={item.unit_cost}
+                        onChange={(e) => updateEditItem(idx, { unit_cost: parseFloat(e.target.value) || 0 })}
+                        placeholder="Price"
+                      />
+                      <div className="col-span-1 text-xs text-right font-medium">
+                        {formatCurrency(item.line_total)}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="col-span-1 h-7 w-7 text-destructive"
+                        onClick={() => removeEditItem(idx)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() =>
+                      setEditLineItems((prev) => [
+                        ...prev,
+                        { description: '', qty: 1, unit: 'ea', unit_cost: 0, line_total: 0 },
+                      ])
+                    }
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Line Item
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">New Total</span>
+                <span className="text-lg font-bold">{formatCurrency(editInvoiceTotal)}</span>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingInvoice(null)}>Cancel</Button>
+            <Button
+              onClick={() => updateInvoiceMutation.mutate()}
+              disabled={updateInvoiceMutation.isPending || editInvoiceTotal <= 0}
+            >
+              {updateInvoiceMutation.isPending && <Loader2 className="h-4 w-4 animate-spin mr-1" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
