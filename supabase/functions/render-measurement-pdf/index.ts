@@ -19,7 +19,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2.49.1'
 import { PDFDocument } from 'npm:pdf-lib@1.17.1'
-import { Resvg } from 'npm:@resvg/resvg-js@2.6.2'
+import { initWasm, Resvg } from 'npm:@resvg/resvg-wasm@2.6.2'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -36,6 +36,8 @@ const OVERLAY_THRESHOLD = 0.75
 const PAGE_W = 816
 const PAGE_H = 1056
 const MARGIN = 32
+const RESVG_WASM_URL = 'https://esm.sh/@resvg/resvg-wasm@2.6.2/index_bg.wasm'
+let resvgReady: Promise<void> | null = null
 
 interface Body {
   ai_measurement_job_id?: string
@@ -128,7 +130,13 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
   return { ok: true, warnings, measurement: m }
 }
 
-function rasterizeSvg(svg: string, targetWidth: number): Uint8Array {
+async function ensureResvgReady() {
+  if (!resvgReady) resvgReady = initWasm(fetch(RESVG_WASM_URL))
+  await resvgReady
+}
+
+async function rasterizeSvg(svg: string, targetWidth: number): Promise<Uint8Array> {
+  await ensureResvgReady()
   const resvg = new Resvg(svg, {
     fitTo: { mode: 'width', value: Math.round(targetWidth) },
     background: 'white',
@@ -190,7 +198,7 @@ Deno.serve(async (req) => {
     for (const d of diagrams) {
       const page = pdf.addPage([PAGE_W, PAGE_H])
       const renderWidth = PAGE_W - MARGIN * 2
-      const png = rasterizeSvg(String(d.svg_markup || ''), renderWidth * 2) // 2x for crispness
+      const png = await rasterizeSvg(String(d.svg_markup || ''), renderWidth * 2) // 2x for crispness
       const img = await pdf.embedPng(png)
       const scale = renderWidth / img.width
       const drawW = img.width * scale
