@@ -502,11 +502,11 @@ function alignAuthoritativeToImage(
     }
 
     // ============================================================
-    // PROVIDER-TRUST MODE WITH SAFE 180° CORRECTION:
-    // A bottom-right corner needing to become the top-left corner is not a
-    // vertical-only flip; it is a 180° centroid-locked rotation (flipX+flipY).
-    // We still forbid translation and single-axis flips so the outline cannot
-    // walk onto a neighboring roof.
+    // FORCED 180° CORRECTION:
+    // The observed failure is explicit: the diagram's bottom-right corner is
+    // the actual roof's top-left corner. That is a 180° centroid-locked
+    // rotation (flipX+flipY), not a vertical flip and not a scored guess.
+    // Keep translation disabled so the footprint cannot walk onto a neighbor.
     // ============================================================
     const identityPts: Pt[] = authPx.map((p) => ({
       x: cImg.x + (p.x - cAuth.x) * scale,
@@ -537,29 +537,20 @@ function alignAuthoritativeToImage(
     }
 
     const rotate180 = diagScores.find((s) => s.flipX && s.flipY)
-    const shouldAdoptRotate180 = !!rotate180 && (
-      (hasImageFootprint && rotate180.iou >= identityIou + 0.001) ||
-      (!!edgeEvidence && rotate180.edge >= identityEdge + 0.001)
-    )
-
-    const adopt = shouldAdoptRotate180
-      ? {
-          flipX: true,
-          flipY: true,
-          dx: 0,
-          dy: 0,
-          pts: authPx.map((p) => ({
-            x: cImg.x - (p.x - cAuth.x) * scale,
-            y: cImg.y - (p.y - cAuth.y) * scale,
-          })),
-        }
-      : { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
-    const adoptReason = shouldAdoptRotate180
-      ? `180deg flipX+flipY (bottom-right→top-left; same centroid; no translation; iou ${identityIou.toFixed(3)}→${rotate180!.iou.toFixed(3)}, edge ${identityEdge.toFixed(3)}→${rotate180!.edge.toFixed(3)})`
-      : 'identity (provider orientation; single-axis/translated flips disabled)'
+    const adopt = {
+      flipX: true,
+      flipY: true,
+      dx: 0,
+      dy: 0,
+      pts: authPx.map((p) => ({
+        x: cImg.x - (p.x - cAuth.x) * scale,
+        y: cImg.y - (p.y - cAuth.y) * scale,
+      })),
+    }
+    const adoptReason = `FORCED 180deg flipX+flipY (diagram bottom-right→roof top-left; same centroid; no translation; iou ${identityIou.toFixed(3)}→${(rotate180?.iou ?? 0).toFixed(3)}, edge ${identityEdge.toFixed(3)}→${(rotate180?.edge ?? 0).toFixed(3)})`
 
     console.log(
-      `[alignment] PROVIDER-TRUST drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
+      `[alignment] FORCED-180 drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `auth_source=${authoritative.source} ` +
       `diag_iou{id=${diagScores[0].iou.toFixed(2)} fY=${diagScores[1].iou.toFixed(2)} fX=${diagScores[2].iou.toFixed(2)} fXY=${diagScores[3].iou.toFixed(2)}} ` +
       `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}} ` +
