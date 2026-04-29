@@ -88,8 +88,8 @@ export const CLJSearchBar = () => {
   // contact renamed from "Reed Alter" to "Brittany Jones", or a lead/project
   // renamed by a manager) immediately show the current name in the dropdown
   // instead of a stale localStorage snapshot.
-  const refreshRecents = async (tenantId: string | null) => {
-    const cached = loadRecents(tenantId);
+  const refreshRecents = async (tenantId: string | null, locationId: string | null) => {
+    const cached = loadRecents(tenantId, locationId);
     if (!tenantId || cached.length === 0) {
       setRecents(cached);
       return;
