@@ -536,14 +536,42 @@ function alignAuthoritativeToImage(
       }
     }
 
-    const adopt = { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
+    let adopt = { flipX: false, flipY: false, dx: 0, dy: 0, pts: identityPts }
+    let adoptReason = 'identity (provider-trust default)'
+
+    // Narrow edge-only fallback: when we have NO image footprint to validate
+    // against (all IoU = 0), trust the satellite EDGE evidence if a reflection
+    // beats identity by a meaningful margin. This is *not* the old aggressive
+    // auto-flip — it only fires when there's literally no other signal and the
+    // edge winner is clearly better than identity.
+    const hasAnyIou = diagScores.some((s) => s.iou > 0.01)
+    if (!hasAnyIou && edgeEvidence) {
+      const idEdge = diagScores[0].edge // index 0 = {flipX:false, flipY:false}
+      let bestIdx = 0
+      for (let i = 1; i < diagScores.length; i++) {
+        if (diagScores[i].edge > diagScores[bestIdx].edge) bestIdx = i
+      }
+      const winner = diagScores[bestIdx]
+      const margin = winner.edge - idEdge
+      // Require both a relative win (>=25%) AND an absolute margin (>=0.03)
+      if (bestIdx !== 0 && winner.edge >= idEdge * 1.25 && margin >= 0.03) {
+        const sx = winner.flipX ? -1 : 1
+        const sy = winner.flipY ? -1 : 1
+        const flippedPts = authPx.map((p) => ({
+          x: cImg.x + sx * (p.x - cAuth.x) * scale,
+          y: cImg.y + sy * (p.y - cAuth.y) * scale,
+        }))
+        adopt = { flipX: winner.flipX, flipY: winner.flipY, dx: 0, dy: 0, pts: flippedPts }
+        adoptReason = `edge-fallback flipX=${winner.flipX} flipY=${winner.flipY} edge=${winner.edge.toFixed(2)} vs id=${idEdge.toFixed(2)} (no image footprint)`
+      }
+    }
 
     console.log(
       `[alignment] PROVIDER-TRUST drift=${driftMeters.toFixed(1)}m area_ratio=${ratio.toFixed(2)} scale=${scale.toFixed(3)} ` +
       `auth_source=${authoritative.source} ` +
       `diag_iou{id=${diagScores[0].iou.toFixed(2)} fY=${diagScores[1].iou.toFixed(2)} fX=${diagScores[2].iou.toFixed(2)} fXY=${diagScores[3].iou.toFixed(2)}} ` +
       `diag_edge{id=${diagScores[0].edge.toFixed(2)} fY=${diagScores[1].edge.toFixed(2)} fX=${diagScores[2].edge.toFixed(2)} fXY=${diagScores[3].edge.toFixed(2)}} ` +
-      `→ NO FLIP APPLIED (diagnostic only)`,
+      `→ ADOPTED: ${adoptReason}`,
     )
 
     const alignedGeo: GeoXY[] = adopt.pts.map((p) => {
