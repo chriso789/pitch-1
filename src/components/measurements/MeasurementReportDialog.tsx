@@ -99,18 +99,20 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const [jobId, setJobId] = useState<string | null>(explicitJobId || null);
   const [loading, setLoading] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [fullMeasurement, setFullMeasurement] = useState<any | null>(null);
 
-  const previewGate = useMemo(() => evaluatePreviewGate(measurement), [measurement]);
-  const pdfGate = useMemo(() => evaluatePdfGate(measurement), [measurement]);
-  const canOpenExistingPdf = Boolean((measurement as any)?.report_pdf_url && pdfGate.ok);
+  const effectiveMeasurement = fullMeasurement || measurement;
+  const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
+  const pdfGate = useMemo(() => evaluatePdfGate(effectiveMeasurement), [effectiveMeasurement]);
+  const canOpenExistingPdf = Boolean((effectiveMeasurement as any)?.report_pdf_url && pdfGate.ok);
   const reportModel = useMemo(() => {
-    const serverPatent = (measurement as any)?.patent_model
-      || (measurement as any)?.geometry_report_json?.patent_model;
-    const overlay = (measurement as any)?.overlay_schema
-      || (measurement as any)?.geometry_report_json?.overlay_schema;
+    const serverPatent = (effectiveMeasurement as any)?.patent_model
+      || (effectiveMeasurement as any)?.geometry_report_json?.patent_model;
+    const overlay = (effectiveMeasurement as any)?.overlay_schema
+      || (effectiveMeasurement as any)?.geometry_report_json?.overlay_schema;
 
-    return serverPatent ?? (overlay ? overlayToPatentModel(overlay, measurement) : null);
-  }, [measurement]);
+    return serverPatent ?? (overlay ? overlayToPatentModel(overlay, effectiveMeasurement) : null);
+  }, [effectiveMeasurement]);
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0;
 
   const createExportSafeClone = (page: HTMLElement) => {
