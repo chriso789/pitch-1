@@ -263,9 +263,17 @@ function labelCollides(x: number, y: number, placed: PlacedEdge[], radius = 16) 
 }
 
 function placePlaneLabels(planes: RendererPlane[]): PlacedPlane[] {
+  // Sort by area desc; only the top 10 + planes ≥100 sqft get labels.
+  const ranked = planes
+    .map((p, idx) => ({ p, idx, area: p.area_2d_sqft || 0 }))
+    .sort((a, b) => b.area - a.area);
+  const visibleIdx = new Set<number>(
+    ranked.filter((r) => r.area >= 100).slice(0, 10).map((r) => r.idx),
+  );
   return planes.map((p, idx) => {
-    const label = p.plane_label || `P-${String(idx + 1).padStart(2, "0")}`;
     const c = polygonInteriorPoint(p.polygon_px);
+    const showLabel = visibleIdx.has(idx);
+    const label = showLabel ? (p.plane_label || `P-${String(idx + 1).padStart(2, "0")}`) : "";
     return { ...p, plane_label: label, _label: { x: c.x, y: c.y } };
   });
 }
