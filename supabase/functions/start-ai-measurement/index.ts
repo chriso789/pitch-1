@@ -453,6 +453,14 @@ async function processJob(input: any) {
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
     const usedSinglePlaneFallback =
       planeRows.length === 1 && planeRows[0].source === "single_plane_fallback";
+
+    // Block customer-shippable report when only 1 plane was produced for a
+    // non-trivial footprint — that signals topology collapse, not a real flat roof.
+    const blockCustomerReportReason: string | null =
+      (planeRows.length === 1 && Number(totals.total_area_2d_sqft) > 800)
+        ? "single_plane_for_large_footprint"
+        : null;
+
     const quality = scoreQuality({
       geocode_location_type: coords.geocode_location_type,
       solarData,
@@ -461,6 +469,12 @@ async function processJob(input: any) {
       totals,
       usedSinglePlaneFallback,
     });
+
+    const resolvedGeometrySource =
+      topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
+      : topologySource === "triangulation" ? "deterministic_triangulation"
+      : topologySource === "unet_planes" ? "unet_optional_helper"
+      : "footprint_only";
 
     await supabase.from("ai_measurement_results").insert({
       job_id: input.ai_measurement_job_id,
@@ -482,11 +496,15 @@ async function processJob(input: any) {
       confidence_score: quality.overall_score,
       geometry_quality_score: quality.geometry_score,
       measurement_quality_score: quality.measurement_score,
-      geometry_source: usedSinglePlaneFallback ? "single_plane_fallback" : (UNET_ENDPOINT ? "unet" : "deterministic"),
-      edge_source: edgeRows.length ? (UNET_ENDPOINT ? "unet" : "deterministic") : "none",
+      geometry_source: resolvedGeometrySource,
+      edge_source: edgeRows.length ? (cleanEdges[0]?.source || resolvedGeometrySource) : "none",
       report_json: {
         source_button: input.source_button,
         engine_version: "geometry_first_v2",
+        footprint_source: footprintSource,
+        topology_source: topologySource,
+        unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+        block_customer_report_reason: blockCustomerReportReason,
         calibration: {
           logical_meters_per_pixel: logicalMpp,
           actual_meters_per_pixel: actualMpp,
