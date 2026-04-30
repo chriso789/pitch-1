@@ -788,6 +788,7 @@ async function processJob(input: any) {
           footprint,
           solarAzimuths,
         );
+        topLevelFilteredRidges = filtered.kept as any[];
         console.log("[RIDGE_FILTER]", JSON.stringify({
           detected: filtered.detected,
           kept: filtered.kept.length,
