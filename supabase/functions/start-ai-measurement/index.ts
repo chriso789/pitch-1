@@ -3463,6 +3463,32 @@ Deno.serve(async (req) => {
             e.source !== 'filled_perimeter' &&
             e.source !== 'perimeter_fallback',
         )
+
+        // ── HARD DEBUG PIPELINE INSTRUMENTATION ──
+        // Tracks whether each branch (topology_engine_v2, ridge_split_recursive,
+        // adjacency classification) actually ran AND produced multi-plane
+        // output. Persisted to roof_measurements.geometry_report_json so the
+        // frontend / report can prove which geometry source produced the
+        // saved patent_model.
+        const debug_pipeline: any = {
+          topology_engine_v2_entered: edges.some((e) => e.source === 'topology_engine_v2'),
+          ridge_split_recursive_entered: false,
+          ridge_split_recursive_plane_count: 0,
+          ridge_split_recursive_edge_count: 0,
+          adjacency_edge_count: 0,
+          edge_counts: { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0, unknown: 0 },
+          missingAzimuthPlanes: 0,
+          final_plane_count_saved: 0,
+          final_edge_count_saved: 0,
+          final_patent_model_plane_count: 0,
+          final_report_source: 'unknown',
+        }
+        // Hard guards — once recursive split succeeds we MUST NOT let the
+        // old single-plane patent synthesis or overlay fallbacks overwrite
+        // the multi-plane geometry.
+        let skipPatentSynthesisFallback = false
+        let skipSinglePlaneFallback = false
+
         // ──────────────────────────────────────────────────────────────
         // RIDGE-DRIVEN PLANE SPLITTING (pre-synthesis safety net)
         //
