@@ -1,4 +1,11 @@
 // Roof Diagram Renderer — geometry-first, EagleView-style 6-page report.
+import {
+  computeOverlayTransform,
+  transformOverlayPoints,
+  type OverlayBBox,
+  type OverlayCalibration,
+} from "./overlay-transform.ts";
+
 // Inputs come exclusively from real measured geometry stored in
 // ai_roof_planes / ai_roof_edges / ai_measurement_results / ai_measurement_images.
 //
@@ -55,6 +62,8 @@ export type DiagramInput = {
   /** Native pixel dimensions of the satellite raster the polygon_px coords were sampled from. */
   sourceImageWidth?: number | null;
   sourceImageHeight?: number | null;
+  roofTargetBboxPx?: Partial<OverlayBBox> | null;
+  overlayCalibration?: OverlayCalibration | null;
 };
 
 export type GeneratedDiagram = {
@@ -73,6 +82,7 @@ const PAGE_H = 1100;
 
 const MARGIN = { top: 50, left: 55, right: 55, bottom: 55 };
 const DRAW_ZONE = { x: 85, y: 210, w: 600, h: 650 };
+const DIAGRAM_ZONE = { x: 150, y: 230, w: 455, h: 560 };
 const COMPASS = { cx: 710, cy: 850 };
 
 const COLORS = {
