@@ -332,6 +332,33 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             {address && (
               <p className="text-sm text-muted-foreground mt-1">{address}</p>
             )}
+            {debugPipeline && (
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  source: {String(debugPipeline.final_report_source ?? 'unknown')}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  planes: {String(debugPipeline.final_plane_count_saved ?? 0)}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  edges: {String(debugPipeline.final_edge_count_saved ?? 0)}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  patent_planes: {String(debugPipeline.final_patent_model_plane_count ?? 0)}
+                </span>
+                {debugPipeline.ridge_split_recursive_entered && (
+                  <span className="px-1.5 py-0.5 rounded bg-muted">
+                    rsr: {String(debugPipeline.ridge_split_recursive_plane_count ?? 0)}p/
+                    {String(debugPipeline.ridge_split_recursive_edge_count ?? 0)}e
+                  </span>
+                )}
+                {pdfIsStale && (
+                  <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                    PDF stale — will regenerate
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <Button
             size="sm"
