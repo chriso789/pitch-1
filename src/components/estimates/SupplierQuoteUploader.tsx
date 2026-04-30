@@ -155,7 +155,9 @@ export const SupplierQuoteUploader: React.FC<SupplierQuoteUploaderProps> = ({
         const lineTotal =
           Number(p.line_total ?? 0) || +(qty * unitCost).toFixed(2);
 
-        const best = findBestMatch(p, currentItems);
+        // Match against current items first, then against items appended in this same upload
+        const combinedCandidates: LineItem[] = [...currentItems, ...appended];
+        const best = findBestMatch(p, combinedCandidates);
         if (best && best.score >= 0.4) {
           const existing = updatedById.get(best.item.id) || best.item;
           updatedById.set(existing.id, {
