@@ -226,7 +226,35 @@ async function processJob(input: any) {
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
     const solarData = await fetchGoogleSolar(coords.lat, coords.lng);
 
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Running roof segmentation");
+    // ───────── GEOMETRY-FIRST PIPELINE ─────────
+    // U-Net is OPTIONAL. Solar bbox is ONLY allowed as a crop/search hint.
+    // The deterministic topology engine is the geometry source of truth.
+
+    // 1. Resolve a REAL footprint (OSM building → Solar bbox crop hint → none).
+    let footprint: Point[] = [];
+    let footprintSource: string = "none";
+
+    try {
+      const osmRes = await fetchOSMBuildingFootprint(coords.lat, coords.lng, { searchRadius: 60 });
+      if (osmRes.footprint?.coordinates && osmRes.footprint.coordinates.length >= 4) {
+        footprint = osmRes.footprint.coordinates.map(([lng, lat]) =>
+          lngLatToPx(lat, lng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp),
+        );
+        // Drop the closing duplicate vertex if present
+        if (footprint.length > 3) {
+          const f = footprint[0], l = footprint[footprint.length - 1];
+          if (Math.hypot(f.x - l.x, f.y - l.y) < 1) footprint = footprint.slice(0, -1);
+        }
+        footprint = cleanPolygon(footprint, raster.width, raster.height);
+        if (footprint.length >= 3) footprintSource = "osm_building";
+      }
+    } catch (e) {
+      console.warn("[geometry-first] OSM footprint lookup failed:", (e as Error).message);
+    }
+
+    // 2. OPTIONAL U-Net pass — only used to refine edges/planes when configured.
+    //    Never required, never the geometry source.
+    await setAiJobStatus(input.ai_measurement_job_id, "running", "Optional segmentation pass");
     const segmentation = await runSegmentation({
       image_url: imageUrl,
       image_width: raster.width,
@@ -236,34 +264,126 @@ async function processJob(input: any) {
       meters_per_pixel_actual: actualMpp,
       feet_per_pixel_actual: actualFpp,
     });
-
-    const cleanPlanes = (segmentation.planes || [])
+    const unetPlanes = (segmentation.planes || [])
       .map((p: any, i: number) => cleanPlane(p, i + 1, raster.width, raster.height))
       .filter(Boolean) as RoofPlane[];
-    const cleanEdges = (segmentation.edges || [])
+    const unetEdges = (segmentation.edges || [])
       .map((e: any) => cleanEdge(e, raster.width, raster.height))
       .filter(Boolean) as RoofEdge[];
-    let footprint = cleanPolygon(segmentation.footprint_polygon_px || [], raster.width, raster.height);
-
-    // Fallback: derive footprint from Google Solar buildingInsights bbox
-    // when segmentation produced nothing. Guarantees the pipeline always
-    // emits at least one plane instead of throwing "No valid roof planes".
-    if (footprint.length < 3 && cleanPlanes.length === 0) {
-      const solarFootprint = footprintFromSolarBoundingBox(
-        solarData,
-        { lat: coords.lat, lng: coords.lng },
-        raster.width,
-        raster.height,
-        actualMpp,
-      );
-      if (solarFootprint && solarFootprint.length >= 3) {
-        footprint = solarFootprint;
-      } else {
-        // Last-resort: synthesize a centered rectangle (~40ft x 30ft)
-        // so the user gets a usable starting plane to edit instead of an error.
-        footprint = syntheticCenteredFootprint(raster.width, raster.height, actualFpp);
+    if (footprint.length < 3) {
+      const segFootprint = cleanPolygon(segmentation.footprint_polygon_px || [], raster.width, raster.height);
+      if (segFootprint.length >= 3) {
+        footprint = segFootprint;
+        footprintSource = "unet_segmentation";
       }
     }
+
+    // 3. Run deterministic topology (straight skeleton primary, triangulation fallback).
+    let cleanPlanes: RoofPlane[] = [];
+    let cleanEdges: RoofEdge[] = [];
+    let topologySource = "none";
+    let usedSolarBboxAsCropOnly = false;
+    let usedSyntheticDebugRectangle = false;
+
+    if (footprint.length >= 3) {
+      await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
+      try {
+        // Primary: straight skeleton — emits real ridges/hips/valleys.
+        const skeletonEdges = computeStraightSkeleton(
+          footprint.map((p) => [p.x, p.y] as [number, number]),
+        );
+        if (skeletonEdges && skeletonEdges.length > 0) {
+          // Convert skeleton edges into RoofEdge (interior topology only).
+          for (const se of skeletonEdges as any[]) {
+            const a = se.a ?? se.p1 ?? se[0];
+            const b = se.b ?? se.p2 ?? se[1];
+            const ax = Array.isArray(a) ? a[0] : a?.x;
+            const ay = Array.isArray(a) ? a[1] : a?.y;
+            const bx = Array.isArray(b) ? b[0] : b?.x;
+            const by = Array.isArray(b) ? b[1] : b?.y;
+            if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
+              const t = String(se.type || "ridge").toLowerCase();
+              cleanEdges.push({
+                edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
+                line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
+                confidence: 0.7,
+                source: "topology_engine_v2_skeleton",
+              });
+            }
+          }
+          topologySource = "straight_skeleton";
+        }
+
+        // Always derive planes via triangulation/merge so we get >1 facet
+        // when the footprint warrants it.
+        const topo = buildTopology(footprint);
+        if (topo.planes.length > 0) {
+          cleanPlanes = topo.planes.map((tp, idx) => ({
+            plane_index: idx + 1,
+            polygon_px: tp.polygon,
+            confidence: 0.7,
+            pitch: null,
+            pitch_degrees: null,
+            azimuth: null,
+            source: "topology_engine_v2",
+          }));
+          if (topologySource === "none") topologySource = "triangulation";
+          // Append perimeter eaves/rakes from topology engine if skeleton missed them.
+          if (cleanEdges.length === 0) {
+            for (const e of topo.edges) {
+              cleanEdges.push({
+                edge_type: e.type,
+                line_px: [e.p1, e.p2],
+                confidence: 0.65,
+                source: "topology_engine_v2",
+              });
+            }
+          } else {
+            // Add perimeter eaves/rakes regardless (skeleton only emits interior).
+            for (const e of topo.edges) {
+              if (e.type === "eave" || e.type === "rake") {
+                cleanEdges.push({
+                  edge_type: e.type,
+                  line_px: [e.p1, e.p2],
+                  confidence: 0.65,
+                  source: "topology_engine_v2",
+                });
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[geometry-first] topology engine failed:", (e as Error).message);
+      }
+    }
+
+    // 4. Refine with U-Net output ONLY if topology produced nothing AND U-Net did.
+    if (cleanPlanes.length === 0 && unetPlanes.length > 0) {
+      cleanPlanes = unetPlanes;
+      topologySource = "unet_planes";
+    }
+    if (cleanEdges.length === 0 && unetEdges.length > 0) {
+      cleanEdges = unetEdges;
+    }
+
+    // 5. Solar bbox / synthetic rectangle are NOT customer-shippable geometry.
+    //    Track whether they were considered (for audit), but never let them
+    //    become the final footprint here.
+    if (footprint.length < 3 && solarData?.boundingBox) {
+      usedSolarBboxAsCropOnly = true; // bbox would only have been a crop region
+    }
+
+    console.log("[GEOMETRY_SOURCE_DECISION]", JSON.stringify({
+      has_unet_endpoint: !!UNET_ENDPOINT,
+      used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
+      used_solar_bbox_as_crop_only: usedSolarBboxAsCropOnly,
+      used_synthetic_debug_rectangle: usedSyntheticDebugRectangle,
+      used_deterministic_topology: topologySource === "straight_skeleton" || topologySource === "triangulation",
+      footprint_source: footprintSource,
+      topology_source: topologySource,
+      final_plane_count: cleanPlanes.length,
+      final_edge_count: cleanEdges.length,
+    }));
 
     const planeRows = buildPlaneRows({
       ai_measurement_job_id: input.ai_measurement_job_id,
