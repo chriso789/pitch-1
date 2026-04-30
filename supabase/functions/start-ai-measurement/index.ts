@@ -3707,6 +3707,27 @@ Deno.serve(async (req) => {
                         missingAzimuthPlanes,
                       })
 
+                      // ── Persist into debug_pipeline + apply HARD GUARDS ──
+                      debug_pipeline.ridge_split_recursive_plane_count = planes.length
+                      debug_pipeline.ridge_split_recursive_edge_count = edges.length
+                      debug_pipeline.adjacency_edge_count = classified.length
+                      debug_pipeline.edge_counts = {
+                        ridge: edgeCounts.ridge || 0,
+                        hip: edgeCounts.hip || 0,
+                        valley: edgeCounts.valley || 0,
+                        eave: edgeCounts.eave || 0,
+                        rake: edgeCounts.rake || 0,
+                        unknown: edgeCounts.unknown || 0,
+                      }
+                      debug_pipeline.missingAzimuthPlanes = missingAzimuthPlanes
+                      if (planes.length > 1) {
+                        // HARD STOP: do not let synthesizePatentStructureFromFootprint
+                        // or single-plane overlay fallbacks overwrite the new
+                        // multi-plane geometry produced by recursive splitting.
+                        skipPatentSynthesisFallback = true
+                        skipSinglePlaneFallback = true
+                      }
+
                       // QC gate: detect disconnected planes (no shared two-plane edges)
                       const sharedTwoPlaneEdges = classified.filter(
                         (e) => e.adjacent_plane_ids.length === 2,
