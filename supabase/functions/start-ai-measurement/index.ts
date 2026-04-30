@@ -34,6 +34,7 @@ import { fetchMicrosoftBuildingFootprint } from '../_shared/microsoft-footprint-
 import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
 import { buildTopology as buildTriangulationTopology } from '../_shared/topology-engine.ts'
 import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
+import { classifyHipValleyRidgeEdges } from '../_shared/hip-valley-classifier.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
