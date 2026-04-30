@@ -4,6 +4,9 @@
 // (pipelineEntryId/lat/lng/tenantId/userId/pitchOverride/address)
 // and new (lead_id/project_id/property_address/...) payload shapes.
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
+import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
+import { buildTopology } from "../_shared/topology-engine.ts";
+import { fetchOSMBuildingFootprint } from "../_shared/osm-footprint-extractor.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
