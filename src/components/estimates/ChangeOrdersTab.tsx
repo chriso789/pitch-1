@@ -131,7 +131,7 @@ export const ChangeOrdersTab: React.FC<ChangeOrdersTabProps> = ({
         )
         .in('change_order_id', coIds);
       if (error) throw error;
-      return (data || []) as COInvoice[];
+      return (data || []) as unknown as COInvoice[];
     },
     enabled: coIds.length > 0,
   });
