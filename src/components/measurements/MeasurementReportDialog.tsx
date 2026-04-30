@@ -397,6 +397,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             </div>
           ) : (
             (() => {
+              if (reportCollapsed) {
+                return (
+                  <Alert variant="destructive">
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertTitle>Report model collapse detected</AlertTitle>
+                    <AlertDescription>
+                      BUG: persisted patent_model has multiple planes but report UI collapsed it.
+                    </AlertDescription>
+                  </Alert>
+                );
+              }
+
               if (reportModel) {
                 return (
                   <div className="space-y-6">
