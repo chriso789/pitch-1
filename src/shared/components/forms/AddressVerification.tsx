@@ -19,12 +19,86 @@ interface AddressData {
   formatted_address?: string;
 }
 
+type VerificationData = Record<string, unknown>;
+
+interface GoogleAddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
+
+interface GooglePlace {
+  address_components?: GoogleAddressComponent[];
+  formatted_address?: string;
+  place_id?: string;
+  geometry?: {
+    location?: {
+      lat?: number;
+      lng?: number;
+    };
+  };
+}
+
+interface AddressPrediction {
+  place_id: string;
+  description: string;
+  structured_formatting?: {
+    main_text?: string;
+  };
+}
+
 interface AddressVerificationProps {
-  onAddressVerified: (address: AddressData, verificationData: any) => void;
+  onAddressVerified: (address: AddressData, verificationData: VerificationData) => void;
   initialAddress?: Partial<AddressData>;
   label?: string;
   required?: boolean;
 }
+
+const parseGoogleAddress = (place: GooglePlace, fallbackText = ""): AddressData => {
+  const formatted = place?.formatted_address || fallbackText;
+  const addressComponents = place?.address_components || [];
+
+  let streetNumber = "";
+  let route = "";
+  let city = "";
+  let cityFallback = "";
+  let state = "";
+  let zip = "";
+  let zipSuffix = "";
+
+  addressComponents.forEach((component) => {
+    const types = component.types || [];
+    if (types.includes("street_number")) streetNumber = component.long_name;
+    if (types.includes("route")) route = component.long_name;
+    if (types.includes("locality")) city = component.long_name;
+    if (!city && (types.includes("sublocality") || types.includes("sublocality_level_1") || types.includes("postal_town") || types.includes("administrative_area_level_3"))) city = component.long_name;
+    if (!cityFallback && (types.includes("neighborhood") || types.includes("administrative_area_level_2"))) cityFallback = component.long_name;
+    if (types.includes("administrative_area_level_1")) state = component.short_name;
+    if (types.includes("postal_code")) zip = component.long_name;
+    if (types.includes("postal_code_suffix")) zipSuffix = component.long_name;
+  });
+
+  if (!city) city = cityFallback;
+  if (zip && zipSuffix && !zip.includes("-")) zip = `${zip}-${zipSuffix}`;
+
+  const parts = formatted.split(",").map((part: string) => part.trim()).filter(Boolean);
+  if (!city && parts.length >= 3) city = parts[parts.length - 3];
+  const stateZip = (parts[parts.length - 2] || "").match(/^([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
+  if (stateZip) {
+    if (!state) state = stateZip[1];
+    if (!zip && stateZip[2]) zip = stateZip[2];
+  }
+
+  return {
+    street: `${streetNumber} ${route}`.trim() || parts[0] || "",
+    city,
+    state,
+    zip,
+    lat: place?.geometry?.location?.lat,
+    lng: place?.geometry?.location?.lng,
+    formatted_address: formatted,
+  };
+};
 
 const AddressVerification: React.FC<AddressVerificationProps> = ({
   onAddressVerified,
@@ -43,12 +117,13 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   const [verificationStatus, setVerificationStatus] = useState<
     "none" | "verified" | "partial" | "failed"
   >("none");
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<AddressPrediction[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionDropdownStyle, setSuggestionDropdownStyle] = useState<React.CSSProperties>({});
 
   const streetInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number | null>(null);
+  const activeSelectionRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   const updateSuggestionDropdownPosition = useCallback(() => {
@@ -139,7 +214,22 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
     }
   };
 
-  const selectSuggestion = async (prediction: any) => {
+  const selectSuggestion = async (prediction: AddressPrediction) => {
+    if (activeSelectionRef.current === prediction.place_id) return;
+    activeSelectionRef.current = prediction.place_id;
+
+    const optimisticAddress = parseGoogleAddress(
+      { formatted_address: prediction.description, place_id: prediction.place_id },
+      prediction.description,
+    );
+
+    setAddress(prev => ({ ...prev, ...optimisticAddress, place_id: prediction.place_id }));
+
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
     // Clear suggestions immediately
     setSuggestions([]);
     setShowSuggestions(false);
@@ -162,69 +252,11 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
 
       if (data?.result) {
         const place = data.result;
-        const addressComponents = place.address_components || [];
-
-        // Parse address components with better fallbacks
-        let streetNumber = "";
-        let route = "";
-        let city = "";
-        let cityFallback = "";
-        let state = "";
-        let zip = "";
-
-        addressComponents.forEach((component: any) => {
-          const types = component.types;
-          if (types.includes("street_number")) {
-            streetNumber = component.long_name;
-          } else if (types.includes("route")) {
-            route = component.long_name;
-          } else if (types.includes("locality")) {
-            city = component.long_name;
-          } else if (
-            !city &&
-            (types.includes("sublocality") ||
-              types.includes("sublocality_level_1") ||
-              types.includes("postal_town") ||
-              types.includes("administrative_area_level_3"))
-          ) {
-            city = component.long_name;
-          } else if (
-            !cityFallback &&
-            (types.includes("neighborhood") ||
-              types.includes("administrative_area_level_2"))
-          ) {
-            cityFallback = component.long_name;
-          } else if (types.includes("administrative_area_level_1")) {
-            state = component.short_name;
-          } else if (types.includes("postal_code")) {
-            zip = component.long_name;
-          }
-        });
-
-        if (!city) city = cityFallback;
-
-        // Fallback: parse from formatted_address ("street, city, ST zip, USA")
-        if ((!city || !state || !zip) && place.formatted_address) {
-          const parts = place.formatted_address.split(",").map((p: string) => p.trim());
-          if (parts.length >= 3) {
-            if (!city) city = parts[parts.length - 3] || city;
-            const stateZip = (parts[parts.length - 2] || "").match(/^([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
-            if (stateZip) {
-              if (!state) state = stateZip[1];
-              if (!zip && stateZip[2]) zip = stateZip[2];
-            }
-          }
-        }
-
         const newAddress: AddressData = {
-          street: `${streetNumber} ${route}`.trim() || (place.formatted_address?.split(",")[0] ?? ""),
-          city,
-          state,
-          zip,
+          ...parseGoogleAddress(place, prediction.description),
           lat: place.geometry?.location?.lat,
           lng: place.geometry?.location?.lng,
           place_id: prediction.place_id,
-          formatted_address: place.formatted_address,
         };
 
         console.log('Parsed Address from Google:', newAddress);
@@ -259,6 +291,8 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
         description: "Could not verify address details.",
         variant: "destructive",
       });
+    } finally {
+      activeSelectionRef.current = null;
     }
   };
 
@@ -436,15 +470,29 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
         {showSuggestions && suggestions.length > 0 && typeof document !== "undefined" && createPortal(
           <div
             id="google-address-suggestions"
-            className="z-[80] max-h-60 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
+            className="pointer-events-auto z-[80] max-h-60 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
             style={suggestionDropdownStyle}
+            onPointerDownCapture={(e) => e.preventDefault()}
+            onMouseDownCapture={(e) => e.preventDefault()}
           >
             {suggestions.map((suggestion, index) => (
               <button
                 key={suggestion.place_id || index}
                 type="button"
                 className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
                 onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
+                onTouchStart={(e) => {
                   e.preventDefault();
                   selectSuggestion(suggestion);
                 }}
