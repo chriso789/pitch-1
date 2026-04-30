@@ -210,19 +210,11 @@ Deno.serve(async (req) => {
     const cachedPdfUrl: string | null = (measurement as any)?.report_pdf_url || null
 
     if (signatureChanged && jobId) {
-      console.log('[render-measurement-pdf] pdf_source_signature changed — purging cached diagrams', {
+      console.log('[render-measurement-pdf] pdf_source_signature changed — rendering current diagrams without cached PDF', {
         jobId,
         previous: lastRenderedSig,
         next: incomingSig,
       })
-      try {
-        await supa
-          .from('ai_measurement_diagrams')
-          .delete()
-          .eq('ai_measurement_job_id', jobId)
-      } catch (e) {
-        console.warn('[render-measurement-pdf] failed to purge stale diagrams', e)
-      }
     } else if (cachedPdfUrl && !signatureChanged) {
       // Signature stable AND we already have a PDF — return it directly.
       console.log('[render-measurement-pdf] returning cached PDF (signature unchanged)')
