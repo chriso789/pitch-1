@@ -1438,12 +1438,46 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
   if (s.includes("rake")) return "rake";
   return "unknown";
 }
+// Whitelist of footprint_source values accepted by the
+// roof_measurements_footprint_source_check constraint. Anything not in this
+// list MUST be mapped (or fall through to 'unknown') so inserts never fail.
+const ALLOWED_FOOTPRINT_SOURCES = new Set<string>([
+  "mapbox_vector", "regrid_parcel", "osm_overpass", "microsoft_buildings",
+  "solar_api_footprint", "solar_bbox_fallback", "manual_trace", "manual_entry",
+  "imported", "user_drawn", "ai_detection", "esri_buildings", "google_solar_api",
+  "osm", "google_maps", "satellite", "unknown",
+  "google_solar_bbox", "google_solar_segments", "google_solar_segments_hull",
+  "unet_mask", "alpha_hull", "convex_hull",
+]);
+
 function normalizeRoofMeasurementFootprintSource(source: string) {
-  const s = String(source || "unknown");
-  if (s === "osm_building") return "osm_overpass";
-  if (s === "unet_segmentation") return "ai_detection";
-  if (s === "none") return "unknown";
-  return s;
+  const raw = String(source || "unknown").trim();
+  // Direct alias remaps (legacy / producer-specific labels)
+  const aliasMap: Record<string, string> = {
+    osm_building: "osm_overpass",
+    osm_buildings: "osm_overpass",
+    unet_segmentation: "ai_detection",
+    unet: "unet_mask",
+    none: "unknown",
+    "": "unknown",
+    unified_pipeline: "ai_detection",
+    topology_engine_v2: "ai_detection",
+    topology_engine_v2_skeleton: "ai_detection",
+    mapbox_static: "satellite",
+    single_plane_fallback: "solar_bbox_fallback",
+    google_solar_segments_convex_hull: "google_solar_segments_hull",
+  };
+  const remapped = aliasMap[raw] ?? raw;
+  if (ALLOWED_FOOTPRINT_SOURCES.has(remapped)) return remapped;
+  // Heuristic fallbacks for unrecognized values — keep insert valid.
+  const lower = remapped.toLowerCase();
+  if (lower.includes("solar")) return "google_solar_api";
+  if (lower.includes("osm")) return "osm_overpass";
+  if (lower.includes("hull")) return "convex_hull";
+  if (lower.includes("unet") || lower.includes("ai")) return "ai_detection";
+  if (lower.includes("manual")) return "manual_trace";
+  console.warn(`[footprint_source] Unknown source '${raw}' — coercing to 'unknown'`);
+  return "unknown";
 }
 function cleanPlane(plane: any, idx: number, w: number, h: number): RoofPlane | null {
   const polygon = cleanPolygon(plane?.polygon_px || [], w, h);
