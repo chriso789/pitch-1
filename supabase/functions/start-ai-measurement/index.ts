@@ -548,11 +548,13 @@ async function processJob(input: any) {
     }));
 
     // Hard guard: a real footprint is required to publish a customer measurement.
-    // Solar bbox / synthetic rectangles are NOT acceptable as final geometry.
-    if (footprint.length < 3) {
+    // Reject if NO candidate passed validity scoring.
+    if (footprintSelectionFailed || footprint.length < 3) {
       throw new Error(
-        "No real building footprint could be resolved (OSM/segmentation both empty). " +
-        "Geometry engine refuses to fabricate roof shape from Solar bbox or synthetic rectangle.",
+        "no_valid_full_roof_footprint: " +
+        `${candidates.length} candidate(s) evaluated, none passed validity gates ` +
+        `(min_area=${RESIDENTIAL_MIN_SQFT}sqft, min_solar_coverage=${Math.round(MIN_COVERAGE_RATIO * 100)}%). ` +
+        "See [FOOTPRINT_SOURCE_SELECTION] log for per-candidate rejection reasons.",
       );
     }
 
