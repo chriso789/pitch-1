@@ -1617,7 +1617,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           })(),
           actual_profit_percent: (() => {
             const gp = breakdown.preTaxSellingPrice - breakdown.materialsTotal - breakdown.laborTotal - breakdown.overheadAmount;
-            return breakdown.preTaxSellingPrice > 0 ? Math.round((gp / breakdown.preTaxSellingPrice) * 10000) / 100 : 0;
+            const pct = breakdown.preTaxSellingPrice > 0 ? (gp / breakdown.preTaxSellingPrice) * 100 : 0;
+            // DB trigger constrains to [-100, 85]
+            const clamped = Math.max(-100, Math.min(85, pct));
+            return Math.round(clamped * 100) / 100;
           })(),
           sales_tax_rate: config.salesTaxEnabled ? config.salesTaxRate : 0,
           sales_tax_amount: breakdown.salesTaxAmount,
