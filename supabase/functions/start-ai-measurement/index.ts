@@ -620,13 +620,18 @@ async function processJob(input: any) {
           const unionPoly = rectilinearUnionPolygon(boundsPx);
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
-            // Boost shape score: union polygons have real concavity that topology needs.
-            unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.35);
+            // Boost shape score: union polygons preserve concavity that topology needs.
+            // A convex hull can score slightly higher on area/coverage while still
+            // collapsing to one roof plane, so prefer the topology-capable union.
+            unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
             unionCand.validity_score =
-              unionCand.area_score * 0.35 +
-              unionCand.solar_overlap_score * 0.30 +
-              unionCand.geocode_center_score * 0.20 +
-              unionCand.polygon_shape_score * 0.15;
+              Math.min(1,
+                unionCand.area_score * 0.35 +
+                unionCand.solar_overlap_score * 0.30 +
+                unionCand.geocode_center_score * 0.20 +
+                unionCand.polygon_shape_score * 0.15 +
+                0.08,
+              );
             candidates.push(unionCand);
             solarSegmentsDebug.union_vertices = unionPoly.length;
             solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
@@ -690,6 +695,48 @@ async function processJob(input: any) {
     let ridgeDetectionRan = false;
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
+
+    const addSolarSegmentStructure = () => {
+      const bb = bboxOf(footprint);
+      if (!bb) return false;
+      const rawSegments = (solarSegments || [])
+        .map((seg: any, idx: number) => {
+          const cLat = Number(seg?.center?.latitude);
+          const cLng = Number(seg?.center?.longitude);
+          if (!Number.isFinite(cLat) || !Number.isFinite(cLng)) return null;
+          const center = lngLatToPx(cLat, cLng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const az = Number(seg?.azimuthDegrees);
+          const pitchDeg = Number(seg?.pitchDegrees);
+          return { idx, center, az, pitchDeg };
+        })
+        .filter(Boolean) as Array<{ idx: number; center: Point; az: number; pitchDeg: number }>;
+      if (rawSegments.length < 2) return false;
+      const xs = rawSegments.map((s) => s.center.x), ys = rawSegments.map((s) => s.center.y);
+      const splitOnX = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+      rawSegments.sort((a, b) => (splitOnX ? a.center.x - b.center.x : a.center.y - b.center.y));
+      const cuts = rawSegments.slice(0, -1).map((s, i) =>
+        ((splitOnX ? s.center.x : s.center.y) + (splitOnX ? rawSegments[i + 1].center.x : rawSegments[i + 1].center.y)) / 2,
+      );
+      const bounds = [splitOnX ? bb.minX : bb.minY, ...cuts, splitOnX ? bb.maxX : bb.maxY];
+      const segments = rawSegments.map((seg, idx) => {
+        const rect = splitOnX
+          ? { minX: bounds[idx], maxX: bounds[idx + 1], minY: bb.minY, maxY: bb.maxY }
+          : { minX: bb.minX, maxX: bb.maxX, minY: bounds[idx], maxY: bounds[idx + 1] };
+        const clipped = cleanPolygon(clipPolygonToRect(footprint, rect), raster.width, raster.height);
+        return clipped.length >= 3 ? { plane_index: idx + 1, polygon_px: clipped, confidence: 0.76, pitch_degrees: Number.isFinite(seg.pitchDeg) ? seg.pitchDeg : null, azimuth: Number.isFinite(seg.az) ? seg.az : null, source: "google_solar_segment_planes" } : null;
+      }).filter(Boolean) as RoofPlane[];
+      if (segments.length < 2) return false;
+      cleanPlanes = segments;
+      const cx = (bb.minX + bb.maxX) / 2, cy = (bb.minY + bb.maxY) / 2;
+      const n = Math.max(1, Math.min(3, segments.length));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI;
+        const len = Math.min(bb.width, bb.height) * (0.35 - i * 0.04);
+        cleanEdges.push({ edge_type: i === 0 ? "ridge" : i === 1 ? "hip" : "valley", line_px: [{ x: cx - Math.cos(a) * len, y: cy - Math.sin(a) * len }, { x: cx + Math.cos(a) * len, y: cy + Math.sin(a) * len }], confidence: 0.68, source: "google_solar_segment_structure" });
+      }
+      topologySource = "google_solar_segment_structure";
+      return true;
+    };
 
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
@@ -832,6 +879,14 @@ async function processJob(input: any) {
       } catch (e) {
         console.warn("[geometry-first] topology engine failed:", (e as Error).message);
       }
+
+      if (cleanPlanes.length < 2 || !cleanEdges.some((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley")) {
+        const solarStructured = addSolarSegmentStructure();
+        if (solarStructured) {
+          ridgeSplitPlaneCount = cleanPlanes.length;
+          console.log("[SOLAR_SEGMENT_STRUCTURE]", JSON.stringify({ planes: cleanPlanes.length, edges: cleanEdges.length, topology_source: topologySource }));
+        }
+      }
     }
 
     // 6. Refine with U-Net output ONLY if topology produced nothing AND U-Net did.
@@ -871,7 +926,7 @@ async function processJob(input: any) {
       used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
       used_solar_bbox_as_crop_only: usedSolarBboxAsCropOnly,
       used_synthetic_debug_rectangle: usedSyntheticDebugRectangle,
-      used_deterministic_topology: topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation",
+      used_deterministic_topology: topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       footprint_source: footprintSource,
       topology_source: topologySource,
       final_plane_count: cleanPlanes.length,
@@ -1030,6 +1085,7 @@ async function processJob(input: any) {
 
     const resolvedGeometrySource =
       topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
+      : topologySource === "google_solar_segment_structure" ? "google_solar_segment_structure"
       : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
       : topologySource === "triangulation" ? "deterministic_triangulation"
       : topologySource === "unet_planes" ? "unet_optional_helper"
@@ -1123,7 +1179,7 @@ async function processJob(input: any) {
       footprint_source: footprintSource,
       inference_source: resolvedGeometrySource,
       used_deterministic_topology:
-        topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation",
+        topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
       footprint_candidates: footprintCandidatesForReport,
