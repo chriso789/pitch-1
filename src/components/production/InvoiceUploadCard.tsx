@@ -48,6 +48,7 @@ interface LineItem {
 interface InvoiceUploadCardProps {
   projectId?: string;
   pipelineEntryId?: string;
+  changeOrderId?: string;
   invoiceType: 'material' | 'labor' | 'overhead';
   onSuccess?: (invoice: any) => void;
 }
