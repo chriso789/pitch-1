@@ -2328,6 +2328,10 @@ function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); r
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 function round(v: number, d = 2) { const m = Math.pow(10, d); return Math.round(Number(v || 0) * m) / m; }
+async function hashSignature(value: unknown) {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
+  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) return String((error as any).message);
