@@ -104,16 +104,37 @@ function polyCentroid(poly: Pt[]): { x: number; y: number } {
   return { x: sx / poly.length, y: sy / poly.length };
 }
 
+// Compute the dominant ridge orientation by binning candidate angles into
+// 10° buckets and returning the most populated bin (length-weighted).
+function dominantOrientationDeg(ridges: RidgeLine[]): number | null {
+  if (!ridges.length) return null;
+  const bins: Record<number, number> = {};
+  for (const r of ridges) {
+    const a = lineAngleDeg(r);
+    const len = lineLen(r);
+    const key = Math.round(a / 10) * 10;
+    bins[key] = (bins[key] || 0) + len; // weight by length so dominant axis wins
+  }
+  const sorted = Object.entries(bins).sort((a, b) => b[1] - a[1]);
+  return Number(sorted[0][0]);
+}
+
+function orientationScore(angleDeg: number, dominantDeg: number): number {
+  const diff = angleDiffDeg(angleDeg, dominantDeg);
+  // 0° diff → 1.0, 45°+ diff → 0
+  return Math.max(0, 1 - diff / 45);
+}
+
 export function filterRidges(
   ridges: RidgeLine[],
   footprint: Pt[],
   solarAzimuthsDeg: number[] = [],
-): { kept: RidgeLine[]; detected: number; discarded: number; reasons: Record<string, number> } {
+): { kept: RidgeLine[]; detected: number; discarded: number; reasons: Record<string, number>; dominant_angle_deg: number | null } {
   const reasons: Record<string, number> = {};
   const bump = (k: string) => { reasons[k] = (reasons[k] || 0) + 1; };
 
   const detected = ridges.length;
-  if (!ridges.length) return { kept: [], detected, discarded: 0, reasons };
+  if (!ridges.length) return { kept: [], detected, discarded: 0, reasons, dominant_angle_deg: null };
 
   const fp = bbox(footprint);
   const fpW = Math.max(fp.w, fp.h);
@@ -132,8 +153,23 @@ export function filterRidges(
     survivors.push(l);
   }
 
-  type Scored = { l: RidgeLine; score: number; len: number; ang: number };
-  const scored: Scored[] = survivors.map((l) => {
+  // Dominant orientation across survivors (length-weighted bins).
+  const dominant = dominantOrientationDeg(survivors);
+
+  // Hard orientation gate: reject any ridge whose angle differs from the
+  // dominant axis by more than 25°. This is the key fix preventing stacked
+  // parallel "horizontal stripe" ridges.
+  const orientFiltered: RidgeLine[] = [];
+  for (const l of survivors) {
+    if (dominant != null && angleDiffDeg(lineAngleDeg(l), dominant) > 25) {
+      bump("off_dominant_axis");
+      continue;
+    }
+    orientFiltered.push(l);
+  }
+
+  type Scored = { l: RidgeLine; score: number; len: number; ang: number; mid: Pt };
+  const scored: Scored[] = orientFiltered.map((l) => {
     const len = lineLen(l);
     const ang = lineAngleDeg(l);
     const midX = (l.p1.x + l.p2.x) / 2;
@@ -143,9 +179,12 @@ export function filterRidges(
     const A = alignmentScore(ang, ridgeTargets);
     const S = symmetryScore(midX, midY, centroid.x, centroid.y, fpW);
     const C = continuityScoreFor(l);
+    const O = dominant != null ? orientationScore(ang, dominant) : 0.5;
 
-    const score = L * 0.40 + A * 0.25 + S * 0.20 + C * 0.15;
-    return { l, score, len, ang };
+    // Re-weighted with orientationScore (0.20). Sums to 1.0:
+    //   length 0.35, alignment 0.20, symmetry 0.15, continuity 0.10, orientation 0.20
+    const score = L * 0.35 + A * 0.20 + S * 0.15 + C * 0.10 + O * 0.20;
+    return { l, score, len, ang, mid: { x: midX, y: midY } };
   });
 
   scored.sort((a, b) => b.score - a.score);
@@ -153,31 +192,47 @@ export function filterRidges(
   // Threshold + top 3
   let kept: Scored[] = scored.filter((s) => s.score > 0.65).slice(0, 3);
 
-  // Safety fallback: at least one ridge if any survived hard filters.
+  // Safety fallback: at least one ridge if any survived.
   if (kept.length === 0 && scored.length > 0) {
     bump("fallback_best_only");
     kept = [scored[0]];
   }
 
-  // Suppress near-parallel duplicates (keep highest-scored).
+  // Remove parallel duplicates: when two ridges have nearly identical
+  // angles AND their midpoints are close, keep only the higher-scored one.
+  const PARALLEL_ANGLE_DEG = 5;
+  const PARALLEL_DIST_PX = 40;
   const deduped: Scored[] = [];
   for (const s of kept) {
+    const dup = deduped.find((k) =>
+      angleDiffDeg(s.ang, k.ang) < PARALLEL_ANGLE_DEG &&
+      Math.hypot(s.mid.x - k.mid.x, s.mid.y - k.mid.y) < PARALLEL_DIST_PX
+    );
+    if (dup) { bump("parallel_duplicate"); continue; }
+    // Also drop if dominated by a much-longer near-parallel ridge already kept.
     const clash = deduped.find((k) => angleDiffDeg(s.ang, k.ang) < 12 && k.len > s.len * 2);
     if (clash) { bump("dominated_by_parallel"); continue; }
     deduped.push(s);
   }
 
+  // Final hard cap at 3 ridges.
+  const finalKept = deduped.slice(0, 3);
+
   console.log("[RIDGE_FILTER]", {
     detected,
     after_hard_filter: survivors.length,
-    selected: deduped.length,
-    scores: deduped.map((s) => Number(s.score.toFixed(3))),
+    after_orientation_gate: orientFiltered.length,
+    dominant_angle_deg: dominant,
+    selected: finalKept.length,
+    scores: finalKept.map((s) => Number(s.score.toFixed(3))),
+    angles: finalKept.map((s) => Number(s.ang.toFixed(1))),
     reasons,
   });
 
-  const discarded = detected - deduped.length;
-  return { kept: deduped.map((s) => s.l), detected, discarded, reasons };
+  const discarded = detected - finalKept.length;
+  return { kept: finalKept.map((s) => s.l), detected, discarded, reasons, dominant_angle_deg: dominant };
 }
+
 
 // ─── 2. PLANE CONSOLIDATION ───────────────────────────────────────────────
 /**
