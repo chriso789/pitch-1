@@ -4521,7 +4521,6 @@ Deno.serve(async (req) => {
             confidence_score: qc.overall,
             geometry_quality_score: qc.overall,
             measurement_quality_score: qc.overall,
-              report_pdf_url: null,
             completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
