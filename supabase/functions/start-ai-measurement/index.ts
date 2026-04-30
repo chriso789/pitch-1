@@ -3,6 +3,7 @@
 // Canonical AI Measurement entrypoint. Accepts both legacy
 // (pipelineEntryId/lat/lng/tenantId/userId/pitchOverride/address)
 // and new (lead_id/project_id/property_address/...) payload shapes.
+import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
@@ -225,7 +226,7 @@ async function processJob(input: any) {
     const imageUrl = imageryResult.url;
     const imageryProvider = imageryResult.provider;
     const imageryDecisionLog = imageryResult.decisionLog;
-    const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType);
+    const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
 
 
 
