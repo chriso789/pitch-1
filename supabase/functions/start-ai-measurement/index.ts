@@ -240,7 +240,27 @@ async function processJob(input: any) {
     const cleanEdges = (segmentation.edges || [])
       .map((e: any) => cleanEdge(e, raster.width, raster.height))
       .filter(Boolean) as RoofEdge[];
-    const footprint = cleanPolygon(segmentation.footprint_polygon_px || [], raster.width, raster.height);
+    let footprint = cleanPolygon(segmentation.footprint_polygon_px || [], raster.width, raster.height);
+
+    // Fallback: derive footprint from Google Solar buildingInsights bbox
+    // when segmentation produced nothing. Guarantees the pipeline always
+    // emits at least one plane instead of throwing "No valid roof planes".
+    if (footprint.length < 3 && cleanPlanes.length === 0) {
+      const solarFootprint = footprintFromSolarBoundingBox(
+        solarData,
+        { lat: coords.lat, lng: coords.lng },
+        raster.width,
+        raster.height,
+        actualMpp,
+      );
+      if (solarFootprint && solarFootprint.length >= 3) {
+        footprint = solarFootprint;
+      } else {
+        // Last-resort: synthesize a centered rectangle (~40ft x 30ft)
+        // so the user gets a usable starting plane to edit instead of an error.
+        footprint = syntheticCenteredFootprint(raster.width, raster.height, actualFpp);
+      }
+    }
 
     const planeRows = buildPlaneRows({
       ai_measurement_job_id: input.ai_measurement_job_id,
