@@ -785,6 +785,8 @@ async function processJob(input: any) {
         topologySource === "straight_skeleton" || topologySource === "triangulation",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      footprint_candidates: footprintCandidatesForReport,
+      selected_footprint: selectedFootprintForReport,
       debug_geometry: {
         raster_size,
         solar_bbox_px: solarBboxPx,
