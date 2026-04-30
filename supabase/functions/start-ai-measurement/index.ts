@@ -932,7 +932,49 @@ async function processJob(input: any) {
       cleanEdges = unetEdges;
     }
 
-    // Build a serializable candidate list for the report payload.
+    // ── PLANE CONSOLIDATION — drop tiny noise planes, merge near-duplicates,
+    //    cap at maxPlanes. This collapses 47-plane over-splits into 4–10.
+    let planeConsolidationStats: { before: number; after: number; dropped: number; merged: number } | null = null;
+    if (cleanPlanes.length > 0) {
+      const consolidated = consolidatePlanes(cleanPlanes, {
+        minAreaPx: 400,
+        maxPlanes: 12,
+        pitchToleranceDeg: 1,
+        bboxOverlapThreshold: 0.6,
+      });
+      planeConsolidationStats = {
+        before: consolidated.before,
+        after: consolidated.after,
+        dropped: consolidated.dropped,
+        merged: consolidated.merged,
+      };
+      console.log("[PLANE_MERGE]", JSON.stringify(planeConsolidationStats));
+      cleanPlanes = consolidated.planes as RoofPlane[];
+    }
+
+    // ── OVERLAY SCALE VALIDATION — geometry bbox vs target footprint bbox.
+    let overlayScaleStats: ReturnType<typeof computeOverlayScale> | null = null;
+    try {
+      const fpBox = (() => {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of footprint) {
+          if (p.x < minX) minX = p.x;
+          if (p.y < minY) minY = p.y;
+          if (p.x > maxX) maxX = p.x;
+          if (p.y > maxY) maxY = p.y;
+        }
+        return { minX, minY, maxX, maxY };
+      })();
+      overlayScaleStats = computeOverlayScale(
+        cleanPlanes.map((p) => p.polygon_px),
+        fpBox,
+      );
+      console.log("[OVERLAY_SCALE]", JSON.stringify(overlayScaleStats));
+    } catch (e) {
+      console.warn("[OVERLAY_SCALE] failed:", (e as Error).message);
+    }
+
+
     const footprintCandidatesForReport = candidates.map((c) => ({
       source: c.source,
       area_sqft: Math.round(c.area_sqft),
