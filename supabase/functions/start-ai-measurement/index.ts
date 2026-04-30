@@ -3484,7 +3484,16 @@ Deno.serve(async (req) => {
         // Only proceeds to single-plane synthesis if no strong ridges are
         // found AND the footprint has no concave (reflex) vertices.
         // ──────────────────────────────────────────────────────────────
-        if (!hasRealInteriorStructure && planes.length === 1 && (extractedImageGeometry || mb?.image_url)) {
+        // NOTE: We trigger ridge-driven splitting whenever we only have ONE
+        // plane, even if topology_engine_v2 emitted ridge/hip/valley edges
+        // against that single plane. Those edges are geometrically meaningless
+        // without multiple plane polygons to attach them to (no adjacency =
+        // no real diagram). Multi-plane geometry is the source of truth.
+        if (planes.length === 1 && (extractedImageGeometry || mb?.image_url)) {
+          console.log(
+            `[ridge_split_pre_synthesis] entering: planes=1, edges=${edges.length} ` +
+            `(hasRealInteriorStructure=${hasRealInteriorStructure}) — forcing multi-plane split attempt`,
+          )
           try {
             const basePlane = planes[0]
             const extracted = extractedImageGeometry ?? await extractRoofFootprintAndEdges(mb!.image_url, imgW, imgH)
