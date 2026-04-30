@@ -7,6 +7,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint } from "../_shared/osm-footprint-extractor.ts";
+import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
@@ -637,6 +638,74 @@ async function processJob(input: any) {
       .single();
 
     if (publishError) throw publishError;
+
+    // Generate the customer-visible SVG report pages from the measured geometry.
+    // The geometry-first rewrite still saved totals/planes, but no longer wrote
+    // ai_measurement_diagrams, which made the report dialog show "No diagrams available".
+    try {
+      if (!blockCustomerReportReason && planeRows.length > 0) {
+        const diagrams = generateRoofDiagrams({
+          propertyAddress: input.property_address || "Unknown property",
+          jobId: input.ai_measurement_job_id,
+          generatedAt: new Date().toISOString(),
+          confidence: quality.overall_score,
+          engineVersion: "geometry_first_v2",
+          planes: planeRows.map((p: any) => ({
+            plane_index: p.plane_index,
+            polygon_px: p.polygon_px,
+            pitch: p.pitch,
+            pitch_degrees: p.pitch_degrees,
+            area_2d_sqft: p.area_2d_sqft,
+            area_pitch_adjusted_sqft: p.area_pitch_adjusted_sqft,
+            confidence: p.confidence,
+          })),
+          edges: edgeRows.map((e: any) => ({
+            edge_type: e.edge_type,
+            line_px: e.line_px,
+            length_ft: e.length_ft,
+            confidence: e.confidence,
+          })),
+          totals,
+          satelliteImageUrl: imageUrl,
+          sourceImageWidth: raster.width,
+          sourceImageHeight: raster.height,
+        });
+
+        await supabase
+          .from("ai_measurement_diagrams")
+          .delete()
+          .eq("ai_measurement_job_id", input.ai_measurement_job_id);
+
+        if (diagrams.length > 0) {
+          await supabase.from("ai_measurement_diagrams").insert(
+            diagrams.map((d) => ({
+              ai_measurement_job_id: input.ai_measurement_job_id,
+              roof_measurement_id: roofMeasurement.id,
+              lead_id: input.lead_id,
+              project_id: input.project_id,
+              tenant_id: input.tenant_id,
+              company_id: input.company_id,
+              diagram_type: d.diagram_type,
+              title: d.title,
+              page_number: d.page_number,
+              svg_markup: d.svg_markup,
+              diagram_json: {
+                generated_from: "geometry_first_v2_planes_edges",
+                engine_version: "geometry_first_v2_diagrams",
+                property_address: input.property_address,
+                totals,
+              },
+              render_version: "geometry_first_v2_diagrams",
+              width: 850,
+              height: 1100,
+              customer_safe: true,
+            })),
+          );
+        }
+      }
+    } catch (diagramError) {
+      console.error("diagram generation failed", diagramError);
+    }
 
     await supabase.from("measurement_approvals").insert({
       tenant_id: input.tenant_id,
