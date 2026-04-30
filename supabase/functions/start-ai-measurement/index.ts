@@ -696,6 +696,41 @@ async function processJob(input: any) {
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
 
+    const addSolarSegmentStructure = () => {
+      const segments = (solarSegments || [])
+        .map((seg: any, idx: number) => {
+          const cLat = Number(seg?.center?.latitude);
+          const cLng = Number(seg?.center?.longitude);
+          if (!Number.isFinite(cLat) || !Number.isFinite(cLng)) return null;
+          const center = lngLatToPx(cLat, cLng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const groundM2 = Number(seg?.stats?.groundAreaMeters2 || seg?.stats?.areaMeters2 || 0);
+          const halfPx = Math.max(12, Math.min(90, (Math.sqrt(Math.max(groundM2, 8)) / 2) / actualMpp));
+          const az = Number(seg?.azimuthDegrees);
+          const pitchDeg = Number(seg?.pitchDegrees);
+          const p = [
+            { x: center.x - halfPx, y: center.y - halfPx },
+            { x: center.x + halfPx, y: center.y - halfPx },
+            { x: center.x + halfPx, y: center.y + halfPx },
+            { x: center.x - halfPx, y: center.y + halfPx },
+          ];
+          const clipped = cleanPolygon(clipPolygonToRect(p, bboxOf(footprint)!), raster.width, raster.height);
+          return clipped.length >= 3 ? { plane_index: idx + 1, polygon_px: clipped, confidence: 0.76, pitch_degrees: Number.isFinite(pitchDeg) ? pitchDeg : null, azimuth: Number.isFinite(az) ? az : null, source: "google_solar_segment_planes" } : null;
+        })
+        .filter(Boolean) as RoofPlane[];
+      if (segments.length < 2) return false;
+      cleanPlanes = segments;
+      const bb = bboxOf(footprint)!;
+      const cx = (bb.minX + bb.maxX) / 2, cy = (bb.minY + bb.maxY) / 2;
+      const n = Math.max(1, Math.min(3, segments.length));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI;
+        const len = Math.min(bb.width, bb.height) * (0.35 - i * 0.04);
+        cleanEdges.push({ edge_type: i === 0 ? "ridge" : i === 1 ? "hip" : "valley", line_px: [{ x: cx - Math.cos(a) * len, y: cy - Math.sin(a) * len }, { x: cx + Math.cos(a) * len, y: cy + Math.sin(a) * len }], confidence: 0.68, source: "google_solar_segment_structure" });
+      }
+      topologySource = "google_solar_segment_structure";
+      return true;
+    };
+
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
 
