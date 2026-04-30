@@ -48,6 +48,7 @@ interface LineItem {
 interface InvoiceUploadCardProps {
   projectId?: string;
   pipelineEntryId?: string;
+  changeOrderId?: string;
   invoiceType: 'material' | 'labor' | 'overhead';
   onSuccess?: (invoice: any) => void;
 }
@@ -65,6 +66,7 @@ const OVERHEAD_CATEGORIES = [
 export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   projectId,
   pipelineEntryId,
+  changeOrderId,
   invoiceType,
   onSuccess
 }) => {
@@ -245,6 +247,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         body: {
           project_id: projectId || null,
           pipeline_entry_id: pipelineEntryId || null,
+          change_order_id: changeOrderId || null,
           invoice_type: invoiceType,
           ...formData,
           invoice_amount: parseFloat(formData.invoice_amount)

@@ -27270,6 +27270,7 @@ export type Database = {
         Row: {
           approved_at: string | null
           approved_by: string | null
+          change_order_id: string | null
           created_at: string | null
           created_by: string | null
           crew_name: string | null
@@ -27292,6 +27293,7 @@ export type Database = {
         Insert: {
           approved_at?: string | null
           approved_by?: string | null
+          change_order_id?: string | null
           created_at?: string | null
           created_by?: string | null
           crew_name?: string | null
@@ -27314,6 +27316,7 @@ export type Database = {
         Update: {
           approved_at?: string | null
           approved_by?: string | null
+          change_order_id?: string | null
           created_at?: string | null
           created_by?: string | null
           crew_name?: string | null
@@ -27347,6 +27350,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_change_order_id_fkey"
+            columns: ["change_order_id"]
+            isOneToOne: false
+            referencedRelation: "change_orders"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "project_cost_invoices_created_by_fkey"

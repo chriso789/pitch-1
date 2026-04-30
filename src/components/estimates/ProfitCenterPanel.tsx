@@ -7,7 +7,7 @@ import {
   TrendingUp, DollarSign, Calculator, Info, Loader2, 
   FileText, Upload, CheckCircle, Receipt, Package, Wrench,
   ArrowUpRight, ArrowDownRight, Minus, ClipboardCheck, BarChart3,
-  CreditCard
+  CreditCard, FileEdit
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,7 @@ import { InvoiceUploadCard } from '@/components/production/InvoiceUploadCard';
 import { BudgetTracker } from '@/features/projects/components/BudgetTracker';
 import { CostReconciliationPanel } from '@/components/production/CostReconciliationPanel';
 import { PaymentsTab } from '@/components/estimates/PaymentsTab';
+import { ChangeOrdersTab } from '@/components/estimates/ChangeOrdersTab';
 import { CustomerPortalButton } from '@/components/lead-details/CustomerPortalButton';
 import { format } from 'date-fns';
 
@@ -305,7 +306,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           <div className="relative">
             <TabsList className={cn(
               "flex overflow-x-auto w-full justify-start mb-4",
-              isProject ? "bg-muted p-1 rounded-md" : "grid w-full grid-cols-3"
+              isProject ? "bg-muted p-1 rounded-md" : "grid w-full grid-cols-4"
             )}>
               <TabsTrigger value="summary" className="text-xs flex-shrink-0">
                 <Calculator className="h-3 w-3 mr-1" />
@@ -318,6 +319,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               <TabsTrigger value="breakdown" className="text-xs flex-shrink-0">
                 <Receipt className="h-3 w-3 mr-1" />
                 Details
+              </TabsTrigger>
+              <TabsTrigger value="change_orders" className="text-xs flex-shrink-0">
+                <FileEdit className="h-3 w-3 mr-1" />
+                Change Orders
               </TabsTrigger>
               {isProject && (
                 <>
@@ -600,6 +605,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 </div>
               </>
             )}
+          </TabsContent>
+
+          {/* Change Orders Tab */}
+          <TabsContent value="change_orders" className="mt-0">
+            <ChangeOrdersTab pipelineEntryId={pipelineEntryId} projectId={projectId} />
           </TabsContent>
 
           {/* Payments Tab - Project only */}

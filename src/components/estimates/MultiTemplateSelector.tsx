@@ -2443,6 +2443,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         <>
           {tradeSections
             .filter((trade) => {
+              // Always show uploader when editing an existing estimate (no template
+              // selection is required because the estimate already has line items).
+              if (isEditingLoadedEstimate || existingEstimateId) return true;
               const hasTemplate = trade.tradeType === 'roofing' ? !!selectedTemplateId : !!trade.templateId;
               return hasTemplate;
             })
