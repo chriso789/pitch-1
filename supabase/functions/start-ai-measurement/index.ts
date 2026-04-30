@@ -1123,7 +1123,7 @@ async function processJob(input: any) {
       footprint_source: footprintSource,
       inference_source: resolvedGeometrySource,
       used_deterministic_topology:
-        topologySource === "straight_skeleton" || topologySource === "triangulation",
+        topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
       footprint_candidates: footprintCandidatesForReport,
