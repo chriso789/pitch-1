@@ -19,14 +19,41 @@ interface AddressData {
   formatted_address?: string;
 }
 
+type VerificationData = Record<string, unknown>;
+
+interface GoogleAddressComponent {
+  long_name: string;
+  short_name: string;
+  types: string[];
+}
+
+interface GooglePlace {
+  address_components?: GoogleAddressComponent[];
+  formatted_address?: string;
+  geometry?: {
+    location?: {
+      lat?: number;
+      lng?: number;
+    };
+  };
+}
+
+interface AddressPrediction {
+  place_id: string;
+  description: string;
+  structured_formatting?: {
+    main_text?: string;
+  };
+}
+
 interface AddressVerificationProps {
-  onAddressVerified: (address: AddressData, verificationData: any) => void;
+  onAddressVerified: (address: AddressData, verificationData: VerificationData) => void;
   initialAddress?: Partial<AddressData>;
   label?: string;
   required?: boolean;
 }
 
-const parseGoogleAddress = (place: any, fallbackText = ""): AddressData => {
+const parseGoogleAddress = (place: GooglePlace, fallbackText = ""): AddressData => {
   const formatted = place?.formatted_address || fallbackText;
   const addressComponents = place?.address_components || [];
 
@@ -38,7 +65,7 @@ const parseGoogleAddress = (place: any, fallbackText = ""): AddressData => {
   let zip = "";
   let zipSuffix = "";
 
-  addressComponents.forEach((component: any) => {
+  addressComponents.forEach((component) => {
     const types = component.types || [];
     if (types.includes("street_number")) streetNumber = component.long_name;
     if (types.includes("route")) route = component.long_name;
