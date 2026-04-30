@@ -87,7 +87,7 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
   const { data: m } = await supa
     .from('roof_measurements')
     .select(
-      'id, validation_status, requires_manual_review, facet_count, geometry_report_json, ai_measurement_job_id',
+      'id, validation_status, requires_manual_review, facet_count, geometry_report_json, ai_measurement_job_id, report_pdf_url, report_pdf_path, updated_at',
     )
     .eq('ai_measurement_job_id', jobId)
     .order('created_at', { ascending: false })
