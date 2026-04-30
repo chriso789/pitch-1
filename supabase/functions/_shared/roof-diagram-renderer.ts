@@ -154,11 +154,27 @@ function normalizeToDrawZone(input: DiagramInput) {
   const sourceW = Number(input.sourceImageWidth || 0);
   const sourceH = Number(input.sourceImageHeight || 0);
 
-  // Overlay pages render the full satellite raster into DRAW_ZONE using
-  // preserveAspectRatio="xMidYMid slice". Geometry must use that exact raster
-  // transform; fitting the polygon bbox separately makes the outline drift and
-  // scale incorrectly over the aerial.
+  const geometryPoints = [
+    ...planes.flatMap((p) => p.polygon_px || []),
+    ...edges.flatMap((e) => e.line_px || []),
+  ].filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+
   if (sourceW > 0 && sourceH > 0) {
+    const calibration = input.overlayCalibration?.calibrated
+      ? input.overlayCalibration
+      : computeOverlayTransform({
+        rasterSize: { width: sourceW, height: sourceH },
+        geometryPoints,
+        roofTargetBboxPx: input.roofTargetBboxPx || null,
+      });
+
+    const calibratedPlanes = calibration.calibrated
+      ? planes.map((p) => ({ ...p, polygon_px: transformOverlayPoints(p.polygon_px || [], calibration) }))
+      : planes;
+    const calibratedEdges = calibration.calibrated
+      ? edges.map((e) => ({ ...e, line_px: transformOverlayPoints(e.line_px || [], calibration) }))
+      : edges;
+
     const scale = Math.max(DRAW_ZONE.w / sourceW, DRAW_ZONE.h / sourceH);
     const drawnW = sourceW * scale;
     const drawnH = sourceH * scale;
@@ -167,15 +183,13 @@ function normalizeToDrawZone(input: DiagramInput) {
     const tx = (p: Point): Point => ({ x: p.x * scale + offX, y: p.y * scale + offY });
 
     return {
-      planes: planes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) })),
-      edges: edges.map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) })),
+      planes: calibratedPlanes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) })),
+      edges: calibratedEdges.map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) })),
+      calibration,
     };
   }
 
-  const all = [
-    ...planes.flatMap((p) => p.polygon_px || []),
-    ...edges.flatMap((e) => e.line_px || []),
-  ].filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+  const all = geometryPoints;
 
   if (all.length === 0) return { planes, edges };
 
@@ -187,13 +201,13 @@ function normalizeToDrawZone(input: DiagramInput) {
   const srcW = Math.max(maxX - minX, 1);
   const srcH = Math.max(maxY - minY, 1);
 
-  // Fit inside DRAW_ZONE preserving aspect ratio. SVG y grows down, source raster
-  // y grows down — direct mapping keeps north at top of the page.
-  const scale = Math.min(DRAW_ZONE.w / srcW, DRAW_ZONE.h / srcH);
+  // For non-raster diagram pages, use a wider fixed diagram zone so pitch/area
+  // labels stay readable instead of rendering as a tiny centered sketch.
+  const scale = Math.min(DIAGRAM_ZONE.w / srcW, DIAGRAM_ZONE.h / srcH);
   const drawnW = srcW * scale;
   const drawnH = srcH * scale;
-  const offX = DRAW_ZONE.x + (DRAW_ZONE.w - drawnW) / 2;
-  const offY = DRAW_ZONE.y + (DRAW_ZONE.h - drawnH) / 2;
+  const offX = DIAGRAM_ZONE.x + (DIAGRAM_ZONE.w - drawnW) / 2;
+  const offY = DIAGRAM_ZONE.y + (DIAGRAM_ZONE.h - drawnH) / 2;
 
   const tx = (p: Point): Point => ({
     x: (p.x - minX) * scale + offX,
