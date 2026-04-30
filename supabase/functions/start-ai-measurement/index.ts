@@ -525,6 +525,31 @@ async function processJob(input: any) {
           };
         }
       }
+
+      // 3a-bis. Solar roofSegmentStats UNION (rectilinear).
+      // The convex hull above kills all concavity, so the topology engine sees a
+      // single fan of triangles → 1 plane, no ridges. The union below preserves
+      // L/T/cross shapes so straight-skeleton can emit real ridges/hips/valleys.
+      if (boundsPx.length >= 1) {
+        try {
+          const unionPoly = rectilinearUnionPolygon(boundsPx);
+          if (unionPoly.length >= 4) {
+            const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
+            // Boost shape score: union polygons have real concavity that topology needs.
+            unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.35);
+            unionCand.validity_score =
+              unionCand.area_score * 0.35 +
+              unionCand.solar_overlap_score * 0.30 +
+              unionCand.geocode_center_score * 0.20 +
+              unionCand.polygon_shape_score * 0.15;
+            candidates.push(unionCand);
+            solarSegmentsDebug.union_vertices = unionPoly.length;
+            solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
+          }
+        } catch (e) {
+          console.warn("[SOLAR_SEGMENT_UNION] failed:", (e as Error).message);
+        }
+      }
     }
 
     // 3b. Solar building extent rectangle as a fallback candidate (NOT auto-promoted).
