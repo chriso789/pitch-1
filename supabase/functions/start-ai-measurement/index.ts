@@ -838,6 +838,8 @@ async function processJob(input: any) {
       footprint_source: footprintSource,
       topology_source: topologySource,
       block_customer_report_reason: blockCustomerReportReason,
+      footprint_candidates: footprintCandidatesForReport,
+      selected_footprint: selectedFootprintForReport,
       planes: planeRows,
       edges: edgeRows,
       totals,
