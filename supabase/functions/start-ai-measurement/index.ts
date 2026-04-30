@@ -32,6 +32,7 @@ import { fetchMapboxVectorFootprint } from '../_shared/mapbox-footprint-extracto
 import { fetchOSMBuildingFootprint } from '../_shared/osm-footprint-extractor.ts'
 import { fetchMicrosoftBuildingFootprint } from '../_shared/microsoft-footprint-extractor.ts'
 import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
+import { buildTopology as buildTriangulationTopology } from '../_shared/topology-engine.ts'
 import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
 
 const corsHeaders = {
