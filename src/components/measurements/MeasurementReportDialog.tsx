@@ -104,7 +104,17 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const effectiveMeasurement = fullMeasurement || measurement;
   const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(effectiveMeasurement), [effectiveMeasurement]);
-  const canOpenExistingPdf = Boolean((effectiveMeasurement as any)?.report_pdf_url && pdfGate.ok);
+
+  // ── PATCH 2: don't open a stale cached PDF if its signature no longer
+  // matches the latest geometry_report_json (means a newer AI run
+  // produced different planes/edges and the PDF must be re-rendered).
+  const debugPipeline = (effectiveMeasurement as any)?.geometry_report_json?.debug_pipeline || null;
+  const currentPdfSig = (effectiveMeasurement as any)?.geometry_report_json?.pdf_source_signature || null;
+  const lastRenderedSig = (effectiveMeasurement as any)?.geometry_report_json?.last_rendered_pdf_signature || null;
+  const pdfIsStale = Boolean(currentPdfSig && lastRenderedSig && currentPdfSig !== lastRenderedSig);
+  const canOpenExistingPdf = Boolean(
+    (effectiveMeasurement as any)?.report_pdf_url && pdfGate.ok && !pdfIsStale
+  );
   const reportModel = useMemo(() => {
     const serverPatent = (effectiveMeasurement as any)?.patent_model
       || (effectiveMeasurement as any)?.geometry_report_json?.patent_model;
