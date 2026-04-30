@@ -2438,6 +2438,46 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </div>
       )}
 
+      {/* Supplier Quote Upload — placed just above line items / material totals */}
+      {!fetchingItems && shouldShowTemplateContent && (
+        <>
+          {tradeSections
+            .filter((trade) => {
+              const hasTemplate = trade.tradeType === 'roofing' ? !!selectedTemplateId : !!trade.templateId;
+              return hasTemplate;
+            })
+            .map((trade) => {
+              const currentItems = tradeLineItems[trade.id]
+                || (trade.tradeType === 'roofing' ? lineItems : []);
+              return (
+                <div
+                  key={`sq-${trade.id}`}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-dashed bg-background/60 p-3"
+                >
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{trade.label}:</span>{' '}
+                    Got a supplier quote? Upload the PDF (multi-page supported) to auto-fill material quantities & costs.
+                  </div>
+                  <SupplierQuoteUploader
+                    tradeSectionId={trade.id}
+                    tradeType={trade.tradeType}
+                    tradeLabel={trade.label}
+                    currentItems={currentItems}
+                    projectId={null}
+                    pipelineEntryId={pipelineEntryId}
+                    onItemsUpdated={(merged) => {
+                      setTradeLineItems((prev) => ({ ...prev, [trade.id]: merged }));
+                      if (trade.tradeType === 'roofing') {
+                        setLineItems(merged);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
+        </>
+      )}
+
       {/* Sectioned Line Items Table - Only show when template/estimate is selected */}
       {!fetchingItems && shouldShowTemplateContent && (
         <Card>
