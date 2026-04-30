@@ -365,9 +365,15 @@ async function processJob(input: any) {
       const bbox_center_distance_from_geocode_px = bbox
         ? Math.hypot((bbox.minX + bbox.maxX) / 2 - geocodePx.x, (bbox.minY + bbox.maxY) / 2 - geocodePx.y)
         : Number.POSITIVE_INFINITY;
-      const overlap_with_solar_bbox = solarBboxPx && bbox ? bboxIntersect(bbox, solarBboxPx) : 0;
-      const coverage_ratio_vs_solar_bbox = solarBboxPx && solarBboxPx.area > 0 && bbox
-        ? bbox.area / solarBboxPx.area
+      // FIX: real polygon ∩ solar_bbox area, not bbox ∩ bbox.
+      // The previous bbox-vs-bbox version reported 0 overlap for OSM polygons that
+      // visually covered 60–82% of the solar bbox.
+      const overlapPolyPx = (solarBboxPx && valid)
+        ? polygonAreaPx(clipPolygonToRect(cleaned, solarBboxPx))
+        : 0;
+      const overlap_with_solar_bbox = overlapPolyPx;
+      const coverage_ratio_vs_solar_bbox = solarBboxPx && solarBboxPx.area > 0
+        ? overlapPolyPx / solarBboxPx.area
         : null;
       const vertex_count = cleaned.length;
 
@@ -380,7 +386,12 @@ async function processJob(input: any) {
       const geocode_center_score = bbox
         ? Math.max(0, 1 - bbox_center_distance_from_geocode_px / maxDist)
         : 0;
-      const polygon_shape_score = vertex_count >= 4 ? Math.min(1, vertex_count / 8) : 0;
+      // Polygon-shape complexity: 4-corner rectangles get penalized when the building
+      // is clearly more complex (multiple solar segments). 5+ vertex hulls get boosted.
+      const segCount = (solarData?.solarPotential?.roofSegmentStats || []).length;
+      let polygon_shape_score = vertex_count >= 4 ? Math.min(1, vertex_count / 8) : 0;
+      if (vertex_count <= 4 && segCount > 1) polygon_shape_score *= 0.4;
+      if (vertex_count >= 6) polygon_shape_score = Math.min(1, polygon_shape_score + 0.15);
 
       const validity_score =
         area_score * 0.35 +
