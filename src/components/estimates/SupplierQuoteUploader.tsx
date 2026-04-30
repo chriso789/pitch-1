@@ -5,6 +5,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import type { LineItem } from '@/hooks/useEstimatePricing';
 
+const PARSE_SUPPLIER_QUOTE_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/parse-supplier-quote`;
+
 interface SupplierQuoteUploaderProps {
   tradeSectionId: string;
   tradeType: string;
@@ -127,10 +129,21 @@ export const SupplierQuoteUploader: React.FC<SupplierQuoteUploaderProps> = ({
       setStage('parsing');
       toast({ title: 'Quote uploaded', description: 'Parsing materials with AI…' });
 
-      const { data, error } = await supabase.functions.invoke('parse-supplier-quote', {
-        body: { document_url: signed.signedUrl },
+      const session = await supabase.auth.getSession();
+      const accessToken = session.data.session?.access_token;
+      const response = await fetch(PARSE_SUPPLIER_QUOTE_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({ document_url: signed.signedUrl }),
       });
-      if (error) throw error;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || `Quote parser failed (${response.status})`);
+      }
       const parsed = data?.parsed;
       const items: ParsedQuoteItem[] = parsed?.line_items || [];
       if (!items.length) {
