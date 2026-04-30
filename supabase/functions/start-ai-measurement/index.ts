@@ -8,6 +8,8 @@ import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
+import { detectRidgesInPolygon } from "../_shared/image-ridge-detector.ts";
+import { splitPlanesFromRidges, type Line as RidgeLine } from "../_shared/ridge-plane-splitter.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
