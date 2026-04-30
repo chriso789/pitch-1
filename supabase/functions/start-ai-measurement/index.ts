@@ -964,7 +964,7 @@ async function processJob(input: any) {
 
     const finalJobStatus = blockCustomerReportReason ? "needs_review" : "completed";
     const finalJobMessage = blockCustomerReportReason
-      ? `Geometry collapsed to single plane on ${Math.round(totals.total_area_2d_sqft)} sqft footprint — needs human topology review.`
+      ? `Measurement needs review — geometry covered only part of the roof. (${blockCustomerReportReason})`
       : "Measurement complete";
 
     await setMeasurementJobStatus(
