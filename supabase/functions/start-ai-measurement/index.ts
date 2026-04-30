@@ -1391,6 +1391,8 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      overlay_calibration: overlayCalibration,
+      roof_target_bbox_px: roofTargetBboxPx,
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
       imagery: {
@@ -1435,6 +1437,8 @@ async function processJob(input: any) {
         footprint_px: footprint.map((p) => [p.x, p.y]),
         solar_bbox_px: solarBboxPx,
         final_geometry_bbox_px: finalGeometryBboxPx,
+        overlay_calibration: overlayCalibration,
+        roof_target_bbox_px: roofTargetBboxPx,
       },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
@@ -1478,6 +1482,8 @@ async function processJob(input: any) {
       edges_px,
       raster_size,
       raster_image_url: imageUrl,
+      overlay_calibration: overlayCalibration,
+      roof_target_bbox_px: roofTargetBboxPx,
     };
 
     // Publish canonical roof_measurements row
@@ -1583,6 +1589,8 @@ async function processJob(input: any) {
           satelliteImageUrl: imageUrl,
           sourceImageWidth: raster.width,
           sourceImageHeight: raster.height,
+          roofTargetBboxPx,
+          overlayCalibration,
         });
 
         await supabase
