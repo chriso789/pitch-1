@@ -687,64 +687,145 @@ async function processJob(input: any) {
     let cleanPlanes: RoofPlane[] = [];
     let cleanEdges: RoofEdge[] = [];
     let topologySource = "none";
+    let ridgeDetectionRan = false;
+    let ridgeDetectedCount = 0;
+    let ridgeSplitPlaneCount = 0;
 
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
+
+      // 5a. STRUCTURE EXTRACTION — image-based ridge detection + recursive plane split.
+      // straight_skeleton alone only produces medial-axis lines; on a smoothed
+      // hull it collapses to one plane. We must inject real structural ridges
+      // BEFORE the skeleton step so the footprint is decomposed into facets.
+      const splitRidgeEdges: RoofEdge[] = [];
       try {
-        const skeletonEdges = computeStraightSkeleton(
-          footprint.map((p) => [p.x, p.y] as [number, number]),
-        );
-        if (skeletonEdges && skeletonEdges.length > 0) {
-          for (const se of skeletonEdges as any[]) {
-            const a = se.a ?? se.p1 ?? se[0];
-            const b = se.b ?? se.p2 ?? se[1];
-            const ax = Array.isArray(a) ? a[0] : a?.x;
-            const ay = Array.isArray(a) ? a[1] : a?.y;
-            const bx = Array.isArray(b) ? b[0] : b?.x;
-            const by = Array.isArray(b) ? b[1] : b?.y;
-            if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
-              const t = String(se.type || "ridge").toLowerCase();
-              cleanEdges.push({
-                edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
-                line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
-                confidence: 0.7,
-                source: "topology_engine_v2_skeleton",
+        const solarAzimuths: number[] = (solarSegments || [])
+          .map((s: any) => Number(s?.azimuthDegrees))
+          .filter((n: number) => Number.isFinite(n));
+
+        const detect = (poly: Point[]): RidgeLine[] => {
+          const r = detectRidgesInPolygon({
+            raster,
+            polygon: poly,
+            solarAzimuthsDeg: solarAzimuths,
+            maxRidges: 3,
+          });
+          return r.lines as RidgeLine[];
+        };
+
+        // Run a single top-level detection pass for logging/QA purposes.
+        const topLevel = detectRidgesInPolygon({
+          raster,
+          polygon: footprint,
+          solarAzimuthsDeg: solarAzimuths,
+          maxRidges: 4,
+        });
+        ridgeDetectionRan = true;
+        ridgeDetectedCount = topLevel.lines.length;
+        console.log("[RIDGE_DETECTION]", JSON.stringify({
+          ridge_count: topLevel.lines.length,
+          ridge_scores: topLevel.debug.scores,
+          azimuth_targets_deg: topLevel.debug.azimuth_targets_deg,
+          raw_line_count: topLevel.debug.raw_line_count,
+          filtered_line_count: topLevel.debug.filtered_line_count,
+          roi: topLevel.debug.roi,
+        }));
+
+        if (topLevel.lines.length > 0) {
+          const splitPlanes = splitPlanesFromRidges(footprint, detect, 0, 3);
+          ridgeSplitPlaneCount = splitPlanes.length;
+          console.log("[RIDGE_SPLIT]", JSON.stringify({
+            initial_planes: 1,
+            final_planes: splitPlanes.length,
+            split_success: splitPlanes.length >= 2,
+          }));
+
+          if (splitPlanes.length >= 2) {
+            cleanPlanes = splitPlanes.map((sp, i) => ({
+              plane_index: i + 1,
+              polygon_px: sp.polygon,
+              confidence: 0.72,
+              pitch: null,
+              pitch_degrees: null,
+              azimuth: null,
+              source: "ridge_split_recursive",
+            }));
+            for (const r of topLevel.lines) {
+              splitRidgeEdges.push({
+                edge_type: "ridge",
+                line_px: [r.p1, r.p2],
+                confidence: Math.min(0.9, 0.55 + r.score * 0.4),
+                source: "image_ridge_detector",
               });
             }
+            cleanEdges.push(...splitRidgeEdges);
+            topologySource = "ridge_split_recursive";
           }
-          topologySource = "straight_skeleton";
         }
+      } catch (e) {
+        console.warn("[RIDGE_SPLIT] failed:", (e as Error).message);
+      }
+
+      try {
+        // 5b. Skeleton — used as fallback OR to add minor interior structure.
+        if (cleanPlanes.length < 2) {
+          const skeletonEdges = computeStraightSkeleton(
+            footprint.map((p) => [p.x, p.y] as [number, number]),
+          );
+          if (skeletonEdges && skeletonEdges.length > 0) {
+            for (const se of skeletonEdges as any[]) {
+              const a = se.a ?? se.p1 ?? se[0];
+              const b = se.b ?? se.p2 ?? se[1];
+              const ax = Array.isArray(a) ? a[0] : a?.x;
+              const ay = Array.isArray(a) ? a[1] : a?.y;
+              const bx = Array.isArray(b) ? b[0] : b?.x;
+              const by = Array.isArray(b) ? b[1] : b?.y;
+              if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
+                const t = String(se.type || "ridge").toLowerCase();
+                cleanEdges.push({
+                  edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
+                  line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
+                  confidence: 0.7,
+                  source: "topology_engine_v2_skeleton",
+                });
+              }
+            }
+            if (topologySource === "none") topologySource = "straight_skeleton";
+          }
+        }
+
+        // 5c. Triangulation eaves/rakes — always useful for perimeter edges.
         const topo = buildTopology(footprint);
         if (topo.planes.length > 0) {
-          cleanPlanes = topo.planes.map((tp, idx) => ({
-            plane_index: idx + 1,
-            polygon_px: tp.polygon,
-            confidence: 0.7,
-            pitch: null,
-            pitch_degrees: null,
-            azimuth: null,
-            source: "topology_engine_v2",
-          }));
-          if (topologySource === "none") topologySource = "triangulation";
-          if (cleanEdges.length === 0) {
-            for (const e of topo.edges) {
+          if (cleanPlanes.length === 0) {
+            cleanPlanes = topo.planes.map((tp, idx) => ({
+              plane_index: idx + 1,
+              polygon_px: tp.polygon,
+              confidence: 0.7,
+              pitch: null,
+              pitch_degrees: null,
+              azimuth: null,
+              source: "topology_engine_v2",
+            }));
+            if (topologySource === "none") topologySource = "triangulation";
+          }
+          // Always pull in eave/rake perimeter edges from triangulation.
+          for (const e of topo.edges) {
+            if (e.type === "eave" || e.type === "rake") {
               cleanEdges.push({
                 edge_type: e.type,
                 line_px: [e.p1, e.p2],
                 confidence: 0.65,
                 source: "topology_engine_v2",
               });
-            }
-          } else {
-            for (const e of topo.edges) {
-              if (e.type === "eave" || e.type === "rake") {
-                cleanEdges.push({
-                  edge_type: e.type,
-                  line_px: [e.p1, e.p2],
-                  confidence: 0.65,
-                  source: "topology_engine_v2",
-                });
-              }
+            } else if (cleanEdges.length === 0) {
+              cleanEdges.push({
+                edge_type: e.type,
+                line_px: [e.p1, e.p2],
+                confidence: 0.65,
+                source: "topology_engine_v2",
+              });
             }
           }
         }
