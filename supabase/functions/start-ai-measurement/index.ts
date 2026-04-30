@@ -18,6 +18,7 @@ import {
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
 import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
+import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
@@ -773,11 +774,14 @@ async function processJob(input: any) {
         };
 
         // Run a single top-level detection pass for logging/QA purposes.
+        // NOTE: maxRidges raised from 4 → 12 — complex multi-wing roofs
+        // (Montelluna-style) have multiple independent ridge systems and
+        // need many ridges so the regional splitter can cluster them.
         const topLevel = detectRidgesInPolygon({
           raster,
           polygon: footprint,
           solarAzimuthsDeg: solarAzimuths,
-          maxRidges: 4,
+          maxRidges: 12,
         });
         ridgeDetectionRan = true;
         ridgeDetectedCount = topLevel.lines.length;
@@ -805,7 +809,8 @@ async function processJob(input: any) {
         }));
 
         if (filtered.kept.length > 0) {
-          // Wrap detect to also pass through the filter on every recursion.
+          // Wrap detect to also pass through the filter on every recursion
+          // (used as the inner-region fallback detector).
           const detectFiltered = (poly: Point[]): RidgeLine[] => {
             const sub = detectRidgesInPolygon({
               raster,
@@ -817,12 +822,69 @@ async function processJob(input: any) {
             return f.kept as RidgeLine[];
           };
 
-          const splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
+          // ── REGIONAL RIDGE CLUSTERING + LOCAL SPLIT ──────────────────────
+          // Replaces the previous global splitter, which split the ENTIRE
+          // footprint along every ridge and produced giant rectangles on
+          // multi-wing roofs. The regional splitter clusters ridges by angle
+          // (≤20°) and midpoint proximity (≤50 px), assigns each cluster a
+          // local region bbox (padded 25 px), and only splits geometry that
+          // lies inside that region with that cluster's ridges.
+          const clusterInput = (filtered.kept as any[]).map((r) => ({
+            p1: r.p1,
+            p2: r.p2,
+            score: r.score ?? 0.5,
+            angleDeg: typeof r.angleDeg === "number"
+              ? r.angleDeg
+              : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
+          }));
+
+          const regional = splitPlanesByRidgeClusters({
+            footprint,
+            ridges: clusterInput,
+            angleToleranceDeg: 20,
+            midpointDistPx: 50,
+            regionPadPx: 25,
+            detectRidgesFn: detectFiltered,
+            recursionMaxDepth: 3,
+          });
+
+          console.log("[RIDGE_CLUSTERING]", JSON.stringify({
+            total_ridges: regional.debug.total_ridges,
+            clusters: regional.debug.cluster_count,
+            cluster_sizes: regional.debug.cluster_sizes,
+            region_planes_per_cluster: regional.debug.region_planes_per_cluster,
+            fallback_used: regional.debug.fallback_used,
+            reason: regional.debug.reason,
+          }));
+
+          // Stash for debug payload.
+          (globalThis as any).__ridgeClustersDebug = {
+            total_ridges: regional.debug.total_ridges,
+            cluster_count: regional.debug.cluster_count,
+            cluster_sizes: regional.debug.cluster_sizes,
+            region_planes_per_cluster: regional.debug.region_planes_per_cluster,
+            fallback_used: regional.debug.fallback_used,
+            clusters: regional.clusters.map((c) => ({
+              cluster_index: c.cluster_index,
+              angle_deg: Math.round(c.angle_deg * 10) / 10,
+              ridge_count: c.ridge_count,
+              region_bbox: c.region_bbox,
+            })),
+          };
+
+          // Decide whether to commit the regional output.
+          // Use it whenever it produces ≥2 planes; otherwise fall back to the
+          // legacy global splitter so we never regress simple roofs.
+          let splitPlanes: { polygon: Point[] }[] = regional.planes;
+          if (regional.planes.length < 2) {
+            splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
+          }
           ridgeSplitPlaneCount = splitPlanes.length;
           console.log("[RIDGE_SPLIT]", JSON.stringify({
             initial_planes: 1,
             final_planes: splitPlanes.length,
             split_success: splitPlanes.length >= 2,
+            mode: regional.planes.length >= 2 ? "regional_clustered" : "global_fallback",
             max_depth: 3,
           }));
 
@@ -1454,6 +1516,7 @@ async function processJob(input: any) {
         solar_segments: solarSegmentsDebug,
         plane_merge: (globalThis as any).__planeMergeDebug ?? null,
         ridge_aligned_plane_merge: (globalThis as any).__ridgeAlignedMergeDebug ?? null,
+        ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
       },
       overlay_debug: {
         raster_url: imageUrl,
