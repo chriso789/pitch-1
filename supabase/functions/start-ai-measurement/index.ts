@@ -871,7 +871,7 @@ async function processJob(input: any) {
       used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
       used_solar_bbox_as_crop_only: usedSolarBboxAsCropOnly,
       used_synthetic_debug_rectangle: usedSyntheticDebugRectangle,
-      used_deterministic_topology: topologySource === "straight_skeleton" || topologySource === "triangulation",
+      used_deterministic_topology: topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation",
       footprint_source: footprintSource,
       topology_source: topologySource,
       final_plane_count: cleanPlanes.length,
