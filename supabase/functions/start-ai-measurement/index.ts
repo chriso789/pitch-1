@@ -883,6 +883,72 @@ async function processJob(input: any) {
       }
       (globalThis as any).__planeMergeDebug = planeMergeDebug;
 
+      // ── RIDGE-ALIGNED PLANE MERGE — collapse same-side planes that lie
+      //    along the dominant ridge axis. Never merges across the ridge.
+      let ridgeAlignedMergeDebug: any = null;
+      if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
+        try {
+          const selectedRidges = (filtered?.kept ?? []).map((r: any) => ({
+            p1: r.p1,
+            p2: r.p2,
+            angleDeg: typeof r.angleDeg === "number"
+              ? r.angleDeg
+              : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
+            score: r.score ?? 0.5,
+          }));
+          const beforeCount = cleanPlanes.length;
+          const ridgeMerge = mergeRidgeAlignedPlanes({
+            planes: cleanPlanes.map((p: any) => ({
+              id: p.plane_index,
+              plane_index: p.plane_index,
+              polygon_px: p.polygon_px,
+              pitch: p.pitch,
+              pitch_degrees: p.pitch_degrees,
+              azimuth: p.azimuth,
+              source: p.source,
+            })),
+            dominantRidges: selectedRidges,
+            feetPerPixel: actualFpp,
+          });
+          ridgeAlignedMergeDebug = ridgeMerge.debug;
+          cleanPlanes = ridgeMerge.planes.map((p: any, i: number) => ({
+            plane_index: i + 1,
+            polygon_px: p.polygon_px,
+            confidence: 0.75,
+            pitch: p.pitch ?? null,
+            pitch_degrees: p.pitch_degrees ?? null,
+            azimuth: p.azimuth ?? null,
+            source: "ridge_aligned_plane_merge_v1",
+          })) as any;
+
+          const afterCount = cleanPlanes.length;
+          const totalArea = (cleanPlanes as any[]).reduce(
+            (s, p) => s + (p.polygon_px ? p.polygon_px.length : 0) > 0
+              ? s + Math.abs((function() {
+                  let a = 0;
+                  const poly = p.polygon_px || [];
+                  for (let i = 0; i < poly.length; i++) {
+                    const u = poly[i], v = poly[(i + 1) % poly.length];
+                    a += u.x * v.y - v.x * u.y;
+                  }
+                  return (a / 2) * actualFpp * actualFpp;
+                })())
+              : s,
+            0,
+          );
+
+          if (beforeCount > 20 && afterCount > 12) {
+            ridgeAlignedMergeDebug.needs_review = "oversegmented_after_ridge_aligned_merge";
+          }
+          if (afterCount < 2 && totalArea > 800) {
+            ridgeAlignedMergeDebug.needs_review = "undersegmented_after_ridge_aligned_merge";
+          }
+        } catch (e) {
+          console.warn("[RIDGE_ALIGNED_PLANE_MERGE] failed:", (e as Error).message);
+        }
+      }
+      (globalThis as any).__ridgeAlignedMergeDebug = ridgeAlignedMergeDebug;
+
       try {
         // 5b. Skeleton — used as fallback OR to add minor interior structure.
         if (cleanPlanes.length < 2) {
