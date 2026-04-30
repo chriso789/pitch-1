@@ -30,6 +30,7 @@ interface GoogleAddressComponent {
 interface GooglePlace {
   address_components?: GoogleAddressComponent[];
   formatted_address?: string;
+  place_id?: string;
   geometry?: {
     location?: {
       lat?: number;
@@ -116,7 +117,7 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   const [verificationStatus, setVerificationStatus] = useState<
     "none" | "verified" | "partial" | "failed"
   >("none");
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [suggestions, setSuggestions] = useState<AddressPrediction[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [suggestionDropdownStyle, setSuggestionDropdownStyle] = useState<React.CSSProperties>({});
 
@@ -213,7 +214,7 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
     }
   };
 
-  const selectSuggestion = async (prediction: any) => {
+  const selectSuggestion = async (prediction: AddressPrediction) => {
     if (activeSelectionRef.current === prediction.place_id) return;
     activeSelectionRef.current = prediction.place_id;
 
