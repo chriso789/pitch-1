@@ -84,20 +84,27 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert at extracting MATERIAL LINE ITEMS from supplier quotes for the construction and roofing industry — especially METAL ROOFING quotes from suppliers like Worthouse, Sheffield Metals, McElroy Metal, ABC Supply, Beacon, SRS Distribution, etc.
+            content: `You are an expert at extracting MATERIAL LINE ITEMS from MULTI-PAGE supplier quotes for the construction and roofing industry — especially METAL ROOFING quotes from suppliers like Worthouse, Sheffield Metals, McElroy Metal, ABC Supply, Beacon, SRS Distribution, etc.
 
-Rules:
-- Extract EVERY material line item: panels, ridge cap, hip cap, eave/rake trim, valley metal, underlayment, fasteners, screws, sealant, closures, pipe boots, snow guards, etc.
+CRITICAL — MULTI-PAGE HANDLING:
+- The PDF may contain MULTIPLE PAGES. You MUST scan EVERY page from first to last.
+- Line items often continue across page breaks. Treat the document as ONE continuous list.
+- If the same SKU/description appears on multiple pages with the same unit price, COMBINE them into ONE line with summed quantity. If unit prices differ, keep them as separate lines.
+- Do NOT stop after the first page. Do NOT skip pages. Capture EVERY material row across ALL pages.
+- Headers/footers/page numbers repeat per page — ignore those, but never skip the items.
+
+EXTRACTION RULES:
+- Extract EVERY material line item: panels, ridge cap, hip cap, eave/rake trim, valley metal, underlayment, fasteners, screws, sealant, closures, pipe boots, snow guards, vents, flashing, etc.
 - For each line capture: description (verbatim from quote), sku/part number if present, quantity, unit (panel, piece, roll, box, lf, sq, ea), unit_price, line_total
-- IGNORE labor lines, taxes, shipping, freight, fees — materials only
-- Capture vendor name, quote number, quote date, subtotal, tax, total
+- IGNORE labor lines, taxes, shipping, freight, fees, discounts — materials only
+- Capture vendor name, quote number, quote date, subtotal, tax, total (from final summary page)
 - Use exact dollar amounts — never round
 - Return null for fields you cannot determine`,
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Extract every material line item from this supplier quote with its quantity and unit price." },
+              { type: "text", text: "Extract every material line item from this supplier quote. The PDF may have multiple pages — scan ALL pages first to last and return the complete combined list of materials with quantities and unit prices." },
               imageContent,
             ],
           },
@@ -141,6 +148,7 @@ Rules:
         ],
         tool_choice: { type: "function", function: { name: "extract_supplier_quote" } },
         temperature: 0.1,
+        max_tokens: 8192,
       }),
     });
 

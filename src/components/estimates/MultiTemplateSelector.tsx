@@ -2339,37 +2339,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                         disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
                       />
 
-                      {/* Supplier Quote Upload — auto-fills material qty + unit cost */}
-                      {(() => {
-                        const hasTemplate = trade.tradeType === 'roofing'
-                          ? !!selectedTemplateId
-                          : !!trade.templateId;
-                        if (!hasTemplate) return null;
-                        const currentItems = tradeLineItems[trade.id]
-                          || (trade.tradeType === 'roofing' ? lineItems : []);
-                        return (
-                          <div className="flex items-center justify-between gap-2 rounded-md border border-dashed bg-background/60 p-2">
-                            <div className="text-xs text-muted-foreground">
-                              Got a supplier quote? Upload the PDF to auto-fill material quantities & costs.
-                            </div>
-                            <SupplierQuoteUploader
-                              tradeSectionId={trade.id}
-                              tradeType={trade.tradeType}
-                              tradeLabel={trade.label}
-                              currentItems={currentItems}
-                              projectId={null}
-                              pipelineEntryId={pipelineEntryId}
-                              onItemsUpdated={(merged) => {
-                                setTradeLineItems(prev => ({ ...prev, [trade.id]: merged }));
-                                if (trade.tradeType === 'roofing') {
-                                  setLineItems(merged);
-                                }
-                              }}
-                            />
-                          </div>
-                        );
-                      })()}
-
                       {/* Hint for roofing when creating new */}
                       {trade.tradeType === 'roofing' && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
                         <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
@@ -2467,6 +2436,46 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
           <span className="text-sm text-muted-foreground">Loading template items...</span>
         </div>
+      )}
+
+      {/* Supplier Quote Upload — placed just above line items / material totals */}
+      {!fetchingItems && shouldShowTemplateContent && (
+        <>
+          {tradeSections
+            .filter((trade) => {
+              const hasTemplate = trade.tradeType === 'roofing' ? !!selectedTemplateId : !!trade.templateId;
+              return hasTemplate;
+            })
+            .map((trade) => {
+              const currentItems = tradeLineItems[trade.id]
+                || (trade.tradeType === 'roofing' ? lineItems : []);
+              return (
+                <div
+                  key={`sq-${trade.id}`}
+                  className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 rounded-md border border-dashed bg-background/60 p-3"
+                >
+                  <div className="text-xs text-muted-foreground">
+                    <span className="font-medium text-foreground">{trade.label}:</span>{' '}
+                    Got a supplier quote? Upload the PDF (multi-page supported) to auto-fill material quantities & costs.
+                  </div>
+                  <SupplierQuoteUploader
+                    tradeSectionId={trade.id}
+                    tradeType={trade.tradeType}
+                    tradeLabel={trade.label}
+                    currentItems={currentItems}
+                    projectId={null}
+                    pipelineEntryId={pipelineEntryId}
+                    onItemsUpdated={(merged) => {
+                      setTradeLineItems((prev) => ({ ...prev, [trade.id]: merged }));
+                      if (trade.tradeType === 'roofing') {
+                        setLineItems(merged);
+                      }
+                    }}
+                  />
+                </div>
+              );
+            })}
+        </>
       )}
 
       {/* Sectioned Line Items Table - Only show when template/estimate is selected */}
