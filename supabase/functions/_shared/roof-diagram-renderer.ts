@@ -152,7 +152,9 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
 // Geometry normalization — single transform for ALL pages
 // ============================================================================
 
-function normalizeToDrawZone(input: DiagramInput) {
+type NormalizedGeometry = { planes: RendererPlane[]; edges: RendererEdge[]; overlayPlanes?: RendererPlane[]; overlayEdges?: RendererEdge[]; calibration?: OverlayCalibration };
+
+function normalizeToDrawZone(input: DiagramInput): NormalizedGeometry {
   const planes = input.planes || [];
   const edges = input.edges || [];
   const sourceW = Number(input.sourceImageWidth || 0);
@@ -179,16 +181,30 @@ function normalizeToDrawZone(input: DiagramInput) {
       ? edges.map((e) => ({ ...e, line_px: transformOverlayPoints(e.line_px || [], calibration) }))
       : edges;
 
-    const scale = Math.max(DRAW_ZONE.w / sourceW, DRAW_ZONE.h / sourceH);
-    const drawnW = sourceW * scale;
-    const drawnH = sourceH * scale;
+    const rasterScale = Math.max(DRAW_ZONE.w / sourceW, DRAW_ZONE.h / sourceH);
+    const drawnW = sourceW * rasterScale;
+    const drawnH = sourceH * rasterScale;
     const offX = DRAW_ZONE.x + (DRAW_ZONE.w - drawnW) / 2;
     const offY = DRAW_ZONE.y + (DRAW_ZONE.h - drawnH) / 2;
-    const tx = (p: Point): Point => ({ x: p.x * scale + offX, y: p.y * scale + offY });
+    const txRaster = (p: Point): Point => ({ x: p.x * rasterScale + offX, y: p.y * rasterScale + offY });
+
+    const cAll = [
+      ...calibratedPlanes.flatMap((p) => p.polygon_px || []),
+      ...calibratedEdges.flatMap((e) => e.line_px || []),
+    ];
+    const cb = bboxFromPoints(cAll);
+    const diagramScale = cb ? Math.min(DIAGRAM_ZONE.w / cb.width, DIAGRAM_ZONE.h / cb.height) : 1;
+    const diagramOffX = cb ? DIAGRAM_ZONE.x + (DIAGRAM_ZONE.w - cb.width * diagramScale) / 2 : DIAGRAM_ZONE.x;
+    const diagramOffY = cb ? DIAGRAM_ZONE.y + (DIAGRAM_ZONE.h - cb.height * diagramScale) / 2 : DIAGRAM_ZONE.y;
+    const txDiagram = (p: Point): Point => cb
+      ? { x: (p.x - cb.minX) * diagramScale + diagramOffX, y: (p.y - cb.minY) * diagramScale + diagramOffY }
+      : p;
 
     return {
-      planes: calibratedPlanes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) })),
-      edges: calibratedEdges.map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) })),
+      planes: calibratedPlanes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(txDiagram) })),
+      edges: calibratedEdges.map((e) => ({ ...e, line_px: (e.line_px || []).map(txDiagram) })),
+      overlayPlanes: calibratedPlanes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(txRaster) })),
+      overlayEdges: calibratedEdges.map((e) => ({ ...e, line_px: (e.line_px || []).map(txRaster) })),
       calibration,
     };
   }
