@@ -1029,7 +1029,8 @@ async function processJob(input: any) {
     });
 
     const resolvedGeometrySource =
-      topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
+      topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
+      : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
       : topologySource === "triangulation" ? "deterministic_triangulation"
       : topologySource === "unet_planes" ? "unet_optional_helper"
       : "footprint_only";
