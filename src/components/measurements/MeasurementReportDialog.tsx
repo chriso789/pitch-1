@@ -491,6 +491,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                         </AlertDescription>
                       </Alert>
                     )}
+                    {debugOverlay}
                     <PatentRoofReport initialModel={reportModel} address={address} />
                   </div>
                 );
