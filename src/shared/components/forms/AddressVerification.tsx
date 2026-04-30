@@ -187,6 +187,21 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   };
 
   const selectSuggestion = async (prediction: any) => {
+    if (activeSelectionRef.current === prediction.place_id) return;
+    activeSelectionRef.current = prediction.place_id;
+
+    const optimisticAddress = parseGoogleAddress(
+      { formatted_address: prediction.description, place_id: prediction.place_id },
+      prediction.description,
+    );
+
+    setAddress(prev => ({ ...prev, ...optimisticAddress, place_id: prediction.place_id }));
+
+    if (debounceRef.current) {
+      window.clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
     // Clear suggestions immediately
     setSuggestions([]);
     setShowSuggestions(false);
@@ -209,69 +224,11 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
 
       if (data?.result) {
         const place = data.result;
-        const addressComponents = place.address_components || [];
-
-        // Parse address components with better fallbacks
-        let streetNumber = "";
-        let route = "";
-        let city = "";
-        let cityFallback = "";
-        let state = "";
-        let zip = "";
-
-        addressComponents.forEach((component: any) => {
-          const types = component.types;
-          if (types.includes("street_number")) {
-            streetNumber = component.long_name;
-          } else if (types.includes("route")) {
-            route = component.long_name;
-          } else if (types.includes("locality")) {
-            city = component.long_name;
-          } else if (
-            !city &&
-            (types.includes("sublocality") ||
-              types.includes("sublocality_level_1") ||
-              types.includes("postal_town") ||
-              types.includes("administrative_area_level_3"))
-          ) {
-            city = component.long_name;
-          } else if (
-            !cityFallback &&
-            (types.includes("neighborhood") ||
-              types.includes("administrative_area_level_2"))
-          ) {
-            cityFallback = component.long_name;
-          } else if (types.includes("administrative_area_level_1")) {
-            state = component.short_name;
-          } else if (types.includes("postal_code")) {
-            zip = component.long_name;
-          }
-        });
-
-        if (!city) city = cityFallback;
-
-        // Fallback: parse from formatted_address ("street, city, ST zip, USA")
-        if ((!city || !state || !zip) && place.formatted_address) {
-          const parts = place.formatted_address.split(",").map((p: string) => p.trim());
-          if (parts.length >= 3) {
-            if (!city) city = parts[parts.length - 3] || city;
-            const stateZip = (parts[parts.length - 2] || "").match(/^([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
-            if (stateZip) {
-              if (!state) state = stateZip[1];
-              if (!zip && stateZip[2]) zip = stateZip[2];
-            }
-          }
-        }
-
         const newAddress: AddressData = {
-          street: `${streetNumber} ${route}`.trim() || (place.formatted_address?.split(",")[0] ?? ""),
-          city,
-          state,
-          zip,
+          ...parseGoogleAddress(place, prediction.description),
           lat: place.geometry?.location?.lat,
           lng: place.geometry?.location?.lng,
           place_id: prediction.place_id,
-          formatted_address: place.formatted_address,
         };
 
         console.log('Parsed Address from Google:', newAddress);
@@ -306,6 +263,8 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
         description: "Could not verify address details.",
         variant: "destructive",
       });
+    } finally {
+      activeSelectionRef.current = null;
     }
   };
 
