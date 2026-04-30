@@ -1175,7 +1175,10 @@ async function processJob(input: any) {
       : quality.overall_score >= 0.60 ? "needs_review"
       : "needs_manual_measurement";
 
-    const finalJobStatus = blockCustomerReportReason ? "needs_review" : "completed";
+    // measurement_jobs is the legacy UI polling table and its CHECK constraint only
+    // allows queued/processing/completed/failed. Keep the richer review state on
+    // ai_measurement_jobs, but stop the UI spinner by marking the legacy job complete.
+    const finalJobStatus = "completed";
     const finalJobMessage = blockCustomerReportReason
       ? `Measurement needs review — geometry covered only part of the roof. (${blockCustomerReportReason})`
       : "Measurement complete";
@@ -1644,12 +1647,16 @@ function scoreQuality(input: {
   return { checks, geometry_score: round(geom, 3), measurement_score: round(meas, 3), overall_score: round(geom * 0.6 + meas * 0.4, 3) };
 }
 async function setMeasurementJobStatus(id: string, status: string, msg: string, measurement_id: string | null = null) {
-  await supabase.from("measurement_jobs").update({
-    status, progress_message: msg, measurement_id,
+  const legacyStatus = ["queued", "processing", "completed", "failed"].includes(status) ? status : "completed";
+  const patch: Record<string, unknown> = {
+    status: legacyStatus, progress_message: msg, measurement_id,
     error: status === "failed" ? msg : null,
     updated_at: new Date().toISOString(),
-    ...(status === "completed" || status === "failed" ? { completed_at: new Date().toISOString() } : {}),
-  }).eq("id", id);
+    ...(legacyStatus === "completed" || legacyStatus === "failed" ? { completed_at: new Date().toISOString() } : {}),
+  };
+  if (legacyStatus === "processing") patch.started_at = new Date().toISOString();
+  const { error } = await supabase.from("measurement_jobs").update(patch).eq("id", id);
+  if (error) console.error("setMeasurementJobStatus failed", { id, status, legacyStatus, error });
 }
 async function setAiJobStatus(id: string, status: string, msg: string, quality: any = null) {
   await supabase.from("ai_measurement_jobs").update({
