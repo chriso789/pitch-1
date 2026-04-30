@@ -3461,7 +3461,114 @@ Deno.serve(async (req) => {
             e.source !== 'filled_perimeter' &&
             e.source !== 'perimeter_fallback',
         )
-        if (!hasRealInteriorStructure && planes.length > 0) {
+        // ──────────────────────────────────────────────────────────────
+        // RIDGE-DRIVEN PLANE SPLITTING (pre-synthesis safety net)
+        //
+        // Per the "ridge-driven plane creation" requirement: if topology
+        // resolved a single plane, we MUST try to split that plane using
+        // image-derived ridge lines BEFORE falling back to footprint-only
+        // synthesis. Synthesis on a convex single-plane footprint cannot
+        // produce hips/valleys because the straight skeleton has no reflex
+        // corners to work with — only ridge-driven splitting can recover
+        // the multi-facet structure that Roofr/EagleView reports show.
+        //
+        // Pipeline:
+        //   1. extractRoofFootprintAndEdges (re-use cached if present)
+        //   2. detectRidges → filterStrongRidges
+        //   3. buildRoofPlanes (split footprint by ridge lines)
+        //   4. detectRidgesRecursive on each sub-plane → second split pass
+        //   5. Replace `planes` and recompute `edges` from the new graph
+        //
+        // Only proceeds to single-plane synthesis if no strong ridges are
+        // found AND the footprint has no concave (reflex) vertices.
+        // ──────────────────────────────────────────────────────────────
+        if (!hasRealInteriorStructure && planes.length === 1 && (extractedImageGeometry || mb?.image_url)) {
+          try {
+            const basePlane = planes[0]
+            const extracted = extractedImageGeometry ?? await extractRoofFootprintAndEdges(mb!.image_url, imgW, imgH)
+            if (extracted) {
+              const rawRidges = detectRidges(
+                extracted.mag, extracted.blob, extracted.dW, extracted.dH,
+                extracted.scaleX, extracted.scaleY, extracted.gx, extracted.gy,
+              )
+              const strong = filterStrongRidges(rawRidges)
+              let ridgeLines: SplitLine[] = strong
+                .sort((a, b) => b.votes - a.votes)
+                .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+
+              if (ridgeLines.length > 0) {
+                const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(basePlane.polygon_px) * 0.08)
+                let subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
+                  minArea: minPlaneAreaPx, minAreaRatio: 0.1, maxPlanes: 10,
+                })
+
+                if (subPolys.length > 1) {
+                  const merged = detectRidgesRecursive(
+                    strong, subPolys, extracted.mag, extracted.blob,
+                    extracted.gx, extracted.gy, extracted.dW, extracted.dH,
+                    extracted.scaleX, extracted.scaleY,
+                  )
+                  if (merged.length > strong.length) {
+                    ridgeLines = merged
+                      .sort((a, b) => b.votes - a.votes)
+                      .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
+                    subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
+                      minArea: minPlaneAreaPx, minAreaRatio: 0.1, maxPlanes: 14,
+                    })
+                  }
+                }
+
+                if (subPolys.length > 1) {
+                  detectedRidgeLines = ridgeLines
+                  planes = subPolys.map((poly, idx) =>
+                    planeFromFootprint(
+                      poly, lat, lng, imgW, imgH, cal.meters_per_pixel_actual,
+                      feetPerPixel, basePlane.pitch ?? null, basePlane.azimuth ?? null,
+                      'ridge_split_pre_synthesis', idx,
+                    ),
+                  )
+                  // Recompute edges from the new multi-plane graph so
+                  // ridges/hips/valleys come out of edgesFromPlanes shared-
+                  // boundary detection rather than synthesis.
+                  edges = edgesFromPlanes(
+                    planes, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
+                  )
+                  console.log(
+                    `[ridge_split_pre_synthesis] split single plane → ${planes.length} planes ` +
+                    `using ${ridgeLines.length} ridges; edges=${edges.length} ` +
+                    `(ridges=${edges.filter(e => e.edge_type === 'ridge').length} ` +
+                    `hips=${edges.filter(e => e.edge_type === 'hip').length} ` +
+                    `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
+                  )
+                } else {
+                  console.log(
+                    `[ridge_split_pre_synthesis] ${ridgeLines.length} ridges did not yield split (subPolys=${subPolys.length}); falling through to synthesis`,
+                  )
+                }
+              } else {
+                console.log(
+                  `[ridge_split_pre_synthesis] no strong ridges (raw=${rawRidges.length}); falling through to synthesis`,
+                )
+              }
+            }
+          } catch (err) {
+            console.warn(`[ridge_split_pre_synthesis] failed: ${(err as Error).message}`)
+          }
+
+          // Re-evaluate whether we now have real interior structure after
+          // the split attempt; if so, the synthesis block below will skip.
+        }
+
+        const stillNoRealStructure = !edges.some(
+          (e) =>
+            (e.edge_type === 'ridge' || e.edge_type === 'hip' || e.edge_type === 'valley') &&
+            e.source !== 'patent_synthesis' &&
+            e.source !== 'topology_engine_v2' &&
+            e.source !== 'solar_dsm_inferred_ridge' &&
+            e.source !== 'filled_perimeter' &&
+            e.source !== 'perimeter_fallback',
+        )
+        if (stillNoRealStructure && planes.length > 0) {
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
           const synth = synthesizePatentStructureFromFootprint(
             largest, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
