@@ -37,6 +37,7 @@ import { decomposeComplexFootprint } from '../_shared/complex-footprint-decompos
 import { classifyHipValleyRidgeEdges } from '../_shared/hip-valley-classifier.ts'
 import { splitPlanesFromRidges } from '../_shared/ridge-plane-splitter.ts'
 import { buildAdjacencyAndClassifyEdges } from '../_shared/roof-adjacency-classifier.ts'
+import { buildPatentModelFromPlanes } from '../_shared/build-patent-model-from-planes.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
