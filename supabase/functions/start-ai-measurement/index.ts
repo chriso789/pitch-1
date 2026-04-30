@@ -3541,9 +3541,57 @@ Deno.serve(async (req) => {
                     `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
                   )
                 } else {
-                  console.log(
-                    `[ridge_split_pre_synthesis] ${ridgeLines.length} ridges did not yield split (subPolys=${subPolys.length}); falling through to synthesis`,
-                  )
+                  // Single-pass buildRoofPlanes failed to split. Try the
+                  // recursive ridge-driven splitter as a second chance.
+                  // It re-detects ridges inside each sub-polygon and splits
+                  // again, producing 5–15 planes on complex residential roofs.
+                  try {
+                    const detectFn = (poly: { x: number; y: number }[]) => {
+                      const raw = detectRidges(
+                        extracted.mag, extracted.blob, extracted.dW, extracted.dH,
+                        extracted.scaleX, extracted.scaleY, extracted.gx, extracted.gy,
+                        poly,
+                      )
+                      return raw.map((r) => ({
+                        p1: r.a, p2: r.b, score: r.votes,
+                      }))
+                    }
+                    const recursivePlanes = splitPlanesFromRidges(
+                      basePlane.polygon_px as { x: number; y: number }[],
+                      detectFn,
+                      0,
+                      4,
+                    )
+                    if (recursivePlanes.length > 1) {
+                      planes = recursivePlanes.map((rp, idx) =>
+                        planeFromFootprint(
+                          rp.polygon, lat, lng, imgW, imgH,
+                          cal.meters_per_pixel_actual, feetPerPixel,
+                          basePlane.pitch ?? null, basePlane.azimuth ?? null,
+                          'ridge_split_recursive', idx,
+                        ),
+                      )
+                      edges = edgesFromPlanes(
+                        planes, lat, lng, imgW, imgH,
+                        cal.meters_per_pixel_actual, feetPerPixel,
+                      )
+                      console.log(
+                        `[ridge_split_recursive] recursive splitter produced ${planes.length} planes; ` +
+                        `edges=${edges.length} ` +
+                        `(ridges=${edges.filter(e => e.edge_type === 'ridge').length} ` +
+                        `hips=${edges.filter(e => e.edge_type === 'hip').length} ` +
+                        `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
+                      )
+                    } else {
+                      console.log(
+                        `[ridge_split_pre_synthesis] ${ridgeLines.length} ridges did not yield split (subPolys=${subPolys.length}, recursive=${recursivePlanes.length}); falling through to synthesis`,
+                      )
+                    }
+                  } catch (recErr) {
+                    console.warn(
+                      `[ridge_split_recursive] failed: ${(recErr as Error).message}; falling through to synthesis`,
+                    )
+                  }
                 }
               } else {
                 console.log(
