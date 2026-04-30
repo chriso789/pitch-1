@@ -716,6 +716,35 @@ async function processJob(input: any) {
       used_deterministic_topology:
         topologySource === "straight_skeleton" || topologySource === "triangulation",
       block_customer_report_reason: blockCustomerReportReason,
+      sanity_failures: sanityFailures,
+      debug_geometry: {
+        raster_size,
+        solar_bbox_px: solarBboxPx,
+        final_footprint_bbox_px: finalFootprintBboxPx,
+        final_footprint_area_px: finalFootprintAreaPx,
+        final_footprint_area_sqft: finalFootprintAreaSqft,
+        final_roof_area_sqft: finalRoofAreaSqft,
+        roof_bbox_coverage_ratio: roofBboxCoverageRatio,
+        geometry_vs_footprint_ratio: geometryVsFootprintRatio,
+        plane_count: planeRows.length,
+        edge_count: edgeRows.length,
+        edge_counts: {
+          ridge_ft: ridgeFt, hip_ft: hipFt, valley_ft: valleyFt,
+          eave_ft: Number(totals.eave_length_ft) || 0, rake_ft: Number(totals.rake_length_ft) || 0,
+        },
+        topology_source: topologySource,
+        footprint_source: footprintSource,
+        blocked_customer_report_reason: blockCustomerReportReason,
+      },
+      overlay_debug: {
+        raster_url: imageUrl,
+        raster_size,
+        planes_px,
+        edges_px,
+        footprint_px: footprint.map((p) => [p.x, p.y]),
+        solar_bbox_px: solarBboxPx,
+        final_geometry_bbox_px: finalGeometryBboxPx,
+      },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
       type: edge.edge_type,
