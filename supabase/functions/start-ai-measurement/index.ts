@@ -1359,10 +1359,15 @@ async function processJob(input: any) {
     }
 
     // Pixel-space geometry for the dev raster overlay debug view.
-    // planes_px / edges_px are calibrated to raster_size (actual decoded raster dims).
+    // planes_px / edges_px are transformed into calibrated raster pixel space.
+    const toCalibratedPoint = (pt: Point): Point =>
+      overlayCalibration?.calibrated ? transformOverlayPoint(pt, overlayCalibration) : pt;
     const planes_px = cleanPlanes
       .map((p) => ({
-        polygon: (p.polygon_px || []).map((pt: any) => [pt.x, pt.y] as [number, number]),
+        polygon: (p.polygon_px || []).map((pt: any) => {
+          const out = toCalibratedPoint(pt);
+          return [out.x, out.y] as [number, number];
+        }),
         source: p.source,
       }))
       .filter((p) => p.polygon.length >= 3);
@@ -1370,10 +1375,12 @@ async function processJob(input: any) {
       .map((e) => {
         const pts = e.line_px || [];
         if (pts.length < 2) return null;
+        const p1 = toCalibratedPoint(pts[0]);
+        const p2 = toCalibratedPoint(pts[1]);
         return {
           type: e.edge_type,
-          p1: [pts[0].x, pts[0].y] as [number, number],
-          p2: [pts[1].x, pts[1].y] as [number, number],
+          p1: [p1.x, p1.y] as [number, number],
+          p2: [p2.x, p2.y] as [number, number],
           source: e.source,
         };
       })
