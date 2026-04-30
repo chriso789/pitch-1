@@ -1014,6 +1014,9 @@ async function processJob(input: any) {
       },
       blocked: !!blockCustomerReportReason,
       reason: blockCustomerReportReason,
+      ridge_detection_ran: ridgeDetectionRan,
+      ridges_detected: ridgeDetectedCount,
+      ridge_split_planes: ridgeSplitPlaneCount,
     }));
 
     const quality = scoreQuality({
