@@ -4377,6 +4377,10 @@ Deno.serve(async (req) => {
             })
 
             if (diagrams.length > 0) {
+              await supa
+                .from('ai_measurement_diagrams')
+                .delete()
+                .eq('ai_measurement_job_id', aiJob.id)
               await supa.from('ai_measurement_diagrams').insert(
                 diagrams.map((d) => ({
                   ai_measurement_job_id: aiJob.id,
