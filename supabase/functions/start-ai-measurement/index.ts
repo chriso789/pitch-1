@@ -32,6 +32,7 @@ import { fetchMapboxVectorFootprint } from '../_shared/mapbox-footprint-extracto
 import { fetchOSMBuildingFootprint } from '../_shared/osm-footprint-extractor.ts'
 import { fetchMicrosoftBuildingFootprint } from '../_shared/microsoft-footprint-extractor.ts'
 import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
+import { buildTopology as buildTriangulationTopology } from '../_shared/topology-engine.ts'
 import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
 
 const corsHeaders = {
@@ -1479,6 +1480,26 @@ function synthesizePatentStructureFromFootprint(
     }
   } catch (err) {
     console.warn(`[topology_engine_v2] straight-skeleton failed: ${(err as Error).message}`)
+  }
+
+  // 2b. Triangulation fallback — only if straight-skeleton produced nothing.
+  //     Guarantees at least *some* facet/ridge structure for degenerate
+  //     footprints. Tagged via the same `topology_engine_v2` source so the
+  //     downstream filters keep treating it as real topology.
+  if (skeletonEdgeCount === 0) {
+    try {
+      const tri = buildTriangulationTopology(poly.map((p) => ({ x: p.x, y: p.y })))
+      for (const e of tri.edges) {
+        if (e.type !== 'ridge') continue // perimeter handled by wing pass below
+        pushEdge({ x: e.p1.x, y: e.p1.y }, { x: e.p2.x, y: e.p2.y }, 'ridge', 0.5)
+        skeletonEdgeCount++
+      }
+      console.log(
+        `[topology_engine_v2] triangulation fallback planes=${tri.facet_count} ridges=${tri.edges.filter((e) => e.type === 'ridge').length}`,
+      )
+    } catch (err) {
+      console.warn(`[topology_engine_v2] triangulation fallback failed: ${(err as Error).message}`)
+    }
   }
 
   // 3. PERIMETER CLASSIFICATION via wing decomposition.
