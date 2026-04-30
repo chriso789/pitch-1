@@ -36,6 +36,7 @@ import { buildTopology as buildTriangulationTopology } from '../_shared/topology
 import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
 import { classifyHipValleyRidgeEdges } from '../_shared/hip-valley-classifier.ts'
 import { splitPlanesFromRidges } from '../_shared/ridge-plane-splitter.ts'
+import { buildAdjacencyAndClassifyEdges } from '../_shared/roof-adjacency-classifier.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
