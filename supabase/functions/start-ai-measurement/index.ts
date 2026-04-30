@@ -987,7 +987,13 @@ async function processJob(input: any) {
       sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
     }
     if (planeRows.length < 2 && finalFootprintAreaSqft > 800) {
-      sanityFailures.push("single_plane_for_large_footprint");
+      // Distinguish "ridge detector ran but found nothing structural" from
+      // "topology engine collapsed a real ridge into a single plane".
+      sanityFailures.push(
+        ridgeDetectionRan && ridgeDetectedCount === 0
+          ? "no_structural_ridges_detected"
+          : "single_plane_for_large_footprint",
+      );
     }
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
