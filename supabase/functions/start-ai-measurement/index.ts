@@ -774,11 +774,14 @@ async function processJob(input: any) {
         };
 
         // Run a single top-level detection pass for logging/QA purposes.
+        // NOTE: maxRidges raised from 4 → 12 — complex multi-wing roofs
+        // (Montelluna-style) have multiple independent ridge systems and
+        // need many ridges so the regional splitter can cluster them.
         const topLevel = detectRidgesInPolygon({
           raster,
           polygon: footprint,
           solarAzimuthsDeg: solarAzimuths,
-          maxRidges: 4,
+          maxRidges: 12,
         });
         ridgeDetectionRan = true;
         ridgeDetectedCount = topLevel.lines.length;
