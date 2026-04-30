@@ -66,6 +66,7 @@ const OVERHEAD_CATEGORIES = [
 export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   projectId,
   pipelineEntryId,
+  changeOrderId,
   invoiceType,
   onSuccess
 }) => {
