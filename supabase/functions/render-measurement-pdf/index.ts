@@ -283,11 +283,15 @@ Deno.serve(async (req) => {
     const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path)
     const pdfUrl = pub?.publicUrl || null
 
-    // Persist URL on both rows (best-effort; columns may not exist yet on all environments)
+    // Persist URL + render signature on roof_measurements (best-effort)
     try {
+      const updatedGrj = {
+        ...(grj || {}),
+        last_rendered_pdf_signature: incomingSig,
+      }
       await supa
         .from('roof_measurements')
-        .update({ report_pdf_url: pdfUrl })
+        .update({ report_pdf_url: pdfUrl, geometry_report_json: updatedGrj })
         .eq('ai_measurement_job_id', jobId)
     } catch (_e) { /* column may be missing — non-fatal */ }
     try {
