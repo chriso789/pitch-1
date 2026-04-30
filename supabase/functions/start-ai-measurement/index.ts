@@ -543,6 +543,7 @@ async function processJob(input: any) {
     const perimeterWkt = footprintVerticesGeo.length >= 3 ? polygonVerticesToWKT(footprintVerticesGeo) : null;
     const imageBounds = imageBoundsFromRaster({ lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
     const reviewRequired = Boolean(blockCustomerReportReason) || quality.overall_score < 0.80;
+    const dbFootprintSource = normalizeRoofMeasurementFootprintSource(footprintSource);
     const aiDetectionData = {
       source_button: input.source_button,
       engine_version: "geometry_first_v2",
@@ -612,7 +613,7 @@ async function processJob(input: any) {
         linear_features_wkt: linearFeaturesWkt,
         perimeter_wkt: perimeterWkt,
         footprint_vertices_geo: footprintVerticesGeo,
-        footprint_source: footprintSource,
+        footprint_source: dbFootprintSource,
         footprint_confidence: quality.geometry_score,
         footprint_requires_review: reviewRequired,
         analysis_zoom: Number(input.zoom),
@@ -933,6 +934,13 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
   if (s.includes("eave")) return "eave";
   if (s.includes("rake")) return "rake";
   return "unknown";
+}
+function normalizeRoofMeasurementFootprintSource(source: string) {
+  const s = String(source || "unknown");
+  if (s === "osm_building") return "osm_overpass";
+  if (s === "unet_segmentation") return "ai_detection";
+  if (s === "none") return "unknown";
+  return s;
 }
 function cleanPlane(plane: any, idx: number, w: number, h: number): RoofPlane | null {
   const polygon = cleanPolygon(plane?.polygon_px || [], w, h);
