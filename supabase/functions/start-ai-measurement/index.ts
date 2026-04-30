@@ -1255,12 +1255,15 @@ async function processJob(input: any) {
     } else if (planeRows.length < 2 && finalFootprintAreaSqft > 800 && !sanityFailures.some((s) => s.includes("plane"))) {
       sanityFailures.push("too_few_planes_lt_2");
     }
+    if (!overlayCalibration?.calibrated) {
+      sanityFailures.push("overlay_alignment_failed");
+    }
     if (overlayCalibration?.calibrated) {
       if (overlayCalibration.coverage_ratio_width < 0.65 || overlayCalibration.coverage_ratio_height < 0.65) {
-        sanityFailures.push("overlay_geometry_too_small");
+        sanityFailures.push("overlay_alignment_failed");
       }
       if (overlayCalibration.center_error_px > 80) {
-        sanityFailures.push("overlay_center_mismatch");
+        sanityFailures.push("overlay_alignment_failed");
       }
     }
 
