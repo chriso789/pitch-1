@@ -17,7 +17,6 @@ import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import PatentRoofReport from './PatentRoofReport';
-import { overlayToPatentModel } from '@/lib/measurements/overlayToPatentModel';
 
 interface MeasurementReportDialogProps {
   open: boolean;
@@ -118,11 +117,17 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const reportModel = useMemo(() => {
     const serverPatent = (effectiveMeasurement as any)?.patent_model
       || (effectiveMeasurement as any)?.geometry_report_json?.patent_model;
-    const overlay = (effectiveMeasurement as any)?.overlay_schema
-      || (effectiveMeasurement as any)?.geometry_report_json?.overlay_schema;
-
-    return serverPatent ?? (overlay ? overlayToPatentModel(overlay, effectiveMeasurement) : null);
+    return serverPatent ?? null;
   }, [effectiveMeasurement]);
+  const persistedPlaneCount = Number(
+    (reportModel as any)?.plane_count
+      ?? (reportModel as any)?.facet_count
+      ?? (Array.isArray((reportModel as any)?.planes) ? (reportModel as any).planes.length : 0),
+  );
+  const renderedPlaneCount = Array.isArray((reportModel as any)?.planes)
+    ? (reportModel as any).planes.length
+    : 0;
+  const reportCollapsed = Boolean(reportModel && persistedPlaneCount > 1 && renderedPlaneCount <= 1);
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0;
 
   const createExportSafeClone = (page: HTMLElement) => {
