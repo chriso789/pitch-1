@@ -1336,6 +1336,7 @@ async function processJob(input: any) {
         footprint_source: footprintSource,
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
+        plane_merge: (globalThis as any).__planeMergeDebug ?? null,
       },
       overlay_debug: {
         raster_url: imageUrl,
