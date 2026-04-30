@@ -57,14 +57,16 @@ export function overlayBBoxFromPoints(points: OverlayPoint[]): OverlayBBox | nul
 export function computeOverlayTransform(args: {
   rasterSize: { width: number; height: number };
   geometryPoints: OverlayPoint[];
+  geometryBBoxPx?: Partial<OverlayBBox> | null | undefined;
   roofTargetBboxPx: Partial<OverlayBBox> | null | undefined;
   targetCoverage?: number;
 }): OverlayCalibration {
   const rasterW = Math.max(1, Number(args.rasterSize?.width || 0));
   const rasterH = Math.max(1, Number(args.rasterSize?.height || 0));
   const raster_bbox_px = { minX: 0, minY: 0, maxX: rasterW, maxY: rasterH, width: rasterW, height: rasterH, area: rasterW * rasterH };
-  const geometry_bbox_px = overlayBBoxFromPoints(args.geometryPoints) || EMPTY_BBOX;
-  const roof_target_bbox_px = normalizeOverlayBBox(args.roofTargetBboxPx) || geometry_bbox_px || raster_bbox_px;
+  const geometry_bbox_px = normalizeOverlayBBox(args.geometryBBoxPx) || overlayBBoxFromPoints(args.geometryPoints) || EMPTY_BBOX;
+  const explicitTarget = normalizeOverlayBBox(args.roofTargetBboxPx);
+  const roof_target_bbox_px = explicitTarget || EMPTY_BBOX;
   const scale_x = geometry_bbox_px.width > 0 ? roof_target_bbox_px.width / geometry_bbox_px.width : 1;
   const scale_y = geometry_bbox_px.height > 0 ? roof_target_bbox_px.height / geometry_bbox_px.height : 1;
   const targetCoverage = Math.max(0.75, Math.min(0.95, Number(args.targetCoverage ?? 0.86)));
@@ -90,7 +92,7 @@ export function computeOverlayTransform(args: {
     center_error_px: round(Math.hypot(transformedCenterX - targetCenterX, transformedCenterY - targetCenterY)),
     coverage_ratio_width: round(roof_target_bbox_px.width > 0 ? drawnW / roof_target_bbox_px.width : 0),
     coverage_ratio_height: round(roof_target_bbox_px.height > 0 ? drawnH / roof_target_bbox_px.height : 0),
-    calibrated: geometry_bbox_px.width > 0 && geometry_bbox_px.height > 0 && roof_target_bbox_px.width > 0 && roof_target_bbox_px.height > 0,
+    calibrated: Boolean(explicitTarget) && geometry_bbox_px.width > 0 && geometry_bbox_px.height > 0 && roof_target_bbox_px.width > 0 && roof_target_bbox_px.height > 0,
   };
 }
 

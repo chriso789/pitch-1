@@ -41,6 +41,7 @@ export function RasterOverlayDebugView({
   edges_px,
   overlayCalibration,
   roofTargetBboxPx,
+  geometryPxSpace,
 }: {
   imageUrl: string | null | undefined;
   rasterSize: { width: number; height: number } | null | undefined;
@@ -48,6 +49,7 @@ export function RasterOverlayDebugView({
   edges_px: EdgePx[];
   overlayCalibration?: OverlayCalibration | null;
   roofTargetBboxPx?: Partial<OverlayBBox> | null;
+  geometryPxSpace?: string | null;
 }) {
   const [showPlanes, setShowPlanes] = useState(true);
   const [showEdges, setShowEdges] = useState(true);
@@ -61,6 +63,7 @@ export function RasterOverlayDebugView({
 
   const calibration = useMemo(() => {
     if (!rasterSize) return null;
+    if (geometryPxSpace === 'raster_calibrated') return null;
     if (overlayCalibration?.calibrated) return overlayCalibration;
     const geometryPoints = [
       ...planes_px.flatMap((p) => (p.polygon || []).map(([x, y]) => ({ x, y }))),
@@ -74,7 +77,9 @@ export function RasterOverlayDebugView({
       geometryPoints,
       roofTargetBboxPx: roofTargetBboxPx || null,
     });
-  }, [edges_px, overlayCalibration, planes_px, rasterSize, roofTargetBboxPx]);
+  }, [edges_px, geometryPxSpace, overlayCalibration, planes_px, rasterSize, roofTargetBboxPx]);
+
+  const targetBbox = calibration?.roof_target_bbox_px || roofTargetBboxPx || null;
 
   const displayPlanes = useMemo(() => {
     if (!calibration?.calibrated) return planes_px;
@@ -152,12 +157,12 @@ export function RasterOverlayDebugView({
                 opacity={0.95}
               />
             )}
-            {calibration?.roof_target_bbox_px && (
+            {targetBbox && (
               <rect
-                x={calibration.roof_target_bbox_px.minX}
-                y={calibration.roof_target_bbox_px.minY}
-                width={calibration.roof_target_bbox_px.width}
-                height={calibration.roof_target_bbox_px.height}
+                x={targetBbox.minX}
+                y={targetBbox.minY}
+                width={targetBbox.width}
+                height={targetBbox.height}
                 fill="none"
                 stroke="#fbbf24"
                 strokeWidth={2}

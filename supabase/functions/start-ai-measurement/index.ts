@@ -18,7 +18,7 @@ import {
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
 import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
-import { computeOverlayTransform } from "../_shared/overlay-transform.ts";
+import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
@@ -1060,14 +1060,16 @@ async function processJob(input: any) {
     // physical measurements calculated from original pixel geometry.
     let overlayCalibration: ReturnType<typeof computeOverlayTransform> | null = null;
     let roofTargetBboxPx: any = null;
+    let roofTargetSource: string | null = null;
     try {
-      const preferredTarget =
-        candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px ||
-        candidates.find((c) => c.source === "google_solar_segments_hull" && c.bbox_px)?.bbox_px ||
-        solarBboxPx ||
-        candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px ||
-        bboxOf(footprint);
-      roofTargetBboxPx = preferredTarget;
+      const targetCandidates = [
+        { source: "google_solar_segments_union", bbox: candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px },
+        { source: "google_solar_bbox", bbox: solarBboxPx },
+        { source: "imagery_unet_mask", bbox: candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px },
+      ].filter((t) => t.bbox && Number(t.bbox.width) > 0 && Number(t.bbox.height) > 0);
+      const preferredTarget = targetCandidates[0] || null;
+      roofTargetBboxPx = preferredTarget?.bbox || null;
+      roofTargetSource = preferredTarget?.source || null;
       const geometryPoints = [
         ...cleanPlanes.flatMap((p) => p.polygon_px || []),
         ...cleanEdges.flatMap((e) => e.line_px || []),
@@ -1078,6 +1080,7 @@ async function processJob(input: any) {
         roofTargetBboxPx,
       });
       console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
+        roof_target_source: roofTargetSource,
         geometry_bbox_px: overlayCalibration.geometry_bbox_px,
         roof_target_bbox_px: overlayCalibration.roof_target_bbox_px,
         uniform_scale: overlayCalibration.uniform_scale,
@@ -1252,12 +1255,15 @@ async function processJob(input: any) {
     } else if (planeRows.length < 2 && finalFootprintAreaSqft > 800 && !sanityFailures.some((s) => s.includes("plane"))) {
       sanityFailures.push("too_few_planes_lt_2");
     }
+    if (!overlayCalibration?.calibrated) {
+      sanityFailures.push("overlay_alignment_failed");
+    }
     if (overlayCalibration?.calibrated) {
       if (overlayCalibration.coverage_ratio_width < 0.65 || overlayCalibration.coverage_ratio_height < 0.65) {
-        sanityFailures.push("overlay_geometry_too_small");
+        sanityFailures.push("overlay_alignment_failed");
       }
       if (overlayCalibration.center_error_px > 80) {
-        sanityFailures.push("overlay_center_mismatch");
+        sanityFailures.push("overlay_alignment_failed");
       }
     }
 
@@ -1353,10 +1359,15 @@ async function processJob(input: any) {
     }
 
     // Pixel-space geometry for the dev raster overlay debug view.
-    // planes_px / edges_px are calibrated to raster_size (actual decoded raster dims).
+    // planes_px / edges_px are transformed into calibrated raster pixel space.
+    const toCalibratedPoint = (pt: Point): Point =>
+      overlayCalibration?.calibrated ? transformOverlayPoint(pt, overlayCalibration) : pt;
     const planes_px = cleanPlanes
       .map((p) => ({
-        polygon: (p.polygon_px || []).map((pt: any) => [pt.x, pt.y] as [number, number]),
+        polygon: (p.polygon_px || []).map((pt: any) => {
+          const out = toCalibratedPoint(pt);
+          return [out.x, out.y] as [number, number];
+        }),
         source: p.source,
       }))
       .filter((p) => p.polygon.length >= 3);
@@ -1364,15 +1375,27 @@ async function processJob(input: any) {
       .map((e) => {
         const pts = e.line_px || [];
         if (pts.length < 2) return null;
+        const p1 = toCalibratedPoint(pts[0]);
+        const p2 = toCalibratedPoint(pts[1]);
         return {
           type: e.edge_type,
-          p1: [pts[0].x, pts[0].y] as [number, number],
-          p2: [pts[1].x, pts[1].y] as [number, number],
+          p1: [p1.x, p1.y] as [number, number],
+          p2: [p2.x, p2.y] as [number, number],
           source: e.source,
         };
       })
       .filter(Boolean);
     const raster_size = { width: raster.width, height: raster.height };
+    const pdfSourceSignature = await hashSignature({
+      engine: "geometry_first_v2_overlay_transform_v2",
+      planes: planeRows,
+      edges: edgeRows,
+      totals,
+      raster_size,
+      overlay_calibration: overlayCalibration,
+      roof_target_bbox_px: roofTargetBboxPx,
+      roof_target_source: roofTargetSource,
+    });
 
     const geometryReportJson = {
       planes: planeRows,
@@ -1391,8 +1414,11 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      pdf_source_signature: pdfSourceSignature,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
+      roof_target_source: roofTargetSource,
+      geometry_px_space: "raster_calibrated",
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
       imagery: {
@@ -1439,6 +1465,7 @@ async function processJob(input: any) {
         final_geometry_bbox_px: finalGeometryBboxPx,
         overlay_calibration: overlayCalibration,
         roof_target_bbox_px: roofTargetBboxPx,
+        roof_target_source: roofTargetSource,
       },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
@@ -1484,6 +1511,8 @@ async function processJob(input: any) {
       raster_image_url: imageUrl,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
+      roof_target_source: roofTargetSource,
+      geometry_px_space: "raster_calibrated",
     };
 
     // Publish canonical roof_measurements row
@@ -2299,6 +2328,10 @@ function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); r
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 function round(v: number, d = 2) { const m = Math.pow(10, d); return Math.round(Number(v || 0) * m) / m; }
+async function hashSignature(value: unknown) {
+  const bytes = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(value)));
+  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) return error.message;
   if (error && typeof error === "object" && "message" in error) return String((error as any).message);
