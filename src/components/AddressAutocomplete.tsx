@@ -72,6 +72,16 @@ export function AddressAutocomplete({
   
   const debouncedValue = useDebounce(inputValue, 300);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { apiKey } = useGoogleMapsToken();
+  const [mapsReady, setMapsReady] = useState(isGoogleMapsLoaded());
+
+  // Load Google Maps JS (with Places library) once we have an API key
+  useEffect(() => {
+    if (!apiKey || mapsReady) return;
+    loadGoogleMaps(apiKey)
+      .then(() => setMapsReady(true))
+      .catch((err) => console.error("Google Maps load failed:", err));
+  }, [apiKey, mapsReady]);
 
   // Fetch predictions when input changes
   useEffect(() => {
@@ -81,7 +91,7 @@ export function AddressAutocomplete({
     }
 
     fetchPredictions(debouncedValue);
-  }, [debouncedValue]);
+  }, [debouncedValue, mapsReady]);
 
   async function fetchPredictions(query: string) {
     setLoading(true);
