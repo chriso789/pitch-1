@@ -4309,6 +4309,40 @@ Deno.serve(async (req) => {
           excluded_placeholder_planes: planes.length - patentPlanes.length,
         }
 
+        // ── Finalise debug_pipeline before persisting ──
+        debug_pipeline.final_plane_count_saved = planes.length
+        debug_pipeline.final_edge_count_saved = edges.length
+        debug_pipeline.final_patent_model_plane_count = (patentModel.planes || []).length
+        debug_pipeline.final_report_source = geometrySource
+        console.log('[AI_MEASUREMENT_DEBUG] Pipeline Debug Info:', debug_pipeline)
+
+        // PATCH 4 — fail loudly if recursive split worked but patent_model collapsed
+        if (
+          debug_pipeline.ridge_split_recursive_plane_count > 1 &&
+          debug_pipeline.final_patent_model_plane_count <= 1
+        ) {
+          console.error(
+            '[AI_MEASUREMENT_DEBUG] BUG: recursive split produced multiple planes but patent_model collapsed back to Plane A',
+            debug_pipeline,
+          )
+          // Mark for review rather than throwing — throwing would lose the
+          // entire job. Surface the regression in the saved report so the UI
+          // debug badge shows it.
+          ;(aiJob as any)._topology_needs_review = true
+          ;(aiJob as any)._topology_review_reason =
+            'BUG: recursive split produced multiple planes but patent_model collapsed back to Plane A'
+        }
+
+        // PDF cache-bust signature — render-measurement-pdf compares this
+        // to its previously stored signature and regenerates if changed.
+        const pdf_source_signature = JSON.stringify({
+          job_id: aiJob.id,
+          source: debug_pipeline.final_report_source,
+          planes: debug_pipeline.final_plane_count_saved,
+          edges: debug_pipeline.final_edge_count_saved,
+          patent_planes: debug_pipeline.final_patent_model_plane_count,
+        })
+
         const reportJson = {
           engine: ENGINE_VERSION,
           generated_at: new Date().toISOString(),
@@ -4349,6 +4383,9 @@ Deno.serve(async (req) => {
           footprint_wkt: footprintWkt,
           overlay_schema: reportOverlaySchema,
           patent_model: patentModel,
+          // ── PATCH 1+4 debug instrumentation ──
+          debug_pipeline,
+          pdf_source_signature,
         }
 
         await supa.from('ai_measurement_results').insert({
