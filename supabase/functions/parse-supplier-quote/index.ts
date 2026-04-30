@@ -68,12 +68,20 @@ Deno.serve(async (req) => {
 
     console.log("[parse-supplier-quote] Parsing:", document_url);
 
-    let imageContent: { type: string; image_url: { url: string } };
+    let mediaContent: any;
     if (isImage(document_url)) {
-      imageContent = { type: "image_url", image_url: { url: document_url } };
+      mediaContent = { type: "image_url", image_url: { url: document_url } };
     } else {
-      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
-      imageContent = { type: "image_url", image_url: { url: dataUrl } };
+      const { dataUrl, mimeType } = await fetchDocumentAsDataUrl(document_url);
+      if (mimeType === "application/pdf" || /\.pdf(\?.*)?$/i.test(document_url)) {
+        // Gemini via Lovable AI gateway accepts PDFs as `file` content type
+        mediaContent = {
+          type: "file",
+          file: { filename: "supplier-quote.pdf", file_data: dataUrl },
+        };
+      } else {
+        mediaContent = { type: "image_url", image_url: { url: dataUrl } };
+      }
     }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
