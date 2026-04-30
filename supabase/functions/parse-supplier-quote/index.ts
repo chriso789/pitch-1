@@ -1,8 +1,12 @@
+import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const MAX_TEXT_CHARS = 120_000;
 
 function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   const uint8 = new Uint8Array(arrayBuffer);
@@ -14,7 +18,7 @@ function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
-async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
+async function tryServiceRoleDownload(documentUrl: string): Promise<{ arrayBuffer: ArrayBuffer; mimeType: string } | null> {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -29,13 +33,13 @@ async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: s
     if (!resp.ok) return null;
     const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
     const buf = await resp.arrayBuffer();
-    return { dataUrl: bufferToDataUrl(buf, mimeType), mimeType };
+    return { arrayBuffer: buf, mimeType };
   } catch {
     return null;
   }
 }
 
-async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
+async function fetchDocument(documentUrl: string): Promise<{ arrayBuffer: ArrayBuffer; mimeType: string }> {
   const response = await fetch(documentUrl);
   if (!response.ok) {
     const fallback = await tryServiceRoleDownload(documentUrl);
@@ -44,7 +48,19 @@ async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: s
   }
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const arrayBuffer = await response.arrayBuffer();
-  return { dataUrl: bufferToDataUrl(arrayBuffer, contentType.split(";")[0].trim()), mimeType: contentType.split(";")[0].trim() };
+  return { arrayBuffer, mimeType: contentType.split(";")[0].trim() };
+}
+
+async function extractPdfPagesText(arrayBuffer: ArrayBuffer): Promise<{ text: string; pageCount: number }> {
+  const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  const pageCount = pdf.numPages || 0;
+  const { text } = await extractText(pdf, { mergePages: false });
+  const pages = Array.isArray(text) ? text : [String(text || "")];
+  const combined = pages
+    .map((page, index) => `--- PAGE ${index + 1} ---\n${String(page || "").trim()}`)
+    .join("\n\n")
+    .trim();
+  return { text: combined.slice(0, MAX_TEXT_CHARS), pageCount };
 }
 
 function isImage(url: string): boolean {
