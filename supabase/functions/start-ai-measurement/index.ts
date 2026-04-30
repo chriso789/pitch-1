@@ -14,11 +14,11 @@ import { splitPlanesFromRidges, type Line as RidgeLine } from "../_shared/ridge-
 import {
   filterRidges,
   consolidatePlanes,
-  computeOverlayScale,
   type RidgeLine as FilterRidgeLine,
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
 import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
+import { computeOverlayTransform } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
