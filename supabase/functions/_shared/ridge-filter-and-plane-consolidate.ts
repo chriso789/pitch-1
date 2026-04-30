@@ -335,20 +335,24 @@ export function consolidatePlanes(
         const aB = bbox(A.polygon_px), bB = bbox(B.polygon_px);
         const ix = Math.max(0, Math.min(aB.maxX, bB.maxX) - Math.max(aB.minX, bB.minX));
         const iy = Math.max(0, Math.min(aB.maxY, bB.maxY) - Math.max(aB.minY, bB.minY));
-        const interBboxArea = ix * iy;
-        if (interBboxArea <= 0) continue;
+        if (ix * iy <= 0) continue;
         const minPolyArea = Math.min(A._area, B._area);
         if (minPolyArea <= 0) continue;
-        // Upper-bound on true polygon overlap.
-        const overlap = Math.min(1, interBboxArea / minPolyArea);
+
+        // TRUE polygon-polygon intersection (not bbox-of-intersection).
+        // Sibling ridge-split planes share bbox but not actual area.
+        const interArea = polyIntersectionArea(A.polygon_px, B.polygon_px);
+        const overlap = Math.min(1, interArea / minPolyArea);
 
         const pa = A.pitch_degrees ?? A.pitch ?? null;
         const pb = B.pitch_degrees ?? B.pitch ?? null;
-        // Require BOTH pitches defined; null pitch (ridge-split output) blocks merging.
-        const pitchOk = pa != null && pb != null && Math.abs(pa - pb) <= pitchTol;
+        // Require BOTH pitches defined AND near-equal AND meaningful azimuth match if available.
+        const azA = (A as any).azimuth ?? null;
+        const azB = (B as any).azimuth ?? null;
+        const azOk = azA == null || azB == null || Math.abs(((azA - azB + 540) % 360) - 180) >= 165; // within 15°
+        const pitchOk = pa != null && pb != null && Math.abs(pa - pb) <= pitchTol && azOk;
 
         if (overlap > overlapTh && pitchOk) {
-          // Merge: keep larger polygon, drop smaller.
           working.splice(j, 1);
           A._area = polyArea(A.polygon_px);
           merged++;
