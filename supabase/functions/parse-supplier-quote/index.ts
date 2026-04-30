@@ -84,13 +84,24 @@ Deno.serve(async (req) => {
 
     console.log("[parse-supplier-quote] Parsing:", document_url);
 
-    let mediaContent: any;
+    let documentText = "";
+    let mediaContent: any | null = null;
+    let pageCount = 0;
     if (isImage(document_url)) {
       mediaContent = { type: "image_url", image_url: { url: document_url } };
     } else {
-      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
-      // Lovable AI Gateway (Gemini) accepts PDFs inline via image_url with a data URL
-      mediaContent = { type: "image_url", image_url: { url: dataUrl } };
+      const { arrayBuffer, mimeType } = await fetchDocument(document_url);
+      if (mimeType === "application/pdf" || document_url.toLowerCase().includes(".pdf")) {
+        const extracted = await extractPdfPagesText(arrayBuffer);
+        documentText = extracted.text;
+        pageCount = extracted.pageCount;
+        console.log(`[parse-supplier-quote] Extracted PDF text from ${pageCount} pages (${documentText.length} chars)`);
+        if (!documentText) {
+          mediaContent = { type: "image_url", image_url: { url: bufferToDataUrl(arrayBuffer, mimeType) } };
+        }
+      } else {
+        mediaContent = { type: "image_url", image_url: { url: bufferToDataUrl(arrayBuffer, mimeType) } };
+      }
     }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -120,10 +131,12 @@ EXTRACTION RULES:
           },
           {
             role: "user",
-            content: [
-              { type: "text", text: "Extract every material line item from this supplier quote. The PDF may have multiple pages — scan ALL pages first to last and return the complete combined list of materials with quantities and unit prices." },
-              mediaContent,
-            ],
+            content: documentText
+              ? `Extract every material line item from this supplier quote text. It was extracted from ${pageCount || "multiple"} PDF pages — scan ALL page sections first to last and return the complete combined list of materials with quantities and unit prices.\n\n${documentText}`
+              : [
+                  { type: "text", text: "Extract every material line item from this supplier quote. The PDF may have multiple pages — scan ALL pages first to last and return the complete combined list of materials with quantities and unit prices." },
+                  mediaContent,
+                ],
           },
         ],
         tools: [
