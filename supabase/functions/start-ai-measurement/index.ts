@@ -684,7 +684,7 @@ async function processJob(input: any) {
     );
     await setAiJobStatus(input.ai_measurement_job_id, finalAiStatus, finalJobMessage, quality);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     console.error("processJob error:", error);
     await setMeasurementJobStatus(input.measurement_job_id, "failed", message);
     await setAiJobStatus(input.ai_measurement_job_id, "failed", message);
@@ -1101,6 +1101,7 @@ function scoreQuality(input: {
 async function setMeasurementJobStatus(id: string, status: string, msg: string, measurement_id: string | null = null) {
   await supabase.from("measurement_jobs").update({
     status, progress_message: msg, measurement_id,
+    error: status === "failed" ? msg : null,
     updated_at: new Date().toISOString(),
     ...(status === "completed" || status === "failed" ? { completed_at: new Date().toISOString() } : {}),
   }).eq("id", id);
@@ -1122,6 +1123,11 @@ function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); r
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 function round(v: number, d = 2) { const m = Math.pow(10, d); return Math.round(Number(v || 0) * m) / m; }
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) return String((error as any).message);
+  return String(error);
+}
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
