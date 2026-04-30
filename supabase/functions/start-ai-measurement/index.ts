@@ -257,6 +257,69 @@ async function processJob(input: any) {
       const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
       return ix * iy;
     }
+    // Sutherland-Hodgman polygon clipping against an axis-aligned rect.
+    // Used for true polygon∩solar_bbox area (fixes the 0-overlap-with-60%-coverage bug
+    // where bbox-vs-bbox overlap ignored polygon shape).
+    function clipPolygonToRect(poly: Point[], rect: { minX: number; minY: number; maxX: number; maxY: number }) {
+      if (!poly || poly.length < 3 || !rect) return [] as Point[];
+      const edges: Array<(p: Point) => boolean> = [
+        (p) => p.x >= rect.minX,
+        (p) => p.x <= rect.maxX,
+        (p) => p.y >= rect.minY,
+        (p) => p.y <= rect.maxY,
+      ];
+      const intersect = (a: Point, b: Point, side: number): Point => {
+        // side: 0=left,1=right,2=top,3=bottom
+        if (side === 0) {
+          const t = (rect.minX - a.x) / (b.x - a.x); return { x: rect.minX, y: a.y + t * (b.y - a.y) };
+        } else if (side === 1) {
+          const t = (rect.maxX - a.x) / (b.x - a.x); return { x: rect.maxX, y: a.y + t * (b.y - a.y) };
+        } else if (side === 2) {
+          const t = (rect.minY - a.y) / (b.y - a.y); return { x: a.x + t * (b.x - a.x), y: rect.minY };
+        } else {
+          const t = (rect.maxY - a.y) / (b.y - a.y); return { x: a.x + t * (b.x - a.x), y: rect.maxY };
+        }
+      };
+      let out = poly.slice();
+      for (let s = 0; s < 4; s++) {
+        const inside = edges[s];
+        const input = out;
+        out = [];
+        if (input.length === 0) break;
+        let prev = input[input.length - 1];
+        for (const cur of input) {
+          const curIn = inside(cur), prevIn = inside(prev);
+          if (curIn) {
+            if (!prevIn) out.push(intersect(prev, cur, s));
+            out.push(cur);
+          } else if (prevIn) {
+            out.push(intersect(prev, cur, s));
+          }
+          prev = cur;
+        }
+      }
+      return out;
+    }
+    // Convex hull (Andrew's monotone chain).
+    function convexHull(points: Point[]): Point[] {
+      const pts = points.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+        .slice().sort((a, b) => a.x - b.x || a.y - b.y);
+      if (pts.length < 3) return pts;
+      const cross = (o: Point, a: Point, b: Point) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+      const lower: Point[] = [];
+      for (const p of pts) {
+        while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop();
+        lower.push(p);
+      }
+      const upper: Point[] = [];
+      for (let i = pts.length - 1; i >= 0; i--) {
+        const p = pts[i];
+        while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop();
+        upper.push(p);
+      }
+      lower.pop(); upper.pop();
+      return lower.concat(upper);
+    }
 
     // Compute Solar bbox in pixel space — used as the coverage reference target.
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
