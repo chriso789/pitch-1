@@ -134,7 +134,7 @@ export function useMeasurementJob(pipelineEntryId: string) {
     queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
     await refetchJob();
     return jobId as string;
-  }, [pipelineEntryId, refetchJob]);
+  }, [pipelineEntryId, queryClient, refetchJob]);
 
   const isActive = latestJob?.status === 'queued' || latestJob?.status === 'processing';
 
