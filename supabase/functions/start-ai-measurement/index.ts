@@ -1386,6 +1386,16 @@ async function processJob(input: any) {
       })
       .filter(Boolean);
     const raster_size = { width: raster.width, height: raster.height };
+    const pdfSourceSignature = await hashSignature({
+      engine: "geometry_first_v2_overlay_transform_v2",
+      planes: planeRows,
+      edges: edgeRows,
+      totals,
+      raster_size,
+      overlay_calibration: overlayCalibration,
+      roof_target_bbox_px: roofTargetBboxPx,
+      roof_target_source: roofTargetSource,
+    });
 
     const geometryReportJson = {
       planes: planeRows,
@@ -1404,6 +1414,7 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      pdf_source_signature: pdfSourceSignature,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
       roof_target_source: roofTargetSource,
