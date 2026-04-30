@@ -1,4 +1,4 @@
-import { extractText, getDocumentProxy } from "npm:unpdf@0.12.1";
+import * as pdfjsLib from "npm:pdfjs-dist@4.3.136/legacy/build/pdf.mjs";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -52,10 +52,15 @@ async function fetchDocument(documentUrl: string): Promise<{ arrayBuffer: ArrayB
 }
 
 async function extractPdfPagesText(arrayBuffer: ArrayBuffer): Promise<{ text: string; pageCount: number }> {
-  const pdf = await getDocumentProxy(new Uint8Array(arrayBuffer));
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
   const pageCount = pdf.numPages || 0;
-  const { text } = await extractText(pdf, { mergePages: false });
-  const pages = Array.isArray(text) ? text : [String(text || "")];
+  const pages: string[] = [];
+  for (let pageNo = 1; pageNo <= pageCount; pageNo += 1) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item: any) => item.str || "").join("\n"));
+  }
   const combined = pages
     .map((page, index) => `--- PAGE ${index + 1} ---\n${String(page || "").trim()}`)
     .join("\n\n")
