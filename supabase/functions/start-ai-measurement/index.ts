@@ -528,6 +528,43 @@ async function processJob(input: any) {
       );
     }
 
+    const geometryReportJson = { planes: planeRows, edges: edgeRows, totals, quality };
+    const linearFeaturesWkt = edgeRows.map((edge: any) => ({
+      type: edge.edge_type,
+      wkt: lineGeoJSONToWKT(edge.line_geojson),
+      length_ft: edge.length_ft,
+      source: edge.source,
+      confidence: edge.confidence,
+    })).filter((feature: any) => feature.wkt);
+    const footprintVerticesGeo = footprint.map((p) => {
+      const [lng, lat] = pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      return { lng, lat };
+    });
+    const perimeterWkt = footprintVerticesGeo.length >= 3 ? polygonVerticesToWKT(footprintVerticesGeo) : null;
+    const imageBounds = imageBoundsFromRaster({ lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+    const reviewRequired = Boolean(blockCustomerReportReason) || quality.overall_score < 0.80;
+    const dbFootprintSource = normalizeRoofMeasurementFootprintSource(footprintSource);
+    const aiDetectionData = {
+      source_button: input.source_button,
+      engine_version: "geometry_first_v2",
+      geometry_source: resolvedGeometrySource,
+      footprint_source: footprintSource,
+      topology_source: topologySource,
+      block_customer_report_reason: blockCustomerReportReason,
+      planes: planeRows,
+      edges: edgeRows,
+      totals,
+      quality,
+      calibration: {
+        logical_meters_per_pixel: logicalMpp,
+        actual_meters_per_pixel: actualMpp,
+        actual_feet_per_pixel: actualFpp,
+        raster_scale: input.raster_scale,
+      },
+      solar_used: !!solarData,
+      unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+    };
+
     // Publish canonical roof_measurements row
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
@@ -545,6 +582,11 @@ async function processJob(input: any) {
         target_lng: coords.lng,
         mapbox_image_url: imageUrl,
         meters_per_pixel: actualMpp,
+        ai_detection_data: aiDetectionData,
+        ai_analysis: aiDetectionData,
+        ai_model_version: "geometry_first_v2",
+        detection_timestamp: new Date().toISOString(),
+        detection_confidence: quality.overall_score,
         total_area_flat_sqft: totals.total_area_2d_sqft,
         total_area_adjusted_sqft: totals.total_area_pitch_adjusted_sqft,
         total_squares: totals.roof_square_count,
@@ -559,13 +601,33 @@ async function processJob(input: any) {
         measurement_confidence: quality.overall_score * 100,
         geometry_quality_score: quality.geometry_score,
         measurement_quality_score: quality.measurement_score,
-        requires_manual_review: quality.overall_score < 0.60,
-        manual_review_recommended: quality.overall_score < 0.60,
+        requires_manual_review: reviewRequired,
+        manual_review_recommended: reviewRequired,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
-        geometry_report_json: { planes: planeRows, edges: edgeRows, totals, quality },
+        geometry_report_json: geometryReportJson,
+        quality_checks: quality,
+        metadata: aiDetectionData,
         plane_breakdown: totals.plane_breakdown,
         edge_breakdown: totals.line_breakdown,
+        linear_features_wkt: linearFeaturesWkt,
+        perimeter_wkt: perimeterWkt,
+        footprint_vertices_geo: footprintVerticesGeo,
+        footprint_source: dbFootprintSource,
+        footprint_confidence: quality.geometry_score,
+        footprint_requires_review: reviewRequired,
+        analysis_zoom: Number(input.zoom),
+        analysis_image_size: {
+          width: raster.width,
+          height: raster.height,
+          logicalWidth: Number(input.logical_image_width),
+          logicalHeight: Number(input.logical_image_height),
+          rasterScale: Number(input.raster_scale),
+        },
+        image_bounds: imageBounds,
+        bounding_box: imageBounds,
+        gate_decision: reviewRequired ? "needs_review" : "approved",
+        gate_reason: blockCustomerReportReason,
         source_button: input.source_button,
         engine_version: "geometry_first_v2",
         engine_used: "geometry_first_v2",
@@ -623,7 +685,7 @@ async function processJob(input: any) {
     );
     await setAiJobStatus(input.ai_measurement_job_id, finalAiStatus, finalJobMessage, quality);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = getErrorMessage(error);
     console.error("processJob error:", error);
     await setMeasurementJobStatus(input.measurement_job_id, "failed", message);
     await setAiJobStatus(input.ai_measurement_job_id, "failed", message);
@@ -808,6 +870,20 @@ function polygonPxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, 
   if (ring.length) ring.push(ring[0]);
   return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
 }
+function polygonVerticesToWKT(vertices: Array<{ lng: number; lat: number }>) {
+  const ring = [...vertices, vertices[0]];
+  return `POLYGON((${ring.map((p) => `${p.lng} ${p.lat}`).join(", ")}))`;
+}
+function lineGeoJSONToWKT(feature: any) {
+  const coords = feature?.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  return `LINESTRING(${coords.map((p: any) => `${Number(p[0])} ${Number(p[1])}`).join(", ")})`;
+}
+function imageBoundsFromRaster(c: GeoPoint, w: number, h: number, mpp: number): [number, number, number, number] {
+  const [west, north] = pxToLngLat({ x: 0, y: 0 }, c, w, h, mpp);
+  const [east, south] = pxToLngLat({ x: w, y: h }, c, w, h, mpp);
+  return [west, south, east, north];
+}
 function linePxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, mpp: number) {
   return {
     type: "Feature",
@@ -858,6 +934,13 @@ function normalizeEdgeType(v: string): RoofEdge["edge_type"] {
   if (s.includes("eave")) return "eave";
   if (s.includes("rake")) return "rake";
   return "unknown";
+}
+function normalizeRoofMeasurementFootprintSource(source: string) {
+  const s = String(source || "unknown");
+  if (s === "osm_building") return "osm_overpass";
+  if (s === "unet_segmentation") return "ai_detection";
+  if (s === "none") return "unknown";
+  return s;
 }
 function cleanPlane(plane: any, idx: number, w: number, h: number): RoofPlane | null {
   const polygon = cleanPolygon(plane?.polygon_px || [], w, h);
@@ -1026,6 +1109,7 @@ function scoreQuality(input: {
 async function setMeasurementJobStatus(id: string, status: string, msg: string, measurement_id: string | null = null) {
   await supabase.from("measurement_jobs").update({
     status, progress_message: msg, measurement_id,
+    error: status === "failed" ? msg : null,
     updated_at: new Date().toISOString(),
     ...(status === "completed" || status === "failed" ? { completed_at: new Date().toISOString() } : {}),
   }).eq("id", id);
@@ -1047,6 +1131,11 @@ function average(v: number[]) { const c = v.filter((n) => Number.isFinite(n)); r
 function getScore(checks: any[], name: string) { return checks.find((c) => c.name === name)?.score ?? 0; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 function round(v: number, d = 2) { const m = Math.pow(10, d); return Math.round(Number(v || 0) * m) / m; }
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === "object" && "message" in error) return String((error as any).message);
+  return String(error);
+}
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }
