@@ -26,6 +26,52 @@ interface AddressVerificationProps {
   required?: boolean;
 }
 
+const parseGoogleAddress = (place: any, fallbackText = ""): AddressData => {
+  const formatted = place?.formatted_address || fallbackText;
+  const addressComponents = place?.address_components || [];
+
+  let streetNumber = "";
+  let route = "";
+  let city = "";
+  let cityFallback = "";
+  let state = "";
+  let zip = "";
+  let zipSuffix = "";
+
+  addressComponents.forEach((component: any) => {
+    const types = component.types || [];
+    if (types.includes("street_number")) streetNumber = component.long_name;
+    if (types.includes("route")) route = component.long_name;
+    if (types.includes("locality")) city = component.long_name;
+    if (!city && (types.includes("sublocality") || types.includes("sublocality_level_1") || types.includes("postal_town") || types.includes("administrative_area_level_3"))) city = component.long_name;
+    if (!cityFallback && (types.includes("neighborhood") || types.includes("administrative_area_level_2"))) cityFallback = component.long_name;
+    if (types.includes("administrative_area_level_1")) state = component.short_name;
+    if (types.includes("postal_code")) zip = component.long_name;
+    if (types.includes("postal_code_suffix")) zipSuffix = component.long_name;
+  });
+
+  if (!city) city = cityFallback;
+  if (zip && zipSuffix && !zip.includes("-")) zip = `${zip}-${zipSuffix}`;
+
+  const parts = formatted.split(",").map((part: string) => part.trim()).filter(Boolean);
+  if (!city && parts.length >= 3) city = parts[parts.length - 3];
+  const stateZip = (parts[parts.length - 2] || "").match(/^([A-Z]{2})\s*(\d{5}(?:-\d{4})?)?$/);
+  if (stateZip) {
+    if (!state) state = stateZip[1];
+    if (!zip && stateZip[2]) zip = stateZip[2];
+  }
+
+  return {
+    street: `${streetNumber} ${route}`.trim() || parts[0] || "",
+    city,
+    state,
+    zip,
+    lat: place?.geometry?.location?.lat,
+    lng: place?.geometry?.location?.lng,
+    formatted_address: formatted,
+  };
+};
+
 const AddressVerification: React.FC<AddressVerificationProps> = ({
   onAddressVerified,
   initialAddress = {},
@@ -49,6 +95,7 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
 
   const streetInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<number | null>(null);
+  const activeSelectionRef = useRef<string | null>(null);
   const { toast } = useToast();
 
   const updateSuggestionDropdownPosition = useCallback(() => {
