@@ -450,7 +450,19 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
                 key={suggestion.place_id || index}
                 type="button"
                 className="flex w-full flex-col items-start gap-1 px-4 py-3 text-left transition-colors hover:bg-muted focus:bg-muted focus:outline-none"
+                onPointerDown={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
                 onMouseDown={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  selectSuggestion(suggestion);
+                }}
+                onTouchStart={(e) => {
                   e.preventDefault();
                   selectSuggestion(suggestion);
                 }}
