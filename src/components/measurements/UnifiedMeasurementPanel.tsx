@@ -239,6 +239,7 @@ const buildReportMeasurementFromRoofMeasurement = (measurement: any, pipelineEnt
     requires_manual_review: measurement?.requires_manual_review || false,
     facet_count: measurement?.facet_count || 0,
     overlay_schema: measurement?.overlay_schema || null,
+    patent_model: measurement?.patent_model || measurement?.geometry_report_json?.patent_model || null,
     ai_detection_data: measurement?.ai_detection_data || null,
   };
 };
@@ -443,7 +444,7 @@ export function UnifiedMeasurementPanel({
       // Include both AI-pulled and manual measurements so users see full history
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data')
+        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, patent_model, solar_building_footprint_sqft, ai_detection_data')
         .eq('customer_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
@@ -610,7 +611,7 @@ export function UnifiedMeasurementPanel({
 
       const { data, error } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, solar_building_footprint_sqft, ai_detection_data, waste_factor_percent')
+        .select('id, created_at, customer_id, ai_measurement_job_id, validation_status, geometry_report_json, report_pdf_url, report_pdf_path, total_area_flat_sqft, total_area_adjusted_sqft, total_squares, predominant_pitch, facet_count, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, footprint_source, detection_method, google_maps_image_url, linear_features_wkt, perimeter_wkt, target_lat, target_lng, footprint_vertices_geo, footprint_confidence, satellite_overlay_url, gps_coordinates, analysis_zoom, analysis_image_size, image_bounds, bounding_box, mapbox_image_url, selected_image_source, image_source, measurement_confidence, requires_manual_review, overlay_schema, patent_model, solar_building_footprint_sqft, ai_detection_data, waste_factor_percent')
         .eq('id', linkedMeasurementId)
         .maybeSingle();
 
@@ -981,6 +982,7 @@ export function UnifiedMeasurementPanel({
                     selected_image_source: ai.selected_image_source,
                     image_source: ai.image_source,
                     overlay_schema: (ai as any).overlay_schema || (ai as any).geometry_report_json?.overlay_schema,
+                    patent_model: (ai as any).patent_model || (ai as any).geometry_report_json?.patent_model,
                     footprint_vertices_geo: ai.footprint_vertices_geo,
                     footprint_source: ai.footprint_source,
                     footprint_confidence: ai.footprint_confidence,

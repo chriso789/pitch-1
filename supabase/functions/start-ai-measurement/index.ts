@@ -3488,6 +3488,8 @@ Deno.serve(async (req) => {
         // the multi-plane geometry.
         let skipPatentSynthesisFallback = false
         let skipSinglePlaneFallback = false
+        let forceUseRidgeSplit = false
+        let forcedGeometrySource: string | null = null
 
         // ──────────────────────────────────────────────────────────────
         // RIDGE-DRIVEN PLANE SPLITTING (pre-synthesis safety net)
@@ -3534,6 +3536,10 @@ Deno.serve(async (req) => {
                 .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
 
               if (ridgeLines.length > 0) {
+                // Production rule: recursive ridge splitting is canonical.
+                // The older single-pass buildRoofPlanes output can be partial,
+                // so it must not win over splitPlanesFromRidges().
+                const preferRecursiveSplit = true
                 const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(basePlane.polygon_px) * 0.08)
                 let subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
                   minArea: minPlaneAreaPx, minAreaRatio: 0.1, maxPlanes: 10,
@@ -3555,7 +3561,7 @@ Deno.serve(async (req) => {
                   }
                 }
 
-                if (subPolys.length > 1) {
+                if (!preferRecursiveSplit && subPolys.length > 1) {
                   detectedRidgeLines = ridgeLines
                   planes = subPolys.map((poly, idx) =>
                     planeFromFootprint(
@@ -3570,6 +3576,12 @@ Deno.serve(async (req) => {
                   edges = edgesFromPlanes(
                     planes, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
                   )
+                  // HARD LOCK: this is ridge-derived multi-plane geometry.
+                  // No later single-plane or patent-synthesis fallback may replace it.
+                  forceUseRidgeSplit = true
+                  forcedGeometrySource = 'ridge_split_pre_synthesis'
+                  skipPatentSynthesisFallback = true
+                  skipSinglePlaneFallback = true
                   console.log(
                     `[ridge_split_pre_synthesis] split single plane → ${planes.length} planes ` +
                     `using ${ridgeLines.length} ridges; edges=${edges.length} ` +
@@ -3578,10 +3590,10 @@ Deno.serve(async (req) => {
                     `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
                   )
                 } else {
-                  // Single-pass buildRoofPlanes failed to split. Try the
-                  // recursive ridge-driven splitter as a second chance.
-                  // It re-detects ridges inside each sub-polygon and splits
-                  // again, producing 5–15 planes on complex residential roofs.
+                  // Always try the recursive ridge-driven splitter as the
+                  // authoritative ridge-split output. It re-detects ridges
+                  // inside each sub-polygon and splits again, producing
+                  // 5–15 planes on complex residential roofs.
                   debug_pipeline.ridge_split_recursive_entered = true
                   try {
                     // Rasterize a polygon (in full-res image pixel space)
@@ -3724,6 +3736,8 @@ Deno.serve(async (req) => {
                         // HARD STOP: do not let synthesizePatentStructureFromFootprint
                         // or single-plane overlay fallbacks overwrite the new
                         // multi-plane geometry produced by recursive splitting.
+                        forceUseRidgeSplit = true
+                        forcedGeometrySource = 'ridge_split_recursive'
                         skipPatentSynthesisFallback = true
                         skipSinglePlaneFallback = true
                       }
@@ -3824,7 +3838,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (edges.length === 0 && planes.length > 0) {
+        if (edges.length === 0 && planes.length > 0 && !forceUseRidgeSplit) {
           // Last-resort perimeter eaves if even synthesis produced nothing.
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
           edges = edgesFromPerimeter(
@@ -3844,7 +3858,7 @@ Deno.serve(async (req) => {
         // Runs BEFORE ai_roof_edges insert / patent_model creation /
         // diagram render so persisted classifications are correct.
         // ──────────────────────────────────────────────────────────────
-        try {
+        if (!forceUseRidgeSplit) try {
           const footprintForClassifier = (planes.length > 0
             ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
             : []) as Pt[]
@@ -4108,8 +4122,9 @@ Deno.serve(async (req) => {
         } catch (_e) { /* non-fatal */ }
 
         const planeSources = Array.from(new Set(planes.map((p) => String(p.source))))
-        const geometrySource =
-          planeSources.length === 0
+        const geometrySource = forcedGeometrySource
+          ? forcedGeometrySource
+          : planeSources.length === 0
             ? 'none'
             : planeSources.every((s) => PLACEHOLDER_SOURCES.has(s))
             ? 'google_solar_bbox'
@@ -4314,6 +4329,24 @@ Deno.serve(async (req) => {
         debug_pipeline.final_edge_count_saved = edges.length
         debug_pipeline.final_patent_model_plane_count = (patentModel.planes || []).length
         debug_pipeline.final_report_source = geometrySource
+        console.log('[FINAL_GEOMETRY_STATE]', {
+          planes: planes.length,
+          edges: edges.length,
+          source: geometrySource,
+          forceUseRidgeSplit,
+          patent_model_planes: (patentModel.planes || []).length,
+        })
+        if (planes.length > 1 && geometrySource === 'ridge_split_recursive') {
+          console.log('[SAVE_CHECK] MULTI-PLANE GEOMETRY CONFIRMED')
+        } else {
+          console.error('[SAVE_CHECK FAIL] LOST MULTI-PLANE GEOMETRY', {
+            planes: planes.length,
+            edges: edges.length,
+            source: geometrySource,
+            ridge_split_recursive_planes: debug_pipeline.ridge_split_recursive_plane_count,
+            patent_model_planes: (patentModel.planes || []).length,
+          })
+        }
         console.log('[AI_MEASUREMENT_DEBUG] Pipeline Debug Info:', debug_pipeline)
 
         // PATCH 4 — fail loudly if recursive split worked but patent_model collapsed
@@ -4591,6 +4624,8 @@ Deno.serve(async (req) => {
           measurement_confidence: qc.overall,
           requires_manual_review: qc.status === 'needs_review',
           validation_status: qc.status === 'completed' ? 'validated' : 'flagged',
+          report_pdf_url: null,
+          report_pdf_path: null,
           geometry_report_json: reportJson,
           overlay_schema: reportOverlaySchema,
           patent_model: patentModel,

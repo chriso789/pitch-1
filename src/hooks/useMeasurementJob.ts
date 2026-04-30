@@ -84,6 +84,9 @@ export function useMeasurementJob(pipelineEntryId: string) {
           queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
           queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
           queryClient.invalidateQueries({ queryKey: ['roof-measurement'] });
+          queryClient.invalidateQueries({ queryKey: ['roof_measurements'] });
+          queryClient.invalidateQueries({ queryKey: ['measurement'] });
+          queryClient.invalidateQueries({ queryKey: ['active-measurement', pipelineEntryId] });
         }
       }
     }, 3000); // Poll every 3 seconds
@@ -126,9 +129,12 @@ export function useMeasurementJob(pipelineEntryId: string) {
 
     setActiveJobId(jobId);
     // Immediately refetch to show the new job
+    queryClient.invalidateQueries({ queryKey: ['roof_measurements'] });
+    queryClient.invalidateQueries({ queryKey: ['ai-measurements', pipelineEntryId] });
+    queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
     await refetchJob();
     return jobId as string;
-  }, [pipelineEntryId, refetchJob]);
+  }, [pipelineEntryId, queryClient, refetchJob]);
 
   const isActive = latestJob?.status === 'queued' || latestJob?.status === 'processing';
 
