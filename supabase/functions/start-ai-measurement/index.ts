@@ -1406,6 +1406,8 @@ async function processJob(input: any) {
       sanity_failures: sanityFailures,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
+      roof_target_source: roofTargetSource,
+      geometry_px_space: "raster_calibrated",
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
       imagery: {
@@ -1452,6 +1454,7 @@ async function processJob(input: any) {
         final_geometry_bbox_px: finalGeometryBboxPx,
         overlay_calibration: overlayCalibration,
         roof_target_bbox_px: roofTargetBboxPx,
+        roof_target_source: roofTargetSource,
       },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
@@ -1497,6 +1500,8 @@ async function processJob(input: any) {
       raster_image_url: imageUrl,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
+      roof_target_source: roofTargetSource,
+      geometry_px_space: "raster_calibrated",
     };
 
     // Publish canonical roof_measurements row
