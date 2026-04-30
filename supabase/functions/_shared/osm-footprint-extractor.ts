@@ -288,6 +288,90 @@ function calculatePolygonAreaM2(coords: XY[]): number {
   return Math.abs(sum) / 2;
 }
 
+/**
+ * Fetch ALL OSM building candidates near a point (no auto-selection).
+ * Returns raw rings with metadata so callers can run their own validity scoring.
+ */
+export interface OSMBuildingCandidate {
+  ring: XY[]; // [lng, lat] closed ring
+  areaM2: number;
+  distanceFromPointM: number;
+  containsPoint: boolean;
+  vertexCount: number;
+  osmId: string;
+  buildingType: string;
+}
+
+export async function fetchOSMBuildingCandidates(
+  lat: number,
+  lng: number,
+  options?: { searchRadius?: number; timeout?: number }
+): Promise<{ candidates: OSMBuildingCandidate[]; error?: string }> {
+  const searchRadius = options?.searchRadius || 60;
+  const timeout = options?.timeout || 10000;
+  const endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://overpass.kumi.systems/api/interpreter',
+    'https://overpass.openstreetmap.ru/api/interpreter',
+  ];
+  const query = `
+    [out:json][timeout:10];
+    (
+      way["building"](around:${searchRadius},${lat},${lng});
+      relation["building"](around:${searchRadius},${lat},${lng});
+    );
+    out body geom;
+  `;
+  let response: Response | null = null;
+  for (const overpassUrl of endpoints) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+      response = await fetch(overpassUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+          'Accept': 'application/json',
+          'User-Agent': 'PitchCRM/1.0 (roof candidate scan)',
+        },
+        body: new URLSearchParams({ data: query }).toString(),
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+      if (response.ok) break;
+      response = null;
+    } catch {
+      clearTimeout(timeoutId);
+    }
+  }
+  if (!response?.ok) return { candidates: [], error: 'overpass_unreachable' };
+  const data = await response.json();
+  if (!data.elements?.length) return { candidates: [] };
+  const out: OSMBuildingCandidate[] = [];
+  for (const element of data.elements) {
+    let ring: XY[] = [];
+    if (element.type === 'way' && element.geometry?.length >= 4) {
+      ring = element.geometry.map((n: any) => [n.lon, n.lat] as XY);
+    } else if (element.type === 'relation' && element.members) {
+      const outer = element.members.find((m: any) => m.role === 'outer' && m.geometry);
+      if (outer?.geometry?.length >= 4) ring = outer.geometry.map((n: any) => [n.lon, n.lat] as XY);
+    }
+    if (ring.length < 4) continue;
+    const closed = ensureClosed(ring);
+    const centroid = calculateCentroid(closed);
+    out.push({
+      ring: closed,
+      areaM2: calculatePolygonAreaM2(closed),
+      distanceFromPointM: haversineDistance(lat, lng, centroid[1], centroid[0]),
+      containsPoint: pointInPolygon([lng, lat], closed),
+      vertexCount: closed.length,
+      osmId: element.id?.toString() || '',
+      buildingType: element.tags?.building || 'yes',
+    });
+  }
+  return { candidates: out };
+}
+
 function haversineDistance(lat1: number, lng1: number, lat2: number, lng2: number): number {
   const R = 6371000; // Earth's radius in meters
   const dLat = (lat2 - lat1) * Math.PI / 180;
