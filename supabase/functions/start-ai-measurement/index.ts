@@ -210,21 +210,22 @@ async function processJob(input: any) {
     const actualMpp = logicalMpp / Number(input.raster_scale);
     const actualFpp = actualMpp * 3.280839895;
 
-    if (!MAPBOX_TOKEN) throw new Error("MAPBOX_PUBLIC_TOKEN is not configured.");
+    if (!MAPBOX_TOKEN && !GOOGLE_MAPS_API_KEY) {
+      throw new Error("No imagery provider configured: set GOOGLE_MAPS_API_KEY and/or MAPBOX_PUBLIC_TOKEN.");
+    }
 
-    const imageUrl = buildMapboxStaticImageUrl({
+    await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching aerial imagery");
+    const imageryResult = await fetchAerialImagery({
       lng: coords.lng,
       lat: coords.lat,
       zoom: Number(input.zoom),
       width: Number(input.logical_image_width),
       height: Number(input.logical_image_height),
     });
-
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching aerial imagery");
-    const imageResp = await fetch(imageUrl);
-    if (!imageResp.ok) throw new Error(`Mapbox fetch failed: ${imageResp.status}`);
-    const imageBuffer = new Uint8Array(await imageResp.arrayBuffer());
-    const raster = await decodeRaster(imageBuffer, imageResp.headers.get("content-type"));
+    const imageUrl = imageryResult.url;
+    const imageryProvider = imageryResult.provider;
+    const imageryDecisionLog = imageryResult.decisionLog;
+    const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType);
 
 
 
