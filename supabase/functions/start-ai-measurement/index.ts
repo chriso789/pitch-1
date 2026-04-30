@@ -374,6 +374,101 @@ async function processJob(input: any) {
       usedSolarBboxAsCropOnly = true; // bbox would only have been a crop region
     }
 
+    // Compute solar bbox in pixel space for coverage checks (debug + sanity gate).
+    const solarBboxPx = (() => {
+      const bb = solarData?.boundingBox;
+      if (!bb?.sw || !bb?.ne) return null;
+      const sw = lngLatToPx(bb.sw.latitude, bb.sw.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      const ne = lngLatToPx(bb.ne.latitude, bb.ne.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      const minX = Math.min(sw.x, ne.x), maxX = Math.max(sw.x, ne.x);
+      const minY = Math.min(sw.y, ne.y), maxY = Math.max(sw.y, ne.y);
+      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, area: Math.max(0, (maxX - minX) * (maxY - minY)) };
+    })();
+
+    function bboxOf(points: Point[]) {
+      if (!points.length) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, area: Math.max(0, (maxX - minX) * (maxY - minY)) };
+    }
+    function polygonAreaPx(points: Point[]) {
+      let a = 0;
+      for (let i = 0, n = points.length; i < n; i++) {
+        const j = (i + 1) % n;
+        a += points[i].x * points[j].y - points[j].x * points[i].y;
+      }
+      return Math.abs(a) / 2;
+    }
+
+    // If our OSM/segmentation footprint is dramatically smaller than the
+    // Google Solar building bbox, the OSM polygon was a sub-structure (garage,
+    // dormer outline) and not the full house. Promote the Solar bbox rectangle
+    // to the final footprint so the topology engine runs on the FULL roof.
+    if (solarBboxPx && solarBboxPx.area > 0 && footprint.length >= 3) {
+      const fpBbox = bboxOf(footprint)!;
+      const coverage = fpBbox.area / solarBboxPx.area;
+      if (coverage < 0.4) {
+        console.warn("[geometry-first] Footprint covers only", (coverage * 100).toFixed(1), "% of Solar bbox — promoting Solar bbox to footprint.");
+        const promoted = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+        if (promoted && promoted.length >= 3) {
+          footprint = promoted;
+          footprintSource = footprintSource === "osm_building" ? "osm_building+solar_bbox_expanded" : "solar_bbox_expanded";
+          // Re-run topology on the expanded footprint.
+          cleanPlanes = [];
+          cleanEdges = [];
+          topologySource = "none";
+          try {
+            const skeletonEdges = computeStraightSkeleton(footprint.map((p) => [p.x, p.y] as [number, number]));
+            if (skeletonEdges && skeletonEdges.length > 0) {
+              for (const se of skeletonEdges as any[]) {
+                const a = se.a ?? se.p1 ?? se[0];
+                const b = se.b ?? se.p2 ?? se[1];
+                const ax = Array.isArray(a) ? a[0] : a?.x;
+                const ay = Array.isArray(a) ? a[1] : a?.y;
+                const bx = Array.isArray(b) ? b[0] : b?.x;
+                const by = Array.isArray(b) ? b[1] : b?.y;
+                if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
+                  const t = String(se.type || "ridge").toLowerCase();
+                  cleanEdges.push({
+                    edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
+                    line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
+                    confidence: 0.6,
+                    source: "topology_engine_v2_skeleton",
+                  });
+                }
+              }
+              topologySource = "straight_skeleton";
+            }
+            const topo = buildTopology(footprint);
+            if (topo.planes.length > 0) {
+              cleanPlanes = topo.planes.map((tp, idx) => ({
+                plane_index: idx + 1,
+                polygon_px: tp.polygon,
+                confidence: 0.6,
+                pitch: null,
+                pitch_degrees: null,
+                azimuth: null,
+                source: "topology_engine_v2",
+              }));
+              if (topologySource === "none") topologySource = "triangulation";
+              for (const e of topo.edges) {
+                if (e.type === "eave" || e.type === "rake") {
+                  cleanEdges.push({ edge_type: e.type, line_px: [e.p1, e.p2], confidence: 0.55, source: "topology_engine_v2" });
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[geometry-first] re-run topology after Solar promote failed:", (e as Error).message);
+          }
+        }
+      }
+    }
+
     console.log("[GEOMETRY_SOURCE_DECISION]", JSON.stringify({
       has_unet_endpoint: !!UNET_ENDPOINT,
       used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
