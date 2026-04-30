@@ -3780,6 +3780,19 @@ Deno.serve(async (req) => {
           // the split attempt; if so, the synthesis block below will skip.
         }
 
+        // ── PATCH 4: FAIL LOUDLY IF NEW SPLITTER DID NOT RUN OR COLLAPSED ──
+        if (!debug_pipeline.ridge_split_recursive_entered) {
+          console.warn(
+            '[AI_MEASUREMENT_DEBUG] ridge_split_recursive branch never entered',
+            { planes: planes.length, edges: edges.length },
+          )
+        } else if (debug_pipeline.ridge_split_recursive_plane_count <= 1) {
+          console.warn(
+            '[AI_MEASUREMENT_DEBUG] ridge_split_recursive ran but produced <=1 plane',
+            debug_pipeline,
+          )
+        }
+
         const stillNoRealStructure = !edges.some(
           (e) =>
             (e.edge_type === 'ridge' || e.edge_type === 'hip' || e.edge_type === 'valley') &&
@@ -3789,7 +3802,7 @@ Deno.serve(async (req) => {
             e.source !== 'filled_perimeter' &&
             e.source !== 'perimeter_fallback',
         )
-        if (stillNoRealStructure && planes.length > 0) {
+        if (stillNoRealStructure && planes.length > 0 && !skipPatentSynthesisFallback) {
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
           const synth = synthesizePatentStructureFromFootprint(
             largest, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
