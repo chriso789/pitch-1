@@ -778,6 +778,19 @@ async function processJob(input: any) {
         });
         ridgeDetectionRan = true;
         ridgeDetectedCount = topLevel.lines.length;
+
+        // RIDGE FILTERING — keep only top 1–3 structural ridges.
+        const filtered = filterRidges(
+          topLevel.lines as FilterRidgeLine[],
+          footprint,
+          solarAzimuths,
+        );
+        console.log("[RIDGE_FILTER]", JSON.stringify({
+          detected: filtered.detected,
+          kept: filtered.kept.length,
+          discarded: filtered.discarded,
+          reasons: filtered.reasons,
+        }));
         console.log("[RIDGE_DETECTION]", JSON.stringify({
           ridge_count: topLevel.lines.length,
           ridge_scores: topLevel.debug.scores,
@@ -787,13 +800,26 @@ async function processJob(input: any) {
           roi: topLevel.debug.roi,
         }));
 
-        if (topLevel.lines.length > 0) {
-          const splitPlanes = splitPlanesFromRidges(footprint, detect, 0, 3);
+        if (filtered.kept.length > 0) {
+          // Wrap detect to also pass through the filter on every recursion.
+          const detectFiltered = (poly: Point[]): RidgeLine[] => {
+            const sub = detectRidgesInPolygon({
+              raster,
+              polygon: poly,
+              solarAzimuthsDeg: solarAzimuths,
+              maxRidges: 3,
+            });
+            const f = filterRidges(sub.lines as FilterRidgeLine[], poly, solarAzimuths);
+            return f.kept as RidgeLine[];
+          };
+
+          const splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
           ridgeSplitPlaneCount = splitPlanes.length;
           console.log("[RIDGE_SPLIT]", JSON.stringify({
             initial_planes: 1,
             final_planes: splitPlanes.length,
             split_success: splitPlanes.length >= 2,
+            max_depth: 3,
           }));
 
           if (splitPlanes.length >= 2) {
@@ -806,11 +832,11 @@ async function processJob(input: any) {
               azimuth: null,
               source: "ridge_split_recursive",
             }));
-            for (const r of topLevel.lines) {
+            for (const r of filtered.kept) {
               splitRidgeEdges.push({
                 edge_type: "ridge",
                 line_px: [r.p1, r.p2],
-                confidence: Math.min(0.9, 0.55 + r.score * 0.4),
+                confidence: Math.min(0.9, 0.55 + (r.score ?? 0.5) * 0.4),
                 source: "image_ridge_detector",
               });
             }
