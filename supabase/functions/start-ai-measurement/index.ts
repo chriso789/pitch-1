@@ -1185,6 +1185,18 @@ async function processJob(input: any) {
       sanity_failures: sanityFailures,
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
+      imagery: {
+        provider: imageryProvider,
+        google_2d_tiles_used: imageryProvider === "google_2d_satellite",
+        mapbox_used: imageryProvider === "mapbox_satellite",
+        google_3d_debug_available: imageryDecisionLog.google_3d_debug_available,
+        google_3d_used_for_measurement: false, // 3D mesh→plane extraction not implemented; debug only
+        raster_size: { width: raster.width, height: raster.height },
+        meters_per_pixel: actualMpp,
+        feet_per_pixel: actualFpp,
+        decision_log: imageryDecisionLog,
+        notes: "Google 3D Photorealistic Tiles are reserved for visual QA/debug until mesh-to-plane extraction is implemented.",
+      },
       debug_geometry: {
         raster_size,
         solar_bbox_px: solarBboxPx,
