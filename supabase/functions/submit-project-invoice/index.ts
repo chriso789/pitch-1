@@ -89,6 +89,7 @@ Deno.serve(async (req) => {
         tenant_id: profile.tenant_id,
         project_id: project_id || null,
         pipeline_entry_id: effectivePipelineEntryId || null,
+        change_order_id: change_order_id || null,
         invoice_type,
         vendor_name: vendor_name || null,
         crew_name: crew_name || null,
