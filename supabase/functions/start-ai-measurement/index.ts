@@ -385,10 +385,19 @@ async function processJob(input: any) {
       final_edge_count: cleanEdges.length,
     }));
 
+    // Hard guard: a real footprint is required to publish a customer measurement.
+    // Solar bbox / synthetic rectangles are NOT acceptable as final geometry.
+    if (footprint.length < 3) {
+      throw new Error(
+        "No real building footprint could be resolved (OSM/segmentation both empty). " +
+        "Geometry engine refuses to fabricate roof shape from Solar bbox or synthetic rectangle.",
+      );
+    }
+
     const planeRows = buildPlaneRows({
       ai_measurement_job_id: input.ai_measurement_job_id,
       planes: cleanPlanes,
-      fallbackFootprint: footprint,
+      fallbackFootprint: footprint, // real OSM/segmentation footprint only
       solarData,
       pitchOverride: input.pitch_override,
       center: { lat: coords.lat, lng: coords.lng },
