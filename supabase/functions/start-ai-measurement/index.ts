@@ -4218,21 +4218,12 @@ Deno.serve(async (req) => {
           throw new Error('BUG: ridge_split_recursive collapsed to Plane A before save')
         }
 
-        const patentModel = {
-          ...finalPatentModel,
-          imagery_qc: {
-            passed: qc.status === 'completed',
-            abnormalities: qc.status === 'completed'
-              ? []
-              : [qc.singlePlaneFallback ? 'single_plane_fallback' : qc.status],
-            reshoot_requested: false,
-          },
-        }
+        const patentModel = finalPatentModel
 
         // ── Finalise debug_pipeline before persisting ──
         debug_pipeline.final_plane_count_saved = planes.length
         debug_pipeline.final_edge_count_saved = edges.length
-        debug_pipeline.final_patent_model_plane_count = (patentModel.planes || []).length
+        debug_pipeline.final_patent_model_plane_count = finalPatentModel.plane_count
         debug_pipeline.final_report_source = geometrySource
         console.log('[FINAL_GEOMETRY_STATE]', {
           planes: planes.length,
