@@ -321,6 +321,89 @@ async function processJob(input: any) {
       return lower.concat(upper);
     }
 
+    // Rasterize the union of axis-aligned rectangles into a small bitmap, then
+    // trace its outer boundary as a rectilinear polygon. Preserves L/T/cross
+    // concavity (unlike convex hull) so the topology engine can split planes.
+    function rectilinearUnionPolygon(
+      rects: Array<{ minX: number; maxX: number; minY: number; maxY: number }>,
+    ): Point[] {
+      if (!rects.length) return [];
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const r of rects) {
+        if (r.minX < minX) minX = r.minX; if (r.minY < minY) minY = r.minY;
+        if (r.maxX > maxX) maxX = r.maxX; if (r.maxY > maxY) maxY = r.maxY;
+      }
+      const W = Math.max(1, Math.round(maxX - minX));
+      const H = Math.max(1, Math.round(maxY - minY));
+      const target = 256;
+      const s = Math.min(1, target / Math.max(W, H));
+      const gw = Math.max(8, Math.ceil(W * s));
+      const gh = Math.max(8, Math.ceil(H * s));
+      const grid = new Uint8Array(gw * gh);
+      for (const r of rects) {
+        const x0 = Math.max(0, Math.floor((r.minX - minX) * s));
+        const x1 = Math.min(gw, Math.ceil((r.maxX - minX) * s));
+        const y0 = Math.max(0, Math.floor((r.minY - minY) * s));
+        const y1 = Math.min(gh, Math.ceil((r.maxY - minY) * s));
+        for (let y = y0; y < y1; y++) {
+          for (let x = x0; x < x1; x++) grid[y * gw + x] = 1;
+        }
+      }
+      const filled = (x: number, y: number) =>
+        x >= 0 && y >= 0 && x < gw && y < gh && grid[y * gw + x] === 1;
+      const key = (x: number, y: number) => `${x},${y}`;
+      const adj = new Map<string, Array<{ to: string; x: number; y: number }>>();
+      const addEdge = (ax: number, ay: number, bx: number, by: number) => {
+        const k = key(ax, ay);
+        if (!adj.has(k)) adj.set(k, []);
+        adj.get(k)!.push({ to: key(bx, by), x: bx, y: by });
+      };
+      for (let y = 0; y < gh; y++) {
+        for (let x = 0; x < gw; x++) {
+          if (!filled(x, y)) continue;
+          if (!filled(x, y - 1)) { addEdge(x, y, x + 1, y); addEdge(x + 1, y, x, y); }
+          if (!filled(x, y + 1)) { addEdge(x, y + 1, x + 1, y + 1); addEdge(x + 1, y + 1, x, y + 1); }
+          if (!filled(x - 1, y)) { addEdge(x, y, x, y + 1); addEdge(x, y + 1, x, y); }
+          if (!filled(x + 1, y)) { addEdge(x + 1, y, x + 1, y + 1); addEdge(x + 1, y + 1, x + 1, y); }
+        }
+      }
+      if (adj.size === 0) return [];
+      const visited = new Set<string>();
+      let bestLoop: Array<{ x: number; y: number }> = [];
+      for (const startKey of adj.keys()) {
+        if (visited.has(startKey)) continue;
+        const [sxs, sys] = startKey.split(",").map(Number);
+        const loop: Array<{ x: number; y: number }> = [{ x: sxs, y: sys }];
+        let curKey = startKey;
+        let prevKey = "";
+        let safety = adj.size * 4;
+        while (safety-- > 0) {
+          visited.add(curKey);
+          const nbrs = adj.get(curKey) || [];
+          const next = nbrs.find((n) => n.to !== prevKey && !visited.has(n.to))
+            || nbrs.find((n) => n.to !== prevKey);
+          if (!next) break;
+          if (next.to === startKey) break;
+          loop.push({ x: next.x, y: next.y });
+          prevKey = curKey;
+          curKey = next.to;
+        }
+        if (loop.length > bestLoop.length) bestLoop = loop;
+      }
+      if (bestLoop.length < 4) return [];
+      const simplified: Array<{ x: number; y: number }> = [];
+      for (let i = 0; i < bestLoop.length; i++) {
+        const prev = bestLoop[(i - 1 + bestLoop.length) % bestLoop.length];
+        const cur = bestLoop[i];
+        const next = bestLoop[(i + 1) % bestLoop.length];
+        const collinear =
+          (prev.x === cur.x && cur.x === next.x) ||
+          (prev.y === cur.y && cur.y === next.y);
+        if (!collinear) simplified.push(cur);
+      }
+      return simplified.map((p) => ({ x: minX + p.x / s, y: minY + p.y / s }));
+    }
+
     // Compute Solar bbox in pixel space — used as the coverage reference target.
     await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
     const solarData = await fetchGoogleSolar(coords.lat, coords.lng);
