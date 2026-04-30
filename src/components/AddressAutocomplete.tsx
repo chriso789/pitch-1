@@ -246,8 +246,16 @@ export function AddressAutocomplete({
                 {predictions.map((prediction) => (
                   <CommandItem
                     key={prediction.place_id}
-                    value={prediction.description}
+                    value={prediction.place_id}
                     onSelect={() => handleSelectPrediction(prediction)}
+                    onMouseDown={(e) => {
+                      // Prevent input blur and ensure selection fires even when
+                      // rendered inside a Radix Dialog (which can swallow pointer events
+                      // on portaled Popover content).
+                      e.preventDefault();
+                      handleSelectPrediction(prediction);
+                    }}
+                    onTouchStart={() => handleSelectPrediction(prediction)}
                     className="cursor-pointer"
                   >
                     <MapPin className="mr-2 h-4 w-4 text-muted-foreground" />
