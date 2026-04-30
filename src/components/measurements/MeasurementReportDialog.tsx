@@ -17,6 +17,7 @@ import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import PatentRoofReport from './PatentRoofReport';
+import RasterOverlayDebugView from './RasterOverlayDebugView';
 
 interface MeasurementReportDialogProps {
   open: boolean;
