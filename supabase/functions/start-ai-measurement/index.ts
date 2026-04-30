@@ -18,7 +18,7 @@ import {
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
 import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
-import { computeOverlayTransform } from "../_shared/overlay-transform.ts";
+import { computeOverlayTransform, transformOverlayPoint, transformOverlayPoints } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
