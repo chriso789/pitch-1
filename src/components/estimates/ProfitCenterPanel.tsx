@@ -607,6 +607,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
             )}
           </TabsContent>
 
+          {/* Change Orders Tab */}
+          <TabsContent value="change_orders" className="mt-0">
+            <ChangeOrdersTab pipelineEntryId={pipelineEntryId} projectId={projectId} />
+          </TabsContent>
+
           {/* Payments Tab - Project only */}
           {isProject && (
             <TabsContent value="payments" className="mt-0">
