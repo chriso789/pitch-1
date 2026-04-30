@@ -113,7 +113,7 @@ EXTRACTION RULES:
             role: "user",
             content: [
               { type: "text", text: "Extract every material line item from this supplier quote. The PDF may have multiple pages — scan ALL pages first to last and return the complete combined list of materials with quantities and unit prices." },
-              imageContent,
+              mediaContent,
             ],
           },
         ],
