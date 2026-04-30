@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     const { 
       project_id,
       pipeline_entry_id,
+      change_order_id,
       invoice_type,
       vendor_name,
       crew_name,
