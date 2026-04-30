@@ -1523,6 +1523,119 @@ function buildMapboxStaticImageUrl(args: { lng: number; lat: number; zoom: numbe
   return `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${args.lng},${args.lat},${args.zoom},0,0/${args.width}x${args.height}@2x?access_token=${MAPBOX_TOKEN}`;
 }
 
+// Google Maps Static API — orthographic satellite imagery at a given center/zoom.
+// Used as the PRIMARY measurement imagery when available because Google's
+// satellite tiles are typically sharper than Mapbox in US suburban markets,
+// which improves Sobel/Hough ridge detection. Falls back to Mapbox on failure.
+function buildGoogleStaticSatelliteUrl(args: { lng: number; lat: number; zoom: number; width: number; height: number }) {
+  // scale=2 → returns 2x pixel density (matches Mapbox @2x).
+  // maxsize for free tier is 640x640 logical; with scale=2 effective px = 1280x1280.
+  const w = Math.min(args.width, 640);
+  const h = Math.min(args.height, 640);
+  const url = new URL("https://maps.googleapis.com/maps/api/staticmap");
+  url.searchParams.set("center", `${args.lat},${args.lng}`);
+  url.searchParams.set("zoom", String(args.zoom));
+  url.searchParams.set("size", `${w}x${h}`);
+  url.searchParams.set("scale", "2");
+  url.searchParams.set("maptype", "satellite");
+  url.searchParams.set("format", "png");
+  url.searchParams.set("key", GOOGLE_MAPS_API_KEY);
+  return url.toString();
+}
+
+interface ImageryFetchResult {
+  buffer: Uint8Array;
+  contentType: string | null;
+  url: string;
+  provider: "google_2d_satellite" | "mapbox_satellite";
+  decisionLog: {
+    google_2d_available: boolean;
+    mapbox_available: boolean;
+    selected_provider: string;
+    bytes: number;
+    reason: string;
+    google_3d_debug_available: boolean;
+  };
+}
+
+async function fetchAerialImagery(args: { lng: number; lat: number; zoom: number; width: number; height: number }): Promise<ImageryFetchResult> {
+  const googleAvailable = Boolean(GOOGLE_MAPS_API_KEY);
+  const mapboxAvailable = Boolean(MAPBOX_TOKEN);
+
+  // Try Google 2D Satellite first (sharper imagery → better edge/ridge detection).
+  if (googleAvailable) {
+    try {
+      const url = buildGoogleStaticSatelliteUrl(args);
+      const resp = await fetch(url);
+      if (resp.ok) {
+        const ct = resp.headers.get("content-type") || "";
+        const buf = new Uint8Array(await resp.arrayBuffer());
+        // Sanity: Google returns ~tiny error tiles on quota/billing issues.
+        if (buf.byteLength >= 20_000 && ct.startsWith("image/")) {
+          console.log("[IMAGERY_PROVIDER_SELECTION]", JSON.stringify({
+            google_2d_available: true,
+            mapbox_available: mapboxAvailable,
+            selected_provider: "google_2d_satellite",
+            bytes: buf.byteLength,
+            reason: "google_2d_preferred_for_edge_detection",
+          }));
+          return {
+            buffer: buf,
+            contentType: ct,
+            url,
+            provider: "google_2d_satellite",
+            decisionLog: {
+              google_2d_available: true,
+              mapbox_available: mapboxAvailable,
+              selected_provider: "google_2d_satellite",
+              bytes: buf.byteLength,
+              reason: "google_2d_preferred_for_edge_detection",
+              google_3d_debug_available: googleAvailable, // 3D Tiles uses same key
+            },
+          };
+        } else {
+          console.warn("[IMAGERY_PROVIDER_SELECTION] google rejected — bytes=", buf.byteLength, "ct=", ct);
+        }
+      } else {
+        console.warn("[IMAGERY_PROVIDER_SELECTION] google fetch failed:", resp.status);
+      }
+    } catch (e) {
+      console.warn("[IMAGERY_PROVIDER_SELECTION] google error:", (e as Error).message);
+    }
+  }
+
+  // Fallback: Mapbox Satellite.
+  if (!mapboxAvailable) {
+    throw new Error("No imagery provider available: GOOGLE_MAPS_API_KEY and MAPBOX_PUBLIC_TOKEN are both unset.");
+  }
+  const url = buildMapboxStaticImageUrl(args);
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Mapbox fetch failed: ${resp.status}`);
+  const ct = resp.headers.get("content-type") || "";
+  const buf = new Uint8Array(await resp.arrayBuffer());
+  console.log("[IMAGERY_PROVIDER_SELECTION]", JSON.stringify({
+    google_2d_available: googleAvailable,
+    mapbox_available: true,
+    selected_provider: "mapbox_satellite",
+    bytes: buf.byteLength,
+    reason: googleAvailable ? "google_unavailable_or_invalid_fallback_to_mapbox" : "google_key_missing",
+  }));
+  return {
+    buffer: buf,
+    contentType: ct,
+    url,
+    provider: "mapbox_satellite",
+    decisionLog: {
+      google_2d_available: googleAvailable,
+      mapbox_available: true,
+      selected_provider: "mapbox_satellite",
+      bytes: buf.byteLength,
+      reason: googleAvailable ? "google_unavailable_or_invalid_fallback_to_mapbox" : "google_key_missing",
+      google_3d_debug_available: googleAvailable,
+    },
+  };
+}
+
 async function fetchGoogleSolar(lat: number, lng: number) {
   if (!GOOGLE_SOLAR_API_KEY) return null;
   const url = new URL("https://solar.googleapis.com/v1/buildingInsights:findClosest");
