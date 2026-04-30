@@ -602,6 +602,11 @@ async function processJob(input: any) {
       },
       solar_used: !!solarData,
       unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+      // Mirror overlay payload for clients reading ai_detection_data directly.
+      planes_px,
+      edges_px,
+      raster_size,
+      raster_image_url: imageUrl,
     };
 
     // Publish canonical roof_measurements row
