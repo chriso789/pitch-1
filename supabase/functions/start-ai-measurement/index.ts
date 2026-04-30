@@ -35,6 +35,7 @@ import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
 import { buildTopology as buildTriangulationTopology } from '../_shared/topology-engine.ts'
 import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
 import { classifyHipValleyRidgeEdges } from '../_shared/hip-valley-classifier.ts'
+import { splitPlanesFromRidges } from '../_shared/ridge-plane-splitter.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -3541,9 +3542,96 @@ Deno.serve(async (req) => {
                     `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
                   )
                 } else {
-                  console.log(
-                    `[ridge_split_pre_synthesis] ${ridgeLines.length} ridges did not yield split (subPolys=${subPolys.length}); falling through to synthesis`,
-                  )
+                  // Single-pass buildRoofPlanes failed to split. Try the
+                  // recursive ridge-driven splitter as a second chance.
+                  // It re-detects ridges inside each sub-polygon and splits
+                  // again, producing 5–15 planes on complex residential roofs.
+                  try {
+                    // Rasterize a polygon (in full-res image pixel space)
+                    // into the downsampled grid that detectRidges operates on.
+                    const rasterizePolyToMask = (poly: { x: number; y: number }[]): Uint8Array => {
+                      const mask = new Uint8Array(extracted.dW * extracted.dH)
+                      // Convert polygon to downsampled grid coords.
+                      const gridPoly = poly.map((p) => ({
+                        x: p.x / extracted.scaleX,
+                        y: p.y / extracted.scaleY,
+                      }))
+                      // Bounding box clamp
+                      let minY = extracted.dH, maxY = 0
+                      for (const v of gridPoly) {
+                        if (v.y < minY) minY = v.y
+                        if (v.y > maxY) maxY = v.y
+                      }
+                      minY = Math.max(0, Math.floor(minY))
+                      maxY = Math.min(extracted.dH - 1, Math.ceil(maxY))
+                      // Scanline fill
+                      for (let y = minY; y <= maxY; y++) {
+                        const xs: number[] = []
+                        for (let i = 0; i < gridPoly.length; i++) {
+                          const a = gridPoly[i]
+                          const b = gridPoly[(i + 1) % gridPoly.length]
+                          if ((a.y <= y && b.y > y) || (b.y <= y && a.y > y)) {
+                            const t = (y - a.y) / (b.y - a.y)
+                            xs.push(a.x + t * (b.x - a.x))
+                          }
+                        }
+                        xs.sort((m, n) => m - n)
+                        for (let k = 0; k + 1 < xs.length; k += 2) {
+                          const xStart = Math.max(0, Math.floor(xs[k]))
+                          const xEnd = Math.min(extracted.dW - 1, Math.ceil(xs[k + 1]))
+                          for (let x = xStart; x <= xEnd; x++) mask[y * extracted.dW + x] = 1
+                        }
+                      }
+                      return mask
+                    }
+
+                    const detectFn = (poly: { x: number; y: number }[]) => {
+                      const mask = rasterizePolyToMask(poly)
+                      const raw = detectRidges(
+                        extracted.mag, extracted.blob, extracted.dW, extracted.dH,
+                        extracted.scaleX, extracted.scaleY, extracted.gx, extracted.gy,
+                        mask,
+                      )
+                      return raw.map((r) => ({
+                        p1: r.a, p2: r.b, score: r.votes,
+                      }))
+                    }
+                    const recursivePlanes = splitPlanesFromRidges(
+                      basePlane.polygon_px as { x: number; y: number }[],
+                      detectFn,
+                      0,
+                      4,
+                    )
+                    if (recursivePlanes.length > 1) {
+                      planes = recursivePlanes.map((rp, idx) =>
+                        planeFromFootprint(
+                          rp.polygon, lat, lng, imgW, imgH,
+                          cal.meters_per_pixel_actual, feetPerPixel,
+                          basePlane.pitch ?? null, basePlane.azimuth ?? null,
+                          'ridge_split_recursive', idx,
+                        ),
+                      )
+                      edges = edgesFromPlanes(
+                        planes, lat, lng, imgW, imgH,
+                        cal.meters_per_pixel_actual, feetPerPixel,
+                      )
+                      console.log(
+                        `[ridge_split_recursive] recursive splitter produced ${planes.length} planes; ` +
+                        `edges=${edges.length} ` +
+                        `(ridges=${edges.filter(e => e.edge_type === 'ridge').length} ` +
+                        `hips=${edges.filter(e => e.edge_type === 'hip').length} ` +
+                        `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
+                      )
+                    } else {
+                      console.log(
+                        `[ridge_split_pre_synthesis] ${ridgeLines.length} ridges did not yield split (subPolys=${subPolys.length}, recursive=${recursivePlanes.length}); falling through to synthesis`,
+                      )
+                    }
+                  } catch (recErr) {
+                    console.warn(
+                      `[ridge_split_recursive] failed: ${(recErr as Error).message}; falling through to synthesis`,
+                    )
+                  }
                 }
               } else {
                 console.log(
