@@ -342,33 +342,63 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             {address && (
               <p className="text-sm text-muted-foreground mt-1">{address}</p>
             )}
-            {debugPipeline && (
-              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  source: {String(debugPipeline.final_report_source ?? 'unknown')}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  planes: {String(debugPipeline.final_plane_count_saved ?? 0)}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  edges: {String(debugPipeline.final_edge_count_saved ?? 0)}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  patent_planes: {String(debugPipeline.final_patent_model_plane_count ?? 0)}
-                </span>
-                {debugPipeline.ridge_split_recursive_entered && (
-                  <span className="px-1.5 py-0.5 rounded bg-muted">
-                    rsr: {String(debugPipeline.ridge_split_recursive_plane_count ?? 0)}p/
-                    {String(debugPipeline.ridge_split_recursive_edge_count ?? 0)}e
+            {(() => {
+              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+              const footprintSource =
+                (effectiveMeasurement as any)?.footprint_source ?? grj.footprint_source ?? 'unknown';
+              const inferenceSource =
+                (effectiveMeasurement as any)?.inference_source ?? grj.inference_source ?? 'unknown';
+              const topologySource = grj.topology_source ?? grj.geometry_source ?? 'unknown';
+              const usedDeterministic = grj.used_deterministic_topology === true;
+              const blocked = grj.block_customer_report_reason || null;
+              return (
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
+                  <span
+                    className={`px-1.5 py-0.5 rounded ${
+                      usedDeterministic ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted'
+                    }`}
+                    title="Topology engine that produced ridges/hips/valleys"
+                  >
+                    topology: {String(topologySource)}
                   </span>
-                )}
-                {pdfIsStale && (
-                  <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
-                    PDF stale — will regenerate
+                  <span className="px-1.5 py-0.5 rounded bg-muted" title="Building footprint provider">
+                    footprint: {String(footprintSource)}
                   </span>
-                )}
-              </div>
-            )}
+                  <span className="px-1.5 py-0.5 rounded bg-muted" title="Inference source for plane detection">
+                    inference: {String(inferenceSource)}
+                  </span>
+                  {debugPipeline && (
+                    <>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">
+                        planes: {String(debugPipeline.final_plane_count_saved ?? 0)}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">
+                        edges: {String(debugPipeline.final_edge_count_saved ?? 0)}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">
+                        patent_planes: {String(debugPipeline.final_patent_model_plane_count ?? 0)}
+                      </span>
+                      {debugPipeline.ridge_split_recursive_entered && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted">
+                          rsr: {String(debugPipeline.ridge_split_recursive_plane_count ?? 0)}p/
+                          {String(debugPipeline.ridge_split_recursive_edge_count ?? 0)}e
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {blocked && (
+                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                      blocked: {String(blocked)}
+                    </span>
+                  )}
+                  {pdfIsStale && (
+                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                      PDF stale — will regenerate
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <Button
             size="sm"
