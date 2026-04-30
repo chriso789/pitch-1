@@ -59,15 +59,51 @@ function angleDiffDeg(a: number, b: number): number {
   return d;
 }
 
-// ─── 1. RIDGE FILTERING ───────────────────────────────────────────────────
-/**
- * Keep only the top 1–3 structural ridges.
- *
- * Score each ridge by: detector score, length, alignment with solar azimuth,
- * symmetry across the footprint. Discard:
- *   - shorter than 25% of footprint width
- *   - dominated by a sibling that's >2× longer + similar angle
- */
+// ─── 1. RIDGE FILTERING (patent-aligned 4-signal scoring) ────────────────
+//
+// Each candidate is scored on 4 normalized signals:
+//   length      (0.40) — dominant; rejects tiny noise, boosts dominant ridges
+//   alignment   (0.25) — angle vs solar-derived ridge axis (perpendicular to azimuth)
+//   symmetry    (0.20) — midpoint distance to footprint centroid
+//   continuity  (0.15) — straight-line ratio for polyline ridges (default 1 for segments)
+//
+// Hard filters (before scoring) drop garbage early:
+//   length < 25% of footprint width  OR  length < 40 px  OR  continuity < 0.5
+//
+// Selection: score > 0.65, top 3 max. Safety: if all rejected but candidates
+// exist, keep the single best one.
+
+function norm01(value: number, min: number, max: number): number {
+  if (max <= min) return 0;
+  return Math.max(0, Math.min(1, (value - min) / (max - min)));
+}
+
+function lengthScore(lenPx: number, footprintWidthPx: number): number {
+  return norm01(lenPx, footprintWidthPx * 0.2, footprintWidthPx);
+}
+
+function alignmentScore(angleDeg: number, ridgeTargetsDeg: number[]): number {
+  if (!ridgeTargetsDeg.length) return 0.5; // neutral when no solar data
+  const minDiff = Math.min(...ridgeTargetsDeg.map((t) => angleDiffDeg(angleDeg, t)));
+  return 1 - norm01(minDiff, 0, 45);
+}
+
+function symmetryScore(midX: number, midY: number, centroidX: number, centroidY: number, footprintWidthPx: number): number {
+  const dist = Math.hypot(midX - centroidX, midY - centroidY);
+  return 1 - norm01(dist, 0, 0.4 * footprintWidthPx);
+}
+
+function continuityScoreFor(l: RidgeLine): number {
+  // 2-point ridge segment is by definition perfectly straight.
+  return 1;
+}
+
+function polyCentroid(poly: Pt[]): { x: number; y: number } {
+  let sx = 0, sy = 0;
+  for (const p of poly) { sx += p.x; sy += p.y; }
+  return { x: sx / poly.length, y: sy / poly.length };
+}
+
 export function filterRidges(
   ridges: RidgeLine[],
   footprint: Pt[],
@@ -80,51 +116,67 @@ export function filterRidges(
   if (!ridges.length) return { kept: [], detected, discarded: 0, reasons };
 
   const fp = bbox(footprint);
-  const minLen = 0.25 * Math.max(fp.w, fp.h);
+  const fpW = Math.max(fp.w, fp.h);
+  const centroid = polyCentroid(footprint);
 
-  // Solar azimuths → ridge orientation = perpendicular to slope direction.
-  // Roof azimuth = down-slope; ridge runs perpendicular to it.
-  const ridgeTargets = solarAzimuthsDeg.map((az) => {
-    let t = (az - 90 + 360) % 180;
-    return t;
-  });
+  // Ridge axis is perpendicular to solar azimuth (down-slope direction).
+  const ridgeTargets = solarAzimuthsDeg.map((az) => ((az - 90) % 180 + 180) % 180);
 
-  type Scored = { l: RidgeLine; score: number; len: number; ang: number };
-  const scored: Scored[] = [];
-
+  // Hard filters
+  const survivors: RidgeLine[] = [];
   for (const l of ridges) {
     const len = lineLen(l);
-    if (len < minLen) { bump("too_short"); continue; }
-    const ang = lineAngleDeg(l);
-
-    let alignBonus = 0;
-    if (ridgeTargets.length) {
-      const minDiff = Math.min(...ridgeTargets.map((t) => angleDiffDeg(ang, t)));
-      alignBonus = Math.max(0, 1 - minDiff / 30); // 0..1 within 30°
-    }
-
-    const lenScore = Math.min(1, len / Math.max(fp.w, fp.h));
-    const detScore = Math.max(0, Math.min(1, l.score ?? 0.5));
-    const total = detScore * 0.5 + lenScore * 0.35 + alignBonus * 0.15;
-    scored.push({ l, score: total, len, ang });
+    if (len < fpW * 0.25) { bump("too_short_vs_footprint"); continue; }
+    if (len < 40) { bump("too_short_abs"); continue; }
+    if (continuityScoreFor(l) < 0.5) { bump("low_continuity"); continue; }
+    survivors.push(l);
   }
+
+  type Scored = { l: RidgeLine; score: number; len: number; ang: number };
+  const scored: Scored[] = survivors.map((l) => {
+    const len = lineLen(l);
+    const ang = lineAngleDeg(l);
+    const midX = (l.p1.x + l.p2.x) / 2;
+    const midY = (l.p1.y + l.p2.y) / 2;
+
+    const L = lengthScore(len, fpW);
+    const A = alignmentScore(ang, ridgeTargets);
+    const S = symmetryScore(midX, midY, centroid.x, centroid.y, fpW);
+    const C = continuityScoreFor(l);
+
+    const score = L * 0.40 + A * 0.25 + S * 0.20 + C * 0.15;
+    return { l, score, len, ang };
+  });
 
   scored.sort((a, b) => b.score - a.score);
 
-  // Suppress siblings that are much shorter and near-parallel to a kept ridge.
-  const kept: Scored[] = [];
-  for (const s of scored) {
-    let dominated = false;
-    for (const k of kept) {
-      if (angleDiffDeg(s.ang, k.ang) < 12 && k.len > s.len * 2) { dominated = true; break; }
-    }
-    if (dominated) { bump("dominated_by_parallel"); continue; }
-    kept.push(s);
-    if (kept.length >= 3) break;
+  // Threshold + top 3
+  let kept: Scored[] = scored.filter((s) => s.score > 0.65).slice(0, 3);
+
+  // Safety fallback: at least one ridge if any survived hard filters.
+  if (kept.length === 0 && scored.length > 0) {
+    bump("fallback_best_only");
+    kept = [scored[0]];
   }
 
-  const discarded = detected - kept.length;
-  return { kept: kept.map((s) => s.l), detected, discarded, reasons };
+  // Suppress near-parallel duplicates (keep highest-scored).
+  const deduped: Scored[] = [];
+  for (const s of kept) {
+    const clash = deduped.find((k) => angleDiffDeg(s.ang, k.ang) < 12 && k.len > s.len * 2);
+    if (clash) { bump("dominated_by_parallel"); continue; }
+    deduped.push(s);
+  }
+
+  console.log("[RIDGE_FILTER]", {
+    detected,
+    after_hard_filter: survivors.length,
+    selected: deduped.length,
+    scores: deduped.map((s) => Number(s.score.toFixed(3))),
+    reasons,
+  });
+
+  const discarded = detected - deduped.length;
+  return { kept: deduped.map((s) => s.l), detected, discarded, reasons };
 }
 
 // ─── 2. PLANE CONSOLIDATION ───────────────────────────────────────────────
