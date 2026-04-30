@@ -40,6 +40,60 @@ function bbox(poly: Pt[]): { minX: number; minY: number; maxX: number; maxY: num
   return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
 }
 
+// Sutherland–Hodgman polygon-vs-convex-bbox clip is not enough for sibling
+// planes; we need true polygon-vs-polygon intersection area. Use a simple
+// Sutherland–Hodgman where the clip polygon is treated as convex (we triangulate
+// fan from poly[0] for a robust enough approximation when polys are mostly convex).
+function clipPolygonByEdge(poly: Pt[], a: Pt, b: Pt): Pt[] {
+  const out: Pt[] = [];
+  if (poly.length === 0) return out;
+  const inside = (p: Pt) => (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x) >= 0;
+  const intersect = (p: Pt, q: Pt): Pt => {
+    const x1 = p.x, y1 = p.y, x2 = q.x, y2 = q.y;
+    const x3 = a.x, y3 = a.y, x4 = b.x, y4 = b.y;
+    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    if (den === 0) return q;
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+    return { x: x1 + t * (x2 - x1), y: y1 + t * (y2 - y1) };
+  };
+  for (let i = 0; i < poly.length; i++) {
+    const cur = poly[i];
+    const prev = poly[(i + poly.length - 1) % poly.length];
+    const curIn = inside(cur), prevIn = inside(prev);
+    if (curIn) {
+      if (!prevIn) out.push(intersect(prev, cur));
+      out.push(cur);
+    } else if (prevIn) {
+      out.push(intersect(prev, cur));
+    }
+  }
+  return out;
+}
+
+// Approximate polygon-polygon intersection area by clipping `subject` against
+// each edge of `clip` (treating clip as convex). Works well enough for
+// near-rectangular sibling planes; over-estimates for very concave clips.
+function polyIntersectionArea(subject: Pt[], clip: Pt[]): number {
+  if (subject.length < 3 || clip.length < 3) return 0;
+  // Ensure clip is CCW for the inside() test above.
+  const ensureCCW = (poly: Pt[]) => {
+    let a = 0;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      a += p.x * q.y - q.x * p.y;
+    }
+    return a >= 0 ? poly : [...poly].reverse();
+  };
+  const c = ensureCCW(clip);
+  let result = subject;
+  for (let i = 0; i < c.length; i++) {
+    const a = c[i], b = c[(i + 1) % c.length];
+    result = clipPolygonByEdge(result, a, b);
+    if (result.length === 0) return 0;
+  }
+  return polyArea(result);
+}
+
 function lineLen(l: RidgeLine): number {
   return Math.hypot(l.p2.x - l.p1.x, l.p2.y - l.p1.y);
 }
