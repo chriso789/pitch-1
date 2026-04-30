@@ -1060,14 +1060,16 @@ async function processJob(input: any) {
     // physical measurements calculated from original pixel geometry.
     let overlayCalibration: ReturnType<typeof computeOverlayTransform> | null = null;
     let roofTargetBboxPx: any = null;
+    let roofTargetSource: string | null = null;
     try {
-      const preferredTarget =
-        candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px ||
-        candidates.find((c) => c.source === "google_solar_segments_hull" && c.bbox_px)?.bbox_px ||
-        solarBboxPx ||
-        candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px ||
-        bboxOf(footprint);
-      roofTargetBboxPx = preferredTarget;
+      const targetCandidates = [
+        { source: "google_solar_segments_union", bbox: candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px },
+        { source: "google_solar_bbox", bbox: solarBboxPx },
+        { source: "imagery_unet_mask", bbox: candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px },
+      ].filter((t) => t.bbox && Number(t.bbox.width) > 0 && Number(t.bbox.height) > 0);
+      const preferredTarget = targetCandidates[0] || null;
+      roofTargetBboxPx = preferredTarget?.bbox || null;
+      roofTargetSource = preferredTarget?.source || null;
       const geometryPoints = [
         ...cleanPlanes.flatMap((p) => p.polygon_px || []),
         ...cleanEdges.flatMap((e) => e.line_px || []),
@@ -1078,6 +1080,7 @@ async function processJob(input: any) {
         roofTargetBboxPx,
       });
       console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
+        roof_target_source: roofTargetSource,
         geometry_bbox_px: overlayCalibration.geometry_bbox_px,
         roof_target_bbox_px: overlayCalibration.roof_target_bbox_px,
         uniform_scale: overlayCalibration.uniform_scale,
