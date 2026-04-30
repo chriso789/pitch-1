@@ -16,6 +16,8 @@ import {
 import { MapPin, Loader2, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useGoogleMapsToken } from "@/hooks/useGoogleMapsToken";
+import { loadGoogleMaps, isGoogleMapsLoaded } from "@/lib/googleMapsLoader";
 
 export interface AddressComponents {
   street_number?: string;
@@ -70,6 +72,16 @@ export function AddressAutocomplete({
   
   const debouncedValue = useDebounce(inputValue, 300);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { apiKey } = useGoogleMapsToken();
+  const [mapsReady, setMapsReady] = useState(isGoogleMapsLoaded());
+
+  // Load Google Maps JS (with Places library) once we have an API key
+  useEffect(() => {
+    if (!apiKey || mapsReady) return;
+    loadGoogleMaps(apiKey)
+      .then(() => setMapsReady(true))
+      .catch((err) => console.error("Google Maps load failed:", err));
+  }, [apiKey, mapsReady]);
 
   // Fetch predictions when input changes
   useEffect(() => {
@@ -79,7 +91,7 @@ export function AddressAutocomplete({
     }
 
     fetchPredictions(debouncedValue);
-  }, [debouncedValue]);
+  }, [debouncedValue, mapsReady]);
 
   async function fetchPredictions(query: string) {
     setLoading(true);
@@ -200,6 +212,9 @@ export function AddressAutocomplete({
               placeholder={placeholder}
               disabled={disabled}
               required={required}
+              autoComplete="off"
+              name="lead-address-search"
+              spellCheck={false}
               className={cn(
                 "pl-10 pr-10",
                 error && "border-destructive",
