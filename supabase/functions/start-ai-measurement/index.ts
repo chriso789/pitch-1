@@ -849,6 +849,39 @@ async function processJob(input: any) {
         console.warn("[RIDGE_SPLIT] failed:", (e as Error).message);
       }
 
+      // ── PLANE MERGE — collapse over-segmented ridge_split output before
+      //    downstream consolidation, edge classification, and rendering.
+      let planeMergeDebug: any = null;
+      if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
+        try {
+          const mergeResult = mergeRoofPlanes({
+            planes: cleanPlanes.map((p: any) => ({
+              id: p.plane_index,
+              plane_index: p.plane_index,
+              polygon_px: p.polygon_px,
+              pitch: p.pitch,
+              pitch_degrees: p.pitch_degrees,
+              azimuth: p.azimuth,
+              source: p.source,
+            })),
+            feetPerPixel: actualFpp,
+          });
+          planeMergeDebug = mergeResult.debug;
+          cleanPlanes = mergeResult.planes.map((p: any, i: number) => ({
+            plane_index: i + 1,
+            polygon_px: p.polygon_px,
+            confidence: 0.74,
+            pitch: p.pitch ?? null,
+            pitch_degrees: p.pitch_degrees ?? null,
+            azimuth: p.azimuth ?? null,
+            source: "plane_merge_v1",
+          })) as any;
+        } catch (e) {
+          console.warn("[PLANE_MERGE] failed:", (e as Error).message);
+        }
+      }
+      (globalThis as any).__planeMergeDebug = planeMergeDebug;
+
       try {
         // 5b. Skeleton — used as fallback OR to add minor interior structure.
         if (cleanPlanes.length < 2) {
