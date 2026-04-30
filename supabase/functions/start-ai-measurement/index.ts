@@ -3,6 +3,7 @@
 // Canonical AI Measurement entrypoint. Accepts both legacy
 // (pipelineEntryId/lat/lng/tenantId/userId/pitchOverride/address)
 // and new (lead_id/project_id/property_address/...) payload shapes.
+import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
@@ -225,7 +226,7 @@ async function processJob(input: any) {
     const imageUrl = imageryResult.url;
     const imageryProvider = imageryResult.provider;
     const imageryDecisionLog = imageryResult.decisionLog;
-    const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType);
+    const raster = await decodeRaster(imageryResult.buffer, imageryResult.contentType, imageryProvider);
 
 
 
@@ -1494,25 +1495,47 @@ function sniffRasterFormat(buf: Uint8Array): "png" | "jpeg" | "unknown" {
   return "unknown";
 }
 
-async function decodeRaster(buf: Uint8Array, contentType?: string | null): Promise<DecodedRaster> {
+function readUInt32BE(data: Uint8Array | ArrayBuffer, offset: number): number {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return view.getUint32(offset, false);
+}
+
+async function decodeRaster(buf: Uint8Array, contentType?: string | null, provider = "unknown"): Promise<DecodedRaster> {
   const ct = String(contentType || "").toLowerCase();
   const format =
     ct.includes("png") ? "png" :
     ct.includes("jpeg") || ct.includes("jpg") ? "jpeg" :
     sniffRasterFormat(buf);
 
-  if (format === "png") {
-    const { PNG } = await import("npm:pngjs@7.0.0");
-    const png = (PNG as any).sync.read(buf);
-    return { width: png.width, height: png.height, data: png.data as Uint8Array };
+  console.log("[RASTER_DECODE_START]", {
+    provider,
+    contentType,
+    byteLength: buf.byteLength,
+  });
+
+  try {
+    if (format === "png") {
+      const { PNG } = await import("npm:pngjs@7.0.0");
+      const nodeBuffer = Buffer.from(buf);
+      const png = (PNG as any).sync.read(nodeBuffer);
+      const raster = { width: png.width, height: png.height, data: png.data as Uint8Array };
+      console.log("[RASTER_DECODE_SUCCESS]", { width: raster.width, height: raster.height, format });
+      return raster;
+    }
+    if (format === "jpeg") {
+      const jpeg = await import("npm:jpeg-js@0.4.4");
+      const nodeBuffer = Buffer.from(buf);
+      const decoded = (jpeg as any).decode(nodeBuffer, { useTArray: true });
+      if (!decoded?.width || !decoded?.height || !decoded?.data) throw new Error("JPEG decode failed");
+      const raster = { width: decoded.width, height: decoded.height, data: decoded.data as Uint8Array };
+      console.log("[RASTER_DECODE_SUCCESS]", { width: raster.width, height: raster.height, format });
+      return raster;
+    }
+    throw new Error(`Unsupported raster format: ${contentType || "unknown"}`);
+  } catch (error) {
+    throw new Error("Raster decode failed: " + (error instanceof Error ? error.message : String(error)));
   }
-  if (format === "jpeg") {
-    const jpeg = await import("npm:jpeg-js@0.4.4");
-    const decoded = (jpeg as any).decode(buf, { useTArray: true });
-    if (!decoded?.width || !decoded?.height || !decoded?.data) throw new Error("JPEG decode failed");
-    return { width: decoded.width, height: decoded.height, data: decoded.data as Uint8Array };
-  }
-  throw new Error(`Unsupported raster format: ${contentType || "unknown"}`);
 }
 
 async function geocodeAddress(address: string): Promise<(GeoPoint & { geocode_location_type: string }) | null> {
