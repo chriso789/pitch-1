@@ -3612,16 +3612,91 @@ Deno.serve(async (req) => {
                           'ridge_split_recursive', idx,
                         ),
                       )
-                      edges = edgesFromPlanes(
-                        planes, lat, lng, imgW, imgH,
-                        cal.meters_per_pixel_actual, feetPerPixel,
-                      )
+                      // Build deterministic adjacency graph + edge classification
+                      // for the recursive plane set. This replaces edgesFromPlanes
+                      // because we need shared interior edges to carry
+                      // adjacent_plane_ids: [planeA, planeB] for hip/valley logic.
+                      const classified = buildAdjacencyAndClassifyEdges({
+                        footprint_px: basePlane.polygon_px as { x: number; y: number }[],
+                        planes: planes.map((p) => ({
+                          plane_index: (p as any).plane_index ?? (p as any).id,
+                          id: (p as any).id ?? (p as any).plane_index,
+                          polygon_px: p.polygon_px,
+                          pitch: p.pitch ?? null,
+                          azimuthDeg: (p as any).azimuthDeg ?? (p as any).azimuth_degrees ?? p.azimuth ?? null,
+                          source: p.source,
+                        })),
+                      })
+
+                      edges = classified.map((e) => {
+                        const a = e.line_px[0]
+                        const b = e.line_px[e.line_px.length - 1]
+                        const lpx = Math.hypot(b.x - a.x, b.y - a.y)
+                        return {
+                          edge_type: e.edge_type,
+                          source: e.source,
+                          line_px: e.line_px,
+                          line_geojson: [
+                            pixelToLatLng(a.x, a.y, lat, lng, imgW, imgH, cal.meters_per_pixel_actual),
+                            pixelToLatLng(b.x, b.y, lat, lng, imgW, imgH, cal.meters_per_pixel_actual),
+                          ],
+                          length_px: lpx,
+                          length_ft: lpx * feetPerPixel,
+                          confidence: e.confidence,
+                          // Carry through adjacency + reason for downstream consumers.
+                          adjacent_plane_ids: e.adjacent_plane_ids,
+                          debug_reason: e.debug_reason,
+                        } as RoofEdge
+                      })
+
+                      const edgeCounts = edges.reduce((acc, e) => {
+                        acc[e.edge_type] = (acc[e.edge_type] || 0) + 1
+                        return acc
+                      }, {} as Record<string, number>)
+
+                      const missingAzimuthPlanes = planes.filter((p) => {
+                        const v = (p as any).azimuthDeg ?? (p as any).azimuth_degrees ?? p.azimuth
+                        return !(typeof v === 'number' && Number.isFinite(v))
+                      }).length
+
+                      console.log('[ridge_split_recursive_adjacency]', {
+                        planes: planes.length,
+                        edges: edges.length,
+                        ridge: edgeCounts.ridge || 0,
+                        hip: edgeCounts.hip || 0,
+                        valley: edgeCounts.valley || 0,
+                        eave: edgeCounts.eave || 0,
+                        rake: edgeCounts.rake || 0,
+                        unknown: edgeCounts.unknown || 0,
+                        missingAzimuthPlanes,
+                      })
+
+                      // QC gate: detect disconnected planes (no shared two-plane edges)
+                      const sharedTwoPlaneEdges = classified.filter(
+                        (e) => e.adjacent_plane_ids.length === 2,
+                      ).length
+                      if (planes.length > 1 && sharedTwoPlaneEdges === 0) {
+                        ;(aiJob as any)._topology_needs_review = true
+                        ;(aiJob as any)._topology_review_reason =
+                          'Multi-plane split created disconnected planes; adjacency graph failed.'
+                        console.warn(
+                          `[ridge_split_recursive_adjacency] needs_review: ${planes.length} planes but no shared two-plane edges`,
+                        )
+                      } else if (planes.length > 4 && (edgeCounts.hip || 0) + (edgeCounts.valley || 0) === 0) {
+                        ;(aiJob as any)._topology_needs_review = true
+                        ;(aiJob as any)._topology_review_reason =
+                          'Multi-plane geometry produced no hips or valleys; check footprint simplification or azimuth assignment.'
+                        console.warn(
+                          `[ridge_split_recursive_adjacency] needs_review: ${planes.length} planes but 0 hips/valleys`,
+                        )
+                      }
+
                       console.log(
                         `[ridge_split_recursive] recursive splitter produced ${planes.length} planes; ` +
                         `edges=${edges.length} ` +
-                        `(ridges=${edges.filter(e => e.edge_type === 'ridge').length} ` +
-                        `hips=${edges.filter(e => e.edge_type === 'hip').length} ` +
-                        `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
+                        `(ridges=${edgeCounts.ridge || 0} ` +
+                        `hips=${edgeCounts.hip || 0} ` +
+                        `valleys=${edgeCounts.valley || 0})`,
                       )
                     } else {
                       console.log(
