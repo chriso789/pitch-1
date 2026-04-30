@@ -529,7 +529,45 @@ async function processJob(input: any) {
       );
     }
 
-    const geometryReportJson = { planes: planeRows, edges: edgeRows, totals, quality };
+    // Pixel-space geometry for the dev raster overlay debug view.
+    // planes_px / edges_px are calibrated to raster_size (actual decoded raster dims).
+    const planes_px = cleanPlanes
+      .map((p) => ({
+        polygon: (p.polygon_px || []).map((pt: any) => [pt.x, pt.y] as [number, number]),
+        source: p.source,
+      }))
+      .filter((p) => p.polygon.length >= 3);
+    const edges_px = cleanEdges
+      .map((e) => {
+        const pts = e.line_px || [];
+        if (pts.length < 2) return null;
+        return {
+          type: e.edge_type,
+          p1: [pts[0].x, pts[0].y] as [number, number],
+          p2: [pts[1].x, pts[1].y] as [number, number],
+          source: e.source,
+        };
+      })
+      .filter(Boolean);
+    const raster_size = { width: raster.width, height: raster.height };
+
+    const geometryReportJson = {
+      planes: planeRows,
+      edges: edgeRows,
+      totals,
+      quality,
+      // Dev overlay payload — matches RasterOverlayDebugView contract.
+      planes_px,
+      edges_px,
+      raster_size,
+      raster_image_url: imageUrl,
+      topology_source: topologySource,
+      footprint_source: footprintSource,
+      inference_source: resolvedGeometrySource,
+      used_deterministic_topology:
+        topologySource === "straight_skeleton" || topologySource === "triangulation",
+      block_customer_report_reason: blockCustomerReportReason,
+    };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
       type: edge.edge_type,
       wkt: lineGeoJSONToWKT(edge.line_geojson),
@@ -564,6 +602,11 @@ async function processJob(input: any) {
       },
       solar_used: !!solarData,
       unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+      // Mirror overlay payload for clients reading ai_detection_data directly.
+      planes_px,
+      edges_px,
+      raster_size,
+      raster_image_url: imageUrl,
     };
 
     // Publish canonical roof_measurements row
