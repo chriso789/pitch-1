@@ -945,6 +945,7 @@ async function processJob(input: any) {
         topology_source: topologySource,
         footprint_source: footprintSource,
         blocked_customer_report_reason: blockCustomerReportReason,
+        solar_segments: solarSegmentsDebug,
       },
       overlay_debug: {
         raster_url: imageUrl,
