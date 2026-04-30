@@ -620,13 +620,18 @@ async function processJob(input: any) {
           const unionPoly = rectilinearUnionPolygon(boundsPx);
           if (unionPoly.length >= 4) {
             const unionCand = scoreCandidate("google_solar_segments_union", unionPoly);
-            // Boost shape score: union polygons have real concavity that topology needs.
-            unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.35);
+            // Boost shape score: union polygons preserve concavity that topology needs.
+            // A convex hull can score slightly higher on area/coverage while still
+            // collapsing to one roof plane, so prefer the topology-capable union.
+            unionCand.polygon_shape_score = Math.min(1, unionCand.polygon_shape_score + 0.55);
             unionCand.validity_score =
-              unionCand.area_score * 0.35 +
-              unionCand.solar_overlap_score * 0.30 +
-              unionCand.geocode_center_score * 0.20 +
-              unionCand.polygon_shape_score * 0.15;
+              Math.min(1,
+                unionCand.area_score * 0.35 +
+                unionCand.solar_overlap_score * 0.30 +
+                unionCand.geocode_center_score * 0.20 +
+                unionCand.polygon_shape_score * 0.15 +
+                0.08,
+              );
             candidates.push(unionCand);
             solarSegmentsDebug.union_vertices = unionPoly.length;
             solarSegmentsDebug.union_area_sqft = Math.round(unionCand.area_sqft);
