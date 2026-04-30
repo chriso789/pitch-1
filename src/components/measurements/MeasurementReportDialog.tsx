@@ -500,13 +500,16 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               // Fallback: legacy SVG diagrams when no overlay is available
               if (diagrams.length === 0) {
                 return (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>No diagrams available</AlertTitle>
-                    <AlertDescription>
-                      The roof report has not been generated for this measurement yet.
-                    </AlertDescription>
-                  </Alert>
+                  <div className="space-y-6">
+                    {debugOverlay}
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>No diagrams available</AlertTitle>
+                      <AlertDescription>
+                        The roof report has not been generated for this measurement yet.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 );
               }
 
