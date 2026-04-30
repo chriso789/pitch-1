@@ -442,8 +442,10 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
         {showSuggestions && suggestions.length > 0 && typeof document !== "undefined" && createPortal(
           <div
             id="google-address-suggestions"
-            className="z-[80] max-h-60 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
+            className="pointer-events-auto z-[80] max-h-60 overflow-auto rounded-md border bg-popover text-popover-foreground shadow-lg"
             style={suggestionDropdownStyle}
+            onPointerDownCapture={(e) => e.preventDefault()}
+            onMouseDownCapture={(e) => e.preventDefault()}
           >
             {suggestions.map((suggestion, index) => (
               <button
