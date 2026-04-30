@@ -4191,103 +4191,15 @@ Deno.serve(async (req) => {
             })),
         }
 
-        // ── Patent two-layer model (US 9,329,749 / US 8,515,125 family) ──
-        // Built from real measured geometry plus, when imagery cannot
-        // resolve interior structure, patent-shaped synthesis derived from
-        // the rectilinear footprint (ridges/hips/valleys/rakes/eaves).
-        // Truly speculative sources (Solar DSM single ridge, filled
-        // perimeter eaves) remain excluded — only the structured patent
-        // synthesis is admitted.
-        const SYNTHETIC_EDGE_SOURCES = new Set([
-          'solar_dsm_inferred_ridge',
-          'filled_perimeter',
-        ])
-        const patentEdges = edges.filter(
-          (e) =>
-            e.line_px.length >= 2 &&
-            e.edge_type !== 'unknown' &&
-            !SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
-        )
-        const patentSynthesizedCount = patentEdges.filter((e) => {
-          const s = String((e as any).source || '')
-          return s === 'patent_synthesis' || s === 'topology_engine_v2'
-        }).length
-        const patentPlanes = planes.filter(
-          (p) => !PLACEHOLDER_SOURCES.has(String(p.source)),
-        )
-        const mppForPatent = cal.meters_per_pixel_actual || 0
-        const pxToFt = mppForPatent * 3.28084
-        const planeLabel = (i: number) => String.fromCharCode(65 + (i % 26)) // A,B,C,...
-        const layer1_perimeter: any[] = []
-        const planesPatent: any[] = []
-        for (let pi = 0; pi < patentPlanes.length; pi++) {
-          const pl = patentPlanes[pi]
-          const ring = (pl.polygon_px as Array<{ x: number; y: number }>) || []
-          const perimeterIds: string[] = []
-          for (let i = 0; i < ring.length; i++) {
-            const a = ring[i]
-            const b = ring[(i + 1) % ring.length]
-            if (!a || !b) continue
-            const dx = b.x - a.x
-            const dy = b.y - a.y
-            const lenPx = Math.sqrt(dx * dx + dy * dy)
-            const id = `p-${pi}-${i.toString().padStart(3, '0')}`
-            layer1_perimeter.push({
-              id,
-              plane: planeLabel(pi),
-              points: [[a.x, a.y], [b.x, b.y]],
-              length_ft: lenPx * pxToFt,
-              attribute: 'perimeter',
-            })
-            perimeterIds.push(id)
-          }
-          planesPatent.push({
-            label: planeLabel(pi),
-            pitch: typeof pl.pitch === 'number' ? pl.pitch : 0,
-            plan_area_sqft: pl.area_2d_sqft || 0,
-            roof_area_sqft: pl.area_pitch_adjusted_sqft || pl.area_2d_sqft || 0,
-            perimeter_ids: perimeterIds,
-          })
-        }
-        // Layer 2: real structural lines, plus a back-reference to Layer 1
-        // segments they overlap (eaves/rakes).
-        const layer2_structural = patentEdges.map((e, i) => {
-          const p1: [number, number] = [e.line_px[0].x, e.line_px[0].y]
-          const p2: [number, number] = [e.line_px[1].x, e.line_px[1].y]
-          let overlapsLayer1Id: string | null = null
-          if (e.edge_type === 'eave' || e.edge_type === 'rake') {
-            const close = (u: [number, number], v: [number, number]) =>
-              Math.hypot(u[0] - v[0], u[1] - v[1]) < 3
-            for (const seg of layer1_perimeter) {
-              const [pa, pb] = seg.points as [[number, number], [number, number]]
-              if (
-                (close(pa, p1) && close(pb, p2)) ||
-                (close(pa, p2) && close(pb, p1))
-              ) {
-                overlapsLayer1Id = seg.id
-                break
-              }
-            }
-          }
-          return {
-            id: `s-${i.toString().padStart(3, '0')}`,
-            type: e.edge_type,
-            points: [p1, p2],
-            length_ft: e.length_ft,
-            overlapsLayer1Id,
-            confidence: e.confidence,
-            source: (e as any).source || 'unet',
-          }
-        })
-        const patentLengths = {
-          perimeter: layer1_perimeter.reduce((s, p) => s + p.length_ft, 0),
-          ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0,
-        } as Record<string, number>
-        for (const s of layer2_structural) {
-          patentLengths[s.type] = (patentLengths[s.type] ?? 0) + s.length_ft
-        }
-        const patentModel = {
-          version: 'patent-v1' as const,
+        // ── Canonical report model: build ONLY from final planes + classified edges. ──
+        // Do not rebuild AI measurement reports from overlay_schema/polygon; that
+        // path recreates a single Plane A model and hides ridge_split_recursive output.
+        const finalPatentModel = buildPatentModelFromPlanes({
+          planes,
+          edges: edges.filter((e) => e.line_px.length >= 2),
+          feetPerPixel,
+          source: geometrySource,
+          address: resolved.address || null,
           image: {
             url: mb?.image_url ?? null,
             width: imgW,
@@ -4297,17 +4209,17 @@ Deno.serve(async (req) => {
             zoom,
             meters_per_pixel: cal.meters_per_pixel_actual,
           },
-          layer1_perimeter,
-          layer2_structural,
-          planes: planesPatent,
-          totals: {
-            footprint_sqft: totalArea2d,
-            roof_area_sqft: totalAreaSloped,
-            roofing_squares: roofSquares,
-            predominant_pitch: dominantPitch,
-            slope_factor: totalArea2d > 0 ? totalAreaSloped / totalArea2d : 1,
-            lengths_ft: patentLengths,
-          },
+        })
+
+        if (finalPatentModel.plane_count !== planes.length) {
+          throw new Error('BUG: patent_model plane_count does not match final planes length')
+        }
+        if (geometrySource === 'ridge_split_recursive' && finalPatentModel.plane_count <= 1) {
+          throw new Error('BUG: ridge_split_recursive collapsed to Plane A before save')
+        }
+
+        const patentModel = {
+          ...finalPatentModel,
           imagery_qc: {
             passed: qc.status === 'completed',
             abnormalities: qc.status === 'completed'
@@ -4315,14 +4227,6 @@ Deno.serve(async (req) => {
               : [qc.singlePlaneFallback ? 'single_plane_fallback' : qc.status],
             reshoot_requested: false,
           },
-          // Provenance — viewer can explain how the structure was derived.
-          patent_data_only: patentSynthesizedCount === 0,
-          patent_synthesis_used: patentSynthesizedCount > 0,
-          patent_synthesized_edge_count: patentSynthesizedCount,
-          excluded_synthetic_edges: edges.filter((e) =>
-            SYNTHETIC_EDGE_SOURCES.has(String((e as any).source || '')),
-          ).length,
-          excluded_placeholder_planes: planes.length - patentPlanes.length,
         }
 
         // ── Finalise debug_pipeline before persisting ──
