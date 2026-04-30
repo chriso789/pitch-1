@@ -3536,6 +3536,10 @@ Deno.serve(async (req) => {
                 .map((r) => ({ p1: r.a, p2: r.b, votes: r.votes }))
 
               if (ridgeLines.length > 0) {
+                // Production rule: recursive ridge splitting is canonical.
+                // The older single-pass buildRoofPlanes output can be partial,
+                // so it must not win over splitPlanesFromRidges().
+                const preferRecursiveSplit = true
                 const minPlaneAreaPx = Math.max(25, shoelaceAreaPx(basePlane.polygon_px) * 0.08)
                 let subPolys = buildRoofPlanes(basePlane.polygon_px, ridgeLines, {
                   minArea: minPlaneAreaPx, minAreaRatio: 0.1, maxPlanes: 10,
@@ -3557,7 +3561,7 @@ Deno.serve(async (req) => {
                   }
                 }
 
-                if (subPolys.length > 1) {
+                if (!preferRecursiveSplit && subPolys.length > 1) {
                   detectedRidgeLines = ridgeLines
                   planes = subPolys.map((poly, idx) =>
                     planeFromFootprint(
@@ -3586,10 +3590,10 @@ Deno.serve(async (req) => {
                     `valleys=${edges.filter(e => e.edge_type === 'valley').length})`,
                   )
                 } else {
-                  // Single-pass buildRoofPlanes failed to split. Try the
-                  // recursive ridge-driven splitter as a second chance.
-                  // It re-detects ridges inside each sub-polygon and splits
-                  // again, producing 5–15 planes on complex residential roofs.
+                  // Always try the recursive ridge-driven splitter as the
+                  // authoritative ridge-split output. It re-detects ridges
+                  // inside each sub-polygon and splits again, producing
+                  // 5–15 planes on complex residential roofs.
                   debug_pipeline.ridge_split_recursive_entered = true
                   try {
                     // Rasterize a polygon (in full-res image pixel space)
