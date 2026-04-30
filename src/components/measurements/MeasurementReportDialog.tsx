@@ -273,7 +273,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   const handleDownloadPdf = async () => {
     const existingPdfUrl = (effectiveMeasurement as any)?.report_pdf_url;
-    if (existingPdfUrl && pdfGate.ok) {
+    if (existingPdfUrl && pdfGate.ok && !pdfIsStale) {
       window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
       return;
     }
