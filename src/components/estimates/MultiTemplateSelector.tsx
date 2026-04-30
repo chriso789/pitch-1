@@ -2339,37 +2339,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                         disabled={isEditingLoadedEstimate && trade.tradeType === 'roofing'}
                       />
 
-                      {/* Supplier Quote Upload — auto-fills material qty + unit cost */}
-                      {(() => {
-                        const hasTemplate = trade.tradeType === 'roofing'
-                          ? !!selectedTemplateId
-                          : !!trade.templateId;
-                        if (!hasTemplate) return null;
-                        const currentItems = tradeLineItems[trade.id]
-                          || (trade.tradeType === 'roofing' ? lineItems : []);
-                        return (
-                          <div className="flex items-center justify-between gap-2 rounded-md border border-dashed bg-background/60 p-2">
-                            <div className="text-xs text-muted-foreground">
-                              Got a supplier quote? Upload the PDF to auto-fill material quantities & costs.
-                            </div>
-                            <SupplierQuoteUploader
-                              tradeSectionId={trade.id}
-                              tradeType={trade.tradeType}
-                              tradeLabel={trade.label}
-                              currentItems={currentItems}
-                              projectId={null}
-                              pipelineEntryId={pipelineEntryId}
-                              onItemsUpdated={(merged) => {
-                                setTradeLineItems(prev => ({ ...prev, [trade.id]: merged }));
-                                if (trade.tradeType === 'roofing') {
-                                  setLineItems(merged);
-                                }
-                              }}
-                            />
-                          </div>
-                        );
-                      })()}
-
                       {/* Hint for roofing when creating new */}
                       {trade.tradeType === 'roofing' && !isEditingLoadedEstimate && !selectedTemplateId && isCreatingNewEstimate && (
                         <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
