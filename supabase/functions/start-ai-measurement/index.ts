@@ -3834,7 +3834,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        if (edges.length === 0 && planes.length > 0) {
+        if (edges.length === 0 && planes.length > 0 && !forceUseRidgeSplit) {
           // Last-resort perimeter eaves if even synthesis produced nothing.
           const largest = [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0]
           edges = edgesFromPerimeter(
@@ -3854,7 +3854,7 @@ Deno.serve(async (req) => {
         // Runs BEFORE ai_roof_edges insert / patent_model creation /
         // diagram render so persisted classifications are correct.
         // ──────────────────────────────────────────────────────────────
-        try {
+        if (!forceUseRidgeSplit) try {
           const footprintForClassifier = (planes.length > 0
             ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
             : []) as Pt[]
@@ -4119,6 +4119,7 @@ Deno.serve(async (req) => {
 
         const planeSources = Array.from(new Set(planes.map((p) => String(p.source))))
         const geometrySource =
+          forcedGeometrySource ||
           planeSources.length === 0
             ? 'none'
             : planeSources.every((s) => PLACEHOLDER_SOURCES.has(s))
