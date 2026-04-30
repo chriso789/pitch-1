@@ -1,0 +1,184 @@
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+};
+
+function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
+  const uint8 = new Uint8Array(arrayBuffer);
+  let binary = "";
+  const CHUNK = 0x8000;
+  for (let i = 0; i < uint8.length; i += CHUNK) {
+    binary += String.fromCharCode.apply(null, Array.from(uint8.subarray(i, i + CHUNK)) as any);
+  }
+  return `data:${mimeType};base64,${btoa(binary)}`;
+}
+
+async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
+  try {
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
+    const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+    if (!SUPABASE_URL || !SERVICE_ROLE) return null;
+    const m = documentUrl.match(/\/storage\/v1\/object\/(?:public|sign|authenticated)\/([^/]+)\/([^?]+)/);
+    if (!m) return null;
+    const bucket = m[1];
+    const path = decodeURIComponent(m[2]);
+    const resp = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${path}`, {
+      headers: { Authorization: `Bearer ${SERVICE_ROLE}`, apikey: SERVICE_ROLE },
+    });
+    if (!resp.ok) return null;
+    const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
+    const buf = await resp.arrayBuffer();
+    return { dataUrl: bufferToDataUrl(buf, mimeType), mimeType };
+  } catch {
+    return null;
+  }
+}
+
+async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
+  const response = await fetch(documentUrl);
+  if (!response.ok) {
+    const fallback = await tryServiceRoleDownload(documentUrl);
+    if (fallback) return fallback;
+    throw new Error(`Failed to fetch document: ${response.status}`);
+  }
+  const contentType = response.headers.get("content-type") || "application/octet-stream";
+  const arrayBuffer = await response.arrayBuffer();
+  return { dataUrl: bufferToDataUrl(arrayBuffer, contentType.split(";")[0].trim()), mimeType: contentType.split(";")[0].trim() };
+}
+
+function isImage(url: string): boolean {
+  return /\.(png|jpe?g|webp|gif)(\?.*)?$/.test(url.toLowerCase());
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const { document_url } = await req.json();
+    if (!document_url) {
+      return new Response(JSON.stringify({ error: "document_url is required" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const apiKey = Deno.env.get("LOVABLE_API_KEY");
+    if (!apiKey) throw new Error("Missing LOVABLE_API_KEY");
+
+    console.log("[parse-supplier-quote] Parsing:", document_url);
+
+    let imageContent: { type: string; image_url: { url: string } };
+    if (isImage(document_url)) {
+      imageContent = { type: "image_url", image_url: { url: document_url } };
+    } else {
+      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
+      imageContent = { type: "image_url", image_url: { url: dataUrl } };
+    }
+
+    const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert at extracting MATERIAL LINE ITEMS from supplier quotes for the construction and roofing industry — especially METAL ROOFING quotes from suppliers like Worthouse, Sheffield Metals, McElroy Metal, ABC Supply, Beacon, SRS Distribution, etc.
+
+Rules:
+- Extract EVERY material line item: panels, ridge cap, hip cap, eave/rake trim, valley metal, underlayment, fasteners, screws, sealant, closures, pipe boots, snow guards, etc.
+- For each line capture: description (verbatim from quote), sku/part number if present, quantity, unit (panel, piece, roll, box, lf, sq, ea), unit_price, line_total
+- IGNORE labor lines, taxes, shipping, freight, fees — materials only
+- Capture vendor name, quote number, quote date, subtotal, tax, total
+- Use exact dollar amounts — never round
+- Return null for fields you cannot determine`,
+          },
+          {
+            role: "user",
+            content: [
+              { type: "text", text: "Extract every material line item from this supplier quote with its quantity and unit price." },
+              imageContent,
+            ],
+          },
+        ],
+        tools: [
+          {
+            type: "function",
+            function: {
+              name: "extract_supplier_quote",
+              description: "Extract structured material line items from a supplier quote",
+              parameters: {
+                type: "object",
+                properties: {
+                  vendor_name: { type: "string" },
+                  quote_number: { type: "string" },
+                  quote_date: { type: "string", description: "YYYY-MM-DD" },
+                  line_items: {
+                    type: "array",
+                    description: "Material line items only — exclude labor/tax/shipping",
+                    items: {
+                      type: "object",
+                      properties: {
+                        description: { type: "string" },
+                        sku: { type: "string" },
+                        quantity: { type: "number" },
+                        unit: { type: "string", description: "e.g. panel, piece, roll, box, lf, sq, ea" },
+                        unit_price: { type: "number" },
+                        line_total: { type: "number" },
+                      },
+                      required: ["description"],
+                    },
+                  },
+                  subtotal: { type: "number" },
+                  tax_amount: { type: "number" },
+                  total_amount: { type: "number" },
+                },
+                required: ["line_items"],
+              },
+            },
+          },
+        ],
+        tool_choice: { type: "function", function: { name: "extract_supplier_quote" } },
+        temperature: 0.1,
+      }),
+    });
+
+    if (res.status === 429) {
+      return new Response(JSON.stringify({ error: "AI rate limited - please try again later" }), {
+        status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (res.status === 402) {
+      return new Response(JSON.stringify({ error: "AI credits exhausted - please add funds" }), {
+        status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    if (!res.ok) {
+      const txt = await res.text();
+      console.error(`[parse-supplier-quote] Gateway error ${res.status}: ${txt}`);
+      throw new Error(`AI gateway error ${res.status}`);
+    }
+
+    const json = await res.json();
+    const toolCall = json?.choices?.[0]?.message?.tool_calls?.[0];
+    if (!toolCall?.function?.arguments) {
+      return new Response(JSON.stringify({ parsed: null, message: "Could not extract quote data" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const parsed = JSON.parse(toolCall.function.arguments);
+    console.log(`[parse-supplier-quote] Extracted ${parsed?.line_items?.length || 0} items from ${parsed?.vendor_name || "unknown vendor"}`);
+
+    return new Response(JSON.stringify({ parsed }), {
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error) {
+    console.error("[parse-supplier-quote] Error:", error);
+    return new Response(
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error), parsed: null }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    );
+  }
+});
