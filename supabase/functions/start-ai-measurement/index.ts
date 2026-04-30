@@ -4118,9 +4118,9 @@ Deno.serve(async (req) => {
         } catch (_e) { /* non-fatal */ }
 
         const planeSources = Array.from(new Set(planes.map((p) => String(p.source))))
-        const geometrySource =
-          forcedGeometrySource ||
-          planeSources.length === 0
+        const geometrySource = forcedGeometrySource
+          ? forcedGeometrySource
+          : planeSources.length === 0
             ? 'none'
             : planeSources.every((s) => PLACEHOLDER_SOURCES.has(s))
             ? 'google_solar_bbox'
