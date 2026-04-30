@@ -602,6 +602,50 @@ function pxToLngLat(p: Point, c: GeoPoint, w: number, h: number, mppActual: numb
   const dLng = (dxM / (R * Math.cos((c.lat * Math.PI) / 180))) * (180 / Math.PI);
   return [c.lng + dLng, c.lat + dLat];
 }
+function lngLatToPx(lat: number, lng: number, c: GeoPoint, w: number, h: number, mppActual: number): Point {
+  const R = 6378137;
+  const dLat = (lat - c.lat) * (Math.PI / 180);
+  const dLng = (lng - c.lng) * (Math.PI / 180);
+  const dyM = -dLat * R;
+  const dxM = dLng * R * Math.cos((c.lat * Math.PI) / 180);
+  return { x: w / 2 + dxM / mppActual, y: h / 2 + dyM / mppActual };
+}
+function footprintFromSolarBoundingBox(
+  solarData: any,
+  c: GeoPoint,
+  w: number,
+  h: number,
+  mppActual: number,
+): Point[] | null {
+  const bb = solarData?.boundingBox;
+  if (!bb?.sw || !bb?.ne) return null;
+  const sw = lngLatToPx(bb.sw.latitude, bb.sw.longitude, c, w, h, mppActual);
+  const ne = lngLatToPx(bb.ne.latitude, bb.ne.longitude, c, w, h, mppActual);
+  const minX = clamp(Math.min(sw.x, ne.x), 0, w);
+  const maxX = clamp(Math.max(sw.x, ne.x), 0, w);
+  const minY = clamp(Math.min(sw.y, ne.y), 0, h);
+  const maxY = clamp(Math.max(sw.y, ne.y), 0, h);
+  if (maxX - minX < 4 || maxY - minY < 4) return null;
+  return [
+    { x: minX, y: minY },
+    { x: maxX, y: minY },
+    { x: maxX, y: maxY },
+    { x: minX, y: maxY },
+  ];
+}
+function syntheticCenteredFootprint(w: number, h: number, feetPerPixelActual: number): Point[] {
+  // ~40ft x 30ft default house footprint, centered.
+  const halfW = (40 / 2) / feetPerPixelActual;
+  const halfH = (30 / 2) / feetPerPixelActual;
+  const cx = w / 2;
+  const cy = h / 2;
+  return [
+    { x: cx - halfW, y: cy - halfH },
+    { x: cx + halfW, y: cy - halfH },
+    { x: cx + halfW, y: cy + halfH },
+    { x: cx - halfW, y: cy + halfH },
+  ];
+}
 function polygonPxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, mpp: number) {
   const ring = points.map((p) => pxToLngLat(p, c, w, h, mpp));
   if (ring.length) ring.push(ring[0]);
