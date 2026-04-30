@@ -569,7 +569,7 @@ async function processJob(input: any) {
         source_button: input.source_button,
         engine_version: "geometry_first_v2",
         engine_used: "geometry_first_v2",
-        inference_source: UNET_ENDPOINT ? "unet" : "deterministic",
+        inference_source: resolvedGeometrySource,
       })
       .select("id")
       .single();
