@@ -88,6 +88,43 @@ export function MeasurementAnalyticsDashboard() {
         bronze: measurements?.filter(m => getConfidence(m) < 80).length || 0,
       };
 
+      // Edge-count totals (linear feet) by type across last 30 days
+      const edgeTotals = (measurements || []).reduce(
+        (acc, m) => {
+          acc.ridge += Number(m.total_ridge_length || 0);
+          acc.hip += Number(m.total_hip_length || 0);
+          acc.valley += Number(m.total_valley_length || 0);
+          acc.eave += Number(m.total_eave_length || 0);
+          acc.rake += Number(m.total_rake_length || 0);
+          return acc;
+        },
+        { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
+      );
+
+      // Solar-vs-measured area comparison (per measurement, where both exist)
+      const solarComparison = (measurements || [])
+        .map((m) => {
+          const grj = m.geometry_report_json || {};
+          const solarArea = Number(
+            grj.google_solar_area_sqft ?? grj.solar_area_sqft ?? grj.solar?.area_sqft ?? 0,
+          );
+          const measured = Number(m.total_area_flat_sqft || 0);
+          if (!solarArea || !measured) return null;
+          const deltaPct = ((measured - solarArea) / solarArea) * 100;
+          return { id: m.id, solar: solarArea, measured, deltaPct };
+        })
+        .filter(Boolean) as { id: string; solar: number; measured: number; deltaPct: number }[];
+
+      const solarStats = solarComparison.length
+        ? {
+            count: solarComparison.length,
+            meanAbsDeltaPct:
+              solarComparison.reduce((s, r) => s + Math.abs(r.deltaPct), 0) / solarComparison.length,
+            within5Pct: solarComparison.filter((r) => Math.abs(r.deltaPct) <= 5).length,
+            within10Pct: solarComparison.filter((r) => Math.abs(r.deltaPct) <= 10).length,
+          }
+        : null;
+
       return {
         totalMeasurements,
         avgConfidence,
@@ -95,6 +132,9 @@ export function MeasurementAnalyticsDashboard() {
         approvalRate,
         bySource,
         tiers,
+        edgeTotals,
+        solarComparison,
+        solarStats,
         recentMeasurements: measurements?.slice(0, 10) || [],
       };
     },
