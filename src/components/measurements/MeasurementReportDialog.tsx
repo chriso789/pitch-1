@@ -433,15 +433,39 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             </div>
           ) : (
             (() => {
+              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+              const rasterUrl =
+                (effectiveMeasurement as any)?.satellite_overlay_url ||
+                (effectiveMeasurement as any)?.google_maps_image_url ||
+                (effectiveMeasurement as any)?.mapbox_image_url ||
+                grj?.raster_image_url || null;
+              const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
+              const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
+              const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
+              const showDebugOverlay =
+                import.meta.env.DEV && rasterUrl && rasterSize && (planes_px.length > 0 || edges_px.length > 0);
+
+              const debugOverlay = showDebugOverlay ? (
+                <RasterOverlayDebugView
+                  imageUrl={rasterUrl}
+                  rasterSize={rasterSize}
+                  planes_px={planes_px}
+                  edges_px={edges_px}
+                />
+              ) : null;
+
               if (reportCollapsed) {
                 return (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Report model collapse detected</AlertTitle>
-                    <AlertDescription>
-                      BUG: persisted patent_model has multiple planes but report UI collapsed it.
-                    </AlertDescription>
-                  </Alert>
+                  <div className="space-y-6">
+                    {debugOverlay}
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Report model collapse detected</AlertTitle>
+                      <AlertDescription>
+                        BUG: persisted patent_model has multiple planes but report UI collapsed it.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 );
               }
 
