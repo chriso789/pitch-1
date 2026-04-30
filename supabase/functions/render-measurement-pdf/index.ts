@@ -53,6 +53,12 @@ function jsonResponse(body: unknown, status = 200) {
   })
 }
 
+async function signatureSlug(input: string | null | undefined) {
+  const text = input || new Date().toISOString()
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))
+  return Array.from(new Uint8Array(bytes)).slice(0, 8).map((b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 async function resolveJobId(supa: any, body: Body): Promise<string | null> {
   if (body.ai_measurement_job_id) return body.ai_measurement_job_id
 
@@ -274,7 +280,8 @@ Deno.serve(async (req) => {
       await supa.storage.createBucket(BUCKET, { public: true })
     } catch (_e) { /* exists */ }
 
-    const path = `reports/${tenantId}/${jobId}.pdf`
+    const sigSlug = await signatureSlug(incomingSig || `${jobId}:${measurement?.id || ''}:${Date.now()}`)
+    const path = `reports/${tenantId}/${jobId}/${sigSlug}.pdf`
     const { error: upErr } = await supa.storage
       .from(BUCKET)
       .upload(path, pdfBytes, { contentType: 'application/pdf', upsert: true })
@@ -291,7 +298,7 @@ Deno.serve(async (req) => {
       }
       await supa
         .from('roof_measurements')
-        .update({ report_pdf_url: pdfUrl, geometry_report_json: updatedGrj })
+        .update({ report_pdf_url: pdfUrl, report_pdf_path: path, geometry_report_json: updatedGrj })
         .eq('ai_measurement_job_id', jobId)
     } catch (_e) { /* column may be missing — non-fatal */ }
     try {
