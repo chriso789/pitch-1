@@ -512,6 +512,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
               return (
                 <div className="space-y-6">
+                  {debugOverlay}
                   {(!pdfGate.ok || pdfGate.warning) && (
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />
