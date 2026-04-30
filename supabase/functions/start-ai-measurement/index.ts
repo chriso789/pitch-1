@@ -3491,6 +3491,80 @@ Deno.serve(async (req) => {
           )
         }
 
+        // ──────────────────────────────────────────────────────────────
+        // POST-CLASSIFICATION VALIDATOR (topology_engine_v2)
+        //
+        // Skeleton/topology engines emit interior edges but do NOT reliably
+        // distinguish hip vs valley vs ridge. This pass uses:
+        //   1. plane-adjacency + slope direction (azimuth)
+        //   2. concave/reflex corner detection on the footprint
+        //   3. deterministic fallback (never persist `unknown`)
+        //
+        // Runs BEFORE ai_roof_edges insert / patent_model creation /
+        // diagram render so persisted classifications are correct.
+        // ──────────────────────────────────────────────────────────────
+        try {
+          const footprintForClassifier = (planes.length > 0
+            ? [...planes].sort((a, b) => b.area_2d_sqft - a.area_2d_sqft)[0].polygon_px
+            : []) as Pt[]
+
+          if (footprintForClassifier.length >= 3 && edges.length > 0) {
+            const classified = classifyHipValleyRidgeEdges({
+              footprint_px: footprintForClassifier,
+              planes: planes.map((p) => ({
+                id: String(p.plane_index),
+                polygon_px: p.polygon_px as Pt[],
+                pitch: p.pitch,
+                azimuthDeg: p.azimuth ?? null,
+              })),
+              edges: edges.map((e) => ({
+                edge_type: e.edge_type,
+                line_px: e.line_px as Pt[],
+                source: e.source,
+                confidence: e.confidence,
+                adjacent_plane_ids: (e as any).adjacent_plane_ids ?? [],
+              })),
+            })
+
+            // Merge classifier output back into RoofEdge[] (preserve geo + lengths)
+            edges = edges.map((orig, i) => {
+              const c = classified[i]
+              if (!c) return orig
+              return {
+                ...orig,
+                edge_type: c.edge_type as RoofEdge['edge_type'],
+                source: c.source || orig.source,
+                confidence: c.confidence ?? orig.confidence,
+              }
+            })
+
+            const ridges = edges.filter((e) => e.edge_type === 'ridge').length
+            const hips = edges.filter((e) => e.edge_type === 'hip').length
+            const valleys = edges.filter((e) => e.edge_type === 'valley').length
+            const eaves = edges.filter((e) => e.edge_type === 'eave').length
+            const rakes = edges.filter((e) => e.edge_type === 'rake').length
+            const unknown = edges.filter((e) => e.edge_type === 'unknown').length
+
+            console.log(
+              `[topology_engine_v2_classified] planes=${planes.length} edges=${edges.length} ` +
+              `ridges=${ridges} hips=${hips} valleys=${valleys} eaves=${eaves} rakes=${rakes} unknown=${unknown}`,
+            )
+
+            // Hard validation: multi-facet roof but classifier produced no
+            // hips AND no valleys → topology is structurally suspect.
+            if (planes.length > 4 && hips === 0 && valleys === 0) {
+              console.warn(
+                `[topology_engine_v2_classified] needs_review: ${planes.length} planes but 0 hips/valleys`,
+              )
+              ;(aiJob as any)._topology_needs_review = true
+              ;(aiJob as any)._topology_review_reason =
+                'Topology produced multi-plane geometry but no hip/valley classification.'
+            }
+          }
+        } catch (clsErr) {
+          console.warn(`[topology_engine_v2_classified] failed: ${(clsErr as Error).message}`)
+        }
+
         // 2g) Persist planes + edges
         if (planes.length > 0) {
           await supa.from('ai_roof_planes').insert(
