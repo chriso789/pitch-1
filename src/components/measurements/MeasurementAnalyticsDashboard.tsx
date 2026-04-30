@@ -47,7 +47,7 @@ export function MeasurementAnalyticsDashboard() {
 
       const { data: rawMeasurements } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, measurement_confidence, detection_confidence, quality_score, image_source, validation_status')
+        .select('id, created_at, measurement_confidence, detection_confidence, quality_score, image_source, validation_status, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, total_area_flat_sqft, geometry_report_json')
         .gte('created_at', thirtyDaysAgo.toISOString())
         .order('created_at', { ascending: false });
 
