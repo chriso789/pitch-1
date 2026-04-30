@@ -4325,6 +4325,24 @@ Deno.serve(async (req) => {
         debug_pipeline.final_edge_count_saved = edges.length
         debug_pipeline.final_patent_model_plane_count = (patentModel.planes || []).length
         debug_pipeline.final_report_source = geometrySource
+        console.log('[FINAL_GEOMETRY_STATE]', {
+          planes: planes.length,
+          edges: edges.length,
+          source: geometrySource,
+          forceUseRidgeSplit,
+          patent_model_planes: (patentModel.planes || []).length,
+        })
+        if (planes.length > 1 && geometrySource === 'ridge_split_recursive') {
+          console.log('[SAVE_CHECK] MULTI-PLANE GEOMETRY CONFIRMED')
+        } else {
+          console.error('[SAVE_CHECK FAIL] LOST MULTI-PLANE GEOMETRY', {
+            planes: planes.length,
+            edges: edges.length,
+            source: geometrySource,
+            ridge_split_recursive_planes: debug_pipeline.ridge_split_recursive_plane_count,
+            patent_model_planes: (patentModel.planes || []).length,
+          })
+        }
         console.log('[AI_MEASUREMENT_DEBUG] Pipeline Debug Info:', debug_pipeline)
 
         // PATCH 4 — fail loudly if recursive split worked but patent_model collapsed
