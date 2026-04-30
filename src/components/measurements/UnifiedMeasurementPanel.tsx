@@ -982,6 +982,7 @@ export function UnifiedMeasurementPanel({
                     selected_image_source: ai.selected_image_source,
                     image_source: ai.image_source,
                     overlay_schema: (ai as any).overlay_schema || (ai as any).geometry_report_json?.overlay_schema,
+                    patent_model: (ai as any).patent_model || (ai as any).geometry_report_json?.patent_model,
                     footprint_vertices_geo: ai.footprint_vertices_geo,
                     footprint_source: ai.footprint_source,
                     footprint_confidence: ai.footprint_confidence,
