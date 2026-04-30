@@ -17,6 +17,7 @@ import { AlertTriangle, Download, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import PatentRoofReport from './PatentRoofReport';
+import RasterOverlayDebugView from './RasterOverlayDebugView';
 
 interface MeasurementReportDialogProps {
   open: boolean;
@@ -342,33 +343,63 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             {address && (
               <p className="text-sm text-muted-foreground mt-1">{address}</p>
             )}
-            {debugPipeline && (
-              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  source: {String(debugPipeline.final_report_source ?? 'unknown')}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  planes: {String(debugPipeline.final_plane_count_saved ?? 0)}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  edges: {String(debugPipeline.final_edge_count_saved ?? 0)}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-muted">
-                  patent_planes: {String(debugPipeline.final_patent_model_plane_count ?? 0)}
-                </span>
-                {debugPipeline.ridge_split_recursive_entered && (
-                  <span className="px-1.5 py-0.5 rounded bg-muted">
-                    rsr: {String(debugPipeline.ridge_split_recursive_plane_count ?? 0)}p/
-                    {String(debugPipeline.ridge_split_recursive_edge_count ?? 0)}e
+            {(() => {
+              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+              const footprintSource =
+                (effectiveMeasurement as any)?.footprint_source ?? grj.footprint_source ?? 'unknown';
+              const inferenceSource =
+                (effectiveMeasurement as any)?.inference_source ?? grj.inference_source ?? 'unknown';
+              const topologySource = grj.topology_source ?? grj.geometry_source ?? 'unknown';
+              const usedDeterministic = grj.used_deterministic_topology === true;
+              const blocked = grj.block_customer_report_reason || null;
+              return (
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
+                  <span
+                    className={`px-1.5 py-0.5 rounded ${
+                      usedDeterministic ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400' : 'bg-muted'
+                    }`}
+                    title="Topology engine that produced ridges/hips/valleys"
+                  >
+                    topology: {String(topologySource)}
                   </span>
-                )}
-                {pdfIsStale && (
-                  <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
-                    PDF stale — will regenerate
+                  <span className="px-1.5 py-0.5 rounded bg-muted" title="Building footprint provider">
+                    footprint: {String(footprintSource)}
                   </span>
-                )}
-              </div>
-            )}
+                  <span className="px-1.5 py-0.5 rounded bg-muted" title="Inference source for plane detection">
+                    inference: {String(inferenceSource)}
+                  </span>
+                  {debugPipeline && (
+                    <>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">
+                        planes: {String(debugPipeline.final_plane_count_saved ?? 0)}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">
+                        edges: {String(debugPipeline.final_edge_count_saved ?? 0)}
+                      </span>
+                      <span className="px-1.5 py-0.5 rounded bg-muted">
+                        patent_planes: {String(debugPipeline.final_patent_model_plane_count ?? 0)}
+                      </span>
+                      {debugPipeline.ridge_split_recursive_entered && (
+                        <span className="px-1.5 py-0.5 rounded bg-muted">
+                          rsr: {String(debugPipeline.ridge_split_recursive_plane_count ?? 0)}p/
+                          {String(debugPipeline.ridge_split_recursive_edge_count ?? 0)}e
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {blocked && (
+                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                      blocked: {String(blocked)}
+                    </span>
+                  )}
+                  {pdfIsStale && (
+                    <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                      PDF stale — will regenerate
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
           </div>
           <Button
             size="sm"
@@ -402,15 +433,39 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             </div>
           ) : (
             (() => {
+              const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+              const rasterUrl =
+                (effectiveMeasurement as any)?.satellite_overlay_url ||
+                (effectiveMeasurement as any)?.google_maps_image_url ||
+                (effectiveMeasurement as any)?.mapbox_image_url ||
+                grj?.raster_image_url || null;
+              const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
+              const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
+              const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
+              const showDebugOverlay =
+                import.meta.env.DEV && rasterUrl && rasterSize && (planes_px.length > 0 || edges_px.length > 0);
+
+              const debugOverlay = showDebugOverlay ? (
+                <RasterOverlayDebugView
+                  imageUrl={rasterUrl}
+                  rasterSize={rasterSize}
+                  planes_px={planes_px}
+                  edges_px={edges_px}
+                />
+              ) : null;
+
               if (reportCollapsed) {
                 return (
-                  <Alert variant="destructive">
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>Report model collapse detected</AlertTitle>
-                    <AlertDescription>
-                      BUG: persisted patent_model has multiple planes but report UI collapsed it.
-                    </AlertDescription>
-                  </Alert>
+                  <div className="space-y-6">
+                    {debugOverlay}
+                    <Alert variant="destructive">
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>Report model collapse detected</AlertTitle>
+                      <AlertDescription>
+                        BUG: persisted patent_model has multiple planes but report UI collapsed it.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 );
               }
 
@@ -436,6 +491,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                         </AlertDescription>
                       </Alert>
                     )}
+                    {debugOverlay}
                     <PatentRoofReport initialModel={reportModel} address={address} />
                   </div>
                 );
@@ -444,18 +500,22 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               // Fallback: legacy SVG diagrams when no overlay is available
               if (diagrams.length === 0) {
                 return (
-                  <Alert>
-                    <AlertTriangle className="h-4 w-4" />
-                    <AlertTitle>No diagrams available</AlertTitle>
-                    <AlertDescription>
-                      The roof report has not been generated for this measurement yet.
-                    </AlertDescription>
-                  </Alert>
+                  <div className="space-y-6">
+                    {debugOverlay}
+                    <Alert>
+                      <AlertTriangle className="h-4 w-4" />
+                      <AlertTitle>No diagrams available</AlertTitle>
+                      <AlertDescription>
+                        The roof report has not been generated for this measurement yet.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
                 );
               }
 
               return (
                 <div className="space-y-6">
+                  {debugOverlay}
                   {(!pdfGate.ok || pdfGate.warning) && (
                     <Alert>
                       <AlertTriangle className="h-4 w-4" />

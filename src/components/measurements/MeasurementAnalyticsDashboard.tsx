@@ -16,6 +16,13 @@ interface MeasurementRecord {
   quality_score: number | null;
   image_source: string | null;
   validation_status: string | null;
+  total_ridge_length: number | null;
+  total_hip_length: number | null;
+  total_valley_length: number | null;
+  total_eave_length: number | null;
+  total_rake_length: number | null;
+  total_area_flat_sqft: number | null;
+  geometry_report_json: any | null;
 }
 
 export function MeasurementAnalyticsDashboard() {
@@ -40,7 +47,7 @@ export function MeasurementAnalyticsDashboard() {
 
       const { data: rawMeasurements } = await supabase
         .from('roof_measurements')
-        .select('id, created_at, measurement_confidence, detection_confidence, quality_score, image_source, validation_status')
+        .select('id, created_at, measurement_confidence, detection_confidence, quality_score, image_source, validation_status, total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length, total_area_flat_sqft, geometry_report_json')
         .gte('created_at', thirtyDaysAgo.toISOString())
         .order('created_at', { ascending: false });
 
@@ -81,6 +88,43 @@ export function MeasurementAnalyticsDashboard() {
         bronze: measurements?.filter(m => getConfidence(m) < 80).length || 0,
       };
 
+      // Edge-count totals (linear feet) by type across last 30 days
+      const edgeTotals = (measurements || []).reduce(
+        (acc, m) => {
+          acc.ridge += Number(m.total_ridge_length || 0);
+          acc.hip += Number(m.total_hip_length || 0);
+          acc.valley += Number(m.total_valley_length || 0);
+          acc.eave += Number(m.total_eave_length || 0);
+          acc.rake += Number(m.total_rake_length || 0);
+          return acc;
+        },
+        { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 },
+      );
+
+      // Solar-vs-measured area comparison (per measurement, where both exist)
+      const solarComparison = (measurements || [])
+        .map((m) => {
+          const grj = m.geometry_report_json || {};
+          const solarArea = Number(
+            grj.google_solar_area_sqft ?? grj.solar_area_sqft ?? grj.solar?.area_sqft ?? 0,
+          );
+          const measured = Number(m.total_area_flat_sqft || 0);
+          if (!solarArea || !measured) return null;
+          const deltaPct = ((measured - solarArea) / solarArea) * 100;
+          return { id: m.id, solar: solarArea, measured, deltaPct };
+        })
+        .filter(Boolean) as { id: string; solar: number; measured: number; deltaPct: number }[];
+
+      const solarStats = solarComparison.length
+        ? {
+            count: solarComparison.length,
+            meanAbsDeltaPct:
+              solarComparison.reduce((s, r) => s + Math.abs(r.deltaPct), 0) / solarComparison.length,
+            within5Pct: solarComparison.filter((r) => Math.abs(r.deltaPct) <= 5).length,
+            within10Pct: solarComparison.filter((r) => Math.abs(r.deltaPct) <= 10).length,
+          }
+        : null;
+
       return {
         totalMeasurements,
         avgConfidence,
@@ -88,6 +132,9 @@ export function MeasurementAnalyticsDashboard() {
         approvalRate,
         bySource,
         tiers,
+        edgeTotals,
+        solarComparison,
+        solarStats,
         recentMeasurements: measurements?.slice(0, 10) || [],
       };
     },
@@ -239,6 +286,140 @@ export function MeasurementAnalyticsDashboard() {
               </Badge>
             ))}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Edge-count histogram by type (linear feet) */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Edge Detection by Type
+          </CardTitle>
+          <CardDescription>
+            Total linear feet of each edge type detected over the last 30 days. Use to spot under-detection of hips/valleys.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {(() => {
+            const totals = analytics?.edgeTotals || { ridge: 0, hip: 0, valley: 0, eave: 0, rake: 0 };
+            const max = Math.max(1, ...Object.values(totals));
+            const colors: Record<string, string> = {
+              ridge: 'bg-red-500',
+              hip: 'bg-orange-500',
+              valley: 'bg-blue-500',
+              eave: 'bg-green-500',
+              rake: 'bg-purple-500',
+            };
+            return (
+              <div className="grid grid-cols-5 gap-4 items-end" style={{ minHeight: 180 }}>
+                {Object.entries(totals).map(([type, lf]) => (
+                  <div key={type} className="flex flex-col items-center justify-end h-full">
+                    <div className="text-xs font-mono mb-1">{Math.round(lf as number).toLocaleString()} ft</div>
+                    <div
+                      className={`w-full rounded-t ${colors[type]} transition-all`}
+                      style={{ height: `${Math.max(8, ((lf as number) / max) * 140)}px` }}
+                    />
+                    <p className="text-sm font-medium mt-2 capitalize">{type}</p>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </CardContent>
+      </Card>
+
+      {/* Solar-vs-measured area comparison */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5" />
+            Solar vs Measured Area
+          </CardTitle>
+          <CardDescription>
+            Sanity-check measured roof area against Google Solar's reported area. Catches double-counted pitch
+            or wrong area basis early.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!analytics?.solarStats ? (
+            <p className="text-sm text-muted-foreground">
+              No measurements with both Solar API and measured area in this window.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Compared</p>
+                  <p className="text-xl font-bold">{analytics.solarStats.count}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Mean |Δ|</p>
+                  <p className="text-xl font-bold">{analytics.solarStats.meanAbsDeltaPct.toFixed(1)}%</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Within ±5%</p>
+                  <p className="text-xl font-bold">
+                    {analytics.solarStats.within5Pct}/{analytics.solarStats.count}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Within ±10%</p>
+                  <p className="text-xl font-bold">
+                    {analytics.solarStats.within10Pct}/{analytics.solarStats.count}
+                  </p>
+                </div>
+              </div>
+              {/* Mini scatter: solar (x) vs measured (y) */}
+              {(() => {
+                const data = analytics.solarComparison || [];
+                if (!data.length) return null;
+                const all = data.flatMap((d) => [d.solar, d.measured]);
+                const max = Math.max(...all) * 1.05;
+                const size = 240;
+                const pad = 24;
+                const sx = (v: number) => pad + (v / max) * (size - pad * 2);
+                const sy = (v: number) => size - pad - (v / max) * (size - pad * 2);
+                return (
+                  <div className="flex items-center justify-center pt-2">
+                    <svg width={size} height={size} className="border rounded">
+                      {/* y=x reference line */}
+                      <line
+                        x1={sx(0)}
+                        y1={sy(0)}
+                        x2={sx(max)}
+                        y2={sy(max)}
+                        stroke="hsl(var(--muted-foreground))"
+                        strokeDasharray="4 3"
+                        strokeWidth={1}
+                      />
+                      {data.map((d) => (
+                        <circle
+                          key={d.id}
+                          cx={sx(d.solar)}
+                          cy={sy(d.measured)}
+                          r={3}
+                          fill={Math.abs(d.deltaPct) <= 10 ? 'hsl(var(--primary))' : 'hsl(var(--destructive))'}
+                        />
+                      ))}
+                      <text x={pad} y={size - 4} fontSize="9" fill="currentColor" opacity="0.6">
+                        solar (sqft) →
+                      </text>
+                      <text
+                        x={4}
+                        y={pad}
+                        fontSize="9"
+                        fill="currentColor"
+                        opacity="0.6"
+                      >
+                        ↑ measured
+                      </text>
+                    </svg>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>
