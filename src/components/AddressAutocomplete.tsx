@@ -16,6 +16,8 @@ import {
 import { MapPin, Loader2, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useGoogleMapsToken } from "@/hooks/useGoogleMapsToken";
+import { loadGoogleMaps, isGoogleMapsLoaded } from "@/lib/googleMapsLoader";
 
 export interface AddressComponents {
   street_number?: string;
