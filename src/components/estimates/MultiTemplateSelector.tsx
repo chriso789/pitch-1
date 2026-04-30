@@ -33,6 +33,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { TemplateCombobox, BLANK_TEMPLATE_ID } from './TemplateCombobox';
+import { SupplierQuoteUploader } from './SupplierQuoteUploader';
 // usePDFGeneration removed - now using useMultiPagePDFGeneration for all PDF operations
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 
