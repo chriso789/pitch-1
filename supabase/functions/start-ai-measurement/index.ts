@@ -3523,7 +3523,7 @@ Deno.serve(async (req) => {
                   planes = subPolys.map((poly, idx) =>
                     planeFromFootprint(
                       poly, lat, lng, imgW, imgH, cal.meters_per_pixel_actual,
-                      feetPerPixel, basePlane.pitch ?? null, basePlane.azimuth_deg ?? null,
+                      feetPerPixel, basePlane.pitch ?? null, basePlane.azimuth ?? null,
                       'ridge_split_pre_synthesis', idx,
                     ),
                   )
