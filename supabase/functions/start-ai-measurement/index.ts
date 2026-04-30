@@ -919,7 +919,7 @@ async function processJob(input: any) {
       used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
       used_solar_bbox_as_crop_only: usedSolarBboxAsCropOnly,
       used_synthetic_debug_rectangle: usedSyntheticDebugRectangle,
-      used_deterministic_topology: topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation",
+      used_deterministic_topology: topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       footprint_source: footprintSource,
       topology_source: topologySource,
       final_plane_count: cleanPlanes.length,
@@ -1078,6 +1078,7 @@ async function processJob(input: any) {
 
     const resolvedGeometrySource =
       topologySource === "ridge_split_recursive" ? "deterministic_ridge_split"
+      : topologySource === "google_solar_segment_structure" ? "google_solar_segment_structure"
       : topologySource === "straight_skeleton" ? "deterministic_straight_skeleton"
       : topologySource === "triangulation" ? "deterministic_triangulation"
       : topologySource === "unet_planes" ? "unet_optional_helper"
@@ -1171,7 +1172,7 @@ async function processJob(input: any) {
       footprint_source: footprintSource,
       inference_source: resolvedGeometrySource,
       used_deterministic_topology:
-        topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation",
+        topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
       footprint_candidates: footprintCandidatesForReport,
