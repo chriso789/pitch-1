@@ -697,29 +697,36 @@ async function processJob(input: any) {
     let ridgeSplitPlaneCount = 0;
 
     const addSolarSegmentStructure = () => {
-      const segments = (solarSegments || [])
+      const bb = bboxOf(footprint);
+      if (!bb) return false;
+      const rawSegments = (solarSegments || [])
         .map((seg: any, idx: number) => {
           const cLat = Number(seg?.center?.latitude);
           const cLng = Number(seg?.center?.longitude);
           if (!Number.isFinite(cLat) || !Number.isFinite(cLng)) return null;
           const center = lngLatToPx(cLat, cLng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
-          const groundM2 = Number(seg?.stats?.groundAreaMeters2 || seg?.stats?.areaMeters2 || 0);
-          const halfPx = Math.max(12, Math.min(90, (Math.sqrt(Math.max(groundM2, 8)) / 2) / actualMpp));
           const az = Number(seg?.azimuthDegrees);
           const pitchDeg = Number(seg?.pitchDegrees);
-          const p = [
-            { x: center.x - halfPx, y: center.y - halfPx },
-            { x: center.x + halfPx, y: center.y - halfPx },
-            { x: center.x + halfPx, y: center.y + halfPx },
-            { x: center.x - halfPx, y: center.y + halfPx },
-          ];
-          const clipped = cleanPolygon(clipPolygonToRect(p, bboxOf(footprint)!), raster.width, raster.height);
-          return clipped.length >= 3 ? { plane_index: idx + 1, polygon_px: clipped, confidence: 0.76, pitch_degrees: Number.isFinite(pitchDeg) ? pitchDeg : null, azimuth: Number.isFinite(az) ? az : null, source: "google_solar_segment_planes" } : null;
+          return { idx, center, az, pitchDeg };
         })
-        .filter(Boolean) as RoofPlane[];
+        .filter(Boolean) as Array<{ idx: number; center: Point; az: number; pitchDeg: number }>;
+      if (rawSegments.length < 2) return false;
+      const xs = rawSegments.map((s) => s.center.x), ys = rawSegments.map((s) => s.center.y);
+      const splitOnX = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+      rawSegments.sort((a, b) => (splitOnX ? a.center.x - b.center.x : a.center.y - b.center.y));
+      const cuts = rawSegments.slice(0, -1).map((s, i) =>
+        ((splitOnX ? s.center.x : s.center.y) + (splitOnX ? rawSegments[i + 1].center.x : rawSegments[i + 1].center.y)) / 2,
+      );
+      const bounds = [splitOnX ? bb.minX : bb.minY, ...cuts, splitOnX ? bb.maxX : bb.maxY];
+      const segments = rawSegments.map((seg, idx) => {
+        const rect = splitOnX
+          ? { minX: bounds[idx], maxX: bounds[idx + 1], minY: bb.minY, maxY: bb.maxY }
+          : { minX: bb.minX, maxX: bb.maxX, minY: bounds[idx], maxY: bounds[idx + 1] };
+        const clipped = cleanPolygon(clipPolygonToRect(footprint, rect), raster.width, raster.height);
+        return clipped.length >= 3 ? { plane_index: idx + 1, polygon_px: clipped, confidence: 0.76, pitch_degrees: Number.isFinite(seg.pitchDeg) ? seg.pitchDeg : null, azimuth: Number.isFinite(seg.az) ? seg.az : null, source: "google_solar_segment_planes" } : null;
+      }).filter(Boolean) as RoofPlane[];
       if (segments.length < 2) return false;
       cleanPlanes = segments;
-      const bb = bboxOf(footprint)!;
       const cx = (bb.minX + bb.maxX) / 2, cy = (bb.minY + bb.maxY) / 2;
       const n = Math.max(1, Math.min(3, segments.length));
       for (let i = 0; i < n; i++) {
