@@ -4517,6 +4517,7 @@ Deno.serve(async (req) => {
             confidence_score: qc.overall,
             geometry_quality_score: qc.overall,
             measurement_quality_score: qc.overall,
+              report_pdf_url: null,
             completed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           })
@@ -4620,6 +4621,8 @@ Deno.serve(async (req) => {
           measurement_confidence: qc.overall,
           requires_manual_review: qc.status === 'needs_review',
           validation_status: qc.status === 'completed' ? 'validated' : 'flagged',
+          report_pdf_url: null,
+          report_pdf_path: null,
           geometry_report_json: reportJson,
           overlay_schema: reportOverlaySchema,
           patent_model: patentModel,
