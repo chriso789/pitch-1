@@ -3582,6 +3582,7 @@ Deno.serve(async (req) => {
                   // recursive ridge-driven splitter as a second chance.
                   // It re-detects ridges inside each sub-polygon and splits
                   // again, producing 5–15 planes on complex residential roofs.
+                  debug_pipeline.ridge_split_recursive_entered = true
                   try {
                     // Rasterize a polygon (in full-res image pixel space)
                     // into the downsampled grid that detectRidges operates on.
