@@ -247,6 +247,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         body: {
           project_id: projectId || null,
           pipeline_entry_id: pipelineEntryId || null,
+          change_order_id: changeOrderId || null,
           invoice_type: invoiceType,
           ...formData,
           invoice_amount: parseFloat(formData.invoice_amount)
