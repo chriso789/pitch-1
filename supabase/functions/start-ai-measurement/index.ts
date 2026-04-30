@@ -3488,6 +3488,8 @@ Deno.serve(async (req) => {
         // the multi-plane geometry.
         let skipPatentSynthesisFallback = false
         let skipSinglePlaneFallback = false
+        let forceUseRidgeSplit = false
+        let forcedGeometrySource: string | null = null
 
         // ──────────────────────────────────────────────────────────────
         // RIDGE-DRIVEN PLANE SPLITTING (pre-synthesis safety net)
@@ -3570,6 +3572,12 @@ Deno.serve(async (req) => {
                   edges = edgesFromPlanes(
                     planes, lat, lng, imgW, imgH, cal.meters_per_pixel_actual, feetPerPixel,
                   )
+                  // HARD LOCK: this is ridge-derived multi-plane geometry.
+                  // No later single-plane or patent-synthesis fallback may replace it.
+                  forceUseRidgeSplit = true
+                  forcedGeometrySource = 'ridge_split_pre_synthesis'
+                  skipPatentSynthesisFallback = true
+                  skipSinglePlaneFallback = true
                   console.log(
                     `[ridge_split_pre_synthesis] split single plane → ${planes.length} planes ` +
                     `using ${ridgeLines.length} ridges; edges=${edges.length} ` +
@@ -3724,6 +3732,8 @@ Deno.serve(async (req) => {
                         // HARD STOP: do not let synthesizePatentStructureFromFootprint
                         // or single-plane overlay fallbacks overwrite the new
                         // multi-plane geometry produced by recursive splitting.
+                        forceUseRidgeSplit = true
+                        forcedGeometrySource = 'ridge_split_recursive'
                         skipPatentSynthesisFallback = true
                         skipSinglePlaneFallback = true
                       }
