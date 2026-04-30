@@ -212,6 +212,9 @@ export function AddressAutocomplete({
               placeholder={placeholder}
               disabled={disabled}
               required={required}
+              autoComplete="off"
+              name="lead-address-search"
+              spellCheck={false}
               className={cn(
                 "pl-10 pr-10",
                 error && "border-destructive",
