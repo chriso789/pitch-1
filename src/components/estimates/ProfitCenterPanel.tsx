@@ -306,7 +306,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           <div className="relative">
             <TabsList className={cn(
               "flex overflow-x-auto w-full justify-start mb-4",
-              isProject ? "bg-muted p-1 rounded-md" : "grid w-full grid-cols-3"
+              isProject ? "bg-muted p-1 rounded-md" : "grid w-full grid-cols-4"
             )}>
               <TabsTrigger value="summary" className="text-xs flex-shrink-0">
                 <Calculator className="h-3 w-3 mr-1" />
@@ -319,6 +319,10 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
               <TabsTrigger value="breakdown" className="text-xs flex-shrink-0">
                 <Receipt className="h-3 w-3 mr-1" />
                 Details
+              </TabsTrigger>
+              <TabsTrigger value="change_orders" className="text-xs flex-shrink-0">
+                <FileEdit className="h-3 w-3 mr-1" />
+                Change Orders
               </TabsTrigger>
               {isProject && (
                 <>
