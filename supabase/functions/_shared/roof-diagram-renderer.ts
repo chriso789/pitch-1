@@ -368,11 +368,11 @@ function renderOverlayPage(ctx: Ctx): string {
     ? `<image href="${escapeXml(ctx.input.satelliteImageUrl)}" x="${DRAW_ZONE.x}" y="${DRAW_ZONE.y}" width="${DRAW_ZONE.w}" height="${DRAW_ZONE.h}" preserveAspectRatio="xMidYMid slice" opacity="1" />`
     : `<rect x="${DRAW_ZONE.x}" y="${DRAW_ZONE.y}" width="${DRAW_ZONE.w}" height="${DRAW_ZONE.h}" fill="#f8f8f8" stroke="#ddd"/>`;
 
-  const planeFills = ctx.planes
+  const planeFills = ctx.overlayPlanes
     .map((p) => `<polygon points="${pts(p.polygon_px)}" fill="${COLORS.satelliteFill}" stroke="#ffffff" stroke-width="2"/>`)
     .join("");
 
-  const edgeLines = ctx.edges
+  const edgeLines = ctx.overlayEdges
     .map((e) => {
       const st = EDGE_STYLE[e.edge_type] || EDGE_STYLE.unknown;
       const stroke = e.edge_type === "eave" ? "#ffffff" : st.stroke;
@@ -380,7 +380,7 @@ function renderOverlayPage(ctx: Ctx): string {
     })
     .join("");
 
-  const labels = ctx.edges
+  const labels = ctx.overlayEdges
     .map((e) => textBadge(e._label.x, e._label.y, `${round(e.length_ft || 0, 0)}`, { onDark: true }))
     .join("");
 
@@ -584,6 +584,16 @@ function pts(points: Point[]): string {
 function path(points: Point[]): string {
   if (!points?.length) return "";
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+}
+
+function bboxFromPoints(points: Point[]): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } | null {
+  const valid = points.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+  if (!valid.length) return null;
+  const minX = Math.min(...valid.map((p) => p.x));
+  const maxX = Math.max(...valid.map((p) => p.x));
+  const minY = Math.min(...valid.map((p) => p.y));
+  const maxY = Math.max(...valid.map((p) => p.y));
+  return { minX, minY, maxX, maxY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
 }
 
 function polylineLength(points: Point[]): number {
