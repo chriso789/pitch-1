@@ -1252,8 +1252,13 @@ async function processJob(input: any) {
     } else if (planeRows.length < 2 && finalFootprintAreaSqft > 800 && !sanityFailures.some((s) => s.includes("plane"))) {
       sanityFailures.push("too_few_planes_lt_2");
     }
-    if (overlayScaleStats && !overlayScaleStats.in_band && overlayScaleStats.ratio > 0) {
-      sanityFailures.push(`overlay_scale_out_of_band_${overlayScaleStats.ratio}`);
+    if (overlayCalibration?.calibrated) {
+      if (overlayCalibration.coverage_ratio_width < 0.65 || overlayCalibration.coverage_ratio_height < 0.65) {
+        sanityFailures.push("overlay_geometry_too_small");
+      }
+      if (overlayCalibration.center_error_px > 80) {
+        sanityFailures.push("overlay_center_mismatch");
+      }
     }
 
     const blockCustomerReportReason: string | null =
@@ -1275,7 +1280,7 @@ async function processJob(input: any) {
       ridges_detected: ridgeDetectedCount,
       ridge_split_planes: ridgeSplitPlaneCount,
       plane_consolidation: planeConsolidationStats,
-      overlay_scale: overlayScaleStats,
+      overlay_calibration: overlayCalibration,
     }));
 
     const quality = scoreQuality({
