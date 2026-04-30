@@ -119,11 +119,15 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
   const transformed = normalizeToDrawZone(input);
   const placedEdges = placeEdgeLabels(transformed.edges);
   const placedPlanes = placePlaneLabels(transformed.planes);
+  const overlayEdges = placeEdgeLabels(transformed.overlayEdges || transformed.edges);
+  const overlayPlanes = placePlaneLabels(transformed.overlayPlanes || transformed.planes);
 
   const ctx = {
     input,
     planes: placedPlanes,
     edges: placedEdges,
+    overlayPlanes,
+    overlayEdges,
     totals: input.totals || {},
     address: input.propertyAddress || "Unknown Address",
     generatedAt: input.generatedAt || new Date().toISOString(),
@@ -310,6 +314,8 @@ type Ctx = {
   input: DiagramInput;
   planes: PlacedPlane[];
   edges: PlacedEdge[];
+  overlayPlanes: PlacedPlane[];
+  overlayEdges: PlacedEdge[];
   totals: DiagramInput["totals"];
   address: string;
   generatedAt: string;
