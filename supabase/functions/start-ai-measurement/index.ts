@@ -1157,6 +1157,8 @@ async function processJob(input: any) {
       ridge_detection_ran: ridgeDetectionRan,
       ridges_detected: ridgeDetectedCount,
       ridge_split_planes: ridgeSplitPlaneCount,
+      plane_consolidation: planeConsolidationStats,
+      overlay_scale: overlayScaleStats,
     }));
 
     const quality = scoreQuality({
