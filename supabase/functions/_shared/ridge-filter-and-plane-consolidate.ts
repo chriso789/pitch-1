@@ -258,7 +258,18 @@ export function consolidatePlanes(
     .filter((p) => p._area >= minArea);
   const dropped = before - working.length;
 
-  // 2) merge similar adjacent planes (greedy, area-descending)
+  // 2) merge near-duplicate planes ONLY.
+  //
+  // CRITICAL FIX: ridge-split planes are sibling slices of the same footprint,
+  // so their AXIS-ALIGNED BBOXES heavily overlap by definition. Using bbox
+  // overlap as a merge criterion collapsed valid multi-plane roofs into 1.
+  //
+  // We now require:
+  //   (a) polygon-area overlap (intersection / smaller polygon area) > threshold
+  //       — approximated via bbox-of-intersection clipped to each polygon's bbox,
+  //       then divided by the SMALLER POLYGON AREA (not bbox area).
+  //   (b) BOTH planes must have explicit, near-equal pitch — null pitch never
+  //       merges (ridge-split planes have null pitch, so they stay separate).
   let merged = 0;
   let changed = true;
   while (changed) {
@@ -270,14 +281,17 @@ export function consolidatePlanes(
         const aB = bbox(A.polygon_px), bB = bbox(B.polygon_px);
         const ix = Math.max(0, Math.min(aB.maxX, bB.maxX) - Math.max(aB.minX, bB.minX));
         const iy = Math.max(0, Math.min(aB.maxY, bB.maxY) - Math.max(aB.minY, bB.minY));
-        const inter = ix * iy;
-        const minOwnArea = Math.min(aB.w * aB.h, bB.w * bB.h);
-        if (minOwnArea <= 0) continue;
-        const overlap = inter / minOwnArea;
+        const interBboxArea = ix * iy;
+        if (interBboxArea <= 0) continue;
+        const minPolyArea = Math.min(A._area, B._area);
+        if (minPolyArea <= 0) continue;
+        // Upper-bound on true polygon overlap.
+        const overlap = Math.min(1, interBboxArea / minPolyArea);
 
         const pa = A.pitch_degrees ?? A.pitch ?? null;
         const pb = B.pitch_degrees ?? B.pitch ?? null;
-        const pitchOk = pa == null || pb == null || Math.abs(pa - pb) <= pitchTol;
+        // Require BOTH pitches defined; null pitch (ridge-split output) blocks merging.
+        const pitchOk = pa != null && pb != null && Math.abs(pa - pb) <= pitchTol;
 
         if (overlap > overlapTh && pitchOk) {
           // Merge: keep larger polygon, drop smaller.
