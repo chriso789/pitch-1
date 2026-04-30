@@ -127,7 +127,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const renderedPlaneCount = Array.isArray((reportModel as any)?.planes)
     ? (reportModel as any).planes.length
     : 0;
-  const reportCollapsed = Boolean(reportModel && persistedPlaneCount > 1 && renderedPlaneCount <= 1);
+  const renderedPlaneLabels = Array.isArray((reportModel as any)?.planes)
+    ? new Set((reportModel as any).planes.map((p: any) => String(p.label ?? p.id ?? 'A'))).size
+    : 0;
+  const reportCollapsed = Boolean(
+    reportModel && persistedPlaneCount > 1 && (renderedPlaneCount <= 1 || renderedPlaneLabels <= 1),
+  );
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0;
 
   const createExportSafeClone = (page: HTMLElement) => {
