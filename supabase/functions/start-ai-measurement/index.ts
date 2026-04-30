@@ -528,6 +528,42 @@ async function processJob(input: any) {
       );
     }
 
+    const geometryReportJson = { planes: planeRows, edges: edgeRows, totals, quality };
+    const linearFeaturesWkt = edgeRows.map((edge: any) => ({
+      type: edge.edge_type,
+      wkt: lineGeoJSONToWKT(edge.line_geojson),
+      length_ft: edge.length_ft,
+      source: edge.source,
+      confidence: edge.confidence,
+    })).filter((feature: any) => feature.wkt);
+    const footprintVerticesGeo = footprint.map((p) => {
+      const [lng, lat] = pxToLngLat(p, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      return { lng, lat };
+    });
+    const perimeterWkt = footprintVerticesGeo.length >= 3 ? polygonVerticesToWKT(footprintVerticesGeo) : null;
+    const imageBounds = imageBoundsFromRaster({ lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+    const reviewRequired = Boolean(blockCustomerReportReason) || quality.overall_score < 0.80;
+    const aiDetectionData = {
+      source_button: input.source_button,
+      engine_version: "geometry_first_v2",
+      geometry_source: resolvedGeometrySource,
+      footprint_source: footprintSource,
+      topology_source: topologySource,
+      block_customer_report_reason: blockCustomerReportReason,
+      planes: planeRows,
+      edges: edgeRows,
+      totals,
+      quality,
+      calibration: {
+        logical_meters_per_pixel: logicalMpp,
+        actual_meters_per_pixel: actualMpp,
+        actual_feet_per_pixel: actualFpp,
+        raster_scale: input.raster_scale,
+      },
+      solar_used: !!solarData,
+      unet_used: cleanPlanes.some((p) => p.source.startsWith("unet")) || cleanEdges.some((e) => e.source.startsWith("unet")),
+    };
+
     // Publish canonical roof_measurements row
     const { data: roofMeasurement, error: publishError } = await supabase
       .from("roof_measurements")
@@ -545,6 +581,11 @@ async function processJob(input: any) {
         target_lng: coords.lng,
         mapbox_image_url: imageUrl,
         meters_per_pixel: actualMpp,
+        ai_detection_data: aiDetectionData,
+        ai_analysis: aiDetectionData,
+        ai_model_version: "geometry_first_v2",
+        detection_timestamp: new Date().toISOString(),
+        detection_confidence: quality.overall_score,
         total_area_flat_sqft: totals.total_area_2d_sqft,
         total_area_adjusted_sqft: totals.total_area_pitch_adjusted_sqft,
         total_squares: totals.roof_square_count,
@@ -559,13 +600,33 @@ async function processJob(input: any) {
         measurement_confidence: quality.overall_score * 100,
         geometry_quality_score: quality.geometry_score,
         measurement_quality_score: quality.measurement_score,
-        requires_manual_review: quality.overall_score < 0.60,
-        manual_review_recommended: quality.overall_score < 0.60,
+        requires_manual_review: reviewRequired,
+        manual_review_recommended: reviewRequired,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
-        geometry_report_json: { planes: planeRows, edges: edgeRows, totals, quality },
+        geometry_report_json: geometryReportJson,
+        quality_checks: quality,
+        metadata: aiDetectionData,
         plane_breakdown: totals.plane_breakdown,
         edge_breakdown: totals.line_breakdown,
+        linear_features_wkt: linearFeaturesWkt,
+        perimeter_wkt: perimeterWkt,
+        footprint_vertices_geo: footprintVerticesGeo,
+        footprint_source: footprintSource,
+        footprint_confidence: quality.geometry_score,
+        footprint_requires_review: reviewRequired,
+        analysis_zoom: Number(input.zoom),
+        analysis_image_size: {
+          width: raster.width,
+          height: raster.height,
+          logicalWidth: Number(input.logical_image_width),
+          logicalHeight: Number(input.logical_image_height),
+          rasterScale: Number(input.raster_scale),
+        },
+        image_bounds: imageBounds,
+        bounding_box: imageBounds,
+        gate_decision: reviewRequired ? "needs_review" : "approved",
+        gate_reason: blockCustomerReportReason,
         source_button: input.source_button,
         engine_version: "geometry_first_v2",
         engine_used: "geometry_first_v2",
