@@ -35,6 +35,7 @@ import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
 import { buildTopology as buildTriangulationTopology } from '../_shared/topology-engine.ts'
 import { decomposeComplexFootprint } from '../_shared/complex-footprint-decomposer.ts'
 import { classifyHipValleyRidgeEdges } from '../_shared/hip-valley-classifier.ts'
+import { splitPlanesFromRidges } from '../_shared/ridge-plane-splitter.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
