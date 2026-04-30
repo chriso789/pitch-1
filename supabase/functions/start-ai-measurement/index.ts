@@ -550,12 +550,66 @@ async function processJob(input: any) {
     const usedSinglePlaneFallback =
       planeRows.length === 1 && planeRows[0].source === "single_plane_fallback";
 
-    // Block customer-shippable report when only 1 plane was produced for a
-    // non-trivial footprint — that signals topology collapse, not a real flat roof.
-    const blockCustomerReportReason: string | null =
-      (planeRows.length === 1 && Number(totals.total_area_2d_sqft) > 800)
-        ? "single_plane_for_large_footprint"
+    // ───────── GEOMETRY SANITY GATE ─────────
+    // Compute coverage/structural metrics, then block the customer report if
+    // the geometry only covers a sub-region of the actual roof.
+    const finalFootprintBboxPx = bboxOf(footprint);
+    const finalFootprintAreaPx = polygonAreaPx(footprint);
+    const finalFootprintAreaSqft = finalFootprintAreaPx * actualFpp * actualFpp;
+    const finalRoofAreaSqft = Number(totals.total_area_2d_sqft) || 0;
+    const roofBboxCoverageRatio =
+      solarBboxPx && solarBboxPx.area > 0 && finalFootprintBboxPx
+        ? finalFootprintBboxPx.area / solarBboxPx.area
         : null;
+    const ridgeFt = Number(totals.ridge_length_ft) || 0;
+    const hipFt = Number(totals.hip_length_ft) || 0;
+    const valleyFt = Number(totals.valley_length_ft) || 0;
+    const dominantPitchRise = Number(totals.dominant_pitch) || 0;
+    const isFlatRoof = dominantPitchRise > 0 && dominantPitchRise < 1.5;
+
+    // Geometry bbox vs footprint bbox (overlay coverage of the roof target).
+    const geometryUnionPoints: Point[] = [];
+    for (const p of cleanPlanes) for (const pt of p.polygon_px || []) geometryUnionPoints.push(pt);
+    for (const e of cleanEdges) for (const pt of e.line_px || []) geometryUnionPoints.push(pt);
+    const finalGeometryBboxPx = bboxOf(geometryUnionPoints);
+    const geometryVsFootprintRatio =
+      finalGeometryBboxPx && finalFootprintBboxPx && finalFootprintBboxPx.area > 0
+        ? finalGeometryBboxPx.area / finalFootprintBboxPx.area
+        : null;
+
+    const sanityFailures: string[] = [];
+    if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
+      sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
+    }
+    if (roofBboxCoverageRatio != null && roofBboxCoverageRatio < 0.4) {
+      sanityFailures.push(`footprint_covers_only_${Math.round(roofBboxCoverageRatio * 100)}pct_of_solar_bbox`);
+    }
+    if (!isFlatRoof && ridgeFt + hipFt + valleyFt === 0) {
+      sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
+    }
+    if (planeRows.length < 2 && finalFootprintAreaSqft > 800) {
+      sanityFailures.push("single_plane_for_large_footprint");
+    }
+    if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
+      sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
+    }
+
+    const blockCustomerReportReason: string | null =
+      sanityFailures.length > 0 ? sanityFailures.join("|") : null;
+
+    console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
+      final_roof_area_sqft: finalRoofAreaSqft,
+      final_footprint_area_sqft: finalFootprintAreaSqft,
+      roof_bbox_coverage_ratio: roofBboxCoverageRatio,
+      geometry_vs_footprint_ratio: geometryVsFootprintRatio,
+      plane_count: planeRows.length,
+      edge_counts: {
+        ridge: ridgeFt, hip: hipFt, valley: valleyFt,
+        eave: Number(totals.eave_length_ft) || 0, rake: Number(totals.rake_length_ft) || 0,
+      },
+      blocked: !!blockCustomerReportReason,
+      reason: blockCustomerReportReason,
+    }));
 
     const quality = scoreQuality({
       geocode_location_type: coords.geocode_location_type,
