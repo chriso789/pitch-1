@@ -144,12 +144,15 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
     }
   }
   const cal = grj.overlay_calibration
+  if (cal?.calibrated !== true) {
+    return { ok: false, reason: 'overlay_alignment_failed', measurement: m }
+  }
   if (cal?.calibrated === true) {
     if (Number(cal.coverage_ratio_width) < 0.65 || Number(cal.coverage_ratio_height) < 0.65) {
-      return { ok: false, reason: 'overlay_geometry_too_small', measurement: m }
+      return { ok: false, reason: 'overlay_alignment_failed', measurement: m }
     }
     if (Number(cal.center_error_px) > 80) {
-      return { ok: false, reason: 'overlay_center_mismatch', measurement: m }
+      return { ok: false, reason: 'overlay_alignment_failed', measurement: m }
     }
   }
 
