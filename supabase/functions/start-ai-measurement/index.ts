@@ -1129,6 +1129,15 @@ async function processJob(input: any) {
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
     }
+    // Final QA gates from filter+simplify layer.
+    if (planeRows.length > 20) {
+      sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
+    } else if (planeRows.length < 2 && finalFootprintAreaSqft > 800 && !sanityFailures.some((s) => s.includes("plane"))) {
+      sanityFailures.push("too_few_planes_lt_2");
+    }
+    if (overlayScaleStats && !overlayScaleStats.in_band && overlayScaleStats.ratio > 0) {
+      sanityFailures.push(`overlay_scale_out_of_band_${overlayScaleStats.ratio}`);
+    }
 
     const blockCustomerReportReason: string | null =
       sanityFailures.length > 0 ? sanityFailures.join("|") : null;
