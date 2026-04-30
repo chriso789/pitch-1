@@ -31,6 +31,7 @@ const COLOR: Record<string, string> = {
   valley: "hsl(217 91% 60%)",
   eave: "hsl(142 71% 45%)",
   rake: "hsl(271 76% 60%)",
+  unknown: "hsl(var(--muted-foreground))",
 };
 
 interface Props {
