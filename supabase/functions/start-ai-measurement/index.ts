@@ -872,6 +872,14 @@ async function processJob(input: any) {
       } catch (e) {
         console.warn("[geometry-first] topology engine failed:", (e as Error).message);
       }
+
+      if (cleanPlanes.length < 2 || !cleanEdges.some((e) => e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley")) {
+        const solarStructured = addSolarSegmentStructure();
+        if (solarStructured) {
+          ridgeSplitPlaneCount = cleanPlanes.length;
+          console.log("[SOLAR_SEGMENT_STRUCTURE]", JSON.stringify({ planes: cleanPlanes.length, edges: cleanEdges.length, topology_source: topologySource }));
+        }
+      }
     }
 
     // 6. Refine with U-Net output ONLY if topology produced nothing AND U-Net did.
