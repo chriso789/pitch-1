@@ -1,4 +1,11 @@
 // Roof Diagram Renderer — geometry-first, EagleView-style 6-page report.
+import {
+  computeOverlayTransform,
+  transformOverlayPoints,
+  type OverlayBBox,
+  type OverlayCalibration,
+} from "./overlay-transform.ts";
+
 // Inputs come exclusively from real measured geometry stored in
 // ai_roof_planes / ai_roof_edges / ai_measurement_results / ai_measurement_images.
 //
@@ -55,6 +62,8 @@ export type DiagramInput = {
   /** Native pixel dimensions of the satellite raster the polygon_px coords were sampled from. */
   sourceImageWidth?: number | null;
   sourceImageHeight?: number | null;
+  roofTargetBboxPx?: Partial<OverlayBBox> | null;
+  overlayCalibration?: OverlayCalibration | null;
 };
 
 export type GeneratedDiagram = {
@@ -73,6 +82,7 @@ const PAGE_H = 1100;
 
 const MARGIN = { top: 50, left: 55, right: 55, bottom: 55 };
 const DRAW_ZONE = { x: 85, y: 210, w: 600, h: 650 };
+const DIAGRAM_ZONE = { x: 150, y: 230, w: 455, h: 560 };
 const COMPASS = { cx: 710, cy: 850 };
 
 const COLORS = {
@@ -109,11 +119,15 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
   const transformed = normalizeToDrawZone(input);
   const placedEdges = placeEdgeLabels(transformed.edges);
   const placedPlanes = placePlaneLabels(transformed.planes);
+  const overlayEdges = placeEdgeLabels(transformed.overlayEdges || transformed.edges);
+  const overlayPlanes = placePlaneLabels(transformed.overlayPlanes || transformed.planes);
 
   const ctx = {
     input,
     planes: placedPlanes,
     edges: placedEdges,
+    overlayPlanes,
+    overlayEdges,
     totals: input.totals || {},
     address: input.propertyAddress || "Unknown Address",
     generatedAt: input.generatedAt || new Date().toISOString(),
@@ -138,34 +152,64 @@ export function generateRoofDiagrams(input: DiagramInput): GeneratedDiagram[] {
 // Geometry normalization — single transform for ALL pages
 // ============================================================================
 
-function normalizeToDrawZone(input: DiagramInput) {
+type NormalizedGeometry = { planes: RendererPlane[]; edges: RendererEdge[]; overlayPlanes?: RendererPlane[]; overlayEdges?: RendererEdge[]; calibration?: OverlayCalibration };
+
+function normalizeToDrawZone(input: DiagramInput): NormalizedGeometry {
   const planes = input.planes || [];
   const edges = input.edges || [];
   const sourceW = Number(input.sourceImageWidth || 0);
   const sourceH = Number(input.sourceImageHeight || 0);
 
-  // Overlay pages render the full satellite raster into DRAW_ZONE using
-  // preserveAspectRatio="xMidYMid slice". Geometry must use that exact raster
-  // transform; fitting the polygon bbox separately makes the outline drift and
-  // scale incorrectly over the aerial.
-  if (sourceW > 0 && sourceH > 0) {
-    const scale = Math.max(DRAW_ZONE.w / sourceW, DRAW_ZONE.h / sourceH);
-    const drawnW = sourceW * scale;
-    const drawnH = sourceH * scale;
-    const offX = DRAW_ZONE.x + (DRAW_ZONE.w - drawnW) / 2;
-    const offY = DRAW_ZONE.y + (DRAW_ZONE.h - drawnH) / 2;
-    const tx = (p: Point): Point => ({ x: p.x * scale + offX, y: p.y * scale + offY });
-
-    return {
-      planes: planes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(tx) })),
-      edges: edges.map((e) => ({ ...e, line_px: (e.line_px || []).map(tx) })),
-    };
-  }
-
-  const all = [
+  const geometryPoints = [
     ...planes.flatMap((p) => p.polygon_px || []),
     ...edges.flatMap((e) => e.line_px || []),
   ].filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+
+  if (sourceW > 0 && sourceH > 0) {
+    const calibration = input.overlayCalibration?.calibrated
+      ? input.overlayCalibration
+      : computeOverlayTransform({
+        rasterSize: { width: sourceW, height: sourceH },
+        geometryPoints,
+        roofTargetBboxPx: input.roofTargetBboxPx || null,
+      });
+
+    const calibratedPlanes = calibration.calibrated
+      ? planes.map((p) => ({ ...p, polygon_px: transformOverlayPoints(p.polygon_px || [], calibration) }))
+      : planes;
+    const calibratedEdges = calibration.calibrated
+      ? edges.map((e) => ({ ...e, line_px: transformOverlayPoints(e.line_px || [], calibration) }))
+      : edges;
+
+    const rasterScale = Math.max(DRAW_ZONE.w / sourceW, DRAW_ZONE.h / sourceH);
+    const drawnW = sourceW * rasterScale;
+    const drawnH = sourceH * rasterScale;
+    const offX = DRAW_ZONE.x + (DRAW_ZONE.w - drawnW) / 2;
+    const offY = DRAW_ZONE.y + (DRAW_ZONE.h - drawnH) / 2;
+    const txRaster = (p: Point): Point => ({ x: p.x * rasterScale + offX, y: p.y * rasterScale + offY });
+
+    const cAll = [
+      ...calibratedPlanes.flatMap((p) => p.polygon_px || []),
+      ...calibratedEdges.flatMap((e) => e.line_px || []),
+    ];
+    const cb = bboxFromPoints(cAll);
+    const diagramScale = cb ? Math.min(DIAGRAM_ZONE.w / cb.width, DIAGRAM_ZONE.h / cb.height) : 1;
+    const diagramOffX = cb ? DIAGRAM_ZONE.x + (DIAGRAM_ZONE.w - cb.width * diagramScale) / 2 : DIAGRAM_ZONE.x;
+    const diagramOffY = cb ? DIAGRAM_ZONE.y + (DIAGRAM_ZONE.h - cb.height * diagramScale) / 2 : DIAGRAM_ZONE.y;
+    const txDiagram = (p: Point): Point => cb
+      ? { x: (p.x - cb.minX) * diagramScale + diagramOffX, y: (p.y - cb.minY) * diagramScale + diagramOffY }
+      : p;
+
+    return {
+      planes: calibratedPlanes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(txDiagram) })),
+      edges: calibratedEdges.map((e) => ({ ...e, line_px: (e.line_px || []).map(txDiagram) })),
+      overlayPlanes: calibratedPlanes.map((p) => ({ ...p, polygon_px: (p.polygon_px || []).map(txRaster) })),
+      overlayEdges: calibratedEdges.map((e) => ({ ...e, line_px: (e.line_px || []).map(txRaster) })),
+      calibration,
+    };
+  }
+
+  const all = geometryPoints;
 
   if (all.length === 0) return { planes, edges };
 
@@ -177,13 +221,13 @@ function normalizeToDrawZone(input: DiagramInput) {
   const srcW = Math.max(maxX - minX, 1);
   const srcH = Math.max(maxY - minY, 1);
 
-  // Fit inside DRAW_ZONE preserving aspect ratio. SVG y grows down, source raster
-  // y grows down — direct mapping keeps north at top of the page.
-  const scale = Math.min(DRAW_ZONE.w / srcW, DRAW_ZONE.h / srcH);
+  // For non-raster diagram pages, use a wider fixed diagram zone so pitch/area
+  // labels stay readable instead of rendering as a tiny centered sketch.
+  const scale = Math.min(DIAGRAM_ZONE.w / srcW, DIAGRAM_ZONE.h / srcH);
   const drawnW = srcW * scale;
   const drawnH = srcH * scale;
-  const offX = DRAW_ZONE.x + (DRAW_ZONE.w - drawnW) / 2;
-  const offY = DRAW_ZONE.y + (DRAW_ZONE.h - drawnH) / 2;
+  const offX = DIAGRAM_ZONE.x + (DIAGRAM_ZONE.w - drawnW) / 2;
+  const offY = DIAGRAM_ZONE.y + (DIAGRAM_ZONE.h - drawnH) / 2;
 
   const tx = (p: Point): Point => ({
     x: (p.x - minX) * scale + offX,
@@ -286,6 +330,8 @@ type Ctx = {
   input: DiagramInput;
   planes: PlacedPlane[];
   edges: PlacedEdge[];
+  overlayPlanes: PlacedPlane[];
+  overlayEdges: PlacedEdge[];
   totals: DiagramInput["totals"];
   address: string;
   generatedAt: string;
@@ -322,11 +368,11 @@ function renderOverlayPage(ctx: Ctx): string {
     ? `<image href="${escapeXml(ctx.input.satelliteImageUrl)}" x="${DRAW_ZONE.x}" y="${DRAW_ZONE.y}" width="${DRAW_ZONE.w}" height="${DRAW_ZONE.h}" preserveAspectRatio="xMidYMid slice" opacity="1" />`
     : `<rect x="${DRAW_ZONE.x}" y="${DRAW_ZONE.y}" width="${DRAW_ZONE.w}" height="${DRAW_ZONE.h}" fill="#f8f8f8" stroke="#ddd"/>`;
 
-  const planeFills = ctx.planes
+  const planeFills = ctx.overlayPlanes
     .map((p) => `<polygon points="${pts(p.polygon_px)}" fill="${COLORS.satelliteFill}" stroke="#ffffff" stroke-width="2"/>`)
     .join("");
 
-  const edgeLines = ctx.edges
+  const edgeLines = ctx.overlayEdges
     .map((e) => {
       const st = EDGE_STYLE[e.edge_type] || EDGE_STYLE.unknown;
       const stroke = e.edge_type === "eave" ? "#ffffff" : st.stroke;
@@ -334,7 +380,7 @@ function renderOverlayPage(ctx: Ctx): string {
     })
     .join("");
 
-  const labels = ctx.edges
+  const labels = ctx.overlayEdges
     .map((e) => textBadge(e._label.x, e._label.y, `${round(e.length_ft || 0, 0)}`, { onDark: true }))
     .join("");
 
@@ -538,6 +584,16 @@ function pts(points: Point[]): string {
 function path(points: Point[]): string {
   if (!points?.length) return "";
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
+}
+
+function bboxFromPoints(points: Point[]): { minX: number; minY: number; maxX: number; maxY: number; width: number; height: number } | null {
+  const valid = points.filter((p) => Number.isFinite(p?.x) && Number.isFinite(p?.y));
+  if (!valid.length) return null;
+  const minX = Math.min(...valid.map((p) => p.x));
+  const maxX = Math.max(...valid.map((p) => p.x));
+  const minY = Math.min(...valid.map((p) => p.y));
+  const maxY = Math.max(...valid.map((p) => p.y));
+  return { minX, minY, maxX, maxY, width: Math.max(1, maxX - minX), height: Math.max(1, maxY - minY) };
 }
 
 function polylineLength(points: Point[]): number {

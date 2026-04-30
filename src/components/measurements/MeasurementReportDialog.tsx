@@ -76,6 +76,13 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
   if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
   if (grj.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
+  const cal = grj.overlay_calibration;
+  if (cal?.calibrated) {
+    if (Number(cal.coverage_ratio_width) < 0.65 || Number(cal.coverage_ratio_height) < 0.65)
+      return { ok: false, reason: 'overlay_geometry_too_small' };
+    if (Number(cal.center_error_px) > 80)
+      return { ok: false, reason: 'overlay_center_mismatch' };
+  }
 
   const warnings: string[] = [];
   if (grj.single_plane_fallback === true)
@@ -451,6 +458,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                   rasterSize={rasterSize}
                   planes_px={planes_px}
                   edges_px={edges_px}
+                  overlayCalibration={grj?.overlay_calibration || null}
+                  roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
                 />
               ) : null;
 

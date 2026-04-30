@@ -143,6 +143,15 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
       measurement: m,
     }
   }
+  const cal = grj.overlay_calibration
+  if (cal?.calibrated === true) {
+    if (Number(cal.coverage_ratio_width) < 0.65 || Number(cal.coverage_ratio_height) < 0.65) {
+      return { ok: false, reason: 'overlay_geometry_too_small', measurement: m }
+    }
+    if (Number(cal.center_error_px) > 80) {
+      return { ok: false, reason: 'overlay_center_mismatch', measurement: m }
+    }
+  }
 
   return { ok: true, warnings, measurement: m }
 }

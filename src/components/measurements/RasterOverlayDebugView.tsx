@@ -3,6 +3,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import {
+  computeOverlayTransform,
+  transformOverlayPoint,
+  type OverlayBBox,
+  type OverlayCalibration,
+} from '@/lib/measurements/overlayTransform';
 
 /**
  * Dev-only debug view that overlays measured planes & edges on top of the
@@ -33,11 +39,15 @@ export function RasterOverlayDebugView({
   rasterSize,
   planes_px,
   edges_px,
+  overlayCalibration,
+  roofTargetBboxPx,
 }: {
   imageUrl: string | null | undefined;
   rasterSize: { width: number; height: number } | null | undefined;
   planes_px: PlanePx[];
   edges_px: EdgePx[];
+  overlayCalibration?: OverlayCalibration | null;
+  roofTargetBboxPx?: Partial<OverlayBBox> | null;
 }) {
   const [showPlanes, setShowPlanes] = useState(true);
   const [showEdges, setShowEdges] = useState(true);
@@ -48,6 +58,43 @@ export function RasterOverlayDebugView({
     const h = rasterSize?.height || 1024;
     return `0 0 ${w} ${h}`;
   }, [rasterSize]);
+
+  const calibration = useMemo(() => {
+    if (!rasterSize) return null;
+    if (overlayCalibration?.calibrated) return overlayCalibration;
+    const geometryPoints = [
+      ...planes_px.flatMap((p) => (p.polygon || []).map(([x, y]) => ({ x, y }))),
+      ...edges_px.flatMap((e) => [
+        { x: e.p1[0], y: e.p1[1] },
+        { x: e.p2[0], y: e.p2[1] },
+      ]),
+    ];
+    return computeOverlayTransform({
+      rasterSize,
+      geometryPoints,
+      roofTargetBboxPx: roofTargetBboxPx || null,
+    });
+  }, [edges_px, overlayCalibration, planes_px, rasterSize, roofTargetBboxPx]);
+
+  const displayPlanes = useMemo(() => {
+    if (!calibration?.calibrated) return planes_px;
+    return planes_px.map((p) => ({
+      ...p,
+      polygon: (p.polygon || []).map(([x, y]) => {
+        const out = transformOverlayPoint({ x, y }, calibration);
+        return [out.x, out.y] as Pt;
+      }),
+    }));
+  }, [calibration, planes_px]);
+
+  const displayEdges = useMemo(() => {
+    if (!calibration?.calibrated) return edges_px;
+    return edges_px.map((e) => {
+      const p1 = transformOverlayPoint({ x: e.p1[0], y: e.p1[1] }, calibration);
+      const p2 = transformOverlayPoint({ x: e.p2[0], y: e.p2[1] }, calibration);
+      return { ...e, p1: [p1.x, p1.y] as Pt, p2: [p2.x, p2.y] as Pt };
+    });
+  }, [calibration, edges_px]);
 
   if (!imageUrl || !rasterSize) {
     return (
@@ -105,8 +152,20 @@ export function RasterOverlayDebugView({
                 opacity={0.95}
               />
             )}
+            {calibration?.roof_target_bbox_px && (
+              <rect
+                x={calibration.roof_target_bbox_px.minX}
+                y={calibration.roof_target_bbox_px.minY}
+                width={calibration.roof_target_bbox_px.width}
+                height={calibration.roof_target_bbox_px.height}
+                fill="none"
+                stroke="#fbbf24"
+                strokeWidth={2}
+                strokeDasharray="8 5"
+              />
+            )}
             {showPlanes &&
-              planes_px.map((p, i) => {
+              displayPlanes.map((p, i) => {
                 const pts = (p.polygon || [])
                   .map((pt) => `${pt[0]},${pt[1]}`)
                   .join(' ');
@@ -122,7 +181,7 @@ export function RasterOverlayDebugView({
                 );
               })}
             {showEdges &&
-              edges_px.map((e, i) => (
+              displayEdges.map((e, i) => (
                 <line
                   key={`e-${i}`}
                   x1={e.p1[0]}

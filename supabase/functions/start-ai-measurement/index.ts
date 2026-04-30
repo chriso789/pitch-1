@@ -14,11 +14,11 @@ import { splitPlanesFromRidges, type Line as RidgeLine } from "../_shared/ridge-
 import {
   filterRidges,
   consolidatePlanes,
-  computeOverlayScale,
   type RidgeLine as FilterRidgeLine,
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
 import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
+import { computeOverlayTransform } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
@@ -1055,26 +1055,40 @@ async function processJob(input: any) {
       cleanPlanes = consolidated.planes as RoofPlane[];
     }
 
-    // ── OVERLAY SCALE VALIDATION — geometry bbox vs target footprint bbox.
-    let overlayScaleStats: ReturnType<typeof computeOverlayScale> | null = null;
+    // ── OVERLAY CALIBRATION — fit measured geometry to the detected roof target,
+    // not to the full raster center. This is rendering-only and does not change
+    // physical measurements calculated from original pixel geometry.
+    let overlayCalibration: ReturnType<typeof computeOverlayTransform> | null = null;
+    let roofTargetBboxPx: any = null;
     try {
-      const fpBox = (() => {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const p of footprint) {
-          if (p.x < minX) minX = p.x;
-          if (p.y < minY) minY = p.y;
-          if (p.x > maxX) maxX = p.x;
-          if (p.y > maxY) maxY = p.y;
-        }
-        return { minX, minY, maxX, maxY };
-      })();
-      overlayScaleStats = computeOverlayScale(
-        cleanPlanes.map((p) => p.polygon_px),
-        fpBox,
-      );
-      console.log("[OVERLAY_SCALE]", JSON.stringify(overlayScaleStats));
+      const preferredTarget =
+        candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px ||
+        candidates.find((c) => c.source === "google_solar_segments_hull" && c.bbox_px)?.bbox_px ||
+        solarBboxPx ||
+        candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px ||
+        bboxOf(footprint);
+      roofTargetBboxPx = preferredTarget;
+      const geometryPoints = [
+        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
+        ...cleanEdges.flatMap((e) => e.line_px || []),
+      ];
+      overlayCalibration = computeOverlayTransform({
+        rasterSize: { width: raster.width, height: raster.height },
+        geometryPoints,
+        roofTargetBboxPx,
+      });
+      console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
+        geometry_bbox_px: overlayCalibration.geometry_bbox_px,
+        roof_target_bbox_px: overlayCalibration.roof_target_bbox_px,
+        uniform_scale: overlayCalibration.uniform_scale,
+        translate_x: overlayCalibration.translate_x,
+        translate_y: overlayCalibration.translate_y,
+        coverage_ratio_width: overlayCalibration.coverage_ratio_width,
+        coverage_ratio_height: overlayCalibration.coverage_ratio_height,
+        center_error_px: overlayCalibration.center_error_px,
+      }));
     } catch (e) {
-      console.warn("[OVERLAY_SCALE] failed:", (e as Error).message);
+      console.warn("[OVERLAY_TRANSFORM] failed:", (e as Error).message);
     }
 
 
@@ -1238,8 +1252,13 @@ async function processJob(input: any) {
     } else if (planeRows.length < 2 && finalFootprintAreaSqft > 800 && !sanityFailures.some((s) => s.includes("plane"))) {
       sanityFailures.push("too_few_planes_lt_2");
     }
-    if (overlayScaleStats && !overlayScaleStats.in_band && overlayScaleStats.ratio > 0) {
-      sanityFailures.push(`overlay_scale_out_of_band_${overlayScaleStats.ratio}`);
+    if (overlayCalibration?.calibrated) {
+      if (overlayCalibration.coverage_ratio_width < 0.65 || overlayCalibration.coverage_ratio_height < 0.65) {
+        sanityFailures.push("overlay_geometry_too_small");
+      }
+      if (overlayCalibration.center_error_px > 80) {
+        sanityFailures.push("overlay_center_mismatch");
+      }
     }
 
     const blockCustomerReportReason: string | null =
@@ -1261,7 +1280,7 @@ async function processJob(input: any) {
       ridges_detected: ridgeDetectedCount,
       ridge_split_planes: ridgeSplitPlaneCount,
       plane_consolidation: planeConsolidationStats,
-      overlay_scale: overlayScaleStats,
+      overlay_calibration: overlayCalibration,
     }));
 
     const quality = scoreQuality({
@@ -1372,6 +1391,8 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      overlay_calibration: overlayCalibration,
+      roof_target_bbox_px: roofTargetBboxPx,
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
       imagery: {
@@ -1416,6 +1437,8 @@ async function processJob(input: any) {
         footprint_px: footprint.map((p) => [p.x, p.y]),
         solar_bbox_px: solarBboxPx,
         final_geometry_bbox_px: finalGeometryBboxPx,
+        overlay_calibration: overlayCalibration,
+        roof_target_bbox_px: roofTargetBboxPx,
       },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
@@ -1459,6 +1482,8 @@ async function processJob(input: any) {
       edges_px,
       raster_size,
       raster_image_url: imageUrl,
+      overlay_calibration: overlayCalibration,
+      roof_target_bbox_px: roofTargetBboxPx,
     };
 
     // Publish canonical roof_measurements row
@@ -1564,6 +1589,8 @@ async function processJob(input: any) {
           satelliteImageUrl: imageUrl,
           sourceImageWidth: raster.width,
           sourceImageHeight: raster.height,
+          roofTargetBboxPx,
+          overlayCalibration,
         });
 
         await supabase
