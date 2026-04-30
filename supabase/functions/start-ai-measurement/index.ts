@@ -224,8 +224,7 @@ async function processJob(input: any) {
     const imageBuffer = new Uint8Array(await imageResp.arrayBuffer());
     const raster = await decodeRaster(imageBuffer, imageResp.headers.get("content-type"));
 
-    await setAiJobStatus(input.ai_measurement_job_id, "running", "Fetching Google Solar priors");
-    const solarData = await fetchGoogleSolar(coords.lat, coords.lng);
+
 
     // ───────── GEOMETRY-FIRST PIPELINE ─────────
     // U-Net is OPTIONAL. Solar bbox is allowed as a CANDIDATE footprint
