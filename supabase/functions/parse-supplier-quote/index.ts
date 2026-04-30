@@ -1,8 +1,12 @@
+import * as pdfjsLib from "npm:pdfjs-dist@4.3.136/legacy/build/pdf.mjs";
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
+
+const MAX_TEXT_CHARS = 120_000;
 
 function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   const uint8 = new Uint8Array(arrayBuffer);
@@ -14,7 +18,7 @@ function bufferToDataUrl(arrayBuffer: ArrayBuffer, mimeType: string): string {
   return `data:${mimeType};base64,${btoa(binary)}`;
 }
 
-async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: string; mimeType: string } | null> {
+async function tryServiceRoleDownload(documentUrl: string): Promise<{ arrayBuffer: ArrayBuffer; mimeType: string } | null> {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
     const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
@@ -29,13 +33,13 @@ async function tryServiceRoleDownload(documentUrl: string): Promise<{ dataUrl: s
     if (!resp.ok) return null;
     const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
     const buf = await resp.arrayBuffer();
-    return { dataUrl: bufferToDataUrl(buf, mimeType), mimeType };
+    return { arrayBuffer: buf, mimeType };
   } catch {
     return null;
   }
 }
 
-async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: string; mimeType: string }> {
+async function fetchDocument(documentUrl: string): Promise<{ arrayBuffer: ArrayBuffer; mimeType: string }> {
   const response = await fetch(documentUrl);
   if (!response.ok) {
     const fallback = await tryServiceRoleDownload(documentUrl);
@@ -44,7 +48,24 @@ async function fetchDocumentAsDataUrl(documentUrl: string): Promise<{ dataUrl: s
   }
   const contentType = response.headers.get("content-type") || "application/octet-stream";
   const arrayBuffer = await response.arrayBuffer();
-  return { dataUrl: bufferToDataUrl(arrayBuffer, contentType.split(";")[0].trim()), mimeType: contentType.split(";")[0].trim() };
+  return { arrayBuffer, mimeType: contentType.split(";")[0].trim() };
+}
+
+async function extractPdfPagesText(arrayBuffer: ArrayBuffer): Promise<{ text: string; pageCount: number }> {
+  const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+  const pdf = await loadingTask.promise;
+  const pageCount = pdf.numPages || 0;
+  const pages: string[] = [];
+  for (let pageNo = 1; pageNo <= pageCount; pageNo += 1) {
+    const page = await pdf.getPage(pageNo);
+    const content = await page.getTextContent();
+    pages.push(content.items.map((item: any) => item.str || "").join("\n"));
+  }
+  const combined = pages
+    .map((page, index) => `--- PAGE ${index + 1} ---\n${String(page || "").trim()}`)
+    .join("\n\n")
+    .trim();
+  return { text: combined.slice(0, MAX_TEXT_CHARS), pageCount };
 }
 
 function isImage(url: string): boolean {
@@ -68,13 +89,24 @@ Deno.serve(async (req) => {
 
     console.log("[parse-supplier-quote] Parsing:", document_url);
 
-    let mediaContent: any;
+    let documentText = "";
+    let mediaContent: any | null = null;
+    let pageCount = 0;
     if (isImage(document_url)) {
       mediaContent = { type: "image_url", image_url: { url: document_url } };
     } else {
-      const { dataUrl } = await fetchDocumentAsDataUrl(document_url);
-      // Lovable AI Gateway (Gemini) accepts PDFs inline via image_url with a data URL
-      mediaContent = { type: "image_url", image_url: { url: dataUrl } };
+      const { arrayBuffer, mimeType } = await fetchDocument(document_url);
+      if (mimeType === "application/pdf" || document_url.toLowerCase().includes(".pdf")) {
+        const extracted = await extractPdfPagesText(arrayBuffer);
+        documentText = extracted.text;
+        pageCount = extracted.pageCount;
+        console.log(`[parse-supplier-quote] Extracted PDF text from ${pageCount} pages (${documentText.length} chars)`);
+        if (!documentText) {
+          mediaContent = { type: "image_url", image_url: { url: bufferToDataUrl(arrayBuffer, mimeType) } };
+        }
+      } else {
+        mediaContent = { type: "image_url", image_url: { url: bufferToDataUrl(arrayBuffer, mimeType) } };
+      }
     }
 
     const res = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
@@ -104,10 +136,12 @@ EXTRACTION RULES:
           },
           {
             role: "user",
-            content: [
-              { type: "text", text: "Extract every material line item from this supplier quote. The PDF may have multiple pages — scan ALL pages first to last and return the complete combined list of materials with quantities and unit prices." },
-              mediaContent,
-            ],
+            content: documentText
+              ? `Extract every material line item from this supplier quote text. It was extracted from ${pageCount || "multiple"} PDF pages — scan ALL page sections first to last and return the complete combined list of materials with quantities and unit prices.\n\n${documentText}`
+              : [
+                  { type: "text", text: "Extract every material line item from this supplier quote. The PDF may have multiple pages — scan ALL pages first to last and return the complete combined list of materials with quantities and unit prices." },
+                  mediaContent,
+                ],
           },
         ],
         tools: [
