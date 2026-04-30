@@ -473,11 +473,77 @@ async function processJob(input: any) {
       candidates.push(scoreCandidate("imagery_unet_mask", segFootprint));
     }
 
-    // 3. Solar building extent rectangle as a candidate (NOT auto-promoted).
+    // 3a. Solar roofSegmentStats hull — preferred over the plain bbox because
+    // straight_skeleton/topology needs a real building shape, not a 4-corner rect.
+    const solarSegments = (solarData?.solarPotential?.roofSegmentStats || []) as any[];
+    let solarSegmentsDebug: any = { count: solarSegments.length, hull_px: null, hull_area_sqft: 0, bbox_area_sqft: 0, hull_vs_bbox_area_ratio: null };
+    if (solarSegments.length >= 1) {
+      const segPts: Point[] = [];
+      const centersPx: Array<[number, number]> = [];
+      const boundsPx: any[] = [];
+      for (const seg of solarSegments) {
+        const cLat = Number(seg?.center?.latitude);
+        const cLng = Number(seg?.center?.longitude);
+        if (Number.isFinite(cLat) && Number.isFinite(cLng)) {
+          const c = lngLatToPx(cLat, cLng, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          segPts.push(c);
+          centersPx.push([Math.round(c.x), Math.round(c.y)]);
+          // Buffer a square around the center sized by sqrt(groundAreaMeters2),
+          // so the hull captures the true segment extent.
+          const groundM2 = Number(seg?.stats?.groundAreaMeters2 || seg?.stats?.areaMeters2);
+          if (Number.isFinite(groundM2) && groundM2 > 0) {
+            const halfM = Math.sqrt(groundM2) / 2;
+            const halfPx = halfM / actualMpp;
+            segPts.push({ x: c.x - halfPx, y: c.y - halfPx });
+            segPts.push({ x: c.x + halfPx, y: c.y - halfPx });
+            segPts.push({ x: c.x + halfPx, y: c.y + halfPx });
+            segPts.push({ x: c.x - halfPx, y: c.y + halfPx });
+          }
+        }
+        const bb = seg?.boundingBox;
+        if (bb?.sw && bb?.ne) {
+          const sw = lngLatToPx(bb.sw.latitude, bb.sw.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          const ne = lngLatToPx(bb.ne.latitude, bb.ne.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+          segPts.push(sw, ne, { x: sw.x, y: ne.y }, { x: ne.x, y: sw.y });
+          boundsPx.push({ minX: Math.round(Math.min(sw.x, ne.x)), maxX: Math.round(Math.max(sw.x, ne.x)),
+                          minY: Math.round(Math.min(sw.y, ne.y)), maxY: Math.round(Math.max(sw.y, ne.y)) });
+        }
+      }
+      if (segPts.length >= 3) {
+        const hull = convexHull(segPts);
+        if (hull.length >= 4) {
+          const hullCand = scoreCandidate("google_solar_segments_hull", hull);
+          candidates.push(hullCand);
+          solarSegmentsDebug = {
+            count: solarSegments.length,
+            centers_px: centersPx,
+            bounds_px: boundsPx,
+            hull_px: hull.map((p) => [Math.round(p.x), Math.round(p.y)]),
+            hull_area_sqft: Math.round(hullCand.area_sqft),
+            bbox_area_sqft: 0, // filled below
+            hull_vs_bbox_area_ratio: null,
+          };
+        }
+      }
+    }
+
+    // 3b. Solar building extent rectangle as a fallback candidate (NOT auto-promoted).
     const solarFp = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
     if (solarFp && solarFp.length >= 3) {
-      candidates.push(scoreCandidate("google_solar_bbox", solarFp));
+      const bboxCand = scoreCandidate("google_solar_bbox", solarFp);
+      candidates.push(bboxCand);
+      solarSegmentsDebug.bbox_area_sqft = Math.round(bboxCand.area_sqft);
+      if (solarSegmentsDebug.hull_area_sqft && bboxCand.area_sqft > 0) {
+        solarSegmentsDebug.hull_vs_bbox_area_ratio = Number((solarSegmentsDebug.hull_area_sqft / bboxCand.area_sqft).toFixed(3));
+      }
     }
+
+    console.log("[SOLAR_SEGMENT_FOOTPRINT]", JSON.stringify({
+      segment_count: solarSegments.length,
+      hull_vertices: Array.isArray(solarSegmentsDebug.hull_px) ? solarSegmentsDebug.hull_px.length : 0,
+      hull_area_sqft: solarSegmentsDebug.hull_area_sqft,
+      bbox_area_sqft: solarSegmentsDebug.bbox_area_sqft,
+    }));
 
     // 4. Pick best valid candidate.
     const validCandidates = candidates.filter((c) => c.rejected_reason === null);
