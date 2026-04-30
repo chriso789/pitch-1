@@ -603,18 +603,25 @@ async function processJob(input: any) {
       },
     });
 
-    const finalAiStatus =
-      quality.overall_score >= 0.80 ? "completed"
+    // Geometry collapse → never call this "completed" for the customer.
+    const finalAiStatus = blockCustomerReportReason
+      ? "needs_review"
+      : quality.overall_score >= 0.80 ? "completed"
       : quality.overall_score >= 0.60 ? "needs_review"
       : "needs_manual_measurement";
 
+    const finalJobStatus = blockCustomerReportReason ? "needs_review" : "completed";
+    const finalJobMessage = blockCustomerReportReason
+      ? `Geometry collapsed to single plane on ${Math.round(totals.total_area_2d_sqft)} sqft footprint — needs human topology review.`
+      : "Measurement complete";
+
     await setMeasurementJobStatus(
       input.measurement_job_id,
-      "completed",
-      "Measurement complete",
+      finalJobStatus,
+      finalJobMessage,
       roofMeasurement.id,
     );
-    await setAiJobStatus(input.ai_measurement_job_id, finalAiStatus, "Geometry-first AI measurement complete", quality);
+    await setAiJobStatus(input.ai_measurement_job_id, finalAiStatus, finalJobMessage, quality);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error("processJob error:", error);
