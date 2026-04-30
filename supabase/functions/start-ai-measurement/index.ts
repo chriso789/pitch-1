@@ -890,7 +890,7 @@ async function processJob(input: any) {
       let ridgeAlignedMergeDebug: any = null;
       if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
         try {
-          const selectedRidges = (filtered?.kept ?? []).map((r: any) => ({
+          const selectedRidges = (topLevelFilteredRidges ?? []).map((r: any) => ({
             p1: r.p1,
             p2: r.p2,
             angleDeg: typeof r.angleDeg === "number"
