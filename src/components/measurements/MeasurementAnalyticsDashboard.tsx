@@ -16,6 +16,13 @@ interface MeasurementRecord {
   quality_score: number | null;
   image_source: string | null;
   validation_status: string | null;
+  total_ridge_length: number | null;
+  total_hip_length: number | null;
+  total_valley_length: number | null;
+  total_eave_length: number | null;
+  total_rake_length: number | null;
+  total_area_flat_sqft: number | null;
+  geometry_report_json: any | null;
 }
 
 export function MeasurementAnalyticsDashboard() {
