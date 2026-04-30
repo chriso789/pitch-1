@@ -87,7 +87,7 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
   const { data: m } = await supa
     .from('roof_measurements')
     .select(
-      'id, validation_status, requires_manual_review, facet_count, geometry_report_json, ai_measurement_job_id',
+      'id, validation_status, requires_manual_review, facet_count, geometry_report_json, ai_measurement_job_id, report_pdf_url, report_pdf_path, updated_at',
     )
     .eq('ai_measurement_job_id', jobId)
     .order('created_at', { ascending: false })
@@ -187,6 +187,47 @@ Deno.serve(async (req) => {
       )
     }
     const reportWarnings = gate.warnings || []
+    const measurement = gate.measurement
+    const grj = measurement?.geometry_report_json || {}
+
+    // ── PATCH 3: PDF cache-bust via pdf_source_signature ──
+    // start-ai-measurement writes geometry_report_json.pdf_source_signature
+    // every run. If it differs from what we previously stored on the
+    // measurement row, the cached diagrams + PDF are stale and must be
+    // regenerated. This prevents the report from showing yesterday's
+    // single-plane geometry after a successful ridge_split_recursive run.
+    const incomingSig: string | null = grj.pdf_source_signature || null
+    const lastRenderedSig: string | null =
+      grj.last_rendered_pdf_signature || null
+    const signatureChanged =
+      !!incomingSig && incomingSig !== lastRenderedSig
+    const cachedPdfUrl: string | null = (measurement as any)?.report_pdf_url || null
+
+    if (signatureChanged && jobId) {
+      console.log('[render-measurement-pdf] pdf_source_signature changed — purging cached diagrams', {
+        jobId,
+        previous: lastRenderedSig,
+        next: incomingSig,
+      })
+      try {
+        await supa
+          .from('ai_measurement_diagrams')
+          .delete()
+          .eq('ai_measurement_job_id', jobId)
+      } catch (e) {
+        console.warn('[render-measurement-pdf] failed to purge stale diagrams', e)
+      }
+    } else if (cachedPdfUrl && !signatureChanged) {
+      // Signature stable AND we already have a PDF — return it directly.
+      console.log('[render-measurement-pdf] returning cached PDF (signature unchanged)')
+      return jsonResponse({
+        pdf_url: cachedPdfUrl,
+        page_count: measurement?.facet_count || 0,
+        ai_measurement_job_id: jobId,
+        warnings: reportWarnings,
+        cached: true,
+      })
+    }
 
     const { data: diagrams, error: dErr } = await supa
       .from('ai_measurement_diagrams')
@@ -242,11 +283,15 @@ Deno.serve(async (req) => {
     const { data: pub } = supa.storage.from(BUCKET).getPublicUrl(path)
     const pdfUrl = pub?.publicUrl || null
 
-    // Persist URL on both rows (best-effort; columns may not exist yet on all environments)
+    // Persist URL + render signature on roof_measurements (best-effort)
     try {
+      const updatedGrj = {
+        ...(grj || {}),
+        last_rendered_pdf_signature: incomingSig,
+      }
       await supa
         .from('roof_measurements')
-        .update({ report_pdf_url: pdfUrl })
+        .update({ report_pdf_url: pdfUrl, geometry_report_json: updatedGrj })
         .eq('ai_measurement_job_id', jobId)
     } catch (_e) { /* column may be missing — non-fatal */ }
     try {

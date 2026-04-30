@@ -104,7 +104,17 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const effectiveMeasurement = fullMeasurement || measurement;
   const previewGate = useMemo(() => evaluatePreviewGate(effectiveMeasurement), [effectiveMeasurement]);
   const pdfGate = useMemo(() => evaluatePdfGate(effectiveMeasurement), [effectiveMeasurement]);
-  const canOpenExistingPdf = Boolean((effectiveMeasurement as any)?.report_pdf_url && pdfGate.ok);
+
+  // ── PATCH 2: don't open a stale cached PDF if its signature no longer
+  // matches the latest geometry_report_json (means a newer AI run
+  // produced different planes/edges and the PDF must be re-rendered).
+  const debugPipeline = (effectiveMeasurement as any)?.geometry_report_json?.debug_pipeline || null;
+  const currentPdfSig = (effectiveMeasurement as any)?.geometry_report_json?.pdf_source_signature || null;
+  const lastRenderedSig = (effectiveMeasurement as any)?.geometry_report_json?.last_rendered_pdf_signature || null;
+  const pdfIsStale = Boolean(currentPdfSig && lastRenderedSig && currentPdfSig !== lastRenderedSig);
+  const canOpenExistingPdf = Boolean(
+    (effectiveMeasurement as any)?.report_pdf_url && pdfGate.ok && !pdfIsStale
+  );
   const reportModel = useMemo(() => {
     const serverPatent = (effectiveMeasurement as any)?.patent_model
       || (effectiveMeasurement as any)?.geometry_report_json?.patent_model;
@@ -263,7 +273,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   const handleDownloadPdf = async () => {
     const existingPdfUrl = (effectiveMeasurement as any)?.report_pdf_url;
-    if (existingPdfUrl && pdfGate.ok) {
+    if (existingPdfUrl && pdfGate.ok && !pdfIsStale) {
       window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
       return;
     }
@@ -321,6 +331,33 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
             <DialogTitle>Measurement Report</DialogTitle>
             {address && (
               <p className="text-sm text-muted-foreground mt-1">{address}</p>
+            )}
+            {debugPipeline && (
+              <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-mono text-muted-foreground">
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  source: {String(debugPipeline.final_report_source ?? 'unknown')}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  planes: {String(debugPipeline.final_plane_count_saved ?? 0)}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  edges: {String(debugPipeline.final_edge_count_saved ?? 0)}
+                </span>
+                <span className="px-1.5 py-0.5 rounded bg-muted">
+                  patent_planes: {String(debugPipeline.final_patent_model_plane_count ?? 0)}
+                </span>
+                {debugPipeline.ridge_split_recursive_entered && (
+                  <span className="px-1.5 py-0.5 rounded bg-muted">
+                    rsr: {String(debugPipeline.ridge_split_recursive_plane_count ?? 0)}p/
+                    {String(debugPipeline.ridge_split_recursive_edge_count ?? 0)}e
+                  </span>
+                )}
+                {pdfIsStale && (
+                  <span className="px-1.5 py-0.5 rounded bg-destructive text-destructive-foreground">
+                    PDF stale — will regenerate
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <Button
