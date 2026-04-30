@@ -11,6 +11,12 @@ import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_share
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
 import { detectRidgesInPolygon } from "../_shared/image-ridge-detector.ts";
 import { splitPlanesFromRidges, type Line as RidgeLine } from "../_shared/ridge-plane-splitter.ts";
+import {
+  filterRidges,
+  consolidatePlanes,
+  computeOverlayScale,
+  type RidgeLine as FilterRidgeLine,
+} from "../_shared/ridge-filter-and-plane-consolidate.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
