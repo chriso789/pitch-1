@@ -374,6 +374,101 @@ async function processJob(input: any) {
       usedSolarBboxAsCropOnly = true; // bbox would only have been a crop region
     }
 
+    // Compute solar bbox in pixel space for coverage checks (debug + sanity gate).
+    const solarBboxPx = (() => {
+      const bb = solarData?.boundingBox;
+      if (!bb?.sw || !bb?.ne) return null;
+      const sw = lngLatToPx(bb.sw.latitude, bb.sw.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      const ne = lngLatToPx(bb.ne.latitude, bb.ne.longitude, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+      const minX = Math.min(sw.x, ne.x), maxX = Math.max(sw.x, ne.x);
+      const minY = Math.min(sw.y, ne.y), maxY = Math.max(sw.y, ne.y);
+      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, area: Math.max(0, (maxX - minX) * (maxY - minY)) };
+    })();
+
+    function bboxOf(points: Point[]) {
+      if (!points.length) return null;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY, area: Math.max(0, (maxX - minX) * (maxY - minY)) };
+    }
+    function polygonAreaPx(points: Point[]) {
+      let a = 0;
+      for (let i = 0, n = points.length; i < n; i++) {
+        const j = (i + 1) % n;
+        a += points[i].x * points[j].y - points[j].x * points[i].y;
+      }
+      return Math.abs(a) / 2;
+    }
+
+    // If our OSM/segmentation footprint is dramatically smaller than the
+    // Google Solar building bbox, the OSM polygon was a sub-structure (garage,
+    // dormer outline) and not the full house. Promote the Solar bbox rectangle
+    // to the final footprint so the topology engine runs on the FULL roof.
+    if (solarBboxPx && solarBboxPx.area > 0 && footprint.length >= 3) {
+      const fpBbox = bboxOf(footprint)!;
+      const coverage = fpBbox.area / solarBboxPx.area;
+      if (coverage < 0.4) {
+        console.warn("[geometry-first] Footprint covers only", (coverage * 100).toFixed(1), "% of Solar bbox — promoting Solar bbox to footprint.");
+        const promoted = footprintFromSolarBoundingBox(solarData, { lat: coords.lat, lng: coords.lng }, raster.width, raster.height, actualMpp);
+        if (promoted && promoted.length >= 3) {
+          footprint = promoted;
+          footprintSource = footprintSource === "osm_building" ? "osm_building+solar_bbox_expanded" : "solar_bbox_expanded";
+          // Re-run topology on the expanded footprint.
+          cleanPlanes = [];
+          cleanEdges = [];
+          topologySource = "none";
+          try {
+            const skeletonEdges = computeStraightSkeleton(footprint.map((p) => [p.x, p.y] as [number, number]));
+            if (skeletonEdges && skeletonEdges.length > 0) {
+              for (const se of skeletonEdges as any[]) {
+                const a = se.a ?? se.p1 ?? se[0];
+                const b = se.b ?? se.p2 ?? se[1];
+                const ax = Array.isArray(a) ? a[0] : a?.x;
+                const ay = Array.isArray(a) ? a[1] : a?.y;
+                const bx = Array.isArray(b) ? b[0] : b?.x;
+                const by = Array.isArray(b) ? b[1] : b?.y;
+                if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
+                  const t = String(se.type || "ridge").toLowerCase();
+                  cleanEdges.push({
+                    edge_type: (t === "hip" || t === "valley" || t === "ridge") ? t as any : "ridge",
+                    line_px: [{ x: ax, y: ay }, { x: bx, y: by }],
+                    confidence: 0.6,
+                    source: "topology_engine_v2_skeleton",
+                  });
+                }
+              }
+              topologySource = "straight_skeleton";
+            }
+            const topo = buildTopology(footprint);
+            if (topo.planes.length > 0) {
+              cleanPlanes = topo.planes.map((tp, idx) => ({
+                plane_index: idx + 1,
+                polygon_px: tp.polygon,
+                confidence: 0.6,
+                pitch: null,
+                pitch_degrees: null,
+                azimuth: null,
+                source: "topology_engine_v2",
+              }));
+              if (topologySource === "none") topologySource = "triangulation";
+              for (const e of topo.edges) {
+                if (e.type === "eave" || e.type === "rake") {
+                  cleanEdges.push({ edge_type: e.type, line_px: [e.p1, e.p2], confidence: 0.55, source: "topology_engine_v2" });
+                }
+              }
+            }
+          } catch (e) {
+            console.warn("[geometry-first] re-run topology after Solar promote failed:", (e as Error).message);
+          }
+        }
+      }
+    }
+
     console.log("[GEOMETRY_SOURCE_DECISION]", JSON.stringify({
       has_unet_endpoint: !!UNET_ENDPOINT,
       used_unet: unetPlanes.length > 0 || unetEdges.length > 0,
@@ -455,12 +550,66 @@ async function processJob(input: any) {
     const usedSinglePlaneFallback =
       planeRows.length === 1 && planeRows[0].source === "single_plane_fallback";
 
-    // Block customer-shippable report when only 1 plane was produced for a
-    // non-trivial footprint — that signals topology collapse, not a real flat roof.
-    const blockCustomerReportReason: string | null =
-      (planeRows.length === 1 && Number(totals.total_area_2d_sqft) > 800)
-        ? "single_plane_for_large_footprint"
+    // ───────── GEOMETRY SANITY GATE ─────────
+    // Compute coverage/structural metrics, then block the customer report if
+    // the geometry only covers a sub-region of the actual roof.
+    const finalFootprintBboxPx = bboxOf(footprint);
+    const finalFootprintAreaPx = polygonAreaPx(footprint);
+    const finalFootprintAreaSqft = finalFootprintAreaPx * actualFpp * actualFpp;
+    const finalRoofAreaSqft = Number(totals.total_area_2d_sqft) || 0;
+    const roofBboxCoverageRatio =
+      solarBboxPx && solarBboxPx.area > 0 && finalFootprintBboxPx
+        ? finalFootprintBboxPx.area / solarBboxPx.area
         : null;
+    const ridgeFt = Number(totals.ridge_length_ft) || 0;
+    const hipFt = Number(totals.hip_length_ft) || 0;
+    const valleyFt = Number(totals.valley_length_ft) || 0;
+    const dominantPitchRise = Number(totals.dominant_pitch) || 0;
+    const isFlatRoof = dominantPitchRise > 0 && dominantPitchRise < 1.5;
+
+    // Geometry bbox vs footprint bbox (overlay coverage of the roof target).
+    const geometryUnionPoints: Point[] = [];
+    for (const p of cleanPlanes) for (const pt of p.polygon_px || []) geometryUnionPoints.push(pt);
+    for (const e of cleanEdges) for (const pt of e.line_px || []) geometryUnionPoints.push(pt);
+    const finalGeometryBboxPx = bboxOf(geometryUnionPoints);
+    const geometryVsFootprintRatio =
+      finalGeometryBboxPx && finalFootprintBboxPx && finalFootprintBboxPx.area > 0
+        ? finalGeometryBboxPx.area / finalFootprintBboxPx.area
+        : null;
+
+    const sanityFailures: string[] = [];
+    if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
+      sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
+    }
+    if (roofBboxCoverageRatio != null && roofBboxCoverageRatio < 0.4) {
+      sanityFailures.push(`footprint_covers_only_${Math.round(roofBboxCoverageRatio * 100)}pct_of_solar_bbox`);
+    }
+    if (!isFlatRoof && ridgeFt + hipFt + valleyFt === 0) {
+      sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
+    }
+    if (planeRows.length < 2 && finalFootprintAreaSqft > 800) {
+      sanityFailures.push("single_plane_for_large_footprint");
+    }
+    if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
+      sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
+    }
+
+    const blockCustomerReportReason: string | null =
+      sanityFailures.length > 0 ? sanityFailures.join("|") : null;
+
+    console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
+      final_roof_area_sqft: finalRoofAreaSqft,
+      final_footprint_area_sqft: finalFootprintAreaSqft,
+      roof_bbox_coverage_ratio: roofBboxCoverageRatio,
+      geometry_vs_footprint_ratio: geometryVsFootprintRatio,
+      plane_count: planeRows.length,
+      edge_counts: {
+        ridge: ridgeFt, hip: hipFt, valley: valleyFt,
+        eave: Number(totals.eave_length_ft) || 0, rake: Number(totals.rake_length_ft) || 0,
+      },
+      blocked: !!blockCustomerReportReason,
+      reason: blockCustomerReportReason,
+    }));
 
     const quality = scoreQuality({
       geocode_location_type: coords.geocode_location_type,
@@ -567,6 +716,35 @@ async function processJob(input: any) {
       used_deterministic_topology:
         topologySource === "straight_skeleton" || topologySource === "triangulation",
       block_customer_report_reason: blockCustomerReportReason,
+      sanity_failures: sanityFailures,
+      debug_geometry: {
+        raster_size,
+        solar_bbox_px: solarBboxPx,
+        final_footprint_bbox_px: finalFootprintBboxPx,
+        final_footprint_area_px: finalFootprintAreaPx,
+        final_footprint_area_sqft: finalFootprintAreaSqft,
+        final_roof_area_sqft: finalRoofAreaSqft,
+        roof_bbox_coverage_ratio: roofBboxCoverageRatio,
+        geometry_vs_footprint_ratio: geometryVsFootprintRatio,
+        plane_count: planeRows.length,
+        edge_count: edgeRows.length,
+        edge_counts: {
+          ridge_ft: ridgeFt, hip_ft: hipFt, valley_ft: valleyFt,
+          eave_ft: Number(totals.eave_length_ft) || 0, rake_ft: Number(totals.rake_length_ft) || 0,
+        },
+        topology_source: topologySource,
+        footprint_source: footprintSource,
+        blocked_customer_report_reason: blockCustomerReportReason,
+      },
+      overlay_debug: {
+        raster_url: imageUrl,
+        raster_size,
+        planes_px,
+        edges_px,
+        footprint_px: footprint.map((p) => [p.x, p.y]),
+        solar_bbox_px: solarBboxPx,
+        final_geometry_bbox_px: finalGeometryBboxPx,
+      },
     };
     const linearFeaturesWkt = edgeRows.map((edge: any) => ({
       type: edge.edge_type,
@@ -786,7 +964,7 @@ async function processJob(input: any) {
 
     const finalJobStatus = blockCustomerReportReason ? "needs_review" : "completed";
     const finalJobMessage = blockCustomerReportReason
-      ? `Geometry collapsed to single plane on ${Math.round(totals.total_area_2d_sqft)} sqft footprint — needs human topology review.`
+      ? `Measurement needs review — geometry covered only part of the roof. (${blockCustomerReportReason})`
       : "Measurement complete";
 
     await setMeasurementJobStatus(
