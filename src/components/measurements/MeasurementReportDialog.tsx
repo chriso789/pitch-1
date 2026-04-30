@@ -461,6 +461,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                   edges_px={edges_px}
                   overlayCalibration={grj?.overlay_calibration || null}
                   roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
+                  geometryPxSpace={grj?.geometry_px_space || null}
                 />
               ) : null;
 
