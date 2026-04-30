@@ -869,6 +869,20 @@ function polygonPxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, 
   if (ring.length) ring.push(ring[0]);
   return { type: "Feature", geometry: { type: "Polygon", coordinates: [ring] }, properties: {} };
 }
+function polygonVerticesToWKT(vertices: Array<{ lng: number; lat: number }>) {
+  const ring = [...vertices, vertices[0]];
+  return `POLYGON((${ring.map((p) => `${p.lng} ${p.lat}`).join(", ")}))`;
+}
+function lineGeoJSONToWKT(feature: any) {
+  const coords = feature?.geometry?.coordinates;
+  if (!Array.isArray(coords) || coords.length < 2) return null;
+  return `LINESTRING(${coords.map((p: any) => `${Number(p[0])} ${Number(p[1])}`).join(", ")})`;
+}
+function imageBoundsFromRaster(c: GeoPoint, w: number, h: number, mpp: number): [number, number, number, number] {
+  const [west, north] = pxToLngLat({ x: 0, y: 0 }, c, w, h, mpp);
+  const [east, south] = pxToLngLat({ x: w, y: h }, c, w, h, mpp);
+  return [west, south, east, north];
+}
 function linePxToGeoJSON(points: Point[], c: GeoPoint, w: number, h: number, mpp: number) {
   return {
     type: "Feature",
