@@ -1494,6 +1494,7 @@ function normalizeRoofMeasurementFootprintSource(source: string) {
     mapbox_static: "satellite",
     single_plane_fallback: "solar_bbox_fallback",
     google_solar_segments_convex_hull: "google_solar_segments_hull",
+    google_solar_segments_union: "google_solar_segments_hull",
   };
   const remapped = aliasMap[raw] ?? raw;
   if (ALLOWED_FOOTPRINT_SOURCES.has(remapped)) return remapped;
