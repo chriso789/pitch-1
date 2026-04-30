@@ -1055,26 +1055,40 @@ async function processJob(input: any) {
       cleanPlanes = consolidated.planes as RoofPlane[];
     }
 
-    // ── OVERLAY SCALE VALIDATION — geometry bbox vs target footprint bbox.
-    let overlayScaleStats: ReturnType<typeof computeOverlayScale> | null = null;
+    // ── OVERLAY CALIBRATION — fit measured geometry to the detected roof target,
+    // not to the full raster center. This is rendering-only and does not change
+    // physical measurements calculated from original pixel geometry.
+    let overlayCalibration: ReturnType<typeof computeOverlayTransform> | null = null;
+    let roofTargetBboxPx: any = null;
     try {
-      const fpBox = (() => {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const p of footprint) {
-          if (p.x < minX) minX = p.x;
-          if (p.y < minY) minY = p.y;
-          if (p.x > maxX) maxX = p.x;
-          if (p.y > maxY) maxY = p.y;
-        }
-        return { minX, minY, maxX, maxY };
-      })();
-      overlayScaleStats = computeOverlayScale(
-        cleanPlanes.map((p) => p.polygon_px),
-        fpBox,
-      );
-      console.log("[OVERLAY_SCALE]", JSON.stringify(overlayScaleStats));
+      const preferredTarget =
+        candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px ||
+        candidates.find((c) => c.source === "google_solar_segments_hull" && c.bbox_px)?.bbox_px ||
+        solarBboxPx ||
+        candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px ||
+        bboxOf(footprint);
+      roofTargetBboxPx = preferredTarget;
+      const geometryPoints = [
+        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
+        ...cleanEdges.flatMap((e) => e.line_px || []),
+      ];
+      overlayCalibration = computeOverlayTransform({
+        rasterSize: { width: raster.width, height: raster.height },
+        geometryPoints,
+        roofTargetBboxPx,
+      });
+      console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
+        geometry_bbox_px: overlayCalibration.geometry_bbox_px,
+        roof_target_bbox_px: overlayCalibration.roof_target_bbox_px,
+        uniform_scale: overlayCalibration.uniform_scale,
+        translate_x: overlayCalibration.translate_x,
+        translate_y: overlayCalibration.translate_y,
+        coverage_ratio_width: overlayCalibration.coverage_ratio_width,
+        coverage_ratio_height: overlayCalibration.coverage_ratio_height,
+        center_error_px: overlayCalibration.center_error_px,
+      }));
     } catch (e) {
-      console.warn("[OVERLAY_SCALE] failed:", (e as Error).message);
+      console.warn("[OVERLAY_TRANSFORM] failed:", (e as Error).message);
     }
 
 
