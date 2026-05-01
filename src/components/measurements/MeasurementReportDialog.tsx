@@ -370,8 +370,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const downloadVisibleReportPdf = async () => {
     const root = reportContentRef.current;
     if (!root) throw new Error('Report preview is not ready yet.');
+
+    // Force-open all <details> elements so diagnostic data is captured in the PDF
+    const detailsEls = Array.from(root.querySelectorAll('details'));
+    const previouslyOpen = detailsEls.map(d => d.open);
+    detailsEls.forEach(d => { d.open = true; });
+
     const pages = Array.from(root.querySelectorAll<HTMLElement>('.measurement-report-page'));
-    if (pages.length === 0) throw new Error('No report pages are available to export.');
+    if (pages.length === 0) {
+      // Restore collapsed state
+      detailsEls.forEach((d, i) => { d.open = previouslyOpen[i]; });
+      throw new Error('No report pages are available to export.');
+    }
 
     await document.fonts?.ready;
     let pdf: jsPDF | null = null;
