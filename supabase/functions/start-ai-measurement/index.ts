@@ -1476,6 +1476,36 @@ async function processJob(input: any) {
           sanityFailures.push("no_structural_edges_from_plane_graph");
         }
       }
+      // Plane adjacency: if we have >1 plane but ZERO shared boundaries,
+      // the graph is disconnected and ridges/hips/valleys can never form.
+      try {
+        const adj = planeAdjacencyStats(
+          (cleanPlanes as any[]).map((p) => p.polygon_px || []),
+        );
+        const ridgeHintCount = (topLevelFilteredRidges ?? []).length;
+        const ridgeHintsMatching = Math.max(
+          0,
+          ridgeHintCount - Number(pec?.invalid_ridge_hints_count ?? 0),
+        );
+        console.log("[PLANE_ADJACENCY_DEBUG]", JSON.stringify({
+          plane_count: adj.plane_count,
+          shared_boundary_count: adj.shared_boundary_count,
+          two_plane_boundary_count: adj.two_plane_boundary_count,
+          ridge_hint_count: ridgeHintCount,
+          ridge_hints_matching_shared_boundary: ridgeHintsMatching,
+          rejected_ridge_hints: Number(pec?.invalid_ridge_hints_count ?? 0),
+        }));
+        if (adj.plane_count > 1 && adj.shared_boundary_count === 0) {
+          sanityFailures.push("planes_disconnected_no_shared_boundaries");
+        }
+      } catch (e) {
+        console.warn("[PLANE_ADJACENCY_DEBUG] failed:", (e as Error).message);
+      }
+      // Eave QA: footprint must follow visible roof perimeter.
+      const eave = (globalThis as any).__eaveSnapDebug;
+      if (eave && Number(eave.perimeter_off_eave_ratio) > 0.3) {
+        sanityFailures.push("footprint_not_snapped_to_eaves");
+      }
     }
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
