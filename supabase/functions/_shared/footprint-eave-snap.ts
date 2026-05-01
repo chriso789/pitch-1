@@ -61,6 +61,8 @@ export interface SnapOptions {
   maxSnapPx?: number;         // 12-20 typical
   minEdgeMag?: number;        // sobel threshold to consider as "real edge"
   inwardBiasPx?: number;      // prefer pulling vertex slightly inward
+  // Optional clamp box. Snapped vertices are kept inside this rect (pixels).
+  clampBbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
 }
 
 export interface SnapResult {
