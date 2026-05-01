@@ -210,9 +210,12 @@ export const PipelineSearch = ({
           {!loading && suggestions.map((entry) => {
             const stage = stageMap[entry.status];
             const name = getDisplayName(entry);
-            const addr = [entry.contacts?.address_city, entry.contacts?.address_state]
+            const cityState = [entry.contacts?.address_city, entry.contacts?.address_state]
               .filter(Boolean)
               .join(", ");
+            const addr = [entry.contacts?.address_street, cityState, entry.contacts?.address_zip]
+              .filter(Boolean)
+              .join(" • ");
             return (
               <div
                 key={entry.id}
