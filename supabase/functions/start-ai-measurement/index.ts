@@ -48,10 +48,13 @@ type RoofPlane = {
 };
 
 type RoofEdge = {
-  edge_type: "ridge" | "hip" | "valley" | "eave" | "rake" | "unknown";
+  edge_type: "ridge" | "hip" | "valley" | "eave" | "rake" | "unknown" | "unknown_interior";
   line_px: Point[];
   confidence: number;
   source: string;
+  id?: string | number;
+  adjacent_plane_ids?: Array<string | number>;
+  debug_reason?: string;
   cluster_id?: string | number | null;
   ridge_group_id?: string | number | null;
   region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
@@ -287,6 +290,33 @@ async function processJob(input: any) {
       const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
       return ix * iy;
     }
+    const pointToSegmentDistancePx = (p: Point, a: Point, b: Point) => {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const denom = Math.max(abx * abx + aby * aby, 1e-9);
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / denom));
+      const q = { x: a.x + abx * t, y: a.y + aby * t };
+      return Math.hypot(p.x - q.x, p.y - q.y);
+    };
+    const lineAngle180 = (a: Point, b: Point) => {
+      const deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      return ((deg % 180) + 180) % 180;
+    };
+    const angleDiff180 = (a: number, b: number) => {
+      const d = Math.abs(a - b) % 180;
+      return Math.min(d, 180 - d);
+    };
+    const pointInPolygon = (pt: Point, poly: Point[]) => {
+      if (!poly || poly.length < 3) return false;
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const pi = poly[i], pj = poly[j];
+        const intersects = ((pi.y > pt.y) !== (pj.y > pt.y)) &&
+          (pt.x < (pj.x - pi.x) * (pt.y - pi.y) / ((pj.y - pi.y) || 1e-9) + pi.x);
+        if (intersects) inside = !inside;
+      }
+      return inside;
+    };
     // Sutherland-Hodgman polygon clipping against an axis-aligned rect.
     // Used for true polygon∩solar_bbox area (fixes the 0-overlap-with-60%-coverage bug
     // where bbox-vs-bbox overlap ignored polygon shape).
