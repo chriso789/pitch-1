@@ -78,8 +78,10 @@ export const PipelineSearch = ({
             contacts (
               first_name,
               last_name,
+              address_street,
               address_city,
-              address_state
+              address_state,
+              address_zip
             )
           `)
           .eq('is_deleted', false)
