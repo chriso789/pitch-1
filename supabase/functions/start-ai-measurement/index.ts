@@ -952,6 +952,24 @@ async function processJob(input: any) {
           console.log("[FOOTPRINT_SOLVER]", JSON.stringify(solverResult.stats));
           (globalThis as any).__footprintSolverDebug = solverResult.stats;
 
+          const planarInteriorLines: Array<{ a: Point; b: Point }> = [...solverInput.map((r) => ({ a: r.p1, b: r.p2 }))];
+          try {
+            const skel = computeStraightSkeleton(footprint.map((p) => [p.x, p.y] as [number, number])) as any[];
+            for (const se of (skel || [])) {
+              const a = se.a ?? se.p1 ?? se.start ?? se[0];
+              const b = se.b ?? se.p2 ?? se.end ?? se[1];
+              const ax = Array.isArray(a) ? a[0] : a?.x;
+              const ay = Array.isArray(a) ? a[1] : a?.y;
+              const bx = Array.isArray(b) ? b[0] : b?.x;
+              const by = Array.isArray(b) ? b[1] : b?.y;
+              if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) planarInteriorLines.push({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
+            }
+          } catch (e) {
+            console.warn("[PLANAR_SOLVER_PRIMARY] skeleton hints failed:", (e as Error).message);
+          }
+          const primaryPlanar = planarInteriorLines.length > 0 ? planarSolveRoofPlanes(footprint, planarInteriorLines) : null;
+          if (primaryPlanar) console.log("[PLANAR_SOLVER_PRIMARY]", JSON.stringify(primaryPlanar.debug));
+
           // Selection priority:
           //   1) footprint solver (≥2 planes, not rejected) — geometry-correct path
           //   2) regional clustering ONLY when it covers the full footprint
@@ -970,8 +988,14 @@ async function processJob(input: any) {
           const solverPlanes = solverResult.planes
             .filter((p) => p.polygon.length >= 3)
             .map((p) => ({ polygon: p.polygon }));
+          const planarPlanes = (primaryPlanar?.faces?.length ?? 0) >= 2
+            ? primaryPlanar.faces.map((f) => ({ polygon: f.polygon }))
+            : [];
           const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes) : 0;
-          if (solverPlanes.length >= 2 && !solverResult.stats.rejected) {
+          if (planarPlanes.length >= 2) {
+            splitPlanes = planarPlanes;
+            solverMode = "planar_graph_solver";
+          } else if (solverPlanes.length >= 2 && !solverResult.stats.rejected) {
             splitPlanes = solverPlanes;
             solverMode = "footprint_solver";
           } else if (regional.planes.length >= 2 && regionalCoverageRatio >= 0.75) {
@@ -999,7 +1023,7 @@ async function processJob(input: any) {
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
-              source: "ridge_split_recursive",
+              source: solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive",
               cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               region_bbox: sp.region_bbox ?? null,
@@ -1025,7 +1049,7 @@ async function processJob(input: any) {
               });
             }
             cleanEdges.push(...splitRidgeEdges);
-            topologySource = "ridge_split_recursive";
+            topologySource = solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive";
           }
         }
       } catch (e) {
@@ -1088,8 +1112,8 @@ async function processJob(input: any) {
           );
           if (skeletonEdges && skeletonEdges.length > 0) {
             for (const se of skeletonEdges as any[]) {
-              const a = se.a ?? se.p1 ?? se[0];
-              const b = se.b ?? se.p2 ?? se[1];
+              const a = se.a ?? se.p1 ?? se.start ?? se[0];
+              const b = se.b ?? se.p2 ?? se.end ?? se[1];
               const ax = Array.isArray(a) ? a[0] : a?.x;
               const ay = Array.isArray(a) ? a[1] : a?.y;
               const bx = Array.isArray(b) ? b[0] : b?.x;
@@ -1321,8 +1345,8 @@ async function processJob(input: any) {
               footprint.map((p) => [p.x, p.y] as [number, number]),
             ) as any[];
             for (const se of (skel || [])) {
-              const a = se.a ?? se.p1 ?? se[0];
-              const b = se.b ?? se.p2 ?? se[1];
+              const a = se.a ?? se.p1 ?? se.start ?? se[0];
+              const b = se.b ?? se.p2 ?? se.end ?? se[1];
               const ax = Array.isArray(a) ? a[0] : a?.x;
               const ay = Array.isArray(a) ? a[1] : a?.y;
               const bx = Array.isArray(b) ? b[0] : b?.x;
