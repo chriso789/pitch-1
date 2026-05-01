@@ -1354,6 +1354,12 @@ async function processJob(input: any) {
     if (planeMergeDebug?.pre_merge_area > 0 && planeMergeDebug.post_merge_area > planeMergeDebug.pre_merge_area * 1.10) {
       sanityFailures.push("area_inflation_after_merge");
     }
+    // Footprint-as-law QA: total plane area must not exceed footprint*1.15.
+    if (footprintConstraintStats?.overall_rejected) {
+      sanityFailures.push(
+        `footprint_constraint_violated:${footprintConstraintStats.rejection_reason || "area_ratio_exceeded"}`,
+      );
+    }
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
       sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
