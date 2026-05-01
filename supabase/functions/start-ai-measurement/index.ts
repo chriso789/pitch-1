@@ -1401,20 +1401,30 @@ async function processJob(input: any) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
     }
 
-    const finalCoverageFallbackApplied = applyFootprintCoverageGate("final_pre_persist");
-    const finalExteriorEdgesCreated = ensureExteriorFootprintEdges(
-      finalCoverageFallbackApplied ? "footprint_perimeter_fallback" : "footprint_perimeter_forced",
-    );
-    if (footprintCoverageDebug) {
-      console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
-        selected_footprint_area: footprintCoverageDebug.selected_footprint_area,
-        solver_plane_area_sum: footprintCoverageDebug.solver_plane_area_sum,
-        coverage_ratio: footprintCoverageDebug.coverage_ratio,
-        plane_count: cleanPlanes.length,
-        exterior_edges_created: finalExteriorEdgesCreated,
-        shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
-        solver_accepted: footprintCoverageDebug.solver_accepted,
-        fallback_applied: footprintCoverageDebug.fallback_applied,
+    // Skip final coverage gate if edge classification already ran — it would
+    // wipe cleanEdges via fallback.  Only ensure perimeter edges exist.
+    const finalExteriorEdgesCreated = ensureExteriorFootprintEdges("footprint_perimeter_final");
+
+    // Hard-fail log if edges are still 0 after all classification
+    if (cleanEdges.length === 0 && footprint.length >= 3) {
+      console.error("[EDGE_CLASSIFIER_NOT_RUN] planes=" + cleanPlanes.length +
+        " edges=0 footprint=" + footprint.length +
+        " — edge classification produced no results");
+    }
+
+    // Log edge classifier result
+    {
+      const byType: Record<string, number> = {};
+      for (const e of cleanEdges) byType[e.edge_type] = (byType[e.edge_type] || 0) + 1;
+      console.log("[EDGE_CLASSIFIER_RESULT]", JSON.stringify({
+        planes: cleanPlanes.length,
+        edges: cleanEdges.length,
+        ridge: byType.ridge ?? 0,
+        hip: byType.hip ?? 0,
+        valley: byType.valley ?? 0,
+        eave: byType.eave ?? 0,
+        rake: byType.rake ?? 0,
+        perimeter_edges_added: finalExteriorEdgesCreated,
       }));
     }
 
