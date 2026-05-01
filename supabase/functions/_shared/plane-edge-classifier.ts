@@ -447,11 +447,95 @@ function classifyExteriorEdge(args: {
   };
 }
 
+// ── Simple gable detection ──────────────────────────────────────────────
+// If the roof footprint is mostly rectangular (no reflex/concave corners)
+// and plane count is low, we force hip=0 and valley=0, reclassifying
+// shared interior edges as ridge (between opposing slopes) or unknown.
+
+function detectSimpleGable(
+  planes: { planeId: string; poly: Pt[]; original: PlaneIn }[],
+  footprintPoly?: Pt[],
+): {
+  isSimpleGable: boolean;
+  opposingPairs: [string, string][];
+  reason: string;
+} {
+  const none = { isSimpleGable: false, opposingPairs: [], reason: "" };
+
+  // Too many planes → not simple
+  if (planes.length < 2 || planes.length > 8) {
+    return { ...none, reason: `plane_count=${planes.length} outside 2-8 range` };
+  }
+
+  // Check footprint for reflex (concave) corners
+  const footprint = footprintPoly && footprintPoly.length >= 3 ? footprintPoly : null;
+  if (footprint) {
+    const reflexCount = countReflexCorners(footprint);
+    if (reflexCount > 0) {
+      return { ...none, reason: `footprint has ${reflexCount} reflex corners` };
+    }
+  }
+
+  // Look for opposing slope pairs: two planes with azimuths ~180° apart
+  const opposingPairs: [string, string][] = [];
+  for (let i = 0; i < planes.length; i++) {
+    const azI = azDeg(planes[i].original);
+    if (azI === null) continue;
+    for (let j = i + 1; j < planes.length; j++) {
+      const azJ = azDeg(planes[j].original);
+      if (azJ === null) continue;
+      const diff = Math.abs(azI - azJ);
+      const normalizedDiff = Math.min(diff, 360 - diff);
+      if (normalizedDiff >= 140 && normalizedDiff <= 220) {
+        opposingPairs.push([planes[i].planeId, planes[j].planeId]);
+      }
+    }
+  }
+
+  if (opposingPairs.length === 0) {
+    return { ...none, reason: "no opposing slope pairs found" };
+  }
+
+  // Simple gable: should have at least one opposing pair and low plane count
+  return {
+    isSimpleGable: true,
+    opposingPairs,
+    reason: `simple_gable: ${opposingPairs.length} opposing pairs, ${planes.length} planes, convex footprint`,
+  };
+}
+
+function countReflexCorners(poly: Pt[]): number {
+  const n = poly.length;
+  if (n < 3) return 0;
+
+  // Compute winding
+  let windingSum = 0;
+  for (let i = 0; i < n; i++) {
+    const curr = poly[i];
+    const next = poly[(i + 1) % n];
+    windingSum += (next.x - curr.x) * (next.y + curr.y);
+  }
+  const isCW = windingSum > 0;
+
+  let reflexCount = 0;
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const curr = poly[i];
+    const next = poly[(i + 1) % n];
+    const cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
+    if ((isCW && cross < -1e-6) || (!isCW && cross > 1e-6)) {
+      reflexCount++;
+    }
+  }
+  return reflexCount;
+}
+
 // ── Main entry ──────────────────────────────────────────────────────────
 
 export function classifyPlaneEdges(args: {
   planes: PlaneIn[];
   ridgeHints?: RidgeHint[];
+  footprintPoly?: Pt[];
 }) {
   const planes = args.planes || [];
   const ridgeHints = args.ridgeHints || [];
