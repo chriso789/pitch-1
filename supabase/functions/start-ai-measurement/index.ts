@@ -2213,6 +2213,8 @@ async function processJob(input: any) {
         solar_segments: solarSegmentsDebug,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
         plane_edge_classifier: (globalThis as any).__planeEdgeClassifierDebug ?? null,
+        strict_edge_graph: (globalThis as any).__strictEdgeGraphDebug ?? strictEdgeGraphDebug,
+        ridge_alignment_qa: (globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug,
       },
       overlay_debug: {
         raster_url: imageUrl,
