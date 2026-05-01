@@ -103,6 +103,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 }) => {
   const { toast } = useToast();
   const reportContentRef = useRef<HTMLDivElement | null>(null);
+  const exportImageCacheRef = useRef<Map<string, string>>(new Map());
   const [diagrams, setDiagrams] = useState<DiagramRow[]>([]);
   const [jobId, setJobId] = useState<string | null>(explicitJobId || null);
   const [loading, setLoading] = useState(false);
@@ -163,12 +164,56 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   const PDF_MAX_BYTES = 9.5 * 1024 * 1024;
   const PDF_EXPORT_PROFILES: PdfExportProfile[] = [
-    { scale: 3, jpegQuality: 0.92 },
-    { scale: 2.25, jpegQuality: 0.84 },
+    { scale: 2.5, jpegQuality: 0.95 },
+    { scale: 2, jpegQuality: 0.9 },
     { scale: 1.5, jpegQuality: 0.65 },
   ];
 
-  const createExportSafeClone = (page: HTMLElement) => {
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 8192;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...Array.from(chunk));
+    }
+    return btoa(binary);
+  };
+
+  const imageUrlToDataUrl = async (url: string): Promise<string> => {
+    if (!url || url.startsWith('data:')) return url;
+    const cached = exportImageCacheRef.current.get(url);
+    if (cached) return cached;
+    const response = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+    if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+    const contentType = response.headers.get('content-type') || 'image/png';
+    if (!contentType.startsWith('image/')) throw new Error(`Expected image, got ${contentType}`);
+    const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(await response.arrayBuffer())}`;
+    exportImageCacheRef.current.set(url, dataUrl);
+    return dataUrl;
+  };
+
+  const replaceSvgImagesForExport = async (source: HTMLElement, clone: HTMLElement, profile: PdfExportProfile) => {
+    const sourceImages = Array.from(source.querySelectorAll<SVGImageElement>('svg image'));
+    const cloneImages = Array.from(clone.querySelectorAll<SVGImageElement>('svg image'));
+    await Promise.all(cloneImages.map(async (image, index) => {
+      const sourceImage = sourceImages[index] || image;
+      const href = sourceImage.getAttribute('href') || sourceImage.getAttribute('xlink:href');
+      if (!href) return;
+      const dataUrl = await imageUrlToDataUrl(href);
+      image.setAttribute('href', dataUrl);
+      image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', dataUrl);
+      image.style.imageRendering = 'auto';
+      const width = Number(image.getAttribute('width') || 0);
+      const height = Number(image.getAttribute('height') || 0);
+      if (width > 0 && height > 0 && profile.scale >= 2) {
+        image.setAttribute('width', String(width));
+        image.setAttribute('height', String(height));
+      }
+    }));
+  };
+
+  const createExportReadyClone = async (page: HTMLElement, profile: PdfExportProfile) => {
     const wrapper = document.createElement('div');
     wrapper.style.position = 'fixed';
     wrapper.style.left = '-10000px';
@@ -180,22 +225,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const clone = page.cloneNode(true) as HTMLElement;
     clone.style.width = `${page.offsetWidth || 900}px`;
     clone.querySelectorAll('img[aria-hidden="true"], img.hidden').forEach((img) => img.remove());
-    clone.querySelectorAll('svg image').forEach((image) => {
-      const parent = image.parentElement;
-      if (parent?.tagName.toLowerCase() === 'svg') {
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', '0');
-        rect.setAttribute('y', '0');
-        rect.setAttribute('width', '100%');
-        rect.setAttribute('height', '100%');
-        rect.setAttribute('fill', 'hsl(var(--muted))');
-        parent.insertBefore(rect, image);
-      }
-      image.remove();
-    });
 
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
+    await replaceSvgImagesForExport(page, clone, profile);
     return { element: clone, cleanup: () => wrapper.remove() };
   };
 
@@ -209,20 +242,28 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       logging: false,
     } as const;
 
+    const exportClone = await createExportReadyClone(page, profile);
     try {
-      const canvas = await html2canvas(page, captureOptions);
+      await Promise.all(Array.from(exportClone.element.querySelectorAll('img')).map((img) => (
+        img.complete ? Promise.resolve() : new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        })
+      )));
+      const canvas = await html2canvas(exportClone.element, {
+        ...captureOptions,
+        windowWidth: exportClone.element.scrollWidth,
+        windowHeight: exportClone.element.scrollHeight,
+      });
       return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
     } catch (err) {
-      console.warn('Direct PDF page capture failed; retrying without cross-origin imagery:', err);
+      console.warn('Export-ready PDF page capture failed; retrying direct capture:', err);
+    } finally {
+      exportClone.cleanup();
     }
 
-    const safeClone = createExportSafeClone(page);
-    try {
-      const canvas = await html2canvas(safeClone.element, captureOptions);
-      return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
-    } finally {
-      safeClone.cleanup();
-    }
+    const canvas = await html2canvas(page, captureOptions);
+    return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
   };
 
   const downloadVisibleReportPdf = async () => {
