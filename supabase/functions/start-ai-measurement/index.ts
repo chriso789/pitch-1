@@ -1400,58 +1400,7 @@ async function processJob(input: any) {
         }));
         cleanEdges = reclassified as typeof cleanEdges;
 
-        // ── FORCE FOOTPRINT PERIMETER AS EAVE/RAKE ──
-        // Even if interior edge classification fails, the footprint perimeter
-        // MUST produce eave/rake edges. Every segment of the footprint that
-        // is not already covered by a classified edge becomes an eave (or rake
-        // if azimuth data indicates parallel-to-slope).
-        const existingEdgeKeys = new Set(
-          cleanEdges.map((e) => {
-            const pts = e.line_px || [];
-            if (pts.length < 2) return "";
-            const a = pts[0], b = pts[pts.length - 1];
-            const ka = `${Math.round(a.x / 2) * 2}:${Math.round(a.y / 2) * 2}`;
-            const kb = `${Math.round(b.x / 2) * 2}:${Math.round(b.y / 2) * 2}`;
-            return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-          }).filter(Boolean),
-        );
-
-        let perimeterEdgesAdded = 0;
-        for (let fi = 0; fi < footprint.length; fi++) {
-          const a = footprint[fi];
-          const b = footprint[(fi + 1) % footprint.length];
-          const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-          if (segLen < 4) continue;
-
-          const sa = { x: Math.round(a.x / 2) * 2, y: Math.round(a.y / 2) * 2 };
-          const sb = { x: Math.round(b.x / 2) * 2, y: Math.round(b.y / 2) * 2 };
-          const ka = `${sa.x}:${sa.y}`;
-          const kb = `${sb.x}:${sb.y}`;
-          const edgeKey = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-
-          if (!existingEdgeKeys.has(edgeKey)) {
-            // Determine eave vs rake from dominant azimuth
-            let edgeType: "eave" | "rake" = "eave";
-            const solarAz = dominantSolarAzimuth(solarData);
-            if (solarAz !== null) {
-              const edgeAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
-              const edgeAngle180 = ((edgeAngle % 180) + 180) % 180;
-              const downslopeAxis = ((solarAz % 180) + 180) % 180;
-              const diff = Math.abs(edgeAngle180 - downslopeAxis);
-              const angleDiff = Math.min(diff, 180 - diff);
-              edgeType = angleDiff <= 30 ? "rake" : "eave";
-            }
-
-            cleanEdges.push({
-              edge_type: edgeType,
-              line_px: [a, b],
-              confidence: 0.70,
-              source: "footprint_perimeter_forced",
-            } as typeof cleanEdges[0]);
-            existingEdgeKeys.add(edgeKey);
-            perimeterEdgesAdded++;
-          }
-        }
+        const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
 
         console.log("[PERIMETER_EDGE_FORCE]", JSON.stringify({
           footprint_segments: footprint.length,
