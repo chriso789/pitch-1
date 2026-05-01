@@ -34,6 +34,8 @@ import {
 // ─── PUBLIC TYPES ──────────────────────────────────────────────────────────
 
 export type ClusterRidge = RidgeLine & {
+  id?: string | number;
+  ridge_id?: string | number;
   angleDeg?: number;
 };
 
@@ -53,7 +55,7 @@ export type BBox = {
 };
 
 export type RegionSplitResult = {
-  planes: Plane[];
+  planes: ClusteredPlane[];
   clusters: RidgeCluster[];
   debug: {
     total_ridges: number;
@@ -63,6 +65,13 @@ export type RegionSplitResult = {
     fallback_used: boolean;
     reason?: string;
   };
+};
+
+export type ClusteredPlane = Plane & {
+  cluster_id: string;
+  ridge_group_id: string;
+  region_bbox: BBox;
+  source_ridge_ids: string[];
 };
 
 // ─── ANGLE / GEOMETRY HELPERS ──────────────────────────────────────────────
