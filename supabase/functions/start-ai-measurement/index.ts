@@ -887,7 +887,9 @@ async function processJob(input: any) {
           azimuth: prior?.azimuth ?? null,
           source: "single_plane_fallback",
         }];
-        cleanEdges = [];
+        // CRITICAL: Do NOT wipe cleanEdges here — edge classification may have
+        // already populated them. Only reset planes; edges will be rebuilt by
+        // ensureExteriorFootprintEdges if needed.
         topologySource = "single_plane_fallback";
       }
       console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
