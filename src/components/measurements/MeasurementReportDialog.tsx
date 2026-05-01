@@ -412,6 +412,9 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') || 'measurement-report';
     pdf?.save(`${safeAddress}-measurement-report.pdf`);
+
+    // Restore collapsed state
+    detailsEls.forEach((d, i) => { d.open = previouslyOpen[i]; });
   };
 
   useEffect(() => {
