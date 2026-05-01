@@ -1581,7 +1581,7 @@ async function processJob(input: any) {
         solar_roof_area_sqft: solarRoofAreaSqft,
         roof_bbox_coverage_ratio: roofBboxCoverageRatio,
         geometry_vs_footprint_ratio: geometryVsFootprintRatio,
-        plane_merge: planeMergeDebug,
+        plane_merge: _planeMergeDebug,
         plane_count: planeRows.length,
         edge_count: edgeRows.length,
         edge_counts: {
