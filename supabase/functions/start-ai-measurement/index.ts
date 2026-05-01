@@ -1645,6 +1645,32 @@ async function processJob(input: any) {
     if (roofBboxCoverageRatio != null && roofBboxCoverageRatio < 0.4) {
       sanityFailures.push(`footprint_covers_only_${Math.round(roofBboxCoverageRatio * 100)}pct_of_solar_bbox`);
     }
+    // Explicit edges=0 block: planes exist but no classified edges at all
+    {
+      const totalEdges = cleanEdges.length;
+      const structEdges = cleanEdges.filter((e) =>
+        e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"
+      ).length;
+      if (planeRows.length > 1 && totalEdges === 0) {
+        sanityFailures.push("plane_graph_has_no_classified_edges");
+      }
+      if (planeRows.length > 1 && structEdges === 0 && !isFlatRoof) {
+        // Already covered by no_ridge_hip_valley but be explicit
+        if (!sanityFailures.includes("no_ridge_hip_valley_on_pitched_roof")) {
+          sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
+        }
+      }
+    }
+    // Footprint underfill: footprint area vs selected target bbox area
+    if (roofTargetBboxPx) {
+      const targetArea = (roofTargetBboxPx.maxX - roofTargetBboxPx.minX) * (roofTargetBboxPx.maxY - roofTargetBboxPx.minY);
+      if (targetArea > 0 && finalFootprintAreaPx > 0) {
+        const underfillRatio = finalFootprintAreaPx / targetArea;
+        if (underfillRatio < 0.65) {
+          sanityFailures.push(`footprint_underfills_target_bbox_${Math.round(underfillRatio * 100)}pct`);
+        }
+      }
+    }
     if (!isFlatRoof && ridgeFt + hipFt + valleyFt === 0) {
       sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
     }
