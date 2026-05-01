@@ -19,6 +19,7 @@ import {
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
 import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
 import { solvePlanesFromFootprint } from "../_shared/footprint-plane-solver.ts";
+import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 
@@ -1176,6 +1177,53 @@ async function processJob(input: any) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
+    // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
+    //    Build shared-boundary adjacency from the FINAL plane set, classify
+    //    each edge as ridge/valley/hip/eave/rake from plane adjacency + slope
+    //    direction, and reject ridge hints that are not actual plane-pair
+    //    boundaries. Patent model is built from this classified edge graph.
+    let planeEdgeClassifierDebug: any = null;
+    try {
+      if (cleanPlanes.length > 0) {
+        const ridgeHintsForClassifier = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
+          id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
+          p1: r.p1,
+          p2: r.p2,
+          score: typeof r.score === "number" ? r.score : undefined,
+        }));
+        const planesForClassifier = (cleanPlanes as any[]).map((p, i) => ({
+          id: p.plane_index ?? i,
+          plane_index: p.plane_index ?? i,
+          polygon_px: p.polygon_px,
+          pitch: p.pitch ?? null,
+          pitch_degrees: p.pitch_degrees ?? null,
+          azimuth: p.azimuth ?? null,
+        }));
+        const edgeResult = classifyPlaneEdges({
+          planes: planesForClassifier,
+          ridgeHints: ridgeHintsForClassifier,
+        });
+        planeEdgeClassifierDebug = edgeResult.debug;
+        (globalThis as any).__planeEdgeClassifierDebug = edgeResult.debug;
+
+        // Preserve any prior eaves/rakes coming from triangulation that the
+        // classifier might miss (e.g. when polygons don't perfectly align).
+        // But the classifier output is the source of truth for ridge/hip/valley.
+        const reclassified = edgeResult.edges.map((e) => ({
+          id: e.id,
+          edge_type: e.edge_type,
+          line_px: e.line_px,
+          confidence: e.confidence,
+          source: e.source,
+          adjacent_plane_ids: e.adjacent_plane_ids,
+          debug_reason: e.debug_reason,
+        }));
+        cleanEdges = reclassified as typeof cleanEdges;
+      }
+    } catch (e) {
+      console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
+    }
+
 
     // ── OVERLAY CALIBRATION — fit measured geometry to the detected roof target,
     // not to the full raster center. This is rendering-only and does not change
@@ -1385,6 +1433,24 @@ async function processJob(input: any) {
         `footprint_constraint_violated:${footprintConstraintStats.rejection_reason || "area_ratio_exceeded"}`,
       );
     }
+    // Plane-edge classifier QA: ridge hints must be supported by actual plane
+    // boundaries, and multi-plane roofs must produce structural edges.
+    {
+      const pec = (globalThis as any).__planeEdgeClassifierDebug;
+      if (pec) {
+        const hintsTotal = Number(pec.ridge_hints_total ?? 0);
+        const hintsInvalid = Number(pec.invalid_ridge_hints_count ?? 0);
+        if (hintsTotal > 0 && hintsInvalid / hintsTotal > 0.5) {
+          sanityFailures.push("ridge_hints_not_supported_by_plane_boundaries");
+        }
+        const ridgeC = Number(pec.counts?.ridge ?? 0);
+        const hipC = Number(pec.counts?.hip ?? 0);
+        const valleyC = Number(pec.counts?.valley ?? 0);
+        if (Number(pec.plane_count ?? 0) > 2 && ridgeC + hipC + valleyC === 0) {
+          sanityFailures.push("no_structural_edges_from_plane_graph");
+        }
+      }
+    }
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
       sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
@@ -1593,6 +1659,7 @@ async function processJob(input: any) {
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
+        plane_edge_classifier: (globalThis as any).__planeEdgeClassifierDebug ?? null,
       },
       overlay_debug: {
         raster_url: imageUrl,
