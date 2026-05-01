@@ -156,6 +156,11 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   })();
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0 || hasRasterOverlayRenderable;
 
+  type PdfExportProfile = {
+    scale: number;
+    jpegQuality: number;
+  };
+
   const createExportSafeClone = (page: HTMLElement) => {
     const wrapper = document.createElement('div');
     wrapper.style.position = 'fixed';
@@ -187,18 +192,19 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     return { element: clone, cleanup: () => wrapper.remove() };
   };
 
-  const capturePageImage = async (page: HTMLElement) => {
+  const capturePageImage = async (page: HTMLElement, profile: PdfExportProfile) => {
     const captureOptions = {
-      scale: 1.5,
+      scale: profile.scale,
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#ffffff',
+      imageTimeout: 30000,
       logging: false,
     } as const;
 
     try {
       const canvas = await html2canvas(page, captureOptions);
-      return { imgData: canvas.toDataURL('image/jpeg', 0.65), width: canvas.width, height: canvas.height };
+      return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
     } catch (err) {
       console.warn('Direct PDF page capture failed; retrying without cross-origin imagery:', err);
     }
@@ -206,7 +212,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const safeClone = createExportSafeClone(page);
     try {
       const canvas = await html2canvas(safeClone.element, captureOptions);
-      return { imgData: canvas.toDataURL('image/jpeg', 0.65), width: canvas.width, height: canvas.height };
+      return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
     } finally {
       safeClone.cleanup();
     }
