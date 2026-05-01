@@ -333,11 +333,12 @@ export function solveRoofPlanes(
   // 1. Snap everything
   const footprint = rawFootprint.map(p => snap(p));
 
-  // 2. Snap interior line endpoints to footprint
-  const snappedInterior: Seg[] = interiorLines.map(seg => ({
-    a: snap(snapToFootprint(snap(seg.a), footprint)),
-    b: snap(snapToFootprint(snap(seg.b), footprint)),
-  })).filter(seg => ptKey(seg.a) !== ptKey(seg.b)); // remove zero-length
+  // 2. Convert every ridge/skeleton hint into a full boundary-to-boundary chord.
+  //    Floating interior hints do not create closed faces; extending them to the
+  //    snapped footprint makes the plane graph the source of truth.
+  const snappedInterior: Seg[] = interiorLines
+    .map((seg) => extendLineToFootprint({ a: snap(seg.a), b: snap(seg.b) }, footprint))
+    .filter((seg): seg is Seg => !!seg && ptKey(seg.a) !== ptKey(seg.b));
 
   // 3. Collect all unique endpoints from interior lines that land on footprint edges
   const interiorEndpoints = snappedInterior.flatMap(s => [s.a, s.b]);
@@ -367,8 +368,10 @@ export function solveRoofPlanes(
     addSeg(seg.a, seg.b);
   }
 
-  // 6. Build adjacency and extract faces
-  const adj = buildAdjacency(allSegments);
+  // 6. Split every segment at every graph intersection. Without this, crossing
+  //    ridge/hip lines visually overlap but do not share exact topology.
+  const graphSegments = splitSegmentsAtAllIntersections(allSegments);
+  const adj = buildAdjacency(graphSegments);
   const rawFaces = extractMinimalCycles(adj);
 
   // 7. Filter: only keep faces with meaningful area (>50 px²)
@@ -380,7 +383,7 @@ export function solveRoofPlanes(
   const debug = {
     input_footprint_vertices: rawFootprint.length,
     input_interior_lines: interiorLines.length,
-    total_graph_segments: allSegments.length,
+    total_graph_segments: graphSegments.length,
     total_graph_nodes: adj.size,
     faces_extracted: rawFaces.length,
     faces_with_area: validFaces.length,
@@ -388,5 +391,5 @@ export function solveRoofPlanes(
 
   console.log("[PLANAR_SOLVER]", JSON.stringify(debug));
 
-  return { faces: validFaces, edges: allSegments, debug };
+  return { faces: validFaces, edges: graphSegments, debug };
 }
