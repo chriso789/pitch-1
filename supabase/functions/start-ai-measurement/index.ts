@@ -1351,7 +1351,7 @@ async function processJob(input: any) {
     //    Demote ridges from "geometry drivers" to validators that must conform
     //    to the building footprint. Reject planes that extend outside the
     //    footprint, ridges that span the whole building, and totals that
-    //    exceed footprint_area * 1.15.
+    //    exceed footprint_area * 1.08.
     let footprintConstraintStats: any = null;
     try {
       const fcRidgeInput = (cleanEdges as any[])
@@ -1369,7 +1369,7 @@ async function processJob(input: any) {
         footprint as any,
         cleanPlanes as any,
         fcRidgeInput as any,
-        { planeOutsideToleranceRatio: 0.10, maxRidgeLengthRatio: 0.60, totalAreaMultiplier: 1.15 },
+        { planeOutsideToleranceRatio: 0.10, maxRidgeLengthRatio: 0.60, totalAreaMultiplier: 1.08 },
       );
       footprintConstraintStats = fcResult.stats;
       console.log("[GEOMETRY_VALIDATION]", JSON.stringify({
