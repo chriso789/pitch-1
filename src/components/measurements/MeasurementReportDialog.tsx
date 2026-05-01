@@ -73,6 +73,9 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
   if (!measurement.facet_count || measurement.facet_count <= 0)
     return { ok: false, reason: 'No roof facets recorded.' };
   if (!grj) return { ok: false, reason: 'geometry_report_json missing.' };
+  if (grj.block_customer_report_reason) {
+    return { ok: false, reason: String(grj.block_customer_report_reason) };
+  }
   if (grj.is_placeholder === true) return { ok: false, reason: 'Geometry is placeholder.' };
   if (grj.geometry_source === 'google_solar_bbox')
     return { ok: false, reason: 'Geometry source is solar bbox (rectangles).' };
@@ -521,14 +524,15 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
           {(() => {
             const needsReview =
               measurement?.validation_status === 'needs_internal_review' ||
-              measurement?.validation_status === 'needs_manual_measurement';
+              measurement?.validation_status === 'needs_manual_measurement' ||
+              Boolean((effectiveMeasurement as any)?.geometry_report_json?.block_customer_report_reason);
             return (
               <Button
                 size="sm"
                 variant={needsReview ? 'destructive' : 'default'}
                 onClick={handleDownloadPdf}
                 disabled={!pdfGate.ok || downloading || (!canOpenExistingPdf && !hasRenderableReport && !jobId)}
-                title={needsReview ? 'This measurement is awaiting internal QA review.' : undefined}
+                title={needsReview ? 'This measurement failed automated QA. Re-run AI Measurement to generate a new report.' : undefined}
               >
                 {downloading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -537,7 +541,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                {needsReview ? 'Internal Review Required' : 'Download PDF'}
+                {needsReview ? 'Re-run AI Measurement Required' : 'Download PDF'}
               </Button>
             );
           })()}
