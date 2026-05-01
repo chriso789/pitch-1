@@ -1245,6 +1245,77 @@ async function processJob(input: any) {
           debug_reason: e.debug_reason,
         }));
         cleanEdges = reclassified as typeof cleanEdges;
+
+        // FALLBACK: planes exist but classifier produced 0 ridge/hip/valley.
+        // Rebuild planes from straight-skeleton interior segments so each
+        // skeleton line becomes a real shared boundary, then re-run classifier.
+        const structuralCount =
+          (edgeResult.debug?.counts?.ridge ?? 0) +
+          (edgeResult.debug?.counts?.hip ?? 0) +
+          (edgeResult.debug?.counts?.valley ?? 0);
+        if (structuralCount === 0 && cleanPlanes.length >= 1 && footprint.length >= 3) {
+          try {
+            const skel = computeStraightSkeleton(
+              footprint.map((p) => [p.x, p.y] as [number, number]),
+            ) as any[];
+            const segs = (skel || [])
+              .map((se) => {
+                const a = se.a ?? se.p1 ?? se[0];
+                const b = se.b ?? se.p2 ?? se[1];
+                const ax = Array.isArray(a) ? a[0] : a?.x;
+                const ay = Array.isArray(a) ? a[1] : a?.y;
+                const bx = Array.isArray(b) ? b[0] : b?.x;
+                const by = Array.isArray(b) ? b[1] : b?.y;
+                return [ax, ay, bx, by].every((n) => Number.isFinite(n))
+                  ? { p1: { x: ax, y: ay }, p2: { x: bx, y: by } }
+                  : null;
+              })
+              .filter(Boolean) as Array<{ p1: Point; p2: Point }>;
+            if (segs.length > 0) {
+              const rebuilt = rebuildPlanesFromSkeletonSegments(footprint, segs);
+              if (rebuilt.planes.length >= 2 && rebuilt.adjacency.shared_boundary_count > 0) {
+                cleanPlanes = rebuilt.planes.map((p, i) => ({
+                  plane_index: i + 1,
+                  polygon_px: p.polygon,
+                  confidence: 0.7,
+                  pitch: cleanPlanes[0]?.pitch ?? null,
+                  pitch_degrees: cleanPlanes[0]?.pitch_degrees ?? null,
+                  azimuth: cleanPlanes[0]?.azimuth ?? null,
+                  source: "skeleton_rebuild",
+                })) as any;
+                topologySource = "topology_engine_v2";
+                const re = classifyPlaneEdges({
+                  planes: (cleanPlanes as any[]).map((p, i) => ({
+                    id: p.plane_index ?? i,
+                    plane_index: p.plane_index ?? i,
+                    polygon_px: p.polygon_px,
+                    pitch: p.pitch ?? null,
+                    pitch_degrees: p.pitch_degrees ?? null,
+                    azimuth: p.azimuth ?? null,
+                  })),
+                  ridgeHints: ridgeHintsForClassifier,
+                });
+                planeEdgeClassifierDebug = re.debug;
+                (globalThis as any).__planeEdgeClassifierDebug = re.debug;
+                cleanEdges = re.edges.map((e) => ({
+                  id: e.id,
+                  edge_type: e.edge_type,
+                  line_px: e.line_px,
+                  confidence: e.confidence,
+                  source: e.source,
+                  adjacent_plane_ids: e.adjacent_plane_ids,
+                  debug_reason: e.debug_reason,
+                })) as typeof cleanEdges;
+                console.log("[SKELETON_REBUILD]", JSON.stringify({
+                  planes: cleanPlanes.length,
+                  ...re.debug.counts,
+                }));
+              }
+            }
+          } catch (e) {
+            console.warn("[SKELETON_REBUILD] failed:", (e as Error).message);
+          }
+        }
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
