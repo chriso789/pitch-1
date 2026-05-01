@@ -485,19 +485,22 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
               const planes_px = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
               const edges_px = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
-              const showDebugOverlay =
-                import.meta.env.DEV && rasterUrl && rasterSize && (planes_px.length > 0 || edges_px.length > 0);
+              const hasRasterOverlay =
+                Boolean(rasterUrl) && Boolean(rasterSize) && (planes_px.length > 0 || edges_px.length > 0);
+              const showDebugOverlay = hasRasterOverlay;
 
               const debugOverlay = showDebugOverlay ? (
-                <RasterOverlayDebugView
-                  imageUrl={rasterUrl}
-                  rasterSize={rasterSize}
-                  planes_px={planes_px}
-                  edges_px={edges_px}
-                  overlayCalibration={grj?.overlay_calibration || null}
-                  roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
-                  geometryPxSpace={grj?.geometry_px_space || null}
-                />
+                <div className="measurement-report-page">
+                  <RasterOverlayDebugView
+                    imageUrl={rasterUrl}
+                    rasterSize={rasterSize}
+                    planes_px={planes_px}
+                    edges_px={edges_px}
+                    overlayCalibration={grj?.overlay_calibration || null}
+                    roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
+                    geometryPxSpace={grj?.geometry_px_space || null}
+                  />
+                </div>
               ) : null;
 
               if (reportCollapsed) {
