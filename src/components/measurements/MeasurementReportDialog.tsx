@@ -96,6 +96,104 @@ function evaluatePdfGate(measurement: any): { ok: boolean; reason?: string; warn
   return { ok: true, warning: warnings.join(' ') || undefined };
 }
 
+/** Always-visible measurement data summary page */
+const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
+  if (!m) return null;
+  const grj = m.geometry_report_json || {};
+  const dp = grj.debug_pipeline || {};
+
+  const fmt = (v: any, unit = '') => {
+    if (v == null || v === '' || (typeof v === 'number' && isNaN(v))) return '—';
+    const n = Number(v);
+    return isNaN(n) ? String(v) : `${n.toLocaleString(undefined, { maximumFractionDigits: 1 })}${unit ? ` ${unit}` : ''}`;
+  };
+
+  const rows: { label: string; value: string; icon?: React.ReactNode }[] = [
+    { label: 'Total Area (flat)', value: fmt(m.total_area_flat_sqft ?? m.roof_area_sq_ft, 'sq ft'), icon: <Square className="h-4 w-4" /> },
+    { label: 'Total Area (adjusted)', value: fmt(m.total_area_adjusted_sqft, 'sq ft') },
+    { label: 'Total Squares', value: fmt(m.total_squares) },
+    { label: 'Predominant Pitch', value: fmt(m.predominant_pitch, '/12'), icon: <TriangleIcon className="h-4 w-4" /> },
+    { label: 'Facet Count', value: fmt(m.facet_count ?? dp.final_plane_count_saved) },
+    { label: 'Ridge', value: fmt(m.total_ridge_length ?? m.ridges_lf, 'LF'), icon: <Ruler className="h-4 w-4" /> },
+    { label: 'Hip', value: fmt(m.total_hip_length ?? m.hips_lf, 'LF') },
+    { label: 'Valley', value: fmt(m.total_valley_length ?? m.valleys_lf, 'LF') },
+    { label: 'Eave', value: fmt(m.total_eave_length ?? m.eaves_lf, 'LF') },
+    { label: 'Rake', value: fmt(m.total_rake_length ?? m.rakes_lf, 'LF') },
+  ];
+
+  const debugRows: { label: string; value: string }[] = [
+    { label: 'Detection Method', value: String(m.detection_method ?? grj.detection_method ?? '—') },
+    { label: 'Footprint Source', value: String(m.footprint_source ?? grj.footprint_source ?? '—') },
+    { label: 'Topology Source', value: String(grj.topology_source ?? grj.geometry_source ?? '—') },
+    { label: 'Planes (saved)', value: fmt(dp.final_plane_count_saved) },
+    { label: 'Edges (saved)', value: fmt(dp.final_edge_count_saved) },
+    { label: 'Patent Planes', value: fmt(dp.final_patent_model_plane_count) },
+    { label: 'Footprint Confidence', value: fmt(m.footprint_confidence) },
+    { label: 'Measurement Confidence', value: fmt(m.measurement_confidence) },
+    { label: 'Validation Status', value: String(m.validation_status ?? '—') },
+    { label: 'Image Source', value: String(m.selected_image_source ?? m.image_source ?? '—') },
+  ];
+
+  const blockReason = grj.block_customer_report_reason;
+
+  return (
+    <div className="measurement-report-page border rounded-lg overflow-hidden bg-background">
+      <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+        <div className="font-semibold text-sm flex items-center gap-2">
+          <Activity className="h-4 w-4" />
+          Measurement Data Summary
+        </div>
+        <Badge variant="secondary">data</Badge>
+      </div>
+      <div className="p-4 space-y-4">
+        {blockReason && (
+          <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive font-medium">
+            ⚠ Blocked: {String(blockReason)}
+          </div>
+        )}
+
+        {/* Main measurements */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {rows.map((r) => (
+            <div key={r.label} className="rounded-md border bg-card p-3">
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-1">
+                {r.icon}
+                {r.label}
+              </div>
+              <div className="text-lg font-bold tabular-nums">{r.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Debug / pipeline info */}
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+            Pipeline &amp; debug details ▸
+          </summary>
+          <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+            {debugRows.map((r) => (
+              <div key={r.label} className="rounded border bg-muted/30 px-2 py-1.5">
+                <div className="text-[10px] text-muted-foreground">{r.label}</div>
+                <div className="text-xs font-medium truncate">{r.value}</div>
+              </div>
+            ))}
+          </div>
+        </details>
+
+        {/* Raw geometry_report_json dump for ChatGPT analysis */}
+        <details className="group">
+          <summary className="cursor-pointer text-xs font-medium text-muted-foreground hover:text-foreground">
+            Raw JSON (for analysis) ▸
+          </summary>
+          <pre className="mt-2 max-h-60 overflow-auto rounded border bg-muted/30 p-2 text-[10px] font-mono whitespace-pre-wrap break-all">
+            {JSON.stringify(grj, null, 2)}
+          </pre>
+        </details>
+      </div>
+    </div>
+  );
+};
+
 const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   open,
   onOpenChange,
