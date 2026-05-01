@@ -531,8 +531,42 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             />
           </div>
 
+          <div>
+            <Label htmlFor="subtotal">Subtotal</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input
+                id="subtotal"
+                type="number"
+                step="0.01"
+                placeholder={scanning ? 'Scanning...' : '0.00'}
+                className="pl-7"
+                value={formData.subtotal}
+                onChange={(e) => setFormData(prev => ({ ...prev, subtotal: e.target.value }))}
+                disabled={scanning}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="tax_amount">Tax</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input
+                id="tax_amount"
+                type="number"
+                step="0.01"
+                placeholder={scanning ? 'Scanning...' : '0.00'}
+                className="pl-7"
+                value={formData.tax_amount}
+                onChange={(e) => setFormData(prev => ({ ...prev, tax_amount: e.target.value }))}
+                disabled={scanning}
+              />
+            </div>
+          </div>
+
           <div className="col-span-2">
-            <Label htmlFor="invoice_amount">Amount *</Label>
+            <Label htmlFor="invoice_amount">Total Amount *</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <Input
