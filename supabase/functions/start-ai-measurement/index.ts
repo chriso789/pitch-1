@@ -717,6 +717,7 @@ async function processJob(input: any) {
     let ridgeDetectionRan = false;
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
+    let planeMergeDebug: any = null;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -975,7 +976,6 @@ async function processJob(input: any) {
 
       // ── CLUSTER-AWARE PLANE MERGE — Montelluna guardrail: never merge
       //    across independent ridge clusters/wings/valley boundaries.
-      let planeMergeDebug: any = null;
       if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
         try {
           const ridgeCatalog = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
@@ -1021,7 +1021,6 @@ async function processJob(input: any) {
           console.warn("[CLUSTER_AWARE_PLANE_MERGE] failed:", (e as Error).message);
         }
       }
-      (globalThis as any).__planeMergeDebug = planeMergeDebug;
 
       try {
         // 5b. Skeleton — used as fallback OR to add minor interior structure.
@@ -1423,7 +1422,7 @@ async function processJob(input: any) {
     if (solarRoofAreaSqft != null && solarRoofAreaSqft > 0 && finalRoofAreaSqft > solarRoofAreaSqft * 1.25) {
       sanityFailures.push("area_inflation_after_merge");
     }
-    const _planeMergeDebug = (globalThis as any).__planeMergeDebug ?? null;
+    const _planeMergeDebug = planeMergeDebug ?? null;
     if (_planeMergeDebug?.pre_merge_area > 0 && _planeMergeDebug.post_merge_area > _planeMergeDebug.pre_merge_area * 1.10) {
       sanityFailures.push("area_inflation_after_merge");
     }
