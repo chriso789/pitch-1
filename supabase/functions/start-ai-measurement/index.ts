@@ -837,16 +837,20 @@ async function processJob(input: any) {
           // (≤20°) and midpoint proximity (≤50 px), assigns each cluster a
           // local region bbox (padded 25 px), and only splits geometry that
           // lies inside that region with that cluster's ridges.
-          const clusterInput = (filtered.kept as any[]).map((r) => ({
-            id: r.id ?? r.ridge_id,
-            ridge_id: r.ridge_id ?? r.id,
+          const clusterInput = (filtered.kept as any[]).map((r, idx) => {
+            const ridgeId = String(r.ridge_id ?? r.id ?? `ridge-${idx}`);
+            r.__cluster_ridge_id = ridgeId;
+            return ({
+            id: ridgeId,
+            ridge_id: ridgeId,
             p1: r.p1,
             p2: r.p2,
             score: r.score ?? 0.5,
             angleDeg: typeof r.angleDeg === "number"
               ? r.angleDeg
               : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
-          }));
+          });
+          });
 
           const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
           const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
@@ -917,7 +921,8 @@ async function processJob(input: any) {
               source_ridge_ids: sp.source_ridge_ids ?? [],
             }));
             for (const r of filtered.kept as any[]) {
-              const assignedCluster = regional.clusters.find((c) => c.ridges.some((cr: any) => cr === r || cr.id === r.id || cr.ridge_id === r.ridge_id));
+              const ridgeId = String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? "");
+              const assignedCluster = regional.clusters.find((c) => c.ridges.some((cr: any) => String(cr.ridge_id ?? cr.id ?? "") === ridgeId));
               const ridgeIds = assignedCluster?.ridges.map((cr: any, idx: number) => String(cr.ridge_id ?? cr.id ?? `${assignedCluster.cluster_index}:${idx}`)) || [];
               if (assignedCluster && !lineWithinBBox([r.p1, r.p2], assignedCluster.region_bbox, 2)) {
                 console.log("[RIDGE_REJECTED]", JSON.stringify({ reason: "ridge_outside_assigned_cluster_bbox", cluster_id: assignedCluster.cluster_index }));
