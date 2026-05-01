@@ -319,15 +319,39 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       const { data, error } = await supabase.functions.invoke('render-measurement-pdf', {
         body: { ai_measurement_job_id: jobId },
       });
-      if (error) throw error;
-      if ((data as any)?.error === 'manual_measurement_required' || (data as any)?.error === 'internal_review_required') {
+
+      // supabase.functions.invoke treats any non-2xx as `error`. Our QC gate
+      // returns 422 with a structured body — read it before falling through
+      // to a generic failure toast.
+      let payload: any = data;
+      if (error && (error as any)?.context?.json) {
+        try { payload = await (error as any).context.json(); } catch { /* noop */ }
+      } else if (error && (error as any)?.context?.body) {
+        try {
+          const txt = await (error as any).context.text?.();
+          payload = txt ? JSON.parse(txt) : null;
+        } catch { /* noop */ }
+      }
+
+      const errCode = (payload as any)?.error;
+      if (errCode === 'manual_measurement_required' || errCode === 'internal_review_required') {
         toast({
           title: 'Internal review required',
-          description: 'Automated roof geometry could not be verified.',
+          description: (payload as any)?.reason || 'Automated roof geometry could not be verified.',
           variant: 'destructive',
         });
         return;
       }
+      if (errCode === 'no_diagrams') {
+        toast({
+          title: 'No diagrams available',
+          description: 'No roof diagrams were generated for this job. Re-run the AI measurement.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      if (error) throw error;
+
       const url = (data as any)?.pdf_url;
       if (!url) throw new Error('No PDF URL returned.');
       window.open(url, '_blank', 'noopener,noreferrer');
