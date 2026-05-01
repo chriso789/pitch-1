@@ -11,6 +11,8 @@
  *   • Edge classification can simply count face adjacency
  */
 
+import { filterRoofFaces } from "./face-filter.ts";
+
 type Pt = { x: number; y: number };
 type Seg = { a: Pt; b: Pt };
 
@@ -368,15 +370,13 @@ export function solveRoofPlanes(
   const adj = buildAdjacency(graphSegments);
   const rawFaces = extractMinimalCycles(adj);
 
-  // 7. Filter: keep real bounded faces, not the outer footprint loop.
-  const minArea = 50;
-  const footprintArea = Math.abs(signedArea(footprint));
-  const validFaces = rawFaces
-    .filter(f => {
-      const area = Math.abs(signedArea(f));
-      return area > minArea && area < footprintArea * 0.98;
-    })
+  // 7. Face filtering: remove outer/duplicate/sliver/non-roof faces before
+  //    edge classification. Raw half-edge cycles include geometry noise.
+  const allFaces = rawFaces
+    .filter((f) => Math.abs(signedArea(f)) > 50)
     .map((polygon, i) => ({ id: i, polygon }));
+  const validFaces = filterRoofFaces(allFaces, footprint)
+    .map((face, i) => ({ id: i, polygon: face.polygon }));
 
   const debug = {
     input_footprint_vertices: rawFootprint.length,
