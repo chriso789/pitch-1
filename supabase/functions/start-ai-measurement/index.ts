@@ -2212,7 +2212,7 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
-      status: needsInternalReview ? "needs_internal_review" : reviewRequired ? "needs_review" : "completed",
+       status: needsInternalReview ? "needs_internal_review" : (Boolean(blockCustomerReportReason) || quality.overall_score < 0.80) ? "needs_review" : "completed",
       reason: blockCustomerReportReason,
       pdf_source_signature: pdfSourceSignature,
       overlay_calibration: overlayCalibration,
