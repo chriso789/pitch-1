@@ -2223,6 +2223,15 @@ function dominantSolarPitchRise(solarData: any): number | null {
     .map((d: number) => Math.tan((d * Math.PI) / 180) * 12);
   return rises.length ? average(rises) : null;
 }
+function estimateSolarRoofAreaSqft(solarData: any): number | null {
+  const segs = solarData?.solarPotential?.roofSegmentStats || [];
+  const areasM2 = segs
+    .map((s: any) => Number(s?.stats?.areaMeters2 ?? s?.stats?.groundAreaMeters2))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  if (areasM2.length > 0) return areasM2.reduce((sum: number, n: number) => sum + n, 0) * 10.7639;
+  const wholeRoof = Number(solarData?.solarPotential?.wholeRoofStats?.areaMeters2 ?? solarData?.solarPotential?.wholeRoofStats?.groundAreaMeters2);
+  return Number.isFinite(wholeRoof) && wholeRoof > 0 ? wholeRoof * 10.7639 : null;
+}
 function dominantSolarAzimuth(solarData: any): number | null {
   const segs = solarData?.solarPotential?.roofSegmentStats || [];
   const az = segs.map((s: any) => Number(s.azimuthDegrees)).filter((n: number) => Number.isFinite(n));
