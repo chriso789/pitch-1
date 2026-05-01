@@ -698,6 +698,28 @@ async function processJob(input: any) {
     let usedSyntheticDebugRectangle = false;
     let footprintSelectionFailed = !selected;
 
+    // ── EAVE SNAP — pull footprint vertices to the strongest nearby roof
+    // perimeter edge so planes / overlay align to actual eaves rather than
+    // Solar hull center mass. Conservative: 16 px max move, vegetation/shadow
+    // pixels are skipped, and we record perimeter_off_eave_ratio for QA.
+    let eaveSnapDebug: any = null;
+    if (footprint.length >= 3 && raster?.data) {
+      try {
+        const snap = snapFootprintToEaves(footprint, raster as any, { maxSnapPx: 16 });
+        eaveSnapDebug = {
+          moved_count: snap.moved_count,
+          total_vertices: snap.total_vertices,
+          avg_move_px: Number(snap.avg_move_px.toFixed(2)),
+          perimeter_off_eave_ratio: Number(snap.perimeter_off_eave_ratio.toFixed(3)),
+        };
+        (globalThis as any).__eaveSnapDebug = eaveSnapDebug;
+        console.log("[EAVE_SNAP]", JSON.stringify(eaveSnapDebug));
+        footprint = snap.snapped;
+      } catch (e) {
+        console.warn("[EAVE_SNAP] failed:", (e as Error).message);
+      }
+    }
+
     console.log("[FOOTPRINT_SOURCE_SELECTION]", JSON.stringify({
       candidates: candidates.map((c) => ({
         source: c.source,
