@@ -31,6 +31,105 @@ function segKey(a: Pt, b: Pt): string {
   return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
 }
 
+function dist(a: Pt, b: Pt): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+function sub(a: Pt, b: Pt): Pt {
+  return { x: a.x - b.x, y: a.y - b.y };
+}
+
+function cross(a: Pt, b: Pt): number {
+  return a.x * b.y - a.y * b.x;
+}
+
+function segmentIntersection(a: Pt, b: Pt, c: Pt, d: Pt): Pt | null {
+  const r = sub(b, a);
+  const s = sub(d, c);
+  const den = cross(r, s);
+  if (Math.abs(den) < 1e-9) return null;
+  const qp = sub(c, a);
+  const t = cross(qp, s) / den;
+  const u = cross(qp, r) / den;
+  if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
+  return snap({ x: a.x + r.x * t, y: a.y + r.y * t });
+}
+
+function pointOnSegment(p: Pt, a: Pt, b: Pt, tol = 2.5): boolean {
+  const proj = projectPointOnSegment(p, a, b);
+  if (!proj || dist(proj, p) > tol) return false;
+  const minX = Math.min(a.x, b.x) - tol, maxX = Math.max(a.x, b.x) + tol;
+  const minY = Math.min(a.y, b.y) - tol, maxY = Math.max(a.y, b.y) + tol;
+  return p.x >= minX && p.x <= maxX && p.y >= minY && p.y <= maxY;
+}
+
+function extendLineToFootprint(seg: Seg, footprint: Pt[]): Seg | null {
+  const dir = sub(seg.b, seg.a);
+  if (Math.hypot(dir.x, dir.y) < 4) return null;
+
+  const hits: Array<{ point: Pt; t: number }> = [];
+  for (let i = 0; i < footprint.length; i++) {
+    const a = footprint[i];
+    const b = footprint[(i + 1) % footprint.length];
+    const edge = sub(b, a);
+    const den = cross(dir, edge);
+    if (Math.abs(den) < 1e-9) continue;
+    const ap = sub(a, seg.a);
+    const t = cross(ap, edge) / den;
+    const u = cross(ap, dir) / den;
+    if (u < -1e-6 || u > 1 + 1e-6) continue;
+    hits.push({ point: snap({ x: seg.a.x + dir.x * t, y: seg.a.y + dir.y * t }), t });
+  }
+
+  const unique: Array<{ point: Pt; t: number }> = [];
+  for (const h of hits.sort((a, b) => a.t - b.t)) {
+    if (!unique.some((u) => dist(u.point, h.point) < 3)) unique.push(h);
+  }
+  if (unique.length >= 2) {
+    return { a: unique[0].point, b: unique[unique.length - 1].point };
+  }
+
+  const a = snapToFootprint(seg.a, footprint, 12);
+  const b = snapToFootprint(seg.b, footprint, 12);
+  return ptKey(a) !== ptKey(b) ? { a, b } : null;
+}
+
+function splitSegmentsAtAllIntersections(segments: Seg[]): Seg[] {
+  const pointsBySeg = segments.map((s) => [s.a, s.b]);
+
+  for (let i = 0; i < segments.length; i++) {
+    for (let j = i + 1; j < segments.length; j++) {
+      const inter = segmentIntersection(segments[i].a, segments[i].b, segments[j].a, segments[j].b);
+      if (!inter) continue;
+      if (pointOnSegment(inter, segments[i].a, segments[i].b)) pointsBySeg[i].push(inter);
+      if (pointOnSegment(inter, segments[j].a, segments[j].b)) pointsBySeg[j].push(inter);
+    }
+  }
+
+  const out: Seg[] = [];
+  const seen = new Set<string>();
+  const add = (a: Pt, b: Pt) => {
+    if (ptKey(a) === ptKey(b) || dist(a, b) < 3) return;
+    const k = segKey(a, b);
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push({ a, b });
+  };
+
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    const dx = s.b.x - s.a.x, dy = s.b.y - s.a.y;
+    const len2 = Math.max(dx * dx + dy * dy, 1e-9);
+    const pts = pointsBySeg[i]
+      .map(snap)
+      .filter((p, idx, arr) => arr.findIndex((q) => ptKey(q) === ptKey(p)) === idx)
+      .sort((p, q) => (((p.x - s.a.x) * dx + (p.y - s.a.y) * dy) / len2) - (((q.x - s.a.x) * dx + (q.y - s.a.y) * dy) / len2));
+    for (let k = 0; k < pts.length - 1; k++) add(pts[k], pts[k + 1]);
+  }
+
+  return out;
+}
+
 // ── INTERSECT interior segments with footprint edges ──────
 // Clip ridge endpoints to the nearest footprint vertex/edge when they
 // are close but not exactly on the boundary.
