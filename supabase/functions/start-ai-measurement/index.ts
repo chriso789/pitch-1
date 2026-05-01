@@ -707,11 +707,12 @@ async function processJob(input: any) {
     let snappedFootprintBboxPx: any = null;
     if (footprint.length >= 3 && raster?.data) {
       try {
+        // Do NOT clamp to solarBboxPx — it may include non-roof area
+        // (pool, yard). The Sobel edge detector + vegetation/shadow filter
+        // is the real guard. Use a generous snap radius to reach actual eaves.
         const snap = snapFootprintToEaves(footprint, raster as any, {
-          maxSnapPx: 20,
-          clampBbox: solarBboxPx
-            ? { minX: solarBboxPx.minX, minY: solarBboxPx.minY, maxX: solarBboxPx.maxX, maxY: solarBboxPx.maxY }
-            : null,
+          maxSnapPx: 24,
+          clampBbox: null,
         });
         eaveSnapDebug = {
           moved_count: snap.moved_count,
