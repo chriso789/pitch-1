@@ -1518,23 +1518,44 @@ async function processJob(input: any) {
       const solarAxis = dominantSolarAzimuth(solarData);
       const roofBbox = bboxOf(footprint);
       const roofCenter = roofBbox ? { x: (roofBbox.minX + roofBbox.maxX) / 2, y: (roofBbox.minY + roofBbox.maxY) / 2 } : null;
+      const canonicalVertexKey = (p: Point) => `${Math.round(p.x / 2) * 2}:${Math.round(p.y / 2) * 2}`;
+      const canonicalGraphVertices = new Set<string>();
+      for (const plane of cleanPlanes) {
+        for (const pt of plane.polygon_px || []) canonicalGraphVertices.add(canonicalVertexKey(pt));
+      }
+      const segmentInsideFootprint = (a: Point, b: Point) => {
+        if (!footprint || footprint.length < 3) return false;
+        const samples = [0.25, 0.5, 0.75].map((t) => ({
+          x: a.x + (b.x - a.x) * t,
+          y: a.y + (b.y - a.y) * t,
+        }));
+        return samples.every((pt) => pointInPolygon(pt, footprint));
+      };
       const ridgeEdgesBefore = cleanEdges.filter((e) => e.edge_type === "ridge").length;
       let rejectedFuzzyRidges = 0;
       let rejectedMisalignedRidges = 0;
+      const ridgeEdgeChecks: any[] = [];
 
       cleanEdges = cleanEdges.map((edge) => {
         const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
         if (!isStructural) return edge;
         const source = String(edge.source || "");
+        const sourceIsFuzzy = source.toLowerCase().includes("fuzzy");
         const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
         const p1 = edge.line_px?.[0];
         const p2 = edge.line_px?.[edge.line_px.length - 1];
         const mid = p1 && p2 ? { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } : null;
-        const strictShared = source === "plane_edge_classifier_v1" && adjacentCount === 2;
-        const insideFootprint = !!mid && pointInPolygon(mid, footprint);
-        if (source.toLowerCase().includes("fuzzy") || !strictShared || !insideFootprint) {
+        const hasCanonicalEndpoints = !!p1 && !!p2 && canonicalGraphVertices.has(canonicalVertexKey(p1)) && canonicalGraphVertices.has(canonicalVertexKey(p2));
+        const strictShared = source === "plane_edge_classifier_v1" && adjacentCount === 2 && hasCanonicalEndpoints;
+        const insideFootprint = !!p1 && !!p2 && segmentInsideFootprint(p1, p2);
+        if (sourceIsFuzzy || !strictShared || !insideFootprint) {
           if (edge.edge_type === "ridge") rejectedFuzzyRidges++;
-          return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.25), debug_reason: "not_strict_two_plane_graph_edge" };
+          return {
+            ...edge,
+            edge_type: "unknown_interior" as const,
+            confidence: Math.min(edge.confidence, 0.25),
+            debug_reason: sourceIsFuzzy ? "fuzzy_edge_excluded_from_structural_totals" : "not_strict_two_plane_graph_edge",
+          };
         }
         if (edge.edge_type !== "ridge" || !p1 || !p2) return edge;
 
@@ -1550,9 +1571,10 @@ async function processJob(input: any) {
           candidateAngleDelta = Math.min(candidateAngleDelta, angleDiff180(edgeAngle, cAngle));
         }
         const solarAngleDelta = solarAxis == null ? Number.POSITIVE_INFINITY : angleDiff180(edgeAngle, ((solarAxis % 180) + 180) % 180);
+        const bestAxisDelta = Math.min(candidateAngleDelta, solarAngleDelta);
         const hasVisualCandidate = ridgeCandidates.length > 0;
-        const distanceOk = !hasVisualCandidate || candidateDistance <= 20;
-        const angleOk = hasVisualCandidate ? candidateAngleDelta <= 25 : solarAngleDelta <= 20;
+        const distanceOk = hasVisualCandidate && candidateDistance <= 20;
+        const angleOk = bestAxisDelta <= 20;
         let centerOffset = 0;
         if (roofBbox && roofCenter && mid) {
           const horizontalDelta = Math.min(edgeAngle, 180 - edgeAngle);
@@ -1561,6 +1583,14 @@ async function processJob(input: any) {
           else if (verticalDelta <= 45) centerOffset = Math.abs(mid.x - roofCenter.x) / Math.max(roofBbox.width, 1);
           else centerOffset = Math.hypot(mid.x - roofCenter.x, mid.y - roofCenter.y) / Math.max(roofBbox.width, roofBbox.height, 1);
         }
+        ridgeEdgeChecks.push({
+          edge_id: edge.id ?? null,
+          ridge_to_visual_candidate_distance_px: Number.isFinite(candidateDistance) ? round(candidateDistance, 2) : null,
+          ridge_angle_delta_to_solar_axis: Number.isFinite(solarAngleDelta) ? round(solarAngleDelta, 2) : null,
+          ridge_angle_delta_to_visual_axis: Number.isFinite(candidateAngleDelta) ? round(candidateAngleDelta, 2) : null,
+          ridge_center_offset_from_roof_centerline: round(centerOffset, 3),
+          source,
+        });
         if (!distanceOk || !angleOk || centerOffset > 0.35) {
           rejectedMisalignedRidges++;
           return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.35), debug_reason: "ridge_edges_not_aligned_to_roof_structure" };
@@ -1577,6 +1607,7 @@ async function processJob(input: any) {
         rejected_fuzzy_ridges: rejectedFuzzyRidges,
         rejected_misaligned_ridges: rejectedMisalignedRidges,
         final_ridge_ft: round(finalRidgePx * actualFpp, 2),
+        ridge_edge_checks: ridgeEdgeChecks,
       };
       if (ridgeEdgesBefore > 0 && ridgeAlignmentDebug.ridge_edges_after === 0) {
         strictFailures.push("ridge_edges_not_aligned_to_roof_structure");
@@ -1857,6 +1888,11 @@ async function processJob(input: any) {
     if (edgeRows.length) await supabase.from("ai_roof_edges").insert(edgeRows);
 
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+    const ridgeQa = ((globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug) || null;
+    const ridgeStructureReviewReason =
+      ridgeQa && Number(ridgeQa.ridge_edges_before || 0) > 0 && Number(ridgeQa.ridge_edges_after || 0) === 0
+        ? "ridge_edges_not_aligned_to_roof_structure"
+        : null;
     const usedSinglePlaneFallback =
       planeRows.length === 1 && planeRows[0].source === "single_plane_fallback";
 
@@ -2025,7 +2061,8 @@ async function processJob(input: any) {
     }
 
     const blockCustomerReportReason: string | null =
-      sanityFailures.length > 0 ? sanityFailures.join("|") : null;
+      sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason;
+    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure");
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
@@ -2034,10 +2071,11 @@ async function processJob(input: any) {
       roof_bbox_coverage_ratio: roofBboxCoverageRatio,
       geometry_vs_footprint_ratio: geometryVsFootprintRatio,
       plane_count: planeRows.length,
-      edge_counts: {
+        edge_counts: {
         ridge: ridgeFt, hip: hipFt, valley: valleyFt,
         eave: Number(totals.eave_length_ft) || 0, rake: Number(totals.rake_length_ft) || 0,
       },
+        ridge_alignment_qa: ridgeQa,
       blocked: !!blockCustomerReportReason,
       reason: blockCustomerReportReason,
       ridge_detection_ran: ridgeDetectionRan,
@@ -2173,6 +2211,8 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      status: needsInternalReview ? "needs_internal_review" : reviewRequired ? "needs_review" : "completed",
+      reason: blockCustomerReportReason,
       pdf_source_signature: pdfSourceSignature,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
@@ -2253,6 +2293,8 @@ async function processJob(input: any) {
       footprint_source: footprintSource,
       topology_source: topologySource,
       block_customer_report_reason: blockCustomerReportReason,
+      status: needsInternalReview ? "needs_internal_review" : reviewRequired ? "needs_review" : "completed",
+      reason: blockCustomerReportReason,
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
       planes: planeRows,
@@ -2316,6 +2358,8 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
+        validation_status: reviewRequired ? "flagged" : "validated",
+        validation_notes: blockCustomerReportReason,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
@@ -2449,7 +2493,9 @@ async function processJob(input: any) {
     });
 
     // Geometry collapse → never call this "completed" for the customer.
-    const finalAiStatus = blockCustomerReportReason
+    const finalAiStatus = needsInternalReview
+      ? "needs_internal_review"
+      : blockCustomerReportReason
       ? "needs_review"
       : quality.overall_score >= 0.80 ? "completed"
       : quality.overall_score >= 0.60 ? "needs_review"

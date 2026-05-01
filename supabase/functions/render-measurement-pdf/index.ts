@@ -93,7 +93,7 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
   const { data: m } = await supa
     .from('roof_measurements')
     .select(
-      'id, validation_status, requires_manual_review, facet_count, geometry_report_json, ai_measurement_job_id, report_pdf_url, report_pdf_path, updated_at',
+      'id, validation_status, validation_notes, requires_manual_review, facet_count, geometry_report_json, ai_measurement_job_id, report_pdf_url, report_pdf_path, updated_at, total_ridge_length, total_hip_length, total_valley_length',
     )
     .eq('ai_measurement_job_id', jobId)
     .order('created_at', { ascending: false })
@@ -117,6 +117,16 @@ async function qcGate(supa: any, jobId: string): Promise<QcOutcome> {
   }
   if (grj.is_placeholder === true) {
     return { ok: false, reason: 'Geometry is placeholder.', measurement: m }
+  }
+  if (grj.status === 'needs_internal_review' || String(grj.reason || grj.block_customer_report_reason || '').includes('ridge_edges_not_aligned_to_roof_structure')) {
+    return { ok: false, reason: 'ridge_edges_not_aligned_to_roof_structure', measurement: m }
+  }
+  const structuralEdges = Array.isArray(grj.edges)
+    ? grj.edges.filter((e: any) => ['ridge', 'hip', 'valley'].includes(String(e?.edge_type || e?.type)))
+    : []
+  const hasFuzzyStructuralEdge = structuralEdges.some((e: any) => String(e?.source || '').toLowerCase().includes('fuzzy'))
+  if (hasFuzzyStructuralEdge) {
+    return { ok: false, reason: 'fuzzy_structural_edges_not_publishable', measurement: m }
   }
   if (grj.geometry_source === 'google_solar_bbox') {
     return {

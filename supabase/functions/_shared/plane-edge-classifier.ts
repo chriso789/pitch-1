@@ -35,7 +35,7 @@ export type ClassifiedEdge = {
   line_px: Pt[];
   adjacent_plane_ids: string[];
   confidence: number;
-  source: "plane_edge_classifier_v1";
+  source: "plane_edge_classifier_v1" | "interior_fuzzy_shared_boundary";
   debug_reason: string;
 };
 
@@ -473,7 +473,8 @@ export function classifyPlaneEdges(args: {
   // When exact canonical matching finds few shared edges (common with
   // Google Solar rasterized segments that have 1-5px gaps), discover
   // near-parallel close exterior edges from different planes and promote
-  // them to shared boundaries.
+  // them only as fuzzy candidates. They are useful for diagnostics/preview,
+  // but MUST NOT count toward ridge/hip/valley totals downstream.
   const proximityMatches = findProximitySharedBoundaries(edgeMap, planeById);
   const proximityConsumedKeys = new Set<string>();
 
@@ -485,8 +486,7 @@ export function classifyPlaneEdges(args: {
     // Skip if midline is degenerate
     if (dist(pm.midlineP1, pm.midlineP2) < 4) continue;
 
-    sharedEdges.push(
-      classifySharedBoundary({
+    const fuzzyCandidate = classifySharedBoundary({
         a: spA.original,
         b: spB.original,
         aId: pm.planeIdA,
@@ -494,8 +494,14 @@ export function classifyPlaneEdges(args: {
         segment: [pm.midlineP1, pm.midlineP2],
         ridgeHints,
         edgeIndex: edgeIndex++,
-      }),
-    );
+      });
+
+    sharedEdges.push({
+      ...fuzzyCandidate,
+      source: "interior_fuzzy_shared_boundary",
+      confidence: Math.min(fuzzyCandidate.confidence, 0.42),
+      debug_reason: `proximity/fuzzy candidate only: gap_px=${Math.round(pm.gapDistance * 10) / 10}, overlap_px=${Math.round(pm.overlapLength)}; ${fuzzyCandidate.debug_reason}`,
+    });
 
     proximityConsumedKeys.add(pm.edgeA.key);
     proximityConsumedKeys.add(pm.edgeB.key);
