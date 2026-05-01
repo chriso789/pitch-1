@@ -3007,6 +3007,7 @@ function buildEdgeRows(args: {
       length_px: round(lpx, 2),
       length_ft: round(lpx * args.feetPerPixelActual, 2),
       confidence: round(edge.confidence, 3),
+      adjacent_plane_ids: edge.adjacent_plane_ids ?? null,
     };
   });
 }
