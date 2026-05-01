@@ -1422,7 +1422,7 @@ async function processJob(input: any) {
       ridge_detection_ran: ridgeDetectionRan,
       ridges_detected: ridgeDetectedCount,
       ridge_split_planes: ridgeSplitPlaneCount,
-      plane_merge: planeMergeDebug,
+      plane_merge: _planeMergeDebug,
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
     }));
