@@ -156,6 +156,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   })();
   const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0 || hasRasterOverlayRenderable;
 
+  type PdfExportProfile = {
+    scale: number;
+    jpegQuality: number;
+  };
+
+  const PDF_MAX_BYTES = 9.5 * 1024 * 1024;
+  const PDF_EXPORT_PROFILES: PdfExportProfile[] = [
+    { scale: 3, jpegQuality: 0.92 },
+    { scale: 2.25, jpegQuality: 0.84 },
+    { scale: 1.5, jpegQuality: 0.65 },
+  ];
+
   const createExportSafeClone = (page: HTMLElement) => {
     const wrapper = document.createElement('div');
     wrapper.style.position = 'fixed';
@@ -187,18 +199,19 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     return { element: clone, cleanup: () => wrapper.remove() };
   };
 
-  const capturePageImage = async (page: HTMLElement) => {
+  const capturePageImage = async (page: HTMLElement, profile: PdfExportProfile) => {
     const captureOptions = {
-      scale: 1.5,
+      scale: profile.scale,
       useCORS: true,
       allowTaint: false,
       backgroundColor: '#ffffff',
+      imageTimeout: 30000,
       logging: false,
     } as const;
 
     try {
       const canvas = await html2canvas(page, captureOptions);
-      return { imgData: canvas.toDataURL('image/jpeg', 0.65), width: canvas.width, height: canvas.height };
+      return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
     } catch (err) {
       console.warn('Direct PDF page capture failed; retrying without cross-origin imagery:', err);
     }
@@ -206,7 +219,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const safeClone = createExportSafeClone(page);
     try {
       const canvas = await html2canvas(safeClone.element, captureOptions);
-      return { imgData: canvas.toDataURL('image/jpeg', 0.65), width: canvas.width, height: canvas.height };
+      return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
     } finally {
       safeClone.cleanup();
     }
@@ -219,27 +232,34 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     if (pages.length === 0) throw new Error('No report pages are available to export.');
 
     await document.fonts?.ready;
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-    const margin = 24;
-    const usableWidth = pdfWidth - margin * 2;
-    const usableHeight = pdfHeight - margin * 2;
+    let pdf: jsPDF | null = null;
+    for (const profile of PDF_EXPORT_PROFILES) {
+      const candidate = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter', compress: true });
+      const pdfWidth = candidate.internal.pageSize.getWidth();
+      const pdfHeight = candidate.internal.pageSize.getHeight();
+      const margin = 24;
+      const usableWidth = pdfWidth - margin * 2;
+      const usableHeight = pdfHeight - margin * 2;
 
-    for (let index = 0; index < pages.length; index += 1) {
-      const pageImage = await capturePageImage(pages[index]);
-      const ratio = Math.min(usableWidth / pageImage.width, usableHeight / pageImage.height);
-      const width = pageImage.width * ratio;
-      const height = pageImage.height * ratio;
-      if (index > 0) pdf.addPage();
-      pdf.addImage(pageImage.imgData, 'JPEG', (pdfWidth - width) / 2, margin, width, height);
+      for (let index = 0; index < pages.length; index += 1) {
+        const pageImage = await capturePageImage(pages[index], profile);
+        const ratio = Math.min(usableWidth / pageImage.width, usableHeight / pageImage.height);
+        const width = pageImage.width * ratio;
+        const height = pageImage.height * ratio;
+        if (index > 0) candidate.addPage();
+        candidate.addImage(pageImage.imgData, 'JPEG', (pdfWidth - width) / 2, margin, width, height);
+      }
+
+      const size = candidate.output('blob').size;
+      pdf = candidate;
+      if (size <= PDF_MAX_BYTES || profile === PDF_EXPORT_PROFILES[PDF_EXPORT_PROFILES.length - 1]) break;
     }
 
     const safeAddress = (address || 'measurement-report')
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') || 'measurement-report';
-    pdf.save(`${safeAddress}-measurement-report.pdf`);
+    pdf?.save(`${safeAddress}-measurement-report.pdf`);
   };
 
   useEffect(() => {
