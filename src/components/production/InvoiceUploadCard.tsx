@@ -85,6 +85,8 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     invoice_number: '',
     invoice_date: '',
     invoice_amount: '',
+    subtotal: '',
+    tax_amount: '',
     document_url: '',
     document_name: '',
     notes: ''
@@ -135,6 +137,8 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           invoice_number: parsed.invoice_number || prev.invoice_number,
           invoice_date: parsed.invoice_date || prev.invoice_date,
           invoice_amount: amount ? String(amount) : prev.invoice_amount,
+          subtotal: parsed.subtotal ? String(parsed.subtotal) : prev.subtotal,
+          tax_amount: parsed.tax_amount ? String(parsed.tax_amount) : prev.tax_amount,
           vendor_name: parsed.vendor_name || prev.vendor_name,
           notes: itemsSummary || prev.notes,
         }));
@@ -250,7 +254,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           change_order_id: changeOrderId || null,
           invoice_type: invoiceType,
           ...formData,
-          invoice_amount: parseFloat(formData.invoice_amount)
+          invoice_amount: parseFloat(formData.invoice_amount),
+          subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
+          tax_amount: formData.tax_amount ? parseFloat(formData.tax_amount) : null,
         }
       });
 
@@ -274,6 +280,8 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
         invoice_number: '',
         invoice_date: '',
         invoice_amount: '',
+        subtotal: '',
+        tax_amount: '',
         document_url: '',
         document_name: '',
         notes: ''
@@ -523,8 +531,42 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
             />
           </div>
 
+          <div>
+            <Label htmlFor="subtotal">Subtotal</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input
+                id="subtotal"
+                type="number"
+                step="0.01"
+                placeholder={scanning ? 'Scanning...' : '0.00'}
+                className="pl-7"
+                value={formData.subtotal}
+                onChange={(e) => setFormData(prev => ({ ...prev, subtotal: e.target.value }))}
+                disabled={scanning}
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="tax_amount">Tax</Label>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+              <Input
+                id="tax_amount"
+                type="number"
+                step="0.01"
+                placeholder={scanning ? 'Scanning...' : '0.00'}
+                className="pl-7"
+                value={formData.tax_amount}
+                onChange={(e) => setFormData(prev => ({ ...prev, tax_amount: e.target.value }))}
+                disabled={scanning}
+              />
+            </div>
+          </div>
+
           <div className="col-span-2">
-            <Label htmlFor="invoice_amount">Amount *</Label>
+            <Label htmlFor="invoice_amount">Total Amount *</Label>
             <div className="relative">
               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
               <Input

@@ -125,12 +125,14 @@ Deno.serve(async (req) => {
         messages: [
           {
             role: "system",
-            content: `You are an expert invoice data extraction assistant for the construction and roofing industry. You process invoices from suppliers like Beacon Roofing Supply, ABC Supply, SRS Distribution, and similar vendors. Extract ALL data precisely:
+            content: `You are an expert invoice/quote data extraction assistant for the construction and roofing industry. You process invoices and quotes from suppliers like Beacon Roofing Supply, ABC Supply, SRS Distribution, GAF, and similar vendors. Extract ALL data precisely:
 - Read every line item including description, quantity, unit price, and extended/line total
-- Capture the invoice total, subtotal, and any tax amounts
+- Capture the SUBTOTAL (before tax), TAX amount, and GRAND TOTAL (after tax) separately
+- CRITICAL: total_amount MUST be the final grand total INCLUDING tax — never the subtotal
+- If the document shows Subtotal, Tax, and Total lines, use the Total line for total_amount
 - Identify the vendor/company name from the header or letterhead
-- Find the invoice number (may be labeled as Invoice #, Inv #, Document #, etc.)
-- Find the invoice date
+- Find the invoice/quote number (may be labeled as Invoice #, Inv #, Quote #, Document #, etc.)
+- Find the invoice/quote date
 - Be precise with dollar amounts — never round, use exact values from the document
 - If a field is not visible or cannot be determined, return null for it`
           },
