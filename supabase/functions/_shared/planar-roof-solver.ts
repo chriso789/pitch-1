@@ -279,13 +279,7 @@ function extractMinimalCycles(adj: AdjMap): Pt[][] {
       }
 
       if (cycle.length >= 3) {
-        // Check if it's the outer (unbounded) face — skip it
-        const area = signedArea(cycle);
-        if (area > 0) {
-          // CW = interior face in our coordinate system (y-down)
-          faces.push(cycle);
-        }
-        // If area < 0, it's the outer boundary — skip
+        faces.push(cycle);
       }
     }
   }
@@ -374,10 +368,14 @@ export function solveRoofPlanes(
   const adj = buildAdjacency(graphSegments);
   const rawFaces = extractMinimalCycles(adj);
 
-  // 7. Filter: only keep faces with meaningful area (>50 px²)
+  // 7. Filter: keep real bounded faces, not the outer footprint loop.
   const minArea = 50;
+  const footprintArea = Math.abs(signedArea(footprint));
   const validFaces = rawFaces
-    .filter(f => Math.abs(signedArea(f)) > minArea)
+    .filter(f => {
+      const area = Math.abs(signedArea(f));
+      return area > minArea && area < footprintArea * 0.98;
+    })
     .map((polygon, i) => ({ id: i, polygon }));
 
   const debug = {
