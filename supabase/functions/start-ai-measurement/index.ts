@@ -1415,6 +1415,23 @@ async function processJob(input: any) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
     }
 
+    const finalCoverageFallbackApplied = applyFootprintCoverageGate("final_pre_persist");
+    const finalExteriorEdgesCreated = ensureExteriorFootprintEdges(
+      finalCoverageFallbackApplied ? "footprint_perimeter_fallback" : "footprint_perimeter_forced",
+    );
+    if (footprintCoverageDebug) {
+      console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
+        selected_footprint_area: footprintCoverageDebug.selected_footprint_area,
+        solver_plane_area_sum: footprintCoverageDebug.solver_plane_area_sum,
+        coverage_ratio: footprintCoverageDebug.coverage_ratio,
+        plane_count: cleanPlanes.length,
+        exterior_edges_created: finalExteriorEdgesCreated,
+        shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
+        solver_accepted: footprintCoverageDebug.solver_accepted,
+        fallback_applied: footprintCoverageDebug.fallback_applied,
+      }));
+    }
+
     // ── FINAL EDGE TOPOLOGY DEBUG LOG ──
     {
       const edgeCounts: Record<string, number> = {};
