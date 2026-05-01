@@ -979,6 +979,9 @@ async function processJob(input: any) {
       return fallbackRequired;
     };
 
+    // Hoisted so references outside the if-block don't throw ReferenceError
+    let topLevelFilteredRidges: any[] = [];
+
     if (footprint.length >= 3) {
       await setAiJobStatus(input.ai_measurement_job_id, "running", "Running deterministic topology engine");
 
@@ -987,7 +990,6 @@ async function processJob(input: any) {
       // hull it collapses to one plane. We must inject real structural ridges
       // BEFORE the skeleton step so the footprint is decomposed into facets.
       const splitRidgeEdges: RoofEdge[] = [];
-      let topLevelFilteredRidges: any[] = [];
       try {
         const solarAzimuths: number[] = (solarSegments || [])
           .map((s: any) => Number(s?.azimuthDegrees))
