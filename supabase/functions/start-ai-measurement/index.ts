@@ -862,7 +862,8 @@ async function processJob(input: any) {
         return sum + (poly.length >= 3 ? polygonAreaPx(poly) : 0);
       }, 0);
       const coverageRatio = selectedFootprintAreaPx > 0 ? solverPlaneAreaSumPx / selectedFootprintAreaPx : 0;
-      const solverAccepted = cleanPlanes.length > 0 && coverageRatio >= 0.95 && coverageRatio <= 1.05;
+      const isSinglePlaneFallback = cleanPlanes.length === 1 && cleanPlanes[0]?.source === "single_plane_fallback";
+      const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageRatio >= 0.95 && coverageRatio <= 1.05;
       const fallbackRequired = footprint.length >= 3 && !solverAccepted;
       footprintCoverageDebug = {
         stage,
