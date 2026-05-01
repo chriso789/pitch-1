@@ -2211,6 +2211,8 @@ async function processJob(input: any) {
         topologySource === "ridge_split_recursive" || topologySource === "straight_skeleton" || topologySource === "triangulation" || topologySource === "google_solar_segment_structure",
       block_customer_report_reason: blockCustomerReportReason,
       sanity_failures: sanityFailures,
+      status: needsInternalReview ? "needs_internal_review" : reviewRequired ? "needs_review" : "completed",
+      reason: blockCustomerReportReason,
       pdf_source_signature: pdfSourceSignature,
       overlay_calibration: overlayCalibration,
       roof_target_bbox_px: roofTargetBboxPx,
@@ -2291,6 +2293,8 @@ async function processJob(input: any) {
       footprint_source: footprintSource,
       topology_source: topologySource,
       block_customer_report_reason: blockCustomerReportReason,
+      status: needsInternalReview ? "needs_internal_review" : reviewRequired ? "needs_review" : "completed",
+      reason: blockCustomerReportReason,
       footprint_candidates: footprintCandidatesForReport,
       selected_footprint: selectedFootprintForReport,
       planes: planeRows,
@@ -2489,7 +2493,9 @@ async function processJob(input: any) {
     });
 
     // Geometry collapse → never call this "completed" for the customer.
-    const finalAiStatus = blockCustomerReportReason
+    const finalAiStatus = needsInternalReview
+      ? "needs_internal_review"
+      : blockCustomerReportReason
       ? "needs_review"
       : quality.overall_score >= 0.80 ? "completed"
       : quality.overall_score >= 0.60 ? "needs_review"
