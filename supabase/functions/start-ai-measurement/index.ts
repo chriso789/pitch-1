@@ -6,7 +6,6 @@
 import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
-import { solveRoofPlanes as planarSolveRoofPlanes } from "../_shared/planar-roof-solver.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
@@ -765,6 +764,8 @@ async function processJob(input: any) {
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
     let planeMergeDebug: any = null;
+    let footprintCoverageDebug: any = null;
+    let planeEdgeClassifierDebug: any = null;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -806,6 +807,96 @@ async function processJob(input: any) {
       }
       topologySource = "google_solar_segment_structure";
       return true;
+    };
+
+    const edgeKeyFor = (a: Point, b: Point) => {
+      const sa = { x: Math.round(a.x / 2) * 2, y: Math.round(a.y / 2) * 2 };
+      const sb = { x: Math.round(b.x / 2) * 2, y: Math.round(b.y / 2) * 2 };
+      const ka = `${sa.x}:${sa.y}`;
+      const kb = `${sb.x}:${sb.y}`;
+      return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    };
+
+    const classifyFootprintEdge = (a: Point, b: Point): "eave" | "rake" => {
+      const solarAz = dominantSolarAzimuth(solarData);
+      if (solarAz === null) return "eave";
+      const edgeAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const edgeAngle180 = ((edgeAngle % 180) + 180) % 180;
+      const downslopeAxis = ((solarAz % 180) + 180) % 180;
+      const diff = Math.abs(edgeAngle180 - downslopeAxis);
+      const angleDiff = Math.min(diff, 180 - diff);
+      return angleDiff <= 30 ? "rake" : "eave";
+    };
+
+    const ensureExteriorFootprintEdges = (source = "footprint_perimeter_forced") => {
+      const existingEdgeKeys = new Set(
+        cleanEdges.map((e) => {
+          const pts = e.line_px || [];
+          if (pts.length < 2) return "";
+          return edgeKeyFor(pts[0], pts[pts.length - 1]);
+        }).filter(Boolean),
+      );
+      let created = 0;
+      for (let fi = 0; fi < footprint.length; fi++) {
+        const a = footprint[fi];
+        const b = footprint[(fi + 1) % footprint.length];
+        if (Math.hypot(b.x - a.x, b.y - a.y) < 4) continue;
+        const edgeKey = edgeKeyFor(a, b);
+        if (existingEdgeKeys.has(edgeKey)) continue;
+        cleanEdges.push({
+          edge_type: classifyFootprintEdge(a, b),
+          line_px: [a, b],
+          confidence: 0.70,
+          source,
+        });
+        existingEdgeKeys.add(edgeKey);
+        created++;
+      }
+      return created;
+    };
+
+    const applyFootprintCoverageGate = (stage: string) => {
+      const selectedFootprintAreaPx = Math.max(0, polygonAreaPx(footprint));
+      const solverPlaneAreaSumPx = cleanPlanes.reduce((sum, p) => {
+        const poly = p.polygon_px || [];
+        return sum + (poly.length >= 3 ? polygonAreaPx(poly) : 0);
+      }, 0);
+      const coverageRatio = selectedFootprintAreaPx > 0 ? solverPlaneAreaSumPx / selectedFootprintAreaPx : 0;
+      const isSinglePlaneFallback = cleanPlanes.length === 1 && cleanPlanes[0]?.source === "single_plane_fallback";
+      const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageRatio >= 0.95 && coverageRatio <= 1.05;
+      const fallbackRequired = footprint.length >= 3 && !solverAccepted;
+      footprintCoverageDebug = {
+        stage,
+        selected_footprint_area: round(selectedFootprintAreaPx * actualFpp * actualFpp, 2),
+        selected_footprint_area_px: round(selectedFootprintAreaPx, 2),
+        solver_plane_area_sum: round(solverPlaneAreaSumPx * actualFpp * actualFpp, 2),
+        solver_plane_area_sum_px: round(solverPlaneAreaSumPx, 2),
+        coverage_ratio: round(coverageRatio, 3),
+        input_plane_count: cleanPlanes.length,
+        solver_accepted: solverAccepted,
+        fallback_applied: fallbackRequired,
+      };
+      if (fallbackRequired) {
+        const prior = cleanPlanes[0] || null;
+        cleanPlanes = [{
+          plane_index: 1,
+          polygon_px: footprint,
+          confidence: coverageRatio < 0.75 ? 0.40 : 0.50,
+          pitch: prior?.pitch ?? null,
+          pitch_degrees: prior?.pitch_degrees ?? null,
+          azimuth: prior?.azimuth ?? null,
+          source: "single_plane_fallback",
+        }];
+        cleanEdges = [];
+        topologySource = "single_plane_fallback";
+      }
+      console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
+        ...footprintCoverageDebug,
+        plane_count: cleanPlanes.length,
+        exterior_edges_created: 0,
+        shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
+      }));
+      return fallbackRequired;
     };
 
     if (footprint.length >= 3) {
@@ -952,28 +1043,10 @@ async function processJob(input: any) {
           console.log("[FOOTPRINT_SOLVER]", JSON.stringify(solverResult.stats));
           (globalThis as any).__footprintSolverDebug = solverResult.stats;
 
-          const planarInteriorLines: Array<{ a: Point; b: Point }> = [...solverInput.map((r) => ({ a: r.p1, b: r.p2 }))];
-          try {
-            const skel = computeStraightSkeleton(footprint.map((p) => [p.x, p.y] as [number, number])) as any[];
-            for (const se of (skel || [])) {
-              const a = se.a ?? se.p1 ?? se.start ?? se[0];
-              const b = se.b ?? se.p2 ?? se.end ?? se[1];
-              const ax = Array.isArray(a) ? a[0] : a?.x;
-              const ay = Array.isArray(a) ? a[1] : a?.y;
-              const bx = Array.isArray(b) ? b[0] : b?.x;
-              const by = Array.isArray(b) ? b[1] : b?.y;
-              if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) planarInteriorLines.push({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
-            }
-          } catch (e) {
-            console.warn("[PLANAR_SOLVER_PRIMARY] skeleton hints failed:", (e as Error).message);
-          }
-          const primaryPlanar = planarInteriorLines.length > 0 ? planarSolveRoofPlanes(footprint, planarInteriorLines) : null;
-          if (primaryPlanar) console.log("[PLANAR_SOLVER_PRIMARY]", JSON.stringify(primaryPlanar.debug));
-
           // Selection priority:
-          //   1) footprint solver (≥2 planes, not rejected) — geometry-correct path
+          //   1) footprint solver (≥2 planes, not rejected, full-footprint coverage)
           //   2) regional clustering ONLY when it covers the full footprint
-          //   3) global recursive splitter — last-resort fallback
+          //   3) global recursive splitter — last-resort fallback, coverage-gated
           type PlaneAreaCandidate = { polygon?: Point[]; polygon_px?: Point[] };
           const planeAreaRatio = (planes: PlaneAreaCandidate[]) => {
             const footprintArea = Math.max(1, polygonAreaPx(footprint));
@@ -988,22 +1061,24 @@ async function processJob(input: any) {
           const solverPlanes = solverResult.planes
             .filter((p) => p.polygon.length >= 3)
             .map((p) => ({ polygon: p.polygon }));
-          const planarPlanes = (primaryPlanar?.faces?.length ?? 0) >= 2
-            ? primaryPlanar.faces.map((f) => ({ polygon: f.polygon }))
-            : [];
+          const solverCoverageRatio = solverPlanes.length >= 2 ? planeAreaRatio(solverPlanes) : 0;
           const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes) : 0;
-          if (planarPlanes.length >= 2) {
-            splitPlanes = planarPlanes;
-            solverMode = "planar_graph_solver";
-          } else if (solverPlanes.length >= 2 && !solverResult.stats.rejected) {
+          if (solverPlanes.length >= 2 && !solverResult.stats.rejected && solverCoverageRatio >= 0.85) {
             splitPlanes = solverPlanes;
             solverMode = "footprint_solver";
-          } else if (regional.planes.length >= 2 && regionalCoverageRatio >= 0.75) {
+          } else if (regional.planes.length >= 2 && regionalCoverageRatio >= 0.85) {
             splitPlanes = regional.planes;
             solverMode = "regional_clustered";
           } else {
-            splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
-            solverMode = "global_fallback";
+            const fallbackPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
+            const fallbackCoverageRatio = fallbackPlanes.length >= 2 ? planeAreaRatio(fallbackPlanes) : 0;
+            if (fallbackPlanes.length >= 2 && fallbackCoverageRatio >= 0.85) {
+              splitPlanes = fallbackPlanes;
+              solverMode = "global_fallback";
+            } else {
+              splitPlanes = [];
+              solverMode = "single_plane_coverage_fallback";
+            }
           }
           ridgeSplitPlaneCount = splitPlanes.length;
           console.log("[RIDGE_SPLIT]", JSON.stringify({
@@ -1011,6 +1086,7 @@ async function processJob(input: any) {
             final_planes: splitPlanes.length,
             split_success: splitPlanes.length >= 2,
             mode: solverMode,
+            solver_coverage_ratio: Number(solverCoverageRatio.toFixed(3)),
             regional_coverage_ratio: Number(regionalCoverageRatio.toFixed(3)),
             max_depth: 3,
           }));
@@ -1023,7 +1099,7 @@ async function processJob(input: any) {
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
-              source: solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive",
+              source: solverMode === "footprint_solver" ? "footprint_solver" : "ridge_split_recursive",
               cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               region_bbox: sp.region_bbox ?? null,
@@ -1049,7 +1125,7 @@ async function processJob(input: any) {
               });
             }
             cleanEdges.push(...splitRidgeEdges);
-            topologySource = solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive";
+            topologySource = solverMode === "footprint_solver" ? "footprint_solver" : "ridge_split_recursive";
           }
         }
       } catch (e) {
@@ -1132,31 +1208,14 @@ async function processJob(input: any) {
           }
         }
 
-        // 5c. Triangulation eaves/rakes — always useful for perimeter edges.
+        // 5c. Triangulation eaves/rakes — perimeter-only support.
+        // Never use triangulation/topology_engine_v2 planes as final roof planes;
+        // those internal triangles caused collapsed ~500 sqft reports.
         const topo = buildTopology(footprint);
         if (topo.planes.length > 0) {
-          if (cleanPlanes.length === 0) {
-            cleanPlanes = topo.planes.map((tp, idx) => ({
-              plane_index: idx + 1,
-              polygon_px: tp.polygon,
-              confidence: 0.7,
-              pitch: null,
-              pitch_degrees: null,
-              azimuth: null,
-              source: "topology_engine_v2",
-            }));
-            if (topologySource === "none") topologySource = "triangulation";
-          }
           // Always pull in eave/rake perimeter edges from triangulation.
           for (const e of topo.edges) {
             if (e.type === "eave" || e.type === "rake") {
-              cleanEdges.push({
-                edge_type: e.type,
-                line_px: [e.p1, e.p2],
-                confidence: 0.65,
-                source: "topology_engine_v2",
-              });
-            } else if (cleanEdges.length === 0) {
               cleanEdges.push({
                 edge_type: e.type,
                 line_px: [e.p1, e.p2],
@@ -1258,123 +1317,13 @@ async function processJob(input: any) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
-    // ── TOPOLOGY GUARANTEE — force all planes through planar graph solver
-    //    before classification. This converts independent polygons (from
-    //    ridge_split_recursive, footprint_solver, etc.) into a connected mesh
-    //    where planes share exact boundary vertices.
-    try {
-      if (cleanPlanes.length >= 2 && footprint.length >= 3) {
-        // Extract centroids from current planes as interior structure hints.
-        // Also extract all edges between adjacent planes as interior lines.
-        const topoInteriorLines: Array<{ a: Point; b: Point }> = [];
-
-        // A. Straight-skeleton segments
-        try {
-          const skel = computeStraightSkeleton(
-            footprint.map((p) => [p.x, p.y] as [number, number]),
-          ) as any[];
-          for (const se of (skel || [])) {
-            const a = se.a ?? se.p1 ?? se.start ?? se[0];
-            const b = se.b ?? se.p2 ?? se.end ?? se[1];
-            const ax = Array.isArray(a) ? a[0] : a?.x;
-            const ay = Array.isArray(a) ? a[1] : a?.y;
-            const bx = Array.isArray(b) ? b[0] : b?.x;
-            const by = Array.isArray(b) ? b[1] : b?.y;
-            if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
-              topoInteriorLines.push({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
-            }
-          }
-        } catch (e) {
-          console.warn("[TOPO_GUARANTEE] skeleton failed:", (e as Error).message);
-        }
-
-        // B. Detected ridge lines
-        for (const r of (topLevelFilteredRidges ?? []) as any[]) {
-          if (r.p1 && r.p2) {
-            topoInteriorLines.push({ a: r.p1, b: r.p2 });
-          }
-        }
-
-        // C. Boundaries between current planes (edges shared by 2+ planes)
-        for (let i = 0; i < cleanPlanes.length; i++) {
-          const poly = (cleanPlanes[i] as any).polygon_px || [];
-          for (let vi = 0; vi < poly.length; vi++) {
-            const a = poly[vi];
-            const b = poly[(vi + 1) % poly.length];
-            // Check if this edge is interior (lies inside footprint, not on perimeter)
-            const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
-            let onPerimeter = false;
-            for (let fi = 0; fi < footprint.length; fi++) {
-              const fa = footprint[fi], fb = footprint[(fi + 1) % footprint.length];
-              const dx = fb.x - fa.x, dy = fb.y - fa.y;
-              const len2 = dx * dx + dy * dy;
-              if (len2 < 1) continue;
-              const t = ((mx - fa.x) * dx + (my - fa.y) * dy) / len2;
-              if (t < -0.01 || t > 1.01) continue;
-              const px = fa.x + t * dx, py = fa.y + t * dy;
-              if (Math.hypot(px - mx, py - my) < 4) { onPerimeter = true; break; }
-            }
-            if (!onPerimeter && Math.hypot(b.x - a.x, b.y - a.y) > 6) {
-              topoInteriorLines.push({ a, b });
-            }
-          }
-        }
-
-        if (topoInteriorLines.length > 0) {
-          const topoResult = planarSolveRoofPlanes(footprint, topoInteriorLines);
-          console.log("[TOPO_GUARANTEE]", JSON.stringify({
-            input_planes: cleanPlanes.length,
-            interior_lines: topoInteriorLines.length,
-            ...topoResult.debug,
-          }));
-
-          if (topoResult.faces.length >= 2) {
-            // Transfer pitch/azimuth from original planes by matching centroids
-            const origCentroids = (cleanPlanes as any[]).map((p) => {
-              const poly = p.polygon_px || [];
-              let cx = 0, cy = 0;
-              for (const pt of poly) { cx += pt.x; cy += pt.y; }
-              return { x: cx / Math.max(1, poly.length), y: cy / Math.max(1, poly.length), plane: p };
-            });
-
-            cleanPlanes = topoResult.faces.map((f, i) => {
-              let fcx = 0, fcy = 0;
-              for (const pt of f.polygon) { fcx += pt.x; fcy += pt.y; }
-              fcx /= Math.max(1, f.polygon.length);
-              fcy /= Math.max(1, f.polygon.length);
-
-              // Find nearest original plane
-              let nearest = origCentroids[0]?.plane || {};
-              let nearDist = Infinity;
-              for (const oc of origCentroids) {
-                const d = Math.hypot(oc.x - fcx, oc.y - fcy);
-                if (d < nearDist) { nearDist = d; nearest = oc.plane; }
-              }
-
-              return {
-                plane_index: i + 1,
-                polygon_px: f.polygon,
-                confidence: 0.78,
-                pitch: nearest.pitch ?? null,
-                pitch_degrees: nearest.pitch_degrees ?? null,
-                azimuth: nearest.azimuth ?? null,
-                source: "topology_guaranteed",
-              };
-            }) as any;
-            topologySource = "topology_guaranteed";
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[TOPO_GUARANTEE] failed:", (e as Error).message);
-    }
+    applyFootprintCoverageGate("pre_edge_classification");
 
     // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
     //    Build shared-boundary adjacency from the FINAL plane set, classify
     //    each edge as ridge/valley/hip/eave/rake from plane adjacency + slope
     //    direction, and reject ridge hints that are not actual plane-pair
     //    boundaries. Patent model is built from this classified edge graph.
-    let planeEdgeClassifierDebug: any = null;
     let polygonNormalizeDebug: any = null;
     try {
       if (cleanPlanes.length > 0) {
@@ -1435,58 +1384,7 @@ async function processJob(input: any) {
         }));
         cleanEdges = reclassified as typeof cleanEdges;
 
-        // ── FORCE FOOTPRINT PERIMETER AS EAVE/RAKE ──
-        // Even if interior edge classification fails, the footprint perimeter
-        // MUST produce eave/rake edges. Every segment of the footprint that
-        // is not already covered by a classified edge becomes an eave (or rake
-        // if azimuth data indicates parallel-to-slope).
-        const existingEdgeKeys = new Set(
-          cleanEdges.map((e) => {
-            const pts = e.line_px || [];
-            if (pts.length < 2) return "";
-            const a = pts[0], b = pts[pts.length - 1];
-            const ka = `${Math.round(a.x / 2) * 2}:${Math.round(a.y / 2) * 2}`;
-            const kb = `${Math.round(b.x / 2) * 2}:${Math.round(b.y / 2) * 2}`;
-            return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-          }).filter(Boolean),
-        );
-
-        let perimeterEdgesAdded = 0;
-        for (let fi = 0; fi < footprint.length; fi++) {
-          const a = footprint[fi];
-          const b = footprint[(fi + 1) % footprint.length];
-          const segLen = Math.hypot(b.x - a.x, b.y - a.y);
-          if (segLen < 4) continue;
-
-          const sa = { x: Math.round(a.x / 2) * 2, y: Math.round(a.y / 2) * 2 };
-          const sb = { x: Math.round(b.x / 2) * 2, y: Math.round(b.y / 2) * 2 };
-          const ka = `${sa.x}:${sa.y}`;
-          const kb = `${sb.x}:${sb.y}`;
-          const edgeKey = ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
-
-          if (!existingEdgeKeys.has(edgeKey)) {
-            // Determine eave vs rake from dominant azimuth
-            let edgeType: "eave" | "rake" = "eave";
-            const solarAz = dominantSolarAzimuth(solarData);
-            if (solarAz !== null) {
-              const edgeAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
-              const edgeAngle180 = ((edgeAngle % 180) + 180) % 180;
-              const downslopeAxis = ((solarAz % 180) + 180) % 180;
-              const diff = Math.abs(edgeAngle180 - downslopeAxis);
-              const angleDiff = Math.min(diff, 180 - diff);
-              edgeType = angleDiff <= 30 ? "rake" : "eave";
-            }
-
-            cleanEdges.push({
-              edge_type: edgeType,
-              line_px: [a, b],
-              confidence: 0.70,
-              source: "footprint_perimeter_forced",
-            } as typeof cleanEdges[0]);
-            existingEdgeKeys.add(edgeKey);
-            perimeterEdgesAdded++;
-          }
-        }
+        const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
 
         console.log("[PERIMETER_EDGE_FORCE]", JSON.stringify({
           footprint_segments: footprint.length,
@@ -1496,98 +1394,26 @@ async function processJob(input: any) {
           rake_count: cleanEdges.filter((e) => e.edge_type === "rake").length,
         }));
 
-        // FALLBACK: planes exist but classifier produced 0 ridge/hip/valley.
-        // Re-topologize was already attempted above. If STILL no structural
-        // edges, try one more time with the planar solver.
-        const structuralCount =
-          (edgeResult.debug?.counts?.ridge ?? 0) +
-          (edgeResult.debug?.counts?.hip ?? 0) +
-          (edgeResult.debug?.counts?.valley ?? 0);
-        if (structuralCount === 0 && cleanPlanes.length >= 1 && footprint.length >= 3) {
-          try {
-            const interiorLines: Array<{ a: Point; b: Point }> = [];
-
-            const skel = computeStraightSkeleton(
-              footprint.map((p) => [p.x, p.y] as [number, number]),
-            ) as any[];
-            for (const se of (skel || [])) {
-              const a = se.a ?? se.p1 ?? se.start ?? se[0];
-              const b = se.b ?? se.p2 ?? se.end ?? se[1];
-              const ax = Array.isArray(a) ? a[0] : a?.x;
-              const ay = Array.isArray(a) ? a[1] : a?.y;
-              const bx = Array.isArray(b) ? b[0] : b?.x;
-              const by = Array.isArray(b) ? b[1] : b?.y;
-              if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
-                interiorLines.push({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
-              }
-            }
-
-            for (const r of (topLevelFilteredRidges ?? []) as any[]) {
-              if (r.p1 && r.p2) {
-                interiorLines.push({ a: r.p1, b: r.p2 });
-              }
-            }
-
-            if (interiorLines.length > 0) {
-              const planarResult = planarSolveRoofPlanes(footprint, interiorLines);
-              console.log("[PLANAR_SOLVER_FALLBACK]", JSON.stringify(planarResult.debug));
-
-              if (planarResult.faces.length >= 2) {
-                cleanPlanes = planarResult.faces.map((f, i) => ({
-                  plane_index: i + 1,
-                  polygon_px: f.polygon,
-                  confidence: 0.75,
-                  pitch: cleanPlanes[0]?.pitch ?? null,
-                  pitch_degrees: cleanPlanes[0]?.pitch_degrees ?? null,
-                  azimuth: cleanPlanes[0]?.azimuth ?? null,
-                  source: "planar_graph_solver",
-                })) as any;
-                topologySource = "planar_graph_solver";
-
-                // Re-run edge classifier on the new topology-correct planes
-                const re = classifyPlaneEdges({
-                  planes: (cleanPlanes as any[]).map((p, i) => ({
-                    id: p.plane_index ?? i,
-                    plane_index: p.plane_index ?? i,
-                    polygon_px: p.polygon_px,
-                    pitch: p.pitch ?? null,
-                    pitch_degrees: p.pitch_degrees ?? null,
-                    azimuth: p.azimuth ?? null,
-                  })),
-                  ridgeHints: ridgeHintsForClassifier,
-                });
-                planeEdgeClassifierDebug = re.debug;
-                (globalThis as any).__planeEdgeClassifierDebug = re.debug;
-
-                // Keep existing perimeter eave/rake edges + new classified edges
-                const priorPerimeter = cleanEdges.filter((e) =>
-                  (e as any).source === "footprint_perimeter_forced"
-                );
-                cleanEdges = [
-                  ...re.edges.map((e) => ({
-                    id: e.id,
-                    edge_type: e.edge_type,
-                    line_px: e.line_px,
-                    confidence: e.confidence,
-                    source: e.source,
-                    adjacent_plane_ids: e.adjacent_plane_ids,
-                    debug_reason: e.debug_reason,
-                  })),
-                  ...priorPerimeter,
-                ] as typeof cleanEdges;
-                console.log("[PLANAR_SOLVER_EDGES]", JSON.stringify({
-                  planes: cleanPlanes.length,
-                  ...re.debug.counts,
-                }));
-              }
-            }
-          } catch (e) {
-            console.warn("[PLANAR_SOLVER_FALLBACK] failed:", (e as Error).message);
-          }
-        }
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
+    }
+
+    const finalCoverageFallbackApplied = applyFootprintCoverageGate("final_pre_persist");
+    const finalExteriorEdgesCreated = ensureExteriorFootprintEdges(
+      finalCoverageFallbackApplied ? "footprint_perimeter_fallback" : "footprint_perimeter_forced",
+    );
+    if (footprintCoverageDebug) {
+      console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
+        selected_footprint_area: footprintCoverageDebug.selected_footprint_area,
+        solver_plane_area_sum: footprintCoverageDebug.solver_plane_area_sum,
+        coverage_ratio: footprintCoverageDebug.coverage_ratio,
+        plane_count: cleanPlanes.length,
+        exterior_edges_created: finalExteriorEdgesCreated,
+        shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
+        solver_accepted: footprintCoverageDebug.solver_accepted,
+        fallback_applied: footprintCoverageDebug.fallback_applied,
+      }));
     }
 
     // ── FINAL EDGE TOPOLOGY DEBUG LOG ──
