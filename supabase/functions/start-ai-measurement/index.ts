@@ -1702,6 +1702,19 @@ async function processJob(input: any) {
         const debugSource = String((edge as any).debug_source || edge.debug_reason || "").toLowerCase();
         return !debugSource.includes("bunched_right_side") && !source.includes("fuzzy") && edge.edge_type !== "unknown_interior";
       };
+      const reflexCorners = countMeaningfulReflexCorners(footprint);
+      const mostlyRectangular = footprintFillRatio >= 0.55;
+      const ridgeEvidenceCount = Math.max(
+        Number(ridgeDetectedCount || 0),
+        Array.isArray(topLevelFilteredRidges) ? topLevelFilteredRidges.length : 0,
+      );
+      const noisyReflexOnly = Boolean(
+        roofBbox &&
+        reflexCorners > 0 &&
+        footprintFillRatio >= 0.72 &&
+        cleanPlanes.length <= 8 &&
+        ridgeEvidenceCount > 0
+      );
       const validValleyGraph = cleanEdges.some((edge) => {
         if (edge.edge_type !== "valley" || !cleanCandidateEdge(edge)) return false;
         const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
@@ -1709,17 +1722,16 @@ async function processJob(input: any) {
         if (!roofBbox || adjacentCount !== 2 || !p1 || !p2) return false;
         const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
         const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
-        return sideInset > 15 && pointInPolygon(mid, footprint) && threePlaneNodeCount > 0;
+        const sideInsetRatio = sideInset / Math.max(Math.min(roofBbox.width, roofBbox.height), 1);
+        return sideInsetRatio > 0.22 && pointInPolygon(mid, footprint) && threePlaneNodeCount > 0 && !noisyReflexOnly;
       });
-      const reflexCorners = countMeaningfulReflexCorners(footprint);
-      const mostlyRectangular = footprintFillRatio >= 0.55;
       const simpleGableEnabled = Boolean(
         roofBbox &&
         cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
-        reflexCorners === 0 &&
+        (reflexCorners === 0 || noisyReflexOnly) &&
         mostlyRectangular &&
-        opposingSlopePairs > 0 &&
-        threePlaneNodeCount === 0 &&
+        (opposingSlopePairs > 0 || ridgeEvidenceCount > 0) &&
+        (threePlaneNodeCount === 0 || noisyReflexOnly) &&
         !validValleyGraph
       );
 
@@ -1791,19 +1803,36 @@ async function processJob(input: any) {
           } as RoofEdge;
         }
 
-        const retained = cleanEdges.filter((edge) => {
+        removedHips = cleanEdges.filter((edge) => edge.edge_type === "hip").length;
+        removedValleys = cleanEdges.filter((edge) => edge.edge_type === "valley").length;
+        removedBunchedEdges = cleanEdges.filter((edge) => {
+          const p1 = edge.line_px?.[0], p2 = edge.line_px?.[edge.line_px.length - 1];
+          if (!p1 || !p2) return true;
+          const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+          const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
+          const sideInsetRatio = sideInset / Math.max(Math.min(roofBbox.width, roofBbox.height), 1);
           const source = String(edge.source || "").toLowerCase();
-          const debugSource = String((edge as any).debug_source || edge.debug_reason || "").toLowerCase();
-          if (debugSource.includes("bunched_right_side") || source.includes("fuzzy") || edge.edge_type === "unknown_interior") {
-            removedBunchedEdges++;
-            return false;
-          }
-          if (edge.edge_type === "hip") { removedHips++; return false; }
-          if (edge.edge_type === "valley") { removedValleys++; return false; }
-          if (edge.edge_type === "ridge") return false;
-          return true;
-        });
-        cleanEdges = selectedRidge ? [...retained, selectedRidge] : retained;
+          return edge.edge_type === "unknown" || edge.edge_type === "unknown_interior" || source.includes("fuzzy") || sideInsetRatio <= 0.18;
+        }).length;
+
+        const perimeterEdges: RoofEdge[] = [];
+        const perimeterSeen = new Set<string>();
+        for (let fi = 0; fi < footprint.length; fi++) {
+          const a = footprint[fi];
+          const b = footprint[(fi + 1) % footprint.length];
+          if (Math.hypot(b.x - a.x, b.y - a.y) < 4) continue;
+          const key = edgeKeyFor(a, b);
+          if (perimeterSeen.has(key)) continue;
+          perimeterSeen.add(key);
+          perimeterEdges.push({
+            edge_type: classifyFootprintEdge(a, b),
+            line_px: [a, b],
+            confidence: 0.78,
+            source: "simple_gable_footprint_perimeter",
+            debug_reason: "simple_gable_final_override:perimeter_only",
+          });
+        }
+        cleanEdges = selectedRidge ? [...perimeterEdges, selectedRidge] : perimeterEdges;
 
         const failures = (globalThis as any).__strictTopologyFailures;
         if (Array.isArray(failures)) {
@@ -1847,6 +1876,8 @@ async function processJob(input: any) {
         footprint_fill_ratio: round(footprintFillRatio, 3),
         three_plane_nodes: threePlaneNodeCount,
         valid_valley_graph: validValleyGraph,
+        noisy_reflex_only: noisyReflexOnly,
+        ridge_evidence_count: ridgeEvidenceCount,
       };
       (globalThis as any).__simpleGableFinalOverride = simpleGableFinalDebug;
       console.log("[SIMPLE_GABLE_FINAL_OVERRIDE]", JSON.stringify(simpleGableFinalDebug));
