@@ -765,6 +765,7 @@ async function processJob(input: any) {
     let ridgeSplitPlaneCount = 0;
     let planeMergeDebug: any = null;
     let footprintCoverageDebug: any = null;
+    let planeEdgeClassifierDebug: any = null;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -1448,7 +1449,6 @@ async function processJob(input: any) {
     //    each edge as ridge/valley/hip/eave/rake from plane adjacency + slope
     //    direction, and reject ridge hints that are not actual plane-pair
     //    boundaries. Patent model is built from this classified edge graph.
-    let planeEdgeClassifierDebug: any = null;
     let polygonNormalizeDebug: any = null;
     try {
       if (cleanPlanes.length > 0) {
