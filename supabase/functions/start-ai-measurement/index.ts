@@ -732,6 +732,41 @@ async function processJob(input: any) {
         } else {
           footprint = snap.snapped;
           snappedFootprintBboxPx = snappedBb;
+
+          // ── FOOTPRINT EXPANSION — if snapped footprint bbox is smaller than
+          // the solar building bbox, expand outward by up to 20px per side so
+          // the overlay covers the actual eaves/drip-edge.
+          if (solarBboxPx && snappedBb) {
+            const expansionNeeded = {
+              left: Math.max(0, Math.min(20, snappedBb.minX - solarBboxPx.minX)),
+              top: Math.max(0, Math.min(20, snappedBb.minY - solarBboxPx.minY)),
+              right: Math.max(0, Math.min(20, solarBboxPx.maxX - snappedBb.maxX)),
+              bottom: Math.max(0, Math.min(20, solarBboxPx.maxY - snappedBb.maxY)),
+            };
+            const totalExpansion = expansionNeeded.left + expansionNeeded.top + expansionNeeded.right + expansionNeeded.bottom;
+            if (totalExpansion > 8) {
+              const cx = (snappedBb.minX + snappedBb.maxX) / 2;
+              const cy = (snappedBb.minY + snappedBb.maxY) / 2;
+              const w2 = (snappedBb.maxX - snappedBb.minX) / 2;
+              const h2 = (snappedBb.maxY - snappedBb.minY) / 2;
+              const scaleX = w2 > 0 ? (w2 + (expansionNeeded.left + expansionNeeded.right) / 2) / w2 : 1;
+              const scaleY = h2 > 0 ? (h2 + (expansionNeeded.top + expansionNeeded.bottom) / 2) / h2 : 1;
+              footprint = footprint.map((p) => ({
+                x: cx + (p.x - cx) * scaleX,
+                y: cy + (p.y - cy) * scaleY,
+              }));
+              const expandedBb = bboxOf(footprint);
+              snappedFootprintBboxPx = expandedBb;
+              console.log("[FOOTPRINT_EXPANSION]", JSON.stringify({
+                expansion_px: expansionNeeded,
+                scale_x: Number(scaleX.toFixed(3)),
+                scale_y: Number(scaleY.toFixed(3)),
+                expanded_coverage_vs_building: expandedBb && solarBboxPx.area > 0
+                  ? Number(((expandedBb.width * expandedBb.height) / solarBboxPx.area).toFixed(3))
+                  : null,
+              }));
+            }
+          }
         }
         console.log("[EAVE_SNAP]", JSON.stringify({ ...eaveSnapDebug, coverage_vs_building: Number(coverageVsBuilding.toFixed(3)) }));
       } catch (e) {
