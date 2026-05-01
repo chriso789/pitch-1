@@ -242,20 +242,28 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       logging: false,
     } as const;
 
+    const exportClone = await createExportReadyClone(page, profile);
     try {
-      const canvas = await html2canvas(page, captureOptions);
+      await Promise.all(Array.from(exportClone.element.querySelectorAll('img')).map((img) => (
+        img.complete ? Promise.resolve() : new Promise((resolve) => {
+          img.onload = resolve;
+          img.onerror = resolve;
+        })
+      )));
+      const canvas = await html2canvas(exportClone.element, {
+        ...captureOptions,
+        windowWidth: exportClone.element.scrollWidth,
+        windowHeight: exportClone.element.scrollHeight,
+      });
       return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
     } catch (err) {
-      console.warn('Direct PDF page capture failed; retrying without cross-origin imagery:', err);
+      console.warn('Export-ready PDF page capture failed; retrying direct capture:', err);
+    } finally {
+      exportClone.cleanup();
     }
 
-    const safeClone = await createExportReadyClone(page, profile);
-    try {
-      const canvas = await html2canvas(safeClone.element, captureOptions);
-      return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
-    } finally {
-      safeClone.cleanup();
-    }
+    const canvas = await html2canvas(page, captureOptions);
+    return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
   };
 
   const downloadVisibleReportPdf = async () => {
