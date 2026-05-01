@@ -1509,8 +1509,6 @@ async function processJob(input: any) {
         footprint_source: footprintSource,
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
-        plane_merge: (globalThis as any).__planeMergeDebug ?? null,
-        ridge_aligned_plane_merge: (globalThis as any).__ridgeAlignedMergeDebug ?? null,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
       },
       overlay_debug: {
