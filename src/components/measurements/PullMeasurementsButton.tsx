@@ -364,7 +364,7 @@ export function PullMeasurementsButton({
               id, requires_manual_review,
               total_ridge_length, total_hip_length, total_valley_length, total_eave_length, total_rake_length,
               linear_features_wkt, perimeter_wkt, footprint_vertices_geo,
-              mapbox_image_url, google_maps_image_url, satellite_overlay_url,
+              mapbox_image_url, google_maps_image_url, satellite_overlay_url, geometry_report_json, gate_reason,
               gps_coordinates, analysis_zoom, analysis_image_size, image_bounds
             `)
             .eq('customer_id', propertyId)
@@ -375,10 +375,12 @@ export function PullMeasurementsButton({
           // The AI flow should publish the footprint-based diagram for review;
           // do not push users back into edge-by-edge verification.
           setVerificationReady(false);
+          const reviewReason = (data as any)?.geometry_report_json?.block_customer_report_reason || (data as any)?.gate_reason;
+          const needsReview = Boolean((data as any)?.requires_manual_review || reviewReason);
           toast({
-            title: "✅ AI Measurement Complete",
-            description: (data as any)?.requires_manual_review
-              ? "Footprint trace is ready for review."
+            title: needsReview ? "AI Measurement Saved to History" : "✅ AI Measurement Complete",
+            description: needsReview
+              ? "The new run was added, but it needs review before download. Open Measurement History to view it."
               : "Measurement is ready to use.",
           });
 
