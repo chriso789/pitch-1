@@ -379,6 +379,12 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     if (hasRenderableReport) {
       try {
         await downloadVisibleReportPdf();
+        toast({
+          title: pdfGate.ok ? 'Report downloaded' : 'Diagnostic report downloaded',
+          description: pdfGate.ok
+            ? 'The measurement report PDF is ready.'
+            : 'This PDF is marked preview-only and includes QA failure details for troubleshooting.',
+        });
         setDownloading(false);
         return;
       } catch (clientErr: any) {
@@ -526,13 +532,14 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               measurement?.validation_status === 'needs_internal_review' ||
               measurement?.validation_status === 'needs_manual_measurement' ||
               Boolean((effectiveMeasurement as any)?.geometry_report_json?.block_customer_report_reason);
+            const canDownloadDiagnostic = hasRenderableReport || canOpenExistingPdf || Boolean(jobId && pdfGate.ok);
             return (
               <Button
                 size="sm"
                 variant={needsReview ? 'destructive' : 'default'}
                 onClick={handleDownloadPdf}
-                disabled={!pdfGate.ok || downloading || (!canOpenExistingPdf && !hasRenderableReport && !jobId)}
-                title={needsReview ? 'This measurement failed automated QA. Re-run AI Measurement to generate a new report.' : undefined}
+                disabled={downloading || !canDownloadDiagnostic}
+                title={needsReview ? 'Download a preview-only diagnostic PDF for analysis. Customer-ready PDF remains blocked.' : undefined}
               >
                 {downloading ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -541,7 +548,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                 ) : (
                   <Download className="h-4 w-4 mr-2" />
                 )}
-                {needsReview ? 'Re-run AI Measurement Required' : 'Download PDF'}
+                {needsReview ? 'Download Diagnostic PDF' : 'Download PDF'}
               </Button>
             );
           })()}
