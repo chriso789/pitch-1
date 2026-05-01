@@ -1253,6 +1253,7 @@ async function processJob(input: any) {
     const finalFootprintAreaPx = polygonAreaPx(footprint);
     const finalFootprintAreaSqft = finalFootprintAreaPx * actualFpp * actualFpp;
     const finalRoofAreaSqft = Number(totals.total_area_2d_sqft) || 0;
+    const solarRoofAreaSqft = estimateSolarRoofAreaSqft(solarData);
     const roofBboxCoverageRatio =
       solarBboxPx && solarBboxPx.area > 0 && finalFootprintBboxPx
         ? finalFootprintBboxPx.area / solarBboxPx.area
@@ -1295,6 +1296,12 @@ async function processJob(input: any) {
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
     }
+    if (solarRoofAreaSqft != null && solarRoofAreaSqft > 0 && finalRoofAreaSqft > solarRoofAreaSqft * 1.25) {
+      sanityFailures.push("area_inflation_after_merge");
+    }
+    if (planeMergeDebug?.pre_merge_area > 0 && planeMergeDebug.post_merge_area > planeMergeDebug.pre_merge_area * 1.10) {
+      sanityFailures.push("area_inflation_after_merge");
+    }
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
       sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
@@ -1318,6 +1325,7 @@ async function processJob(input: any) {
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
+      solar_roof_area_sqft: solarRoofAreaSqft,
       final_footprint_area_sqft: finalFootprintAreaSqft,
       roof_bbox_coverage_ratio: roofBboxCoverageRatio,
       geometry_vs_footprint_ratio: geometryVsFootprintRatio,
@@ -1331,6 +1339,7 @@ async function processJob(input: any) {
       ridge_detection_ran: ridgeDetectionRan,
       ridges_detected: ridgeDetectedCount,
       ridge_split_planes: ridgeSplitPlaneCount,
+      plane_merge: planeMergeDebug,
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
     }));
