@@ -433,18 +433,29 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               );
             })()}
           </div>
-          <Button
-            size="sm"
-            onClick={handleDownloadPdf}
-            disabled={!pdfGate.ok || downloading || (!canOpenExistingPdf && !hasRenderableReport && !jobId)}
-          >
-            {downloading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <Download className="h-4 w-4 mr-2" />
-            )}
-            Download PDF
-          </Button>
+          {(() => {
+            const needsReview =
+              measurement?.validation_status === 'needs_internal_review' ||
+              measurement?.validation_status === 'needs_manual_measurement';
+            return (
+              <Button
+                size="sm"
+                variant={needsReview ? 'destructive' : 'default'}
+                onClick={handleDownloadPdf}
+                disabled={!pdfGate.ok || downloading || (!canOpenExistingPdf && !hasRenderableReport && !jobId)}
+                title={needsReview ? 'This measurement is awaiting internal QA review.' : undefined}
+              >
+                {downloading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : needsReview ? (
+                  <AlertTriangle className="h-4 w-4 mr-2" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                {needsReview ? 'Internal Review Required' : 'Download PDF'}
+              </Button>
+            );
+          })()}
         </DialogHeader>
 
         <ScrollArea className="h-[calc(90vh-100px)] px-6 pb-6">
