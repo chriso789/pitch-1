@@ -85,6 +85,8 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     invoice_number: '',
     invoice_date: '',
     invoice_amount: '',
+    subtotal: '',
+    tax_amount: '',
     document_url: '',
     document_name: '',
     notes: ''
