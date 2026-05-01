@@ -303,28 +303,40 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   }, [open, explicitJobId, measurement, pipelineEntryId]);
 
   const handleDownloadPdf = async () => {
+    if (!hasRenderableReport && !jobId) return;
+    setDownloading(true);
+
+    // ALWAYS prefer capturing the visible report — it is the source of truth
+    // the user sees on screen (raster overlay + patent model + diagrams).
+    // The cached server `report_pdf_url` is often stale and shows entirely
+    // different visuals (legacy patent line drawings) than the current
+    // dialog. Only fall back to the cached/server PDF when client capture
+    // genuinely cannot produce anything (no DOM pages at all).
+    if (hasRenderableReport) {
+      try {
+        await downloadVisibleReportPdf();
+        setDownloading(false);
+        return;
+      } catch (clientErr: any) {
+        console.warn('Client PDF export failed, attempting server fallback:', clientErr);
+      }
+    }
+
+    // Server fallback path: existing cached PDF first, then re-render.
     const existingPdfUrl = (effectiveMeasurement as any)?.report_pdf_url;
     if (existingPdfUrl && pdfGate.ok && !pdfIsStale) {
       window.open(existingPdfUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-    if (!hasRenderableReport && !jobId) return;
-    setDownloading(true);
-    try {
-      await downloadVisibleReportPdf();
       setDownloading(false);
       return;
-    } catch (clientErr: any) {
-      console.warn('Client PDF export failed, falling back to server render:', clientErr);
-      if (!jobId || reportModel) {
-        toast({
-          title: 'PDF generation failed',
-          description: clientErr?.message || 'The browser could not export this report.',
-          variant: 'destructive',
-        });
-        setDownloading(false);
-        return;
-      }
+    }
+    if (!jobId) {
+      toast({
+        title: 'PDF generation failed',
+        description: 'The browser could not export this report and no server job is available.',
+        variant: 'destructive',
+      });
+      setDownloading(false);
+      return;
     }
 
     try {
