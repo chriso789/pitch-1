@@ -506,11 +506,11 @@ export function classifyPlaneEdges(args: {
   }
 
   // ── 3b. Proximity-based shared boundary discovery ─────────────────
-  // When exact canonical matching finds few shared edges (common with
-  // Google Solar rasterized segments that have 1-5px gaps), discover
-  // near-parallel close exterior edges from different planes and promote
-  // them only as fuzzy candidates. They are useful for diagnostics/preview,
-  // but MUST NOT count toward ridge/hip/valley totals downstream.
+  // Google Solar segments have 1-5px gaps. This discovers near-parallel
+  // close exterior edges from different planes. When BOTH planes have
+  // azimuth data, the physics classifier produces trustworthy results,
+  // so we promote these to full plane_edge_classifier_v1 edges.
+  // Only edges lacking azimuth remain tagged as fuzzy.
   const proximityMatches = findProximitySharedBoundaries(edgeMap, planeById);
   const proximityConsumedKeys = new Set<string>();
 
@@ -522,7 +522,7 @@ export function classifyPlaneEdges(args: {
     // Skip if midline is degenerate
     if (dist(pm.midlineP1, pm.midlineP2) < 4) continue;
 
-    const fuzzyCandidate = classifySharedBoundary({
+    const candidate = classifySharedBoundary({
         a: spA.original,
         b: spB.original,
         aId: pm.planeIdA,
@@ -532,12 +532,25 @@ export function classifyPlaneEdges(args: {
         edgeIndex: edgeIndex++,
       });
 
-    sharedEdges.push({
-      ...fuzzyCandidate,
-      source: "interior_fuzzy_shared_boundary",
-      confidence: Math.min(fuzzyCandidate.confidence, 0.42),
-      debug_reason: `proximity/fuzzy candidate only: gap_px=${Math.round(pm.gapDistance * 10) / 10}, overlap_px=${Math.round(pm.overlapLength)}; ${fuzzyCandidate.debug_reason}`,
-    });
+    // If both planes had azimuth, physics classification is trustworthy
+    const hasPhysics = azDeg(spA.original) !== null && azDeg(spB.original) !== null;
+
+    if (hasPhysics) {
+      // Slightly reduce confidence for gap-bridged edges but keep as real
+      sharedEdges.push({
+        ...candidate,
+        source: "plane_edge_classifier_v1",
+        confidence: Math.max(0.60, candidate.confidence * 0.90),
+        debug_reason: `proximity+physics: gap=${Math.round(pm.gapDistance * 10) / 10}px, overlap=${Math.round(pm.overlapLength)}px; ${candidate.debug_reason}`,
+      });
+    } else {
+      sharedEdges.push({
+        ...candidate,
+        source: "interior_fuzzy_shared_boundary",
+        confidence: Math.min(candidate.confidence, 0.42),
+        debug_reason: `proximity/fuzzy (no azimuth): gap=${Math.round(pm.gapDistance * 10) / 10}px; ${candidate.debug_reason}`,
+      });
+    }
 
     proximityConsumedKeys.add(pm.edgeA.key);
     proximityConsumedKeys.add(pm.edgeB.key);
