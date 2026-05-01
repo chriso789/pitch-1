@@ -775,15 +775,17 @@ async function processJob(input: any) {
             };
             const totalExpansion = expansionNeeded.left + expansionNeeded.top + expansionNeeded.right + expansionNeeded.bottom;
             if (totalExpansion > 8) {
-              const cx = (snappedBb.minX + snappedBb.maxX) / 2;
-              const cy = (snappedBb.minY + snappedBb.maxY) / 2;
-              const w2 = (snappedBb.maxX - snappedBb.minX) / 2;
-              const h2 = (snappedBb.maxY - snappedBb.minY) / 2;
-              const scaleX = w2 > 0 ? (w2 + (expansionNeeded.left + expansionNeeded.right) / 2) / w2 : 1;
-              const scaleY = h2 > 0 ? (h2 + (expansionNeeded.top + expansionNeeded.bottom) / 2) / h2 : 1;
+              const target = {
+                minX: snappedBb.minX - expansionNeeded.left,
+                minY: snappedBb.minY - expansionNeeded.top,
+                maxX: snappedBb.maxX + expansionNeeded.right,
+                maxY: snappedBb.maxY + expansionNeeded.bottom,
+              };
+              const scaleX = (snappedBb.maxX - snappedBb.minX) > 0 ? (target.maxX - target.minX) / (snappedBb.maxX - snappedBb.minX) : 1;
+              const scaleY = (snappedBb.maxY - snappedBb.minY) > 0 ? (target.maxY - target.minY) / (snappedBb.maxY - snappedBb.minY) : 1;
               footprint = footprint.map((p) => ({
-                x: cx + (p.x - cx) * scaleX,
-                y: cy + (p.y - cy) * scaleY,
+                x: target.minX + (p.x - snappedBb.minX) * scaleX,
+                y: target.minY + (p.y - snappedBb.minY) * scaleY,
               }));
               const expandedBb = bboxOf(footprint);
               snappedFootprintBboxPx = expandedBb;
