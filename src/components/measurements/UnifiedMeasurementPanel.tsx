@@ -1911,6 +1911,12 @@ function MeasurementHistorySection({
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(measurement.created_at), 'MMM d, yyyy')}
                   </p>
+                  {getMeasurementReviewReason(measurement) && (
+                    <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{getMeasurementReviewReason(measurement)}</span>
+                    </p>
+                  )}
                 </div>
               </div>
               {!selectMode && (
@@ -1928,7 +1934,8 @@ function MeasurementHistorySection({
                     size="sm" 
                     variant="outline" 
                     onClick={() => handleSaveAiMeasurement(measurement)}
-                    disabled={isSaving === measurement.id}
+                    disabled={isSaving === measurement.id || !hasCustomerSafeGeometry(measurement)}
+                    title={!hasCustomerSafeGeometry(measurement) ? 'Needs review before it can be saved to estimates' : 'Save to estimates'}
                   >
                     {isSaving === measurement.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
