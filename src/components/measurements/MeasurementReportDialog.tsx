@@ -502,16 +502,22 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
               const showDebugOverlay = hasRasterOverlay;
 
               const debugOverlay = showDebugOverlay ? (
-                <div className="measurement-report-page">
-                  <RasterOverlayDebugView
-                    imageUrl={rasterUrl}
-                    rasterSize={rasterSize}
-                    planes_px={planes_px}
-                    edges_px={edges_px}
-                    overlayCalibration={grj?.overlay_calibration || null}
-                    roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
-                    geometryPxSpace={grj?.geometry_px_space || null}
-                  />
+                <div className="measurement-report-page border rounded-lg overflow-hidden bg-background">
+                  <div className="flex items-center justify-between px-4 py-2 border-b bg-muted/30">
+                    <div className="font-semibold text-sm">Roof Overlay</div>
+                    <Badge variant="secondary">preliminary</Badge>
+                  </div>
+                  <div className="p-2 bg-white">
+                    <RasterOverlayDebugView
+                      imageUrl={rasterUrl}
+                      rasterSize={rasterSize}
+                      planes_px={planes_px}
+                      edges_px={edges_px}
+                      overlayCalibration={grj?.overlay_calibration || null}
+                      roofTargetBboxPx={grj?.roof_target_bbox_px || grj?.debug_geometry?.solar_bbox_px || null}
+                      geometryPxSpace={grj?.geometry_px_space || null}
+                    />
+                  </div>
                 </div>
               ) : null;
 
