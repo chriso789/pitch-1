@@ -953,7 +953,8 @@ async function processJob(input: any) {
           //   1) footprint solver (≥2 planes, not rejected) — geometry-correct path
           //   2) regional clustering ONLY when it covers the full footprint
           //   3) global recursive splitter — last-resort fallback
-          const planeAreaRatio = (planes: Array<{ polygon?: Point[]; polygon_px?: Point[] }>) => {
+          type PlaneAreaCandidate = { polygon?: Point[]; polygon_px?: Point[] };
+          const planeAreaRatio = (planes: PlaneAreaCandidate[]) => {
             const footprintArea = Math.max(1, polygonAreaPx(footprint));
             const planeArea = planes.reduce((sum, p) => {
               const poly = p.polygon || p.polygon_px || [];
@@ -961,12 +962,12 @@ async function processJob(input: any) {
             }, 0);
             return planeArea / footprintArea;
           };
-          let splitPlanes: any[];
+          let splitPlanes: PlaneAreaCandidate[];
           let solverMode: string;
           const solverPlanes = solverResult.planes
             .filter((p) => p.polygon.length >= 3)
             .map((p) => ({ polygon: p.polygon }));
-          const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes as any[]) : 0;
+          const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes) : 0;
           if (solverPlanes.length >= 2 && !solverResult.stats.rejected) {
             splitPlanes = solverPlanes;
             solverMode = "footprint_solver";
