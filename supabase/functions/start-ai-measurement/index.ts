@@ -18,6 +18,7 @@ import {
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
 import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
+import { solvePlanesFromFootprint } from "../_shared/footprint-plane-solver.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 
@@ -891,19 +892,42 @@ async function processJob(input: any) {
             })),
           };
 
-          // Decide whether to commit the regional output.
-          // Use it whenever it produces ≥2 planes; otherwise fall back to the
-          // legacy global splitter so we never regress simple roofs.
-          let splitPlanes: any[] = regional.planes;
-          if (regional.planes.length < 2) {
+          // ── FOOTPRINT-FIRST SOLVER (primary) ──
+          // Footprint defines geometry; ridges are validators/hints only.
+          const solverInput = clusterInput.map((r) => ({
+            p1: r.p1,
+            p2: r.p2,
+            score: r.score,
+          }));
+          const solverResult = solvePlanesFromFootprint(footprint, solverInput);
+          console.log("[FOOTPRINT_SOLVER]", JSON.stringify(solverResult.stats));
+          (globalThis as any).__footprintSolverDebug = solverResult.stats;
+
+          // Selection priority:
+          //   1) footprint solver (≥2 planes, not rejected) — geometry-correct path
+          //   2) regional clustering (≥2 planes) — legacy clustered path
+          //   3) global recursive splitter — last-resort fallback
+          let splitPlanes: any[];
+          let solverMode: string;
+          const solverPlanes = solverResult.planes
+            .filter((p) => p.polygon.length >= 3)
+            .map((p) => ({ polygon: p.polygon }));
+          if (solverPlanes.length >= 2 && !solverResult.stats.rejected) {
+            splitPlanes = solverPlanes;
+            solverMode = "footprint_solver";
+          } else if (regional.planes.length >= 2) {
+            splitPlanes = regional.planes;
+            solverMode = "regional_clustered";
+          } else {
             splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
+            solverMode = "global_fallback";
           }
           ridgeSplitPlaneCount = splitPlanes.length;
           console.log("[RIDGE_SPLIT]", JSON.stringify({
             initial_planes: 1,
             final_planes: splitPlanes.length,
             split_success: splitPlanes.length >= 2,
-            mode: regional.planes.length >= 2 ? "regional_clustered" : "global_fallback",
+            mode: solverMode,
             max_depth: 3,
           }));
 
