@@ -287,7 +287,23 @@ function findProximitySharedBoundaries(
   return matches;
 }
 
-// ── Edge classification ─────────────────────────────────────────────────
+// ── Edge classification — PHYSICS-BASED ─────────────────────────────────
+// Uses slope (downhill) vectors derived from plane azimuth + edge normal
+// to determine ridge/hip/valley by actual water-flow physics.
+
+/** Slope vector: direction of steepest descent (water flow) */
+function slopeVector(azimuthDeg: number): Pt {
+  const rad = azimuthDeg * Math.PI / 180;
+  return { x: Math.sin(rad), y: -Math.cos(rad) };
+}
+
+/** Edge normal: perpendicular to edge direction */
+function edgeNormal(a: Pt, b: Pt): Pt {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return { x: -dy / length, y: dx / length };
+}
 
 function classifySharedBoundary(args: {
   a: PlaneIn;
@@ -300,11 +316,6 @@ function classifySharedBoundary(args: {
 }): ClassifiedEdge {
   const { a, b, aId, bId, segment, ridgeHints, edgeIndex } = args;
   const [p1, p2] = segment;
-  const mid = midpoint(p1, p2);
-  const ca = centroid(a.polygon_px);
-  const cb = centroid(b.polygon_px);
-  const fromEdgeToA = norm(sub(ca, mid));
-  const fromEdgeToB = norm(sub(cb, mid));
 
   const azA = azDeg(a);
   const azB = azDeg(b);
@@ -319,62 +330,87 @@ function classifySharedBoundary(args: {
   });
 
   if (azA !== null && azB !== null) {
-    const r2d = (d: number) => d * Math.PI / 180;
-    const downA = { x: Math.sin(r2d(azA)), y: -Math.cos(r2d(azA)) };
-    const downB = { x: Math.sin(r2d(azB)), y: -Math.cos(r2d(azB)) };
+    const s1 = slopeVector(azA);
+    const s2 = slopeVector(azB);
+    const n = edgeNormal(p1, p2);
 
-    const aAway = dot(downA, fromEdgeToA) > 0.15;
-    const bAway = dot(downB, fromEdgeToB) > 0.15;
-    const aToward = dot(downA, fromEdgeToA) < -0.15;
-    const bToward = dot(downB, fromEdgeToB) < -0.15;
+    const f1 = dot(s1, n);
+    const f2 = dot(s2, n);
 
-    if (aAway && bAway) {
+    const T = 0.15; // flow threshold
+    const confidence_base = Math.min(Math.abs(f1), Math.abs(f2));
+
+    const away1 = f1 > T;
+    const away2 = f2 > T;
+    const toward1 = f1 < -T;
+    const toward2 = f2 < -T;
+    const parallel1 = Math.abs(f1) <= T;
+    const parallel2 = Math.abs(f2) <= T;
+
+    // Both slopes flow AWAY from the edge → RIDGE
+    if (away1 && away2) {
       return {
         id: `E${edgeIndex}`, edge_type: "ridge", line_px: [p1, p2],
-        adjacent_plane_ids: [aId, bId], confidence: alignedHint ? 0.95 : 0.85,
+        adjacent_plane_ids: [aId, bId],
+        confidence: Math.max(0.80, Math.min(0.97, 0.80 + confidence_base * 0.2)),
         source: "plane_edge_classifier_v1",
-        debug_reason: alignedHint
-          ? "shared edge slopes away both sides + ridge hint"
-          : "shared edge slopes away both sides",
+        debug_reason: `physics: both slopes away from edge (f1=${f1.toFixed(3)}, f2=${f2.toFixed(3)})`,
       };
     }
-    if (aToward && bToward) {
+
+    // Both slopes flow TOWARD the edge → VALLEY
+    if (toward1 && toward2) {
       return {
         id: `E${edgeIndex}`, edge_type: "valley", line_px: [p1, p2],
-        adjacent_plane_ids: [aId, bId], confidence: 0.9,
+        adjacent_plane_ids: [aId, bId],
+        confidence: Math.max(0.80, Math.min(0.95, 0.80 + confidence_base * 0.2)),
         source: "plane_edge_classifier_v1",
-        debug_reason: "shared edge slopes toward from both sides",
+        debug_reason: `physics: both slopes toward edge (f1=${f1.toFixed(3)}, f2=${f2.toFixed(3)})`,
       };
     }
 
-    // One slopes away, one slopes toward → hip
-    if ((aAway && bToward) || (aToward && bAway)) {
+    // One away, one toward → HIP
+    if ((away1 && toward2) || (toward1 && away2)) {
       return {
         id: `E${edgeIndex}`, edge_type: "hip", line_px: [p1, p2],
-        adjacent_plane_ids: [aId, bId], confidence: 0.82,
+        adjacent_plane_ids: [aId, bId],
+        confidence: Math.max(0.75, Math.min(0.90, 0.75 + confidence_base * 0.2)),
         source: "plane_edge_classifier_v1",
-        debug_reason: "shared edge has opposing downslope directions",
+        debug_reason: `physics: opposing flow across edge (f1=${f1.toFixed(3)}, f2=${f2.toFixed(3)})`,
       };
     }
 
+    // Both parallel to edge → not structural
+    if (parallel1 && parallel2) {
+      return {
+        id: `E${edgeIndex}`, edge_type: "unknown", line_px: [p1, p2],
+        adjacent_plane_ids: [aId, bId], confidence: 0.30,
+        source: "plane_edge_classifier_v1",
+        debug_reason: `physics: both slopes parallel to edge — likely non-structural (f1=${f1.toFixed(3)}, f2=${f2.toFixed(3)})`,
+      };
+    }
+
+    // Mixed (one parallel, one directional) → hip fallback
     return {
       id: `E${edgeIndex}`, edge_type: "hip", line_px: [p1, p2],
-      adjacent_plane_ids: [aId, bId], confidence: 0.74,
+      adjacent_plane_ids: [aId, bId],
+      confidence: Math.max(0.55, Math.min(0.72, 0.55 + confidence_base * 0.2)),
       source: "plane_edge_classifier_v1",
-      debug_reason: "shared edge has mixed downslope flow",
+      debug_reason: `physics: mixed flow (f1=${f1.toFixed(3)}, f2=${f2.toFixed(3)}) — hip fallback`,
     };
   }
 
+  // No azimuth data — fallback to hint or unknown
   return {
     id: `E${edgeIndex}`,
-    edge_type: alignedHint ? "ridge" : "hip",
+    edge_type: alignedHint ? "ridge" : "unknown",
     line_px: [p1, p2],
     adjacent_plane_ids: [aId, bId],
-    confidence: alignedHint ? 0.7 : 0.5,
+    confidence: alignedHint ? 0.55 : 0.35,
     source: "plane_edge_classifier_v1",
     debug_reason: alignedHint
-      ? "missing azimuth but ridge hint aligns with shared edge"
-      : "missing azimuth — defaulting shared edge to hip",
+      ? "no azimuth — ridge hint aligned with shared edge"
+      : "no azimuth — cannot determine edge type",
   };
 }
 
@@ -470,11 +506,11 @@ export function classifyPlaneEdges(args: {
   }
 
   // ── 3b. Proximity-based shared boundary discovery ─────────────────
-  // When exact canonical matching finds few shared edges (common with
-  // Google Solar rasterized segments that have 1-5px gaps), discover
-  // near-parallel close exterior edges from different planes and promote
-  // them only as fuzzy candidates. They are useful for diagnostics/preview,
-  // but MUST NOT count toward ridge/hip/valley totals downstream.
+  // Google Solar segments have 1-5px gaps. This discovers near-parallel
+  // close exterior edges from different planes. When BOTH planes have
+  // azimuth data, the physics classifier produces trustworthy results,
+  // so we promote these to full plane_edge_classifier_v1 edges.
+  // Only edges lacking azimuth remain tagged as fuzzy.
   const proximityMatches = findProximitySharedBoundaries(edgeMap, planeById);
   const proximityConsumedKeys = new Set<string>();
 
@@ -486,7 +522,7 @@ export function classifyPlaneEdges(args: {
     // Skip if midline is degenerate
     if (dist(pm.midlineP1, pm.midlineP2) < 4) continue;
 
-    const fuzzyCandidate = classifySharedBoundary({
+    const candidate = classifySharedBoundary({
         a: spA.original,
         b: spB.original,
         aId: pm.planeIdA,
@@ -496,12 +532,25 @@ export function classifyPlaneEdges(args: {
         edgeIndex: edgeIndex++,
       });
 
-    sharedEdges.push({
-      ...fuzzyCandidate,
-      source: "interior_fuzzy_shared_boundary",
-      confidence: Math.min(fuzzyCandidate.confidence, 0.42),
-      debug_reason: `proximity/fuzzy candidate only: gap_px=${Math.round(pm.gapDistance * 10) / 10}, overlap_px=${Math.round(pm.overlapLength)}; ${fuzzyCandidate.debug_reason}`,
-    });
+    // If both planes had azimuth, physics classification is trustworthy
+    const hasPhysics = azDeg(spA.original) !== null && azDeg(spB.original) !== null;
+
+    if (hasPhysics) {
+      // Slightly reduce confidence for gap-bridged edges but keep as real
+      sharedEdges.push({
+        ...candidate,
+        source: "plane_edge_classifier_v1",
+        confidence: Math.max(0.60, candidate.confidence * 0.90),
+        debug_reason: `proximity+physics: gap=${Math.round(pm.gapDistance * 10) / 10}px, overlap=${Math.round(pm.overlapLength)}px; ${candidate.debug_reason}`,
+      });
+    } else {
+      sharedEdges.push({
+        ...candidate,
+        source: "interior_fuzzy_shared_boundary",
+        confidence: Math.min(candidate.confidence, 0.42),
+        debug_reason: `proximity/fuzzy (no azimuth): gap=${Math.round(pm.gapDistance * 10) / 10}px; ${candidate.debug_reason}`,
+      });
+    }
 
     proximityConsumedKeys.add(pm.edgeA.key);
     proximityConsumedKeys.add(pm.edgeB.key);
