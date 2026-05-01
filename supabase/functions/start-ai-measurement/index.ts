@@ -953,8 +953,8 @@ async function processJob(input: any) {
       if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
         try {
           const ridgeCatalog = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
-            id: String(r.ridge_id ?? r.id ?? i),
-            ridge_id: String(r.ridge_id ?? r.id ?? i),
+            id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
+            ridge_id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
             p1: r.p1,
             p2: r.p2,
           }));
