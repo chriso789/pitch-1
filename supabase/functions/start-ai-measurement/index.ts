@@ -988,7 +988,7 @@ async function processJob(input: any) {
           const solverPlanes = solverResult.planes
             .filter((p) => p.polygon.length >= 3)
             .map((p) => ({ polygon: p.polygon }));
-          const planarPlanes = primaryPlanar?.faces?.length >= 2
+          const planarPlanes = (primaryPlanar?.faces?.length ?? 0) >= 2
             ? primaryPlanar.faces.map((f) => ({ polygon: f.polygon }))
             : [];
           const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes) : 0;
