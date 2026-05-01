@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-import { AlertTriangle, Download, Loader2 } from 'lucide-react';
+import { AlertTriangle, Download, Loader2, Ruler, TriangleIcon, Square, Activity } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import PatentRoofReport from './PatentRoofReport';
