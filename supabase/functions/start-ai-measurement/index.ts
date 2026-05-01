@@ -831,6 +831,8 @@ async function processJob(input: any) {
     let planeMergeDebug: any = null;
     let footprintCoverageDebug: any = null;
     let planeEdgeClassifierDebug: any = null;
+    let strictEdgeGraphDebug: any = null;
+    let ridgeAlignmentDebug: any = null;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -934,7 +936,7 @@ async function processJob(input: any) {
         (p) => p.source === "google_solar_segment_planes" || p.source === "google_solar_segment_structure"
       );
       const coverageOk = isSolarSegmentSource
-        ? coverageRatio >= 0.85 && coverageRatio <= 1.15
+        ? coverageRatio >= 0.85 && coverageRatio <= 1.08
         : coverageRatio >= 0.95 && coverageRatio <= 1.05;
       const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageOk;
       const fallbackRequired = footprint.length >= 3 && !solverAccepted;
