@@ -1463,6 +1463,14 @@ async function processJob(input: any) {
         cleanEdges = reclassified as typeof cleanEdges;
 
         const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
+        strictEdgeGraphDebug = {
+          total_edges: edgeResult.debug?.edge_count ?? cleanEdges.length,
+          shared_edges: edgeResult.debug?.shared_edges ?? 0,
+          exterior_edges: edgeResult.debug?.exterior_edges ?? 0,
+          invalid_edges: edgeResult.debug?.invalid_edges ?? 0,
+        };
+        (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
+        console.log("[STRICT_EDGE_GRAPH]", JSON.stringify(strictEdgeGraphDebug));
 
         console.log("[PERIMETER_EDGE_FORCE]", JSON.stringify({
           footprint_segments: footprint.length,
