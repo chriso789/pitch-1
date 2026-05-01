@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/collapsible';
 import { 
   CheckCircle2, Trash2, Ruler, Star, Plus, ChevronDown,
-  Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator,
+  Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator, AlertTriangle,
   Clock, ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -157,6 +157,16 @@ const hasCustomerSafeGeometry = (measurement: any): boolean => {
   const footprintSource = String(measurement?.footprint_source || '').toLowerCase();
   if (footprintSource === 'google_solar_bbox') return false;
   return true;
+};
+
+const getMeasurementReviewReason = (measurement: any): string | null => {
+  const grj = measurement?.geometry_report_json || {};
+  const reason = grj?.block_customer_report_reason || measurement?.gate_reason;
+  if (reason) return String(reason).split('|')[0].replace(/_/g, ' ');
+  if (measurement?.requires_manual_review || measurement?.validation_status === 'needs_internal_review') {
+    return 'Needs review before customer delivery';
+  }
+  return null;
 };
 
 const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
@@ -453,7 +463,7 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return (data || []).filter(hasCustomerSafeGeometry);
+      return (data || []).filter(isPlausibleRoofMeasurement);
     },
     enabled: !!pipelineEntryId,
   });
@@ -1901,6 +1911,12 @@ function MeasurementHistorySection({
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(measurement.created_at), 'MMM d, yyyy')}
                   </p>
+                  {getMeasurementReviewReason(measurement) && (
+                    <p className="mt-1 flex items-center gap-1 text-xs text-warning">
+                      <AlertTriangle className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{getMeasurementReviewReason(measurement)}</span>
+                    </p>
+                  )}
                 </div>
               </div>
               {!selectMode && (
@@ -1918,7 +1934,8 @@ function MeasurementHistorySection({
                     size="sm" 
                     variant="outline" 
                     onClick={() => handleSaveAiMeasurement(measurement)}
-                    disabled={isSaving === measurement.id}
+                    disabled={isSaving === measurement.id || !hasCustomerSafeGeometry(measurement)}
+                    title={!hasCustomerSafeGeometry(measurement) ? 'Needs review before it can be saved to estimates' : 'Save to estimates'}
                   >
                     {isSaving === measurement.id ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
