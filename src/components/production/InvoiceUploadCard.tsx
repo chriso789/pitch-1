@@ -137,6 +137,8 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           invoice_number: parsed.invoice_number || prev.invoice_number,
           invoice_date: parsed.invoice_date || prev.invoice_date,
           invoice_amount: amount ? String(amount) : prev.invoice_amount,
+          subtotal: parsed.subtotal ? String(parsed.subtotal) : prev.subtotal,
+          tax_amount: parsed.tax_amount ? String(parsed.tax_amount) : prev.tax_amount,
           vendor_name: parsed.vendor_name || prev.vendor_name,
           notes: itemsSummary || prev.notes,
         }));
