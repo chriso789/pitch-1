@@ -20,8 +20,10 @@ interface SearchResult {
   contacts: {
     first_name: string;
     last_name: string;
+    address_street: string | null;
     address_city: string | null;
     address_state: string | null;
+    address_zip: string | null;
   };
 }
 
