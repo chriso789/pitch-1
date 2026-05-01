@@ -1248,32 +1248,20 @@ async function processJob(input: any) {
         //    produces polygons with close-but-not-identical boundary vertices.
         try {
           const rawPolys = (cleanPlanes as any[]).map((p) => (p.polygon_px || []) as { x: number; y: number }[]);
-          const preAdj = planeAdjacencyStats(rawPolys);
-          console.log("[PLANE_GRAPH_PRE_CLASSIFY]", JSON.stringify({
-            plane_count: preAdj.plane_count,
+          console.log("[PLANE_GRAPH_PRE_SNAP]", JSON.stringify({
+            plane_count: rawPolys.length,
             plane_ids: (cleanPlanes as any[]).map((p, i) => p.plane_index ?? i),
             polygon_vertex_counts: rawPolys.map((p) => p.length),
-            shared_boundary_pairs: preAdj.two_plane_boundary_count,
-            shared_boundary_segments: preAdj.shared_boundary_count,
           }));
 
-          if (preAdj.plane_count > 1 && preAdj.shared_boundary_count === 0) {
-            // Planes don't share boundaries — normalize them
-            const normResult = normalizeAdjacentPlanes(rawPolys, 6);
-            polygonNormalizeDebug = normResult.debug;
-            console.log("[POLYGON_NORMALIZE]", JSON.stringify(normResult.debug));
+          // ALWAYS normalize — grid-snap forces topological connectivity
+          const normResult = normalizeAdjacentPlanes(rawPolys);
+          polygonNormalizeDebug = normResult.debug;
+          console.log("[POLYGON_NORMALIZE]", JSON.stringify(normResult.debug));
 
-            // Check adjacency after normalization
-            const postAdj = planeAdjacencyStats(normResult.polygons);
-            console.log("[PLANE_GRAPH_POST_NORMALIZE]", JSON.stringify({
-              shared_boundary_pairs: postAdj.two_plane_boundary_count,
-              shared_boundary_segments: postAdj.shared_boundary_count,
-            }));
-
-            // Apply normalized polygons back
-            for (let i = 0; i < cleanPlanes.length && i < normResult.polygons.length; i++) {
-              (cleanPlanes as any[])[i].polygon_px = normResult.polygons[i];
-            }
+          // Apply normalized polygons back
+          for (let i = 0; i < cleanPlanes.length && i < normResult.polygons.length; i++) {
+            (cleanPlanes as any[])[i].polygon_px = normResult.polygons[i];
           }
         } catch (e) {
           console.warn("[POLYGON_NORMALIZE] failed:", (e as Error).message);
