@@ -1207,31 +1207,14 @@ async function processJob(input: any) {
           }
         }
 
-        // 5c. Triangulation eaves/rakes — always useful for perimeter edges.
+        // 5c. Triangulation eaves/rakes — perimeter-only support.
+        // Never use triangulation/topology_engine_v2 planes as final roof planes;
+        // those internal triangles caused collapsed ~500 sqft reports.
         const topo = buildTopology(footprint);
         if (topo.planes.length > 0) {
-          if (cleanPlanes.length === 0) {
-            cleanPlanes = topo.planes.map((tp, idx) => ({
-              plane_index: idx + 1,
-              polygon_px: tp.polygon,
-              confidence: 0.7,
-              pitch: null,
-              pitch_degrees: null,
-              azimuth: null,
-              source: "topology_engine_v2",
-            }));
-            if (topologySource === "none") topologySource = "triangulation";
-          }
           // Always pull in eave/rake perimeter edges from triangulation.
           for (const e of topo.edges) {
             if (e.type === "eave" || e.type === "rake") {
-              cleanEdges.push({
-                edge_type: e.type,
-                line_px: [e.p1, e.p2],
-                confidence: 0.65,
-                source: "topology_engine_v2",
-              });
-            } else if (cleanEdges.length === 0) {
               cleanEdges.push({
                 edge_type: e.type,
                 line_px: [e.p1, e.p2],
