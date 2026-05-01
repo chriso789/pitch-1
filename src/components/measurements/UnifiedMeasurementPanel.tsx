@@ -463,7 +463,7 @@ export function UnifiedMeasurementPanel({
         console.error('Error fetching AI measurements:', error);
         return [];
       }
-      return (data || []).filter(hasCustomerSafeGeometry);
+      return (data || []).filter(isPlausibleRoofMeasurement);
     },
     enabled: !!pipelineEntryId,
   });
