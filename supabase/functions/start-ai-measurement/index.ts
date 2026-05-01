@@ -834,6 +834,8 @@ async function processJob(input: any) {
           // local region bbox (padded 25 px), and only splits geometry that
           // lies inside that region with that cluster's ridges.
           const clusterInput = (filtered.kept as any[]).map((r) => ({
+            id: r.id ?? r.ridge_id,
+            ridge_id: r.ridge_id ?? r.id,
             p1: r.p1,
             p2: r.p2,
             score: r.score ?? 0.5,
@@ -841,6 +843,10 @@ async function processJob(input: any) {
               ? r.angleDeg
               : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
           }));
+
+          const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
+          const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
+          const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
 
           const regional = splitPlanesByRidgeClusters({
             footprint,
@@ -879,7 +885,7 @@ async function processJob(input: any) {
           // Decide whether to commit the regional output.
           // Use it whenever it produces ≥2 planes; otherwise fall back to the
           // legacy global splitter so we never regress simple roofs.
-          let splitPlanes: { polygon: Point[] }[] = regional.planes;
+          let splitPlanes: any[] = regional.planes;
           if (regional.planes.length < 2) {
             splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
           }
@@ -897,17 +903,31 @@ async function processJob(input: any) {
               plane_index: i + 1,
               polygon_px: sp.polygon,
               confidence: 0.72,
-              pitch: null,
-              pitch_degrees: null,
-              azimuth: null,
+              pitch: pitchFromSolar,
+              pitch_degrees: pitchDegFromSolar,
+              azimuth: azimuthFromSolar,
               source: "ridge_split_recursive",
+              cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
+              ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
+              region_bbox: sp.region_bbox ?? null,
+              source_ridge_ids: sp.source_ridge_ids ?? [],
             }));
-            for (const r of filtered.kept) {
+            for (const r of filtered.kept as any[]) {
+              const assignedCluster = regional.clusters.find((c) => c.ridges.some((cr: any) => cr === r || cr.id === r.id || cr.ridge_id === r.ridge_id));
+              const ridgeIds = assignedCluster?.ridges.map((cr: any, idx: number) => String(cr.ridge_id ?? cr.id ?? `${assignedCluster.cluster_index}:${idx}`)) || [];
+              if (assignedCluster && !lineWithinBBox([r.p1, r.p2], assignedCluster.region_bbox, 2)) {
+                console.log("[RIDGE_REJECTED]", JSON.stringify({ reason: "ridge_outside_assigned_cluster_bbox", cluster_id: assignedCluster.cluster_index }));
+                continue;
+              }
               splitRidgeEdges.push({
                 edge_type: "ridge",
                 line_px: [r.p1, r.p2],
                 confidence: Math.min(0.9, 0.55 + (r.score ?? 0.5) * 0.4),
                 source: "image_ridge_detector",
+                cluster_id: assignedCluster?.cluster_index ?? null,
+                ridge_group_id: assignedCluster?.cluster_index ?? null,
+                region_bbox: assignedCluster?.region_bbox ?? null,
+                source_ridge_ids: ridgeIds,
               });
             }
             cleanEdges.push(...splitRidgeEdges);
