@@ -17,6 +17,8 @@ export interface PlaneIn {
   pitch_degrees?: number | null;
   azimuth?: number | null;
   source?: string;
+  cluster_id?: string | number | null;
+  ridge_group_id?: string | number | null;
 }
 
 // ─── geometry helpers ─────────────────────────────────────────────────────
@@ -338,6 +340,12 @@ export function consolidatePlanes(
         if (ix * iy <= 0) continue;
         const minPolyArea = Math.min(A._area, B._area);
         if (minPolyArea <= 0) continue;
+        const clusterAware = A.cluster_id != null || B.cluster_id != null || A.ridge_group_id != null || B.ridge_group_id != null;
+        if (clusterAware) {
+          const sameCluster = A.cluster_id != null && B.cluster_id != null && String(A.cluster_id) === String(B.cluster_id);
+          const sameRidgeGroup = A.ridge_group_id != null && B.ridge_group_id != null && String(A.ridge_group_id) === String(B.ridge_group_id);
+          if (!sameCluster && !sameRidgeGroup) continue;
+        }
 
         // TRUE polygon-polygon intersection (not bbox-of-intersection).
         // Sibling ridge-split planes share bbox but not actual area.
