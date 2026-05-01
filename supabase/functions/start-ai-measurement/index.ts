@@ -48,10 +48,13 @@ type RoofPlane = {
 };
 
 type RoofEdge = {
-  edge_type: "ridge" | "hip" | "valley" | "eave" | "rake" | "unknown";
+  edge_type: "ridge" | "hip" | "valley" | "eave" | "rake" | "unknown" | "unknown_interior";
   line_px: Point[];
   confidence: number;
   source: string;
+  id?: string | number;
+  adjacent_plane_ids?: Array<string | number>;
+  debug_reason?: string;
   cluster_id?: string | number | null;
   ridge_group_id?: string | number | null;
   region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
@@ -287,6 +290,33 @@ async function processJob(input: any) {
       const iy = Math.max(0, Math.min(a.maxY, b.maxY) - Math.max(a.minY, b.minY));
       return ix * iy;
     }
+    const pointToSegmentDistancePx = (p: Point, a: Point, b: Point) => {
+      const abx = b.x - a.x;
+      const aby = b.y - a.y;
+      const denom = Math.max(abx * abx + aby * aby, 1e-9);
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * abx + (p.y - a.y) * aby) / denom));
+      const q = { x: a.x + abx * t, y: a.y + aby * t };
+      return Math.hypot(p.x - q.x, p.y - q.y);
+    };
+    const lineAngle180 = (a: Point, b: Point) => {
+      const deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      return ((deg % 180) + 180) % 180;
+    };
+    const angleDiff180 = (a: number, b: number) => {
+      const d = Math.abs(a - b) % 180;
+      return Math.min(d, 180 - d);
+    };
+    const pointInPolygon = (pt: Point, poly: Point[]) => {
+      if (!poly || poly.length < 3) return false;
+      let inside = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const pi = poly[i], pj = poly[j];
+        const intersects = ((pi.y > pt.y) !== (pj.y > pt.y)) &&
+          (pt.x < (pj.x - pi.x) * (pt.y - pi.y) / ((pj.y - pi.y) || 1e-9) + pi.x);
+        if (intersects) inside = !inside;
+      }
+      return inside;
+    };
     // Sutherland-Hodgman polygon clipping against an axis-aligned rect.
     // Used for true polygon∩solar_bbox area (fixes the 0-overlap-with-60%-coverage bug
     // where bbox-vs-bbox overlap ignored polygon shape).
@@ -745,15 +775,17 @@ async function processJob(input: any) {
             };
             const totalExpansion = expansionNeeded.left + expansionNeeded.top + expansionNeeded.right + expansionNeeded.bottom;
             if (totalExpansion > 8) {
-              const cx = (snappedBb.minX + snappedBb.maxX) / 2;
-              const cy = (snappedBb.minY + snappedBb.maxY) / 2;
-              const w2 = (snappedBb.maxX - snappedBb.minX) / 2;
-              const h2 = (snappedBb.maxY - snappedBb.minY) / 2;
-              const scaleX = w2 > 0 ? (w2 + (expansionNeeded.left + expansionNeeded.right) / 2) / w2 : 1;
-              const scaleY = h2 > 0 ? (h2 + (expansionNeeded.top + expansionNeeded.bottom) / 2) / h2 : 1;
+              const target = {
+                minX: snappedBb.minX - expansionNeeded.left,
+                minY: snappedBb.minY - expansionNeeded.top,
+                maxX: snappedBb.maxX + expansionNeeded.right,
+                maxY: snappedBb.maxY + expansionNeeded.bottom,
+              };
+              const scaleX = (snappedBb.maxX - snappedBb.minX) > 0 ? (target.maxX - target.minX) / (snappedBb.maxX - snappedBb.minX) : 1;
+              const scaleY = (snappedBb.maxY - snappedBb.minY) > 0 ? (target.maxY - target.minY) / (snappedBb.maxY - snappedBb.minY) : 1;
               footprint = footprint.map((p) => ({
-                x: cx + (p.x - cx) * scaleX,
-                y: cy + (p.y - cy) * scaleY,
+                x: target.minX + (p.x - snappedBb.minX) * scaleX,
+                y: target.minY + (p.y - snappedBb.minY) * scaleY,
               }));
               const expandedBb = bboxOf(footprint);
               snappedFootprintBboxPx = expandedBb;
@@ -801,6 +833,8 @@ async function processJob(input: any) {
     let planeMergeDebug: any = null;
     let footprintCoverageDebug: any = null;
     let planeEdgeClassifierDebug: any = null;
+    let strictEdgeGraphDebug: any = null;
+    let ridgeAlignmentDebug: any = null;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -904,7 +938,7 @@ async function processJob(input: any) {
         (p) => p.source === "google_solar_segment_planes" || p.source === "google_solar_segment_structure"
       );
       const coverageOk = isSolarSegmentSource
-        ? coverageRatio >= 0.85 && coverageRatio <= 1.15
+        ? coverageRatio >= 0.85 && coverageRatio <= 1.08
         : coverageRatio >= 0.95 && coverageRatio <= 1.05;
       const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageOk;
       const fallbackRequired = footprint.length >= 3 && !solverAccepted;
@@ -1207,20 +1241,27 @@ async function processJob(input: any) {
             feetPerPixel: actualFpp,
           });
           planeMergeDebug = mergeResult.debug;
-          cleanPlanes = mergeResult.planes.map((p: any, i: number) => ({
-            plane_index: i + 1,
-            polygon_px: p.polygon_px,
-            confidence: 0.74,
-            pitch: p.pitch ?? null,
-            pitch_degrees: p.pitch_degrees ?? null,
-            azimuth: p.azimuth ?? null,
-            source: "cluster_aware_plane_merge_v1",
-            cluster_id: p.cluster_id ?? null,
-            ridge_group_id: p.ridge_group_id ?? null,
-            region_bbox: p.region_bbox ?? null,
-            source_ridge_ids: p.source_ridge_ids ?? [],
-            multi_part_px: p.multi_part_px,
-          })) as any;
+          const footprintAreaSqftForMerge = polygonAreaPx(footprint) * actualFpp * actualFpp;
+          const postMergeArea = Number(mergeResult.debug?.post_merge_area ?? 0);
+          if (footprintAreaSqftForMerge > 0 && postMergeArea > footprintAreaSqftForMerge * 1.08) {
+            planeMergeDebug = { ...mergeResult.debug, rejected: "merge_area_gt_footprint_1_08" };
+            console.warn("[PLANE_MERGE_REJECTED]", JSON.stringify(planeMergeDebug));
+          } else {
+            cleanPlanes = mergeResult.planes.map((p: any, i: number) => ({
+              plane_index: i + 1,
+              polygon_px: p.polygon_px,
+              confidence: 0.74,
+              pitch: p.pitch ?? null,
+              pitch_degrees: p.pitch_degrees ?? null,
+              azimuth: p.azimuth ?? null,
+              source: "cluster_aware_plane_merge_v1",
+              cluster_id: p.cluster_id ?? null,
+              ridge_group_id: p.ridge_group_id ?? null,
+              region_bbox: p.region_bbox ?? null,
+              source_ridge_ids: p.source_ridge_ids ?? [],
+              multi_part_px: p.multi_part_px,
+            })) as any;
+          }
         } catch (e) {
           console.warn("[CLUSTER_AWARE_PLANE_MERGE] failed:", (e as Error).message);
         }
@@ -1317,7 +1358,7 @@ async function processJob(input: any) {
     //    Demote ridges from "geometry drivers" to validators that must conform
     //    to the building footprint. Reject planes that extend outside the
     //    footprint, ridges that span the whole building, and totals that
-    //    exceed footprint_area * 1.15.
+    //    exceed footprint_area * 1.08.
     let footprintConstraintStats: any = null;
     try {
       const fcRidgeInput = (cleanEdges as any[])
@@ -1335,7 +1376,7 @@ async function processJob(input: any) {
         footprint as any,
         cleanPlanes as any,
         fcRidgeInput as any,
-        { planeOutsideToleranceRatio: 0.10, maxRidgeLengthRatio: 0.60, totalAreaMultiplier: 1.15 },
+        { planeOutsideToleranceRatio: 0.10, maxRidgeLengthRatio: 0.60, totalAreaMultiplier: 1.08 },
       );
       footprintConstraintStats = fcResult.stats;
       console.log("[GEOMETRY_VALIDATION]", JSON.stringify({
@@ -1431,6 +1472,14 @@ async function processJob(input: any) {
         cleanEdges = reclassified as typeof cleanEdges;
 
         const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
+        strictEdgeGraphDebug = {
+          total_edges: edgeResult.debug?.total_edges_in_map ?? cleanEdges.length,
+          shared_edges: edgeResult.debug?.shared_edges ?? 0,
+          exterior_edges: edgeResult.debug?.exterior_edges ?? 0,
+          invalid_edges: edgeResult.debug?.invalid_edges ?? 0,
+        };
+        (globalThis as any).__strictEdgeGraphDebug = strictEdgeGraphDebug;
+        console.log("[STRICT_EDGE_GRAPH]", JSON.stringify(strictEdgeGraphDebug));
 
         console.log("[PERIMETER_EDGE_FORCE]", JSON.stringify({
           footprint_segments: footprint.length,
@@ -1445,123 +1494,94 @@ async function processJob(input: any) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
     }
 
-    // ── INTERIOR SHARED-BOUNDARY CONSTRUCTION (FUZZY) ──
-    // If the canonical edge map produced 0 shared edges but we have 2+ planes,
-    // the grid-snap wasn't tight enough. Fall back to proximity-based edge
-    // matching: for each edge segment of plane A, find the closest parallel
-    // segment in plane B (within FUZZY_SNAP px). If found, emit a shared
-    // interior edge and classify it as ridge/hip/valley.
+    // ── STRICT TOPOLOGY + RIDGE ALIGNMENT QA ──
+    // No fuzzy/proximity interior boundaries are allowed to create structural
+    // lengths. Structural edges must be exact two-plane graph edges from the
+    // canonical plane-edge classifier, then ridges must align to visual roof
+    // ridge candidates instead of perimeter/eave artifacts.
     {
-      const classifierSharedCount = planeEdgeClassifierDebug?.shared_edges ?? 0;
-      if (cleanPlanes.length >= 2 && classifierSharedCount === 0) {
-        const FUZZY_SNAP = 8; // px tolerance for "close enough" edges
-        const interiorEdges: RoofEdge[] = [];
-        const solarAz = dominantSolarAzimuth(solarData);
-
-        for (let ai = 0; ai < cleanPlanes.length; ai++) {
-          const polyA = cleanPlanes[ai].polygon_px || [];
-          for (let bi = ai + 1; bi < cleanPlanes.length; bi++) {
-            const polyB = cleanPlanes[bi].polygon_px || [];
-            // For each edge of A, find closest parallel edge of B
-            for (let ea = 0; ea < polyA.length; ea++) {
-              const a1 = polyA[ea], a2 = polyA[(ea + 1) % polyA.length];
-              const aLen = Math.hypot(a2.x - a1.x, a2.y - a1.y);
-              if (aLen < 6) continue;
-              const aAngle = Math.atan2(a2.y - a1.y, a2.x - a1.x) * 180 / Math.PI;
-              const aMid = { x: (a1.x + a2.x) / 2, y: (a1.y + a2.y) / 2 };
-
-              for (let eb = 0; eb < polyB.length; eb++) {
-                const b1 = polyB[eb], b2 = polyB[(eb + 1) % polyB.length];
-                const bLen = Math.hypot(b2.x - b1.x, b2.y - b1.y);
-                if (bLen < 6) continue;
-                const bAngle = Math.atan2(b2.y - b1.y, b2.x - b1.x) * 180 / Math.PI;
-                // Check parallel (within 15°)
-                const angleDiffVal = Math.abs(((aAngle - bAngle) % 180 + 180) % 180);
-                const isParallel = Math.min(angleDiffVal, 180 - angleDiffVal) <= 15;
-                if (!isParallel) continue;
-                // Check proximity: midpoints within FUZZY_SNAP
-                const bMid = { x: (b1.x + b2.x) / 2, y: (b1.y + b2.y) / 2 };
-                const midDist = Math.hypot(aMid.x - bMid.x, aMid.y - bMid.y);
-                if (midDist > FUZZY_SNAP + Math.max(aLen, bLen) * 0.3) continue;
-                // Check endpoint proximity
-                const d11 = Math.hypot(a1.x - b1.x, a1.y - b1.y);
-                const d12 = Math.hypot(a1.x - b2.x, a1.y - b2.y);
-                const d21 = Math.hypot(a2.x - b1.x, a2.y - b1.y);
-                const d22 = Math.hypot(a2.x - b2.x, a2.y - b2.y);
-                const minEndDist = Math.min(d11 + d22, d12 + d21) / 2;
-                if (minEndDist > FUZZY_SNAP) continue;
-
-                // Found a shared boundary! Classify it.
-                const sharedMid = { x: (aMid.x + bMid.x) / 2, y: (aMid.y + bMid.y) / 2 };
-                const sharedP1 = d11 + d22 <= d12 + d21
-                  ? { x: (a1.x + b1.x) / 2, y: (a1.y + b1.y) / 2 }
-                  : { x: (a1.x + b2.x) / 2, y: (a1.y + b2.y) / 2 };
-                const sharedP2 = d11 + d22 <= d12 + d21
-                  ? { x: (a2.x + b2.x) / 2, y: (a2.y + b2.y) / 2 }
-                  : { x: (a2.x + b1.x) / 2, y: (a2.y + b1.y) / 2 };
-
-                // Classify: use solar azimuth to determine ridge vs hip vs valley
-                let edgeType: "ridge" | "hip" | "valley" = "ridge";
-                if (solarAz !== null) {
-                  const edgeAngle180 = ((aAngle % 180) + 180) % 180;
-                  const downslopeAxis = ((solarAz % 180) + 180) % 180;
-                  const diff = Math.abs(edgeAngle180 - downslopeAxis);
-                  const perpDiff = Math.min(diff, 180 - diff);
-                  if (perpDiff <= 25) {
-                    // Edge is parallel to downslope → hip or valley
-                    const centroidA = { x: polyA.reduce((s, p) => s + p.x, 0) / polyA.length, y: polyA.reduce((s, p) => s + p.y, 0) / polyA.length };
-                    const centroidB = { x: polyB.reduce((s, p) => s + p.x, 0) / polyB.length, y: polyB.reduce((s, p) => s + p.y, 0) / polyB.length };
-                    const cross = (centroidA.x - sharedMid.x) * (centroidB.y - sharedMid.y) - (centroidA.y - sharedMid.y) * (centroidB.x - sharedMid.x);
-                    edgeType = cross > 0 ? "hip" : "valley";
-                  } else {
-                    edgeType = "ridge";
-                  }
-                }
-
-                interiorEdges.push({
-                  edge_type: edgeType,
-                  line_px: [sharedP1, sharedP2],
-                  confidence: 0.72,
-                  source: "interior_fuzzy_shared_boundary",
-                });
-              }
-            }
-          }
-        }
-
-        // Dedupe interior edges by proximity
-        const dedupedInterior: RoofEdge[] = [];
-        for (const e of interiorEdges) {
-          const isDup = dedupedInterior.some((d) => {
-            const dm = { x: (d.line_px[0].x + d.line_px[1].x) / 2, y: (d.line_px[0].y + d.line_px[1].y) / 2 };
-            const em = { x: (e.line_px[0].x + e.line_px[1].x) / 2, y: (e.line_px[0].y + e.line_px[1].y) / 2 };
-            return Math.hypot(dm.x - em.x, dm.y - em.y) < 6 && d.edge_type === e.edge_type;
-          });
-          if (!isDup) dedupedInterior.push(e);
-        }
-
-        if (dedupedInterior.length > 0) {
-          cleanEdges.push(...dedupedInterior);
-        }
-
-        const interiorByType: Record<string, number> = {};
-        for (const e of dedupedInterior) interiorByType[e.edge_type] = (interiorByType[e.edge_type] || 0) + 1;
-
-        console.log("[INTERIOR_EDGE_BUILD]", JSON.stringify({
-          planes: cleanPlanes.length,
-          total_edges: cleanEdges.length,
-          exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length,
-          shared_edges: dedupedInterior.length,
-          classified_ridge: interiorByType.ridge ?? 0,
-          classified_hip: interiorByType.hip ?? 0,
-          classified_valley: interiorByType.valley ?? 0,
-        }));
-
-        if (dedupedInterior.length === 0) {
-          console.error("[INTERIOR_EDGE_BUILD] planes_have_no_shared_boundaries: planes=" + cleanPlanes.length +
-            " — no parallel proximate edges found between any plane pair");
-        }
+      const strictFailures: string[] = [];
+      const sharedEdges = Number(planeEdgeClassifierDebug?.shared_edges ?? 0);
+      const invalidEdges = Number(planeEdgeClassifierDebug?.invalid_edges ?? 0);
+      if (cleanPlanes.length > 2 && sharedEdges < 2) {
+        strictFailures.push("insufficient_shared_edges");
       }
+      if (invalidEdges > 0) {
+        strictFailures.push("invalid_plane_edge_topology");
+      }
+
+      const ridgeCandidates = (topLevelFilteredRidges ?? [])
+        .map((r: any) => ({ p1: r.p1 as Point, p2: r.p2 as Point }))
+        .filter((r: any) => r.p1 && r.p2 && Number.isFinite(r.p1.x) && Number.isFinite(r.p1.y) && Number.isFinite(r.p2.x) && Number.isFinite(r.p2.y));
+      const solarAxis = dominantSolarAzimuth(solarData);
+      const roofBbox = bboxOf(footprint);
+      const roofCenter = roofBbox ? { x: (roofBbox.minX + roofBbox.maxX) / 2, y: (roofBbox.minY + roofBbox.maxY) / 2 } : null;
+      const ridgeEdgesBefore = cleanEdges.filter((e) => e.edge_type === "ridge").length;
+      let rejectedFuzzyRidges = 0;
+      let rejectedMisalignedRidges = 0;
+
+      cleanEdges = cleanEdges.map((edge) => {
+        const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
+        if (!isStructural) return edge;
+        const source = String(edge.source || "");
+        const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
+        const p1 = edge.line_px?.[0];
+        const p2 = edge.line_px?.[edge.line_px.length - 1];
+        const mid = p1 && p2 ? { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } : null;
+        const strictShared = source === "plane_edge_classifier_v1" && adjacentCount === 2;
+        const insideFootprint = !!mid && pointInPolygon(mid, footprint);
+        if (source.toLowerCase().includes("fuzzy") || !strictShared || !insideFootprint) {
+          if (edge.edge_type === "ridge") rejectedFuzzyRidges++;
+          return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.25), debug_reason: "not_strict_two_plane_graph_edge" };
+        }
+        if (edge.edge_type !== "ridge" || !p1 || !p2) return edge;
+
+        const edgeAngle = lineAngle180(p1, p2);
+        let candidateDistance = Number.POSITIVE_INFINITY;
+        let candidateAngleDelta = Number.POSITIVE_INFINITY;
+        for (const candidate of ridgeCandidates) {
+          const cAngle = lineAngle180(candidate.p1, candidate.p2);
+          const d1 = pointToSegmentDistancePx(p1, candidate.p1, candidate.p2);
+          const d2 = pointToSegmentDistancePx(p2, candidate.p1, candidate.p2);
+          const midDist = mid ? pointToSegmentDistancePx(mid, candidate.p1, candidate.p2) : Number.POSITIVE_INFINITY;
+          candidateDistance = Math.min(candidateDistance, Math.min(Math.max(d1, d2), midDist));
+          candidateAngleDelta = Math.min(candidateAngleDelta, angleDiff180(edgeAngle, cAngle));
+        }
+        const solarAngleDelta = solarAxis == null ? Number.POSITIVE_INFINITY : angleDiff180(edgeAngle, ((solarAxis % 180) + 180) % 180);
+        const hasVisualCandidate = ridgeCandidates.length > 0;
+        const distanceOk = !hasVisualCandidate || candidateDistance <= 20;
+        const angleOk = hasVisualCandidate ? candidateAngleDelta <= 25 : solarAngleDelta <= 20;
+        let centerOffset = 0;
+        if (roofBbox && roofCenter && mid) {
+          const horizontalDelta = Math.min(edgeAngle, 180 - edgeAngle);
+          const verticalDelta = Math.abs(edgeAngle - 90);
+          if (horizontalDelta <= 45) centerOffset = Math.abs(mid.y - roofCenter.y) / Math.max(roofBbox.height, 1);
+          else if (verticalDelta <= 45) centerOffset = Math.abs(mid.x - roofCenter.x) / Math.max(roofBbox.width, 1);
+          else centerOffset = Math.hypot(mid.x - roofCenter.x, mid.y - roofCenter.y) / Math.max(roofBbox.width, roofBbox.height, 1);
+        }
+        if (!distanceOk || !angleOk || centerOffset > 0.35) {
+          rejectedMisalignedRidges++;
+          return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.35), debug_reason: "ridge_edges_not_aligned_to_roof_structure" };
+        }
+        return edge;
+      });
+
+      const finalRidgePx = cleanEdges
+        .filter((e) => e.edge_type === "ridge")
+        .reduce((sum, e) => sum + polylineLengthPx(e.line_px || []), 0);
+      ridgeAlignmentDebug = {
+        ridge_edges_before: ridgeEdgesBefore,
+        ridge_edges_after: cleanEdges.filter((e) => e.edge_type === "ridge").length,
+        rejected_fuzzy_ridges: rejectedFuzzyRidges,
+        rejected_misaligned_ridges: rejectedMisalignedRidges,
+        final_ridge_ft: round(finalRidgePx * actualFpp, 2),
+      };
+      if (ridgeEdgesBefore > 0 && ridgeAlignmentDebug.ridge_edges_after === 0) {
+        strictFailures.push("ridge_edges_not_aligned_to_roof_structure");
+      }
+      (globalThis as any).__strictTopologyFailures = strictFailures;
+      (globalThis as any).__ridgeAlignmentDebug = ridgeAlignmentDebug;
+      console.log("[RIDGE_ALIGNMENT_QA]", JSON.stringify(ridgeAlignmentDebug));
     }
 
     // Skip final coverage gate if edge classification already ran — it would
@@ -1595,8 +1615,7 @@ async function processJob(input: any) {
     {
       const edgeCounts: Record<string, number> = {};
       for (const e of cleanEdges) edgeCounts[e.edge_type] = (edgeCounts[e.edge_type] || 0) + 1;
-      const sharedEdges = (planeEdgeClassifierDebug?.shared_edges ?? 0) +
-        cleanEdges.filter((e) => e.source === "interior_fuzzy_shared_boundary").length;
+      const sharedEdges = planeEdgeClassifierDebug?.shared_edges ?? 0;
       const exteriorEdges = planeEdgeClassifierDebug?.exterior_edges ?? 0;
       const invalidEdges = planeEdgeClassifierDebug?.invalid_edges ?? 0;
       console.log("[EDGE_TOPOLOGY_FINAL]", JSON.stringify({
@@ -1871,6 +1890,8 @@ async function processJob(input: any) {
     {
       const stashed = (globalThis as any).__overlaySanityFailures;
       if (Array.isArray(stashed)) sanityFailures.push(...stashed);
+      const strictTopologyFailures = (globalThis as any).__strictTopologyFailures;
+      if (Array.isArray(strictTopologyFailures)) sanityFailures.push(...strictTopologyFailures);
     }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
@@ -1926,7 +1947,10 @@ async function processJob(input: any) {
     if (_planeMergeDebug?.pre_merge_area > 0 && _planeMergeDebug.post_merge_area > _planeMergeDebug.pre_merge_area * 1.10) {
       sanityFailures.push("area_inflation_after_merge");
     }
-    // Footprint-as-law QA: total plane area must not exceed footprint*1.15.
+    // Footprint-as-law QA: total plane area must not exceed footprint*1.08.
+    if (finalRoofAreaSqft > 0 && finalFootprintAreaSqft > 0 && finalRoofAreaSqft > finalFootprintAreaSqft * 1.08) {
+      sanityFailures.push("area_inflation_after_merge");
+    }
     if (footprintConstraintStats?.overall_rejected) {
       sanityFailures.push(
         `footprint_constraint_violated:${footprintConstraintStats.rejection_reason || "area_ratio_exceeded"}`,
@@ -2189,6 +2213,8 @@ async function processJob(input: any) {
         solar_segments: solarSegmentsDebug,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
         plane_edge_classifier: (globalThis as any).__planeEdgeClassifierDebug ?? null,
+        strict_edge_graph: (globalThis as any).__strictEdgeGraphDebug ?? strictEdgeGraphDebug,
+        ridge_alignment_qa: (globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug,
       },
       overlay_debug: {
         raster_url: imageUrl,
@@ -2990,6 +3016,7 @@ function buildEdgeRows(args: {
       length_px: round(lpx, 2),
       length_ft: round(lpx * args.feetPerPixelActual, 2),
       confidence: round(edge.confidence, 3),
+      adjacent_plane_ids: edge.adjacent_plane_ids ?? null,
     };
   });
 }
