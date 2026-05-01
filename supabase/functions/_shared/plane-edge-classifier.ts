@@ -447,11 +447,95 @@ function classifyExteriorEdge(args: {
   };
 }
 
+// ── Simple gable detection ──────────────────────────────────────────────
+// If the roof footprint is mostly rectangular (no reflex/concave corners)
+// and plane count is low, we force hip=0 and valley=0, reclassifying
+// shared interior edges as ridge (between opposing slopes) or unknown.
+
+function detectSimpleGable(
+  planes: { planeId: string; poly: Pt[]; original: PlaneIn }[],
+  footprintPoly?: Pt[],
+): {
+  isSimpleGable: boolean;
+  opposingPairs: [string, string][];
+  reason: string;
+} {
+  const none = { isSimpleGable: false, opposingPairs: [], reason: "" };
+
+  // Too many planes → not simple
+  if (planes.length < 2 || planes.length > 8) {
+    return { ...none, reason: `plane_count=${planes.length} outside 2-8 range` };
+  }
+
+  // Check footprint for reflex (concave) corners
+  const footprint = footprintPoly && footprintPoly.length >= 3 ? footprintPoly : null;
+  if (footprint) {
+    const reflexCount = countReflexCorners(footprint);
+    if (reflexCount > 0) {
+      return { ...none, reason: `footprint has ${reflexCount} reflex corners` };
+    }
+  }
+
+  // Look for opposing slope pairs: two planes with azimuths ~180° apart
+  const opposingPairs: [string, string][] = [];
+  for (let i = 0; i < planes.length; i++) {
+    const azI = azDeg(planes[i].original);
+    if (azI === null) continue;
+    for (let j = i + 1; j < planes.length; j++) {
+      const azJ = azDeg(planes[j].original);
+      if (azJ === null) continue;
+      const diff = Math.abs(azI - azJ);
+      const normalizedDiff = Math.min(diff, 360 - diff);
+      if (normalizedDiff >= 140 && normalizedDiff <= 220) {
+        opposingPairs.push([planes[i].planeId, planes[j].planeId]);
+      }
+    }
+  }
+
+  if (opposingPairs.length === 0) {
+    return { ...none, reason: "no opposing slope pairs found" };
+  }
+
+  // Simple gable: should have at least one opposing pair and low plane count
+  return {
+    isSimpleGable: true,
+    opposingPairs,
+    reason: `simple_gable: ${opposingPairs.length} opposing pairs, ${planes.length} planes, convex footprint`,
+  };
+}
+
+function countReflexCorners(poly: Pt[]): number {
+  const n = poly.length;
+  if (n < 3) return 0;
+
+  // Compute winding
+  let windingSum = 0;
+  for (let i = 0; i < n; i++) {
+    const curr = poly[i];
+    const next = poly[(i + 1) % n];
+    windingSum += (next.x - curr.x) * (next.y + curr.y);
+  }
+  const isCW = windingSum > 0;
+
+  let reflexCount = 0;
+  for (let i = 0; i < n; i++) {
+    const prev = poly[(i - 1 + n) % n];
+    const curr = poly[i];
+    const next = poly[(i + 1) % n];
+    const cross = (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
+    if ((isCW && cross < -1e-6) || (!isCW && cross > 1e-6)) {
+      reflexCount++;
+    }
+  }
+  return reflexCount;
+}
+
 // ── Main entry ──────────────────────────────────────────────────────────
 
 export function classifyPlaneEdges(args: {
   planes: PlaneIn[];
   ridgeHints?: RidgeHint[];
+  footprintPoly?: Pt[];
 }) {
   const planes = args.planes || [];
   const ridgeHints = args.ridgeHints || [];
@@ -600,10 +684,63 @@ export function classifyPlaneEdges(args: {
     deduped.push(e);
   }
 
-  const counts = deduped.reduce((acc: Record<string, number>, e) => {
+  // ── 4. Simple gable detection & reclassification ───────────────────
+  const footprintPoly = args.footprintPoly || null;
+  const gableResult = detectSimpleGable(snappedPlanes, footprintPoly ?? undefined);
+
+  let finalEdges = deduped;
+  let gableReclassified = 0;
+
+  if (gableResult.isSimpleGable) {
+    const opposingPairSet = new Set(
+      gableResult.opposingPairs.map(([a, b]) => [a, b].sort().join(","))
+    );
+
+    finalEdges = deduped.map((e) => {
+      if (e.edge_type === "hip" || e.edge_type === "valley") {
+        // If this shared edge is between two opposing planes → ridge
+        if (e.adjacent_plane_ids.length === 2) {
+          const pairKey = e.adjacent_plane_ids.slice().sort().join(",");
+          if (opposingPairSet.has(pairKey)) {
+            gableReclassified++;
+            return {
+              ...e,
+              edge_type: "ridge" as const,
+              debug_reason: `simple_gable_reclassified: was ${e.edge_type} → ridge (opposing pair); ${e.debug_reason}`,
+            };
+          }
+        }
+        // Otherwise force to unknown (gable roofs have no hips/valleys)
+        gableReclassified++;
+        return {
+          ...e,
+          edge_type: "unknown" as const,
+          confidence: 0.30,
+          debug_reason: `simple_gable_rejected: was ${e.edge_type} → unknown (no reflex corners); ${e.debug_reason}`,
+        };
+      }
+      return e;
+    });
+  }
+
+  console.log("[SIMPLE_GABLE_CLASSIFICATION]", JSON.stringify({
+    enabled: gableResult.isSimpleGable,
+    plane_count: planes.length,
+    opposing_slope_pairs: gableResult.opposingPairs,
+    reason: gableResult.reason,
+    reclassified_count: gableReclassified,
+    forced_hip_zero: gableResult.isSimpleGable,
+    forced_valley_zero: gableResult.isSimpleGable,
+  }));
+
+  const counts = finalEdges.reduce((acc: Record<string, number>, e) => {
     acc[e.edge_type] = (acc[e.edge_type] || 0) + 1;
     return acc;
   }, {});
+
+  // QA: if simple gable but hip/valley still > 0, flag it
+  const gableQaBlock = gableResult.isSimpleGable &&
+    ((counts["hip"] || 0) > 0 || (counts["valley"] || 0) > 0);
 
   const invalidRidgeHints = ridgeHints.filter((r) => {
     const hintAngle = angleDeg(r.p1, r.p2);
@@ -624,8 +761,10 @@ export function classifyPlaneEdges(args: {
     shared_edges: sharedEdges.length,
     exterior_edges: exteriorEdges.length,
     invalid_edges: invalidEdges,
-    final_edges: deduped.length,
+    final_edges: finalEdges.length,
     counts,
+    simple_gable: gableResult.isSimpleGable,
+    simple_gable_qa_block: gableQaBlock,
     ridge_hints: ridgeHints.length,
     invalid_ridge_hints: invalidRidgeHints.length,
     proximity_details: proximityMatches.map((m) => ({
@@ -637,10 +776,12 @@ export function classifyPlaneEdges(args: {
   }));
 
   return {
-    edges: deduped,
+    edges: finalEdges,
+    simple_gable: gableResult.isSimpleGable,
+    simple_gable_qa_block: gableQaBlock,
     debug: {
       plane_count: planes.length,
-      edge_count: deduped.length,
+      edge_count: finalEdges.length,
       total_edges_in_map: edgeMap.size,
       exact_shared_edges: exactSharedKeys.size,
       proximity_shared_edges: proximityMatches.length,
@@ -648,6 +789,9 @@ export function classifyPlaneEdges(args: {
       exterior_edges: exteriorEdges.length,
       invalid_edges: invalidEdges,
       counts,
+      simple_gable: gableResult.isSimpleGable,
+      simple_gable_reason: gableResult.reason,
+      simple_gable_reclassified: gableReclassified,
       ridge_hints_total: ridgeHints.length,
       invalid_ridge_hints_count: invalidRidgeHints.length,
       invalid_ridge_hints: invalidRidgeHints.map((r) => ({
