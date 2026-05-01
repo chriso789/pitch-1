@@ -1033,7 +1033,7 @@ async function processJob(input: any) {
               });
             }
             cleanEdges.push(...splitRidgeEdges);
-            topologySource = solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive";
+            topologySource = solverMode === "footprint_solver" ? "footprint_solver" : "ridge_split_recursive";
           }
         }
       } catch (e) {
