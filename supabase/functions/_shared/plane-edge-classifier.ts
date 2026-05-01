@@ -1,7 +1,7 @@
-// Plane-tied edge classifier.
-// Builds shared-boundary adjacency from final planes, classifies edges as
-// ridge/valley/hip/eave/rake from plane adjacency + slope direction, and
-// validates ridge hints against actual plane boundaries.
+// Plane-tied edge classifier — TRUE TOPOLOGY VERSION.
+// Builds shared-boundary adjacency via canonical edge map (vertex-snapped),
+// then classifies edges as ridge/valley/hip/eave/rake from plane adjacency
+// + slope direction.
 
 export type Pt = { x: number; y: number };
 
@@ -33,21 +33,42 @@ export type ClassifiedEdge = {
   debug_reason: string;
 };
 
-const EPS = 4;
+// ── Grid snap: all vertices round to nearest GRID px ────────────────────
+const GRID = 2;
+
+function snap(v: Pt): Pt {
+  return {
+    x: Math.round(v.x / GRID) * GRID,
+    y: Math.round(v.y / GRID) * GRID,
+  };
+}
+
+function vtxKey(p: Pt): string {
+  return `${p.x}:${p.y}`;
+}
+
+/** Canonical edge key — sorted endpoints so A→B === B→A */
+function canonEdgeKey(a: Pt, b: Pt): string {
+  const ka = vtxKey(a);
+  const kb = vtxKey(b);
+  return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+}
 
 function pid(p: PlaneIn, i: number): string {
   return String(p.id ?? p.plane_index ?? i);
 }
 
-function sub(a: Pt, b: Pt): Pt { return { x: a.x - b.x, y: a.y - b.y }; }
-function add(a: Pt, b: Pt): Pt { return { x: a.x + b.x, y: a.y + b.y }; }
-function mul(a: Pt, s: number): Pt { return { x: a.x * s, y: a.y * s }; }
-function dot(a: Pt, b: Pt): number { return a.x * b.x + a.y * b.y; }
-function dist(a: Pt, b: Pt): number { return Math.hypot(a.x - b.x, a.y - b.y); }
+function dist(a: Pt, b: Pt): number {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
 function norm(v: Pt): Pt {
   const m = Math.hypot(v.x, v.y) || 1;
   return { x: v.x / m, y: v.y / m };
 }
+
+function sub(a: Pt, b: Pt): Pt { return { x: a.x - b.x, y: a.y - b.y }; }
+function dot(a: Pt, b: Pt): number { return a.x * b.x + a.y * b.y; }
 
 function centroid(poly: Pt[]): Pt {
   let x = 0, y = 0;
@@ -58,43 +79,6 @@ function centroid(poly: Pt[]): Pt {
 
 function midpoint(a: Pt, b: Pt): Pt {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
-
-function planeEdges(poly: Pt[]): [Pt, Pt][] {
-  const out: [Pt, Pt][] = [];
-  for (let i = 0; i < poly.length; i++) {
-    out.push([poly[i], poly[(i + 1) % poly.length]]);
-  }
-  return out;
-}
-
-function pointToSegmentDistance(p: Pt, a: Pt, b: Pt): number {
-  const ab = sub(b, a);
-  const ap = sub(p, a);
-  const t = Math.max(0, Math.min(1, dot(ap, ab) / Math.max(dot(ab, ab), 1e-9)));
-  const q = add(a, mul(ab, t));
-  return dist(p, q);
-}
-
-function projectT(p: Pt, a: Pt, b: Pt): number {
-  const ab = sub(b, a);
-  return dot(sub(p, a), ab) / Math.max(dot(ab, ab), 1e-9);
-}
-
-function sharedSegment(a1: Pt, a2: Pt, b1: Pt, b2: Pt): [Pt, Pt] | null {
-  if (pointToSegmentDistance(b1, a1, a2) > EPS) return null;
-  if (pointToSegmentDistance(b2, a1, a2) > EPS) return null;
-
-  const t1 = projectT(b1, a1, a2);
-  const t2 = projectT(b2, a1, a2);
-
-  const lo = Math.max(0, Math.min(t1, t2));
-  const hi = Math.min(1, Math.max(t1, t2));
-
-  if (hi - lo <= 0.05) return null;
-
-  const ab = sub(a2, a1);
-  return [add(a1, mul(ab, lo)), add(a1, mul(ab, hi))];
 }
 
 function angleDeg(a: Pt, b: Pt): number {
@@ -112,10 +96,59 @@ function azDeg(p: PlaneIn): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;
 }
 
-function downVectorFromAzimuth(deg: number): Pt {
-  const r = deg * Math.PI / 180;
-  return { x: Math.sin(r), y: -Math.cos(r) };
+function pointToSegmentDistance(p: Pt, a: Pt, b: Pt): number {
+  const ab = sub(b, a);
+  const ap = sub(p, a);
+  const t = Math.max(0, Math.min(1, dot(ap, ab) / Math.max(dot(ab, ab), 1e-9)));
+  const q = { x: a.x + ab.x * t, y: a.y + ab.y * t };
+  return dist(p, q);
 }
+
+// ── Step 1: Snap all plane vertices to grid ─────────────────────────────
+function snapPolygon(poly: Pt[]): Pt[] {
+  const out: Pt[] = [];
+  for (const p of poly) {
+    const s = snap(p);
+    // dedupe consecutive
+    if (out.length > 0 && vtxKey(out[out.length - 1]) === vtxKey(s)) continue;
+    out.push(s);
+  }
+  // close-loop dedupe
+  if (out.length > 1 && vtxKey(out[0]) === vtxKey(out[out.length - 1])) out.pop();
+  return out;
+}
+
+// ── Step 2+3: Build canonical edge map across all planes ────────────────
+interface EdgeEntry {
+  key: string;
+  a: Pt;
+  b: Pt;
+  planeIds: Set<string>;
+}
+
+function buildEdgeMap(planes: { planeId: string; poly: Pt[] }[]): Map<string, EdgeEntry> {
+  const map = new Map<string, EdgeEntry>();
+
+  for (const { planeId, poly } of planes) {
+    for (let i = 0; i < poly.length; i++) {
+      const a = poly[i];
+      const b = poly[(i + 1) % poly.length];
+      if (vtxKey(a) === vtxKey(b)) continue; // zero-length edge
+
+      const key = canonEdgeKey(a, b);
+      let entry = map.get(key);
+      if (!entry) {
+        entry = { key, a, b, planeIds: new Set() };
+        map.set(key, entry);
+      }
+      entry.planeIds.add(planeId);
+    }
+  }
+
+  return map;
+}
+
+// ── Edge classification ─────────────────────────────────────────────────
 
 function classifySharedBoundary(args: {
   a: PlaneIn;
@@ -129,83 +162,69 @@ function classifySharedBoundary(args: {
   const { a, b, aId, bId, segment, ridgeHints, edgeIndex } = args;
   const [p1, p2] = segment;
   const mid = midpoint(p1, p2);
-
   const ca = centroid(a.polygon_px);
   const cb = centroid(b.polygon_px);
-
   const fromEdgeToA = norm(sub(ca, mid));
   const fromEdgeToB = norm(sub(cb, mid));
 
   const azA = azDeg(a);
   const azB = azDeg(b);
-
   const boundaryAngle = angleDeg(p1, p2);
 
   const alignedHint = ridgeHints.find((r) => {
     const hintAngle = angleDeg(r.p1, r.p2);
-    const angleOk = angleDiff180(boundaryAngle, hintAngle) <= 12;
+    const angleOk = angleDiff180(boundaryAngle, hintAngle) <= 15;
     const d1 = pointToSegmentDistance(p1, r.p1, r.p2);
     const d2 = pointToSegmentDistance(p2, r.p1, r.p2);
-    return angleOk && Math.max(d1, d2) <= 12;
+    return angleOk && Math.max(d1, d2) <= 18;
   });
 
   if (azA !== null && azB !== null) {
-    const downA = downVectorFromAzimuth(azA);
-    const downB = downVectorFromAzimuth(azB);
+    const r2d = (d: number) => d * Math.PI / 180;
+    const downA = { x: Math.sin(r2d(azA)), y: -Math.cos(r2d(azA)) };
+    const downB = { x: Math.sin(r2d(azB)), y: -Math.cos(r2d(azB)) };
 
     const aAway = dot(downA, fromEdgeToA) > 0.15;
     const bAway = dot(downB, fromEdgeToB) > 0.15;
-
     const aToward = dot(downA, fromEdgeToA) < -0.15;
     const bToward = dot(downB, fromEdgeToB) < -0.15;
 
     if (aAway && bAway) {
       return {
-        id: `E${edgeIndex}`,
-        edge_type: "ridge",
-        line_px: [p1, p2],
-        adjacent_plane_ids: [aId, bId],
-        confidence: alignedHint ? 0.95 : 0.85,
+        id: `E${edgeIndex}`, edge_type: "ridge", line_px: [p1, p2],
+        adjacent_plane_ids: [aId, bId], confidence: alignedHint ? 0.95 : 0.85,
         source: "plane_edge_classifier_v1",
         debug_reason: alignedHint
-          ? "shared boundary slopes away on both sides and matches ridge hint"
-          : "shared boundary slopes away on both sides",
+          ? "shared edge slopes away both sides + ridge hint"
+          : "shared edge slopes away both sides",
       };
     }
-
     if (aToward && bToward) {
       return {
-        id: `E${edgeIndex}`,
-        edge_type: "valley",
-        line_px: [p1, p2],
-        adjacent_plane_ids: [aId, bId],
-        confidence: 0.9,
+        id: `E${edgeIndex}`, edge_type: "valley", line_px: [p1, p2],
+        adjacent_plane_ids: [aId, bId], confidence: 0.9,
         source: "plane_edge_classifier_v1",
-        debug_reason: "shared boundary slopes toward from both sides",
+        debug_reason: "shared edge slopes toward from both sides",
       };
     }
-
     return {
-      id: `E${edgeIndex}`,
-      edge_type: "hip",
-      line_px: [p1, p2],
-      adjacent_plane_ids: [aId, bId],
-      confidence: 0.74,
+      id: `E${edgeIndex}`, edge_type: "hip", line_px: [p1, p2],
+      adjacent_plane_ids: [aId, bId], confidence: 0.74,
       source: "plane_edge_classifier_v1",
-      debug_reason: "shared boundary has mixed downslope flow",
+      debug_reason: "shared edge has mixed downslope flow",
     };
   }
 
   return {
     id: `E${edgeIndex}`,
-    edge_type: alignedHint ? "ridge" : "unknown",
+    edge_type: alignedHint ? "ridge" : "hip",
     line_px: [p1, p2],
     adjacent_plane_ids: [aId, bId],
-    confidence: alignedHint ? 0.7 : 0.45,
+    confidence: alignedHint ? 0.7 : 0.5,
     source: "plane_edge_classifier_v1",
     debug_reason: alignedHint
-      ? "missing azimuth but ridge hint aligns with shared plane boundary"
-      : "missing azimuth and no validated ridge hint",
+      ? "missing azimuth but ridge hint aligns with shared edge"
+      : "missing azimuth — defaulting shared edge to hip",
   };
 }
 
@@ -217,7 +236,6 @@ function classifyExteriorEdge(args: {
 }): ClassifiedEdge {
   const { plane, planeId, edge, edgeIndex } = args;
   const [p1, p2] = edge;
-
   const az = azDeg(plane);
   const eAngle = angleDeg(p1, p2);
 
@@ -227,7 +245,6 @@ function classifyExteriorEdge(args: {
   if (az !== null) {
     const downslopeAxis = ((az % 180) + 180) % 180;
     const d = angleDiff180(eAngle, downslopeAxis);
-
     if (d <= 30) {
       edgeType = "rake";
       reason = "exterior edge parallel to downslope axis";
@@ -238,25 +255,13 @@ function classifyExteriorEdge(args: {
   }
 
   return {
-    id: `E${edgeIndex}`,
-    edge_type: edgeType,
-    line_px: [p1, p2],
-    adjacent_plane_ids: [planeId],
-    confidence: az !== null ? 0.78 : 0.55,
-    source: "plane_edge_classifier_v1",
-    debug_reason: reason,
+    id: `E${edgeIndex}`, edge_type: edgeType, line_px: [p1, p2],
+    adjacent_plane_ids: [planeId], confidence: az !== null ? 0.78 : 0.55,
+    source: "plane_edge_classifier_v1", debug_reason: reason,
   };
 }
 
-function edgeKey(e: ClassifiedEdge): string {
-  const a = e.line_px[0];
-  const b = e.line_px[e.line_px.length - 1];
-  const pts = [
-    `${Math.round(a.x)}:${Math.round(a.y)}`,
-    `${Math.round(b.x)}:${Math.round(b.y)}`,
-  ].sort();
-  return `${e.edge_type}:${pts[0]}-${pts[1]}:${e.adjacent_plane_ids.slice().sort().join(",")}`;
-}
+// ── Main entry ──────────────────────────────────────────────────────────
 
 export function classifyPlaneEdges(args: {
   planes: PlaneIn[];
@@ -265,82 +270,81 @@ export function classifyPlaneEdges(args: {
   const planes = args.planes || [];
   const ridgeHints = args.ridgeHints || [];
 
-  const sharedEdges: ClassifiedEdge[] = [];
+  // ── 1. Snap every plane polygon to the grid ───────────────────────
+  const snappedPlanes = planes.map((p, i) => ({
+    planeId: pid(p, i),
+    poly: snapPolygon(p.polygon_px || []),
+    original: p,
+  }));
+
+  // ── 2. Build global canonical edge map ────────────────────────────
+  const edgeMap = buildEdgeMap(snappedPlanes);
+
   let edgeIndex = 0;
-
-  // 1. Shared two-plane boundaries.
-  for (let i = 0; i < planes.length; i++) {
-    const a = planes[i];
-    const aId = pid(a, i);
-
-    for (let j = i + 1; j < planes.length; j++) {
-      const b = planes[j];
-      const bId = pid(b, j);
-
-      for (const ea of planeEdges(a.polygon_px || [])) {
-        for (const eb of planeEdges(b.polygon_px || [])) {
-          const shared = sharedSegment(ea[0], ea[1], eb[0], eb[1]);
-          if (!shared) continue;
-          if (dist(shared[0], shared[1]) < 5) continue;
-
-          sharedEdges.push(
-            classifySharedBoundary({
-              a, b, aId, bId,
-              segment: shared,
-              ridgeHints,
-              edgeIndex: edgeIndex++,
-            }),
-          );
-        }
-      }
-    }
-  }
-
-  // 2. Exterior one-plane edges (not coincident with any shared boundary).
+  const sharedEdges: ClassifiedEdge[] = [];
   const exteriorEdges: ClassifiedEdge[] = [];
+  let invalidEdges = 0;
 
-  for (let i = 0; i < planes.length; i++) {
-    const p = planes[i];
-    const pId = pid(p, i);
+  const planeById = new Map(snappedPlanes.map((sp) => [sp.planeId, sp]));
 
-    for (const e of planeEdges(p.polygon_px || [])) {
-      if (dist(e[0], e[1]) < 5) continue;
+  // ── 3. Classify each edge ─────────────────────────────────────────
+  for (const entry of edgeMap.values()) {
+    const segLen = dist(entry.a, entry.b);
+    if (segLen < 4) continue; // skip tiny edges
 
-      let isShared = false;
-      for (const s of sharedEdges) {
-        const ss = s.line_px as [Pt, Pt];
-        const shared = sharedSegment(e[0], e[1], ss[0], ss[1]);
-        if (shared && dist(shared[0], shared[1]) >= 5) {
-          isShared = true;
-          break;
-        }
-      }
-      if (isShared) continue;
+    const planeIds = Array.from(entry.planeIds);
 
-      exteriorEdges.push(
-        classifyExteriorEdge({
-          plane: p,
-          planeId: pId,
-          edge: e,
+    if (planeIds.length === 2) {
+      // SHARED BOUNDARY — classify as ridge/hip/valley
+      const spA = planeById.get(planeIds[0])!;
+      const spB = planeById.get(planeIds[1])!;
+      sharedEdges.push(
+        classifySharedBoundary({
+          a: spA.original,
+          b: spB.original,
+          aId: planeIds[0],
+          bId: planeIds[1],
+          segment: [entry.a, entry.b],
+          ridgeHints,
           edgeIndex: edgeIndex++,
         }),
       );
+    } else if (planeIds.length === 1) {
+      // EXTERIOR — eave or rake
+      const sp = planeById.get(planeIds[0])!;
+      exteriorEdges.push(
+        classifyExteriorEdge({
+          plane: sp.original,
+          planeId: planeIds[0],
+          edge: [entry.a, entry.b],
+          edgeIndex: edgeIndex++,
+        }),
+      );
+    } else {
+      // >2 planes sharing one edge = invalid topology
+      invalidEdges++;
     }
   }
 
-  // Reject any ridge edge not bounded by exactly 2 planes.
-  const validated: ClassifiedEdge[] = [];
-  for (const e of [...sharedEdges, ...exteriorEdges]) {
-    if (e.edge_type === "ridge" && e.adjacent_plane_ids.length !== 2) {
-      continue;
-    }
-    validated.push(e);
-  }
+  // Combine and dedupe
+  const all = [...sharedEdges, ...exteriorEdges];
 
-  const deduped: ClassifiedEdge[] = [];
+  // Reject any ridge not bounded by exactly 2 planes
+  const validated = all.filter(
+    (e) => !(e.edge_type === "ridge" && e.adjacent_plane_ids.length !== 2),
+  );
+
+  // Dedupe by rounded endpoint + type + planes
   const seen = new Set<string>();
+  const deduped: ClassifiedEdge[] = [];
   for (const e of validated) {
-    const key = edgeKey(e);
+    const a = e.line_px[0];
+    const b = e.line_px[e.line_px.length - 1];
+    const pts = [
+      `${Math.round(a.x)}:${Math.round(a.y)}`,
+      `${Math.round(b.x)}:${Math.round(b.y)}`,
+    ].sort();
+    const key = `${e.edge_type}:${pts[0]}-${pts[1]}:${e.adjacent_plane_ids.slice().sort().join(",")}`;
     if (seen.has(key)) continue;
     seen.add(key);
     deduped.push(e);
@@ -362,27 +366,32 @@ export function classifyPlaneEdges(args: {
     });
   });
 
-  console.log("[PLANE_EDGE_CLASSIFIER]", {
+  console.log("[PLANE_EDGE_CLASSIFIER]", JSON.stringify({
     planes: planes.length,
-    edges: deduped.length,
+    total_edges_in_map: edgeMap.size,
+    shared_edges: sharedEdges.length,
+    exterior_edges: exteriorEdges.length,
+    invalid_edges: invalidEdges,
+    final_edges: deduped.length,
     counts,
     ridge_hints: ridgeHints.length,
     invalid_ridge_hints: invalidRidgeHints.length,
-  });
+  }));
 
   return {
     edges: deduped,
     debug: {
       plane_count: planes.length,
       edge_count: deduped.length,
+      total_edges_in_map: edgeMap.size,
+      shared_edges: sharedEdges.length,
+      exterior_edges: exteriorEdges.length,
+      invalid_edges: invalidEdges,
       counts,
       ridge_hints_total: ridgeHints.length,
       invalid_ridge_hints_count: invalidRidgeHints.length,
       invalid_ridge_hints: invalidRidgeHints.map((r) => ({
-        id: r.id,
-        score: r.score,
-        p1: r.p1,
-        p2: r.p2,
+        id: r.id, score: r.score, p1: r.p1, p2: r.p2,
       })),
     },
   };
