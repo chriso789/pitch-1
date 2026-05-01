@@ -1485,123 +1485,94 @@ async function processJob(input: any) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
     }
 
-    // ── INTERIOR SHARED-BOUNDARY CONSTRUCTION (FUZZY) ──
-    // If the canonical edge map produced 0 shared edges but we have 2+ planes,
-    // the grid-snap wasn't tight enough. Fall back to proximity-based edge
-    // matching: for each edge segment of plane A, find the closest parallel
-    // segment in plane B (within FUZZY_SNAP px). If found, emit a shared
-    // interior edge and classify it as ridge/hip/valley.
+    // ── STRICT TOPOLOGY + RIDGE ALIGNMENT QA ──
+    // No fuzzy/proximity interior boundaries are allowed to create structural
+    // lengths. Structural edges must be exact two-plane graph edges from the
+    // canonical plane-edge classifier, then ridges must align to visual roof
+    // ridge candidates instead of perimeter/eave artifacts.
     {
-      const classifierSharedCount = planeEdgeClassifierDebug?.shared_edges ?? 0;
-      if (cleanPlanes.length >= 2 && classifierSharedCount === 0) {
-        const FUZZY_SNAP = 8; // px tolerance for "close enough" edges
-        const interiorEdges: RoofEdge[] = [];
-        const solarAz = dominantSolarAzimuth(solarData);
-
-        for (let ai = 0; ai < cleanPlanes.length; ai++) {
-          const polyA = cleanPlanes[ai].polygon_px || [];
-          for (let bi = ai + 1; bi < cleanPlanes.length; bi++) {
-            const polyB = cleanPlanes[bi].polygon_px || [];
-            // For each edge of A, find closest parallel edge of B
-            for (let ea = 0; ea < polyA.length; ea++) {
-              const a1 = polyA[ea], a2 = polyA[(ea + 1) % polyA.length];
-              const aLen = Math.hypot(a2.x - a1.x, a2.y - a1.y);
-              if (aLen < 6) continue;
-              const aAngle = Math.atan2(a2.y - a1.y, a2.x - a1.x) * 180 / Math.PI;
-              const aMid = { x: (a1.x + a2.x) / 2, y: (a1.y + a2.y) / 2 };
-
-              for (let eb = 0; eb < polyB.length; eb++) {
-                const b1 = polyB[eb], b2 = polyB[(eb + 1) % polyB.length];
-                const bLen = Math.hypot(b2.x - b1.x, b2.y - b1.y);
-                if (bLen < 6) continue;
-                const bAngle = Math.atan2(b2.y - b1.y, b2.x - b1.x) * 180 / Math.PI;
-                // Check parallel (within 15°)
-                const angleDiffVal = Math.abs(((aAngle - bAngle) % 180 + 180) % 180);
-                const isParallel = Math.min(angleDiffVal, 180 - angleDiffVal) <= 15;
-                if (!isParallel) continue;
-                // Check proximity: midpoints within FUZZY_SNAP
-                const bMid = { x: (b1.x + b2.x) / 2, y: (b1.y + b2.y) / 2 };
-                const midDist = Math.hypot(aMid.x - bMid.x, aMid.y - bMid.y);
-                if (midDist > FUZZY_SNAP + Math.max(aLen, bLen) * 0.3) continue;
-                // Check endpoint proximity
-                const d11 = Math.hypot(a1.x - b1.x, a1.y - b1.y);
-                const d12 = Math.hypot(a1.x - b2.x, a1.y - b2.y);
-                const d21 = Math.hypot(a2.x - b1.x, a2.y - b1.y);
-                const d22 = Math.hypot(a2.x - b2.x, a2.y - b2.y);
-                const minEndDist = Math.min(d11 + d22, d12 + d21) / 2;
-                if (minEndDist > FUZZY_SNAP) continue;
-
-                // Found a shared boundary! Classify it.
-                const sharedMid = { x: (aMid.x + bMid.x) / 2, y: (aMid.y + bMid.y) / 2 };
-                const sharedP1 = d11 + d22 <= d12 + d21
-                  ? { x: (a1.x + b1.x) / 2, y: (a1.y + b1.y) / 2 }
-                  : { x: (a1.x + b2.x) / 2, y: (a1.y + b2.y) / 2 };
-                const sharedP2 = d11 + d22 <= d12 + d21
-                  ? { x: (a2.x + b2.x) / 2, y: (a2.y + b2.y) / 2 }
-                  : { x: (a2.x + b1.x) / 2, y: (a2.y + b1.y) / 2 };
-
-                // Classify: use solar azimuth to determine ridge vs hip vs valley
-                let edgeType: "ridge" | "hip" | "valley" = "ridge";
-                if (solarAz !== null) {
-                  const edgeAngle180 = ((aAngle % 180) + 180) % 180;
-                  const downslopeAxis = ((solarAz % 180) + 180) % 180;
-                  const diff = Math.abs(edgeAngle180 - downslopeAxis);
-                  const perpDiff = Math.min(diff, 180 - diff);
-                  if (perpDiff <= 25) {
-                    // Edge is parallel to downslope → hip or valley
-                    const centroidA = { x: polyA.reduce((s, p) => s + p.x, 0) / polyA.length, y: polyA.reduce((s, p) => s + p.y, 0) / polyA.length };
-                    const centroidB = { x: polyB.reduce((s, p) => s + p.x, 0) / polyB.length, y: polyB.reduce((s, p) => s + p.y, 0) / polyB.length };
-                    const cross = (centroidA.x - sharedMid.x) * (centroidB.y - sharedMid.y) - (centroidA.y - sharedMid.y) * (centroidB.x - sharedMid.x);
-                    edgeType = cross > 0 ? "hip" : "valley";
-                  } else {
-                    edgeType = "ridge";
-                  }
-                }
-
-                interiorEdges.push({
-                  edge_type: edgeType,
-                  line_px: [sharedP1, sharedP2],
-                  confidence: 0.72,
-                  source: "interior_fuzzy_shared_boundary",
-                });
-              }
-            }
-          }
-        }
-
-        // Dedupe interior edges by proximity
-        const dedupedInterior: RoofEdge[] = [];
-        for (const e of interiorEdges) {
-          const isDup = dedupedInterior.some((d) => {
-            const dm = { x: (d.line_px[0].x + d.line_px[1].x) / 2, y: (d.line_px[0].y + d.line_px[1].y) / 2 };
-            const em = { x: (e.line_px[0].x + e.line_px[1].x) / 2, y: (e.line_px[0].y + e.line_px[1].y) / 2 };
-            return Math.hypot(dm.x - em.x, dm.y - em.y) < 6 && d.edge_type === e.edge_type;
-          });
-          if (!isDup) dedupedInterior.push(e);
-        }
-
-        if (dedupedInterior.length > 0) {
-          cleanEdges.push(...dedupedInterior);
-        }
-
-        const interiorByType: Record<string, number> = {};
-        for (const e of dedupedInterior) interiorByType[e.edge_type] = (interiorByType[e.edge_type] || 0) + 1;
-
-        console.log("[INTERIOR_EDGE_BUILD]", JSON.stringify({
-          planes: cleanPlanes.length,
-          total_edges: cleanEdges.length,
-          exterior_edges: cleanEdges.filter((e) => e.edge_type === "eave" || e.edge_type === "rake").length,
-          shared_edges: dedupedInterior.length,
-          classified_ridge: interiorByType.ridge ?? 0,
-          classified_hip: interiorByType.hip ?? 0,
-          classified_valley: interiorByType.valley ?? 0,
-        }));
-
-        if (dedupedInterior.length === 0) {
-          console.error("[INTERIOR_EDGE_BUILD] planes_have_no_shared_boundaries: planes=" + cleanPlanes.length +
-            " — no parallel proximate edges found between any plane pair");
-        }
+      const strictFailures: string[] = [];
+      const sharedEdges = Number(planeEdgeClassifierDebug?.shared_edges ?? 0);
+      const invalidEdges = Number(planeEdgeClassifierDebug?.invalid_edges ?? 0);
+      if (cleanPlanes.length > 2 && sharedEdges < 2) {
+        strictFailures.push("insufficient_shared_edges");
       }
+      if (invalidEdges > 0) {
+        strictFailures.push("invalid_plane_edge_topology");
+      }
+
+      const ridgeCandidates = (topLevelFilteredRidges ?? [])
+        .map((r: any) => ({ p1: r.p1 as Point, p2: r.p2 as Point }))
+        .filter((r: any) => r.p1 && r.p2 && Number.isFinite(r.p1.x) && Number.isFinite(r.p1.y) && Number.isFinite(r.p2.x) && Number.isFinite(r.p2.y));
+      const solarAxis = dominantSolarAzimuth(solarData);
+      const roofBbox = bboxOf(footprint);
+      const roofCenter = roofBbox ? { x: (roofBbox.minX + roofBbox.maxX) / 2, y: (roofBbox.minY + roofBbox.maxY) / 2 } : null;
+      const ridgeEdgesBefore = cleanEdges.filter((e) => e.edge_type === "ridge").length;
+      let rejectedFuzzyRidges = 0;
+      let rejectedMisalignedRidges = 0;
+
+      cleanEdges = cleanEdges.map((edge) => {
+        const isStructural = edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley";
+        if (!isStructural) return edge;
+        const source = String(edge.source || "");
+        const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
+        const p1 = edge.line_px?.[0];
+        const p2 = edge.line_px?.[edge.line_px.length - 1];
+        const mid = p1 && p2 ? { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 } : null;
+        const strictShared = source === "plane_edge_classifier_v1" && adjacentCount === 2;
+        const insideFootprint = !!mid && pointInPolygon(mid, footprint);
+        if (source.toLowerCase().includes("fuzzy") || !strictShared || !insideFootprint) {
+          if (edge.edge_type === "ridge") rejectedFuzzyRidges++;
+          return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.25), debug_reason: "not_strict_two_plane_graph_edge" };
+        }
+        if (edge.edge_type !== "ridge" || !p1 || !p2) return edge;
+
+        const edgeAngle = lineAngle180(p1, p2);
+        let candidateDistance = Number.POSITIVE_INFINITY;
+        let candidateAngleDelta = Number.POSITIVE_INFINITY;
+        for (const candidate of ridgeCandidates) {
+          const cAngle = lineAngle180(candidate.p1, candidate.p2);
+          const d1 = pointToSegmentDistancePx(p1, candidate.p1, candidate.p2);
+          const d2 = pointToSegmentDistancePx(p2, candidate.p1, candidate.p2);
+          const midDist = mid ? pointToSegmentDistancePx(mid, candidate.p1, candidate.p2) : Number.POSITIVE_INFINITY;
+          candidateDistance = Math.min(candidateDistance, Math.min(Math.max(d1, d2), midDist));
+          candidateAngleDelta = Math.min(candidateAngleDelta, angleDiff180(edgeAngle, cAngle));
+        }
+        const solarAngleDelta = solarAxis == null ? Number.POSITIVE_INFINITY : angleDiff180(edgeAngle, ((solarAxis % 180) + 180) % 180);
+        const hasVisualCandidate = ridgeCandidates.length > 0;
+        const distanceOk = !hasVisualCandidate || candidateDistance <= 20;
+        const angleOk = hasVisualCandidate ? candidateAngleDelta <= 25 : solarAngleDelta <= 20;
+        let centerOffset = 0;
+        if (roofBbox && roofCenter && mid) {
+          const horizontalDelta = Math.min(edgeAngle, 180 - edgeAngle);
+          const verticalDelta = Math.abs(edgeAngle - 90);
+          if (horizontalDelta <= 45) centerOffset = Math.abs(mid.y - roofCenter.y) / Math.max(roofBbox.height, 1);
+          else if (verticalDelta <= 45) centerOffset = Math.abs(mid.x - roofCenter.x) / Math.max(roofBbox.width, 1);
+          else centerOffset = Math.hypot(mid.x - roofCenter.x, mid.y - roofCenter.y) / Math.max(roofBbox.width, roofBbox.height, 1);
+        }
+        if (!distanceOk || !angleOk || centerOffset > 0.35) {
+          rejectedMisalignedRidges++;
+          return { ...edge, edge_type: "unknown_interior" as const, confidence: Math.min(edge.confidence, 0.35), debug_reason: "ridge_edges_not_aligned_to_roof_structure" };
+        }
+        return edge;
+      });
+
+      const finalRidgePx = cleanEdges
+        .filter((e) => e.edge_type === "ridge")
+        .reduce((sum, e) => sum + polylineLengthPx(e.line_px || []), 0);
+      ridgeAlignmentDebug = {
+        ridge_edges_before: ridgeEdgesBefore,
+        ridge_edges_after: cleanEdges.filter((e) => e.edge_type === "ridge").length,
+        rejected_fuzzy_ridges: rejectedFuzzyRidges,
+        rejected_misaligned_ridges: rejectedMisalignedRidges,
+        final_ridge_ft: round(finalRidgePx * actualFpp, 2),
+      };
+      if (ridgeEdgesBefore > 0 && ridgeAlignmentDebug.ridge_edges_after === 0) {
+        strictFailures.push("ridge_edges_not_aligned_to_roof_structure");
+      }
+      (globalThis as any).__strictTopologyFailures = strictFailures;
+      (globalThis as any).__ridgeAlignmentDebug = ridgeAlignmentDebug;
+      console.log("[RIDGE_ALIGNMENT_QA]", JSON.stringify(ridgeAlignmentDebug));
     }
 
     // Skip final coverage gate if edge classification already ran — it would
