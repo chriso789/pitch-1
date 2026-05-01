@@ -61,6 +61,8 @@ export interface SnapOptions {
   maxSnapPx?: number;         // 12-20 typical
   minEdgeMag?: number;        // sobel threshold to consider as "real edge"
   inwardBiasPx?: number;      // prefer pulling vertex slightly inward
+  // Optional clamp box. Snapped vertices are kept inside this rect (pixels).
+  clampBbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
 }
 
 export interface SnapResult {
@@ -139,10 +141,11 @@ export function snapFootprintToEaves(
   raster: Raster | null,
   options: SnapOptions = {},
 ): SnapResult {
-  const opts: Required<SnapOptions> = {
+  const opts: Required<Omit<SnapOptions, "clampBbox">> & { clampBbox: SnapOptions["clampBbox"] } = {
     maxSnapPx: options.maxSnapPx ?? 16,
     minEdgeMag: options.minEdgeMag ?? 60,
     inwardBiasPx: options.inwardBiasPx ?? 1,
+    clampBbox: options.clampBbox ?? null,
   };
 
   if (!raster || !raster.data || footprint.length < 3) {
@@ -163,7 +166,14 @@ export function snapFootprintToEaves(
     const curr = footprint[i];
     const next = footprint[(i + 1) % footprint.length];
     const r = snapVertex(raster, prev, curr, next, opts);
-    out.push(r.point);
+    let pt = r.point;
+    if (opts.clampBbox) {
+      pt = {
+        x: clamp(pt.x, opts.clampBbox.minX, opts.clampBbox.maxX),
+        y: clamp(pt.y, opts.clampBbox.minY, opts.clampBbox.maxY),
+      };
+    }
+    out.push(pt);
     if (r.moved > 0) {
       moved++;
       totalMove += r.moved;

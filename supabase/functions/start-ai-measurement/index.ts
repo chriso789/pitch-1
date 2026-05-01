@@ -703,9 +703,15 @@ async function processJob(input: any) {
     // Solar hull center mass. Conservative: 16 px max move, vegetation/shadow
     // pixels are skipped, and we record perimeter_off_eave_ratio for QA.
     let eaveSnapDebug: any = null;
+    let snappedFootprintBboxPx: any = null;
     if (footprint.length >= 3 && raster?.data) {
       try {
-        const snap = snapFootprintToEaves(footprint, raster as any, { maxSnapPx: 16 });
+        const snap = snapFootprintToEaves(footprint, raster as any, {
+          maxSnapPx: 20,
+          clampBbox: solarBboxPx
+            ? { minX: solarBboxPx.minX, minY: solarBboxPx.minY, maxX: solarBboxPx.maxX, maxY: solarBboxPx.maxY }
+            : null,
+        });
         eaveSnapDebug = {
           moved_count: snap.moved_count,
           total_vertices: snap.total_vertices,
@@ -713,8 +719,19 @@ async function processJob(input: any) {
           perimeter_off_eave_ratio: Number(snap.perimeter_off_eave_ratio.toFixed(3)),
         };
         (globalThis as any).__eaveSnapDebug = eaveSnapDebug;
-        console.log("[EAVE_SNAP]", JSON.stringify(eaveSnapDebug));
-        footprint = snap.snapped;
+        // Coverage gate: reject snap if it pulled footprint inside <75% of solar building bbox.
+        const snappedBb = bboxOf(snap.snapped);
+        const buildingArea = solarBboxPx?.area || 0;
+        const snappedArea = snappedBb ? snappedBb.width * snappedBb.height : 0;
+        const coverageVsBuilding = buildingArea > 0 ? snappedArea / buildingArea : 1;
+        if (buildingArea > 0 && coverageVsBuilding < 0.75) {
+          console.warn("[EAVE_SNAP] rejected — snapped bbox covers", coverageVsBuilding.toFixed(2), "of solar building bbox (<0.75)");
+          eaveSnapDebug.rejected_low_coverage = Number(coverageVsBuilding.toFixed(3));
+        } else {
+          footprint = snap.snapped;
+          snappedFootprintBboxPx = snappedBb;
+        }
+        console.log("[EAVE_SNAP]", JSON.stringify({ ...eaveSnapDebug, coverage_vs_building: Number(coverageVsBuilding.toFixed(3)) }));
       } catch (e) {
         console.warn("[EAVE_SNAP] failed:", (e as Error).message);
       }
@@ -1329,14 +1346,55 @@ async function processJob(input: any) {
     let roofTargetBboxPx: any = null;
     let roofTargetSource: string | null = null;
     try {
-      const targetCandidates = [
-        { source: "google_solar_segments_union", bbox: candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px },
-        { source: "google_solar_bbox", bbox: solarBboxPx },
-        { source: "imagery_unet_mask", bbox: candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px },
-      ].filter((t) => t.bbox && Number(t.bbox.width) > 0 && Number(t.bbox.height) > 0);
-      const preferredTarget = targetCandidates[0] || null;
-      roofTargetBboxPx = preferredTarget?.bbox || null;
-      roofTargetSource = preferredTarget?.source || null;
+      const hullBbox = candidates.find((c) => c.source === "google_solar_segments_hull" && c.bbox_px)?.bbox_px || null;
+      const unionBbox = candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px || null;
+      const unetBbox = candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px || null;
+      const buildingBbox = solarBboxPx;
+
+      const areaOf = (b: any) => (b && b.width > 0 && b.height > 0 ? b.width * b.height : 0);
+      const buildingArea = areaOf(buildingBbox);
+      const hullArea = areaOf(hullBbox);
+      const unionArea = areaOf(unionBbox);
+      const snappedArea = areaOf(snappedFootprintBboxPx);
+      const hullToBuildingRatio = buildingArea > 0 && hullArea > 0 ? hullArea / buildingArea : null;
+
+      // Selection priority per spec:
+      //   A. snapped_eave_bbox  (only if it covers ≥75% of building)
+      //   B. solar_building_bbox
+      //   C. full segment-union bbox
+      //   D. hull only when no better target exists AND hull/building ≥ 0.70
+      const ordered: Array<{ source: string; bbox: any }> = [];
+      if (snappedFootprintBboxPx && (buildingArea === 0 || snappedArea / buildingArea >= 0.75)) {
+        ordered.push({ source: "snapped_eave_bbox", bbox: snappedFootprintBboxPx });
+      }
+      if (buildingBbox && buildingArea > 0) {
+        ordered.push({ source: "solar_building_bbox", bbox: buildingBbox });
+      }
+      if (unionBbox && unionArea > 0) {
+        ordered.push({ source: "google_solar_segments_union", bbox: unionBbox });
+      }
+      if (hullBbox && hullArea > 0 && (hullToBuildingRatio == null || hullToBuildingRatio >= 0.70)) {
+        ordered.push({ source: "google_solar_segments_hull", bbox: hullBbox });
+      }
+      if (unetBbox) {
+        ordered.push({ source: "imagery_unet_mask", bbox: unetBbox });
+      }
+
+      const preferred = ordered[0] || null;
+      roofTargetBboxPx = preferred?.bbox || null;
+      roofTargetSource = preferred?.source || null;
+
+      console.log("[ROOF_TARGET_BBOX_SELECTION]", JSON.stringify({
+        solar_building_bbox_area: Math.round(buildingArea),
+        solar_segments_hull_bbox_area: Math.round(hullArea),
+        solar_segments_union_bbox_area: Math.round(unionArea),
+        snapped_eave_bbox_area: Math.round(snappedArea),
+        hull_to_building_ratio: hullToBuildingRatio == null ? null : Number(hullToBuildingRatio.toFixed(3)),
+        selected_target_source: roofTargetSource,
+        selected_target_bbox: roofTargetBboxPx,
+        candidates_considered: ordered.map((o) => o.source),
+      }));
+
       const geometryPoints = [
         ...cleanPlanes.flatMap((p) => p.polygon_px || []),
         ...cleanEdges.flatMap((e) => e.line_px || []),
@@ -1346,6 +1404,22 @@ async function processJob(input: any) {
         geometryPoints,
         roofTargetBboxPx,
       });
+
+      // Coverage / center-error QA gate.
+      const cov = Math.min(
+        Number(overlayCalibration.coverage_ratio_width || 0),
+        Number(overlayCalibration.coverage_ratio_height || 0),
+      );
+      const ctrErr = Number(overlayCalibration.center_error_px || 0);
+      const overlayFailures: string[] = [];
+      if (cov > 0 && cov < 0.75) {
+        overlayFailures.push(`overlay_coverage_${Math.round(cov * 100)}pct_lt_75pct`);
+      }
+      if (ctrErr > 60) {
+        overlayFailures.push(`overlay_center_error_${Math.round(ctrErr)}px_gt_60px`);
+      }
+      (globalThis as any).__overlaySanityFailures = overlayFailures;
+
       console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
         roof_target_source: roofTargetSource,
         geometry_bbox_px: overlayCalibration.geometry_bbox_px,
@@ -1496,6 +1570,10 @@ async function processJob(input: any) {
         : null;
 
     const sanityFailures: string[] = [];
+    {
+      const stashed = (globalThis as any).__overlaySanityFailures;
+      if (Array.isArray(stashed)) sanityFailures.push(...stashed);
+    }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
     }
