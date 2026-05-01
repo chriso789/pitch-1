@@ -1411,12 +1411,14 @@ async function processJob(input: any) {
         Number(overlayCalibration.coverage_ratio_height || 0),
       );
       const ctrErr = Number(overlayCalibration.center_error_px || 0);
+      const overlayFailures: string[] = [];
       if (cov > 0 && cov < 0.75) {
-        sanityFailures.push(`overlay_coverage_${Math.round(cov * 100)}pct_lt_75pct`);
+        overlayFailures.push(`overlay_coverage_${Math.round(cov * 100)}pct_lt_75pct`);
       }
       if (ctrErr > 60) {
-        sanityFailures.push(`overlay_center_error_${Math.round(ctrErr)}px_gt_60px`);
+        overlayFailures.push(`overlay_center_error_${Math.round(ctrErr)}px_gt_60px`);
       }
+      (globalThis as any).__overlaySanityFailures = overlayFailures;
 
       console.log("[OVERLAY_TRANSFORM]", JSON.stringify({
         roof_target_source: roofTargetSource,
