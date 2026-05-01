@@ -19,6 +19,7 @@ import {
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
 import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
 import { solvePlanesFromFootprint } from "../_shared/footprint-plane-solver.ts";
+import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 
