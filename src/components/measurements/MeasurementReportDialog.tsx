@@ -638,7 +638,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                             ? pdfGate.warning
                             : pdfGate.reason?.includes('single-plane')
                             ? 'Roof slopes could not be segmented. Showing footprint estimate.'
-                            : `Preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
+                            : `Customer-ready PDF is blocked, but this diagnostic preview can be downloaded for analysis. (${pdfGate.reason})`}
                         </AlertDescription>
                       </Alert>
                     )}
@@ -682,7 +682,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
                           ? pdfGate.warning
                           : pdfGate.reason?.includes('single-plane')
                           ? 'Roof slopes could not be segmented. Showing footprint estimate.'
-                          : `Diagram preview is available, but customer PDF download is blocked. (${pdfGate.reason})`}
+                            : `Customer-ready PDF is blocked, but this diagnostic preview can be downloaded for analysis. (${pdfGate.reason})`}
                       </AlertDescription>
                     </Alert>
                   )}
