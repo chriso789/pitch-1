@@ -951,28 +951,10 @@ async function processJob(input: any) {
           console.log("[FOOTPRINT_SOLVER]", JSON.stringify(solverResult.stats));
           (globalThis as any).__footprintSolverDebug = solverResult.stats;
 
-          const planarInteriorLines: Array<{ a: Point; b: Point }> = [...solverInput.map((r) => ({ a: r.p1, b: r.p2 }))];
-          try {
-            const skel = computeStraightSkeleton(footprint.map((p) => [p.x, p.y] as [number, number])) as any[];
-            for (const se of (skel || [])) {
-              const a = se.a ?? se.p1 ?? se.start ?? se[0];
-              const b = se.b ?? se.p2 ?? se.end ?? se[1];
-              const ax = Array.isArray(a) ? a[0] : a?.x;
-              const ay = Array.isArray(a) ? a[1] : a?.y;
-              const bx = Array.isArray(b) ? b[0] : b?.x;
-              const by = Array.isArray(b) ? b[1] : b?.y;
-              if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) planarInteriorLines.push({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
-            }
-          } catch (e) {
-            console.warn("[PLANAR_SOLVER_PRIMARY] skeleton hints failed:", (e as Error).message);
-          }
-          const primaryPlanar = planarInteriorLines.length > 0 ? planarSolveRoofPlanes(footprint, planarInteriorLines) : null;
-          if (primaryPlanar) console.log("[PLANAR_SOLVER_PRIMARY]", JSON.stringify(primaryPlanar.debug));
-
           // Selection priority:
-          //   1) footprint solver (≥2 planes, not rejected) — geometry-correct path
+          //   1) footprint solver (≥2 planes, not rejected, full-footprint coverage)
           //   2) regional clustering ONLY when it covers the full footprint
-          //   3) global recursive splitter — last-resort fallback
+          //   3) global recursive splitter — last-resort fallback, coverage-gated
           type PlaneAreaCandidate = { polygon?: Point[]; polygon_px?: Point[] };
           const planeAreaRatio = (planes: PlaneAreaCandidate[]) => {
             const footprintArea = Math.max(1, polygonAreaPx(footprint));
@@ -987,22 +969,24 @@ async function processJob(input: any) {
           const solverPlanes = solverResult.planes
             .filter((p) => p.polygon.length >= 3)
             .map((p) => ({ polygon: p.polygon }));
-          const planarPlanes = (primaryPlanar?.faces?.length ?? 0) >= 2
-            ? primaryPlanar.faces.map((f) => ({ polygon: f.polygon }))
-            : [];
+          const solverCoverageRatio = solverPlanes.length >= 2 ? planeAreaRatio(solverPlanes) : 0;
           const regionalCoverageRatio = regional.planes.length >= 2 ? planeAreaRatio(regional.planes) : 0;
-          if (planarPlanes.length >= 2) {
-            splitPlanes = planarPlanes;
-            solverMode = "planar_graph_solver";
-          } else if (solverPlanes.length >= 2 && !solverResult.stats.rejected) {
+          if (solverPlanes.length >= 2 && !solverResult.stats.rejected && solverCoverageRatio >= 0.85) {
             splitPlanes = solverPlanes;
             solverMode = "footprint_solver";
-          } else if (regional.planes.length >= 2 && regionalCoverageRatio >= 0.75) {
+          } else if (regional.planes.length >= 2 && regionalCoverageRatio >= 0.85) {
             splitPlanes = regional.planes;
             solverMode = "regional_clustered";
           } else {
-            splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
-            solverMode = "global_fallback";
+            const fallbackPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
+            const fallbackCoverageRatio = fallbackPlanes.length >= 2 ? planeAreaRatio(fallbackPlanes) : 0;
+            if (fallbackPlanes.length >= 2 && fallbackCoverageRatio >= 0.85) {
+              splitPlanes = fallbackPlanes;
+              solverMode = "global_fallback";
+            } else {
+              splitPlanes = [];
+              solverMode = "single_plane_coverage_fallback";
+            }
           }
           ridgeSplitPlaneCount = splitPlanes.length;
           console.log("[RIDGE_SPLIT]", JSON.stringify({
@@ -1010,6 +994,7 @@ async function processJob(input: any) {
             final_planes: splitPlanes.length,
             split_success: splitPlanes.length >= 2,
             mode: solverMode,
+            solver_coverage_ratio: Number(solverCoverageRatio.toFixed(3)),
             regional_coverage_ratio: Number(regionalCoverageRatio.toFixed(3)),
             max_depth: 3,
           }));
@@ -1022,7 +1007,7 @@ async function processJob(input: any) {
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
-              source: solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive",
+              source: solverMode === "footprint_solver" ? "footprint_solver" : "ridge_split_recursive",
               cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               region_bbox: sp.region_bbox ?? null,
