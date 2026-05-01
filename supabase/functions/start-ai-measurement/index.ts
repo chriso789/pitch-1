@@ -27,6 +27,7 @@ import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
+import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
@@ -706,11 +707,12 @@ async function processJob(input: any) {
     let snappedFootprintBboxPx: any = null;
     if (footprint.length >= 3 && raster?.data) {
       try {
+        // Do NOT clamp to solarBboxPx — it may include non-roof area
+        // (pool, yard). The Sobel edge detector + vegetation/shadow filter
+        // is the real guard. Use a generous snap radius to reach actual eaves.
         const snap = snapFootprintToEaves(footprint, raster as any, {
-          maxSnapPx: 20,
-          clampBbox: solarBboxPx
-            ? { minX: solarBboxPx.minX, minY: solarBboxPx.minY, maxX: solarBboxPx.maxX, maxY: solarBboxPx.maxY }
-            : null,
+          maxSnapPx: 24,
+          clampBbox: null,
         });
         eaveSnapDebug = {
           moved_count: snap.moved_count,
@@ -1237,8 +1239,46 @@ async function processJob(input: any) {
     //    direction, and reject ridge hints that are not actual plane-pair
     //    boundaries. Patent model is built from this classified edge graph.
     let planeEdgeClassifierDebug: any = null;
+    let polygonNormalizeDebug: any = null;
     try {
       if (cleanPlanes.length > 0) {
+        // ── POLYGON NORMALIZATION — snap shared vertices, insert boundary
+        //    points, and ensure consistent winding BEFORE classification.
+        //    This fixes the "planes=N edges=0" bug where ridge splitting
+        //    produces polygons with close-but-not-identical boundary vertices.
+        try {
+          const rawPolys = (cleanPlanes as any[]).map((p) => (p.polygon_px || []) as { x: number; y: number }[]);
+          const preAdj = planeAdjacencyStats(rawPolys);
+          console.log("[PLANE_GRAPH_PRE_CLASSIFY]", JSON.stringify({
+            plane_count: preAdj.plane_count,
+            plane_ids: (cleanPlanes as any[]).map((p, i) => p.plane_index ?? i),
+            polygon_vertex_counts: rawPolys.map((p) => p.length),
+            shared_boundary_pairs: preAdj.two_plane_boundary_count,
+            shared_boundary_segments: preAdj.shared_boundary_count,
+          }));
+
+          if (preAdj.plane_count > 1 && preAdj.shared_boundary_count === 0) {
+            // Planes don't share boundaries — normalize them
+            const normResult = normalizeAdjacentPlanes(rawPolys, 6);
+            polygonNormalizeDebug = normResult.debug;
+            console.log("[POLYGON_NORMALIZE]", JSON.stringify(normResult.debug));
+
+            // Check adjacency after normalization
+            const postAdj = planeAdjacencyStats(normResult.polygons);
+            console.log("[PLANE_GRAPH_POST_NORMALIZE]", JSON.stringify({
+              shared_boundary_pairs: postAdj.two_plane_boundary_count,
+              shared_boundary_segments: postAdj.shared_boundary_count,
+            }));
+
+            // Apply normalized polygons back
+            for (let i = 0; i < cleanPlanes.length && i < normResult.polygons.length; i++) {
+              (cleanPlanes as any[])[i].polygon_px = normResult.polygons[i];
+            }
+          }
+        } catch (e) {
+          console.warn("[POLYGON_NORMALIZE] failed:", (e as Error).message);
+        }
+
         const ridgeHintsForClassifier = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
           id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
           p1: r.p1,
@@ -1605,6 +1645,32 @@ async function processJob(input: any) {
     }
     if (roofBboxCoverageRatio != null && roofBboxCoverageRatio < 0.4) {
       sanityFailures.push(`footprint_covers_only_${Math.round(roofBboxCoverageRatio * 100)}pct_of_solar_bbox`);
+    }
+    // Explicit edges=0 block: planes exist but no classified edges at all
+    {
+      const totalEdges = cleanEdges.length;
+      const structEdges = cleanEdges.filter((e) =>
+        e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"
+      ).length;
+      if (planeRows.length > 1 && totalEdges === 0) {
+        sanityFailures.push("plane_graph_has_no_classified_edges");
+      }
+      if (planeRows.length > 1 && structEdges === 0 && !isFlatRoof) {
+        // Already covered by no_ridge_hip_valley but be explicit
+        if (!sanityFailures.includes("no_ridge_hip_valley_on_pitched_roof")) {
+          sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
+        }
+      }
+    }
+    // Footprint underfill: footprint area vs selected target bbox area
+    if (roofTargetBboxPx) {
+      const targetArea = (roofTargetBboxPx.maxX - roofTargetBboxPx.minX) * (roofTargetBboxPx.maxY - roofTargetBboxPx.minY);
+      if (targetArea > 0 && finalFootprintAreaPx > 0) {
+        const underfillRatio = finalFootprintAreaPx / targetArea;
+        if (underfillRatio < 0.65) {
+          sanityFailures.push(`footprint_underfills_target_bbox_${Math.round(underfillRatio * 100)}pct`);
+        }
+      }
     }
     if (!isFlatRoof && ridgeFt + hipFt + valleyFt === 0) {
       sanityFailures.push("no_ridge_hip_valley_on_pitched_roof");
