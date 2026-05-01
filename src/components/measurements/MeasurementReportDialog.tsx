@@ -164,8 +164,8 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 
   const PDF_MAX_BYTES = 9.5 * 1024 * 1024;
   const PDF_EXPORT_PROFILES: PdfExportProfile[] = [
-    { scale: 3, jpegQuality: 0.92 },
-    { scale: 2.25, jpegQuality: 0.84 },
+    { scale: 2.5, jpegQuality: 0.95 },
+    { scale: 2, jpegQuality: 0.9 },
     { scale: 1.5, jpegQuality: 0.65 },
   ];
 
@@ -191,6 +191,26 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(await response.arrayBuffer())}`;
     exportImageCacheRef.current.set(url, dataUrl);
     return dataUrl;
+  };
+
+  const replaceSvgImagesForExport = async (source: HTMLElement, clone: HTMLElement, profile: PdfExportProfile) => {
+    const sourceImages = Array.from(source.querySelectorAll<SVGImageElement>('svg image'));
+    const cloneImages = Array.from(clone.querySelectorAll<SVGImageElement>('svg image'));
+    await Promise.all(cloneImages.map(async (image, index) => {
+      const sourceImage = sourceImages[index] || image;
+      const href = sourceImage.getAttribute('href') || sourceImage.getAttribute('xlink:href');
+      if (!href) return;
+      const dataUrl = await imageUrlToDataUrl(href);
+      image.setAttribute('href', dataUrl);
+      image.setAttributeNS('http://www.w3.org/1999/xlink', 'href', dataUrl);
+      image.style.imageRendering = 'auto';
+      const width = Number(image.getAttribute('width') || 0);
+      const height = Number(image.getAttribute('height') || 0);
+      if (width > 0 && height > 0 && profile.scale >= 2) {
+        image.setAttribute('width', String(width));
+        image.setAttribute('height', String(height));
+      }
+    }));
   };
 
   const createExportReadyClone = async (page: HTMLElement, profile: PdfExportProfile) => {
@@ -229,7 +249,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       console.warn('Direct PDF page capture failed; retrying without cross-origin imagery:', err);
     }
 
-    const safeClone = createExportSafeClone(page);
+    const safeClone = await createExportReadyClone(page, profile);
     try {
       const canvas = await html2canvas(safeClone.element, captureOptions);
       return { imgData: canvas.toDataURL('image/jpeg', profile.jpegQuality), width: canvas.width, height: canvas.height };
