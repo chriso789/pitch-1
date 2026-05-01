@@ -1350,6 +1350,11 @@ async function processJob(input: any) {
       const unionBbox = candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px || null;
       const unetBbox = candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px || null;
       const buildingBbox = solarBboxPx;
+      const geometryPoints = [
+        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
+        ...cleanEdges.flatMap((e) => e.line_px || []),
+      ];
+      const geometryBboxForTarget = bboxOf(geometryPoints);
 
       const areaOf = (b: any) => (b && b.width > 0 && b.height > 0 ? b.width * b.height : 0);
       const buildingArea = areaOf(buildingBbox);
@@ -1357,6 +1362,14 @@ async function processJob(input: any) {
       const unionArea = areaOf(unionBbox);
       const snappedArea = areaOf(snappedFootprintBboxPx);
       const hullToBuildingRatio = buildingArea > 0 && hullArea > 0 ? hullArea / buildingArea : null;
+      const snappedCoverageRatio = buildingArea > 0 && snappedArea > 0 ? snappedArea / buildingArea : null;
+      const snappedIsBasicallySelectedGeometry =
+        snappedFootprintBboxPx && geometryBboxForTarget
+          ? Math.abs((snappedFootprintBboxPx.minX || 0) - (geometryBboxForTarget.minX || 0)) < 2 &&
+            Math.abs((snappedFootprintBboxPx.minY || 0) - (geometryBboxForTarget.minY || 0)) < 2 &&
+            Math.abs((snappedFootprintBboxPx.maxX || 0) - (geometryBboxForTarget.maxX || 0)) < 2 &&
+            Math.abs((snappedFootprintBboxPx.maxY || 0) - (geometryBboxForTarget.maxY || 0)) < 2
+          : false;
 
       // Selection priority per spec:
       //   A. snapped_eave_bbox  (only if it covers ≥75% of building)
@@ -1364,7 +1377,11 @@ async function processJob(input: any) {
       //   C. full segment-union bbox
       //   D. hull only when no better target exists AND hull/building ≥ 0.70
       const ordered: Array<{ source: string; bbox: any }> = [];
-      if (snappedFootprintBboxPx && (buildingArea === 0 || snappedArea / buildingArea >= 0.75)) {
+      if (
+        snappedFootprintBboxPx &&
+        !snappedIsBasicallySelectedGeometry &&
+        (buildingArea === 0 || (snappedCoverageRatio != null && snappedCoverageRatio >= 1.08))
+      ) {
         ordered.push({ source: "snapped_eave_bbox", bbox: snappedFootprintBboxPx });
       }
       if (buildingBbox && buildingArea > 0) {
@@ -1389,16 +1406,14 @@ async function processJob(input: any) {
         solar_segments_hull_bbox_area: Math.round(hullArea),
         solar_segments_union_bbox_area: Math.round(unionArea),
         snapped_eave_bbox_area: Math.round(snappedArea),
+        snapped_coverage_ratio: snappedCoverageRatio == null ? null : Number(snappedCoverageRatio.toFixed(3)),
+        snapped_rejected_self_target: Boolean(snappedIsBasicallySelectedGeometry),
         hull_to_building_ratio: hullToBuildingRatio == null ? null : Number(hullToBuildingRatio.toFixed(3)),
         selected_target_source: roofTargetSource,
         selected_target_bbox: roofTargetBboxPx,
         candidates_considered: ordered.map((o) => o.source),
       }));
 
-      const geometryPoints = [
-        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
-        ...cleanEdges.flatMap((e) => e.line_px || []),
-      ];
       overlayCalibration = computeOverlayTransform({
         rasterSize: { width: raster.width, height: raster.height },
         geometryPoints,

@@ -117,6 +117,7 @@ export function useMeasurementJob(pipelineEntryId: string) {
         lat: params.lat,
         lng: params.lng,
         address: params.address,
+        zoom: 21,
         pitchOverride: params.pitchOverride,
         tenantId: params.tenantId,
         userId: params.userId,
