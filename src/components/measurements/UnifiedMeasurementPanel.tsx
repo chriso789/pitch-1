@@ -151,6 +151,7 @@ const hasCustomerSafeGeometry = (measurement: any): boolean => {
   const status = String(measurement?.validation_status || '').toLowerCase();
   if (status === 'needs_internal_review') return false;
   const grj = measurement?.geometry_report_json || {};
+  if (grj?.block_customer_report_reason) return false;
   if (grj?.is_placeholder === true) return false;
   if (grj?.geometry_source === 'google_solar_bbox') return false;
   const footprintSource = String(measurement?.footprint_source || '').toLowerCase();
