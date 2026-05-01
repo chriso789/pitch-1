@@ -2,6 +2,12 @@
 // Builds shared-boundary adjacency via canonical edge map (vertex-snapped),
 // then classifies edges as ridge/valley/hip/eave/rake from plane adjacency
 // + slope direction.
+//
+// v2: Added proximity-based shared-boundary discovery for Solar segment gaps.
+// Solar API segments often have 1-5px gaps between them, so exact edge
+// matching finds 0 shared edges. This pass finds near-parallel close edges
+// from different planes and promotes them to shared boundaries with full
+// geometric validation — NOT fuzzy guessing.
 
 export type Pt = { x: number; y: number };
 
@@ -104,6 +110,30 @@ function pointToSegmentDistance(p: Pt, a: Pt, b: Pt): number {
   return dist(p, q);
 }
 
+/** Project point onto line segment, return projected point */
+function projectOntoSegment(p: Pt, a: Pt, b: Pt): Pt {
+  const ab = sub(b, a);
+  const ap = sub(p, a);
+  const t = Math.max(0, Math.min(1, dot(ap, ab) / Math.max(dot(ab, ab), 1e-9)));
+  return { x: a.x + ab.x * t, y: a.y + ab.y * t };
+}
+
+/** Compute the overlap length of two collinear segments projected onto a shared axis */
+function collinearOverlap(a1: Pt, a2: Pt, b1: Pt, b2: Pt): number {
+  const dir = norm(sub(a2, a1));
+  const projA1 = dot(a1, dir);
+  const projA2 = dot(a2, dir);
+  const projB1 = dot(b1, dir);
+  const projB2 = dot(b2, dir);
+  const aMin = Math.min(projA1, projA2);
+  const aMax = Math.max(projA1, projA2);
+  const bMin = Math.min(projB1, projB2);
+  const bMax = Math.max(projB1, projB2);
+  const overlapStart = Math.max(aMin, bMin);
+  const overlapEnd = Math.min(aMax, bMax);
+  return Math.max(0, overlapEnd - overlapStart);
+}
+
 // ── Step 1: Snap all plane vertices to grid ─────────────────────────────
 function snapPolygon(poly: Pt[]): Pt[] {
   const out: Pt[] = [];
@@ -146,6 +176,115 @@ function buildEdgeMap(planes: { planeId: string; poly: Pt[] }[]): Map<string, Ed
   }
 
   return map;
+}
+
+// ── Proximity shared-boundary discovery ─────────────────────────────────
+// Google Solar segments often have 1-5px gaps between adjacent planes.
+// This finds exterior edges from different planes that are:
+//   - near-parallel (angle < 12°)
+//   - close (perpendicular distance < GAP_TOLERANCE px)
+//   - significantly overlapping (>50% of shorter edge)
+// and promotes them to shared boundaries by computing the merged midline.
+
+const GAP_TOLERANCE = 8; // max gap between adjacent Solar segments in px
+const MIN_OVERLAP_RATIO = 0.4; // minimum overlap as fraction of shorter edge
+const MAX_ANGLE_DIFF = 12; // degrees
+
+interface ProximityMatch {
+  edgeA: EdgeEntry;
+  edgeB: EdgeEntry;
+  planeIdA: string;
+  planeIdB: string;
+  midlineP1: Pt;
+  midlineP2: Pt;
+  overlapLength: number;
+  gapDistance: number;
+}
+
+function findProximitySharedBoundaries(
+  edgeMap: Map<string, EdgeEntry>,
+  planeById: Map<string, { planeId: string; poly: Pt[]; original: PlaneIn }>,
+): ProximityMatch[] {
+  // Collect all exterior (single-plane) edges
+  const exteriors: { entry: EdgeEntry; planeId: string; angle: number; length: number }[] = [];
+  for (const entry of edgeMap.values()) {
+    const ids = Array.from(entry.planeIds);
+    if (ids.length !== 1) continue;
+    const len = dist(entry.a, entry.b);
+    if (len < 6) continue; // skip tiny edges
+    exteriors.push({
+      entry,
+      planeId: ids[0],
+      angle: angleDeg(entry.a, entry.b),
+      length: len,
+    });
+  }
+
+  const matches: ProximityMatch[] = [];
+  const usedKeys = new Set<string>();
+
+  for (let i = 0; i < exteriors.length; i++) {
+    const ea = exteriors[i];
+    if (usedKeys.has(ea.entry.key)) continue;
+
+    let bestMatch: { j: number; gap: number; overlap: number; midP1: Pt; midP2: Pt } | null = null;
+
+    for (let j = i + 1; j < exteriors.length; j++) {
+      const eb = exteriors[j];
+      if (usedKeys.has(eb.entry.key)) continue;
+      if (ea.planeId === eb.planeId) continue; // same plane
+
+      // Angle check
+      if (angleDiff180(ea.angle, eb.angle) > MAX_ANGLE_DIFF) continue;
+
+      // Perpendicular distance check — both endpoints of each edge to the other
+      const dA1 = pointToSegmentDistance(ea.entry.a, eb.entry.a, eb.entry.b);
+      const dA2 = pointToSegmentDistance(ea.entry.b, eb.entry.a, eb.entry.b);
+      const dB1 = pointToSegmentDistance(eb.entry.a, ea.entry.a, ea.entry.b);
+      const dB2 = pointToSegmentDistance(eb.entry.b, ea.entry.a, ea.entry.b);
+      const maxGap = Math.max(Math.min(dA1, dA2), Math.min(dB1, dB2));
+      if (maxGap > GAP_TOLERANCE) continue;
+
+      // Overlap check
+      const overlap = collinearOverlap(ea.entry.a, ea.entry.b, eb.entry.a, eb.entry.b);
+      const shorter = Math.min(ea.length, eb.length);
+      if (overlap < shorter * MIN_OVERLAP_RATIO) continue;
+
+      const avgGap = (dA1 + dA2 + dB1 + dB2) / 4;
+      if (!bestMatch || avgGap < bestMatch.gap) {
+        // Compute midline of the overlapping portion
+        const projA1 = projectOntoSegment(ea.entry.a, eb.entry.a, eb.entry.b);
+        const projA2 = projectOntoSegment(ea.entry.b, eb.entry.a, eb.entry.b);
+        const projB1 = projectOntoSegment(eb.entry.a, ea.entry.a, ea.entry.b);
+        const projB2 = projectOntoSegment(eb.entry.b, ea.entry.a, ea.entry.b);
+
+        // Use the tighter pair of projections for the midline
+        const midP1 = midpoint(ea.entry.a, projA1);
+        const midP2 = midpoint(ea.entry.b, projA2);
+
+        bestMatch = { j, gap: avgGap, overlap, midP1: snap(midP1), midP2: snap(midP2) };
+      }
+    }
+
+    if (bestMatch) {
+      const eb = exteriors[bestMatch.j];
+      usedKeys.add(ea.entry.key);
+      usedKeys.add(eb.entry.key);
+
+      matches.push({
+        edgeA: ea.entry,
+        edgeB: eb.entry,
+        planeIdA: ea.planeId,
+        planeIdB: eb.planeId,
+        midlineP1: bestMatch.midP1,
+        midlineP2: bestMatch.midP2,
+        overlapLength: bestMatch.overlap,
+        gapDistance: bestMatch.gap,
+      });
+    }
+  }
+
+  return matches;
 }
 
 // ── Edge classification ─────────────────────────────────────────────────
@@ -207,6 +346,17 @@ function classifySharedBoundary(args: {
         debug_reason: "shared edge slopes toward from both sides",
       };
     }
+
+    // One slopes away, one slopes toward → hip
+    if ((aAway && bToward) || (aToward && bAway)) {
+      return {
+        id: `E${edgeIndex}`, edge_type: "hip", line_px: [p1, p2],
+        adjacent_plane_ids: [aId, bId], confidence: 0.82,
+        source: "plane_edge_classifier_v1",
+        debug_reason: "shared edge has opposing downslope directions",
+      };
+    }
+
     return {
       id: `E${edgeIndex}`, edge_type: "hip", line_px: [p1, p2],
       adjacent_plane_ids: [aId, bId], confidence: 0.74,
@@ -287,7 +437,8 @@ export function classifyPlaneEdges(args: {
 
   const planeById = new Map(snappedPlanes.map((sp) => [sp.planeId, sp]));
 
-  // ── 3. Classify each edge ─────────────────────────────────────────
+  // ── 3. Classify each edge from exact canonical map ────────────────
+  const exactSharedKeys = new Set<string>();
   for (const entry of edgeMap.values()) {
     const segLen = dist(entry.a, entry.b);
     if (segLen < 4) continue; // skip tiny edges
@@ -295,6 +446,7 @@ export function classifyPlaneEdges(args: {
     const planeIds = Array.from(entry.planeIds);
 
     if (planeIds.length === 2) {
+      exactSharedKeys.add(entry.key);
       // SHARED BOUNDARY — classify as ridge/hip/valley
       const spA = planeById.get(planeIds[0])!;
       const spB = planeById.get(planeIds[1])!;
@@ -310,20 +462,63 @@ export function classifyPlaneEdges(args: {
         }),
       );
     } else if (planeIds.length === 1) {
-      // EXTERIOR — eave or rake
-      const sp = planeById.get(planeIds[0])!;
-      exteriorEdges.push(
-        classifyExteriorEdge({
-          plane: sp.original,
-          planeId: planeIds[0],
-          edge: [entry.a, entry.b],
-          edgeIndex: edgeIndex++,
-        }),
-      );
+      // Will classify as exterior below (after proximity pass)
     } else {
       // >2 planes sharing one edge = invalid topology
       invalidEdges++;
     }
+  }
+
+  // ── 3b. Proximity-based shared boundary discovery ─────────────────
+  // When exact canonical matching finds few shared edges (common with
+  // Google Solar rasterized segments that have 1-5px gaps), discover
+  // near-parallel close exterior edges from different planes and promote
+  // them to shared boundaries.
+  const proximityMatches = findProximitySharedBoundaries(edgeMap, planeById);
+  const proximityConsumedKeys = new Set<string>();
+
+  for (const pm of proximityMatches) {
+    const spA = planeById.get(pm.planeIdA);
+    const spB = planeById.get(pm.planeIdB);
+    if (!spA || !spB) continue;
+
+    // Skip if midline is degenerate
+    if (dist(pm.midlineP1, pm.midlineP2) < 4) continue;
+
+    sharedEdges.push(
+      classifySharedBoundary({
+        a: spA.original,
+        b: spB.original,
+        aId: pm.planeIdA,
+        bId: pm.planeIdB,
+        segment: [pm.midlineP1, pm.midlineP2],
+        ridgeHints,
+        edgeIndex: edgeIndex++,
+      }),
+    );
+
+    proximityConsumedKeys.add(pm.edgeA.key);
+    proximityConsumedKeys.add(pm.edgeB.key);
+  }
+
+  // ── 3c. Classify remaining exterior edges ─────────────────────────
+  for (const entry of edgeMap.values()) {
+    const segLen = dist(entry.a, entry.b);
+    if (segLen < 4) continue;
+    const planeIds = Array.from(entry.planeIds);
+    if (planeIds.length !== 1) continue;
+    if (exactSharedKeys.has(entry.key)) continue;
+    if (proximityConsumedKeys.has(entry.key)) continue; // consumed by proximity match
+
+    const sp = planeById.get(planeIds[0])!;
+    exteriorEdges.push(
+      classifyExteriorEdge({
+        plane: sp.original,
+        planeId: planeIds[0],
+        edge: [entry.a, entry.b],
+        edgeIndex: edgeIndex++,
+      }),
+    );
   }
 
   // Combine and dedupe
@@ -369,6 +564,8 @@ export function classifyPlaneEdges(args: {
   console.log("[PLANE_EDGE_CLASSIFIER]", JSON.stringify({
     planes: planes.length,
     total_edges_in_map: edgeMap.size,
+    exact_shared_edges: exactSharedKeys.size,
+    proximity_shared_edges: proximityMatches.length,
     shared_edges: sharedEdges.length,
     exterior_edges: exteriorEdges.length,
     invalid_edges: invalidEdges,
@@ -376,6 +573,12 @@ export function classifyPlaneEdges(args: {
     counts,
     ridge_hints: ridgeHints.length,
     invalid_ridge_hints: invalidRidgeHints.length,
+    proximity_details: proximityMatches.map((m) => ({
+      planeA: m.planeIdA,
+      planeB: m.planeIdB,
+      gap_px: Math.round(m.gapDistance * 10) / 10,
+      overlap_px: Math.round(m.overlapLength),
+    })),
   }));
 
   return {
@@ -384,6 +587,8 @@ export function classifyPlaneEdges(args: {
       plane_count: planes.length,
       edge_count: deduped.length,
       total_edges_in_map: edgeMap.size,
+      exact_shared_edges: exactSharedKeys.size,
+      proximity_shared_edges: proximityMatches.length,
       shared_edges: sharedEdges.length,
       exterior_edges: exteriorEdges.length,
       invalid_edges: invalidEdges,
