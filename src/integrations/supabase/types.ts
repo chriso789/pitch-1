@@ -27286,6 +27286,8 @@ export type Database = {
           project_id: string | null
           rejection_reason: string | null
           status: string | null
+          subtotal: number | null
+          tax_amount: number | null
           tenant_id: string
           updated_at: string | null
           vendor_name: string | null
@@ -27309,6 +27311,8 @@ export type Database = {
           project_id?: string | null
           rejection_reason?: string | null
           status?: string | null
+          subtotal?: number | null
+          tax_amount?: number | null
           tenant_id: string
           updated_at?: string | null
           vendor_name?: string | null
@@ -27332,6 +27336,8 @@ export type Database = {
           project_id?: string | null
           rejection_reason?: string | null
           status?: string | null
+          subtotal?: number | null
+          tax_amount?: number | null
           tenant_id?: string
           updated_at?: string | null
           vendor_name?: string | null

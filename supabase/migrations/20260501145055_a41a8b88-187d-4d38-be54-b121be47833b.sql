@@ -1,0 +1,1 @@
+ALTER TABLE project_cost_invoices ADD COLUMN IF NOT EXISTS subtotal numeric, ADD COLUMN IF NOT EXISTS tax_amount numeric;
