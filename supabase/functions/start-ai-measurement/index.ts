@@ -703,9 +703,15 @@ async function processJob(input: any) {
     // Solar hull center mass. Conservative: 16 px max move, vegetation/shadow
     // pixels are skipped, and we record perimeter_off_eave_ratio for QA.
     let eaveSnapDebug: any = null;
+    let snappedFootprintBboxPx: any = null;
     if (footprint.length >= 3 && raster?.data) {
       try {
-        const snap = snapFootprintToEaves(footprint, raster as any, { maxSnapPx: 16 });
+        const snap = snapFootprintToEaves(footprint, raster as any, {
+          maxSnapPx: 20,
+          clampBbox: solarBboxPx
+            ? { minX: solarBboxPx.minX, minY: solarBboxPx.minY, maxX: solarBboxPx.maxX, maxY: solarBboxPx.maxY }
+            : null,
+        });
         eaveSnapDebug = {
           moved_count: snap.moved_count,
           total_vertices: snap.total_vertices,
@@ -713,8 +719,19 @@ async function processJob(input: any) {
           perimeter_off_eave_ratio: Number(snap.perimeter_off_eave_ratio.toFixed(3)),
         };
         (globalThis as any).__eaveSnapDebug = eaveSnapDebug;
-        console.log("[EAVE_SNAP]", JSON.stringify(eaveSnapDebug));
-        footprint = snap.snapped;
+        // Coverage gate: reject snap if it pulled footprint inside <75% of solar building bbox.
+        const snappedBb = bboxOf(snap.snapped);
+        const buildingArea = solarBboxPx?.area || 0;
+        const snappedArea = snappedBb ? snappedBb.width * snappedBb.height : 0;
+        const coverageVsBuilding = buildingArea > 0 ? snappedArea / buildingArea : 1;
+        if (buildingArea > 0 && coverageVsBuilding < 0.75) {
+          console.warn("[EAVE_SNAP] rejected — snapped bbox covers", coverageVsBuilding.toFixed(2), "of solar building bbox (<0.75)");
+          eaveSnapDebug.rejected_low_coverage = Number(coverageVsBuilding.toFixed(3));
+        } else {
+          footprint = snap.snapped;
+          snappedFootprintBboxPx = snappedBb;
+        }
+        console.log("[EAVE_SNAP]", JSON.stringify({ ...eaveSnapDebug, coverage_vs_building: Number(coverageVsBuilding.toFixed(3)) }));
       } catch (e) {
         console.warn("[EAVE_SNAP] failed:", (e as Error).message);
       }
