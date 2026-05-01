@@ -1375,7 +1375,8 @@ async function processJob(input: any) {
     if (solarRoofAreaSqft != null && solarRoofAreaSqft > 0 && finalRoofAreaSqft > solarRoofAreaSqft * 1.25) {
       sanityFailures.push("area_inflation_after_merge");
     }
-    if (planeMergeDebug?.pre_merge_area > 0 && planeMergeDebug.post_merge_area > planeMergeDebug.pre_merge_area * 1.10) {
+    const _planeMergeDebug = (globalThis as any).__planeMergeDebug ?? null;
+    if (_planeMergeDebug?.pre_merge_area > 0 && _planeMergeDebug.post_merge_area > _planeMergeDebug.pre_merge_area * 1.10) {
       sanityFailures.push("area_inflation_after_merge");
     }
     // Footprint-as-law QA: total plane area must not exceed footprint*1.15.
