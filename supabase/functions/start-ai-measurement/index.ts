@@ -27,6 +27,7 @@ import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
 import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
+import { normalizeAdjacentPlanes } from "../_shared/polygon-normalize.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
