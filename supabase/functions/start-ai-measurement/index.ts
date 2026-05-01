@@ -1449,6 +1449,12 @@ async function processJob(input: any) {
         topology_source: topologySource,
         plane_graph_connected: sharedEdges > 0 || cleanPlanes.length <= 1,
       }));
+
+      // QA REQUIREMENT: planes > 1 AND edges = 0 is an error
+      if (cleanPlanes.length > 1 && cleanEdges.length === 0) {
+        console.error("[QA_FAIL] edge_classifier_not_executed_or_failed: planes=" +
+          cleanPlanes.length + " edges=0");
+      }
     }
 
 
