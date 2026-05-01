@@ -1023,7 +1023,7 @@ async function processJob(input: any) {
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
-              source: "ridge_split_recursive",
+              source: solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive",
               cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
               region_bbox: sp.region_bbox ?? null,
@@ -1049,7 +1049,7 @@ async function processJob(input: any) {
               });
             }
             cleanEdges.push(...splitRidgeEdges);
-            topologySource = "ridge_split_recursive";
+            topologySource = solverMode === "planar_graph_solver" ? "planar_graph_solver" : "ridge_split_recursive";
           }
         }
       } catch (e) {
