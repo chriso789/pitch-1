@@ -254,7 +254,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
           change_order_id: changeOrderId || null,
           invoice_type: invoiceType,
           ...formData,
-          invoice_amount: parseFloat(formData.invoice_amount)
+          invoice_amount: parseFloat(formData.invoice_amount),
+          subtotal: formData.subtotal ? parseFloat(formData.subtotal) : null,
+          tax_amount: formData.tax_amount ? parseFloat(formData.tax_amount) : null,
         }
       });
 
