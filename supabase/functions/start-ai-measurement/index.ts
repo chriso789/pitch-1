@@ -1606,8 +1606,7 @@ async function processJob(input: any) {
     {
       const edgeCounts: Record<string, number> = {};
       for (const e of cleanEdges) edgeCounts[e.edge_type] = (edgeCounts[e.edge_type] || 0) + 1;
-      const sharedEdges = (planeEdgeClassifierDebug?.shared_edges ?? 0) +
-        cleanEdges.filter((e) => e.source === "interior_fuzzy_shared_boundary").length;
+      const sharedEdges = planeEdgeClassifierDebug?.shared_edges ?? 0;
       const exteriorEdges = planeEdgeClassifierDebug?.exterior_edges ?? 0;
       const invalidEdges = planeEdgeClassifierDebug?.invalid_edges ?? 0;
       console.log("[EDGE_TOPOLOGY_FINAL]", JSON.stringify({
@@ -1882,6 +1881,8 @@ async function processJob(input: any) {
     {
       const stashed = (globalThis as any).__overlaySanityFailures;
       if (Array.isArray(stashed)) sanityFailures.push(...stashed);
+      const strictTopologyFailures = (globalThis as any).__strictTopologyFailures;
+      if (Array.isArray(strictTopologyFailures)) sanityFailures.push(...strictTopologyFailures);
     }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
@@ -1937,7 +1938,10 @@ async function processJob(input: any) {
     if (_planeMergeDebug?.pre_merge_area > 0 && _planeMergeDebug.post_merge_area > _planeMergeDebug.pre_merge_area * 1.10) {
       sanityFailures.push("area_inflation_after_merge");
     }
-    // Footprint-as-law QA: total plane area must not exceed footprint*1.15.
+    // Footprint-as-law QA: total plane area must not exceed footprint*1.08.
+    if (finalRoofAreaSqft > 0 && finalFootprintAreaSqft > 0 && finalRoofAreaSqft > finalFootprintAreaSqft * 1.08) {
+      sanityFailures.push("area_inflation_after_merge");
+    }
     if (footprintConstraintStats?.overall_rejected) {
       sanityFailures.push(
         `footprint_constraint_violated:${footprintConstraintStats.rejection_reason || "area_ratio_exceeded"}`,
