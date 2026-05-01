@@ -103,6 +103,7 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
 }) => {
   const { toast } = useToast();
   const reportContentRef = useRef<HTMLDivElement | null>(null);
+  const exportImageCacheRef = useRef<Map<string, string>>(new Map());
   const [diagrams, setDiagrams] = useState<DiagramRow[]>([]);
   const [jobId, setJobId] = useState<string | null>(explicitJobId || null);
   const [loading, setLoading] = useState(false);
@@ -168,7 +169,31 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     { scale: 1.5, jpegQuality: 0.65 },
   ];
 
-  const createExportSafeClone = (page: HTMLElement) => {
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 8192;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode(...Array.from(chunk));
+    }
+    return btoa(binary);
+  };
+
+  const imageUrlToDataUrl = async (url: string): Promise<string> => {
+    if (!url || url.startsWith('data:')) return url;
+    const cached = exportImageCacheRef.current.get(url);
+    if (cached) return cached;
+    const response = await fetch(url, { mode: 'cors', cache: 'force-cache' });
+    if (!response.ok) throw new Error(`Image fetch failed: ${response.status}`);
+    const contentType = response.headers.get('content-type') || 'image/png';
+    if (!contentType.startsWith('image/')) throw new Error(`Expected image, got ${contentType}`);
+    const dataUrl = `data:${contentType};base64,${arrayBufferToBase64(await response.arrayBuffer())}`;
+    exportImageCacheRef.current.set(url, dataUrl);
+    return dataUrl;
+  };
+
+  const createExportReadyClone = async (page: HTMLElement, profile: PdfExportProfile) => {
     const wrapper = document.createElement('div');
     wrapper.style.position = 'fixed';
     wrapper.style.left = '-10000px';
@@ -180,22 +205,10 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
     const clone = page.cloneNode(true) as HTMLElement;
     clone.style.width = `${page.offsetWidth || 900}px`;
     clone.querySelectorAll('img[aria-hidden="true"], img.hidden').forEach((img) => img.remove());
-    clone.querySelectorAll('svg image').forEach((image) => {
-      const parent = image.parentElement;
-      if (parent?.tagName.toLowerCase() === 'svg') {
-        const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-        rect.setAttribute('x', '0');
-        rect.setAttribute('y', '0');
-        rect.setAttribute('width', '100%');
-        rect.setAttribute('height', '100%');
-        rect.setAttribute('fill', 'hsl(var(--muted))');
-        parent.insertBefore(rect, image);
-      }
-      image.remove();
-    });
 
     wrapper.appendChild(clone);
     document.body.appendChild(wrapper);
+    await replaceSvgImagesForExport(page, clone, profile);
     return { element: clone, cleanup: () => wrapper.remove() };
   };
 
