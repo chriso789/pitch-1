@@ -1458,6 +1458,7 @@ async function processJob(input: any) {
         const edgeResult = classifyPlaneEdges({
           planes: planesForClassifier,
           ridgeHints: ridgeHintsForClassifier,
+          footprintPoly: footprint.map(p => ({ x: p.x ?? (p as any)[0] ?? 0, y: p.y ?? (p as any)[1] ?? 0 })),
         });
         planeEdgeClassifierDebug = edgeResult.debug;
         (globalThis as any).__planeEdgeClassifierDebug = edgeResult.debug;
