@@ -1380,7 +1380,7 @@ async function processJob(input: any) {
       if (
         snappedFootprintBboxPx &&
         !snappedIsBasicallySelectedGeometry &&
-        (buildingArea === 0 || (snappedCoverageRatio != null && snappedCoverageRatio >= 1.08))
+        (buildingArea === 0 || (snappedCoverageRatio != null && snappedCoverageRatio >= 0.75))
       ) {
         ordered.push({ source: "snapped_eave_bbox", bbox: snappedFootprintBboxPx });
       }
