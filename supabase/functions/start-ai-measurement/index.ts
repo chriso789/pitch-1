@@ -1350,6 +1350,11 @@ async function processJob(input: any) {
       const unionBbox = candidates.find((c) => c.source === "google_solar_segments_union" && c.bbox_px)?.bbox_px || null;
       const unetBbox = candidates.find((c) => c.source === "imagery_unet_mask" && c.bbox_px)?.bbox_px || null;
       const buildingBbox = solarBboxPx;
+      const geometryPoints = [
+        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
+        ...cleanEdges.flatMap((e) => e.line_px || []),
+      ];
+      const geometryBboxForTarget = bboxOf(geometryPoints);
 
       const areaOf = (b: any) => (b && b.width > 0 && b.height > 0 ? b.width * b.height : 0);
       const buildingArea = areaOf(buildingBbox);
@@ -1359,11 +1364,11 @@ async function processJob(input: any) {
       const hullToBuildingRatio = buildingArea > 0 && hullArea > 0 ? hullArea / buildingArea : null;
       const snappedCoverageRatio = buildingArea > 0 && snappedArea > 0 ? snappedArea / buildingArea : null;
       const snappedIsBasicallySelectedGeometry =
-        snappedFootprintBboxPx && finalGeometryBboxPx
-          ? Math.abs((snappedFootprintBboxPx.minX || 0) - (finalGeometryBboxPx.minX || 0)) < 2 &&
-            Math.abs((snappedFootprintBboxPx.minY || 0) - (finalGeometryBboxPx.minY || 0)) < 2 &&
-            Math.abs((snappedFootprintBboxPx.maxX || 0) - (finalGeometryBboxPx.maxX || 0)) < 2 &&
-            Math.abs((snappedFootprintBboxPx.maxY || 0) - (finalGeometryBboxPx.maxY || 0)) < 2
+        snappedFootprintBboxPx && geometryBboxForTarget
+          ? Math.abs((snappedFootprintBboxPx.minX || 0) - (geometryBboxForTarget.minX || 0)) < 2 &&
+            Math.abs((snappedFootprintBboxPx.minY || 0) - (geometryBboxForTarget.minY || 0)) < 2 &&
+            Math.abs((snappedFootprintBboxPx.maxX || 0) - (geometryBboxForTarget.maxX || 0)) < 2 &&
+            Math.abs((snappedFootprintBboxPx.maxY || 0) - (geometryBboxForTarget.maxY || 0)) < 2
           : false;
 
       // Selection priority per spec:
@@ -1409,10 +1414,6 @@ async function processJob(input: any) {
         candidates_considered: ordered.map((o) => o.source),
       }));
 
-      const geometryPoints = [
-        ...cleanPlanes.flatMap((p) => p.polygon_px || []),
-        ...cleanEdges.flatMap((e) => e.line_px || []),
-      ];
       overlayCalibration = computeOverlayTransform({
         rasterSize: { width: raster.width, height: raster.height },
         geometryPoints,
