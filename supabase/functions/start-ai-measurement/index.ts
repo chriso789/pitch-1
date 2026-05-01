@@ -43,6 +43,10 @@ type RoofEdge = {
   line_px: Point[];
   confidence: number;
   source: string;
+  cluster_id?: string | number | null;
+  ridge_group_id?: string | number | null;
+  region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  source_ridge_ids?: Array<string | number>;
 };
 
 type DecodedRaster = { width: number; height: number; data: Uint8Array };
