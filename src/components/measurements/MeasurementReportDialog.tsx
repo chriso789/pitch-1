@@ -142,7 +142,19 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const reportCollapsed = Boolean(
     reportModel && persistedPlaneCount > 1 && (renderedPlaneCount <= 1 || renderedPlaneLabels <= 1),
   );
-  const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0;
+  const hasRasterOverlayRenderable = (() => {
+    const grj = (effectiveMeasurement as any)?.geometry_report_json || {};
+    const rasterUrl =
+      (effectiveMeasurement as any)?.satellite_overlay_url ||
+      (effectiveMeasurement as any)?.google_maps_image_url ||
+      (effectiveMeasurement as any)?.mapbox_image_url ||
+      grj?.raster_image_url || null;
+    const rasterSize = grj?.raster_size || (effectiveMeasurement as any)?.analysis_image_size || null;
+    const planesPx = Array.isArray(grj?.planes_px) ? grj.planes_px : [];
+    const edgesPx = Array.isArray(grj?.edges_px) ? grj.edges_px : [];
+    return Boolean(rasterUrl && rasterSize && (planesPx.length > 0 || edgesPx.length > 0));
+  })();
+  const hasRenderableReport = Boolean(reportModel) || diagrams.length > 0 || hasRasterOverlayRenderable;
 
   const createExportSafeClone = (page: HTMLElement) => {
     const wrapper = document.createElement('div');
