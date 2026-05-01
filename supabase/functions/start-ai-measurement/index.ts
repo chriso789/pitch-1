@@ -1102,6 +1102,57 @@ async function processJob(input: any) {
       cleanPlanes = consolidated.planes as RoofPlane[];
     }
 
+    // ── FOOTPRINT-CONSTRAINED VALIDATION — FOOTPRINT IS LAW.
+    //    Demote ridges from "geometry drivers" to validators that must conform
+    //    to the building footprint. Reject planes that extend outside the
+    //    footprint, ridges that span the whole building, and totals that
+    //    exceed footprint_area * 1.15.
+    let footprintConstraintStats: any = null;
+    try {
+      const fcRidgeInput = (cleanEdges as any[])
+        .filter((e) => e && (e.edge_type === "ridge" || e.edge_type === "hip" || e.edge_type === "valley"))
+        .map((e, i) => ({
+          id: e.id ?? `edge_${i}`,
+          edge_type: e.edge_type,
+          line_px: e.line_px,
+          p1: e.line_px?.[0],
+          p2: e.line_px?.[e.line_px?.length - 1],
+          cluster_id: e.cluster_id ?? null,
+          region_bbox: e.region_bbox ?? null,
+        }));
+      const fcResult = validateFootprintConstraints(
+        footprint as any,
+        cleanPlanes as any,
+        fcRidgeInput as any,
+        { planeOutsideToleranceRatio: 0.10, maxRidgeLengthRatio: 0.60, totalAreaMultiplier: 1.15 },
+      );
+      footprintConstraintStats = fcResult.stats;
+      console.log("[GEOMETRY_VALIDATION]", JSON.stringify({
+        ...fcResult.stats,
+        rejected_planes: fcResult.rejectedPlanes.slice(0, 20),
+        rejected_ridges: fcResult.rejectedRidges.slice(0, 20),
+      }));
+
+      if (fcResult.acceptedPlanes.length > 0 && !fcResult.stats.overall_rejected) {
+        cleanPlanes = fcResult.acceptedPlanes as RoofPlane[];
+      }
+
+      const rejectedRidgeIds = new Set(
+        fcResult.rejectedRidges
+          .map((r) => (r.id == null ? null : String(r.id)))
+          .filter((x): x is string => !!x),
+      );
+      if (rejectedRidgeIds.size > 0) {
+        cleanEdges = (cleanEdges as any[]).filter((e, i) => {
+          const eid = e.id != null ? String(e.id) : `edge_${i}`;
+          return !rejectedRidgeIds.has(eid);
+        }) as typeof cleanEdges;
+      }
+    } catch (e) {
+      console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
+    }
+
+
     // ── OVERLAY CALIBRATION — fit measured geometry to the detected roof target,
     // not to the full raster center. This is rendering-only and does not change
     // physical measurements calculated from original pixel geometry.
