@@ -1433,6 +1433,24 @@ async function processJob(input: any) {
         `footprint_constraint_violated:${footprintConstraintStats.rejection_reason || "area_ratio_exceeded"}`,
       );
     }
+    // Plane-edge classifier QA: ridge hints must be supported by actual plane
+    // boundaries, and multi-plane roofs must produce structural edges.
+    {
+      const pec = (globalThis as any).__planeEdgeClassifierDebug;
+      if (pec) {
+        const hintsTotal = Number(pec.ridge_hints_total ?? 0);
+        const hintsInvalid = Number(pec.invalid_ridge_hints_count ?? 0);
+        if (hintsTotal > 0 && hintsInvalid / hintsTotal > 0.5) {
+          sanityFailures.push("ridge_hints_not_supported_by_plane_boundaries");
+        }
+        const ridgeC = Number(pec.counts?.ridge ?? 0);
+        const hipC = Number(pec.counts?.hip ?? 0);
+        const valleyC = Number(pec.counts?.valley ?? 0);
+        if (Number(pec.plane_count ?? 0) > 2 && ridgeC + hipC + valleyC === 0) {
+          sanityFailures.push("no_structural_edges_from_plane_graph");
+        }
+      }
+    }
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
       sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
