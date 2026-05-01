@@ -1112,8 +1112,8 @@ async function processJob(input: any) {
           );
           if (skeletonEdges && skeletonEdges.length > 0) {
             for (const se of skeletonEdges as any[]) {
-              const a = se.a ?? se.p1 ?? se[0];
-              const b = se.b ?? se.p2 ?? se[1];
+              const a = se.a ?? se.p1 ?? se.start ?? se[0];
+              const b = se.b ?? se.p2 ?? se.end ?? se[1];
               const ax = Array.isArray(a) ? a[0] : a?.x;
               const ay = Array.isArray(a) ? a[1] : a?.y;
               const bx = Array.isArray(b) ? b[0] : b?.x;
@@ -1345,8 +1345,8 @@ async function processJob(input: any) {
               footprint.map((p) => [p.x, p.y] as [number, number]),
             ) as any[];
             for (const se of (skel || [])) {
-              const a = se.a ?? se.p1 ?? se[0];
-              const b = se.b ?? se.p2 ?? se[1];
+              const a = se.a ?? se.p1 ?? se.start ?? se[0];
+              const b = se.b ?? se.p2 ?? se.end ?? se[1];
               const ax = Array.isArray(a) ? a[0] : a?.x;
               const ay = Array.isArray(a) ? a[1] : a?.y;
               const bx = Array.isArray(b) ? b[0] : b?.x;
