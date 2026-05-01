@@ -1622,6 +1622,236 @@ async function processJob(input: any) {
     // wipe cleanEdges via fallback.  Only ensure perimeter edges exist.
     const finalExteriorEdgesCreated = ensureExteriorFootprintEdges("footprint_perimeter_final");
 
+    // ── FINAL SIMPLE-GABLE AUTHORITY OVERRIDE ──
+    // This runs after classifier output, dedupe, strict QA, and perimeter edge
+    // forcing. When a roof is a simple gable, this final edge set is the only
+    // source used by totals, persistence, and rendering.
+    {
+      const countEdges = (edges: RoofEdge[]) => edges.reduce((acc: Record<string, number>, edge) => {
+        acc[edge.edge_type] = (acc[edge.edge_type] || 0) + 1;
+        return acc;
+      }, {});
+      const beforeCounts = countEdges(cleanEdges);
+      const roofBbox = bboxOf(footprint);
+      const footprintAreaPx = polygonAreaPx(footprint);
+      const footprintFillRatio = roofBbox?.area ? footprintAreaPx / roofBbox.area : 0;
+      const planeById = new Map((cleanPlanes as any[]).map((p, i) => [String(p.plane_index ?? i), p]));
+      const snapKey = (p: Point) => `${Math.round(p.x / 4) * 4}:${Math.round(p.y / 4) * 4}`;
+      const vertexPlanes = new Map<string, Set<string>>();
+      for (const plane of cleanPlanes as any[]) {
+        const planeId = String(plane.plane_index ?? plane.id ?? "");
+        for (const pt of plane.polygon_px || []) {
+          const key = snapKey(pt);
+          if (!vertexPlanes.has(key)) vertexPlanes.set(key, new Set());
+          vertexPlanes.get(key)!.add(planeId);
+        }
+      }
+      const threePlaneNodeCount = Array.from(vertexPlanes.values()).filter((ids) => ids.size >= 3).length;
+      const countMeaningfulReflexCorners = (poly: Point[]) => {
+        if (!poly || poly.length < 4) return 0;
+        let signedArea = 0;
+        for (let i = 0; i < poly.length; i++) {
+          const a = poly[i], b = poly[(i + 1) % poly.length];
+          signedArea += a.x * b.y - b.x * a.y;
+        }
+        const ccw = signedArea > 0;
+        let reflex = 0;
+        for (let i = 0; i < poly.length; i++) {
+          const prev = poly[(i - 1 + poly.length) % poly.length];
+          const cur = poly[i];
+          const next = poly[(i + 1) % poly.length];
+          const v1 = { x: cur.x - prev.x, y: cur.y - prev.y };
+          const v2 = { x: next.x - cur.x, y: next.y - cur.y };
+          const minLeg = Math.min(Math.hypot(v1.x, v1.y), Math.hypot(v2.x, v2.y));
+          if (minLeg < 8) continue;
+          const cross = v1.x * v2.y - v1.y * v2.x;
+          if ((ccw && cross < -1e-6) || (!ccw && cross > 1e-6)) reflex++;
+        }
+        return reflex;
+      };
+      const normalizedAzDiff = (a: number, b: number) => {
+        const d = Math.abs(a - b) % 360;
+        return Math.min(d, 360 - d);
+      };
+      const isOpposingAz = (a: number | null | undefined, b: number | null | undefined) => {
+        if (!Number.isFinite(Number(a)) || !Number.isFinite(Number(b))) return false;
+        const d = normalizedAzDiff(Number(a), Number(b));
+        return d >= 140 && d <= 220;
+      };
+      const solarAzimuths = (solarSegments || [])
+        .map((s: any) => Number(s?.azimuthDegrees))
+        .filter((n: number) => Number.isFinite(n));
+      let opposingSlopePairs = 0;
+      for (let i = 0; i < solarAzimuths.length; i++) {
+        for (let j = i + 1; j < solarAzimuths.length; j++) {
+          if (isOpposingAz(solarAzimuths[i], solarAzimuths[j])) opposingSlopePairs++;
+        }
+      }
+      if (opposingSlopePairs === 0) {
+        const planeAz = (cleanPlanes as any[])
+          .map((p) => Number(p.azimuth))
+          .filter((n) => Number.isFinite(n));
+        for (let i = 0; i < planeAz.length; i++) {
+          for (let j = i + 1; j < planeAz.length; j++) {
+            if (isOpposingAz(planeAz[i], planeAz[j])) opposingSlopePairs++;
+          }
+        }
+      }
+      const cleanCandidateEdge = (edge: RoofEdge) => {
+        const source = String(edge.source || "").toLowerCase();
+        const debugSource = String((edge as any).debug_source || edge.debug_reason || "").toLowerCase();
+        return !debugSource.includes("bunched_right_side") && !source.includes("fuzzy") && edge.edge_type !== "unknown_interior";
+      };
+      const validValleyGraph = cleanEdges.some((edge) => {
+        if (edge.edge_type !== "valley" || !cleanCandidateEdge(edge)) return false;
+        const adjacentCount = Array.isArray(edge.adjacent_plane_ids) ? edge.adjacent_plane_ids.length : 0;
+        const p1 = edge.line_px?.[0], p2 = edge.line_px?.[edge.line_px.length - 1];
+        if (!roofBbox || adjacentCount !== 2 || !p1 || !p2) return false;
+        const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
+        return sideInset > 15 && pointInPolygon(mid, footprint) && threePlaneNodeCount > 0;
+      });
+      const reflexCorners = countMeaningfulReflexCorners(footprint);
+      const mostlyRectangular = footprintFillRatio >= 0.55;
+      const simpleGableEnabled = Boolean(
+        roofBbox &&
+        cleanPlanes.length >= 2 && cleanPlanes.length <= 8 &&
+        reflexCorners === 0 &&
+        mostlyRectangular &&
+        opposingSlopePairs > 0 &&
+        threePlaneNodeCount === 0 &&
+        !validValleyGraph
+      );
+
+      let selectedRidge: any = null;
+      let removedHips = 0;
+      let removedValleys = 0;
+      let removedBunchedEdges = 0;
+
+      if (simpleGableEnabled && roofBbox) {
+        const longAxisAngle = roofBbox.width >= roofBbox.height ? 0 : 90;
+        const center = { x: (roofBbox.minX + roofBbox.maxX) / 2, y: (roofBbox.minY + roofBbox.maxY) / 2 };
+        const scored = cleanEdges
+          .filter(cleanCandidateEdge)
+          .filter((edge) => Array.isArray(edge.adjacent_plane_ids) && edge.adjacent_plane_ids.length === 2)
+          .map((edge) => {
+            const p1 = edge.line_px?.[0], p2 = edge.line_px?.[edge.line_px.length - 1];
+            if (!p1 || !p2) return null;
+            const ids = edge.adjacent_plane_ids || [];
+            const planeA = planeById.get(String(ids[0]));
+            const planeB = planeById.get(String(ids[1]));
+            const opposing = isOpposingAz(Number(planeA?.azimuth), Number(planeB?.azimuth));
+            const mid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+            const angleDelta = angleDiff180(lineAngle180(p1, p2), longAxisAngle);
+            const sideInset = Math.min(mid.x - roofBbox.minX, roofBbox.maxX - mid.x);
+            const centerOffsetPx = longAxisAngle === 0 ? Math.abs(mid.y - center.y) : Math.abs(mid.x - center.x);
+            const centerOffsetRatio = centerOffsetPx / Math.max(longAxisAngle === 0 ? roofBbox.height : roofBbox.width, 1);
+            const inside = pointInPolygon(mid, footprint);
+            const bounded = p1.x >= roofBbox.minX - 8 && p1.x <= roofBbox.maxX + 8 && p2.x >= roofBbox.minX - 8 && p2.x <= roofBbox.maxX + 8 && p1.y >= roofBbox.minY - 8 && p1.y <= roofBbox.maxY + 8 && p2.y >= roofBbox.minY - 8 && p2.y <= roofBbox.maxY + 8;
+            const rejectSide = sideInset <= 15;
+            const rejected = !inside || !bounded || rejectSide || angleDelta > 35 || centerOffsetRatio > 0.40 || !opposing;
+            return {
+              edge,
+              rejected,
+              rejectSide,
+              score: centerOffsetRatio * 100 + angleDelta + (edge.edge_type === "ridge" ? 0 : 12),
+              centerOffsetRatio,
+              angleDelta,
+              sideInset,
+            };
+          })
+          .filter(Boolean) as any[];
+        removedBunchedEdges = scored.filter((s) => s.rejectSide).length;
+        const best = scored.filter((s) => !s.rejected).sort((a, b) => a.score - b.score)[0];
+        if (best) {
+          selectedRidge = {
+            ...best.edge,
+            edge_type: "ridge" as const,
+            source: "plane_edge_classifier_v1",
+            confidence: Math.max(0.82, Number(best.edge.confidence || 0.82)),
+            debug_reason: `simple_gable_final_override:selected_centerline_ridge offset=${round(best.centerOffsetRatio, 3)} angle_delta=${round(best.angleDelta, 1)}; ${best.edge.debug_reason || ""}`,
+          } as RoofEdge;
+        } else {
+          const inset = Math.max(15, Math.min(roofBbox.width, roofBbox.height) * 0.08);
+          const p1 = longAxisAngle === 0
+            ? { x: roofBbox.minX + inset, y: center.y }
+            : { x: center.x, y: roofBbox.minY + inset };
+          const p2 = longAxisAngle === 0
+            ? { x: roofBbox.maxX - inset, y: center.y }
+            : { x: center.x, y: roofBbox.maxY - inset };
+          selectedRidge = {
+            id: "simple_gable_centerline_candidate",
+            edge_type: "ridge" as const,
+            line_px: [p1, p2],
+            adjacent_plane_ids: [],
+            confidence: 0.45,
+            source: "simple_gable_centerline_candidate",
+            debug_reason: "simple_gable_final_override:synthesized_review_only_centerline_ridge",
+            validation_status: "needs_internal_review",
+          } as RoofEdge;
+        }
+
+        const retained = cleanEdges.filter((edge) => {
+          const source = String(edge.source || "").toLowerCase();
+          const debugSource = String((edge as any).debug_source || edge.debug_reason || "").toLowerCase();
+          if (debugSource.includes("bunched_right_side") || source.includes("fuzzy") || edge.edge_type === "unknown_interior") {
+            removedBunchedEdges++;
+            return false;
+          }
+          if (edge.edge_type === "hip") { removedHips++; return false; }
+          if (edge.edge_type === "valley") { removedValleys++; return false; }
+          if (edge.edge_type === "ridge") return false;
+          return true;
+        });
+        cleanEdges = selectedRidge ? [...retained, selectedRidge] : retained;
+
+        const failures = (globalThis as any).__strictTopologyFailures;
+        if (Array.isArray(failures)) {
+          (globalThis as any).__strictTopologyFailures = failures.filter((f: string) =>
+            selectedRidge?.source === "simple_gable_centerline_candidate"
+              ? f !== "no_ridge_hip_valley_on_pitched_roof"
+              : f !== "ridge_edges_not_aligned_to_roof_structure" && f !== "no_ridge_hip_valley_on_pitched_roof"
+          );
+          if (selectedRidge?.source === "simple_gable_centerline_candidate") {
+            (globalThis as any).__strictTopologyFailures.push("simple_gable_centerline_candidate_needs_internal_review");
+          }
+        }
+        ridgeAlignmentDebug = {
+          ...(ridgeAlignmentDebug || {}),
+          simple_gable_final_override: true,
+          ridge_edges_after: cleanEdges.filter((e) => e.edge_type === "ridge").length,
+          final_ridge_ft: round(cleanEdges.filter((e) => e.edge_type === "ridge").reduce((sum, e) => sum + polylineLengthPx(e.line_px || []), 0) * actualFpp, 2),
+        };
+        (globalThis as any).__ridgeAlignmentDebug = ridgeAlignmentDebug;
+      } else {
+        cleanEdges = cleanEdges.filter(cleanCandidateEdge);
+      }
+
+      const afterCounts = countEdges(cleanEdges);
+      const simpleGableFinalDebug = {
+        enabled: simpleGableEnabled,
+        before_counts: beforeCounts,
+        after_counts: afterCounts,
+        selected_ridge: selectedRidge ? {
+          id: selectedRidge.id ?? null,
+          source: selectedRidge.source,
+          length_px: round(polylineLengthPx(selectedRidge.line_px || []), 2),
+          validation_status: (selectedRidge as any).validation_status || "validated",
+        } : null,
+        removed_hips: removedHips,
+        removed_valleys: removedValleys,
+        removed_bunched_edges: removedBunchedEdges,
+        plane_count: cleanPlanes.length,
+        opposing_slope_pairs: opposingSlopePairs,
+        reflex_corners: reflexCorners,
+        footprint_fill_ratio: round(footprintFillRatio, 3),
+        three_plane_nodes: threePlaneNodeCount,
+        valid_valley_graph: validValleyGraph,
+      };
+      (globalThis as any).__simpleGableFinalOverride = simpleGableFinalDebug;
+      console.log("[SIMPLE_GABLE_FINAL_OVERRIDE]", JSON.stringify(simpleGableFinalDebug));
+    }
+
     // Hard-fail log if edges are still 0 after all classification
     if (cleanEdges.length === 0 && footprint.length >= 3) {
       console.error("[EDGE_CLASSIFIER_NOT_RUN] planes=" + cleanPlanes.length +
