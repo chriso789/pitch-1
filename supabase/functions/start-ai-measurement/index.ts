@@ -1570,6 +1570,10 @@ async function processJob(input: any) {
         : null;
 
     const sanityFailures: string[] = [];
+    {
+      const stashed = (globalThis as any).__overlaySanityFailures;
+      if (Array.isArray(stashed)) sanityFailures.push(...stashed);
+    }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
     }
