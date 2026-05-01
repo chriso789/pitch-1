@@ -64,7 +64,7 @@ function intersectSegments(
   };
 }
 
-function splitPolygonByLine(polygon: Point[], line: Line): Point[][] {
+export function splitPolygonByLine(polygon: Point[], line: Line): Point[][] {
   const left: Point[] = [];
   const right: Point[] = [];
 
