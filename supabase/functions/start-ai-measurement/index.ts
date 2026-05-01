@@ -1659,6 +1659,7 @@ async function processJob(input: any) {
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
+        plane_edge_classifier: (globalThis as any).__planeEdgeClassifierDebug ?? null,
       },
       overlay_debug: {
         raster_url: imageUrl,
