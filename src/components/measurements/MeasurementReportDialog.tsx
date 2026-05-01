@@ -466,6 +466,11 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
         <DialogHeader className="px-6 pt-6 pb-4 flex flex-row items-center justify-between">
           <div>
             <DialogTitle>Measurement Report</DialogTitle>
+            {(effectiveMeasurement as any)?.geometry_report_json?.block_customer_report_reason && (
+              <p className="mt-1 text-xs font-medium text-destructive">
+                Diagnostic export only — not customer-ready.
+              </p>
+            )}
             {address && (
               <p className="text-sm text-muted-foreground mt-1">{address}</p>
             )}
