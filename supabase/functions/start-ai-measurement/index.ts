@@ -16,9 +16,8 @@ import {
   consolidatePlanes,
   type RidgeLine as FilterRidgeLine,
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
-import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
-import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
+import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
@@ -32,6 +31,11 @@ type RoofPlane = {
   pitch_degrees?: number | null;
   azimuth?: number | null;
   source: string;
+  cluster_id?: string | number | null;
+  ridge_group_id?: string | number | null;
+  region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  source_ridge_ids?: Array<string | number>;
+  multi_part_px?: Point[][];
 };
 
 type RoofEdge = {
@@ -39,6 +43,10 @@ type RoofEdge = {
   line_px: Point[];
   confidence: number;
   source: string;
+  cluster_id?: string | number | null;
+  ridge_group_id?: string | number | null;
+  region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  source_ridge_ids?: Array<string | number>;
 };
 
 type DecodedRaster = { width: number; height: number; data: Uint8Array };
@@ -829,14 +837,24 @@ async function processJob(input: any) {
           // (≤20°) and midpoint proximity (≤50 px), assigns each cluster a
           // local region bbox (padded 25 px), and only splits geometry that
           // lies inside that region with that cluster's ridges.
-          const clusterInput = (filtered.kept as any[]).map((r) => ({
+          const clusterInput = (filtered.kept as any[]).map((r, idx) => {
+            const ridgeId = String(r.ridge_id ?? r.id ?? `ridge-${idx}`);
+            r.__cluster_ridge_id = ridgeId;
+            return ({
+            id: ridgeId,
+            ridge_id: ridgeId,
             p1: r.p1,
             p2: r.p2,
             score: r.score ?? 0.5,
             angleDeg: typeof r.angleDeg === "number"
               ? r.angleDeg
               : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
-          }));
+          });
+          });
+
+          const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
+          const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
+          const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
 
           const regional = splitPlanesByRidgeClusters({
             footprint,
@@ -875,7 +893,7 @@ async function processJob(input: any) {
           // Decide whether to commit the regional output.
           // Use it whenever it produces ≥2 planes; otherwise fall back to the
           // legacy global splitter so we never regress simple roofs.
-          let splitPlanes: { polygon: Point[] }[] = regional.planes;
+          let splitPlanes: any[] = regional.planes;
           if (regional.planes.length < 2) {
             splitPlanes = splitPlanesFromRidges(footprint, detectFiltered, 0, 3);
           }
@@ -893,17 +911,32 @@ async function processJob(input: any) {
               plane_index: i + 1,
               polygon_px: sp.polygon,
               confidence: 0.72,
-              pitch: null,
-              pitch_degrees: null,
-              azimuth: null,
+              pitch: pitchFromSolar,
+              pitch_degrees: pitchDegFromSolar,
+              azimuth: azimuthFromSolar,
               source: "ridge_split_recursive",
+              cluster_id: sp.cluster_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
+              ridge_group_id: sp.ridge_group_id ?? (regional.planes.length >= 2 ? null : "global_fallback"),
+              region_bbox: sp.region_bbox ?? null,
+              source_ridge_ids: sp.source_ridge_ids ?? [],
             }));
-            for (const r of filtered.kept) {
+            for (const r of filtered.kept as any[]) {
+              const ridgeId = String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? "");
+              const assignedCluster = regional.clusters.find((c) => c.ridges.some((cr: any) => String(cr.ridge_id ?? cr.id ?? "") === ridgeId));
+              const ridgeIds = assignedCluster?.ridges.map((cr: any, idx: number) => String(cr.ridge_id ?? cr.id ?? `${assignedCluster.cluster_index}:${idx}`)) || [];
+              if (assignedCluster && !lineWithinBBox([r.p1, r.p2], assignedCluster.region_bbox, 2)) {
+                console.log("[RIDGE_REJECTED]", JSON.stringify({ reason: "ridge_outside_assigned_cluster_bbox", cluster_id: assignedCluster.cluster_index }));
+                continue;
+              }
               splitRidgeEdges.push({
                 edge_type: "ridge",
                 line_px: [r.p1, r.p2],
                 confidence: Math.min(0.9, 0.55 + (r.score ?? 0.5) * 0.4),
                 source: "image_ridge_detector",
+                cluster_id: assignedCluster?.cluster_index ?? null,
+                ridge_group_id: assignedCluster?.cluster_index ?? null,
+                region_bbox: assignedCluster?.region_bbox ?? null,
+                source_ridge_ids: ridgeIds,
               });
             }
             cleanEdges.push(...splitRidgeEdges);
@@ -914,12 +947,18 @@ async function processJob(input: any) {
         console.warn("[RIDGE_SPLIT] failed:", (e as Error).message);
       }
 
-      // ── PLANE MERGE — collapse over-segmented ridge_split output before
-      //    downstream consolidation, edge classification, and rendering.
+      // ── CLUSTER-AWARE PLANE MERGE — Montelluna guardrail: never merge
+      //    across independent ridge clusters/wings/valley boundaries.
       let planeMergeDebug: any = null;
       if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
         try {
-          const mergeResult = mergeRoofPlanes({
+          const ridgeCatalog = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
+            id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
+            ridge_id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
+            p1: r.p1,
+            p2: r.p2,
+          }));
+          const mergeResult = mergeClusterAwarePlanes({
             planes: cleanPlanes.map((p: any) => ({
               id: p.plane_index,
               plane_index: p.plane_index,
@@ -928,7 +967,13 @@ async function processJob(input: any) {
               pitch_degrees: p.pitch_degrees,
               azimuth: p.azimuth,
               source: p.source,
+              cluster_id: p.cluster_id ?? null,
+              ridge_group_id: p.ridge_group_id ?? null,
+              region_bbox: p.region_bbox ?? null,
+              source_ridge_ids: p.source_ridge_ids ?? [],
             })),
+            blockingEdges: cleanEdges,
+            ridges: ridgeCatalog,
             feetPerPixel: actualFpp,
           });
           planeMergeDebug = mergeResult.debug;
@@ -939,79 +984,18 @@ async function processJob(input: any) {
             pitch: p.pitch ?? null,
             pitch_degrees: p.pitch_degrees ?? null,
             azimuth: p.azimuth ?? null,
-            source: "plane_merge_v1",
+            source: "cluster_aware_plane_merge_v1",
+            cluster_id: p.cluster_id ?? null,
+            ridge_group_id: p.ridge_group_id ?? null,
+            region_bbox: p.region_bbox ?? null,
+            source_ridge_ids: p.source_ridge_ids ?? [],
+            multi_part_px: p.multi_part_px,
           })) as any;
         } catch (e) {
-          console.warn("[PLANE_MERGE] failed:", (e as Error).message);
+          console.warn("[CLUSTER_AWARE_PLANE_MERGE] failed:", (e as Error).message);
         }
       }
       (globalThis as any).__planeMergeDebug = planeMergeDebug;
-
-      // ── RIDGE-ALIGNED PLANE MERGE — collapse same-side planes that lie
-      //    along the dominant ridge axis. Never merges across the ridge.
-      let ridgeAlignedMergeDebug: any = null;
-      if (topologySource === "ridge_split_recursive" && cleanPlanes.length > 1) {
-        try {
-          const selectedRidges = (topLevelFilteredRidges ?? []).map((r: any) => ({
-            p1: r.p1,
-            p2: r.p2,
-            angleDeg: typeof r.angleDeg === "number"
-              ? r.angleDeg
-              : Math.atan2(r.p2.y - r.p1.y, r.p2.x - r.p1.x) * 180 / Math.PI,
-            score: r.score ?? 0.5,
-          }));
-          const beforeCount = cleanPlanes.length;
-          const ridgeMerge = mergeRidgeAlignedPlanes({
-            planes: cleanPlanes.map((p: any) => ({
-              id: p.plane_index,
-              plane_index: p.plane_index,
-              polygon_px: p.polygon_px,
-              pitch: p.pitch,
-              pitch_degrees: p.pitch_degrees,
-              azimuth: p.azimuth,
-              source: p.source,
-            })),
-            dominantRidges: selectedRidges,
-            feetPerPixel: actualFpp,
-          });
-          ridgeAlignedMergeDebug = ridgeMerge.debug;
-          cleanPlanes = ridgeMerge.planes.map((p: any, i: number) => ({
-            plane_index: i + 1,
-            polygon_px: p.polygon_px,
-            confidence: 0.75,
-            pitch: p.pitch ?? null,
-            pitch_degrees: p.pitch_degrees ?? null,
-            azimuth: p.azimuth ?? null,
-            source: "ridge_aligned_plane_merge_v1",
-          })) as any;
-
-          const afterCount = cleanPlanes.length;
-          const totalArea = (cleanPlanes as any[]).reduce(
-            (s, p) => s + (p.polygon_px ? p.polygon_px.length : 0) > 0
-              ? s + Math.abs((function() {
-                  let a = 0;
-                  const poly = p.polygon_px || [];
-                  for (let i = 0; i < poly.length; i++) {
-                    const u = poly[i], v = poly[(i + 1) % poly.length];
-                    a += u.x * v.y - v.x * u.y;
-                  }
-                  return (a / 2) * actualFpp * actualFpp;
-                })())
-              : s,
-            0,
-          );
-
-          if (beforeCount > 20 && afterCount > 12) {
-            ridgeAlignedMergeDebug.needs_review = "oversegmented_after_ridge_aligned_merge";
-          }
-          if (afterCount < 2 && totalArea > 800) {
-            ridgeAlignedMergeDebug.needs_review = "undersegmented_after_ridge_aligned_merge";
-          }
-        } catch (e) {
-          console.warn("[RIDGE_ALIGNED_PLANE_MERGE] failed:", (e as Error).message);
-        }
-      }
-      (globalThis as any).__ridgeAlignedMergeDebug = ridgeAlignedMergeDebug;
 
       try {
         // 5b. Skeleton — used as fallback OR to add minor interior structure.
@@ -1269,6 +1253,7 @@ async function processJob(input: any) {
     const finalFootprintAreaPx = polygonAreaPx(footprint);
     const finalFootprintAreaSqft = finalFootprintAreaPx * actualFpp * actualFpp;
     const finalRoofAreaSqft = Number(totals.total_area_2d_sqft) || 0;
+    const solarRoofAreaSqft = estimateSolarRoofAreaSqft(solarData);
     const roofBboxCoverageRatio =
       solarBboxPx && solarBboxPx.area > 0 && finalFootprintBboxPx
         ? finalFootprintBboxPx.area / solarBboxPx.area
@@ -1311,6 +1296,12 @@ async function processJob(input: any) {
     if (geometryVsFootprintRatio != null && geometryVsFootprintRatio < 0.5) {
       sanityFailures.push(`geometry_covers_only_${Math.round(geometryVsFootprintRatio * 100)}pct_of_footprint`);
     }
+    if (solarRoofAreaSqft != null && solarRoofAreaSqft > 0 && finalRoofAreaSqft > solarRoofAreaSqft * 1.25) {
+      sanityFailures.push("area_inflation_after_merge");
+    }
+    if (planeMergeDebug?.pre_merge_area > 0 && planeMergeDebug.post_merge_area > planeMergeDebug.pre_merge_area * 1.10) {
+      sanityFailures.push("area_inflation_after_merge");
+    }
     // Final QA gates from filter+simplify layer.
     if (planeRows.length > 20) {
       sanityFailures.push(`too_many_planes_${planeRows.length}_max_20`);
@@ -1334,6 +1325,7 @@ async function processJob(input: any) {
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
+      solar_roof_area_sqft: solarRoofAreaSqft,
       final_footprint_area_sqft: finalFootprintAreaSqft,
       roof_bbox_coverage_ratio: roofBboxCoverageRatio,
       geometry_vs_footprint_ratio: geometryVsFootprintRatio,
@@ -1347,6 +1339,7 @@ async function processJob(input: any) {
       ridge_detection_ran: ridgeDetectionRan,
       ridges_detected: ridgeDetectedCount,
       ridge_split_planes: ridgeSplitPlaneCount,
+      plane_merge: planeMergeDebug,
       plane_consolidation: planeConsolidationStats,
       overlay_calibration: overlayCalibration,
     }));
@@ -1502,8 +1495,10 @@ async function processJob(input: any) {
         final_footprint_area_px: finalFootprintAreaPx,
         final_footprint_area_sqft: finalFootprintAreaSqft,
         final_roof_area_sqft: finalRoofAreaSqft,
+        solar_roof_area_sqft: solarRoofAreaSqft,
         roof_bbox_coverage_ratio: roofBboxCoverageRatio,
         geometry_vs_footprint_ratio: geometryVsFootprintRatio,
+        plane_merge: planeMergeDebug,
         plane_count: planeRows.length,
         edge_count: edgeRows.length,
         edge_counts: {
@@ -1514,8 +1509,6 @@ async function processJob(input: any) {
         footprint_source: footprintSource,
         blocked_customer_report_reason: blockCustomerReportReason,
         solar_segments: solarSegmentsDebug,
-        plane_merge: (globalThis as any).__planeMergeDebug ?? null,
-        ridge_aligned_plane_merge: (globalThis as any).__ridgeAlignedMergeDebug ?? null,
         ridge_clusters: (globalThis as any).__ridgeClustersDebug ?? null,
       },
       overlay_debug: {
@@ -2230,6 +2223,15 @@ function dominantSolarPitchRise(solarData: any): number | null {
     .map((d: number) => Math.tan((d * Math.PI) / 180) * 12);
   return rises.length ? average(rises) : null;
 }
+function estimateSolarRoofAreaSqft(solarData: any): number | null {
+  const segs = solarData?.solarPotential?.roofSegmentStats || [];
+  const areasM2 = segs
+    .map((s: any) => Number(s?.stats?.areaMeters2 ?? s?.stats?.groundAreaMeters2))
+    .filter((n: number) => Number.isFinite(n) && n > 0);
+  if (areasM2.length > 0) return areasM2.reduce((sum: number, n: number) => sum + n, 0) * 10.7639;
+  const wholeRoof = Number(solarData?.solarPotential?.wholeRoofStats?.areaMeters2 ?? solarData?.solarPotential?.wholeRoofStats?.groundAreaMeters2);
+  return Number.isFinite(wholeRoof) && wholeRoof > 0 ? wholeRoof * 10.7639 : null;
+}
 function dominantSolarAzimuth(solarData: any): number | null {
   const segs = solarData?.solarPotential?.roofSegmentStats || [];
   const az = segs.map((s: any) => Number(s.azimuthDegrees)).filter((n: number) => Number.isFinite(n));
@@ -2271,7 +2273,9 @@ function buildPlaneRows(args: {
       (plane.pitch_degrees != null ? Math.tan((plane.pitch_degrees * Math.PI) / 180) * 12 : null) ??
       solarRise ?? 6;
     const pitchDegrees = plane.pitch_degrees ?? risePer12ToDegrees(rise);
-    const area2d = polygonAreaSqft(plane.polygon_px, args.feetPerPixelActual);
+    const area2d = Array.isArray((plane as any).multi_part_px) && (plane as any).multi_part_px.length
+      ? (plane as any).multi_part_px.reduce((sum: number, part: Point[]) => sum + polygonAreaSqft(part, args.feetPerPixelActual), 0)
+      : polygonAreaSqft(plane.polygon_px, args.feetPerPixelActual);
     const mult = pitchMultiplier(rise);
     return {
       job_id: args.ai_measurement_job_id,

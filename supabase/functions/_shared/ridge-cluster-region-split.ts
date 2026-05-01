@@ -34,6 +34,8 @@ import {
 // ─── PUBLIC TYPES ──────────────────────────────────────────────────────────
 
 export type ClusterRidge = RidgeLine & {
+  id?: string | number;
+  ridge_id?: string | number;
   angleDeg?: number;
 };
 
@@ -53,7 +55,7 @@ export type BBox = {
 };
 
 export type RegionSplitResult = {
-  planes: Plane[];
+  planes: ClusteredPlane[];
   clusters: RidgeCluster[];
   debug: {
     total_ridges: number;
@@ -63,6 +65,13 @@ export type RegionSplitResult = {
     fallback_used: boolean;
     reason?: string;
   };
+};
+
+export type ClusteredPlane = Plane & {
+  cluster_id: string;
+  ridge_group_id: string;
+  region_bbox: BBox;
+  source_ridge_ids: string[];
 };
 
 // ─── ANGLE / GEOMETRY HELPERS ──────────────────────────────────────────────
@@ -270,7 +279,7 @@ export function splitPlanesByRidgeClusters(args: {
 
   if (total_ridges === 0 || footprint.length < 3) {
     return {
-      planes: [{ id: 0, polygon: footprint }],
+      planes: [{ id: 0, polygon: footprint, cluster_id: "fallback", ridge_group_id: "fallback", region_bbox: bboxOfPoints(footprint), source_ridge_ids: [] }],
       clusters: [],
       debug: {
         total_ridges,
@@ -298,7 +307,7 @@ export function splitPlanesByRidgeClusters(args: {
 
   // Footprint area for "leftover" detection.
   const footprintArea = polygonArea(footprint);
-  const allPlanes: Plane[] = [];
+  const allPlanes: ClusteredPlane[] = [];
   const region_planes_per_cluster: number[] = [];
   let coveredArea = 0;
 
@@ -342,7 +351,14 @@ export function splitPlanesByRidgeClusters(args: {
     );
     region_planes_per_cluster.push(regionPlanes.length);
     for (const p of regionPlanes) {
-      allPlanes.push({ id: allPlanes.length, polygon: p.polygon });
+      allPlanes.push({
+        id: allPlanes.length,
+        polygon: p.polygon,
+        cluster_id: String(c.cluster_index),
+        ridge_group_id: String(c.cluster_index),
+        region_bbox: c.region_bbox,
+        source_ridge_ids: c.ridges.map((r, idx) => String(r.ridge_id ?? r.id ?? `${c.cluster_index}:${idx}`)),
+      });
     }
   }
 
@@ -353,7 +369,7 @@ export function splitPlanesByRidgeClusters(args: {
     // were produced at all, fall back to whole footprint.
     if (allPlanes.length === 0) {
       return {
-        planes: [{ id: 0, polygon: footprint }],
+        planes: [{ id: 0, polygon: footprint, cluster_id: "fallback", ridge_group_id: "fallback", region_bbox: bboxOfPoints(footprint), source_ridge_ids: [] }],
         clusters,
         debug: {
           total_ridges,
@@ -371,7 +387,7 @@ export function splitPlanesByRidgeClusters(args: {
   const filtered = allPlanes.filter((p) => polygonArea(p.polygon) >= 1);
 
   return {
-    planes: filtered.length > 0 ? filtered : [{ id: 0, polygon: footprint }],
+    planes: filtered.length > 0 ? filtered : [{ id: 0, polygon: footprint, cluster_id: "fallback", ridge_group_id: "fallback", region_bbox: bboxOfPoints(footprint), source_ridge_ids: [] }],
     clusters,
     debug: {
       total_ridges,
