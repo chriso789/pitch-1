@@ -1241,20 +1241,27 @@ async function processJob(input: any) {
             feetPerPixel: actualFpp,
           });
           planeMergeDebug = mergeResult.debug;
-          cleanPlanes = mergeResult.planes.map((p: any, i: number) => ({
-            plane_index: i + 1,
-            polygon_px: p.polygon_px,
-            confidence: 0.74,
-            pitch: p.pitch ?? null,
-            pitch_degrees: p.pitch_degrees ?? null,
-            azimuth: p.azimuth ?? null,
-            source: "cluster_aware_plane_merge_v1",
-            cluster_id: p.cluster_id ?? null,
-            ridge_group_id: p.ridge_group_id ?? null,
-            region_bbox: p.region_bbox ?? null,
-            source_ridge_ids: p.source_ridge_ids ?? [],
-            multi_part_px: p.multi_part_px,
-          })) as any;
+          const footprintAreaSqftForMerge = polygonAreaPx(footprint) * actualFpp * actualFpp;
+          const postMergeArea = Number(mergeResult.debug?.post_merge_area ?? 0);
+          if (footprintAreaSqftForMerge > 0 && postMergeArea > footprintAreaSqftForMerge * 1.08) {
+            planeMergeDebug = { ...mergeResult.debug, rejected: "merge_area_gt_footprint_1_08" };
+            console.warn("[PLANE_MERGE_REJECTED]", JSON.stringify(planeMergeDebug));
+          } else {
+            cleanPlanes = mergeResult.planes.map((p: any, i: number) => ({
+              plane_index: i + 1,
+              polygon_px: p.polygon_px,
+              confidence: 0.74,
+              pitch: p.pitch ?? null,
+              pitch_degrees: p.pitch_degrees ?? null,
+              azimuth: p.azimuth ?? null,
+              source: "cluster_aware_plane_merge_v1",
+              cluster_id: p.cluster_id ?? null,
+              ridge_group_id: p.ridge_group_id ?? null,
+              region_bbox: p.region_bbox ?? null,
+              source_ridge_ids: p.source_ridge_ids ?? [],
+              multi_part_px: p.multi_part_px,
+            })) as any;
+          }
         } catch (e) {
           console.warn("[CLUSTER_AWARE_PLANE_MERGE] failed:", (e as Error).message);
         }
