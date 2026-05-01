@@ -18,8 +18,13 @@ import {
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
 import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
-import { solvePlanesFromFootprint } from "../_shared/footprint-plane-solver.ts";
+import {
+  solvePlanesFromFootprint,
+  rebuildPlanesFromSkeletonSegments,
+  planeAdjacencyStats,
+} from "../_shared/footprint-plane-solver.ts";
 import { classifyPlaneEdges } from "../_shared/plane-edge-classifier.ts";
+import { snapFootprintToEaves } from "../_shared/footprint-eave-snap.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 
@@ -693,6 +698,28 @@ async function processJob(input: any) {
     let usedSyntheticDebugRectangle = false;
     let footprintSelectionFailed = !selected;
 
+    // ── EAVE SNAP — pull footprint vertices to the strongest nearby roof
+    // perimeter edge so planes / overlay align to actual eaves rather than
+    // Solar hull center mass. Conservative: 16 px max move, vegetation/shadow
+    // pixels are skipped, and we record perimeter_off_eave_ratio for QA.
+    let eaveSnapDebug: any = null;
+    if (footprint.length >= 3 && raster?.data) {
+      try {
+        const snap = snapFootprintToEaves(footprint, raster as any, { maxSnapPx: 16 });
+        eaveSnapDebug = {
+          moved_count: snap.moved_count,
+          total_vertices: snap.total_vertices,
+          avg_move_px: Number(snap.avg_move_px.toFixed(2)),
+          perimeter_off_eave_ratio: Number(snap.perimeter_off_eave_ratio.toFixed(3)),
+        };
+        (globalThis as any).__eaveSnapDebug = eaveSnapDebug;
+        console.log("[EAVE_SNAP]", JSON.stringify(eaveSnapDebug));
+        footprint = snap.snapped;
+      } catch (e) {
+        console.warn("[EAVE_SNAP] failed:", (e as Error).message);
+      }
+    }
+
     console.log("[FOOTPRINT_SOURCE_SELECTION]", JSON.stringify({
       candidates: candidates.map((c) => ({
         source: c.source,
@@ -1218,6 +1245,77 @@ async function processJob(input: any) {
           debug_reason: e.debug_reason,
         }));
         cleanEdges = reclassified as typeof cleanEdges;
+
+        // FALLBACK: planes exist but classifier produced 0 ridge/hip/valley.
+        // Rebuild planes from straight-skeleton interior segments so each
+        // skeleton line becomes a real shared boundary, then re-run classifier.
+        const structuralCount =
+          (edgeResult.debug?.counts?.ridge ?? 0) +
+          (edgeResult.debug?.counts?.hip ?? 0) +
+          (edgeResult.debug?.counts?.valley ?? 0);
+        if (structuralCount === 0 && cleanPlanes.length >= 1 && footprint.length >= 3) {
+          try {
+            const skel = computeStraightSkeleton(
+              footprint.map((p) => [p.x, p.y] as [number, number]),
+            ) as any[];
+            const segs = (skel || [])
+              .map((se) => {
+                const a = se.a ?? se.p1 ?? se[0];
+                const b = se.b ?? se.p2 ?? se[1];
+                const ax = Array.isArray(a) ? a[0] : a?.x;
+                const ay = Array.isArray(a) ? a[1] : a?.y;
+                const bx = Array.isArray(b) ? b[0] : b?.x;
+                const by = Array.isArray(b) ? b[1] : b?.y;
+                return [ax, ay, bx, by].every((n) => Number.isFinite(n))
+                  ? { p1: { x: ax, y: ay }, p2: { x: bx, y: by } }
+                  : null;
+              })
+              .filter(Boolean) as Array<{ p1: Point; p2: Point }>;
+            if (segs.length > 0) {
+              const rebuilt = rebuildPlanesFromSkeletonSegments(footprint, segs);
+              if (rebuilt.planes.length >= 2 && rebuilt.adjacency.shared_boundary_count > 0) {
+                cleanPlanes = rebuilt.planes.map((p, i) => ({
+                  plane_index: i + 1,
+                  polygon_px: p.polygon,
+                  confidence: 0.7,
+                  pitch: cleanPlanes[0]?.pitch ?? null,
+                  pitch_degrees: cleanPlanes[0]?.pitch_degrees ?? null,
+                  azimuth: cleanPlanes[0]?.azimuth ?? null,
+                  source: "skeleton_rebuild",
+                })) as any;
+                topologySource = "topology_engine_v2";
+                const re = classifyPlaneEdges({
+                  planes: (cleanPlanes as any[]).map((p, i) => ({
+                    id: p.plane_index ?? i,
+                    plane_index: p.plane_index ?? i,
+                    polygon_px: p.polygon_px,
+                    pitch: p.pitch ?? null,
+                    pitch_degrees: p.pitch_degrees ?? null,
+                    azimuth: p.azimuth ?? null,
+                  })),
+                  ridgeHints: ridgeHintsForClassifier,
+                });
+                planeEdgeClassifierDebug = re.debug;
+                (globalThis as any).__planeEdgeClassifierDebug = re.debug;
+                cleanEdges = re.edges.map((e) => ({
+                  id: e.id,
+                  edge_type: e.edge_type,
+                  line_px: e.line_px,
+                  confidence: e.confidence,
+                  source: e.source,
+                  adjacent_plane_ids: e.adjacent_plane_ids,
+                  debug_reason: e.debug_reason,
+                })) as typeof cleanEdges;
+                console.log("[SKELETON_REBUILD]", JSON.stringify({
+                  planes: cleanPlanes.length,
+                  ...re.debug.counts,
+                }));
+              }
+            }
+          } catch (e) {
+            console.warn("[SKELETON_REBUILD] failed:", (e as Error).message);
+          }
+        }
       }
     } catch (e) {
       console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
@@ -1448,6 +1546,36 @@ async function processJob(input: any) {
         if (Number(pec.plane_count ?? 0) > 2 && ridgeC + hipC + valleyC === 0) {
           sanityFailures.push("no_structural_edges_from_plane_graph");
         }
+      }
+      // Plane adjacency: if we have >1 plane but ZERO shared boundaries,
+      // the graph is disconnected and ridges/hips/valleys can never form.
+      try {
+        const adj = planeAdjacencyStats(
+          (cleanPlanes as any[]).map((p) => p.polygon_px || []),
+        );
+        const ridgeHintCount = (topLevelFilteredRidges ?? []).length;
+        const ridgeHintsMatching = Math.max(
+          0,
+          ridgeHintCount - Number(pec?.invalid_ridge_hints_count ?? 0),
+        );
+        console.log("[PLANE_ADJACENCY_DEBUG]", JSON.stringify({
+          plane_count: adj.plane_count,
+          shared_boundary_count: adj.shared_boundary_count,
+          two_plane_boundary_count: adj.two_plane_boundary_count,
+          ridge_hint_count: ridgeHintCount,
+          ridge_hints_matching_shared_boundary: ridgeHintsMatching,
+          rejected_ridge_hints: Number(pec?.invalid_ridge_hints_count ?? 0),
+        }));
+        if (adj.plane_count > 1 && adj.shared_boundary_count === 0) {
+          sanityFailures.push("planes_disconnected_no_shared_boundaries");
+        }
+      } catch (e) {
+        console.warn("[PLANE_ADJACENCY_DEBUG] failed:", (e as Error).message);
+      }
+      // Eave QA: footprint must follow visible roof perimeter.
+      const eave = (globalThis as any).__eaveSnapDebug;
+      if (eave && Number(eave.perimeter_off_eave_ratio) > 0.3) {
+        sanityFailures.push("footprint_not_snapped_to_eaves");
       }
     }
     // Final QA gates from filter+simplify layer.
