@@ -1473,7 +1473,7 @@ async function processJob(input: any) {
 
         const perimeterEdgesAdded = ensureExteriorFootprintEdges("footprint_perimeter_forced");
         strictEdgeGraphDebug = {
-          total_edges: edgeResult.debug?.edge_count ?? cleanEdges.length,
+          total_edges: edgeResult.debug?.total_edges_in_map ?? cleanEdges.length,
           shared_edges: edgeResult.debug?.shared_edges ?? 0,
           exterior_edges: edgeResult.debug?.exterior_edges ?? 0,
           invalid_edges: edgeResult.debug?.invalid_edges ?? 0,
