@@ -98,6 +98,8 @@ Deno.serve(async (req) => {
         invoice_number: invoice_number || null,
         invoice_date: invoice_date || null,
         invoice_amount: parseFloat(invoice_amount),
+        subtotal: subtotal ? parseFloat(subtotal) : null,
+        tax_amount: tax_amount ? parseFloat(tax_amount) : null,
         document_url: document_url || null,
         document_name: document_name || null,
         notes: notes || null,
