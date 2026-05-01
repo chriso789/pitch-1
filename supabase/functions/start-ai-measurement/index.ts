@@ -2275,7 +2275,9 @@ function buildPlaneRows(args: {
       (plane.pitch_degrees != null ? Math.tan((plane.pitch_degrees * Math.PI) / 180) * 12 : null) ??
       solarRise ?? 6;
     const pitchDegrees = plane.pitch_degrees ?? risePer12ToDegrees(rise);
-    const area2d = polygonAreaSqft(plane.polygon_px, args.feetPerPixelActual);
+    const area2d = Array.isArray((plane as any).multi_part_px) && (plane as any).multi_part_px.length
+      ? (plane as any).multi_part_px.reduce((sum: number, part: Point[]) => sum + polygonAreaSqft(part, args.feetPerPixelActual), 0)
+      : polygonAreaSqft(plane.polygon_px, args.feetPerPixelActual);
     const mult = pitchMultiplier(rise);
     return {
       job_id: args.ai_measurement_job_id,
