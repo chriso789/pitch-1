@@ -279,7 +279,7 @@ export function splitPlanesByRidgeClusters(args: {
 
   if (total_ridges === 0 || footprint.length < 3) {
     return {
-      planes: [{ id: 0, polygon: footprint }],
+      planes: [{ id: 0, polygon: footprint, cluster_id: "fallback", ridge_group_id: "fallback", region_bbox: bboxOfPoints(footprint), source_ridge_ids: [] }],
       clusters: [],
       debug: {
         total_ridges,
@@ -387,7 +387,7 @@ export function splitPlanesByRidgeClusters(args: {
   const filtered = allPlanes.filter((p) => polygonArea(p.polygon) >= 1);
 
   return {
-    planes: filtered.length > 0 ? filtered : [{ id: 0, polygon: footprint }],
+    planes: filtered.length > 0 ? filtered : [{ id: 0, polygon: footprint, cluster_id: "fallback", ridge_group_id: "fallback", region_bbox: bboxOfPoints(footprint), source_ridge_ids: [] }],
     clusters,
     debug: {
       total_ridges,
