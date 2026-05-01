@@ -85,7 +85,7 @@ export const PipelineSearch = ({
           .order('updated_at', { ascending: false })
           .limit(20);
 
-        // Also search by contact fields separately
+        // Also search by contact fields separately (name + address)
         const { data: contactData } = await supabase
           .from('pipeline_entries')
           .select(`
@@ -93,15 +93,21 @@ export const PipelineSearch = ({
             clj_formatted_number,
             status,
             lead_name,
-            contacts!inner (
+            contacts!pipeline_entries_contact_id_fkey!inner (
               first_name,
               last_name,
+              address_street,
+              address_street_2,
               address_city,
-              address_state
+              address_state,
+              address_zip
             )
           `)
           .eq('is_deleted', false)
-          .or(`contacts.first_name.ilike.${q},contacts.last_name.ilike.${q},contacts.address_city.ilike.${q}`)
+          .or(
+            `first_name.ilike.${q},last_name.ilike.${q},address_street.ilike.${q},address_city.ilike.${q},address_state.ilike.${q},address_zip.ilike.${q}`,
+            { foreignTable: 'contacts' }
+          )
           .order('updated_at', { ascending: false })
           .limit(20);
 
