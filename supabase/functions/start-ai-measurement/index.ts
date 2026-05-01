@@ -764,6 +764,7 @@ async function processJob(input: any) {
     let ridgeDetectedCount = 0;
     let ridgeSplitPlaneCount = 0;
     let planeMergeDebug: any = null;
+    let footprintCoverageDebug: any = null;
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -805,6 +806,95 @@ async function processJob(input: any) {
       }
       topologySource = "google_solar_segment_structure";
       return true;
+    };
+
+    const edgeKeyFor = (a: Point, b: Point) => {
+      const sa = { x: Math.round(a.x / 2) * 2, y: Math.round(a.y / 2) * 2 };
+      const sb = { x: Math.round(b.x / 2) * 2, y: Math.round(b.y / 2) * 2 };
+      const ka = `${sa.x}:${sa.y}`;
+      const kb = `${sb.x}:${sb.y}`;
+      return ka < kb ? `${ka}|${kb}` : `${kb}|${ka}`;
+    };
+
+    const classifyFootprintEdge = (a: Point, b: Point): "eave" | "rake" => {
+      const solarAz = dominantSolarAzimuth(solarData);
+      if (solarAz === null) return "eave";
+      const edgeAngle = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const edgeAngle180 = ((edgeAngle % 180) + 180) % 180;
+      const downslopeAxis = ((solarAz % 180) + 180) % 180;
+      const diff = Math.abs(edgeAngle180 - downslopeAxis);
+      const angleDiff = Math.min(diff, 180 - diff);
+      return angleDiff <= 30 ? "rake" : "eave";
+    };
+
+    const ensureExteriorFootprintEdges = (source = "footprint_perimeter_forced") => {
+      const existingEdgeKeys = new Set(
+        cleanEdges.map((e) => {
+          const pts = e.line_px || [];
+          if (pts.length < 2) return "";
+          return edgeKeyFor(pts[0], pts[pts.length - 1]);
+        }).filter(Boolean),
+      );
+      let created = 0;
+      for (let fi = 0; fi < footprint.length; fi++) {
+        const a = footprint[fi];
+        const b = footprint[(fi + 1) % footprint.length];
+        if (Math.hypot(b.x - a.x, b.y - a.y) < 4) continue;
+        const edgeKey = edgeKeyFor(a, b);
+        if (existingEdgeKeys.has(edgeKey)) continue;
+        cleanEdges.push({
+          edge_type: classifyFootprintEdge(a, b),
+          line_px: [a, b],
+          confidence: 0.70,
+          source,
+        });
+        existingEdgeKeys.add(edgeKey);
+        created++;
+      }
+      return created;
+    };
+
+    const applyFootprintCoverageGate = (stage: string) => {
+      const selectedFootprintAreaPx = Math.max(0, polygonAreaPx(footprint));
+      const solverPlaneAreaSumPx = cleanPlanes.reduce((sum, p) => {
+        const poly = p.polygon_px || [];
+        return sum + (poly.length >= 3 ? polygonAreaPx(poly) : 0);
+      }, 0);
+      const coverageRatio = selectedFootprintAreaPx > 0 ? solverPlaneAreaSumPx / selectedFootprintAreaPx : 0;
+      const solverAccepted = cleanPlanes.length > 0 && coverageRatio >= 0.95 && coverageRatio <= 1.05;
+      const fallbackRequired = footprint.length >= 3 && !solverAccepted;
+      footprintCoverageDebug = {
+        stage,
+        selected_footprint_area: round(selectedFootprintAreaPx * actualFpp * actualFpp, 2),
+        selected_footprint_area_px: round(selectedFootprintAreaPx, 2),
+        solver_plane_area_sum: round(solverPlaneAreaSumPx * actualFpp * actualFpp, 2),
+        solver_plane_area_sum_px: round(solverPlaneAreaSumPx, 2),
+        coverage_ratio: round(coverageRatio, 3),
+        input_plane_count: cleanPlanes.length,
+        solver_accepted: solverAccepted,
+        fallback_applied: fallbackRequired,
+      };
+      if (fallbackRequired) {
+        const prior = cleanPlanes[0] || null;
+        cleanPlanes = [{
+          plane_index: 1,
+          polygon_px: footprint,
+          confidence: coverageRatio < 0.75 ? 0.40 : 0.50,
+          pitch: prior?.pitch ?? null,
+          pitch_degrees: prior?.pitch_degrees ?? null,
+          azimuth: prior?.azimuth ?? null,
+          source: "single_plane_fallback",
+        }];
+        cleanEdges = [];
+        topologySource = "single_plane_fallback";
+      }
+      console.log("[FOOTPRINT_COVERAGE_SOLVER]", JSON.stringify({
+        ...footprintCoverageDebug,
+        plane_count: cleanPlanes.length,
+        exterior_edges_created: 0,
+        shared_edges_created: planeEdgeClassifierDebug?.shared_edges ?? 0,
+      }));
+      return fallbackRequired;
     };
 
     if (footprint.length >= 3) {
