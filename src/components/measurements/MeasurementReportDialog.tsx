@@ -135,6 +135,15 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
   ];
 
   const blockReason = grj.block_customer_report_reason;
+  const warnings = grj.debug_pipeline?.warnings || grj.warnings || [];
+  const errorList: string[] = [];
+  if (blockReason) errorList.push(`Blocked: ${String(blockReason)}`);
+  if (m.validation_status === 'needs_internal_review') errorList.push('Validation: needs_internal_review');
+  if (m.validation_status === 'needs_manual_measurement') errorList.push('Validation: needs_manual_measurement');
+  if (dp.final_edge_count_saved === 0 && (dp.final_plane_count_saved ?? 0) > 0) errorList.push('ERROR: Planes exist but Edges = 0 (plane graph has no classified edges)');
+  if (grj.single_plane_fallback === true) errorList.push('WARNING: single_plane_fallback — slopes not segmented');
+  if (typeof grj.overlay_alignment_score === 'number' && grj.overlay_alignment_score < 0.75) errorList.push(`WARNING: overlay_alignment_score = ${grj.overlay_alignment_score}`);
+  if (Array.isArray(warnings)) errorList.push(...warnings.map((w: any) => `WARNING: ${String(w)}`));
 
   return (
     <div className="measurement-report-page border rounded-lg overflow-hidden bg-background">
@@ -146,9 +155,12 @@ const MeasurementDataSummary: React.FC<{ m: any }> = ({ m }) => {
         <Badge variant="secondary">data</Badge>
       </div>
       <div className="p-4 space-y-4">
-        {blockReason && (
-          <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 text-xs text-destructive font-medium">
-            ⚠ Blocked: {String(blockReason)}
+        {errorList.length > 0 && (
+          <div className="rounded-md bg-destructive/10 border border-destructive/30 px-3 py-2 space-y-1">
+            <div className="text-xs font-bold text-destructive">Errors &amp; Diagnostics</div>
+            {errorList.map((e, i) => (
+              <div key={i} className="text-xs text-destructive">{e}</div>
+            ))}
           </div>
         )}
 
@@ -370,8 +382,18 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
   const downloadVisibleReportPdf = async () => {
     const root = reportContentRef.current;
     if (!root) throw new Error('Report preview is not ready yet.');
+
+    // Force-open all <details> elements so diagnostic data is captured in the PDF
+    const detailsEls = Array.from(root.querySelectorAll('details'));
+    const previouslyOpen = detailsEls.map(d => d.open);
+    detailsEls.forEach(d => { d.open = true; });
+
     const pages = Array.from(root.querySelectorAll<HTMLElement>('.measurement-report-page'));
-    if (pages.length === 0) throw new Error('No report pages are available to export.');
+    if (pages.length === 0) {
+      // Restore collapsed state
+      detailsEls.forEach((d, i) => { d.open = previouslyOpen[i]; });
+      throw new Error('No report pages are available to export.');
+    }
 
     await document.fonts?.ready;
     let pdf: jsPDF | null = null;
@@ -402,6 +424,9 @@ const MeasurementReportDialog: React.FC<MeasurementReportDialogProps> = ({
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/(^-|-$)/g, '') || 'measurement-report';
     pdf?.save(`${safeAddress}-measurement-report.pdf`);
+
+    // Restore collapsed state
+    detailsEls.forEach((d, i) => { d.open = previouslyOpen[i]; });
   };
 
   useEffect(() => {
