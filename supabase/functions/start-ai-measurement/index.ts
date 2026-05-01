@@ -19,6 +19,7 @@ import {
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
 import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
+import { validateFootprintConstraints } from "../_shared/footprint-constraint-validator.ts";
 
 type Point = { x: number; y: number };
 type GeoPoint = { lat: number; lng: number };
