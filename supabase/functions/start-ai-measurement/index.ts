@@ -863,7 +863,15 @@ async function processJob(input: any) {
       }, 0);
       const coverageRatio = selectedFootprintAreaPx > 0 ? solverPlaneAreaSumPx / selectedFootprintAreaPx : 0;
       const isSinglePlaneFallback = cleanPlanes.length === 1 && cleanPlanes[0]?.source === "single_plane_fallback";
-      const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageRatio >= 0.95 && coverageRatio <= 1.05;
+      // Solar segment planes come from Google Solar API — trust them with a
+      // relaxed coverage threshold (0.85) instead of the strict 0.95–1.05 band.
+      const isSolarSegmentSource = cleanPlanes.length >= 2 && cleanPlanes.every(
+        (p) => p.source === "google_solar_segment_planes" || p.source === "google_solar_segment_structure"
+      );
+      const coverageOk = isSolarSegmentSource
+        ? coverageRatio >= 0.85 && coverageRatio <= 1.15
+        : coverageRatio >= 0.95 && coverageRatio <= 1.05;
+      const solverAccepted = cleanPlanes.length > 0 && !isSinglePlaneFallback && coverageOk;
       const fallbackRequired = footprint.length >= 3 && !solverAccepted;
       footprintCoverageDebug = {
         stage,
@@ -875,6 +883,7 @@ async function processJob(input: any) {
         input_plane_count: cleanPlanes.length,
         solver_accepted: solverAccepted,
         fallback_applied: fallbackRequired,
+        solar_segment_exempt: isSolarSegmentSource,
       };
       if (fallbackRequired) {
         const prior = cleanPlanes[0] || null;
