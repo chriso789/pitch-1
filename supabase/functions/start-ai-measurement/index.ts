@@ -1177,6 +1177,53 @@ async function processJob(input: any) {
       console.warn("[GEOMETRY_VALIDATION] failed:", (e as Error).message);
     }
 
+    // ── PLANE-TIED EDGE CLASSIFICATION — final authority on edge types.
+    //    Build shared-boundary adjacency from the FINAL plane set, classify
+    //    each edge as ridge/valley/hip/eave/rake from plane adjacency + slope
+    //    direction, and reject ridge hints that are not actual plane-pair
+    //    boundaries. Patent model is built from this classified edge graph.
+    let planeEdgeClassifierDebug: any = null;
+    try {
+      if (cleanPlanes.length > 0) {
+        const ridgeHintsForClassifier = (topLevelFilteredRidges ?? []).map((r: any, i: number) => ({
+          id: String(r.__cluster_ridge_id ?? r.ridge_id ?? r.id ?? i),
+          p1: r.p1,
+          p2: r.p2,
+          score: typeof r.score === "number" ? r.score : undefined,
+        }));
+        const planesForClassifier = (cleanPlanes as any[]).map((p, i) => ({
+          id: p.plane_index ?? i,
+          plane_index: p.plane_index ?? i,
+          polygon_px: p.polygon_px,
+          pitch: p.pitch ?? null,
+          pitch_degrees: p.pitch_degrees ?? null,
+          azimuth: p.azimuth ?? null,
+        }));
+        const edgeResult = classifyPlaneEdges({
+          planes: planesForClassifier,
+          ridgeHints: ridgeHintsForClassifier,
+        });
+        planeEdgeClassifierDebug = edgeResult.debug;
+        (globalThis as any).__planeEdgeClassifierDebug = edgeResult.debug;
+
+        // Preserve any prior eaves/rakes coming from triangulation that the
+        // classifier might miss (e.g. when polygons don't perfectly align).
+        // But the classifier output is the source of truth for ridge/hip/valley.
+        const reclassified = edgeResult.edges.map((e) => ({
+          id: e.id,
+          edge_type: e.edge_type,
+          line_px: e.line_px,
+          confidence: e.confidence,
+          source: e.source,
+          adjacent_plane_ids: e.adjacent_plane_ids,
+          debug_reason: e.debug_reason,
+        }));
+        cleanEdges = reclassified as typeof cleanEdges;
+      }
+    } catch (e) {
+      console.warn("[PLANE_EDGE_CLASSIFIER] failed:", (e as Error).message);
+    }
+
 
     // ── OVERLAY CALIBRATION — fit measured geometry to the detected roof target,
     // not to the full raster center. This is rendering-only and does not change
