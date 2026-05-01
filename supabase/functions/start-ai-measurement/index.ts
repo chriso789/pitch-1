@@ -2062,6 +2062,7 @@ async function processJob(input: any) {
 
     const blockCustomerReportReason: string | null =
       sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason;
+    const needsInternalReview = !!blockCustomerReportReason?.includes("ridge_edges_not_aligned_to_roof_structure");
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
@@ -2353,6 +2354,8 @@ async function processJob(input: any) {
         measurement_quality_score: quality.measurement_score,
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
+        validation_status: reviewRequired ? "flagged" : "validated",
+        validation_notes: blockCustomerReportReason,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
