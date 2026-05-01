@@ -1888,6 +1888,11 @@ async function processJob(input: any) {
     if (edgeRows.length) await supabase.from("ai_roof_edges").insert(edgeRows);
 
     const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+    const ridgeQa = ((globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug) || null;
+    const ridgeStructureReviewReason =
+      ridgeQa && Number(ridgeQa.ridge_edges_before || 0) > 0 && Number(ridgeQa.ridge_edges_after || 0) === 0
+        ? "ridge_edges_not_aligned_to_roof_structure"
+        : null;
     const usedSinglePlaneFallback =
       planeRows.length === 1 && planeRows[0].source === "single_plane_fallback";
 
@@ -2056,7 +2061,7 @@ async function processJob(input: any) {
     }
 
     const blockCustomerReportReason: string | null =
-      sanityFailures.length > 0 ? sanityFailures.join("|") : null;
+      sanityFailures.length > 0 ? sanityFailures.join("|") : ridgeStructureReviewReason;
 
     console.log("[GEOMETRY_SANITY_CHECK]", JSON.stringify({
       final_roof_area_sqft: finalRoofAreaSqft,
@@ -2065,10 +2070,11 @@ async function processJob(input: any) {
       roof_bbox_coverage_ratio: roofBboxCoverageRatio,
       geometry_vs_footprint_ratio: geometryVsFootprintRatio,
       plane_count: planeRows.length,
-      edge_counts: {
+        edge_counts: {
         ridge: ridgeFt, hip: hipFt, valley: valleyFt,
         eave: Number(totals.eave_length_ft) || 0, rake: Number(totals.rake_length_ft) || 0,
       },
+        ridge_alignment_qa: ridgeQa,
       blocked: !!blockCustomerReportReason,
       reason: blockCustomerReportReason,
       ridge_detection_ran: ridgeDetectionRan,
