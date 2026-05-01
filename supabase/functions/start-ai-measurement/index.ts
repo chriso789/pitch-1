@@ -16,9 +16,8 @@ import {
   consolidatePlanes,
   type RidgeLine as FilterRidgeLine,
 } from "../_shared/ridge-filter-and-plane-consolidate.ts";
-import { mergeRoofPlanes } from "../_shared/plane-merge.ts";
-import { mergeRidgeAlignedPlanes } from "../_shared/ridge-aligned-plane-merge.ts";
 import { splitPlanesByRidgeClusters } from "../_shared/ridge-cluster-region-split.ts";
+import { lineWithinBBox, mergeClusterAwarePlanes } from "../_shared/cluster-aware-plane-merge.ts";
 import { computeOverlayTransform, transformOverlayPoint } from "../_shared/overlay-transform.ts";
 
 type Point = { x: number; y: number };
@@ -32,6 +31,11 @@ type RoofPlane = {
   pitch_degrees?: number | null;
   azimuth?: number | null;
   source: string;
+  cluster_id?: string | number | null;
+  ridge_group_id?: string | number | null;
+  region_bbox?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  source_ridge_ids?: Array<string | number>;
+  multi_part_px?: Point[][];
 };
 
 type RoofEdge = {
