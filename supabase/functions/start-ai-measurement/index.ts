@@ -6,6 +6,7 @@
 import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
+import { solveRoofPlanes as planarSolveRoofPlanes } from "../_shared/planar-roof-solver.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
@@ -1303,43 +1304,58 @@ async function processJob(input: any) {
         cleanEdges = reclassified as typeof cleanEdges;
 
         // FALLBACK: planes exist but classifier produced 0 ridge/hip/valley.
-        // Rebuild planes from straight-skeleton interior segments so each
-        // skeleton line becomes a real shared boundary, then re-run classifier.
+        // Use the PLANAR GRAPH SOLVER: build a planar subdivision from
+        // footprint + skeleton interior lines, extract faces as planes.
+        // This guarantees shared boundaries → edges > 0.
         const structuralCount =
           (edgeResult.debug?.counts?.ridge ?? 0) +
           (edgeResult.debug?.counts?.hip ?? 0) +
           (edgeResult.debug?.counts?.valley ?? 0);
         if (structuralCount === 0 && cleanPlanes.length >= 1 && footprint.length >= 3) {
           try {
+            // Collect interior lines from: skeleton + detected ridges
+            const interiorLines: Array<{ a: Point; b: Point }> = [];
+
+            // A. Straight-skeleton segments
             const skel = computeStraightSkeleton(
               footprint.map((p) => [p.x, p.y] as [number, number]),
             ) as any[];
-            const segs = (skel || [])
-              .map((se) => {
-                const a = se.a ?? se.p1 ?? se[0];
-                const b = se.b ?? se.p2 ?? se[1];
-                const ax = Array.isArray(a) ? a[0] : a?.x;
-                const ay = Array.isArray(a) ? a[1] : a?.y;
-                const bx = Array.isArray(b) ? b[0] : b?.x;
-                const by = Array.isArray(b) ? b[1] : b?.y;
-                return [ax, ay, bx, by].every((n) => Number.isFinite(n))
-                  ? { p1: { x: ax, y: ay }, p2: { x: bx, y: by } }
-                  : null;
-              })
-              .filter(Boolean) as Array<{ p1: Point; p2: Point }>;
-            if (segs.length > 0) {
-              const rebuilt = rebuildPlanesFromSkeletonSegments(footprint, segs);
-              if (rebuilt.planes.length >= 2 && rebuilt.adjacency.shared_boundary_count > 0) {
-                cleanPlanes = rebuilt.planes.map((p, i) => ({
+            for (const se of (skel || [])) {
+              const a = se.a ?? se.p1 ?? se[0];
+              const b = se.b ?? se.p2 ?? se[1];
+              const ax = Array.isArray(a) ? a[0] : a?.x;
+              const ay = Array.isArray(a) ? a[1] : a?.y;
+              const bx = Array.isArray(b) ? b[0] : b?.x;
+              const by = Array.isArray(b) ? b[1] : b?.y;
+              if ([ax, ay, bx, by].every((n) => Number.isFinite(n))) {
+                interiorLines.push({ a: { x: ax, y: ay }, b: { x: bx, y: by } });
+              }
+            }
+
+            // B. Detected ridge lines (from image detector)
+            for (const r of (topLevelFilteredRidges ?? []) as any[]) {
+              if (r.p1 && r.p2) {
+                interiorLines.push({ a: r.p1, b: r.p2 });
+              }
+            }
+
+            if (interiorLines.length > 0) {
+              const planarResult = planarSolveRoofPlanes(footprint, interiorLines);
+              console.log("[PLANAR_SOLVER_FALLBACK]", JSON.stringify(planarResult.debug));
+
+              if (planarResult.faces.length >= 2) {
+                cleanPlanes = planarResult.faces.map((f, i) => ({
                   plane_index: i + 1,
-                  polygon_px: p.polygon,
-                  confidence: 0.7,
+                  polygon_px: f.polygon,
+                  confidence: 0.75,
                   pitch: cleanPlanes[0]?.pitch ?? null,
                   pitch_degrees: cleanPlanes[0]?.pitch_degrees ?? null,
                   azimuth: cleanPlanes[0]?.azimuth ?? null,
-                  source: "skeleton_rebuild",
+                  source: "planar_graph_solver",
                 })) as any;
-                topologySource = "topology_engine_v2";
+                topologySource = "planar_graph_solver";
+
+                // Re-run edge classifier on the new topology-correct planes
                 const re = classifyPlaneEdges({
                   planes: (cleanPlanes as any[]).map((p, i) => ({
                     id: p.plane_index ?? i,
@@ -1362,14 +1378,14 @@ async function processJob(input: any) {
                   adjacent_plane_ids: e.adjacent_plane_ids,
                   debug_reason: e.debug_reason,
                 })) as typeof cleanEdges;
-                console.log("[SKELETON_REBUILD]", JSON.stringify({
+                console.log("[PLANAR_SOLVER_EDGES]", JSON.stringify({
                   planes: cleanPlanes.length,
                   ...re.debug.counts,
                 }));
               }
             }
           } catch (e) {
-            console.warn("[SKELETON_REBUILD] failed:", (e as Error).message);
+            console.warn("[PLANAR_SOLVER_FALLBACK] failed:", (e as Error).message);
           }
         }
       }
