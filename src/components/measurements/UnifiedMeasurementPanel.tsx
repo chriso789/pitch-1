@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/collapsible';
 import { 
   CheckCircle2, Trash2, Ruler, Star, Plus, ChevronDown,
-  Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator,
+  Loader2, FileText, Eye, Home, Sparkles, Pencil, Calculator, AlertTriangle,
   Clock, ArrowRight
 } from 'lucide-react';
 import { format } from 'date-fns';
@@ -157,6 +157,16 @@ const hasCustomerSafeGeometry = (measurement: any): boolean => {
   const footprintSource = String(measurement?.footprint_source || '').toLowerCase();
   if (footprintSource === 'google_solar_bbox') return false;
   return true;
+};
+
+const getMeasurementReviewReason = (measurement: any): string | null => {
+  const grj = measurement?.geometry_report_json || {};
+  const reason = grj?.block_customer_report_reason || measurement?.gate_reason;
+  if (reason) return String(reason).split('|')[0].replace(/_/g, ' ');
+  if (measurement?.requires_manual_review || measurement?.validation_status === 'needs_internal_review') {
+    return 'Needs review before customer delivery';
+  }
+  return null;
 };
 
 const getFallbackSatelliteTileUrl = (measurement: any): string | undefined => {
