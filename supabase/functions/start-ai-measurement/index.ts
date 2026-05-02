@@ -1271,7 +1271,6 @@ async function processJob(input: any) {
         }
       }
 
-      let hipRoofDetectorDebug: any = null;
       try {
         // 5b. Skeleton — used as fallback OR to add minor interior structure.
         if (cleanPlanes.length < 2) {
