@@ -1,12 +1,13 @@
 /**
  * Premium Dark Why Choose Us
- * Dark background, metallic accents. Uses a magazine editorial layout
- * with large pull-quote, horizontal stats bar, and card grid.
- * Very different structure from other templates.
+ * DARK MAGAZINE EDITORIAL — full dark bg, metallic accent gradients, 2x2 card grid.
+ * Structure: header → two-column (story + data card) → horizontal stats bar → 2x2 grid.
+ * DISTINCT from Bold-Editorial: no light bg, no large pull-quote testimonial, no star strip below header, no "SATISFACTION GUARANTEE" bar.
+ * DISTINCT from Classic: no sidebar layout, no serif fonts, no gold borders.
  */
 import React from 'react';
 import { WhyChooseUsProps } from './types';
-import { Shield, Award, Wrench, Clock, Star, Quote } from 'lucide-react';
+import { Shield, Award, Wrench, Clock } from 'lucide-react';
 
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -26,6 +27,42 @@ export const PremiumDarkWhyChooseUs: React.FC<WhyChooseUsProps> = ({
     ? brandCertifications.split(/[,;·•]/).map(s => s.trim()).filter(Boolean)
     : [];
 
+  // Build dynamic promise cards from company data
+  const promises: { icon: typeof Shield; title: string; body: string }[] = [];
+  if (brandMission) {
+    promises.push({ icon: Award, title: 'Our Standard', body: brandMission });
+  }
+  if (yearsInBusiness) {
+    promises.push({ icon: Clock, title: `${yearsInBusiness}+ Years Strong`, body: `Nearly ${yearsInBusiness === 1 ? 'a year' : `${yearsInBusiness} years`} of delivering results that speak for themselves — project after project.` });
+  }
+  if (licenseNumber) {
+    promises.push({ icon: Shield, title: 'Fully Licensed', body: `Operating under license #${licenseNumber} with full insurance coverage for every project we take on.` });
+  }
+  if (certList.length > 0) {
+    promises.push({ icon: Wrench, title: 'Certified Team', body: certList.join(' · ') });
+  }
+  // Pad to at least 4 if we don't have enough data
+  if (promises.length < 4) {
+    const fallbacks = [
+      { icon: Shield, title: 'Quality Assurance', body: `Every ${companyName} project meets our rigorous internal quality standards before we consider it complete.` },
+      { icon: Clock, title: 'Responsive Service', body: `We respond quickly, communicate proactively, and treat your time with the same respect we treat our own.` },
+      { icon: Wrench, title: 'Expert Execution', body: `Our crews bring professional-grade skill and attention to detail to every aspect of your project.` },
+      { icon: Award, title: 'Results-Driven', body: `We measure our success by your satisfaction — nothing less than exceptional results.` },
+    ];
+    while (promises.length < 4) {
+      const fb = fallbacks[promises.length];
+      if (fb) promises.push(fb);
+      else break;
+    }
+  }
+
+  // Dynamic stats — only show real data
+  const stats: { value: string; label: string }[] = [];
+  if (yearsInBusiness) stats.push({ value: `${yearsInBusiness}+`, label: 'Years' });
+  stats.push({ value: '100%', label: 'Licensed' });
+  stats.push({ value: '100%', label: 'Insured' });
+  if (certList.length > 0) stats.push({ value: `${certList.length}`, label: 'Credentials' });
+
   return (
     <div
       data-report-page
@@ -34,7 +71,6 @@ export const PremiumDarkWhyChooseUs: React.FC<WhyChooseUsProps> = ({
     >
       <div className="absolute inset-0" style={{ background: 'radial-gradient(ellipse at bottom left, rgba(180,180,200,0.04) 0%, transparent 60%)' }} />
 
-      {/* Header section */}
       <div className="relative z-10 px-10 pt-12">
         <div className="text-[11px] tracking-[0.5em] text-[#666] uppercase mb-4">Why Choose {companyName}</div>
         <h2 className="text-4xl font-bold leading-tight tracking-tight mb-4 text-white">
@@ -43,37 +79,17 @@ export const PremiumDarkWhyChooseUs: React.FC<WhyChooseUsProps> = ({
         <div className="w-20 h-[2px] mb-6" style={{ background: 'linear-gradient(90deg, #A0A0A0, #444)' }} />
       </div>
 
-      {/* Two-column: story + pull quote */}
-      <div className="relative z-10 px-10 flex gap-8 mb-6">
-        <div className="flex-1">
-          <p className="text-sm text-[#888] leading-relaxed">{heroBlurb}</p>
-          {brandMission && (
-            <p className="text-xs text-[#666] mt-3 italic">{brandMission}</p>
-          )}
-        </div>
-        {/* Pull quote box */}
-        <div className="w-[240px] shrink-0 p-5 rounded" style={{ background: '#111', border: '1px solid #222' }}>
-          <Quote className="w-5 h-5 text-[#555] mb-2" />
-          <p className="text-xs text-[#999] italic leading-relaxed">
-            "They showed up when they said they would, did exactly what they promised, and the finished product looks incredible."
-          </p>
-          <div className="flex gap-0.5 mt-3">
-            {[0,1,2,3,4].map(i => (
-              <Star key={i} className="w-3 h-3" style={{ color: '#A0A0A0', fill: '#A0A0A0' }} />
-            ))}
-          </div>
-          <span className="text-[9px] text-[#555] mt-1 block">— VERIFIED HOMEOWNER</span>
-        </div>
+      {/* Story — full width, no fake testimonial */}
+      <div className="relative z-10 px-10 mb-6">
+        <p className="text-sm text-[#888] leading-relaxed max-w-[600px]">{heroBlurb}</p>
+        {brandMission && (
+          <p className="text-xs text-[#666] mt-3 italic max-w-[500px]">{brandMission}</p>
+        )}
       </div>
 
       {/* Stats — horizontal bar */}
-      <div className="relative z-10 mx-10 grid grid-cols-4 border-t border-b border-[#1A1A1A] divide-x divide-[#1A1A1A]">
-        {[
-          { value: yearsInBusiness ? `${yearsInBusiness}+` : '20+', label: 'Years' },
-          { value: '5.0', label: 'Rating' },
-          { value: '100%', label: 'Licensed' },
-          { value: '100%', label: 'Insured' },
-        ].map((s, i) => (
+      <div className="relative z-10 mx-10 grid divide-x divide-[#1A1A1A] border-t border-b border-[#1A1A1A]" style={{ gridTemplateColumns: `repeat(${stats.length}, 1fr)` }}>
+        {stats.map((s, i) => (
           <div key={i} className="py-4 text-center">
             <div className="text-xl font-bold text-white">{s.value}</div>
             <div className="text-[8px] tracking-[0.25em] text-[#555] uppercase mt-0.5">{s.label}</div>
@@ -81,14 +97,9 @@ export const PremiumDarkWhyChooseUs: React.FC<WhyChooseUsProps> = ({
         ))}
       </div>
 
-      {/* Promises — 2x2 card grid */}
+      {/* Promises — 2x2 card grid with dynamic content */}
       <div className="relative z-10 px-10 mt-6 grid grid-cols-2 gap-3">
-        {[
-          { icon: Shield, title: 'Lifetime Warranty', body: 'Every installation backed by our written lifetime workmanship guarantee.' },
-          { icon: Award, title: 'Certified Excellence', body: 'Manufacturer-certified crews using premium methods and materials.' },
-          { icon: Wrench, title: 'Meticulous Standards', body: 'Daily cleanups, magnetic sweeps, and a job-site you can live with.' },
-          { icon: Clock, title: 'Precision Scheduling', body: 'Fixed timelines, no surprises, and transparent communication.' },
-        ].map(p => {
+        {promises.slice(0, 4).map(p => {
           const Icon = p.icon;
           return (
             <div key={p.title} className="p-4 rounded flex gap-3" style={{ background: '#111', border: '1px solid #1A1A1A' }}>
@@ -103,18 +114,6 @@ export const PremiumDarkWhyChooseUs: React.FC<WhyChooseUsProps> = ({
           );
         })}
       </div>
-
-      {/* Certifications */}
-      {certList.length > 0 && (
-        <div className="relative z-10 mx-10 mt-5 px-4 py-3 rounded" style={{ background: '#111', borderLeft: '2px solid #444' }}>
-          <div className="text-[9px] tracking-[0.3em] text-[#666] font-bold mb-1.5 uppercase">Certifications</div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1">
-            {certList.map((cert, i) => (
-              <span key={i} className="text-[10px] text-[#888]">• {cert}</span>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Footer */}
       <div className="absolute bottom-0 left-0 right-0 z-10 px-10 py-4 border-t border-[#1A1A1A]">

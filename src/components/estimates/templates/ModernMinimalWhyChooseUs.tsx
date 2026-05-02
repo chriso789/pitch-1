@@ -1,11 +1,11 @@
 /**
  * Modern Minimal Why Choose Us
- * Clean, editorial, whitespace-driven. Uses numbered list instead of icon grid.
- * Focuses on the company narrative and commitments in flowing prose.
+ * EDITORIAL PROSE layout — no icon grid, no card boxes, no pull-quotes.
+ * Structure: thin top rule → large lightweight heading → flowing prose narrative → minimal stats → understated cert line.
+ * DISTINCT from Bold-Editorial: no dark hero band, no 4-card promise grid, no testimonial block, no satisfaction guarantee bar.
  */
 import React from 'react';
 import { WhyChooseUsProps } from './types';
-import { Check } from 'lucide-react';
 
 const PAGE_WIDTH = 816;
 const PAGE_HEIGHT = 1056;
@@ -21,14 +21,22 @@ export const ModernMinimalWhyChooseUs: React.FC<WhyChooseUsProps> = ({
   const yearsInBusiness = establishedYear ? Math.max(1, new Date().getFullYear() - establishedYear) : null;
   const heroBlurb = brandStory || `${companyName} was founded on a simple belief: homeowners deserve better. Better communication, better craftsmanship, and a better experience from start to finish.`;
 
-  const commitments = [
-    'Lifetime workmanship warranty on every project',
-    'Factory-certified installation crews',
-    'Daily job-site cleanup with magnetic nail sweeps',
-    'Fixed pricing — no surprise change orders',
-    'Manufacturer-backed material warranties',
-    'Licensed, bonded, and fully insured',
-  ];
+  // Build dynamic narrative paragraphs from real company data
+  const narrativeParagraphs: string[] = [heroBlurb];
+  if (brandMission) {
+    narrativeParagraphs.push(brandMission);
+  }
+  if (yearsInBusiness && yearsInBusiness > 3) {
+    narrativeParagraphs.push(`Over ${yearsInBusiness} years of hands-on experience means we've seen it all — and we've built the systems, standards, and team to handle any project with confidence.`);
+  }
+  if (brandCertifications) {
+    narrativeParagraphs.push(`Our credentials speak for themselves: ${brandCertifications}.`);
+  }
+
+  // Dynamic stats — only what the company actually has
+  const stats: { value: string; label: string }[] = [];
+  if (yearsInBusiness) stats.push({ value: `${yearsInBusiness}`, label: 'years' });
+  stats.push({ value: '100%', label: 'insured' });
 
   return (
     <div
@@ -46,47 +54,24 @@ export const ModernMinimalWhyChooseUs: React.FC<WhyChooseUsProps> = ({
         </h2>
         <div className="w-16 h-[1px] bg-black mb-8" />
 
-        {/* Company narrative — prose style, not bullet points */}
-        <p className="text-base text-gray-500 font-light max-w-[520px] leading-relaxed mb-4">
-          {heroBlurb}
-        </p>
-        {brandMission && (
-          <p className="text-sm text-gray-400 font-light max-w-[480px] leading-relaxed mb-10 italic">
-            {brandMission}
-          </p>
-        )}
-
-        {/* Stats — minimal horizontal row */}
-        <div className="flex gap-16 mb-12">
-          {[
-            { value: yearsInBusiness ? `${yearsInBusiness}` : '—', label: 'years' },
-            { value: '5.0', label: 'rating' },
-            { value: '100%', label: 'insured' },
-          ].map((s, i) => (
-            <div key={i}>
-              <div className="text-4xl font-extralight text-black">{s.value}</div>
-              <div className="text-xs text-gray-400 tracking-wider uppercase mt-1">{s.label}</div>
-            </div>
+        {/* Flowing narrative paragraphs — no bullet points, no cards */}
+        <div className="max-w-[520px] space-y-4 mb-12">
+          {narrativeParagraphs.map((p, i) => (
+            <p key={i} className={`text-base font-light leading-relaxed ${i === 0 ? 'text-gray-500' : 'text-gray-400'}`}>
+              {p}
+            </p>
           ))}
         </div>
 
-        {/* Commitments — simple checklist */}
-        <div className="space-y-3.5">
-          {commitments.map((c, i) => (
-            <div key={i} className="flex items-center gap-3">
-              <div className="w-5 h-5 rounded-full border border-black flex items-center justify-center shrink-0">
-                <Check className="w-3 h-3" />
+        {/* Stats — minimal horizontal row, only real data */}
+        {stats.length > 0 && (
+          <div className="flex gap-16 mb-12">
+            {stats.map((s, i) => (
+              <div key={i}>
+                <div className="text-4xl font-extralight text-black">{s.value}</div>
+                <div className="text-xs text-gray-400 tracking-wider uppercase mt-1">{s.label}</div>
               </div>
-              <span className="text-sm text-gray-700 font-light">{c}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Certifications — understated */}
-        {brandCertifications && (
-          <div className="mt-10 pt-6 border-t border-gray-100">
-            <div className="text-[10px] tracking-[0.3em] text-gray-400 uppercase mb-2">Certifications</div>
-            <p className="text-xs text-gray-500 font-light">{brandCertifications}</p>
+            ))}
           </div>
         )}
       </div>
