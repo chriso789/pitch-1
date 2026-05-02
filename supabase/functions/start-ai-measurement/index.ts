@@ -839,6 +839,7 @@ async function processJob(input: any) {
     let strictEdgeGraphDebug: any = null;
     let ridgeAlignmentDebug: any = null;
     let solverTopologyLocked = false;
+    let constraintSolverEdges: RoofEdge[] = [];
 
     const addSolarSegmentStructure = () => {
       const bb = bboxOf(footprint);
@@ -898,11 +899,12 @@ async function processJob(input: any) {
     const lockSolverTopology = (solverUsed: string) => {
       solverTopologyLocked = true;
       topologySource = solverUsed;
-      cleanEdges = cleanEdges.map((edge) => ({
+      constraintSolverEdges = cleanEdges.map((edge) => ({
         ...edge,
         source: "constraint_solver_topology",
         confidence: Math.max(Number(edge.confidence || 0), 0.78),
       }));
+      cleanEdges = [...constraintSolverEdges];
     };
 
     const countAzimuthClusters = (angles: number[], toleranceDeg = 24) => {
@@ -2412,12 +2414,12 @@ async function processJob(input: any) {
 
     refreshSimpleRoofType("final_roof_type_authority");
     if (simpleRoofTypeDebug.hip_roof) {
-      if (cleanPlanes.length < 3) {
+      if (!solverTopologyLocked && cleanPlanes.length < 3) {
         applySyntheticHipRoofTopology("hip_roof_synthetic_final_recovery");
         refreshSimpleRoofType("final_roof_type_recovered");
       }
       let convertedRakes = 0;
-      cleanEdges = cleanEdges.map((edge) => {
+      cleanEdges = (solverTopologyLocked ? constraintSolverEdges : cleanEdges).map((edge) => {
         if (edge.edge_type !== "rake") return edge;
         convertedRakes++;
         return {
@@ -2427,6 +2429,7 @@ async function processJob(input: any) {
           debug_reason: [edge.debug_reason, "hip_roof_rake_forced_to_eave"].filter(Boolean).join("; "),
         };
       });
+      if (solverTopologyLocked) constraintSolverEdges = [...cleanEdges];
       simpleRoofTypeDebug = {
         ...simpleRoofTypeDebug,
         hip_roof: true,
@@ -2647,6 +2650,50 @@ async function processJob(input: any) {
       );
     }
 
+    const footprintPerimeterFt = round(
+      footprint.reduce((sum, a, i) => {
+        const b = footprint[(i + 1) % footprint.length];
+        return sum + Math.hypot(b.x - a.x, b.y - a.y);
+      }, 0) * actualFpp,
+      2,
+    );
+    const finalWriteSanityFailures: string[] = [];
+    const dedupeFinalEdges = (edges: RoofEdge[]) => {
+      const seen = new Set<string>();
+      return edges.filter((edge) => {
+        const pts = edge.line_px || [];
+        if (pts.length < 2) return false;
+        const key = `${edge.edge_type}|${edgeKeyFor(pts[0], pts[pts.length - 1])}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    };
+    const finalEdges: RoofEdge[] = (() => {
+      if (!solverTopologyLocked) return dedupeFinalEdges(cleanEdges);
+      const solverEdges = constraintSolverEdges.length ? constraintSolverEdges : cleanEdges;
+      if (!simpleRoofTypeDebug.hip_roof) return dedupeFinalEdges(solverEdges);
+      const structuralEdges = solverEdges.filter((edge) =>
+        edge.edge_type === "ridge" || edge.edge_type === "hip" || edge.edge_type === "valley"
+      );
+      const perimeterEaves = footprint.map((a, i) => {
+        const b = footprint[(i + 1) % footprint.length];
+        return {
+          edge_type: "eave" as const,
+          line_px: [a, b],
+          confidence: 0.82,
+          source: "constraint_solver_topology",
+          debug_reason: "hip_roof_final_write:deduped_footprint_perimeter_eave",
+        } as RoofEdge;
+      }).filter((edge) => polylineLengthPx(edge.line_px || []) >= 4);
+      return dedupeFinalEdges([...structuralEdges, ...perimeterEaves]);
+    })();
+    cleanEdges = finalEdges;
+    const finalEdgeSource = solverTopologyLocked ? "constraint_solver_topology" : (finalEdges[0]?.source || "none");
+    if ((topologySource.includes("constraint") || topologySource.includes("hybrid")) && finalEdgeSource !== "constraint_solver_topology") {
+      throw new Error("solver_topology_not_used_in_final_write");
+    }
+
     const planeRows = buildPlaneRows({
       ai_measurement_job_id: input.ai_measurement_job_id,
       planes: cleanPlanes,
@@ -2664,13 +2711,32 @@ async function processJob(input: any) {
 
     const edgeRows = buildEdgeRows({
       ai_measurement_job_id: input.ai_measurement_job_id,
-      edges: cleanEdges,
+      edges: finalEdges,
       center: { lat: coords.lat, lng: coords.lng },
       width: raster.width,
       height: raster.height,
       metersPerPixelActual: actualMpp,
       feetPerPixelActual: actualFpp,
     });
+
+    const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
+    const finalWriteLog = {
+      solverTopologyLocked,
+      final_edge_source: finalEdgeSource,
+      final_edges_count: finalEdges.length,
+      ridge_ft: Number(totals.ridge_length_ft) || 0,
+      hip_ft: Number(totals.hip_length_ft) || 0,
+      valley_ft: Number(totals.valley_length_ft) || 0,
+      eave_ft: Number(totals.eave_length_ft) || 0,
+      rake_ft: Number(totals.rake_length_ft) || 0,
+      plane_count: planeRows.length,
+      area_sqft: Number(totals.total_area_pitch_adjusted_sqft) || 0,
+      footprint_perimeter_ft: footprintPerimeterFt,
+    };
+    console.log("[FINAL_MEASUREMENT_WRITE]", JSON.stringify(finalWriteLog));
+    if (simpleRoofTypeDebug.hip_roof && finalWriteLog.eave_ft > footprintPerimeterFt * 1.15) {
+      finalWriteSanityFailures.push("eave_length_inflated");
+    }
 
     // Wipe any prior detail rows for this job (idempotency on retries)
     await supabase.from("ai_measurement_images").delete().eq("job_id", input.ai_measurement_job_id);
@@ -2703,7 +2769,6 @@ async function processJob(input: any) {
     await supabase.from("ai_roof_planes").insert(planeRows);
     if (edgeRows.length) await supabase.from("ai_roof_edges").insert(edgeRows);
 
-    const totals = calculateTotals(planeRows, edgeRows, Number(input.waste_factor_percent));
     const ridgeQa = ((globalThis as any).__ridgeAlignmentDebug ?? ridgeAlignmentDebug) || null;
     const ridgeStructureReviewReason =
       ridgeQa && Number(ridgeQa.ridge_edges_before || 0) > 0 && Number(ridgeQa.ridge_edges_after || 0) === 0
@@ -2747,6 +2812,7 @@ async function processJob(input: any) {
       if (Array.isArray(stashed)) sanityFailures.push(...stashed);
       const strictTopologyFailures = (globalThis as any).__strictTopologyFailures;
       if (Array.isArray(strictTopologyFailures)) sanityFailures.push(...strictTopologyFailures);
+      sanityFailures.push(...finalWriteSanityFailures);
     }
     if (finalRoofAreaSqft > 0 && finalRoofAreaSqft < 800) {
       sanityFailures.push(`roof_area_too_small:${Math.round(finalRoofAreaSqft)}sqft`);
