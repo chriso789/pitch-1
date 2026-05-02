@@ -7,7 +7,7 @@ import { Buffer } from "node:buffer";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
 import { detectHipRoof, synthesizeHipPlanesFromFootprint } from "../_shared/hip-roof-detector.ts";
-import { generateHipRoofPlanes } from "../_shared/hip-roof-generator.ts";
+import { solveHybridRoof } from "../_shared/hybrid-roof-solver.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
@@ -1081,7 +1081,7 @@ async function processJob(input: any) {
 
         if (simpleRoofTypeDebug.hip_roof || isLargePitchedRoof) {
           // Use the new upstream hip-roof generator
-          const hipResult = generateHipRoofPlanes(footprint);
+          const hipResult = solveHybridRoof(footprint);
           if (hipResult.planes.length >= 3) {
             cleanPlanes = hipResult.planes.map((p) => ({
               ...p,
@@ -1094,9 +1094,9 @@ async function processJob(input: any) {
               ...e,
               confidence: 0.70,
             }));
-            topologySource = "hip_roof_generator";
+            topologySource = "hybrid_roof_solver";
             ridgeSplitPlaneCount = cleanPlanes.length;
-            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hip_roof_generator" };
+            simpleRoofTypeDebug = { ...simpleRoofTypeDebug, hip_roof: true, gable_roof: false, source: "hybrid_roof_solver" };
             footprintCoverageDebug = {
               ...footprintCoverageDebug,
               fallback_replaced_by_hip_generator: true,
@@ -1121,7 +1121,7 @@ async function processJob(input: any) {
             fallback_blocked_for_large_pitched_roof: true,
           };
           // Last resort: force hip generator even without detection
-          const lastResort = generateHipRoofPlanes(footprint);
+          const lastResort = solveHybridRoof(footprint);
           if (lastResort.planes.length >= 3) {
             cleanPlanes = lastResort.planes.map((p) => ({
               ...p,
@@ -1652,7 +1652,7 @@ async function processJob(input: any) {
 
           if (hipDetectResult.blockedSinglePlane || hipDetectResult.isHipCandidate || isLargePitchedRoof) {
             // USE NEW HIP-ROOF GENERATOR (upstream, geometry-based)
-            const generated = generateHipRoofPlanes(footprint);
+            const generated = solveHybridRoof(footprint);
             if (generated.planes.length >= 3) {
               cleanPlanes = generated.planes.map((p) => ({
                 ...p,
@@ -1665,7 +1665,7 @@ async function processJob(input: any) {
                 ...e,
                 confidence: 0.70,
               }));
-              topologySource = "hip_roof_generator";
+              topologySource = "hybrid_roof_solver";
               ridgeSplitPlaneCount = cleanPlanes.length;
               simpleRoofTypeDebug = {
                 ...simpleRoofTypeDebug,
