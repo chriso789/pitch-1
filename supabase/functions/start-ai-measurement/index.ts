@@ -8,6 +8,7 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 import { computeStraightSkeleton } from "../_shared/straight-skeleton.ts";
 import { detectHipRoof, synthesizeHipPlanesFromFootprint } from "../_shared/hip-roof-detector.ts";
 import { solveHybridRoof } from "../_shared/hybrid-roof-solver.ts";
+import { solveMultiStructureRoof } from "../_shared/multi-structure-roof-solver.ts";
 import { buildTopology } from "../_shared/topology-engine.ts";
 import { fetchOSMBuildingFootprint, fetchOSMBuildingCandidates } from "../_shared/osm-footprint-extractor.ts";
 import { generateRoofDiagrams } from "../_shared/roof-diagram-renderer.ts";
@@ -1267,13 +1268,11 @@ async function processJob(input: any) {
       }
 
       // ── 5-HYBRID: PRIMARY CONSTRAINT SOLVER ──────────────────────
-      // For pitched/hip roofs, the constraint-based hybrid solver produces
-      // guaranteed 4-plane topology (2 eave trapezoids + 2 hip triangles)
-      // with a real ridge line. This runs BEFORE image ridge detection and
-      // REPLACES all downstream plane generation when it succeeds.
+      // UPGRADED: Run ridge detection FIRST, then use multi-structure solver
+      // with actual ridge hints. Only fall back to OBB-based solver if no
+      // ridge hints are available from imagery.
       hybridSolverAccepted = false;
       {
-        // Detect if this is a pitched roof
         refreshSimpleRoofType("pre_hybrid_solver");
         const footprintAreaSqft = polygonAreaPx(footprint) * actualFpp * actualFpp;
         const pitchRise = parsePitchOverride(input.pitch_override) ?? dominantSolarPitchRise(solarData) ?? null;
@@ -1281,44 +1280,93 @@ async function processJob(input: any) {
         const isHipRoof = simpleRoofTypeDebug.hip_roof;
 
         if (isHipRoof || isLargePitchedRoof) {
-          const hybridResult = solveHybridRoof(footprint);
-          console.log("[HYBRID_SOLVER]", JSON.stringify({
-            type: "constraint",
-            planes: hybridResult.planes.length,
-            edges: hybridResult.edges.length,
-            roofType: hybridResult.roofType,
-            ridgeLength: hybridResult.ridgeLine ? Math.sqrt((hybridResult.ridgeLine.p1.x - hybridResult.ridgeLine.p2.x) ** 2 + (hybridResult.ridgeLine.p1.y - hybridResult.ridgeLine.p2.y) ** 2) : 0,
-            debug: hybridResult.debug,
-          }));
+          // ── STEP 1: Try to detect ridges from imagery FIRST ──
+          let earlyRidgeHints: { p1: { x: number; y: number }; p2: { x: number; y: number }; score?: number }[] = [];
+          try {
+            const solarAzimuths: number[] = (solarSegments || [])
+              .map((s: any) => Number(s?.azimuthDegrees))
+              .filter((n: number) => Number.isFinite(n));
 
-          if (hybridResult.planes.length >= 3) {
+            const earlyDetection = detectRidgesInPolygon({
+              raster,
+              polygon: footprint,
+              solarAzimuthsDeg: solarAzimuths,
+              maxRidges: 6,
+            });
+
+            if (earlyDetection.lines.length > 0) {
+              const earlyFiltered = filterRidges(
+                earlyDetection.lines as FilterRidgeLine[],
+                footprint,
+                solarAzimuths,
+              );
+              earlyRidgeHints = earlyFiltered.kept.map((r: any) => ({
+                p1: r.p1,
+                p2: r.p2,
+                score: r.score ?? 0,
+              }));
+              console.log("[EARLY_RIDGE_DETECTION]", JSON.stringify({
+                detected: earlyDetection.lines.length,
+                kept: earlyRidgeHints.length,
+              }));
+            }
+          } catch (e) {
+            console.warn("[EARLY_RIDGE_DETECTION] failed:", (e as Error).message);
+          }
+
+          // ── STEP 2: Try multi-structure solver with ridge hints ──
+          let solverResult: any = null;
+          if (earlyRidgeHints.length > 0) {
+            const multiResult = solveMultiStructureRoof(footprint, earlyRidgeHints);
+            if (multiResult.planes.length >= 3) {
+              solverResult = multiResult;
+              console.log("[MULTI_STRUCTURE_SOLVER] ACCEPTED — ridge-hint-driven topology");
+            }
+          }
+
+          // ── STEP 3: Fall back to OBB-based solver if no ridge hints ──
+          if (!solverResult) {
+            const hybridResult = solveHybridRoof(footprint);
+            if (hybridResult.planes.length >= 3) {
+              solverResult = hybridResult;
+              console.log("[HYBRID_SOLVER] FALLBACK to OBB-based solver (no ridge hints)");
+            }
+          }
+
+          if (solverResult && solverResult.planes.length >= 3) {
             const pitchFromSolar = dominantSolarPitchRise(solarData) ?? 6;
             const pitchDegFromSolar = risePer12ToDegrees(pitchFromSolar);
             const azimuthFromSolar = dominantSolarAzimuth(solarData) ?? null;
 
-            cleanPlanes = hybridResult.planes.map((p) => ({
+            cleanPlanes = solverResult.planes.map((p: any) => ({
               ...p,
-              confidence: 0.78,
+              confidence: earlyRidgeHints.length > 0 ? 0.82 : 0.78,
               pitch: pitchFromSolar,
               pitch_degrees: pitchDegFromSolar,
               azimuth: azimuthFromSolar,
             }));
-            cleanEdges = hybridResult.edges.map((e) => ({
+            cleanEdges = solverResult.edges.map((e: any) => ({
               ...e,
-              confidence: 0.78,
+              confidence: earlyRidgeHints.length > 0 ? 0.82 : 0.78,
             }));
-            topologySource = "hybrid_roof_solver_primary";
+            topologySource = earlyRidgeHints.length > 0
+              ? "multi_structure_solver_primary"
+              : "hybrid_roof_solver_primary";
             lockSolverTopology(topologySource);
             ridgeSplitPlaneCount = cleanPlanes.length;
             simpleRoofTypeDebug = {
               ...simpleRoofTypeDebug,
               hip_roof: true,
               gable_roof: false,
-              source: "hybrid_roof_solver_primary",
+              source: topologySource,
             };
             singlePlaneFallbackForbidden = true;
             hybridSolverAccepted = true;
-            console.log("[HYBRID_SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length, "edges:", cleanEdges.length);
+            console.log("[HYBRID_SOLVER] ACCEPTED as primary — planes:", cleanPlanes.length,
+              "edges:", cleanEdges.length,
+              "source:", topologySource,
+              "ridge_hints:", earlyRidgeHints.length,
+              "debug:", JSON.stringify(solverResult.debug));
           }
         }
       }
