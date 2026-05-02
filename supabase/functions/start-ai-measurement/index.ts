@@ -3625,7 +3625,9 @@ async function processJob(input: any) {
         requires_manual_review: reviewRequired,
         manual_review_recommended: reviewRequired,
         validation_status: reviewRequired ? "flagged" : "validated",
-        validation_notes: blockCustomerReportReason,
+        validation_notes: vendorTruthComparison?.blocked_reasons?.length
+          ? `${blockCustomerReportReason || ""}|vendor_truth:${vendorTruthComparison.blocked_reasons.join(",")}`
+          : blockCustomerReportReason,
         facet_count: planeRows.length,
         edge_count: edgeRows.length,
         geometry_report_json: geometryReportJson,
