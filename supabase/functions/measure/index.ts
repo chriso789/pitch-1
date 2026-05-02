@@ -1530,6 +1530,108 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     console.log(`   → ${segmentTopology.ridges.length} ridges, ${segmentTopology.hips.length} hips, ${segmentTopology.valleys.length} valleys (${roofType})`);
   }
   
+  // ============= AUTONOMOUS GRAPH SOLVER =============
+  // Run multi-evidence fusion to validate topology before accepting it
+  const complexity = detectComplexRoof(roofSegments, coords);
+  if (complexity.isComplex) {
+    console.log(`🧠 COMPLEX ROOF DETECTED: ${complexity.reasons.join('; ')} → expected ≥${complexity.expectedMinFacets} facets`);
+  }
+
+  // Attempt autonomous graph solve with DSM evidence
+  let dsmGridForSolver = null;
+  if (GOOGLE_PLACES_API_KEY) {
+    try {
+      dsmGridForSolver = await fetchDSMFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY);
+    } catch (dsmErr) {
+      console.warn('[providerGoogleSolar] DSM fetch failed (non-fatal):', dsmErr);
+    }
+  }
+
+  const skeleton = computeStraightSkeleton(coords);
+  const boundaryClass = classifyBoundaryEdges(coords, skeleton);
+  
+  const autonomousInput: AutonomousGraphInput = {
+    lat, lng,
+    footprintCoords: coords,
+    solarSegments: roofSegments,
+    dsmGrid: dsmGridForSolver,
+    skeletonEdges: skeleton.filter(e => e.type === 'ridge' || e.type === 'hip' || e.type === 'valley'),
+    boundaryEdges: {
+      eaveEdges: boundaryClass.eaveEdges,
+      rakeEdges: boundaryClass.rakeEdges,
+    },
+  };
+
+  const autonomousResult = solveAutonomousGraph(autonomousInput);
+
+  // AUTONOMOUS VALIDATION GATE: Block 4-plane collapse on complex roofs
+  if (autonomousResult.validation_status === 'ai_failed_complex_topology') {
+    console.warn(`🚫 AUTONOMOUS FAILURE: ${autonomousResult.failure_reason}`);
+    console.warn(`   → NOT generating customer report. Status: needs_review`);
+    // Return a result marked as failed - caller must handle this
+    const failResult = {
+      property_id: "",
+      source: 'google_solar',
+      faces: roofSegments.map((seg: any, idx: number) => ({
+        id: String.fromCharCode(65 + idx),
+        wkt: toPolygonWKT(coords),
+        plan_area_sqft: (seg.stats?.areaMeters2 || 0) * 10.7639 / pitchFactor(degreesToRoofPitch(seg.pitchDegrees || 18.5)),
+        pitch: degreesToRoofPitch(seg.pitchDegrees || 18.5),
+        area_sqft: (seg.stats?.areaMeters2 || 0) * 10.7639,
+      })),
+      linear_features: autonomousResult.edges.map(e => ({
+        id: e.id,
+        wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`,
+        length_ft: e.length_ft,
+        type: e.type,
+        label: `${e.type} (${(e.confidence.final_confidence * 100).toFixed(0)}% conf)`,
+      })) as LinearFeature[],
+      summary: {
+        total_area_sqft: autonomousResult.totals.total_roof_area_sqft * 1.12,
+        total_squares: (autonomousResult.totals.total_roof_area_sqft * 1.12) / 100,
+        waste_pct: 12,
+        pitch_method: 'vendor' as const,
+        ...autonomousResult.totals,
+        perimeter_ft: autonomousResult.totals.perimeter_ft,
+        roof_age_years: null,
+        roof_age_source: 'unknown' as const,
+      },
+      geom_wkt: `MULTIPOLYGON(${coords.map(c => `${c[0]} ${c[1]}`).join(', ')})`,
+      autonomousValidation: {
+        status: autonomousResult.validation_status,
+        reason: autonomousResult.failure_reason,
+        logs: autonomousResult.logs,
+      },
+    };
+    return failResult;
+  }
+
+  // If autonomous solver produced better topology than segment analyzer, use it
+  if (autonomousResult.success && autonomousResult.edges.length > 0) {
+    console.log(`✅ Autonomous graph solver succeeded: ${autonomousResult.edges.filter(e=>e.type==='ridge').length} ridges, ${autonomousResult.edges.filter(e=>e.type==='hip').length} hips, ${autonomousResult.edges.filter(e=>e.type==='valley').length} valleys`);
+    
+    // Use autonomous edges for ridge/hip/valley (higher confidence)
+    const autonomousRHV = autonomousResult.edges.filter(e => 
+      (e.type === 'ridge' || e.type === 'hip' || e.type === 'valley') && e.confidence.final_confidence > 0.4
+    );
+    
+    if (autonomousRHV.length > 0) {
+      topologyFeatures = autonomousRHV.map(e => ({
+        id: e.id,
+        wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`,
+        length_ft: e.length_ft,
+        type: e.type,
+        label: `${e.type} (${e.source}, ${(e.confidence.final_confidence * 100).toFixed(0)}%)`,
+      })) as LinearFeature[];
+      
+      topologyTotals = {
+        ridge_ft: autonomousResult.totals.ridge_ft,
+        hip_ft: autonomousResult.totals.hip_ft,
+        valley_ft: autonomousResult.totals.valley_ft,
+      };
+    }
+  }
+  
   // Run skeleton ONLY for eave/rake edges - skip ridge/hip/valley for complex shapes
   // Pass true to skip skeleton ridges since we have segment topology
   const skeletonTopology = buildLinearFeaturesFromTopology(coords, midLat, roofSegments.length > 0);
