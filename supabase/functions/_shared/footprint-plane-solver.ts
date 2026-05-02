@@ -366,7 +366,7 @@ export function rebuildPlanesFromSkeletonSegments(
   const ridges: SolverRidge[] = segments
     .filter((s) => Number.isFinite(s.p1?.x) && Number.isFinite(s.p2?.x))
     .map((s) => ({ p1: s.p1, p2: s.p2, score: 0.95 }));
-  const result = solvePlanesFromFootprint(footprint, ridges);
+  const result = solvePlanesFromFootprint(footprint, ridges, { relaxLength: true });
   return {
     ...result,
     stats: { ...result.stats, source: "straight_skeleton_rebuild" },
