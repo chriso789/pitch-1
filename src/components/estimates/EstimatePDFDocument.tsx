@@ -496,8 +496,10 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   templateAttachments,
   skipCoverPage = false,
   skipWarrantyAndTerms = false,
+  templateStyle,
 }) => {
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
+  const tmpl = getTemplateComponents(templateStyle);
 
   const dateStr = createdAt 
     ? new Date(createdAt).toLocaleDateString('en-US', { 
