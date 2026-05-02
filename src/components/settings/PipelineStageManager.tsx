@@ -534,9 +534,37 @@ export const PipelineStageManager: React.FC = () => {
                       <Badge variant="outline" className="shrink-0">
                         {stage.probability_percent}%
                       </Badge>
+                      {stage.is_conversion_point && (
+                        <Badge className="shrink-0 bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
+                          <ArrowRightCircle className="h-3 w-3 mr-1" />
+                          Converts to Project
+                        </Badge>
+                      )}
                     </div>
                     
                     <div className="flex items-center gap-1">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant={stage.is_conversion_point ? "default" : "ghost"}
+                              size="icon"
+                              className={cn(
+                                "h-8 w-8",
+                                stage.is_conversion_point && "bg-emerald-600 hover:bg-emerald-700 text-white"
+                              )}
+                              onClick={() => toggleConversionPoint(stage.id)}
+                            >
+                              <ArrowRightCircle className="h-4 w-4" />
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            {stage.is_conversion_point
+                              ? 'This stage converts leads to projects. Click to remove.'
+                              : 'Set as conversion point — leads reaching this stage become projects'}
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
                       <Button
                         variant="ghost"
                         size="icon"
