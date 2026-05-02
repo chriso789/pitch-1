@@ -1504,65 +1504,13 @@ async function processJob(input: any) {
           console.log("[HIP_ROOF_DETECTOR]", JSON.stringify(hipResult.debug));
 
           if (hipResult.blockedSinglePlane || hipResult.isHipCandidate) {
-            // C. Hip-roof synthetic topology from footprint corners + detected diagonals
-            const synthetic = synthesizeHipPlanesFromFootprint(footprint);
-            if (synthetic && synthetic.planes.length >= 2) {
-              cleanPlanes = synthetic.planes.map((sp, i) => ({
-                plane_index: i + 1,
-                polygon_px: sp.polygon_px,
-                confidence: 0.68,
-                pitch: null,
-                pitch_degrees: null,
-                azimuth: null,
-                source: "hip_roof_synthetic",
-              }));
-              // Add the synthetic ridge
-              cleanEdges.push({
-                edge_type: "ridge",
-                line_px: [synthetic.ridgeLine.p1, synthetic.ridgeLine.p2],
-                confidence: 0.70,
-                source: "hip_roof_synthetic_ridge",
-              });
-              // Add hip edges from ridge endpoints to footprint corners
-              const bb = (() => {
-                let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                for (const p of footprint) {
-                  if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
-                  if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
-                }
-                return { minX, minY, maxX, maxY, w: maxX - minX, h: maxY - minY };
-              })();
-              const isHz = bb.w >= bb.h;
-              // Hip lines connect ridge endpoints to the nearest short-side corners
-              const corners = isHz
-                ? [
-                    { x: bb.minX, y: bb.minY }, { x: bb.minX, y: bb.maxY },
-                    { x: bb.maxX, y: bb.minY }, { x: bb.maxX, y: bb.maxY },
-                  ]
-                : [
-                    { x: bb.minX, y: bb.minY }, { x: bb.maxX, y: bb.minY },
-                    { x: bb.minX, y: bb.maxY }, { x: bb.maxX, y: bb.maxY },
-                  ];
-              for (const c of corners) {
-                const ridgeEnd = Math.hypot(c.x - synthetic.ridgeLine.p1.x, c.y - synthetic.ridgeLine.p1.y) <
-                  Math.hypot(c.x - synthetic.ridgeLine.p2.x, c.y - synthetic.ridgeLine.p2.y)
-                  ? synthetic.ridgeLine.p1
-                  : synthetic.ridgeLine.p2;
-                cleanEdges.push({
-                  edge_type: "hip",
-                  line_px: [ridgeEnd, c],
-                  confidence: 0.65,
-                  source: "hip_roof_synthetic_hip",
-                });
-              }
-              topologySource = "hip_roof_synthetic";
-              ridgeSplitPlaneCount = cleanPlanes.length;
-              console.log("[HIP_ROOF_SYNTHETIC]", JSON.stringify({
-                planes: cleanPlanes.length,
-                ridge: synthetic.ridgeLine,
-                hip_edges: corners.length,
-              }));
-            }
+            simpleRoofTypeDebug = {
+              ...simpleRoofTypeDebug,
+              hip_roof: true,
+              gable_roof: false,
+              source: hipResult.isHipCandidate ? "hip_roof_diagonal_detector" : "large_pitched_roof_hip_guard",
+            };
+            applySyntheticHipRoofTopology("hip_roof_synthetic");
           }
         } catch (e) {
           console.warn("[HIP_ROOF_DETECTOR] failed:", (e as Error).message);
