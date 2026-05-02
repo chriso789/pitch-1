@@ -224,6 +224,7 @@ export function planeAdjacencyStats(planes: Point[][]) {
 export function solvePlanesFromFootprint(
   footprint: Point[],
   ridges: SolverRidge[],
+  opts?: { relaxLength?: boolean },
 ): {
   planes: SolverPlane[];
   stats: Record<string, unknown>;
@@ -231,7 +232,7 @@ export function solvePlanesFromFootprint(
 } {
   let planes: Point[][] = [footprint];
 
-  const validRidges = ridges.filter((r) => ridgeValid(r, footprint));
+  const validRidges = ridges.filter((r) => ridgeValid(r, footprint, opts?.relaxLength));
   let acceptedSplits = 0;
   let rejectedSplits = 0;
 
