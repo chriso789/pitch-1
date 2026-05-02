@@ -1081,7 +1081,7 @@ async function processJob(input: any) {
 
         if (simpleRoofTypeDebug.hip_roof || isLargePitchedRoof) {
           // Use the new upstream hip-roof generator
-          const hipResult = generateHipRoofPlanes(footprint);
+          const hipResult = solveHybridRoof(footprint);
           if (hipResult.planes.length >= 3) {
             cleanPlanes = hipResult.planes.map((p) => ({
               ...p,
@@ -1121,7 +1121,7 @@ async function processJob(input: any) {
             fallback_blocked_for_large_pitched_roof: true,
           };
           // Last resort: force hip generator even without detection
-          const lastResort = generateHipRoofPlanes(footprint);
+          const lastResort = solveHybridRoof(footprint);
           if (lastResort.planes.length >= 3) {
             cleanPlanes = lastResort.planes.map((p) => ({
               ...p,
@@ -1652,7 +1652,7 @@ async function processJob(input: any) {
 
           if (hipDetectResult.blockedSinglePlane || hipDetectResult.isHipCandidate || isLargePitchedRoof) {
             // USE NEW HIP-ROOF GENERATOR (upstream, geometry-based)
-            const generated = generateHipRoofPlanes(footprint);
+            const generated = solveHybridRoof(footprint);
             if (generated.planes.length >= 3) {
               cleanPlanes = generated.planes.map((p) => ({
                 ...p,
