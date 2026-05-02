@@ -2637,6 +2637,31 @@ Deno.serve(async (req) => {
           }
         }
 
+        // ============= AUTONOMOUS VALIDATION GATE =============
+        // Check if the provider flagged this as a failed complex topology
+        if (meas && (meas as any).autonomousValidation?.status === 'ai_failed_complex_topology') {
+          const av = (meas as any).autonomousValidation;
+          console.warn(`[pull] 🚫 AUTONOMOUS GRAPH FAILED: ${av.reason}`);
+          console.warn(`[pull] → Returning needs_review, no customer report`);
+          
+          // Still return the measurement data, but flag it clearly
+          return json({
+            ok: true,
+            engine: engineUsed,
+            data: {
+              measurement: meas,
+              tags: null,
+            },
+            autonomousValidation: {
+              status: 'ai_failed_complex_topology',
+              reason: av.reason,
+              logs: av.logs,
+              manualReviewRequired: true,
+            },
+            warnings: [`Autonomous roof graph failed: ${av.reason}. Human review required.`],
+          }, corsHeaders);
+        }
+
         // Final fallback: if skeleton found no provider and we haven't tried vision yet, try vision
         if (!meas && engineUsed === 'skeleton' && engine !== 'vision' && !disableVisionFallback) {
           console.log('[pull] 🔭 Skeleton failed, attempting VISION engine as final fallback');
